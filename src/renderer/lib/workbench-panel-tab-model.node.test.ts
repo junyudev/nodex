@@ -273,9 +273,17 @@ describe("workbench panel tab model", () => {
     const current = {
       "session-1": [selected],
       "session-2": [unrelated],
+      "session-remote": [{ ...selected, sessionId: "session-remote" }],
+      "session-unassigned": [{ ...selected, sessionId: "session-unassigned" }],
     };
+    const sessionHostIds = new Map([
+      ["session-1", "local"],
+      ["session-2", "local"],
+      ["session-remote", "remote"],
+    ]);
+    const deleted = { type: "threadDeleted", hostId: "local", threadId: "child-deleted" } as const;
 
-    const routed = routeDeletedSelectedSubagentsToOverview(current, "child-deleted");
+    const routed = routeDeletedSelectedSubagentsToOverview(current, deleted, sessionHostIds);
 
     expect(routed["session-1"]?.[0]).toMatchObject({
       selectedThreadId: null,
@@ -285,6 +293,48 @@ describe("workbench panel tab model", () => {
       stateKey: 13,
     });
     expect(routed["session-2"]?.[0]).toBe(unrelated);
-    expect(routeDeletedSelectedSubagentsToOverview(current, "missing-child")).toBe(current);
+    expect(routed["session-remote"]).toBe(current["session-remote"]);
+    expect(routed["session-unassigned"]).toBe(current["session-unassigned"]);
+    expect(
+      routeDeletedSelectedSubagentsToOverview(
+        current,
+        { ...deleted, threadId: "missing-child" },
+        sessionHostIds,
+      ),
+    ).toBe(current);
+
+    expect(
+      settlePendingSubagentsPanelTab(routed, {
+        sessionId: "session-1",
+        tabId: selected.id,
+        requestId: 9,
+        tab: {
+          ...selected,
+          selectedHydration: {
+            status: "ready",
+            revision: 1,
+            fidelity: "attachedSparse",
+            checkpoint: null,
+          },
+        },
+      }),
+    ).toBe(routed);
+    expect(
+      settlePendingSubagentsPanelTab(routed, {
+        sessionId: "session-remote",
+        tabId: selected.id,
+        requestId: 9,
+        tab: {
+          ...selected,
+          sessionId: "session-remote",
+          selectedHydration: {
+            status: "ready",
+            revision: 1,
+            fidelity: "attachedSparse",
+            checkpoint: null,
+          },
+        },
+      })["session-remote"]?.[0],
+    ).toMatchObject({ selectedThreadId: "child-deleted", selectedHydration: { status: "ready" } });
   });
 });

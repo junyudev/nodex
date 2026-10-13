@@ -52,6 +52,7 @@ export function buildComposerQueuedFollowUpRows(
   projection: CodexQueuedFollowUpProjection,
 ): ThreadComposerShellQueuedFollowUpRowModel[] {
   return projection.entries.map((entry) => ({
+    ...(entry.canSendNow === undefined ? {} : { canSendNow: entry.canSendNow }),
     followUpId: entry.followUpId,
     threadId: entry.threadId,
     prompt: entry.prompt,

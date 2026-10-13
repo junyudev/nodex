@@ -1,5 +1,9 @@
 import { castDraft, isDraft, original } from "immer";
 import {
+  appendCodexAcceptedServerQueueSubmission,
+  collectCodexAcceptedServerQueueSubmissions,
+} from "../codex-native-queued-submission";
+import {
   mergeCodexCanonicalTurnStates,
   type CodexCanonicalConversationState,
   type CodexCanonicalTurnState,
@@ -290,6 +294,13 @@ export class CanonicalCompleteHistoryLoader implements Disposable {
           history.isComplete = true;
           draft.turns = [];
         } else replaceCanonicalHistoryDraft(draft, merged, pagination?.source !== "compact");
+        if (this.client.canRecordQueueAcceptance?.(id) === true) {
+          const restoredIds = new Set(older.map((turn) => turn.turnId));
+          for (const raw of collectCodexAcceptedServerQueueSubmissions(
+            merged.filter((turn) => restoredIds.has(turn.turnId)),
+          ))
+            appendCodexAcceptedServerQueueSubmission(draft, raw);
+        }
         for (const page of timelinePages)
           applyCanonicalHistoryTimelineDraft(draft, page, "prepend");
         draft.turnsPagination = {

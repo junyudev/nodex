@@ -1,6 +1,7 @@
 import { createSteerTurnInactiveError, normalizeSteerTurnError } from "../codex-steer-errors";
 import type { Draft } from "immer";
 import type {
+  QueuedSubmission,
   TurnStartParams,
   TurnSteerParams,
   TurnSteerResponse,
@@ -42,6 +43,7 @@ export interface CanonicalOwnerSteerInput {
   readonly restoreMessage: CodexCanonicalSteeringRestoreMessage;
   readonly attachments?: readonly unknown[];
   readonly clientUserMessageId: string;
+  readonly serverQueuedSubmission?: QueuedSubmission;
   readonly additionalContext?: TurnSteerParams["additionalContext"];
   readonly serviceTier?: TurnStartParams["serviceTier"];
   readonly toolOutput?: TurnStartParams["toolOutput"];
@@ -151,6 +153,9 @@ export async function runCanonicalOwnerSteer(
       serverUserMessageId: null,
       clientUserMessageId: input.clientUserMessageId,
       input: input.input,
+      ...(input.serverQueuedSubmission
+        ? { serverQueuedSubmission: structuredClone(input.serverQueuedSubmission) }
+        : {}),
       attachments: [...(input.attachments ?? [])],
       restoreMessage: input.restoreMessage,
       compareKey: buildCodexSteeringCompareKey(

@@ -576,16 +576,16 @@ const conversationLifecycle = Layer.effect(
   CodexConversationLifecycle,
   makeCodexConversationLifecycle,
 ).pipe(Layer.provideMerge(Layer.merge(deltaBuffer, manualCompaction)));
-const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
+const queuedFollowUps = Layer.effect(CodexQueuedFollowUps, makeCodexQueuedFollowUps).pipe(
   Layer.provideMerge(Layer.mergeAll(turnPreparation, autoThreadTitle, mainConversationSettings)),
 );
-const queuedFollowUps = Layer.effect(CodexQueuedFollowUps, makeCodexQueuedFollowUps).pipe(
-  Layer.provideMerge(turnCommands),
+const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
+  Layer.provideMerge(queuedFollowUps),
 );
 const launchCompletion = Layer.effect(
   CodexThreadLaunchCompletion,
   makeCodexThreadLaunchCompletion,
-).pipe(Layer.provideMerge(queuedFollowUps));
+).pipe(Layer.provideMerge(turnCommands));
 const freshThreadLaunch = Layer.effect(
   CodexFreshThreadLaunchRuntime,
   makeCodexFreshThreadLaunchRuntime,

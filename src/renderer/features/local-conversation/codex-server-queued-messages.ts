@@ -7,6 +7,13 @@ import { extractCodexCanonicalHydratedAttachments } from "../../../shared/codex-
 import { CODEX_INTERRUPTED_STEER_REASON } from "../../../shared/codex-queued-follow-up-state";
 import { codexImageInputSource } from "../../../shared/codex-image-input";
 import type { CodexQueuedMessage } from "../../../shared/codex-queued-message";
+import { CodexTurnDeliveryError } from "../../../shared/codex-conversation-state/codex-turn-delivery";
+
+import {
+  equalCodexQueueValue,
+  normalizeCodexNativeQueuedSubmission,
+} from "../../../shared/codex-native-queued-submission";
+export { equalCodexQueueValue } from "../../../shared/codex-native-queued-submission";
 
 import { hasUntrustedAppInputPlaceholder } from "../../../shared/codex-untrusted-app-input";
 
@@ -42,11 +49,14 @@ export type CodexServerQueueSendResult =
   | { readonly status: "sent"; readonly messageId: string; readonly turnId: string };
 
 interface CodexServerQueueState {
+  readonly generation: number;
   items: QueuedSubmission[];
   messagesById: Record<string, CodexQueuedMessage>;
 }
 
 export interface CodexServerQueuedMessagesOptions {
+  readonly isEnabled?: (threadId: string) => boolean;
+  readonly canEnqueue?: (threadId: string, message: CodexQueuedMessage) => boolean;
   readonly request: <Method extends ServerQueueMethod>(
     method: Method,
     params: ClientRequestParamsByMethod[Method],
@@ -60,6 +70,19 @@ export interface CodexServerQueuedMessagesOptions {
   readonly isConversationInterrupted: (threadId: string) => boolean;
   readonly isConversationStreaming: (threadId: string) => boolean;
   readonly onQueueChanged: (threadId: string) => void;
+  readonly captureMutationLifetime?: (
+    threadId: string,
+    operation: "enqueue" | "remove" | "reorder" | "resume" | "send-now" | "cleanup",
+  ) => Disposable & { assertCurrent(): void };
+  readonly onEnqueueUnknown?: (
+    threadId: string,
+    message: CodexQueuedMessage,
+    input: readonly UserInput[],
+    error: CodexTurnDeliveryError,
+  ) => Promise<void>;
+  readonly readAccepted?: (threadId: string) => readonly QueuedSubmission[];
+  readonly recordAccepted?: (threadId: string, submission: QueuedSubmission) => void;
+  readonly discardAccepted?: (threadId: string, submission: QueuedSubmission) => void;
 }
 
 const REQUEST_HEADING = /## My request(?: for Codex)?:/gu;
@@ -76,24 +99,6 @@ export function preserveGeneratedQueueText(previous: string, next: string): stri
   const last = matches.at(-1);
   if (!last || last.index === undefined) return request;
   return `${previous.slice(0, last.index).trimEnd()}\n${CANONICAL_REQUEST_HEADING}\n${request}\n`;
-}
-
-function equalUnknown(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-    return left.every((entry, index) => equalUnknown(entry, right[index]));
-  }
-  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
-  const leftEntries = Object.entries(left);
-  const rightEntries = Object.entries(right);
-  if (leftEntries.length !== rightEntries.length) return false;
-  const rightRecord = right as Readonly<Record<string, unknown>>;
-  return leftEntries.every(
-    ([key, value]) =>
-      Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-      equalUnknown(value, rightRecord[key]),
-  );
 }
 
 function insertionIndex(
@@ -135,57 +140,42 @@ function serverFallbackMessage(
   };
 }
 
-function normalizeServerInput(
-  input: ClientRequestResponsesByMethod["thread/queue/list"]["data"][number]["input"][number],
-): UserInput {
-  if (input.type === "text") {
-    return {
-      type: "text",
-      text: input.text,
-      text_elements: (input.text_elements ?? []).map((element) => ({
-        byteRange: { ...element.byteRange },
-        placeholder: element.placeholder ?? null,
-      })),
-    };
-  }
-  if (input.type === "image") {
-    const detail = input.detail == null ? {} : { detail: input.detail };
-    if (typeof input.url === "string") return { type: "image", url: input.url, ...detail };
-    if (typeof input.fileId === "string") return { type: "image", fileId: input.fileId, ...detail };
-    throw new Error("Invalid queued image input");
-  }
-  if (input.type === "localImage") {
-    return {
-      type: "localImage",
-      path: input.path,
-      ...(input.detail == null ? {} : { detail: input.detail }),
-    };
-  }
-  return { ...input };
-}
-
-function normalizeServerSubmission(input: {
-  readonly id: string;
-  readonly clientUserMessageId: string;
-  readonly input: ReadonlyArray<
-    ClientRequestResponsesByMethod["thread/queue/list"]["data"][number]["input"][number]
-  >;
-}): QueuedSubmission {
-  return {
-    id: input.id,
-    clientUserMessageId: input.clientUserMessageId,
-    input: input.input.map(normalizeServerInput),
-  };
-}
-
 /** App-server-owned follow-up queue with a local projection cache for composer state. */
 export class CodexServerQueuedMessages implements Disposable {
   private readonly states = new Map<string, CodexServerQueueState>();
   private readonly loads = new Map<string, Promise<void>>();
+  private readonly reloadRequested = new Set<string>();
   private generation = 0;
   private disposed = false;
 
   constructor(private readonly options: CodexServerQueuedMessagesOptions) {}
+
+  findByClientMessageId(threadId: string, clientId: string): string | undefined {
+    return this.states.get(threadId)?.items.find((item) => item.clientUserMessageId === clientId)
+      ?.id;
+  }
+
+  readClientMessageId(threadId: string, messageId: string): string | undefined {
+    return this.states.get(threadId)?.items.find((item) => item.id === messageId)
+      ?.clientUserMessageId;
+  }
+
+  readNativeSubmission(threadId: string, messageId: string): QueuedSubmission | undefined {
+    const submission = this.states.get(threadId)?.items.find((item) => item.id === messageId);
+    return submission ? structuredClone(submission) : undefined;
+  }
+
+  /** Confirmation requires the native receipt's actual input, never just its client correlation. */
+  async matchesClientReceipt(threadId: string, message: CodexQueuedMessage): Promise<boolean> {
+    const state = await this.state(threadId);
+    if (!state.items.some((item) => item.clientUserMessageId === message.id)) return false;
+    const prepared = await this.options.compileInput(message, undefined, false);
+    this.assertCurrent(threadId, state);
+    if (prepared.responseItems.length || prepared.input.some(hasUntrustedAppInputPlaceholder))
+      return false;
+    const current = state.items.find((item) => item.clientUserMessageId === message.id);
+    return current !== undefined && equalCodexQueueValue(current.input, prepared.input);
+  }
 
   read(threadId: string): readonly CodexQueuedMessage[] | undefined {
     const state = this.states.get(threadId);
@@ -207,24 +197,39 @@ export class CodexServerQueuedMessages implements Disposable {
     if (existing) return await existing;
     const generation = this.generation;
     const load = (async () => {
-      const items: QueuedSubmission[] = [];
-      let cursor: string | null = null;
+      let items: QueuedSubmission[];
+      let previousItems: QueuedSubmission[] | undefined;
       do {
-        const response: ClientRequestResponsesByMethod["thread/queue/list"] =
-          await this.options.request("thread/queue/list", { threadId, cursor });
-        items.push(...response.data.map(normalizeServerSubmission));
-        cursor = response.nextCursor ?? null;
-      } while (cursor !== null);
-      if (this.disposed || this.generation !== generation) return;
+        this.reloadRequested.delete(threadId);
+        previousItems = this.states.get(threadId)?.items;
+        items = [];
+        let cursor: string | null = null;
+        do {
+          if (this.disposed || this.generation !== generation) return;
+          const response: ClientRequestResponsesByMethod["thread/queue/list"] =
+            await this.options.request("thread/queue/list", { threadId, cursor });
+          if (this.disposed || this.generation !== generation) return;
+          items.push(...response.data.map(normalizeCodexNativeQueuedSubmission));
+          cursor = response.nextCursor ?? null;
+        } while (cursor !== null);
+      } while (
+        this.reloadRequested.has(threadId) ||
+        this.states.get(threadId)?.items !== previousItems
+      );
       const previous = this.states.get(threadId);
-      const previousItems = new Map(previous?.items.map((item) => [item.id, item]));
+      const byId = new Map(previous?.items.map((item) => [item.id, item]));
       const messagesById: Record<string, CodexQueuedMessage> = {};
       for (const item of items) {
         const message = previous?.messagesById[item.id];
-        if (message && equalUnknown(previousItems.get(item.id), item))
+        if (message && equalCodexQueueValue(byId.get(item.id), item))
           messagesById[item.id] = message;
       }
-      this.states.set(threadId, { items, messagesById });
+      if (previous) {
+        previous.items = items;
+        previous.messagesById = messagesById;
+      } else {
+        this.states.set(threadId, { generation, items, messagesById });
+      }
       this.options.onQueueChanged(threadId);
     })().finally(() => {
       if (this.loads.get(threadId) === load) this.loads.delete(threadId);
@@ -234,10 +239,23 @@ export class CodexServerQueuedMessages implements Disposable {
   }
 
   private async state(threadId: string): Promise<CodexServerQueueState> {
+    const generation = this.generation;
     if (!this.states.has(threadId)) await this.load(threadId);
     const state = this.states.get(threadId);
-    if (!state) throw new Error("App-server queued follow-ups are unavailable");
+    if (!state || this.generation !== generation)
+      throw new Error("App-server queued follow-ups are unavailable");
+    this.assertCurrent(threadId, state);
     return state;
+  }
+
+  private assertCurrent(threadId: string, state: CodexServerQueueState): void {
+    if (
+      this.disposed ||
+      state.generation !== this.generation ||
+      this.states.get(threadId) !== state ||
+      this.options.isEnabled?.(threadId) === false
+    )
+      throw new Error("App-server queue owner lifetime ended");
   }
 
   async enqueue(
@@ -246,7 +264,13 @@ export class CodexServerQueuedMessages implements Disposable {
     position?: CodexServerQueueEditPosition,
     restore?: QueuedSubmission,
   ): Promise<{ status: "queued"; messageId: string }> {
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "enqueue");
     const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
     const editedId = position?.messageId;
     const previousSubmission = editedId
       ? state.items.find((item) => item.id === editedId)
@@ -274,27 +298,65 @@ export class CodexServerQueuedMessages implements Disposable {
           previousSubmission !== undefined &&
             state.messagesById[previousSubmission.id] === undefined,
         );
+    assertCurrent();
+    if (this.options.canEnqueue?.(threadId, nextMessage) === false)
+      throw new Error("Queued follow-up changed before dispatch");
+    if (
+      previousSubmission &&
+      !equalCodexQueueValue(
+        state.items.find((item) => item.id === previousSubmission.id),
+        previousSubmission,
+      )
+    )
+      throw new Error("Queued follow-up changed before dispatch");
     if (prepared.responseItems.length > 0 || prepared.input.some(hasUntrustedAppInputPlaceholder))
       throw new Error("App input requires confirmation before queue delivery");
     const input = [...prepared.input];
-    const queuedSubmission = previousSubmission
-      ? (
-          await this.options.request("thread/queue/update", {
-            threadId,
-            queuedSubmissionId: previousSubmission.id,
-            input,
-          })
-        ).queuedSubmission
-      : (
-          await this.options.request("thread/queue/add", {
-            threadId,
-            input,
-            clientUserMessageId: restore?.clientUserMessageId ?? nextMessage.id,
-          })
-        ).queuedSubmission;
-    const normalizedSubmission = normalizeServerSubmission(queuedSubmission);
+    const accepted =
+      editedId == null
+        ? state.items.find((item) => item.clientUserMessageId === nextMessage.id)
+        : undefined;
+    if (accepted) {
+      if (!equalCodexQueueValue(accepted.input, input))
+        throw new Error("Queued message identity already has different input");
+      state.messagesById[accepted.id] = { ...nextMessage, id: accepted.id };
+      this.options.onQueueChanged(threadId);
+      return { status: "queued", messageId: accepted.id };
+    }
+    let queuedSubmission: ClientRequestResponsesByMethod["thread/queue/add"]["queuedSubmission"];
+    try {
+      queuedSubmission = previousSubmission
+        ? (
+            await this.options.request("thread/queue/update", {
+              threadId,
+              queuedSubmissionId: previousSubmission.id,
+              input,
+            })
+          ).queuedSubmission
+        : (
+            await this.options.request("thread/queue/add", {
+              threadId,
+              input,
+              clientUserMessageId: restore?.clientUserMessageId ?? nextMessage.id,
+            })
+          ).queuedSubmission;
+    } catch (error) {
+      assertCurrent();
+      if (
+        !previousSubmission &&
+        error instanceof CodexTurnDeliveryError &&
+        error.delivery.stage === "outcome-unknown" &&
+        error.delivery.method === "thread/queue/add"
+      )
+        await this.options.onEnqueueUnknown?.(threadId, nextMessage, input, error);
+      throw error;
+    }
+    const normalizedSubmission = normalizeCodexNativeQueuedSubmission(queuedSubmission);
+    assertCurrent();
     const projected = { ...nextMessage, id: normalizedSubmission.id };
-    const withoutEdited = state.items.filter((item) => item.id !== previousSubmission?.id);
+    const withoutEdited = state.items.filter(
+      (item) => item.id !== previousSubmission?.id && item.id !== normalizedSubmission.id,
+    );
     withoutEdited.splice(insertionIndex(withoutEdited, position), 0, normalizedSubmission);
     state.items = withoutEdited;
     if (previousSubmission) delete state.messagesById[previousSubmission.id];
@@ -309,39 +371,61 @@ export class CodexServerQueuedMessages implements Disposable {
   }
 
   async remove(threadId: string, messageId: string): Promise<CodexServerQueueRemoval | null> {
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "remove");
     const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
     const index = state.items.findIndex((item) => item.id === messageId);
     const serverSubmission = state.items[index];
     const message = this.read(threadId)?.[index];
     if (!serverSubmission || !message) return null;
+    const previousMessageId = state.items[index - 1]?.id ?? null;
+    const nextMessageId = state.items[index + 1]?.id ?? null;
+    assertCurrent();
     const { deleted } = await this.options.request("thread/queue/delete", {
       threadId,
       queuedSubmissionId: messageId,
     });
+    assertCurrent();
     if (!deleted) return null;
-    state.items.splice(index, 1);
+    state.items = state.items.filter((item) => item.id !== messageId);
     delete state.messagesById[messageId];
     this.options.onQueueChanged(threadId);
     return {
       index,
       message,
-      previousMessageId: state.items[index - 1]?.id ?? null,
-      nextMessageId: state.items[index]?.id ?? null,
+      previousMessageId,
+      nextMessageId,
       serverSubmission,
     };
   }
 
   async reorder(threadId: string, messageIds: readonly string[]): Promise<void> {
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "reorder");
     const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
+    assertCurrent();
     await this.options.request("thread/queue/reorder", {
       threadId,
       queuedSubmissionIds: [...messageIds],
     });
+    assertCurrent();
     const byId = new Map(state.items.map((item) => [item.id, item]));
-    state.items = messageIds.flatMap((id) => {
-      const item = byId.get(id);
-      return item ? [item] : [];
-    });
+    state.items = [
+      ...messageIds.flatMap((id) => {
+        const item = byId.get(id);
+        byId.delete(id);
+        return item ? [item] : [];
+      }),
+      ...byId.values(),
+    ];
     this.options.onQueueChanged(threadId);
   }
 
@@ -379,15 +463,23 @@ export class CodexServerQueuedMessages implements Disposable {
 
   async resume(threadId: string): Promise<void> {
     if (this.options.isConversationStreaming(threadId)) return;
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "resume");
     const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
     const first = state.items[0];
     if (!first) return;
+    assertCurrent();
     await this.options.request("thread/queue/start", {
       threadId,
       queuedSubmissionId: first.id,
     });
-    state.items = state.items.filter((item) => item.id !== first.id);
-    delete state.messagesById[first.id];
+    assertCurrent();
+    state.items = state.items.filter((item) => !equalCodexQueueValue(item, first));
+    if (!state.items.some((item) => item.id === first.id)) delete state.messagesById[first.id];
     this.options.onQueueChanged(threadId);
   }
 
@@ -398,33 +490,100 @@ export class CodexServerQueuedMessages implements Disposable {
       message: CodexQueuedMessage,
       clientUserMessageId: string,
     ) => Promise<CodexServerQueueSendResult>,
+    accepted?: () => void,
   ): Promise<CodexServerQueueSendResult | null> {
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "send-now");
     const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
     const submission = state.items.find((item) => item.id === messageId);
     const message = this.read(threadId)?.find((entry) => entry.id === messageId);
     if (!submission || !message) return null;
     let result: CodexServerQueueSendResult;
     if (this.options.isConversationStreaming(threadId)) {
       result = await steer(message, submission.clientUserMessageId);
+      if (result.status === "sent") accepted?.();
+      assertCurrent();
+      if (result.status !== "sent") return result;
+      this.options.recordAccepted?.(threadId, submission);
+      if (
+        !equalCodexQueueValue(
+          state.items.find((item) => item.id === messageId),
+          submission,
+        )
+      )
+        return result;
       const { deleted } = await this.options.request("thread/queue/delete", {
         threadId,
         queuedSubmissionId: messageId,
       });
-      if (!deleted) throw new Error("Failed to remove steered app-server queued follow-up");
+      assertCurrent();
+      if (!deleted) {
+        await this.refresh(threadId);
+        assertCurrent();
+        if (state.items.some((item) => equalCodexQueueValue(item, submission)))
+          throw new Error("Failed to remove steered app-server queued follow-up");
+      }
     } else {
       const { turn } = await this.options.request("thread/queue/start", {
         threadId,
         queuedSubmissionId: messageId,
       });
       result = { status: "sent", messageId, turnId: turn.id };
+      accepted?.();
     }
-    state.items = state.items.filter((item) => item.id !== messageId);
-    delete state.messagesById[messageId];
+    assertCurrent();
+    state.items = state.items.filter((item) => !equalCodexQueueValue(item, submission));
+    if (!state.items.some((item) => item.id === messageId)) delete state.messagesById[messageId];
+    this.options.discardAccepted?.(threadId, submission);
     this.options.onQueueChanged(threadId);
     return result;
   }
 
+  /** Accepted steering recovers only native queue cleanup, never another delivery. */
+  async reconcileAccepted(threadId: string): Promise<void> {
+    const receipts = this.options.readAccepted?.(threadId) ?? [];
+    if (!receipts.length) return;
+    using lifetime = this.options.captureMutationLifetime?.(threadId, "cleanup");
+    const state = await this.state(threadId);
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      this.assertCurrent(threadId, state);
+    };
+    assertCurrent();
+    for (const receipt of receipts) {
+      assertCurrent();
+      const current = state.items.find((item) => item.id === receipt.id);
+      if (!current) {
+        this.options.discardAccepted?.(threadId, receipt);
+        continue;
+      }
+      if (!equalCodexQueueValue(current, receipt)) continue;
+      const { deleted } = await this.options.request("thread/queue/delete", {
+        threadId,
+        queuedSubmissionId: receipt.id,
+      });
+      assertCurrent();
+      if (!deleted) {
+        await this.refresh(threadId);
+        assertCurrent();
+        if (state.items.some((item) => equalCodexQueueValue(item, receipt)))
+          throw new Error("Accepted message remains in the app-server queue");
+      } else {
+        state.items = state.items.filter((item) => !equalCodexQueueValue(item, receipt));
+        if (!state.items.some((item) => item.id === receipt.id))
+          delete state.messagesById[receipt.id];
+        this.options.onQueueChanged(threadId);
+      }
+      this.options.discardAccepted?.(threadId, receipt);
+    }
+  }
+
   refresh(threadId: string): Promise<void> {
+    if (this.loads.has(threadId)) this.reloadRequested.add(threadId);
     return this.load(threadId);
   }
 
@@ -432,6 +591,7 @@ export class CodexServerQueuedMessages implements Disposable {
     this.generation += 1;
     this.states.clear();
     this.loads.clear();
+    this.reloadRequested.clear();
   }
 
   [Symbol.dispose](): void {

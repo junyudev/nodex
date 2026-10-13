@@ -38,6 +38,7 @@ interface BuildTurnViewModelInput {
   includeGeneratedImages?: boolean;
   turnId: string | null;
   turnKey?: string;
+  turnSearchKey?: string;
   turn: CodexConversationTurn | null;
   buckets: ThreadTurnRenderBuckets;
   workedForItem?: ThreadWorkedForBlockModel | null;
@@ -393,10 +394,11 @@ function buildSearchUnits(input: {
   turn: CodexConversationTurn | null;
   turnId: string | null;
   turnKey: string;
+  turnSearchKey: string;
   userMessageBlocks: ThreadTranscriptBlockModel[];
 }): ThreadSearchUnitModel[] {
   const userUnits = input.userMessageBlocks.map((block, index) => ({
-    key: `${input.turnKey}:user:${index}`,
+    key: `${input.turnSearchKey}:user:${index}`,
     itemId: block.entry.rawItemId ?? block.entry.itemId,
     turnId: input.turnId,
     turnKey: input.turnKey,
@@ -414,7 +416,7 @@ function buildSearchUnits(input: {
     if (block.type !== "assistantMessage") continue;
     const text = projectCodexMarkdownToPlainText(block.entry.markdownText ?? block.searchableText);
     if (!text) continue;
-    const key = assistantSearchUnitKey(input.turnKey, block);
+    const key = assistantSearchUnitKey(input.turnSearchKey, block);
     assistantUnits.set(key, {
       key,
       itemId: block.entry.rawItemId ?? block.entry.itemId,
@@ -499,6 +501,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   if (turnKey === null) {
     throw new Error("A nullable local turn requires its occurrence key");
   }
+  const turnSearchKey = input.turnSearchKey ?? turnKey;
   const metadata = buildTurnFooterMetadata(input.turn, input.cwd, input.hostId);
   const completedMetadata =
     !input.isStreamingTurn && input.goalTimeUsedSeconds != null
@@ -524,7 +527,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   const shouldRenderWorkedForInAgentBody = input.turn?.status === "inProgress";
   const searchableAssistant = (block: ThreadTranscriptBlockModel): ThreadTranscriptBlockModel =>
     block.type === "assistantMessage"
-      ? withSearchUnitKey(block, assistantSearchUnitKey(turnKey, block))
+      ? withSearchUnitKey(block, assistantSearchUnitKey(turnSearchKey, block))
       : block;
   let buckets: ThreadTurnRenderBuckets = {
     ...initialBuckets,
@@ -538,10 +541,13 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     turn: input.turn,
     turnId: input.turnId,
     turnKey,
+    turnSearchKey,
     userMessageBlocks: userMessageSearchBlocks,
   });
   const userSearchUnitKeyByBlockId = new Map(
-    userMessageSearchBlocks.map((block, index) => [block.id, `${turnKey}:user:${index}`] as const),
+    userMessageSearchBlocks.map(
+      (block, index) => [block.id, `${turnSearchKey}:user:${index}`] as const,
+    ),
   );
   const latestAssistantId = buckets.latestAssistantMessage?.id ?? null;
   const aboveComposerBlocks = resolveAboveComposerBlocks(buckets, input);
@@ -556,7 +562,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
       : decorateAssistantBlock(
           buckets.assistantItem,
           latestAssistantId,
-          assistantSearchUnitKey(turnKey, buckets.assistantItem),
+          assistantSearchUnitKey(turnSearchKey, buckets.assistantItem),
           {
             ...actionInput,
             includeActions: input.voiceWorkActivity === undefined,
@@ -572,7 +578,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
       return decorateAssistantBlock(
         block,
         latestAssistantId,
-        assistantSearchUnitKey(turnKey, block),
+        assistantSearchUnitKey(turnSearchKey, block),
         {
           ...actionInput,
           includeActions: false,
@@ -589,7 +595,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
       });
       return withSearchUnitKey(
         userBlock ?? block,
-        userSearchUnitKeyByBlockId.get(block.id) ?? `${turnKey}:user:0`,
+        userSearchUnitKeyByBlockId.get(block.id) ?? `${turnSearchKey}:user:0`,
       );
     }
     return block;
@@ -615,7 +621,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
       buckets.userItems.map((block, index) =>
         withSearchUnitKey(
           block,
-          userSearchUnitKeyByBlockId.get(block.id) ?? `${turnKey}:user:${index}`,
+          userSearchUnitKeyByBlockId.get(block.id) ?? `${turnSearchKey}:user:${index}`,
         ),
       ),
       {

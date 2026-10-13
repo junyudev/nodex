@@ -119,6 +119,7 @@ function BufferedMarkdown({
       content={value.text}
       animateStreamingText={value.animate}
       adaptiveStreaming={value.active}
+      sourceIdentity={buffering.streamId}
     />
   );
 }

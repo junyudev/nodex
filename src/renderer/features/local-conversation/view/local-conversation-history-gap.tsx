@@ -347,6 +347,7 @@ export function LocalConversationHistoryGap({
     <div
       aria-hidden={!failure && !loading ? true : undefined}
       data-virtualized-turn-content
+      data-history-gap-key={row.key}
       style={{ height: row.estimatedHeightPx }}
       className="flex items-center justify-center"
     >

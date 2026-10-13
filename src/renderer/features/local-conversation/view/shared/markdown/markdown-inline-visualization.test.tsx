@@ -22,38 +22,43 @@ vi.mock("../../local-conversation-inline-visualization", () => ({
 }));
 
 describe("assistant Markdown inline visualizations", () => {
-  test("retains an interactive leaf and its focus when an assistant response finishes", async () => {
-    const content = 'Before\n\n::codex-inline-vis{file="plot.html"}\n\nAfter';
-    const context = {
-      hostId: "local",
-      threadId: "visible",
-      turnId: "turn",
-      markdownStreaming: true,
-      readChangedFilePaths: () => [],
-    };
-    const mounted = render(
-      <MarkdownRenderer
-        content={content}
-        parseIncompleteMarkdown
-        animateStreamingText
-        visualizationContext={context}
-      />,
-    );
-    const original = await screen.findByRole("button", { name: "plot.html" });
-    await act(async () => {
-      original.focus();
-      await Promise.resolve();
-    });
-    mounted.rerender(
-      <MarkdownRenderer
-        content={content}
-        parseIncompleteMarkdown={false}
-        visualizationContext={{ ...context, markdownStreaming: false }}
-      />,
-    );
-    await waitFor(() => expect(screen.getByRole("button", { name: "plot.html" })).toBe(original));
-    expect(document.activeElement).toBe(original);
-  });
+  test.each([
+    'Before\n\n::codex-inline-vis{file="plot.html"}\n\nAfter',
+    '> Before\n>\n> ::codex-inline-vis{file="plot.html"}\n>\n> After',
+  ])(
+    "retains an interactive leaf and its ancestor focus when an assistant response finishes (%s)",
+    async (content) => {
+      const context = {
+        hostId: "local",
+        threadId: "visible",
+        turnId: "turn",
+        markdownStreaming: true,
+        readChangedFilePaths: () => [],
+      };
+      const mounted = render(
+        <MarkdownRenderer
+          content={content}
+          parseIncompleteMarkdown
+          animateStreamingText
+          visualizationContext={context}
+        />,
+      );
+      const original = await screen.findByRole("button", { name: "plot.html" });
+      await act(async () => {
+        original.focus();
+        await Promise.resolve();
+      });
+      mounted.rerender(
+        <MarkdownRenderer
+          content={content}
+          parseIncompleteMarkdown={false}
+          visualizationContext={{ ...context, markdownStreaming: false }}
+        />,
+      );
+      await waitFor(() => expect(screen.getByRole("button", { name: "plot.html" })).toBe(original));
+      expect(document.activeElement).toBe(original);
+    },
+  );
   test.each(["", "<oai-mem-citation>hidden</oai-mem-citation>\n"])(
     "preserves an indented code example through assistant text projection (%s)",
     async (prefix) => {

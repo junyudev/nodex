@@ -1,4 +1,9 @@
 import notificationSchema from "@nodex/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json";
+import { mergeCodexItemCompletionEvidence } from "./codex-item-completion";
+import {
+  appendCodexAcceptedServerQueueSubmission,
+  collectCodexAcceptedServerQueueSubmissions,
+} from "../codex-native-queued-submission";
 import { createGeneratedCodexSchema } from "../generated-codex-schema";
 import { CodexHistoryCursorStalled } from "./codex-history-cursor-stalled";
 import { CodexProtocolThreadItemSchema } from "../codex-protocol-thread-item";
@@ -6,7 +11,7 @@ import {
   reconcileCodexHydratedSteering,
   relocateCodexHydratedSteering,
 } from "./codex-steering-reconciliation";
-import type { Draft } from "immer";
+import { castDraft, type Draft } from "immer";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -64,6 +69,7 @@ export interface CanonicalHistoryRequestOptions {
   readonly source?: string;
 }
 export interface CanonicalHistoryClient {
+  canRecordQueueAcceptance?(conversationId: string): boolean;
   readonly hostId: string;
   supportsPaginatedHistory(): boolean;
   supportsThreadTimeline?(): boolean;
@@ -110,9 +116,8 @@ export function withCanonicalHistoryItemCompletion(
   return turns.map((turn) => {
     const incoming =
       turn.turnId === null ? undefined : page.completedItemIdsByTurnId?.[turn.turnId];
-    return incoming
-      ? { ...turn, completedItemIds: { ...incoming, ...turn.completedItemIds } }
-      : turn;
+    const completedItemIds = mergeCodexItemCompletionEvidence(turn.completedItemIds, incoming);
+    return completedItemIds === turn.completedItemIds ? turn : { ...turn, completedItemIds };
   });
 }
 export interface CanonicalHistoryPageOptions {
@@ -222,7 +227,9 @@ async function readDurableTurnItems(
     limit = response.pageSize;
     items.push(...response.items);
     for (const entry of response.entries)
-      if ("completedAtMs" in entry) completedItemIds[entry.item.id] = entry.completedAtMs !== null;
+      if ("completedAtMs" in entry)
+        completedItemIds[entry.item.id] =
+          completedItemIds[entry.item.id] === true || entry.completedAtMs !== null;
     if (response.nextCursor == null) return { items, completedItemIds };
     if (cursors.has(response.nextCursor))
       throw new Error(`thread/items/list returned a repeated cursor for turn ${turnId}`);
@@ -413,6 +420,7 @@ export function replaceCanonicalHistoryDraft(
   turns: readonly CodexCanonicalTurnState[],
   complete: boolean,
   boundary: CodexHistoryBoundaryHandle | null = null,
+  recordNativeQueueAcceptance = false,
 ): void {
   const generation = state.turnHistory ? state.turnHistory.history.generation + 1 : 0;
   const id = `tail:${generation}`;
@@ -449,6 +457,11 @@ export function replaceCanonicalHistoryDraft(
     },
   } as Draft<NonNullable<CodexCanonicalConversationState["turnHistory"]>>;
   state.turns = [];
+  if (recordNativeQueueAcceptance)
+    for (const submission of collectCodexAcceptedServerQueueSubmissions(
+      Object.values(entitiesByKey),
+    ))
+      appendCodexAcceptedServerQueueSubmission(state, submission);
 }
 
 function pagePositions(
@@ -628,13 +641,19 @@ export async function loadCanonicalHistoryBoundaryPage(
         };
       const residentEntries = residentConversationTurnEntries(draft);
       const relocated = relocateCodexHydratedSteering(residentEntries.map((entry) => entry.turn));
+      const touchedTurns = Object.values(installed);
       for (const [index, entry] of residentEntries.entries()) {
         const next = relocated[index];
-        if (next && next.items !== entry.turn.items)
+        if (next && next.items !== entry.turn.items) {
           conversationTurnDraft(draft, entry.address)!.items = next.items as Draft<
             CodexCanonicalTurnState["items"]
           >;
+          touchedTurns.push(next);
+        }
       }
+      if (client.canRecordQueueAcceptance?.(conversationId) === true)
+        for (const submission of collectCodexAcceptedServerQueueSubmissions(touchedTurns))
+          appendCodexAcceptedServerQueueSubmission(draft, submission);
       applied = true;
     },
     false,
@@ -895,12 +914,15 @@ export class CanonicalHistoryItemLoader implements Disposable {
             )
               return;
             target.items = merged as Draft<CodexCanonicalTurnState["items"]>;
+            const completionEvidence: Record<string, boolean> = {};
             for (const itemEntry of page.entries) {
               if (!("completedAtMs" in itemEntry) || liveItems.has(itemEntry.item.id)) continue;
-              const completed = (target.completedItemIds ??= {});
-              if (completed[itemEntry.item.id] === undefined)
-                completed[itemEntry.item.id] = itemEntry.completedAtMs !== null;
+              completionEvidence[itemEntry.item.id] =
+                completionEvidence[itemEntry.item.id] === true || itemEntry.completedAtMs !== null;
             }
+            target.completedItemIds = castDraft(
+              mergeCodexItemCompletionEvidence(target.completedItemIds, completionEvidence),
+            );
             if (summaryIds != null && opening?.type === "userMessage") {
               applyOpeningUserInput(target, opening);
               target.itemsPagination.oldestUserInput = opening.content;
@@ -917,6 +939,9 @@ export class CanonicalHistoryItemLoader implements Disposable {
             const reconciled = reconcileCodexHydratedSteering(target, target.itemsPagination);
             if (reconciled !== target)
               target.items = reconciled.items as Draft<CodexCanonicalTurnState["items"]>;
+            if (this.client.canRecordQueueAcceptance?.(conversationId) === true)
+              for (const submission of collectCodexAcceptedServerQueueSubmissions([reconciled]))
+                appendCodexAcceptedServerQueueSubmission(draft, submission);
             target.itemsPagination = {
               ...target.itemsPagination,
               summaryItemIds: undefined,

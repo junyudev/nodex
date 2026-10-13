@@ -61,6 +61,14 @@ export interface McpAppSandboxIdentity {
   sourceUrl: string;
 }
 
+/** A presentation can pause an attached guest without retiring its document or ports. */
+export interface McpAppSandboxPresentationInput {
+  readonly sandboxId: string;
+  readonly initId: string;
+  readonly active: boolean;
+  readonly revision: number;
+}
+
 export interface ParsedMcpAppSandboxSource {
   sourceUrl: string;
   origin: string;

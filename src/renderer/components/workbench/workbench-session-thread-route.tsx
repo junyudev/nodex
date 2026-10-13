@@ -727,6 +727,12 @@ function SharedConnectedSessionThread({
     <div className="h-full min-h-0">
       <ConnectedThreadStage
         {...connectedStageProps}
+        visualizationSurfaceId={JSON.stringify([
+          "workbench-session",
+          session.id,
+          presentation,
+          composerScopeIdentity ?? null,
+        ])}
         summaryPanelMounted={summaryPanelMounted}
         summaryPanelOpen={summaryPanelOpen}
         summaryPanelHideImmediately={summaryPanelHideImmediately}

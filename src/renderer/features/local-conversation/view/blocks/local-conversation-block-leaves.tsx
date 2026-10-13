@@ -1228,6 +1228,7 @@ export function ThreadAssistantBodyBlock({
         <div className={THREAD_VISUAL_TOKENS.assistantBody} data-thread-selected-text-target="true">
           <MarkdownRenderer
             content={markdownText}
+            preserveLineBreaks
             parseIncompleteMarkdown={isAssistantItemStreaming}
             animateStreamingText={isAssistantItemStreaming}
             adaptiveBuffering={

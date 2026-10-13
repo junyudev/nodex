@@ -6,6 +6,7 @@ import { VISUALIZATION_ANNOTATION_TOOL } from "../../../shared/codex-visualizati
 import type { VisualizationAnnotationCommand } from "../../../shared/codex-visualization-annotations";
 
 const frames: HTMLIFrameElement[] = [];
+const guestErrors: string[] = [];
 afterEach(async () => {
   await act(async () => {
     for (const frame of frames.splice(0)) {
@@ -15,6 +16,7 @@ afterEach(async () => {
     }
     await Promise.resolve();
   });
+  expect(guestErrors.splice(0)).toEqual([]);
 });
 const fragment = `<section id="chart" aria-label="Chart"><button id="counter">Count</button></section><button id="outside">Outside</button><div class="viz-carousel" id="variants"><section data-variant="Bars" id="bars"></section><section data-variant="Dots" id="dots" hidden></section></div><script>
 window.settings={radius:10,color:'#112233',details:true,density:'compact'};window.count=0;
@@ -34,6 +36,11 @@ function mount(allowed = true, authored = fragment) {
       settings: Record<string, unknown>;
       count: number;
     };
+  guest.Range.prototype.getBoundingClientRect = () => new guest.DOMRect();
+  guest.addEventListener("error", (event) => {
+    guestErrors.push(event.message);
+    event.preventDefault();
+  });
   const owner = createInlineVisualizationAnnotations({
     allowed,
     globals: (command: VisualizationAnnotationCommand | null) =>

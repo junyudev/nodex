@@ -1,7 +1,14 @@
 import { collectCodexSubagentInteractionReferences } from "../../shared/codex-subagent-interaction";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
-import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -70,6 +77,7 @@ import type { WorkbenchSceneNavigator } from "./workbench-scene-navigator";
 import type {
   CodexCollaborationModeKind,
   CodexComposerIntent,
+  CodexEvent,
   PanelId,
   Project,
   ProjectSession as ProjectSessionDomain,
@@ -211,14 +219,22 @@ export function useWorkbenchSessionCommands({
   const pageOpenInFlightRef = useRef<Map<string, Promise<void>>>(new Map());
   const pageSendInFlightRef = useRef<Map<string, Promise<void>>>(new Map());
 
+  const onThreadDeleted = useEffectEvent(
+    (event: Extract<CodexEvent, { type: "threadDeleted" }>) => {
+      const sessionHostIds = new Map(
+        knownSessions.map((session) => [session.id, session.thread?.executionHostId]),
+      );
+      panelControllerRef.current.updateBackgroundAgentTabsBySession((current) =>
+        routeDeletedSelectedSubagentsToOverview(current, event, sessionHostIds),
+      );
+    },
+  );
+
   useEffect(
     () =>
       subscribeCodexEvents((event) => {
         if (event.type !== "threadDeleted") return;
-        subagentSelectionRequestRef.current += 1;
-        panelControllerRef.current.updateBackgroundAgentTabsBySession((current) =>
-          routeDeletedSelectedSubagentsToOverview(current, event.threadId),
-        );
+        onThreadDeleted(event);
       }),
     [],
   );

@@ -1,4 +1,9 @@
 import { RpcTarget } from "capnweb";
+import {
+  isCodexQueuedMessageFollowerMethod,
+  parseCodexQueuedMessageFollowerRequest,
+  parseCodexQueuedMessageFollowerResult,
+} from "./codex-queued-message-follower-request";
 import type {
   ConversationCoordinationEvent,
   ConversationCoordinationParams,
@@ -84,6 +89,26 @@ export class ConversationCoordinationViewTarget
     hostId: string;
     request: ConversationFollowerRequest;
   }): Promise<{ method: string; result: unknown }> {
+    if (isCodexQueuedMessageFollowerMethod(request.method)) {
+      const queued = parseCodexQueuedMessageFollowerRequest(request.method, request.params);
+      const manager = this.getManager(hostId);
+      const owner = await manager.getStreamRole(queued.params.conversationId);
+      if (owner?.role !== "owner") throw new Error("Queued message receiver is not the owner");
+      const current = await this.getManager(hostId).getStreamRole(queued.params.conversationId);
+      if (current !== owner) throw new Error("Queued message owner changed during admission");
+      const response = await manager.handleThreadFollowerRequest(queued);
+      const responseOwner = await this.getManager(hostId).getStreamRole(
+        queued.params.conversationId,
+      );
+      if (responseOwner !== owner)
+        throw new Error("Queued message owner changed before confirmation");
+      if (response.method !== queued.method)
+        throw new Error("thread-follower-response-method-mismatch");
+      return {
+        method: response.method,
+        result: parseCodexQueuedMessageFollowerResult(response.result),
+      };
+    }
     return this.getManager(hostId).handleThreadFollowerRequest(request);
   }
 }

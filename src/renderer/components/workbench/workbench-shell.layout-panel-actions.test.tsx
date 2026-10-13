@@ -2948,6 +2948,18 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(getConnectedThreadStagePropsByThreadId("thread-child")).toBeUndefined();
 
     await act(async () => {
+      emitCodexEvent({ type: "threadDeleted", hostId: "remote", threadId: "thread-child" });
+      emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "unrelated-child" });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      screen.container
+        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
+        ?.getAttribute("data-subagents-selected-hydration"),
+    ).toBe("pending");
+
+    await act(async () => {
       releaseSelectedHydration();
       await childOpen;
     });
@@ -3015,7 +3027,16 @@ describe("workbench session shell / layout-panel-actions", () => {
     ]);
 
     await act(async () => {
-      emitCodexEvent({ type: "threadDeleted", threadId: "thread-child-2" });
+      emitCodexEvent({ type: "threadDeleted", hostId: "remote", threadId: "thread-child-2" });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(
+      getConnectedThreadStagePropsByThreadId("thread-child-2")?.backgroundAgentCanInteract,
+    ).toBe(true);
+
+    await act(async () => {
+      emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "thread-child-2" });
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -3132,6 +3153,65 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     expect(textContent(screen.container).includes("Thread:thread-latest")).toBe(true);
     expect(textContent(screen.container).includes("Thread:thread-stale")).toBe(false);
+
+    let releaseDeletedHydration: () => void = () => undefined;
+    const deletedHydrationGate = new Promise<void>((resolve) => {
+      releaseDeletedHydration = resolve;
+    });
+    setHydrateSelectedSubagentImpl(async (input) => {
+      await deletedHydrationGate;
+      return {
+        rootThreadId: input.rootThreadId,
+        threadId: input.threadId,
+        revision: 6,
+        fidelity: "attachedSparse",
+        checkpoint: "deleted-child-checkpoint",
+        canInteract: true,
+        outcome: "ready",
+        errorMessage: null,
+      };
+    });
+    let deletedOpen: Promise<void> | null = null;
+    try {
+      await act(async () => {
+        deletedOpen = openThread("thread-latest", {
+          subagent: {
+            conversationId: "thread-latest",
+            displayName: "Latest worker",
+            agentRole: null,
+            spawnModel: null,
+            status: "active",
+            statusSummary: null,
+            showInlineActivity: true,
+            diffStats: null,
+          },
+        });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      await act(async () => {
+        emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "thread-latest" });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      expect(
+        screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
+      ).toBeTruthy();
+      await act(async () => {
+        releaseDeletedHydration();
+        await deletedOpen;
+      });
+      await settleAsyncRender();
+      expect(
+        screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
+      ).toBeTruthy();
+      expect(getConnectedThreadStagePropsByThreadId("thread-latest")).toBeUndefined();
+    } finally {
+      await act(async () => {
+        releaseDeletedHydration();
+        await deletedOpen;
+      });
+    }
 
     setHydrateSelectedSubagentImpl(async (input) => ({
       rootThreadId: input.rootThreadId,

@@ -254,6 +254,7 @@ export class CodexThreadDirectory extends Context.Service<
     }) => Effect.Effect<CodexThreadDirectoryEntry, CodexThreadDirectoryError>;
     /** Accepts an explicit Main-owned resume after the caller selected its runtime parameters. */
     readonly acceptResumeResult: (input: {
+      readonly canRecordQueueAcceptance?: () => boolean;
       readonly response: ThreadResumeResponse;
       readonly requestedCwd: string | null;
       readonly environmentSelectionEvidenceAtDispatch?: CodexEnvironmentSelectionEvidence;
@@ -586,6 +587,7 @@ export const make: Effect.Effect<
   );
 
   const hydrate = Effect.fn("CodexThreadDirectory.hydrate")(function* (input: {
+    readonly canRecordQueueAcceptance?: () => boolean;
     readonly durable: DurableThread;
     readonly thread: Thread;
     readonly context?: ThreadResumeResponse;
@@ -718,8 +720,18 @@ export const make: Effect.Effect<
       catch: (cause) => error("materialize", threadId, cause),
     });
     const currentGoalState = aggregate.readCanonicalState();
+    const recordQueueAcceptance = input.canRecordQueueAcceptance?.() === true;
+    const restoredTurnIds = recordQueueAcceptance
+      ? new Set([...input.thread.turns, ...(input.resumeTurns ?? [])].map((turn) => turn.id))
+      : undefined;
     const resumedCanonical = input.resumeResponse
       ? reconcileCodexResumedConversationState({
+          recordNativeQueueAcceptance: recordQueueAcceptance,
+          queueAcceptanceTurns: restoredTurnIds
+            ? history.canonical.turns.filter(
+                (turn) => turn.turnId !== null && restoredTurnIds.has(turn.turnId),
+              )
+            : undefined,
           existing: currentGoalState,
           resumed: history.canonical,
           thread: input.resumeResponse.thread,
@@ -823,6 +835,7 @@ export const make: Effect.Effect<
 
   const acceptResumeContract = Effect.fn("CodexThreadDirectory.acceptResumeContract")(
     function* (input: {
+      readonly canRecordQueueAcceptance?: () => boolean;
       readonly expectedThreadId: string;
       readonly response: ThreadResumeResponse;
       readonly requestedCwd: string | null;
@@ -916,6 +929,7 @@ export const make: Effect.Effect<
           thread,
           context,
           resumeResponse: input.response,
+          canRecordQueueAcceptance: input.canRecordQueueAcceptance,
           environmentSelectionEvidenceAtDispatch: input.environmentSelectionEvidenceAtDispatch,
           catalogTitleAtDispatch,
           resumeTurns: rawThread.turns,
@@ -939,6 +953,7 @@ export const make: Effect.Effect<
             thread,
             context,
             resumeResponse: input.response,
+            canRecordQueueAcceptance: input.canRecordQueueAcceptance,
             environmentSelectionEvidenceAtDispatch: input.environmentSelectionEvidenceAtDispatch,
             catalogTitleAtDispatch,
             mergeResidentTurns: true,
@@ -981,6 +996,7 @@ export const make: Effect.Effect<
           thread,
           context,
           resumeResponse: input.response,
+          canRecordQueueAcceptance: input.canRecordQueueAcceptance,
           environmentSelectionEvidenceAtDispatch: input.environmentSelectionEvidenceAtDispatch,
           catalogTitleAtDispatch,
           mergeResidentTurns: true,
@@ -1027,6 +1043,7 @@ export const make: Effect.Effect<
         thread,
         context,
         resumeResponse: input.response,
+        canRecordQueueAcceptance: input.canRecordQueueAcceptance,
         environmentSelectionEvidenceAtDispatch: input.environmentSelectionEvidenceAtDispatch,
         catalogTitleAtDispatch,
         mergeResidentTurns: true,
@@ -1760,6 +1777,7 @@ export const make: Effect.Effect<
 
   const acceptResumeResult = Effect.fn("CodexThreadDirectory.acceptResumeResult")(
     function* (input: {
+      readonly canRecordQueueAcceptance?: () => boolean;
       readonly response: ThreadResumeResponse;
       readonly requestedCwd: string | null;
       readonly environmentSelectionEvidenceAtDispatch?: CodexEnvironmentSelectionEvidence;
@@ -1780,6 +1798,7 @@ export const make: Effect.Effect<
         );
       }
       return yield* acceptResumeContract({
+        canRecordQueueAcceptance: input.canRecordQueueAcceptance,
         expectedThreadId: threadId,
         response: input.response,
         requestedCwd: input.requestedCwd,

@@ -21,6 +21,25 @@ Replacing the account, execution-host key or Endpoint retires the manager and it
 Physical request lifetimes capture the native generation separately; a late callback cannot
 mutate a successor generation's document even when its manager object is retained.
 
+Accepted archive, permanent deletion and side-chat discard seal their admitted Thread command
+generation before giving another queued command its permit. A rejected operation leaves it
+available. Native terminal notifications close only their captured native lifecycle, qualified
+by the source execution host and connection. An empty command lane does not establish native
+liveness. A late notification still applies its host-qualified durable consequences through
+the Thread lane; it cannot close a later deletion or a replacement conversation.
+
+Work already queued for a sealed or retired generation is cancelled. Global observations that
+have not entered their body may reacquire the Thread lane after retirement; started bodies and
+application commands are never replayed. Retirement closes only the admitted generation, even
+while its cleanup is settling or its caller has gone away. Releasing an old start-notification
+buffer cannot consume that buffer or retire the replacement Thread.
+
+Lane acquisition retains its borrow until the operation is registered, then releases the borrow
+before waiting for completion. It does not take ownership of caller-scoped resources. Caller
+cancellation interrupts its pending operation, and Profile closure interrupts active and queued
+work. Successful terminal admission finishes retiring its generation even if the caller stops
+waiting after acceptance.
+
 Peer connection status and IPC reset events reach every registered host manager. They are service
 events and do not require a conversation host field. Connection status names the affected peer
 in its payload; the envelope sender may be the coordination service. Remote connection announces

@@ -97,6 +97,10 @@ history owner, then attaches the normal canonical stream. It never attaches its
 siblings. Existing resident history is reused. Route readiness is fenced to the
 selected child and required restore/history work; late responses cannot select an
 older child. Failure is retryable and cannot masquerade as an empty transcript.
+Deleting the selected child returns its owning host's panels to the overview,
+including hidden panels and pending history loads. A deletion from another host
+or for another child does not cancel that selection's loading; an old response
+cannot restore a selection after its child is deleted.
 
 Inherited Turns are removed before execution resumes as well as afterward.
 Stable parent Turn identity or a canonical content-prefix match establishes

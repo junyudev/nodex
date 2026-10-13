@@ -10,7 +10,10 @@ import { requireTrustedAppRendererSender } from "../../platform/electron/Trusted
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { resolveVisualizationImageCrop } from "../../../shared/visualization-image-capture";
 import { requireCredentialFreeHttpsUrl } from "../../../shared/external-navigation-url";
-import { isValidMcpAppSandboxId } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
+import {
+  isValidMcpAppInitId,
+  isValidMcpAppSandboxId,
+} from "../../../shared/mcp-app/mcp-app-sandbox-contract";
 
 const guestIdentity = {
   sandboxId: Schema.String.check(Schema.makeFilter(isValidMcpAppSandboxId)),
@@ -20,6 +23,14 @@ const gestureInput = Schema.Struct(guestIdentity);
 const releaseInput = Schema.Struct({
   sandboxId: guestIdentity.sandboxId,
   initId: Schema.String.check(Schema.isMinLength(1)),
+});
+const presentationInput = Schema.Struct({
+  sandboxId: guestIdentity.sandboxId,
+  initId: Schema.String.check(Schema.makeFilter(isValidMcpAppInitId)),
+  active: Schema.Boolean,
+  revision: Schema.Number.check(
+    Schema.makeFilter((value) => Number.isSafeInteger(value) && value > 0),
+  ),
 });
 const externalInput = Schema.Struct({
   ...guestIdentity,
@@ -113,6 +124,20 @@ export const live: Layer.Layer<
       trusted(event).pipe(
         Effect.andThen(Schema.decodeUnknownEffect(releaseInput)(raw)),
         Effect.map((input) => sandboxes.releaseGuest(event.sender, input.sandboxId, input.initId)),
+      ),
+    );
+    yield* ipc.handleControl("codex:visualization:set-presentation", (event, raw) =>
+      trusted(event).pipe(
+        Effect.andThen(Schema.decodeUnknownEffect(presentationInput)(raw)),
+        Effect.map((input) =>
+          sandboxes.setGuestPresentation(
+            event.sender,
+            input.sandboxId,
+            input.initId,
+            input.active,
+            input.revision,
+          ),
+        ),
       ),
     );
     yield* ipc.handlePlainCommand("codex:visualization:open-external", (event, raw) =>

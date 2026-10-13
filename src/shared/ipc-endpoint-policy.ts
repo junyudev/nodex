@@ -247,6 +247,7 @@ type QueryEndpointPolicy =
 type ControlEndpointPolicy =
   | "codex:visualization:consume-gesture"
   | "codex:visualization:release"
+  | "codex:visualization:set-presentation"
   | "editor-history:release"
   | "editor-history:abandon"
   | "editor-history:abandon-transfer"

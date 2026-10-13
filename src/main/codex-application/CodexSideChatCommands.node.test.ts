@@ -928,6 +928,65 @@ it.effect("discards local ownership when the parent host is unavailable", () =>
   }),
 );
 
+it.effect("discard seals its captured generation before a queued operation can enter", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const harness = yield* makeHarness(scope, {
+      unsubscribe: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      ),
+    });
+    harness.markExisting();
+    yield* harness.routing.register(sideThreadId, remoteHostId);
+    const before = harness.conversations.current(sideThreadId);
+    const discarded = yield* harness.commands.discard(sideThreadId).pipe(Effect.forkChild);
+    yield* Deferred.await(entered);
+    let queuedEntered = false;
+    const queued = yield* harness.conversations
+      .runCommand(
+        sideThreadId,
+        Effect.sync(() => {
+          queuedEntered = true;
+        }),
+      )
+      .pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    yield* Deferred.succeed(release, undefined);
+    assert.isTrue(yield* Fiber.join(discarded));
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(queued)));
+    assert.isFalse(queuedEntered);
+    assert.isNull(harness.conversations.current(sideThreadId));
+    assert.isNull(yield* harness.routing.resolve(sideThreadId));
+    const next = harness.conversations.entity(sideThreadId);
+    assert.notStrictEqual(next.generation, before?.generation);
+    yield* harness.conversations.runCommand(sideThreadId, Effect.void);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("cancelling an unaccepted discard leaves the conversation available", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entered = yield* Deferred.make<void>();
+    const harness = yield* makeHarness(scope, {
+      unsubscribe: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+    });
+    harness.markExisting();
+    yield* harness.routing.register(sideThreadId, remoteHostId);
+    const before = harness.conversations.current(sideThreadId);
+    const discarded = yield* harness.commands.discard(sideThreadId).pipe(Effect.forkChild);
+    yield* Deferred.await(entered);
+    yield* Fiber.interrupt(discarded);
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(discarded)));
+    assert.strictEqual(harness.conversations.current(sideThreadId), before);
+    yield* harness.conversations.runCommand(sideThreadId, Effect.void);
+    assert.isNull(yield* harness.routing.resolve(sideThreadId));
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("rolls back an in-flight fork when the Main Scope closes", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();

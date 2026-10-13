@@ -424,6 +424,44 @@ describe("LocalConversationComposerShell", () => {
     ).toBe(true);
   });
 
+  test("a native queue row without manual delivery keeps delete available without offering Steer", async () => {
+    installComposerShellWindowApi();
+    const base = buildComposerShellModel();
+    const row = base.composerShell.queuedFollowUpRows[0];
+    if (!row) throw new Error("Missing native row");
+    let sent = 0;
+    const deleted: string[] = [];
+    const view = renderComposerShell(
+      {
+        ...base,
+        composerShell: {
+          ...base.composerShell,
+          queuedFollowUpRows: [
+            { ...row, canSendNow: false, pauseKind: null, pausedReason: null, isInFlight: false },
+          ],
+        },
+      },
+      buildActions({
+        onSendQueuedFollowUpNow: async () => {
+          sent++;
+        },
+        onRemoveQueuedFollowUp: async (_thread, id) => {
+          deleted.push(id);
+        },
+      }),
+    );
+    await settleAsyncRender();
+    expect(
+      view.queryByRole("button", { name: "Submit without interrupting the model" }),
+    ).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete queued message" }));
+      await Promise.resolve();
+    });
+    expect(deleted).toEqual([row.followUpId]);
+    expect(sent).toBe(0);
+  });
+
   test("offers the bidirectional queueing preference action", async () => {
     installComposerShellWindowApi();
     const base = buildComposerShellModel();

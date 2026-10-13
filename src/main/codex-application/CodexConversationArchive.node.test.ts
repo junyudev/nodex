@@ -734,7 +734,7 @@ it.effect("retires a confirmed native deletion even when widget storage cannot b
     assert.strictEqual(closures[0]?.threadId, "thread-a");
     assert.deepEqual(applicationEvents.at(-1), {
       kind: "codex",
-      value: { type: "threadDeleted", threadId: "thread-a" },
+      value: { type: "threadDeleted", hostId: "local", threadId: "thread-a" },
     });
   }),
 );
@@ -1013,7 +1013,7 @@ it.effect("retires a missing local catalog identity only after native absence co
     ]);
     assert.deepInclude(applicationEvents, {
       kind: "codex",
-      value: { type: "threadDeleted", threadId: "thread-a" },
+      value: { type: "threadDeleted", hostId: "local", threadId: "thread-a" },
     });
   }),
 );

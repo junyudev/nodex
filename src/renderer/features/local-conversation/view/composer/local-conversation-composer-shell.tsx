@@ -418,32 +418,34 @@ function QueuedFollowUpRow({
         </div>
         {disabled ? <ActivitySpinnerIcon className="icon-2xs shrink-0" /> : null}
         <div className="flex shrink-0 items-center gap-1">
-          <NodexTooltip
-            side="top"
-            tooltipContent={
-              isFailed ? (
-                <FailedQueuedFollowUpRetryTooltipContent />
-              ) : (
-                <QueuedFollowUpTooltipContent />
-              )
-            }
-            tooltipBodyClassName="max-w-80 text-center whitespace-normal leading-snug"
-          >
-            <QueueLabelActionButton
-              ariaLabel={
-                isFailed
-                  ? "Try sending this queued message again"
-                  : "Submit without interrupting the model"
+          {row.canSendNow !== false ? (
+            <NodexTooltip
+              side="top"
+              tooltipContent={
+                isFailed ? (
+                  <FailedQueuedFollowUpRetryTooltipContent />
+                ) : (
+                  <QueuedFollowUpTooltipContent />
+                )
               }
-              disabled={disabled}
-              onClick={() => {
-                void actions.onSendQueuedFollowUpNow(threadId, row.followUpId);
-              }}
+              tooltipBodyClassName="max-w-80 text-center whitespace-normal leading-snug"
             >
-              <QueueSteerIcon />
-              <span>{isFailed ? "Retry" : "Steer"}</span>
-            </QueueLabelActionButton>
-          </NodexTooltip>
+              <QueueLabelActionButton
+                ariaLabel={
+                  isFailed
+                    ? "Try sending this queued message again"
+                    : "Submit without interrupting the model"
+                }
+                disabled={disabled}
+                onClick={() => {
+                  void actions.onSendQueuedFollowUpNow(threadId, row.followUpId);
+                }}
+              >
+                <QueueSteerIcon />
+                <span>{isFailed ? "Retry" : "Steer"}</span>
+              </QueueLabelActionButton>
+            </NodexTooltip>
+          ) : null}
           <QueueActionButton
             ariaLabel="Delete queued message"
             disabled={disabled}

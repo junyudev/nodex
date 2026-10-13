@@ -1,4 +1,5 @@
 import { produce, type Draft } from "immer";
+import { mergeCodexItemCompletionEvidence } from "./codex-item-completion";
 import {
   residentConversationTurns,
   residentConversationTurnEntries,
@@ -349,6 +350,10 @@ export interface CodexCanonicalSteeringUserMessageItem {
   readonly status: "pending" | "accepted";
   /** Correlation established by the completed server echo, independent of the command ACK. */
   readonly serverUserMessageId?: string | null;
+  /** The completed native echo, retained separately from the originally dispatched input. */
+  readonly acceptedInput?: readonly UserInput[];
+  /** The admitted native queue row stays with its pending steer across owner handoff. */
+  readonly serverQueuedSubmission?: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission;
   readonly clientUserMessageId: string | null;
   readonly input: readonly UserInput[];
   readonly attachments: readonly unknown[];
@@ -764,6 +769,8 @@ export interface CodexCanonicalConversationState
   readonly itemTimeline?: CodexCanonicalItemTimeline;
   readonly realtimeItems?: Readonly<Record<string, CodexCanonicalRealtimeItem>>;
   readonly unconfirmedTurnSubmissions?: readonly CodexCanonicalUnconfirmedTurnSubmission[];
+  /** Native rows already steered successfully and awaiting queue-only cleanup. */
+  readonly unconfirmedServerQueueMessages?: readonly import("@nodex/codex-app-server-protocol/v2").QueuedSubmission[];
   readonly turnsPagination?: {
     readonly source?: "ordinary" | "compact" | "timeline";
     readonly olderCursor: string | null;
@@ -1459,10 +1466,10 @@ export function mergeCodexCanonicalTurnState(
       terminalRegression && options.preserveExistingTerminalState ? existing.error : incoming.error,
     durationMs: existing.durationMs ?? incoming.durationMs,
     items,
-    completedItemIds:
-      incoming.completedItemIds === undefined && existing.completedItemIds === undefined
-        ? undefined
-        : { ...incoming.completedItemIds, ...existing.completedItemIds },
+    completedItemIds: mergeCodexItemCompletionEvidence(
+      existing.completedItemIds,
+      incoming.completedItemIds,
+    ),
     entityKey: existing.entityKey ?? incoming.entityKey,
     params: mergeCodexCanonicalTurnParams(existing.params, incoming.params),
     permissionParamsSource: existing.permissionParamsSource,

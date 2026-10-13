@@ -5,6 +5,7 @@ import type {
   ThreadOpenSubagentPayload,
 } from "@/features/local-conversation/thread-stage-types";
 import type {
+  CodexEvent,
   CodexScheduledAutomationCreateInput,
   CodexScheduledAutomationUpdateInput,
   CodexSelectedSubagentHydrateResult,
@@ -174,31 +175,35 @@ export function settlePendingSubagentsPanelTab(
 }
 
 /**
- * Returns every Subagents tab selecting a deleted child to its metadata overview.
+ * Returns the owning host's Subagents tabs selecting a deleted child to their metadata overview.
  * The panel model owns this route repair so it also covers hidden tabs and the
  * hydration gap before the detail view has mounted an event subscription.
  */
 export function routeDeletedSelectedSubagentsToOverview(
   tabsBySession: Readonly<Record<string, AgentPanelTab[]>>,
-  deletedThreadId: string,
+  deleted: Extract<CodexEvent, { type: "threadDeleted" }>,
+  sessionHostIds: ReadonlyMap<string, string | undefined>,
 ): Record<string, AgentPanelTab[]> {
   let changed = false;
   const next = Object.fromEntries(
-    Object.entries(tabsBySession).map(([sessionId, tabs]) => [
-      sessionId,
-      tabs.map((tab) => {
-        if (!("subagentsPanel" in tab) || tab.selectedThreadId !== deletedThreadId) return tab;
-        changed = true;
-        return {
-          ...tab,
-          selectedThreadId: null,
-          selectedDisplayName: null,
-          selectedCanInteract: false,
-          selectedHydration: null,
-          stateKey: tab.stateKey + 1,
-        } satisfies SubagentsPanelTab;
-      }),
-    ]),
+    Object.entries(tabsBySession).map(([sessionId, tabs]) => {
+      if (sessionHostIds.get(sessionId) !== deleted.hostId) return [sessionId, tabs];
+      return [
+        sessionId,
+        tabs.map((tab) => {
+          if (!("subagentsPanel" in tab) || tab.selectedThreadId !== deleted.threadId) return tab;
+          changed = true;
+          return {
+            ...tab,
+            selectedThreadId: null,
+            selectedDisplayName: null,
+            selectedCanInteract: false,
+            selectedHydration: null,
+            stateKey: tab.stateKey + 1,
+          } satisfies SubagentsPanelTab;
+        }),
+      ];
+    }),
   );
   return changed ? next : tabsBySession;
 }

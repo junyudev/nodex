@@ -220,6 +220,9 @@ function visualizationUserAgent() {
 export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
   readonly html: string;
+  readonly initialHeight?: number;
+  readonly active?: boolean;
+  readonly onInlineHeight?: (height: number) => void;
   readonly widgetState?: InlineVisualizationWidgetStateOwner;
   readonly variant?: InlineVisualizationVariant;
   readonly allowInteractions?: boolean;
@@ -244,7 +247,11 @@ export function createInlineVisualizationRuntime(input: {
     input.allowInteractions !== false &&
     input.annotationsEnabled !== false &&
     input.variant !== "live";
-  let active = true;
+  let active = input.active !== false;
+  element.inert = !active;
+  let actionController = new AbortController();
+  if (!active) actionController.abort();
+  let presentationRevision = 0;
   let annotationCommand: VisualizationAnnotationCommand | null = null;
   let environmentReady = false;
   let hasMeasurement = false;
@@ -252,7 +259,8 @@ export function createInlineVisualizationRuntime(input: {
   let activeSandboxId: string | null = null;
   let snapshot: InlineVisualizationSnapshot = {
     status: "loading",
-    height: INLINE_VISUALIZATION_INITIAL_HEIGHT,
+    height:
+      parseInlineVisualizationHeight(input.initialHeight) ?? INLINE_VISUALIZATION_INITIAL_HEIGHT,
     fullscreenHeight: null,
     displayMode: "inline",
     error: null,
@@ -327,8 +335,24 @@ export function createInlineVisualizationRuntime(input: {
       connected.api.notifyMcpAppsHostContext({ hostContext: context() }),
     ]);
   };
+  const syncPresentation = async () => {
+    const initId = connected?.initId;
+    const sandboxId = activeSandboxId;
+    if (!initId || !sandboxId || controller.signal.aborted) return;
+    const revision = Math.max(1, presentationRevision);
+    presentationRevision = revision;
+    const accepted = await invokeRendererControl("codex:visualization:set-presentation", {
+      sandboxId,
+      initId,
+      active,
+      revision,
+    });
+    if (!accepted && !controller.signal.aborted && revision === presentationRevision)
+      throw new Error("The response presentation is unavailable");
+  };
   const setDisplayMode = (mode: "inline" | "fullscreen") => {
-    const admittedMode = mode === "fullscreen" && !input.canExpand?.() ? "inline" : mode;
+    const admittedMode =
+      mode === "fullscreen" && (!active || !input.canExpand?.()) ? "inline" : mode;
     if (admittedMode !== snapshot.displayMode) publish({ ...snapshot, displayMode: admittedMode });
     void updateContext();
     return snapshot.displayMode;
@@ -369,9 +393,11 @@ export function createInlineVisualizationRuntime(input: {
         }
       : {}),
   });
+  annotations.setPresentation({ active, preview: false, ready: false });
   const imageCaptureInput = () => {
     if (
       controller.signal.aborted ||
+      !active ||
       snapshot.status !== "ready" ||
       !connected?.initId ||
       !activeSandboxId ||
@@ -464,27 +490,31 @@ export function createInlineVisualizationRuntime(input: {
       const handlers = fenceHostHandlers(
         createInlineVisualizationHostHandlers({
           annotations: annotations.handleMessage,
-          download: createVisualizationDownloadHandler({
-            capability: downloadCapability,
-            signal,
-            consumeGesture: () =>
-              invokeRendererControl("codex:visualization:consume-gesture", {
-                sandboxId: identity.sandboxId,
-                initId: connected?.initId,
-              }),
-          }),
+          download: (value) =>
+            createVisualizationDownloadHandler({
+              capability: downloadCapability,
+              signal: AbortSignal.any([signal, actionController.signal]),
+              consumeGesture: () =>
+                invokeRendererControl("codex:visualization:consume-gesture", {
+                  sandboxId: identity.sandboxId,
+                  initId: connected?.initId,
+                }),
+            })(value),
           ready: () => {
             settleReady();
           },
           fail,
           height: (value) => {
             const height = parseInlineVisualizationHeight(value);
-            if (height === null) return;
+            if (height === null || !active) return;
             hasMeasurement = true;
             if (snapshot.displayMode === "fullscreen") {
               if (height !== snapshot.fullscreenHeight)
                 publish({ ...snapshot, fullscreenHeight: height });
-            } else if (height !== snapshot.height) publish({ ...snapshot, height });
+            } else {
+              input.onInlineHeight?.(height);
+              if (height !== snapshot.height) publish({ ...snapshot, height });
+            }
             settleReady();
           },
           interact: input.onInteraction ?? (() => undefined),
@@ -495,6 +525,7 @@ export function createInlineVisualizationRuntime(input: {
           }),
           mode: setDisplayMode,
           openExternal: async (href) => {
+            if (!active) throw new Error("The interactive response is inactive");
             await invokePlainCommand(openExternalCommand, {
               sandboxId: identity.sandboxId,
               initId: connected?.initId,
@@ -506,7 +537,7 @@ export function createInlineVisualizationRuntime(input: {
                 sendInlineVisualizationFollowUp({
                   message,
                   sourceId: input.scopeId,
-                  signal,
+                  signal: AbortSignal.any([signal, actionController.signal]),
                   consumeGesture: () =>
                     invokeRendererControl("codex:visualization:consume-gesture", {
                       sandboxId: identity.sandboxId,
@@ -531,6 +562,8 @@ export function createInlineVisualizationRuntime(input: {
         connected.dispose();
         return;
       }
+      await syncPresentation();
+      if (signal.aborted) return;
       await updateContext();
       const widgetState = (await input.widgetState?.read()) ?? null;
       if (signal.aborted) return;
@@ -581,12 +614,13 @@ export function createInlineVisualizationRuntime(input: {
     } catch (error) {
       if (signal.aborted) return;
       if (asRecord(error)?.name === "TimeoutError" && attempt === 0) {
-        const release = releaseConnectedGuest();
         attemptController.abort();
         connected?.dispose();
-        connected = null;
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
         webview.remove();
+        const release = releaseConnectedGuest();
+        connected = null;
+        presentationRevision = 0;
         webview = document.createElement("webview");
         environmentReady = false;
         hasMeasurement = false;
@@ -616,32 +650,51 @@ export function createInlineVisualizationRuntime(input: {
     setDisplayMode,
     annotations,
     setActive: (value) => {
+      if (controller.signal.aborted || active === value) return;
       active = value;
+      presentationRevision += 1;
+      actionController.abort();
+      if (active) actionController = new AbortController();
+      element.inert = !active;
+      if (!active) setDisplayMode("inline");
+      void syncPresentation().catch(fail);
       annotations.setPresentation({
         active,
         preview: snapshot.displayMode === "fullscreen",
         ready: snapshot.status === "ready",
       });
     },
-    captureImage: async () =>
-      await invokeRendererQuery("codex:visualization:capture-image", imageCaptureInput()),
+    captureImage: async () => {
+      const signal = actionController.signal;
+      const image = await invokeRendererQuery(
+        "codex:visualization:capture-image",
+        imageCaptureInput(),
+      );
+      if (signal.aborted) throw new Error("The response presentation has ended");
+      return image;
+    },
     copyAsImage: async () => {
+      const signal = actionController.signal;
       await invokePlainCommand(copyImageCommand, imageCaptureInput());
+      if (signal.aborted) throw new Error("The response presentation has ended");
     },
     dispose: () => {
       disposePromise ??= (async () => {
         const teardown = connected?.api
           .requestMcpAppsResourceTeardown({ timeoutMs: 500 })
           .catch(() => undefined);
-        const release = releaseConnectedGuest();
         controller.abort();
+        actionController.abort();
         annotations.dispose();
         resize.disconnect();
         themeObserver.disconnect();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
         connected?.dispose();
-        webview.removeAttribute("src");
+        // Detach the native guest before its ancestor; Main close is a fallback.
+        webview.remove();
         element.remove();
+        webview.removeAttribute("src");
+        const release = releaseConnectedGuest();
         listeners.clear();
         // Teardown is best effort; it must never retain an interactive retired document.
         if (teardown) {

@@ -21,6 +21,7 @@ const boundary = vi.hoisted(() => ({
     async () => new Uint8Array([1, 2]),
   ),
   release: vi.fn(async (_key: string, _input: unknown) => true),
+  presentation: vi.fn(async (_key: string, _input: unknown) => true),
 }));
 vi.mock("../mcp-app/mcp-app-port-rpc", () => ({ connectMcpAppSandbox: boundary.connect }));
 vi.mock("../renderer-command", () => ({
@@ -28,7 +29,9 @@ vi.mock("../renderer-command", () => ({
   invokeRendererControl: (key: string, input: unknown) =>
     key === "codex:visualization:release"
       ? boundary.release(key, input)
-      : boundary.gesture(key, input),
+      : key === "codex:visualization:set-presentation"
+        ? boundary.presentation(key, input)
+        : boundary.gesture(key, input),
   invokePlainCommand: boundary.external,
   invokeRendererQuery: boundary.image,
 }));
@@ -135,7 +138,10 @@ async function readAttempt(index: number) {
 beforeEach(() => {
   boundary.connect.mockReset();
   boundary.gesture.mockReset().mockResolvedValue(true);
+  boundary.presentation.mockReset().mockResolvedValue(true);
   boundary.external.mockClear();
+  boundary.image.mockReset().mockResolvedValue(new Uint8Array([1, 2]));
+  boundary.release.mockClear();
   attempts.length = 0;
   runtimes.length = 0;
   boundary.connect.mockImplementation(async (input) => {
@@ -149,6 +155,120 @@ afterEach(async () => {
 });
 
 describe("inline visualization runtime lifecycle", () => {
+  test("cached body height preserves placement without becoming startup or measurement readiness", async () => {
+    const onInlineHeight = vi.fn();
+    const runtime = mountRuntime({ initialHeight: 360.5, onInlineHeight, canExpand: () => true });
+    const attempt = await readAttempt(0);
+    expect(runtime.getSnapshot()).toMatchObject({ status: "loading", height: 361 });
+    await act(async () => {
+      attempt.stream.status(2);
+      await Promise.resolve();
+    });
+    expect(runtime.getSnapshot().status).toBe("loading");
+    await act(async () => {
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        width: 500,
+        height: 450.2,
+      });
+    });
+    expect(runtime.getSnapshot()).toMatchObject({ status: "ready", height: 451 });
+    expect(onInlineHeight).toHaveBeenLastCalledWith(451);
+    await act(async () => {
+      runtime.setDisplayMode("fullscreen");
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        width: 500,
+        height: 800,
+      });
+    });
+    expect(onInlineHeight).toHaveBeenCalledOnce();
+    expect(runtime.getSnapshot()).toMatchObject({ height: 451, fullscreenHeight: 800 });
+  });
+  test("inactive startup synchronizes native authority before HTML, then waits for a visible measurement", async () => {
+    const runtime = mountRuntime({ active: false });
+    const attempt = await readAttempt(0);
+    expect(boundary.presentation).toHaveBeenCalledWith(
+      "codex:visualization:set-presentation",
+      expect.objectContaining({ active: false, revision: 1, initId: "synthetic-init" }),
+    );
+    expect(boundary.presentation.mock.invocationCallOrder[0]).toBeLessThan(
+      attempt.run.mock.invocationCallOrder[0]!,
+    );
+    expect(runtime.element.inert).toBe(true);
+    await act(async () => {
+      attempt.stream.status(2);
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        width: 0,
+        height: 0,
+      });
+    });
+    expect(runtime.getSnapshot().status).toBe("loading");
+    await expect(runtime.captureImage()).rejects.toThrow("unavailable");
+    await act(async () => {
+      runtime.setActive(true);
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        width: 500,
+        height: 170,
+      });
+    });
+    await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
+    expect(attempt.run).toHaveBeenCalledOnce();
+    expect(boundary.presentation).toHaveBeenLastCalledWith(
+      "codex:visualization:set-presentation",
+      expect.objectContaining({ active: true, revision: 2 }),
+    );
+  });
+  test("A-B-A activation cannot revive a review or capture admitted under the previous presentation", async () => {
+    const reviewResult = deferred<string | null>();
+    const image = deferred<Uint8Array>();
+    const followUp = vi.fn(async () => {});
+    const review = vi.fn<
+      NonNullable<Parameters<typeof createInlineVisualizationRuntime>[0]["reviewFollowUp"]>
+    >(async () => reviewResult.promise);
+    boundary.gesture.mockResolvedValue(false);
+    boundary.image.mockImplementationOnce(async () => image.promise);
+    const runtime = mountRuntime({ followUp, reviewFollowUp: review, canExpand: () => true });
+    const attempt = await readAttempt(0);
+    await act(async () => {
+      attempt.stream.status(2);
+      attempt.input.handlers.callTool("__codex_inline_visualization_height__", {
+        width: 500,
+        height: 170,
+      });
+    });
+    await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
+    vi.spyOn(attempt.input.webview, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 510, 180),
+    );
+    const pendingFollowUp = Promise.resolve(
+      attempt.input.handlers.sendFollowUpMessage({ prompt: "Old request" }),
+    );
+    await waitFor(() => expect(review).toHaveBeenCalledOnce());
+    const pendingImage = runtime.captureImage();
+    const retiredImage = expect(pendingImage).rejects.toThrow("presentation has ended");
+    await act(async () => {
+      runtime.setDisplayMode("fullscreen");
+      runtime.setActive(false);
+      runtime.setActive(true);
+      reviewResult.resolve("Old approval");
+      image.resolve(new Uint8Array([1]));
+      await pendingFollowUp;
+      await retiredImage;
+    });
+    expect(followUp).not.toHaveBeenCalled();
+    expect(review.mock.calls[0]?.[1]?.aborted).toBe(true);
+    expect(runtime.getSnapshot().displayMode).toBe("inline");
+    expect(attempt.run).toHaveBeenCalledOnce();
+    boundary.gesture.mockResolvedValue(true);
+    await act(async () => {
+      await attempt.input.handlers.sendFollowUpMessage({ prompt: "Current request" });
+    });
+    expect(followUp).toHaveBeenCalledWith(expect.objectContaining({ prompt: "Current request" }));
+    expect(boundary.presentation.mock.calls.map(([, value]) => value)).toEqual([
+      expect.objectContaining({ active: true, revision: 1 }),
+      expect.objectContaining({ active: false, revision: 2 }),
+      expect.objectContaining({ active: true, revision: 3 }),
+    ]);
+  });
   test("reports host hover and touch capabilities independently to the authored document", async () => {
     const media = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       matches: ["(any-hover: hover)", "(pointer: coarse)"].includes(query),
@@ -366,6 +486,11 @@ describe("inline visualization runtime lifecycle", () => {
     const followUp = vi.fn(async () => undefined);
     const runtime = mountRuntime({ followUp });
     const first = await readAttempt(0);
+    const connectedAtNativeRelease: boolean[] = [];
+    boundary.release.mockImplementation(async () => {
+      connectedAtNativeRelease.push(first.input.webview.isConnected);
+      return true;
+    });
     await act(async () => {
       first.input.handlers.notifyIntrinsicHeight(111);
       first.stream.fail(timeout());
@@ -374,6 +499,7 @@ describe("inline visualization runtime lifecycle", () => {
     expect(first.dispose).toHaveBeenCalledOnce();
     expect(first.input.signal?.aborted).toBe(true);
     expect(first.input.webview.isConnected).toBe(false);
+    expect(connectedAtNativeRelease).toEqual([false]);
     expect(second.input.webview).not.toBe(first.input.webview);
     expect(second.input.expectedOrigin).not.toBe(first.input.expectedOrigin);
     expect(second.input.signal?.aborted).toBe(false);
@@ -450,6 +576,13 @@ describe("inline visualization runtime lifecycle", () => {
     const onInteraction = vi.fn();
     const runtime = mountRuntime({ followUp, reviewFollowUp: review, onInteraction });
     const attempt = await readAttempt(0);
+    const connectedAtNativeRelease: boolean[] = [];
+    const parentAtNativeRelease: (HTMLElement | null)[] = [];
+    boundary.release.mockImplementation(async () => {
+      connectedAtNativeRelease.push(attempt.input.webview.isConnected);
+      parentAtNativeRelease.push(attempt.input.webview.parentElement);
+      return true;
+    });
     const gesture = deferred<boolean>();
     boundary.gesture.mockImplementation(() => gesture.promise);
     const teardown = deferred<unknown>();
@@ -477,6 +610,8 @@ describe("inline visualization runtime lifecycle", () => {
     expect(runtime.getSnapshot().displayMode).toBe("inline");
     expect(attempt.dispose).toHaveBeenCalledOnce();
     expect(runtime.element.isConnected).toBe(false);
+    expect(connectedAtNativeRelease).toEqual([false]);
+    expect(parentAtNativeRelease).toEqual([null]);
     expect(boundary.release).toHaveBeenCalledWith("codex:visualization:release", {
       sandboxId: attempt.input.expectedSandboxId,
       initId: "synthetic-init",

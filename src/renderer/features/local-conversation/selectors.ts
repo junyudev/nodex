@@ -56,6 +56,8 @@ export interface NormalizedConversationTurnEntry extends Omit<
   "turn" | "renderRevision"
 > {
   readonly historyEntityKey: string;
+  /** Sparse history occurrence used for placement, separate from native content/search identity. */
+  readonly historyPositionKey?: string;
   readonly turnItemIds: readonly (string | undefined)[];
   readonly turnStatus: CodexConversationTurn["status"];
   readonly turnStartedAtMs: number | null;

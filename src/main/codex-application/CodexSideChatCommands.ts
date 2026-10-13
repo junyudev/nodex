@@ -608,7 +608,7 @@ export const make: Effect.Effect<
     const threadId = rawThreadId.trim();
     if (!threadId) return Effect.succeed(false);
     return conversations
-      .runCommand(
+      .runTerminalCommand(
         threadId,
         Effect.sync(() => {
           const aggregate = conversations.current(threadId);
@@ -653,11 +653,9 @@ export const make: Effect.Effect<
             );
           }),
         ),
+        (discarded) => discarded,
       )
-      .pipe(
-        Effect.tap((discarded) => (discarded ? conversations.retire(threadId) : Effect.void)),
-        Effect.withSpan("CodexSideChatCommands.discard", { attributes: { threadId } }),
-      );
+      .pipe(Effect.withSpan("CodexSideChatCommands.discard", { attributes: { threadId } }));
   };
 
   return CodexSideChatCommands.of({

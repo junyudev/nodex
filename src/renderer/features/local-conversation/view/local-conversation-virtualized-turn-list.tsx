@@ -197,6 +197,13 @@ function buildLocalConversationVirtualizedHistoryRows(input: {
   }
   for (const entry of input.entries) {
     if (representedTurnKeys.has(entry.turnKey)) continue;
+    // A canonical occurrence belongs at its sparse position; only independent overlays append.
+    if (
+      !isCodexRealtimeTimelineEntry(entry) &&
+      isNormalizedConversationTurnEntry(entry) &&
+      entry.historyPositionKey !== undefined
+    )
+      continue;
     rows.push({ kind: "content", layoutKey: entry.turnKey, entry });
   }
   return rows;
@@ -666,10 +673,15 @@ function LocalConversationVirtualizedTurnListCore({
 
   layoutRef.current = layout;
   measuredHeightsRef.current = measuredHeights;
-  virtualViewportStateRef.current = virtualViewportState;
   latestNativeTurnKeyRef.current = latestNativeTurnKey;
   rowsRef.current = rows;
   listRootRef.current = listRoot;
+
+  const publishViewportState = useCallback((next: VirtualizedTurnViewportState) => {
+    // Native placement and measurement callbacks share this state before React commits.
+    virtualViewportStateRef.current = next;
+    setVirtualViewportState(next);
+  }, []);
 
   const getScrollElement = useCallback(() => {
     const element = scrollController.getScrollElement();
@@ -778,18 +790,17 @@ function LocalConversationVirtualizedTurnListCore({
       advanceViewportRevision = false,
     ) => {
       if (advanceViewportRevision) viewportRevisionRef.current += 1;
-      setVirtualViewportState((current) =>
-        resolveVirtualizedTurnViewportState({
-          current,
-          distanceFromBottomPx,
-          layout: layoutRef.current,
-          overscanCount: OVERSCAN_TURNS,
-          viewportHeightPx,
-        }),
-      );
+      const next = resolveVirtualizedTurnViewportState({
+        current: virtualViewportStateRef.current,
+        distanceFromBottomPx,
+        layout: layoutRef.current,
+        overscanCount: OVERSCAN_TURNS,
+        viewportHeightPx,
+      });
+      publishViewportState(next);
       emitViewportChange(distanceFromBottomPx, viewportHeightPx, previousDistanceFromBottomPx);
     },
-    [emitViewportChange],
+    [emitViewportChange, publishViewportState],
   );
 
   const reportLatestTurnFollowContentHeight = useCallback(() => {
@@ -969,7 +980,7 @@ function LocalConversationVirtualizedTurnListCore({
       const commit = () => {
         preMeasurementLayoutRef.current ??= currentLayout;
         setMeasuredHeights(nextHeights);
-        setVirtualViewportState(nextViewport);
+        publishViewportState(nextViewport);
       };
       if (sync) {
         flushSync(commit);
@@ -984,6 +995,7 @@ function LocalConversationVirtualizedTurnListCore({
       getPendingRestoreScrollDistanceFromBottomPx,
       getScrollElement,
       preserveMeasuredTurnViewport,
+      publishViewportState,
       scrollController,
     ],
   );
@@ -1314,24 +1326,25 @@ function LocalConversationVirtualizedTurnListCore({
     previousLayoutRef.current = layout;
     if (previousLayout === unmeasuredLayout) return;
 
-    setVirtualViewportState((current) => {
-      const anchorKey = current.turnKeys[current.renderedRange.startIndex];
-      const anchorRange =
-        anchorKey && current.turnKeys.join("\u0000") !== layout.turnKeys.join("\u0000")
-          ? resolveRenderedRangeFromAnchor({
-              anchorKey,
-              layout,
-              previousRange: current.renderedRange,
-            })
-          : null;
-      return resolveVirtualizedTurnViewportState({
+    const current = virtualViewportStateRef.current;
+    const rangeAnchorKey = current.turnKeys[current.renderedRange.startIndex];
+    const anchorRange =
+      rangeAnchorKey && current.turnKeys.join("\u0000") !== layout.turnKeys.join("\u0000")
+        ? resolveRenderedRangeFromAnchor({
+            anchorKey: rangeAnchorKey,
+            layout,
+            previousRange: current.renderedRange,
+          })
+        : null;
+    publishViewportState(
+      resolveVirtualizedTurnViewportState({
         current: anchorRange ? { ...current, renderedRange: anchorRange } : current,
         distanceFromBottomPx: current.distanceFromBottomPx,
         layout,
         overscanCount: OVERSCAN_TURNS,
         viewportHeightPx: current.viewportHeightPx,
-      });
-    });
+      }),
+    );
 
     if (
       !preserveMeasuredTurnViewport ||
@@ -1366,6 +1379,7 @@ function LocalConversationVirtualizedTurnListCore({
     ) {
       return;
     }
+    const previousDistanceFromBottomPx = virtualViewportStateRef.current.distanceFromBottomPx;
     updateViewportState(
       preservedDistanceFromBottomPx,
       virtualViewportStateRef.current.viewportHeightPx,
@@ -1375,13 +1389,14 @@ function LocalConversationVirtualizedTurnListCore({
         scrollController.getLastScrollDistanceFromBottomPx(),
       ) +
         preservedDistanceFromBottomPx -
-        virtualViewportStateRef.current.distanceFromBottomPx,
+        previousDistanceFromBottomPx,
     );
   }, [
     getPendingRestoreScrollDistanceFromBottomPx,
     layout,
     pendingScrollTarget,
     preserveMeasuredTurnViewport,
+    publishViewportState,
     scrollController,
     updateViewportState,
   ]);
@@ -1453,7 +1468,8 @@ function LocalConversationVirtualizedTurnListCore({
       turnElement === null &&
       (index < visibleRange.startIndex || index >= visibleRange.endIndex)
     ) {
-      setVirtualViewportState((current) => ({
+      const current = virtualViewportStateRef.current;
+      publishViewportState({
         ...current,
         renderedRange: resolveRenderedRangeForPendingScrollTarget({
           currentRange: current.renderedRange,
@@ -1462,7 +1478,7 @@ function LocalConversationVirtualizedTurnListCore({
           pendingTurnKey: pendingScrollTarget.turnKey,
           viewportHeightPx: current.viewportHeightPx,
         }),
-      }));
+      });
       return;
     }
 
@@ -1508,6 +1524,7 @@ function LocalConversationVirtualizedTurnListCore({
     getScrollElement,
     layout,
     pendingScrollTarget,
+    publishViewportState,
     scrollController,
     updateViewportState,
     visibleRange.endIndex,

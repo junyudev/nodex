@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { StrictMode } from "react";
 import type {
   createInlineVisualizationRuntime,
   InlineVisualizationRuntime,
@@ -10,6 +11,10 @@ import { ConversationVisualizationContext } from "./inline-visualization-context
 import { LocalConversationInlineVisualization } from "./local-conversation-inline-visualization";
 import type { InlineVisualizationMode } from "../../../lib/inline-visualization/inline-visualization-presentation";
 import { applyLocalConversationSearchHighlights } from "./local-conversation-thread-search-dom-marks";
+import {
+  InlineVisualizationWindowProvider,
+  InlineVisualizationSurfaceProvider,
+} from "./inline-visualization-window";
 
 type RuntimeInput = Parameters<typeof createInlineVisualizationRuntime>[0];
 const boundary = vi.hoisted(() => ({
@@ -90,22 +95,31 @@ function Harness({
   cacheKey?: string;
 }) {
   return (
-    <ConversationVisualizationContext.Provider
-      value={{
-        hostId: "local",
-        threadId: "visible-thread",
-        turnId: "turn",
-        markdownStreaming: live,
-        readChangedFilePaths: () => [],
-      }}
-    >
-      <LocalConversationInlineVisualization
-        file={file}
-        mode={mode}
-        sourceThreadId={sourceThreadId}
-        cacheKey={cacheKey}
-      />
-    </ConversationVisualizationContext.Provider>
+    <InlineVisualizationWindowProvider>
+      <InlineVisualizationSurfaceProvider
+        id="test-surface"
+        hostId="local"
+        threadId="visible-thread"
+        active
+      >
+        <ConversationVisualizationContext.Provider
+          value={{
+            hostId: "local",
+            threadId: "visible-thread",
+            turnId: "turn",
+            markdownStreaming: live,
+            readChangedFilePaths: () => [],
+          }}
+        >
+          <LocalConversationInlineVisualization
+            file={file}
+            mode={mode}
+            sourceThreadId={sourceThreadId}
+            cacheKey={cacheKey}
+          />
+        </ConversationVisualizationContext.Provider>
+      </InlineVisualizationSurfaceProvider>
+    </InlineVisualizationWindowProvider>
   );
 }
 
@@ -126,6 +140,24 @@ function installPopoverFor(frame: HTMLElement) {
 }
 
 describe("inline visualization preview presentation", () => {
+  test("StrictMode replay reacquires the window lifetime and true unmount retires every live frame", async () => {
+    const view = render(
+      <StrictMode>
+        <Harness mode="wide" live={false} />
+      </StrictMode>,
+    );
+    await view.findByRole("button", { name: "Widget control" });
+    expect(view.container.querySelectorAll('[data-visualization-active="true"]')).toHaveLength(1);
+    const live = instances.filter(({ runtime }) => runtime.element.isConnected);
+    expect(live).toHaveLength(1);
+    expect(live[0]?.runtime.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      view.unmount();
+      await Promise.resolve();
+    });
+    expect(live[0]?.runtime.dispose).toHaveBeenCalledOnce();
+    expect(instances.every(({ runtime }) => !runtime.element.isConnected)).toBe(true);
+  });
   test("state belongs to the displayed Thread and raw file path across source/cache/streaming changes", async () => {
     const view = render(
       <Harness

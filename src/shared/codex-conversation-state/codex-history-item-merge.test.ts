@@ -16,6 +16,58 @@ const answer = (id: string, text = id): Extract<CodexCanonicalItem, { type: "age
 });
 
 describe("history item merge", () => {
+  it.each([false, true])(
+    "preserves steer acceptance across an overlapping merge (incoming %s)",
+    (preferIncomingItems) => {
+      const pending: Extract<CodexCanonicalItem, { type: "steeringUserMessage" }> = {
+        type: "steeringUserMessage",
+        id: "queued",
+        status: "pending",
+        targetTurnId: "turn",
+        targetTurnStartedAtMs: null,
+        clientUserMessageId: "client",
+        input: [{ type: "text", text: "captured", text_elements: [] }],
+        attachments: [],
+        restoreMessage: { context: { commentAttachments: ["current"] } },
+        compareKey: { rawText: "captured", imageCount: 0 },
+      };
+      const accepted = {
+        ...pending,
+        status: "accepted" as const,
+        serverUserMessageId: "native-user",
+        acceptedInput: pending.input,
+        restoreMessage: { context: { commentAttachments: ["old history"] } },
+      };
+      const options = { preferIncomingItems };
+      const merged = mergeCodexCanonicalHistoryItems([pending], [accepted], "append", options)
+        .items[0]!;
+      expect(merged).toEqual({
+        ...pending,
+        status: "accepted",
+        serverUserMessageId: "native-user",
+        acceptedInput: pending.input,
+      });
+      const ackOnly = { ...pending, status: "accepted" as const };
+      expect(
+        mergeCodexCanonicalHistoryItems([ackOnly], [accepted], "append", options).items[0],
+      ).toEqual(merged);
+      expect(
+        mergeCodexCanonicalHistoryItems([merged], [pending], "prepend", options).items[0],
+      ).toBe(merged);
+      for (const foreign of [
+        { ...accepted, clientUserMessageId: "another-client" },
+        { ...accepted, targetTurnId: "another-turn" },
+        { ...accepted, targetTurnStartedAtMs: 10 },
+        {
+          ...accepted,
+          input: [{ type: "text" as const, text: "old edited input", text_elements: [] }],
+        },
+      ])
+        expect(
+          mergeCodexCanonicalHistoryItems([pending], [foreign], "append", options).items[0],
+        ).toBe(pending);
+    },
+  );
   it("places new items around resident anchors while retaining newer live values", () => {
     const resident = [
       { id: "b", value: "live" },

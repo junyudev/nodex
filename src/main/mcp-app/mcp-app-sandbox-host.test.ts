@@ -149,13 +149,14 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
     let destroyed = false;
     const image = {} as NativeImage;
     const capturePage = vi.fn(async () => image);
+    const focus = vi.fn(() => undefined);
     const guest = Object.assign(guestEvents, {
       id: 72,
       session: sandboxSession.value,
       getURL: () => source,
       isDestroyed: () => destroyed,
       setWindowOpenHandler: () => undefined,
-      focus: () => undefined,
+      focus,
       capturePage,
       close: () => {
         destroyed = true;
@@ -208,6 +209,63 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
       ),
     );
     assert.strictEqual(capturePage.mock.calls.length, 1);
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    const focusedBeforePause = focus.mock.calls.length;
+    assert.isFalse(
+      controller.setGuestPresentation(
+        { id: 999, isDestroyed: () => false } as WebContents,
+        sandboxId,
+        "init-fixture",
+        false,
+        1,
+      ),
+    );
+    assert.isFalse(controller.setGuestPresentation(owner, sandboxId, "wrong-init", false, 1));
+    assert.isFalse(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 0));
+    assert.isFalse(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 1.5));
+    assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 1));
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    guestEvents.emit("before-input-event", {}, { type: "keyDown", key: "Enter" });
+    assert.strictEqual(focus.mock.calls.length, focusedBeforePause);
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(controller.captureImage(owner, sandboxId, "init-fixture"))),
+    );
+    assert.strictEqual(capturePage.mock.calls.length, 1);
+    assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 1));
+    assert.isFalse(controller.setGuestPresentation(owner, sandboxId, "init-fixture", true, 1));
+    assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", true, 2));
+    assert.isFalse(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 1));
+    assert.isFalse(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    guestEvents.emit("before-mouse-event", {}, { type: "mouseDown" });
+    assert.isTrue(controller.consumeUserGesture(owner, sandboxId, "init-fixture"));
+    const deferredCapture = controller.captureImage(owner, sandboxId, "init-fixture");
+    assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 3));
+    assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", true, 4));
+    assert.strictEqual(
+      yield* deferredCapture.pipe(
+        Effect.catchTag("McpAppSandboxCaptureError", (error) => Effect.succeed(error.reason)),
+      ),
+      "unavailable",
+    );
+    assert.strictEqual(capturePage.mock.calls.length, 1);
+    capturePage.mockImplementationOnce(async () => {
+      assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", false, 5));
+      assert.isTrue(controller.setGuestPresentation(owner, sandboxId, "init-fixture", true, 6));
+      return image;
+    });
+    assert.strictEqual(
+      yield* controller
+        .captureImage(owner, sandboxId, "init-fixture")
+        .pipe(
+          Effect.catchTag("McpAppSandboxCaptureError", (error) => Effect.succeed(error.reason)),
+        ),
+      "retired",
+    );
+    assert.strictEqual(yield* controller.captureImage(owner, sandboxId, "init-fixture"), image);
+    assert.isFalse(destroyed);
+    assert.strictEqual(capturePage.mock.calls.length, 3);
     capturePage.mockImplementationOnce(async () => {
       assert.isFalse(controller.releaseGuest(owner, sandboxId, "wrong-init"));
       assert.isTrue(controller.releaseGuest(owner, sandboxId, "init-fixture"));

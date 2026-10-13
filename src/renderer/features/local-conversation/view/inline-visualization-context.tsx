@@ -9,6 +9,7 @@ export interface ConversationVisualizationContext {
   readonly hostId: string;
   readonly threadId: string;
   readonly turnId: string | null;
+  readonly turnSearchKey?: string;
   readonly markdownStreaming: boolean;
   readonly readChangedFilePaths: () => readonly string[];
 }
@@ -21,10 +22,15 @@ export function useConversationVisualizationContext(
   turnId: string | null,
   markdownStreaming: boolean,
   suppliedEntityKey?: string,
+  suppliedTurnSearchKey?: string,
 ): ConversationVisualizationContext {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const contextualEntityKey = useContext(CodexTranscriptTurnEntityContext);
   const entityKey = suppliedEntityKey ?? contextualEntityKey;
+  const turnSearchKey =
+    suppliedTurnSearchKey ??
+    turnId ??
+    (entityKey ? owner?.readTurnDetails(entityKey)?.entityKey : undefined);
   const readChangedFilePaths = () =>
     owner && entityKey
       ? (owner.readItemSlots(entityKey)?.entries ?? []).flatMap(({ itemId }) => {
@@ -42,6 +48,7 @@ export function useConversationVisualizationContext(
     hostId: owner?.key.hostId ?? DEFAULT_CODEX_HOST_ID,
     threadId,
     turnId,
+    ...(turnSearchKey === undefined ? {} : { turnSearchKey }),
     markdownStreaming,
     readChangedFilePaths,
   };

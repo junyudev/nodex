@@ -150,6 +150,7 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
           }),
       } as unknown as CodexSubagentDirectory["Service"]),
       Effect.provideService(CodexThreadDurableProjection, {
+        acceptsTerminalObservation: () => Effect.succeed(true),
         observe: () =>
           Effect.sync(() => {
             consequences.push("durable");

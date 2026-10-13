@@ -39,6 +39,7 @@ export class McpAppSandboxRuntime extends Context.Service<
     ) => boolean;
     readonly captureImage: McpAppSandboxController["captureImage"];
     readonly releaseGuest: McpAppSandboxController["releaseGuest"];
+    readonly setGuestPresentation: McpAppSandboxController["setGuestPresentation"];
   }
 >()("nodex/main/host-runtime/McpAppSandboxRuntime") {}
 
@@ -95,6 +96,7 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
         consumeUserGesture: controller.consumeUserGesture,
         captureImage: controller.captureImage,
         releaseGuest: controller.releaseGuest,
+        setGuestPresentation: controller.setGuestPresentation,
       });
     }),
   );

@@ -101,6 +101,7 @@ const build = Effect.fn("MainResumeTest.build")(function* (
   const acceptedResumeInputs: Parameters<
     CodexThreadDirectory["Service"]["acceptResumeResult"]
   >[0][] = [];
+  const acceptedQueueAdmissions: boolean[] = [];
   const resets = new Set<() => void>();
   let connected = true;
   let generation = 1;
@@ -209,6 +210,7 @@ const build = Effect.fn("MainResumeTest.build")(function* (
       before("accept").pipe(
         Effect.map(() => {
           acceptedResumeInputs.push(input);
+          acceptedQueueAdmissions.push(input.canRecordQueueAcceptance?.() === true);
           historyRequestOptions.push(input.requestOptions);
           entity.setResumeState("resumed");
           return { snapshot: entity.readSnapshot() };
@@ -244,6 +246,7 @@ const build = Effect.fn("MainResumeTest.build")(function* (
     requests,
     historyRequestOptions,
     acceptedResumeInputs,
+    acceptedQueueAdmissions,
     hooks,
     resets,
     manager,
@@ -280,6 +283,27 @@ const build = Effect.fn("MainResumeTest.build")(function* (
     },
   };
 });
+
+it.effect("retires restored queue acceptance when its admitted owner changes", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* build();
+      assert.strictEqual((yield* f.service.resume("thread")).status, "ready");
+      const admission = f.acceptedResumeInputs[0]?.canRecordQueueAcceptance;
+      assert.ok(admission);
+      assert.deepEqual(f.acceptedQueueAdmissions, [true]);
+      // Publication replaces the role incarnation, so the admission has already retired.
+      assert.isFalse(admission());
+      f.setRole({ role: "follower", ownerClientId: "window" });
+      assert.isFalse(admission());
+      f.setRole({ role: "owner" });
+      assert.isFalse(admission());
+      f.reset();
+      f.restore();
+      assert.isFalse(admission());
+    }),
+  ),
+);
 
 it.effect("captures the environment selection immediately before native resume dispatch", () =>
   Effect.scoped(

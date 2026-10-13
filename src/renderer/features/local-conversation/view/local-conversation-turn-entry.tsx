@@ -200,10 +200,7 @@ function LocalConversationTurnEntryComponent({
         {entry.timestampSeparatorAtMs == null ? null : (
           <ThreadTimestampSeparator sentAtMs={entry.timestampSeparatorAtMs} />
         )}
-        <div
-          data-content-search-turn-key={entry.turnSearchKey}
-          data-virtualized-turn-content="true"
-        >
+        <div data-content-search-turn-key={entry.turnKey} data-virtualized-turn-content="true">
           <ThreadTurn
             turn={turnModel}
             endResources={isTimelineEntry ? undefined : resources}

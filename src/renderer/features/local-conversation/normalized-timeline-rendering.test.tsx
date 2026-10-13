@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useMemo } from "react";
 import { NodexTooltipProvider } from "../../components/ui/tooltip";
@@ -16,6 +16,39 @@ import { LocalConversationTestQueryProvider } from "./view/local-conversation-te
 import { EnsureLocalConversationThreadScrollController } from "./view/local-conversation-thread-scroll-controller";
 import { LocalConversationVirtualizedTurnList } from "./view/local-conversation-virtualized-turn-list";
 import type { CodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
+import {
+  InlineVisualizationSurfaceProvider,
+  InlineVisualizationWindowProvider,
+} from "./view/inline-visualization-window";
+import type { ThreadTimelineEntry } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  createInlineVisualizationRuntime,
+  InlineVisualizationRuntime,
+} from "../../lib/inline-visualization/inline-visualization-runtime";
+import { createInlineVisualizationAnnotations } from "../../lib/inline-visualization/inline-visualization-annotations";
+
+const guest = vi.hoisted(() => ({
+  create:
+    vi.fn<
+      (input: Parameters<typeof createInlineVisualizationRuntime>[0]) => InlineVisualizationRuntime
+    >(),
+}));
+vi.mock("../../lib/inline-visualization/inline-visualization-runtime", () => ({
+  createInlineVisualizationRuntime: guest.create,
+}));
+
+function completedTurn(position: number): ThreadTimelineEntry {
+  return {
+    type: "turnCompleted",
+    position,
+    turnId: "one",
+    status: "completed",
+    error: null,
+    startedAt: 1,
+    completedAt: 2,
+    durationMs: 1000,
+  };
+}
 
 function TimelineHarness({
   itemRef,
@@ -67,14 +100,62 @@ function renderTimeline(
   return renderWithMaitai(
     <CodexTranscriptReadOwnerContext.Provider value={owner}>
       <NodexTooltipProvider>
-        <TimelineHarness {...props} />
+        <InlineVisualizationWindowProvider>
+          <InlineVisualizationSurfaceProvider id="main" hostId="local" threadId="thread" active>
+            <TimelineHarness {...props} />
+          </InlineVisualizationSurfaceProvider>
+        </InlineVisualizationWindowProvider>
       </NodexTooltipProvider>
     </CodexTranscriptReadOwnerContext.Provider>,
     { wrapper: LocalConversationTestQueryProvider },
   );
 }
 
-beforeEach(() => installAsyncRequestAnimationFrame());
+let originalApi: typeof window.api;
+beforeEach(() => {
+  installAsyncRequestAnimationFrame();
+  originalApi = window.api;
+  window.api = {
+    ...originalApi,
+    on: originalApi?.on ?? (() => () => {}),
+    invoke: async (channel, ...args) => {
+      if (channel !== "codex:visualization:read") return originalApi?.invoke(channel, ...args);
+      const input = args[0];
+      if (!input || typeof input !== "object") throw new Error("Missing visualization read input");
+      const file: unknown = Reflect.get(input, "file");
+      if (typeof file !== "string") throw new Error("Missing visualization file");
+      expect(input).toMatchObject({ hostId: "local", sourceThreadId: "thread", turnId: "one" });
+      return { path: `/workspace/${file}`, contents: `<button>${file}</button>` };
+    },
+  };
+  guest.create.mockReset().mockImplementation((input) => {
+    const element = document.createElement("div");
+    element.innerHTML = input.html;
+    const snapshot = {
+      status: "ready" as const,
+      height: 150,
+      fullscreenHeight: null,
+      displayMode: "inline" as const,
+      error: null,
+    };
+    return {
+      element,
+      annotations: createInlineVisualizationAnnotations({ allowed: true, globals: () => {} }),
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+      setActive: vi.fn(),
+      setDisplayMode: () => "inline",
+      captureImage: vi.fn(async () => new Uint8Array()),
+      copyAsImage: vi.fn(async () => {}),
+      dispose: vi.fn(async () => {
+        element.remove();
+      }),
+    };
+  });
+});
+afterEach(() => {
+  window.api = originalApi;
+});
 
 describe("native realtime history in the production virtualizer", () => {
   test("renders voice-only history, updates one keyed leaf, and releases the last consumer", async () => {
@@ -155,6 +236,7 @@ describe("native realtime history in the production virtualizer", () => {
             },
           },
           { type: "item", position: 3, turnId: "one", item: after },
+          completedTurn(4),
         ],
         nextCursor: null,
         activeRealtimeSessionAtPageStart: "session",
@@ -228,6 +310,7 @@ describe("native realtime history in the production virtualizer", () => {
               },
             },
             { type: "item", position: 4, turnId: "one", item: after },
+            completedTurn(5),
           ],
           nextCursor: null,
           activeRealtimeSessionAtPageStart: "session",
@@ -239,7 +322,7 @@ describe("native realtime history in the production virtualizer", () => {
       const voice = view.getByText("Voice before artifact");
       const promoted =
         type === "inlineVisualization"
-          ? view.getByText("chart.html")
+          ? await view.findByText("chart.html")
           : view.getByText("Native artifact");
       const last = view.getByText("After artifact");
       expect(
@@ -360,9 +443,9 @@ describe("native realtime history in the production virtualizer", () => {
     );
     const view = renderTimeline(owner);
     await settleAsyncRender();
-    const chart = view.getByText("chart.html");
+    const chart = await view.findByText("chart.html");
     const voice = view.getByText("Voice between visualizations");
-    const table = view.getByText("table.html");
+    const table = await view.findByText("table.html");
     expect(chart.closest("[data-turn-key]")?.getAttribute("data-turn-key")).not.toBe(
       table.closest("[data-turn-key]")?.getAttribute("data-turn-key"),
     );

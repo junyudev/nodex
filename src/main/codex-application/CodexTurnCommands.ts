@@ -8,7 +8,13 @@ import {
   type CodexTurnDelivery,
 } from "../../shared/codex-conversation-state/codex-turn-delivery";
 import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
+import {
+  appendCodexAcceptedServerQueueSubmission,
+  equalCodexQueueValue,
+  normalizeCodexNativeQueuedSubmission,
+} from "../../shared/codex-native-queued-submission";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { latestConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import { isAppContextJson, prepareUntrustedAppInput } from "../../shared/codex-untrusted-app-input";
 import { CodexVisualizationState } from "./CodexVisualizationState";
@@ -40,10 +46,14 @@ import type {
   TurnStartParams,
   TurnStartResponse,
   TurnSteerResponse,
+  QueuedSubmission,
 } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CLIENT_REQUEST_RESPONSES } from "@nodex/effect-codex-app-server/rpc";
-import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
+import type {
+  ClientRequestParamsByMethod,
+  ClientRequestResponsesByMethod,
+} from "@nodex/effect-codex-app-server/rpc";
 import { createEmptyCodexPreparedPrompt } from "../../shared/codex-prompt-preparation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -251,6 +261,7 @@ export const make: Effect.Effect<
   | CodexAutomationRunAcceptance
   | CodexGateway
   | CodexAppServerCapabilities
+  | CodexQueuedFollowUps
   | CodexVisualizationState
   | CodexTurnAuthority
   | CodexTurnPresentation
@@ -267,6 +278,7 @@ export const make: Effect.Effect<
   const conversations = yield* ConversationEntityMap;
   const gateway = yield* CodexGateway;
   const capabilities = yield* CodexAppServerCapabilities;
+  const queued = yield* CodexQueuedFollowUps;
   const visualizationState = yield* CodexVisualizationState;
   const hosts = yield* CodexThreadHostResolver;
   const managers = yield* CodexMainConversationManagers;
@@ -308,6 +320,72 @@ export const make: Effect.Effect<
     cause instanceof CodexTurnCommandError
       ? cause
       : new CodexTurnCommandError({ operation, threadId, cause });
+
+  const validateServerQueuedSubmission = Effect.fn("CodexTurnCommands.validateQueuedSubmission")(
+    function* (threadId: string, value: unknown, connection: NativeTurnConnection) {
+      const decoded = yield* Schema.decodeUnknownEffect(
+        CLIENT_REQUEST_RESPONSES["thread/queue/add"],
+      )({ queuedSubmission: value });
+      const expected = normalizeCodexNativeQueuedSubmission(decoded.queuedSubmission);
+      yield* Effect.try(() => assertTurnConnection(connection));
+      const capability = yield* capabilities.forHost(connection.manager.hostId);
+      if (!capability.flags.threadQueue || capability.generation !== connection.nativeGeneration)
+        return yield* commandError("steer", threadId, new Error("Native queue is unavailable"));
+      const seen = new Set<string>();
+      let cursor: string | null = null;
+      while (true) {
+        const page: ClientRequestResponsesByMethod["thread/queue/list"] =
+          yield* gateway.requestOnHost(
+            connection.manager.hostId,
+            "thread/queue/list",
+            { threadId, cursor, limit: 100 },
+            { ...turnConnectionFence(connection), priority: "interactive" },
+          );
+        yield* Effect.try(() => assertTurnConnection(connection));
+        const raw = page.data.find((submission) => submission.id === expected.id);
+        if (raw) {
+          const current = normalizeCodexNativeQueuedSubmission(raw);
+          if (!equalCodexQueueValue(current, expected))
+            return yield* commandError(
+              "steer",
+              threadId,
+              new Error("Native queued input changed before preparation"),
+            );
+          return current;
+        }
+        if (page.nextCursor == null)
+          return yield* commandError(
+            "steer",
+            threadId,
+            new Error("Native queued input is missing"),
+          );
+        if (seen.has(page.nextCursor))
+          return yield* commandError(
+            "steer",
+            threadId,
+            new Error("Native queue cursor did not advance"),
+          );
+        seen.add(page.nextCursor);
+        cursor = page.nextCursor;
+      }
+    },
+  );
+
+  const recordAcceptedServerQueueSubmission = (
+    connection: NativeTurnConnection,
+    threadId: string,
+    submission: QueuedSubmission | undefined,
+  ): void => {
+    if (!submission || connection.manager.stream.getRole(threadId)?.role !== "owner") return;
+    assertTurnConnection(connection);
+    const entity = conversations.current(threadId);
+    if (entity?.readCanonicalState()?.hostId !== connection.manager.hostId)
+      throw new Error("Accepted native queue owner is unavailable");
+    entity.mutateCanonicalState(
+      (draft) => appendCodexAcceptedServerQueueSubmission(draft, submission),
+      Date.now(),
+    );
+  };
 
   const assertTurnOwner = (
     connection: NativeTurnConnection,
@@ -453,6 +531,7 @@ export const make: Effect.Effect<
       readonly assertCurrentOwner: () => void;
       readonly responseItems?: ClientRequestParamsByMethod["thread/inject_items"]["items"];
       readonly passiveContext?: CodexVisualizationPassiveContext;
+      readonly serverQueuedSubmission?: QueuedSubmission;
     },
   ) =>
     projectLifecycle.runExclusive(
@@ -633,6 +712,12 @@ export const make: Effect.Effect<
               ),
             )) as unknown as TurnStartResponse;
 
+          if (options.serverQueuedSubmission)
+            queued.recordAcceptedSend({
+              conversationId: plan.threadId,
+              messageId: options.serverQueuedSubmission.id,
+            });
+
           yield* Effect.uninterruptible(
             Effect.try(options.assertCurrentOwner).pipe(
               Effect.andThen(
@@ -763,7 +848,15 @@ export const make: Effect.Effect<
         );
       }).pipe(
         (transaction) =>
-          conversations.admitExecution(plan.threadId, transaction, options.executionEpoch),
+          conversations.admitExecution(
+            plan.threadId,
+            {
+              hostId: options.connection.manager.hostId,
+              generation: options.connection.nativeGeneration,
+            },
+            transaction,
+            options.executionEpoch,
+          ),
         Effect.mapError((cause) => commandError("start", plan.threadId, cause)),
       ),
     );
@@ -1418,6 +1511,7 @@ export const make: Effect.Effect<
           .pipe((dispatch) =>
             conversations.admitExecution(
               operation.request.threadId,
+              { hostId: entry.manager.hostId, generation: entry.nativeGeneration },
               dispatch,
               entry.executionEpoch,
             ),
@@ -1431,6 +1525,23 @@ export const make: Effect.Effect<
         const hostId = yield* hosts.resolve(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
+        const serverQueuedSubmission =
+          preparationContext.serverQueuedSubmission === undefined
+            ? undefined
+            : yield* validateServerQueuedSubmission(
+                threadId,
+                preparationContext.serverQueuedSubmission,
+                connection,
+              );
+        if (
+          serverQueuedSubmission &&
+          serverQueuedSubmission.clientUserMessageId !== clientUserMessageId
+        )
+          return yield* commandError(
+            "steer",
+            threadId,
+            new Error("Native queued client identity does not match preparation"),
+          );
         const captured = yield* preparation.prepareCaptured(
           threadId,
           clientUserMessageId,
@@ -1446,9 +1557,17 @@ export const make: Effect.Effect<
         );
         const preparedPrompt = {
           ...captured,
-          inputItems: [appInput.input, ...captured.inputItems.slice(1)],
+          inputItems: serverQueuedSubmission
+            ? structuredClone(serverQueuedSubmission.input)
+            : [appInput.input, ...captured.inputItems.slice(1)],
         };
         const requiresIdle = appInput.responseItems.length > 0;
+        if (serverQueuedSubmission && requiresIdle)
+          return yield* commandError(
+            "steer",
+            threadId,
+            new Error("Native queued input cannot contain unconfirmed app context"),
+          );
         yield* Effect.try(() => assertTurnConnection(connection));
         const additionalContext =
           message.writingBlockAdditionalContext ?? preparedPrompt.additionalContext;
@@ -1460,6 +1579,7 @@ export const make: Effect.Effect<
           serviceTier: message.submissionOptions?.serviceTier,
           attachments: [...preparedPrompt.fileAttachments, ...preparedPrompt.addedFiles],
           additionalContext,
+          ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
         };
         if (mode === "steer") {
           const lock = yield* Semaphore.make(1);
@@ -1562,6 +1682,7 @@ export const make: Effect.Effect<
             responseItems: appInput.responseItems,
             useAppServerPermissionDefault,
             usePermissionSelection,
+            ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
             localTurnMetadata: {
               fileAttachmentCount:
                 message.context.fileAttachments.length +
@@ -1596,6 +1717,14 @@ export const make: Effect.Effect<
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const lock = yield* Semaphore.make(1);
+        const serverQueuedSubmission =
+          sourceContext?.serverQueuedSubmission === undefined
+            ? undefined
+            : yield* validateServerQueuedSubmission(
+                threadId,
+                sourceContext.serverQueuedSubmission,
+                connection,
+              );
         let passiveAttachments: readonly CodexVisualizationPassiveAttachment[] = [];
         if (passiveIntent?.kind === "queued") passiveAttachments = passiveIntent.attachments;
         else if (passiveIntent?.kind === "ordinary")
@@ -1666,6 +1795,7 @@ export const make: Effect.Effect<
                   : undefined),
             );
             if (context) delete context.passiveContext;
+            if (serverQueuedSubmission) context = { ...context, serverQueuedSubmission };
             if (passiveContext) context = { ...context, passiveContext };
             let admittedOverrides = overrides;
             const untrustedAppMessage =
@@ -1700,6 +1830,12 @@ export const make: Effect.Effect<
               };
               admittedOverrides = { ...overrides, preparedPrompt: compiled };
             }
+            if (
+              serverQueuedSubmission &&
+              (serverQueuedSubmission.clientUserMessageId !== clientUserMessageId ||
+                !equalCodexQueueValue(serverQueuedSubmission.input, original.input))
+            )
+              throw new Error("Native queued input does not match the prepared start");
             // Capture the peer wire value before retaining authority. JSON peers omit undefined
             // fields, while Electron's structured clone preserves them.
             const admitted = JSON.parse(
@@ -1881,6 +2017,7 @@ export const make: Effect.Effect<
                 returnNativeResponse: true,
                 assertCurrentOwner,
                 responseItems,
+                serverQueuedSubmission: entry.context?.serverQueuedSubmission,
                 passiveContext:
                   !plan.rendererOwnsState && entry.injection !== "complete"
                     ? entry.context?.passiveContext
@@ -1892,6 +2029,12 @@ export const make: Effect.Effect<
             Effect.try({
               try: () => {
                 assertCurrentOwner();
+                if (!plan.rendererOwnsState)
+                  recordAcceptedServerQueueSubmission(
+                    entry,
+                    request.threadId,
+                    entry.context?.serverQueuedSubmission,
+                  );
                 return response as TurnStartResponse;
               },
               catch: (cause) => commandError("start", request.threadId, cause),
@@ -2072,8 +2215,21 @@ export const make: Effect.Effect<
                   }),
                 ),
               );
+              if (entry.input.serverQueuedSubmission)
+                queued.recordAcceptedSend({
+                  conversationId: entry.input.conversationId,
+                  messageId: entry.input.serverQueuedSubmission.id,
+                });
               yield* Effect.try({
-                try: assertExecution,
+                try: () => {
+                  assertExecution();
+                  if (executingPeerClientId === undefined)
+                    recordAcceptedServerQueueSubmission(
+                      entry,
+                      entry.input.conversationId,
+                      entry.input.serverQueuedSubmission,
+                    );
+                },
                 catch: (cause) => commandError("steer", entry.input.conversationId, cause),
               });
               yield* presentation
@@ -2088,7 +2244,12 @@ export const make: Effect.Effect<
             }),
           )
           .pipe((dispatch) =>
-            conversations.admitExecution(request.params.threadId, dispatch, entry.executionEpoch),
+            conversations.admitExecution(
+              request.params.threadId,
+              { hostId: entry.manager.hostId, generation: entry.nativeGeneration },
+              dispatch,
+              entry.executionEpoch,
+            ),
           );
       }).pipe(Effect.mapError((cause) => commandError("steer", request.params.threadId, cause))),
     releasePreparedNativeSteer,

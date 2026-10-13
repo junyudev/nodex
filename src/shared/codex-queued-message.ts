@@ -1,4 +1,9 @@
-import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  QueuedSubmission,
+  TurnStartParams,
+  UserInput,
+} from "@nodex/codex-app-server-protocol/v2";
+import type { CodexTurnDelivery } from "./codex-conversation-state/codex-turn-delivery";
 import type {
   CodexPromptInput,
   CodexLiveFileAttachment,
@@ -33,6 +38,8 @@ export interface CodexQueuedNativePreparationContext {
   readonly runtimeWorkspaceRoots: readonly string[];
   readonly usePermissionSelection: boolean;
   readonly clientUserMessageId?: string;
+  /** Actual native row; preparation binds its stored input before owner transfer. */
+  readonly serverQueuedSubmission?: QueuedSubmission;
 }
 
 /** Queue capture accepts the ordinary Turn options plus queue-only frozen execution intent. */
@@ -69,6 +76,70 @@ export interface CodexQueuedMessage {
   readonly [key: string]: unknown;
 }
 export type CodexQueuedMessageState = QueuedMessageState<CodexQueuedMessage>;
+
+export interface CodexQueuedMessageDeliveryReceipt {
+  readonly status: "outcome-unknown";
+  readonly hostId: string;
+  readonly method: "thread/queue/add" | "turn/start" | "turn/steer";
+  readonly requestId: CodexTurnDelivery["requestId"];
+  readonly captured: CodexQueuedMessage;
+  /** Persisted data must match both the generated native acceptance and the current compiler. */
+  readonly input: readonly unknown[];
+}
+
+/** Delivery bookkeeping never changes the captured user input or execution settings. */
+export function captureCodexQueuedMessage(message: CodexQueuedMessage): CodexQueuedMessage {
+  const { submission: _submission, pausedReason: _pausedReason, ...captured } = message;
+  return captured;
+}
+
+export function createCodexQueuedMessageDeliveryReceipt(
+  hostId: string,
+  message: CodexQueuedMessage,
+  input: readonly UserInput[],
+  delivery: CodexTurnDelivery,
+): CodexQueuedMessageDeliveryReceipt | null {
+  if (
+    delivery.method !== "thread/queue/add" &&
+    delivery.method !== "turn/start" &&
+    delivery.method !== "turn/steer"
+  )
+    return null;
+  return {
+    status: "outcome-unknown",
+    hostId,
+    method: delivery.method,
+    requestId: delivery.requestId,
+    captured: structuredClone(captureCodexQueuedMessage(message)),
+    input: structuredClone(input),
+  };
+}
+
+export function readCodexQueuedMessageDeliveryReceipt(
+  message: CodexQueuedMessage,
+): CodexQueuedMessageDeliveryReceipt | null {
+  const receipt = message.submission;
+  if (!receipt || typeof receipt !== "object") return null;
+  const status: unknown = Reflect.get(receipt, "status");
+  const hostId: unknown = Reflect.get(receipt, "hostId");
+  const method: unknown = Reflect.get(receipt, "method");
+  const requestId: unknown = Reflect.get(receipt, "requestId");
+  const captured: unknown = Reflect.get(receipt, "captured");
+  const input: unknown = Reflect.get(receipt, "input");
+  if (
+    status !== "outcome-unknown" ||
+    typeof hostId !== "string" ||
+    !hostId ||
+    (method !== "thread/queue/add" && method !== "turn/start" && method !== "turn/steer") ||
+    (typeof requestId !== "string" &&
+      (typeof requestId !== "number" || !Number.isFinite(requestId))) ||
+    !isCodexQueuedMessage(captured) ||
+    captured.submission !== undefined ||
+    !Array.isArray(input)
+  )
+    return null;
+  return { status, hostId, method, requestId, captured, input };
+}
 
 export function isCodexQueuedMessage(value: unknown): value is CodexQueuedMessage {
   if (value === null || typeof value !== "object") return false;
@@ -127,10 +198,16 @@ export function queuedMessagePromptInput(message: CodexQueuedMessage): CodexProm
 export function projectCodexQueuedMessage(
   threadId: string,
   message: CodexQueuedMessage,
+  delivery?: {
+    readonly owner: "local" | "server";
+    readonly clientUserMessageId: string;
+    readonly canSendNow?: boolean;
+  },
 ): CodexQueuedFollowUp {
   return {
+    ...(delivery ? { deliveryOwner: delivery.owner, canSendNow: delivery.canSendNow } : {}),
     followUpId: message.id,
-    clientUserMessageId: message.id,
+    clientUserMessageId: delivery?.clientUserMessageId ?? message.id,
     threadId,
     prompt: message.context.prompt,
     promptInput: queuedMessagePromptInput(message),

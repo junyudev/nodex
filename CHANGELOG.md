@@ -13,12 +13,14 @@ All notable changes to this project will be documented in this file.
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Voice settings can manage an account dictionary when available.
 - Voice settings can transcribe a selected WebM file and retain its audio and text with recent recordings for copying or retrying.
-- Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing preserves the live document; saved selections recover when it is rebuilt, follow-ups can use saved model state, and authorized downloads and image copying are available. Authored adjustments can preview changes and send them with the next request.
+- Chats render interactive HTML responses with calendars, tooltips, tabs, carousels and icons in isolated widgets. Fullscreen viewing and switching chats within one window preserve the live document; saved selections recover when it is rebuilt, follow-ups can use saved model state, and authorized downloads and image copying are available. Authored adjustments can preview changes and send them with the next request.
 - Files can preview remote text, Markdown, images and PDFs while preserving the source host when pinned or reopened.
 
 ### Changed
 
 - Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted and live voice segments keep their native order alongside text; missing promoted content and failed item-history pages can be restored in place. Completed responses show their available outputs, and active voice work keeps its live status. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text, with highlights restored as visible rows change.
+
+- Queued follow-ups show native and captured local messages together, with editing, ordering and delivery routed to each message's owner. Widget requests wait for the native queue to drain before submitting their confirmed context.
 
 - New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.

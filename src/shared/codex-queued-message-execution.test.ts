@@ -4,6 +4,7 @@ import {
   type QueuedMessageState,
 } from "./codex-queued-message-coordinator";
 import { QueuedMessageExecution, type QueueSubmission } from "./codex-queued-message-execution";
+import { QueuedMessageLocks } from "./codex-queued-message-locks";
 type Message = { id: string; pausedReason?: string | null };
 type Resume = {
   conversationId: string;
@@ -18,6 +19,9 @@ function fixture(
     loading?: Promise<QueuedMessageState<Message>>;
     autoWake?: boolean;
     canSend?: boolean;
+    startLocks?: QueuedMessageLocks;
+    sendLocks?: QueuedMessageLocks;
+    selectAutomaticMessage?: (messages: readonly Message[]) => Message | undefined;
   } = {},
 ) {
   let state: QueuedMessageState<Message> = { thread: [{ id: "message" }] };
@@ -71,15 +75,25 @@ function fixture(
     coordinator,
     role: () => ({ role: "owner" }),
     canSend: () => options.canSend ?? true,
+    selectAutomaticMessage: options.selectAutomaticMessage,
     validate: () => {},
     error: () => {},
     runtime: {
       prepare,
       isClientReady: () => true,
       canAcquireOwnership: () => true,
-      tryAcquireStartTurn: () => true,
-      releaseStartTurn: () => {},
-      acquireSendLock: async () => ({ release }),
+      tryAcquireStartTurn: (id) => options.startLocks?.tryAcquireStartTurn(id) ?? true,
+      releaseStartTurn: (id) => options.startLocks?.releaseStartTurn(id),
+      acquireSendLock: async (conversationId, messageId) => {
+        const identity = { conversationId, messageId, lockId: "test-lock" };
+        if (options.sendLocks && !options.sendLocks.tryAcquire(identity)) return null;
+        return {
+          release: async (sent) => {
+            await release(sent);
+            options.sendLocks?.release({ ...identity, sent });
+          },
+        };
+      },
       errorReason: () => "failed",
       onResult: result,
     },
@@ -307,4 +321,130 @@ it("retains the prepared resume input unchanged when resume becomes necessary be
   expect(f.start).toHaveBeenCalledOnce();
   f.execution[Symbol.dispose]();
   f.coordinator[Symbol.dispose]();
+});
+
+it("native and local sends share one admission without consuming the local message", async () => {
+  const f = fixture({ startLocks: new QueuedMessageLocks() });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const send = vi.fn(async () => {
+    await held;
+    return { status: "sent" as const };
+  });
+  try {
+    const native = f.execution.sendExternalNow("thread", "native", send);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    await f.execution.sendNow("thread", "message");
+    expect(f.prepare).not.toHaveBeenCalled();
+    release();
+    expect(await native).toEqual({ status: "sent" });
+    expect(f.release).toHaveBeenCalledWith(true);
+    expect(f.coordinator.readMessages("thread")).toEqual([{ id: "message" }]);
+    await f.execution.sendNow("thread", "message");
+    expect(f.prepare).toHaveBeenCalled();
+  } finally {
+    release();
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
+});
+it("failed native send releases admission without pausing or deleting captured local input", async () => {
+  const f = fixture({ startLocks: new QueuedMessageLocks() });
+  try {
+    await expect(
+      f.execution.sendExternalNow("thread", "native", async () => {
+        throw new Error("unknown native delivery");
+      }),
+    ).rejects.toThrow("unknown native delivery");
+    expect(f.release).toHaveBeenCalledWith(false);
+    expect(f.coordinator.readMessages("thread")).toEqual([{ id: "message" }]);
+  } finally {
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
+});
+
+it("native acceptance keeps the shared sent tombstone even when later cleanup fails", async () => {
+  const f = fixture({ sendLocks: new QueuedMessageLocks() });
+  const send = vi.fn(async (accepted: () => void) => {
+    accepted();
+    throw new Error("Cleanup failed after native acceptance");
+  });
+  try {
+    await expect(f.execution.sendExternalNow("thread", "native", send)).rejects.toThrow(
+      "Cleanup failed",
+    );
+    expect(f.release).toHaveBeenCalledWith(true);
+    expect(await f.execution.sendExternalNow("thread", "native", send)).toBeNull();
+    expect(send).toHaveBeenCalledOnce();
+    expect(f.coordinator.readMessages("thread")).toEqual([{ id: "message" }]);
+  } finally {
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
+});
+
+it("an unresolved automatic candidate blocks later pending rows after a reorder", async () => {
+  const f = fixture({
+    selectAutomaticMessage: (messages) =>
+      messages.find((message) => message.id === "unresolved") ?? messages[0],
+  });
+  try {
+    f.setState({
+      thread: [{ id: "pending" }, { id: "unresolved", pausedReason: "Delivery outcome unknown" }],
+    });
+    f.execution.wake("thread");
+    await Promise.resolve();
+    expect(f.prepare).not.toHaveBeenCalled();
+    await f.execution.sendNow("thread", "pending");
+    expect(f.prepare.mock.calls.map((call) => call[1].id)).toEqual(["pending", "pending"]);
+    expect(f.coordinator.readMessages("thread")).toEqual([
+      { id: "unresolved", pausedReason: "Delivery outcome unknown" },
+    ]);
+  } finally {
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
+});
+
+it("native prepared delivery does not dispatch after its captured caller retires", async () => {
+  const f = fixture();
+  let admitted = true;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.prepare.mockImplementationOnce(async () => {
+    await held;
+    return {
+      status: "ready",
+      submission: {
+        conversationId: "thread",
+        resume: { conversationId: "thread" },
+        start: "start",
+        steer: "steer",
+      },
+    };
+  });
+  const send = f.execution.sendPreparedNow(
+    "thread",
+    { id: "native" },
+    { prepare: f.prepare, isCurrent: () => admitted },
+  );
+  const rejected = expect(send).rejects.toThrow("not sent");
+  try {
+    await vi.waitFor(() => expect(f.prepare).toHaveBeenCalledOnce());
+    admitted = false;
+    release();
+    await rejected;
+    expect(f.start).not.toHaveBeenCalled();
+    expect(f.steer).not.toHaveBeenCalled();
+    expect(f.coordinator.readMessages("thread")).toEqual([{ id: "message" }]);
+  } finally {
+    release();
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
 });

@@ -10,6 +10,7 @@ import {
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
+import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
@@ -64,6 +65,11 @@ export class CodexThreadDurableProjectionError extends Schema.TaggedError<CodexT
 export class CodexThreadDurableProjection extends Context.Service<
   CodexThreadDurableProjection,
   {
+    /** Checks the durable execution owner before any native terminal consequence runs. */
+    readonly acceptsTerminalObservation: (input: {
+      readonly hostId: string;
+      readonly threadId: string;
+    }) => Effect.Effect<boolean, CodexThreadDurableProjectionError>;
     readonly observe: (
       input: CodexThreadDurableProjectionInput,
     ) => Effect.Effect<void, CodexThreadDurableProjectionError>;
@@ -93,6 +99,12 @@ const isCoreNotFound = (cause: unknown): boolean =>
   cause instanceof CoreRuntimeError &&
   cause.cause instanceof CoreModuleResponseError &&
   cause.cause.coreError.code === "not_found";
+
+const acceptsTerminalOwner = (thread: CoreThread | null, hostId: string): boolean =>
+  thread === null ||
+  (thread.backend_binding.kind === "codex" &&
+    (thread.execution_host_id.trim() || DEFAULT_CODEX_HOST_ID) ===
+      (hostId.trim() || DEFAULT_CODEX_HOST_ID));
 
 const metadataOnlyPagination = () => ({
   olderCursor: null,
@@ -292,6 +304,11 @@ export const make: Effect.Effect<
     const notification = input.notification;
     const id = threadId(notification);
     const before = yield* read(id);
+    if (
+      (notification.method === "thread/archived" || notification.method === "thread/deleted") &&
+      !acceptsTerminalOwner(before, input.hostId)
+    )
+      return;
     // App-server can emit child lifecycle/status before thread/started crosses the identity lane.
     // Metadata deltas cannot materialize a Thread safely and the later identity snapshot already
     // carries their current value. Deletion remains observable and idempotent even without a row.
@@ -316,7 +333,10 @@ export const make: Effect.Effect<
             isCoreNotFound(cause) ? Effect.void : Effect.fail(error("delete", id, cause)),
           ),
         );
-      events.publish({ kind: "codex", value: { type: "threadDeleted", threadId: id } });
+      events.publish({
+        kind: "codex",
+        value: { type: "threadDeleted", hostId: input.hostId, threadId: id },
+      });
       if (subagentRootThreadId) {
         events.publish({
           kind: "codex",
@@ -397,7 +417,11 @@ export const make: Effect.Effect<
     sidebar.scheduleNotification({ notificationMethod: notification.method, threadId: id });
   });
 
-  return CodexThreadDurableProjection.of({ observe });
+  return CodexThreadDurableProjection.of({
+    acceptsTerminalObservation: ({ hostId, threadId: id }) =>
+      read(id).pipe(Effect.map((thread) => acceptsTerminalOwner(thread, hostId))),
+    observe,
+  });
 });
 
 export const live = Layer.effect(CodexThreadDurableProjection, make);

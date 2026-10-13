@@ -3,6 +3,10 @@ import type { CodexHeartbeatDecision } from "../../shared/codex-turn-notificatio
 import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
@@ -25,13 +29,28 @@ import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadTitleReconsideration } from "./CodexThreadTitleReconsideration";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
-import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
+import { ConversationEntityMap, live as entityMapLive } from "./internal/ConversationEntityMap";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { produce } from "immer";
+
+const liveNativeState = (threadId: string, hostId: string) =>
+  createCodexCanonicalHydratedConversationState(
+    { ...buildAgentActivityV2CorpusThread([]), id: threadId, turns: [] },
+    {
+      hostId,
+      model: "fixture-model",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "dangerFullAccess" },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: [],
+    },
+  );
 
 it.effect("drains only Main-owned prose before applying terminal product consequences", () =>
   Effect.gen(function* () {
@@ -41,7 +60,13 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     let widgetClearFailure = false;
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const deliveredHosts: string[] = [];
-    const conversations = makeConversationEntityStateRegistry();
+    const mapContext = yield* Layer.build(entityMapLive);
+    const entityMap = Context.get(mapContext, ConversationEntityMap);
+    const conversations = { ...entityMap, acquire: entityMap.entity };
+    const manager = { generation: 7, stream: { getRole: () => streamRole } };
+    let acceptsTerminal = true;
+    let terminalAdmissionGate = Effect.void;
+    let durableGate = Effect.void;
     const service = yield* make
       .pipe(
         Effect.provideService(
@@ -139,13 +164,17 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
           } as unknown as CodexQueuedFollowUps["Service"]),
         ),
         Effect.provideService(CodexMainConversationManagers, {
-          current: () => ({ generation: 7, stream: { getRole: () => streamRole } }),
+          current: () => manager,
         } as unknown as CodexMainConversationManagers["Service"]),
         Effect.provideService(
           CodexThreadDurableProjection,
           CodexThreadDurableProjection.of({
+            acceptsTerminalObservation: () =>
+              terminalAdmissionGate.pipe(Effect.as(acceptsTerminal)),
             observe: ({ hostId, generation }) =>
-              Effect.sync(() => trace.push(`durable:${hostId}:${generation}`)),
+              durableGate.pipe(
+                Effect.andThen(Effect.sync(() => trace.push(`durable:${hostId}:${generation}`))),
+              ),
           }),
         ),
         Effect.provideService(
@@ -179,14 +208,7 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
           CodexUserInputAutoResolution,
           CodexUserInputAutoResolution.of({} as CodexUserInputAutoResolution["Service"]),
         ),
-        Effect.provideService(
-          ConversationEntityMap,
-          ConversationEntityMap.of({
-            registerThreadMetadata: () => {},
-            readThreadMetadata: () => null,
-            current: conversations.current,
-          } as unknown as ConversationEntityMap["Service"]),
-        ),
+        Effect.provideService(ConversationEntityMap, entityMap),
         Effect.provideService(
           BrowserUseRuntime,
           BrowserUseRuntime.of({
@@ -224,7 +246,14 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceToken: 91,
     });
 
-    assert.deepEqual(trace, ["drain", "browser", "pip", "automation", "durable:remote-a:7"]);
+    assert.deepEqual(trace, [
+      "drain",
+      "browser",
+      "pip",
+      "automation",
+      "queue-terminal:false:0",
+      "durable:remote-a:7",
+    ]);
 
     assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY"]);
     automationDecision = null;
@@ -271,11 +300,20 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceId: "remote-a:7:inbox-a:93",
       occurrenceToken: 93,
     });
-    assert.deepEqual(trace, ["browser", "pip", "automation", "durable:remote-a:7"]);
+    assert.deepEqual(trace, [
+      "browser",
+      "pip",
+      "automation",
+      "queue-terminal:false:0",
+      "durable:remote-a:7",
+    ]);
     assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null, null]);
     assert.deepEqual(deliveredHosts, ["remote-a", "remote-a", "remote-a"]);
 
     trace.length = 0;
+    conversations
+      .acquire("thread-a")
+      .installFollowerCanonicalState(liveNativeState("thread-a", "remote-a"));
     const archivedDisposition = yield* service.apply({
       hostId: "remote-a",
       generation: 7,
@@ -324,6 +362,118 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     );
     assert.deepEqual(trace, ["durable:remote-a:7", "close", "pip"]);
     widgetClearFailure = false;
+
+    trace.length = 0;
+    acceptsTerminal = false;
+    assert.strictEqual(
+      yield* service.apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: { method: "thread/deleted", params: { threadId: "thread-a" } },
+        occurrenceId: "foreign-core-row",
+        occurrenceToken: 98,
+      }),
+      "retain",
+    );
+    assert.deepEqual(trace, []);
+    acceptsTerminal = true;
+    const original = conversations.current("thread-a");
+    original!.installFollowerCanonicalState(liveNativeState("thread-a", "local"));
+    assert.strictEqual(
+      yield* service.apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: { method: "thread/archived", params: { threadId: "thread-a" } },
+        occurrenceId: "foreign-canonical",
+        occurrenceToken: 99,
+      }),
+      "retain",
+    );
+    assert.deepEqual(trace, []);
+    assert.strictEqual(conversations.current("thread-a"), original);
+
+    const admissionEntered = yield* Deferred.make<void>();
+    const releaseAdmission = yield* Deferred.make<void>();
+    original!.installFollowerCanonicalState(liveNativeState("thread-a", "remote-a"));
+    terminalAdmissionGate = Deferred.succeed(admissionEntered, undefined).pipe(
+      Effect.andThen(Deferred.await(releaseAdmission)),
+    );
+    const oldAdmission = yield* service
+      .apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: { method: "thread/deleted", params: { threadId: "thread-a" } },
+        occurrenceId: "held-core-admission",
+        occurrenceToken: 100,
+      })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(admissionEntered);
+    yield* conversations.retire("thread-a");
+    const foreignReplacement = conversations.entity("thread-a");
+    foreignReplacement.installFollowerCanonicalState(liveNativeState("thread-a", "local"));
+    yield* Deferred.succeed(releaseAdmission, undefined);
+    assert.strictEqual(yield* Fiber.join(oldAdmission), "retain");
+    assert.deepEqual(trace, []);
+    assert.strictEqual(conversations.current("thread-a"), foreignReplacement);
+    assert.strictEqual(foreignReplacement.readCanonicalState()?.hostId, "local");
+    terminalAdmissionGate = Effect.void;
+
+    foreignReplacement.installFollowerCanonicalState(liveNativeState("thread-a", "remote-a"));
+    const durableEntered = yield* Deferred.make<void>();
+    const releaseDurable = yield* Deferred.make<void>();
+    durableGate = Deferred.succeed(durableEntered, undefined).pipe(
+      Effect.andThen(Deferred.await(releaseDurable)),
+    );
+    const oldDurable = yield* service
+      .apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: { method: "thread/archived", params: { threadId: "thread-a" } },
+        occurrenceId: "held-durable-consequence",
+        occurrenceToken: 101,
+      })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(durableEntered);
+    yield* conversations.retire("thread-a");
+    const sameHostReplacement = conversations.entity("thread-a");
+    sameHostReplacement.installFollowerCanonicalState(liveNativeState("thread-a", "remote-a"));
+    const replacementState = sameHostReplacement.readCanonicalState();
+    yield* Deferred.succeed(releaseDurable, undefined);
+    yield* Fiber.join(oldDurable);
+    assert.deepEqual(trace, ["durable:remote-a:7"]);
+    assert.strictEqual(conversations.current("thread-a"), sameHostReplacement);
+    assert.strictEqual(sameHostReplacement.readCanonicalState(), replacementState);
+    durableGate = Effect.void;
+    trace.length = 0;
+
+    const coldEntered = yield* Deferred.make<void>();
+    const cold = yield* conversations
+      .admitExecution(
+        "cold-thread",
+        { hostId: "local", generation: 7 },
+        Deferred.succeed(coldEntered, undefined).pipe(Effect.andThen(Effect.never)),
+      )
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(coldEntered);
+    const coldEntity = conversations.current("cold-thread");
+    assert.isNull(coldEntity?.readCanonicalState());
+    assert.strictEqual(
+      yield* service.apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification: { method: "thread/archived", params: { threadId: "cold-thread" } },
+        occurrenceId: "foreign-cold-source",
+        occurrenceToken: 102,
+      }),
+      "retain",
+    );
+    assert.deepEqual(trace, ["durable:remote-a:7"]);
+    assert.strictEqual(conversations.current("cold-thread"), coldEntity);
+    assert.isNotNull(
+      conversations.captureNativeTerminalTarget("cold-thread", { hostId: "local", generation: 7 }),
+    );
+    yield* Fiber.interrupt(cold);
+    trace.length = 0;
 
     streamRole = { role: "owner" };
     const entity = conversations.acquire("thread-a");
@@ -396,5 +546,5 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       if (command?.type !== "commandExecution") return;
       assert.deepStrictEqual(command.commandActions, [{ type: "unknown", command: "fresh" }]);
     }
-  }),
+  }).pipe(Effect.scoped),
 );

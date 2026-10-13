@@ -6,14 +6,15 @@ import type {
 } from "@nodex/effect-codex-app-server/rpc";
 import { nativeReadOnlyBenchmarkEnvironment } from "./native-transcript-benchmark-preflight";
 
-type Method =
+type ReadMethod =
   | "initialize"
   | "thread/resume"
   | "thread/read"
   | "thread/turns/list"
   | "thread/items/list"
   | "thread/searchOccurrences";
-const methods = new Set<Method>([
+type FixtureMethod = ReadMethod | "thread/start" | "thread/name/set";
+const methods = new Set<ReadMethod>([
   "initialize",
   "thread/resume",
   "thread/read",
@@ -24,7 +25,7 @@ const methods = new Set<Method>([
 export interface NativeBenchmarkRequestSample {
   readonly requestId: number;
   readonly pid: number;
-  readonly method: Method;
+  readonly method: FixtureMethod;
   readonly phase: string;
   readonly startedAtEpochMs: number;
   readonly pipeWriteCompletedAtEpochMs: number | null;
@@ -33,7 +34,7 @@ export interface NativeBenchmarkRequestSample {
   readonly responseBytes: number;
 }
 interface Pending {
-  readonly method: Method;
+  readonly method: FixtureMethod;
   readonly phase: string;
   readonly startedAtMs: number;
   readonly startedAtEpochMs: number;
@@ -43,12 +44,17 @@ interface Pending {
   readonly reject: (error: Error) => void;
 }
 
-/** A separate official stdio process observes reads only and never overlaps the app's native process. */
-export async function createNativeTranscriptBenchmarkClient(input: {
+interface NativeTranscriptClientInput {
   executable: string;
   codexHome: string;
   cwd: string;
-}) {
+}
+
+/** One correlated stdio client owns its exact method allowlist and its child's shutdown. */
+async function createNativeTranscriptClient(
+  input: NativeTranscriptClientInput,
+  allowed: ReadonlySet<FixtureMethod>,
+) {
   const environment = {
     ...process.env,
     ...nativeReadOnlyBenchmarkEnvironment(process.env),
@@ -129,13 +135,13 @@ export async function createNativeTranscriptBenchmarkClient(input: {
   };
   child.on("error", rejectPending);
   child.on("exit", () => rejectPending(new Error("Owned official native process exited")));
-  const call = <M extends Method>(
-    method: M,
-    params: ClientRequestParamsByMethod[M],
+  const call = <K extends FixtureMethod>(
+    method: K,
+    params: ClientRequestParamsByMethod[K],
     phase: string,
-  ): Promise<ClientRequestResponsesByMethod[M]> => {
-    if (closed || !methods.has(method))
-      return Promise.reject(new Error("Read-only native request is unavailable"));
+  ): Promise<ClientRequestResponsesByMethod[K]> => {
+    if (closed || !allowed.has(method))
+      return Promise.reject(new Error("Native fixture request is unavailable"));
     const requestId = ++sequence;
     return new Promise((resolve, reject) => {
       const request: Pending = {
@@ -144,7 +150,7 @@ export async function createNativeTranscriptBenchmarkClient(input: {
         startedAtMs: performance.now(),
         startedAtEpochMs: Date.now(),
         pipeWriteCompletedAtEpochMs: null,
-        resolve: (value) => resolve(value as ClientRequestResponsesByMethod[M]),
+        resolve: (value) => resolve(value as ClientRequestResponsesByMethod[K]),
         reject,
         timer: setTimeout(() => {
           pending.delete(requestId);
@@ -194,3 +200,21 @@ export async function createNativeTranscriptBenchmarkClient(input: {
     throw error;
   }
 }
+
+/** Read-only benchmark callers cannot create Threads or execute a model Turn. */
+export async function createNativeTranscriptBenchmarkClient(input: NativeTranscriptClientInput) {
+  const client = await createNativeTranscriptClient(input, new Set<FixtureMethod>(methods));
+  const call = <K extends ReadMethod>(
+    method: K,
+    params: ClientRequestParamsByMethod[K],
+    phase: string,
+  ) => client.call(method, params, phase);
+  return { ...client, call };
+}
+
+/** Historical fixture setup may create empty Threads; model execution remains absent from its Interface. */
+export const createNativeTranscriptFixtureClient = (input: NativeTranscriptClientInput) =>
+  createNativeTranscriptClient(
+    input,
+    new Set<FixtureMethod>([...methods, "thread/start", "thread/name/set"]),
+  );

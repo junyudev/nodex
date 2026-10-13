@@ -48,7 +48,7 @@ function manager(endpoint: string, hostId = "local", direct = false) {
   const documents = new Map<string, Document>([["thread", { id: "thread", text: "initial" }]]);
   const request = vi.fn(async (input: { method: string; params: unknown }) => ({
     method: input.method,
-    result: { ok: true },
+    result: { ok: true } as { ok: boolean; applied?: boolean },
   }));
   const ownerUnavailable = vi.fn();
   const broadcasts = vi.fn();
@@ -135,6 +135,90 @@ const network = Effect.gen(function* () {
   const endpoints = yield* acquireCodexPeerEndpointManager(directory, () => {});
   return yield* Effect.tryPromise(() => endpoints.getOrStartRouterEndpoint());
 });
+
+it.effect(
+  "routes named queue controls through real ports and sockets only to their qualified current owner",
+  () =>
+    Effect.gen(function* () {
+      const endpoint = yield* network;
+      const acquire = (hostId: string, direct = false) =>
+        Effect.acquireRelease(
+          Effect.sync(() => manager(endpoint, hostId, direct)),
+          (value) => Effect.sync(value.dispose),
+        );
+      const main = yield* acquire("remote", true);
+      const follower = yield* acquire("remote");
+      const wrongHost = yield* acquire("local", true);
+      yield* Effect.tryPromise(async () => {
+        main.stream.setRole("thread", { role: "owner" });
+        wrongHost.stream.setRole("thread", { role: "owner" });
+        follower.stream.setFollowing("thread", true);
+        await vi.waitFor(() => expect(follower.stream.getRole("thread")?.role).toBe("follower"));
+        const ownerId = await main.getClientId();
+        const wrongHostId = await wrongHost.getClientId();
+        if (!ownerId || !wrongHostId) throw new Error("Peer identities missing");
+        main.request.mockImplementation(async ({ method }) => ({
+          method,
+          result: { ok: true, applied: true },
+        }));
+        for (const request of [
+          {
+            method: "thread-follower-remove-queued-message",
+            params: { conversationId: "thread", messageId: "target-capture" },
+          },
+          { method: "thread-follower-clear-queued-messages", params: { conversationId: "thread" } },
+        ]) {
+          const response = await follower.host.requestThreadFollower({
+            hostId: "remote",
+            targetClientId: ownerId,
+            request,
+          });
+          expect(response).toMatchObject({
+            resultType: "success",
+            handledByClientId: ownerId,
+            result: { applied: true },
+          });
+          expect(main.request).toHaveBeenLastCalledWith(request);
+        }
+        const count = main.request.mock.calls.length;
+        await expect(
+          follower.host.requestThreadFollower({
+            hostId: "remote",
+            targetClientId: ownerId,
+            request: {
+              method: "thread-follower-remove-queued-message",
+              params: { conversationId: "thread" },
+            },
+          }),
+        ).rejects.toThrow("identity");
+        expect(main.request).toHaveBeenCalledTimes(count);
+        expect(
+          await follower.host.requestThreadFollower({
+            hostId: "remote",
+            targetClientId: wrongHostId,
+            request: {
+              method: "thread-follower-clear-queued-messages",
+              params: { conversationId: "thread" },
+            },
+          }),
+        ).toMatchObject({ resultType: "error" });
+        expect(wrongHost.request).not.toHaveBeenCalled();
+        const followerId = await follower.getClientId();
+        if (!followerId) throw new Error("Follower identity missing");
+        expect(
+          await main.host.requestThreadFollower({
+            hostId: "remote",
+            targetClientId: followerId,
+            request: {
+              method: "thread-follower-clear-queued-messages",
+              params: { conversationId: "thread" },
+            },
+          }),
+        ).toMatchObject({ resultType: "error", error: "no-client-found" });
+        expect(follower.request).not.toHaveBeenCalled();
+      });
+    }).pipe(Effect.scoped),
+);
 
 it.effect("connects a direct Main peer and two window peers through the same ownership route", () =>
   Effect.gen(function* () {

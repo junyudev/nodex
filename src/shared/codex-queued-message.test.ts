@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { queuedMessagePromptInput, type CodexQueuedMessage } from "./codex-queued-message";
+import {
+  queuedMessagePromptInput,
+  captureCodexQueuedMessage,
+  createCodexQueuedMessageDeliveryReceipt,
+  readCodexQueuedMessageDeliveryReceipt,
+  type CodexQueuedMessage,
+} from "./codex-queued-message";
 
 function captured(untrustedAppMessage?: unknown): CodexQueuedMessage {
   return {
@@ -15,6 +21,58 @@ function captured(untrustedAppMessage?: unknown): CodexQueuedMessage {
     },
   };
 }
+
+test("unknown delivery retains the complete captured execution intent across JSON restoration", () => {
+  const message = {
+    ...captured(),
+    createdAt: 42,
+    submissionOptions: { serviceTier: "fast" as const, usePermissionSelection: true },
+    writingBlockAdditionalContext: {
+      draft: { value: "Captured draft context", kind: "untrusted" as const },
+    },
+    pausedReason: "Old operational pause",
+  };
+  const input = [{ type: "text" as const, text: "Actual dispatched input", text_elements: [] }];
+  const receipt = createCodexQueuedMessageDeliveryReceipt("remote-a", message, input, {
+    stage: "outcome-unknown",
+    requestId: "physical-steer",
+    method: "turn/steer",
+  });
+  const restored = JSON.parse(
+    JSON.stringify({ ...message, pausedReason: "Actual delivery unknown", submission: receipt }),
+  ) as CodexQueuedMessage;
+  expect(readCodexQueuedMessageDeliveryReceipt(restored)).toEqual({
+    ...receipt,
+    captured: captureCodexQueuedMessage(message),
+  });
+  expect(readCodexQueuedMessageDeliveryReceipt(restored)?.captured).toMatchObject({
+    createdAt: 42,
+    submissionOptions: { serviceTier: "fast", usePermissionSelection: true },
+    writingBlockAdditionalContext: {
+      draft: { value: "Captured draft context", kind: "untrusted" },
+    },
+  });
+  expect(readCodexQueuedMessageDeliveryReceipt(restored)?.captured.pausedReason).toBeUndefined();
+});
+
+test.each([
+  { method: "thread/resume" },
+  { requestId: Number.NaN },
+  { status: "queued" },
+  { captured: { ...captured(), submission: { status: "outcome-unknown" } } },
+])("restored queue dispatch evidence rejects an invalid boundary field %j", (invalid) => {
+  const receipt = createCodexQueuedMessageDeliveryReceipt("local", captured(), [], {
+    stage: "outcome-unknown",
+    requestId: 7,
+    method: "turn/start",
+  });
+  expect(
+    readCodexQueuedMessageDeliveryReceipt({
+      ...captured(),
+      submission: { ...receipt, ...invalid },
+    }),
+  ).toBeNull();
+});
 
 test("decodes persisted app provenance into editable typed input without retaining unrecognized fields", () => {
   const message: unknown = {

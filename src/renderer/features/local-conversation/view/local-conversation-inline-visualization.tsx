@@ -1,300 +1,31 @@
-import {
-  useContext,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-} from "react";
+import { useContext, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { NodexRetainedModalFocusBoundary } from "@/components/ui/retained-modal-focus-boundary";
-import { Maximize2 } from "@/components/shared/icons/generic-icons";
-import { CloseIcon, CopyIcon } from "@/components/shared/icons";
-import { toast } from "@/components/ui/toast";
 import { codexVisualizationQueryOptions } from "../../../lib/codex-visualizations";
-import {
-  createInlineVisualizationRuntime,
-  type InlineVisualizationRuntime,
-} from "../../../lib/inline-visualization/inline-visualization-runtime";
 import { INLINE_VISUALIZATION_INITIAL_HEIGHT } from "../../../lib/inline-visualization/inline-visualization-document";
 import { resolveInlineVisualizationSourceThreadId } from "../../../lib/inline-visualization/inline-visualization-directives";
 import {
   canExpandInlineVisualization,
-  INLINE_VISUALIZATION_PAINT_GUTTER,
   type InlineVisualizationMode,
 } from "../../../lib/inline-visualization/inline-visualization-presentation";
 import {
   useInlineVisualizationFollowUpHandler,
   useInlineVisualizationAnnotationSubmitHandler,
-  type InlineVisualizationFollowUpMessage,
 } from "../../../lib/inline-visualization/inline-visualization-follow-up-context";
+import { resolveInlineVisualizationStateIdentity } from "../../../lib/inline-visualization/inline-visualization-widget-state";
 import {
-  InlineVisualizationFollowUpReview,
-  useInlineVisualizationFollowUpReview,
-} from "./inline-visualization-follow-up-review";
+  inlineVisualizationFrameKey,
+  type InlineVisualizationFrameBinding,
+  type InlineVisualizationFrameIdentity,
+  type InlineVisualizationFrameInput,
+  type InlineVisualizationFrameOwner,
+} from "../../../lib/inline-visualization/inline-visualization-frame-owner";
 import { ConversationVisualizationContext } from "./inline-visualization-context";
-import type { CodexVisualizationStateIdentity } from "../../../../shared/codex-visualization-state";
 import {
-  createInlineVisualizationWidgetStateOwner,
-  resolveInlineVisualizationStateIdentity,
-} from "../../../lib/inline-visualization/inline-visualization-widget-state";
-import { InlineVisualizationAnnotationControls } from "./inline-visualization-annotation-controls";
+  InlineVisualizationSurfaceContext,
+  useInlineVisualizationFrameOwner,
+} from "./inline-visualization-window";
 
-const INITIAL = {
-  status: "loading" as const,
-  height: INLINE_VISUALIZATION_INITIAL_HEIGHT,
-  fullscreenHeight: null,
-  displayMode: "inline" as const,
-  error: null,
-};
-const subscribeNothing = () => () => {};
-const readInitial = () => INITIAL;
-const PAINT_STYLE: CSSProperties = {
-  "--visualize-paint-gutter": `${INLINE_VISUALIZATION_PAINT_GUTTER / 2}px`,
-} as CSSProperties;
-
-function VisualizationFrame({
-  html,
-  scopeId,
-  retry,
-  canExpand,
-  stateIdentity,
-}: {
-  html: string;
-  scopeId: string;
-  retry: () => void;
-  canExpand: boolean;
-  stateIdentity: CodexVisualizationStateIdentity | null;
-}) {
-  const followUp = useInlineVisualizationFollowUpHandler();
-  const annotationSubmit = useInlineVisualizationAnnotationSubmitHandler();
-  const followUpReview = useInlineVisualizationFollowUpReview();
-  const reviewFollowUp = followUpReview.review;
-  const [surface, setSurface] = useState<HTMLDivElement | null>(null);
-  const [runtime, setRuntime] = useState<InlineVisualizationRuntime | null>(null);
-  const [frame, setFrame] = useState<HTMLDivElement | null>(null);
-  const [boundary, setBoundary] = useState<HTMLDivElement | null>(null);
-  const [expandButton, setExpandButton] = useState<HTMLButtonElement | null>(null);
-  // Conversation lifecycle changes update actions without replacing the retained document.
-  const callbacks = useRef({ followUp, reviewFollowUp, canExpand, annotationSubmit });
-  useLayoutEffect(() => {
-    callbacks.current = { followUp, reviewFollowUp, canExpand, annotationSubmit };
-  });
-  const canSendFollowUp = followUp !== null;
-  const canSubmitAnnotations = annotationSubmit !== null;
-  const stateHostId = stateIdentity?.hostId;
-  const stateThreadId = stateIdentity?.threadId;
-  const statePath = stateIdentity?.path;
-  useLayoutEffect(() => {
-    if (!surface) return;
-    const value = createInlineVisualizationRuntime({
-      scopeId,
-      html,
-      ...(stateHostId && stateThreadId && statePath
-        ? {
-            widgetState: createInlineVisualizationWidgetStateOwner({
-              hostId: stateHostId,
-              threadId: stateThreadId,
-              path: statePath,
-            }),
-          }
-        : {}),
-      canExpand: () => callbacks.current.canExpand,
-      ...(canSubmitAnnotations
-        ? {
-            onSubmitAnnotations: async (message) => {
-              const submit = callbacks.current.annotationSubmit;
-              if (!submit) throw new Error("The conversation is unavailable");
-              await submit(message);
-            },
-          }
-        : {}),
-      ...(canSendFollowUp
-        ? {
-            followUp: async (message: InlineVisualizationFollowUpMessage) => {
-              const send = callbacks.current.followUp;
-              if (!send) throw new Error("The conversation is unavailable");
-              await send(message);
-            },
-          }
-        : {}),
-      reviewFollowUp: (message, signal) => callbacks.current.reviewFollowUp(message, signal),
-    });
-    surface.append(value.element);
-    setRuntime(value);
-    return () => {
-      void value.dispose();
-    };
-  }, [
-    surface,
-    scopeId,
-    html,
-    canSendFollowUp,
-    canSubmitAnnotations,
-    stateHostId,
-    stateThreadId,
-    statePath,
-  ]);
-  const snapshot = useSyncExternalStore(
-    runtime?.subscribe ?? subscribeNothing,
-    runtime?.getSnapshot ?? readInitial,
-    readInitial,
-  );
-  const expanded = snapshot.displayMode === "fullscreen";
-  const nativeHeight =
-    (expanded ? (snapshot.fullscreenHeight ?? snapshot.height) : snapshot.height) +
-    INLINE_VISUALIZATION_PAINT_GUTTER;
-  useLayoutEffect(() => {
-    runtime?.setDisplayMode("inline");
-  }, [runtime, canExpand]);
-  // The top layer escapes transformed transcript ancestors without reparenting the guest.
-  useLayoutEffect(() => {
-    const element = frame;
-    if (!element || !expanded) return;
-    element.showPopover();
-    return () => {
-      if (element.matches(":popover-open")) element.hidePopover();
-    };
-  }, [expanded, frame]);
-  useEffect(() => {
-    if (!expanded) return;
-    const close = (event: KeyboardEvent) => {
-      if (followUpReview.request) return;
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      runtime?.setDisplayMode("inline");
-    };
-    document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
-  }, [expanded, runtime, followUpReview.request]);
-  const setMode = (mode: "inline" | "fullscreen") => {
-    runtime?.setDisplayMode(mode);
-  };
-  const copyAsImage = async () => {
-    if (!runtime || snapshot.status !== "ready") return;
-    try {
-      await runtime.copyAsImage();
-      toast.success("Response copied as image");
-    } catch {
-      toast.danger("Unable to copy response as image");
-    }
-  };
-  return (
-    <div
-      ref={setBoundary}
-      data-inline-visualization="true"
-      data-content-search-skip="true"
-      data-visualization-status={snapshot.status}
-      style={{ ...PAINT_STYLE, height: snapshot.height }}
-    >
-      <NodexRetainedModalFocusBoundary
-        open={expanded}
-        modalElement={frame}
-        boundaryElement={boundary}
-        triggerElement={expandButton}
-        onClose={() => setMode("inline")}
-      >
-        <div
-          ref={setFrame}
-          popover={expanded ? "manual" : undefined}
-          role={expanded ? "dialog" : undefined}
-          aria-label={expanded ? "Interactive response" : undefined}
-          aria-modal={expanded ? true : undefined}
-          tabIndex={-1}
-          onPointerDown={(event) => {
-            if (!expanded || event.target !== event.currentTarget) return;
-            event.preventDefault();
-            setMode("inline");
-          }}
-          className={
-            expanded
-              ? "fixed inset-0 z-50 m-0 flex h-auto w-auto overflow-auto border-0 bg-token-main-surface-primary/90 p-8"
-              : "relative h-full"
-          }
-        >
-          {expanded ? (
-            <button
-              type="button"
-              aria-label="Exit fullscreen"
-              className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary"
-              onClick={() => setMode("inline")}
-            >
-              <CloseIcon className="size-4" />
-            </button>
-          ) : null}
-          <div
-            data-visualization-preview-content={expanded ? "true" : undefined}
-            className={
-              expanded
-                ? "m-auto w-full max-w-[80%] shrink-0 overflow-x-auto rounded-2xl border border-token-border-light bg-token-main-surface-primary p-8 shadow-2xl"
-                : "h-full"
-            }
-          >
-            <div
-              className={`group relative overflow-hidden rounded-lg ${expanded ? "w-full" : "-m-[var(--visualize-paint-gutter)] w-[calc(100%+var(--visualize-paint-gutter)*2)]"}`}
-              style={{ height: nativeHeight }}
-            >
-              {snapshot.status === "ready" ? (
-                <button
-                  type="button"
-                  aria-label="Copy as image"
-                  className={`absolute ${canExpand && !expanded ? "right-12" : "right-2"} top-2 z-10 grid size-9 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary ${expanded ? "" : "opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"}`}
-                  onClick={() => {
-                    void copyAsImage();
-                  }}
-                >
-                  <CopyIcon className="size-4" />
-                </button>
-              ) : null}
-              {canExpand ? (
-                <button
-                  ref={setExpandButton}
-                  type="button"
-                  aria-label="Open fullscreen"
-                  hidden={expanded}
-                  className="absolute right-2 top-2 z-10 grid size-9 place-items-center rounded-md bg-token-main-surface-primary/90 text-token-text-secondary opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                  onClick={() => setMode("fullscreen")}
-                >
-                  <Maximize2 className="size-4" />
-                </button>
-              ) : null}
-              {snapshot.status === "loading" ? (
-                <div
-                  role="status"
-                  aria-label="Loading interactive response"
-                  className="absolute inset-0 animate-pulse bg-token-foreground/5"
-                />
-              ) : null}
-              {snapshot.status === "error" ? (
-                <div
-                  role="alert"
-                  className="absolute inset-0 z-10 flex items-center justify-center gap-3 bg-token-main-surface-primary text-sm text-token-text-secondary"
-                >
-                  <span>This response couldn’t load</span>
-                  <button type="button" onClick={retry}>
-                    Retry
-                  </button>
-                </div>
-              ) : null}
-              <div ref={setSurface} className="h-full w-full" />
-              {runtime ? (
-                <InlineVisualizationAnnotationControls owner={runtime.annotations} />
-              ) : null}
-            </div>
-          </div>
-          <InlineVisualizationFollowUpReview
-            request={followUpReview.request}
-            settle={followUpReview.settle}
-            portalContainer={expanded ? frame : undefined}
-          />
-        </div>
-      </NodexRetainedModalFocusBoundary>
-    </div>
-  );
-}
-
-/** File reads and execution share the native source identity, independent of the visible Thread's cwd. */
+/** Reads preserve source identity; the mounted leaf only owns an anchor binding. */
 export function LocalConversationInlineVisualization({
   file,
   sourceThreadId,
@@ -307,20 +38,33 @@ export function LocalConversationInlineVisualization({
   readonly mode?: InlineVisualizationMode;
 }) {
   const context = useContext(ConversationVisualizationContext);
+  const owner = useInlineVisualizationFrameOwner();
+  const surfaceId = useContext(InlineVisualizationSurfaceContext);
   const instanceId = useId();
   const [attempt, setAttempt] = useState(0);
   if (!context) return null;
+  if (!owner || !surfaceId)
+    throw new Error("Interactive responses require a window presentation owner");
+  const source = resolveInlineVisualizationSourceThreadId({
+    file,
+    declaredSourceThreadId: sourceThreadId,
+    threadId: context.threadId,
+    changedFilePaths: context.readChangedFilePaths(),
+  });
+  const occurrence = cacheKey ?? context.turnSearchKey ?? instanceId;
   return (
     <LoadedVisualization
-      file={file}
-      sourceThreadId={resolveInlineVisualizationSourceThreadId({
-        file,
-        declaredSourceThreadId: sourceThreadId,
+      owner={owner}
+      identity={{
+        surfaceId,
+        hostId: context.hostId,
+        readHostId: context.hostId,
         threadId: context.threadId,
-        changedFilePaths: context.readChangedFilePaths(),
-      })}
-      context={context}
-      cacheKey={cacheKey ?? instanceId}
+        sourceThreadId: source,
+        file,
+        occurrence,
+      }}
+      turnId={context.turnId}
       attempt={attempt}
       mode={mode}
       retry={() => setAttempt((value) => value + 1)}
@@ -329,48 +73,81 @@ export function LocalConversationInlineVisualization({
 }
 
 function LoadedVisualization({
-  file,
-  sourceThreadId,
-  context,
-  cacheKey,
+  owner,
+  identity,
+  turnId,
   attempt,
   retry,
   mode,
 }: {
-  file: string;
-  sourceThreadId: string;
-  context: ConversationVisualizationContext;
-  cacheKey: string;
-  attempt: number;
-  retry: () => void;
-  mode: InlineVisualizationMode;
+  readonly owner: InlineVisualizationFrameOwner;
+  readonly identity: InlineVisualizationFrameIdentity;
+  readonly turnId: string | null;
+  readonly attempt: number;
+  readonly retry: () => void;
+  readonly mode: InlineVisualizationMode;
 }) {
-  const query = useQuery(
-    codexVisualizationQueryOptions(
+  const key = inlineVisualizationFrameKey(identity);
+  const query = useQuery({
+    ...codexVisualizationQueryOptions(
       {
-        hostId: context.hostId,
-        sourceThreadId,
-        file,
-        ...(context.turnId ? { turnId: context.turnId } : {}),
+        hostId: identity.readHostId,
+        sourceThreadId: identity.sourceThreadId,
+        file: identity.file,
+        ...(turnId ? { turnId } : {}),
       },
-      cacheKey,
+      identity.occurrence,
       "inline",
     ),
+    placeholderData: () => owner.readPlaceholder(identity),
+  });
+  const followUp = useInlineVisualizationFollowUpHandler();
+  const submitAnnotations = useInlineVisualizationAnnotationSubmitHandler();
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null);
+  const binding = useRef<InlineVisualizationFrameBinding | null>(null);
+  const [frameId, setFrameId] = useState<string | null>(null);
+  const loaded = !query.isError && query.data?.contents != null;
+  const input: InlineVisualizationFrameInput | null =
+    loaded && query.data?.contents != null
+      ? {
+          identity,
+          fragment: { contents: query.data.contents, path: query.data.path },
+          stateIdentity: resolveInlineVisualizationStateIdentity({
+            hostId: identity.hostId,
+            threadId: identity.threadId,
+            file: identity.file,
+            resolvedPath: query.data.path,
+          }),
+          attempt,
+          canExpand: canExpandInlineVisualization({ mode, variant: "inline" }),
+          retry: () => {
+            retry();
+            void query.refetch();
+          },
+          followUp,
+          submitAnnotations,
+        }
+      : null;
+  const currentInput = useRef(input);
+  currentInput.current = input;
+  useLayoutEffect(() => {
+    if (!anchor || !loaded || !currentInput.current) return;
+    const value = owner.bind(currentInput.current, anchor);
+    binding.current = value;
+    setFrameId(value.frameId);
+    return () => {
+      owner.unbind(value);
+      if (binding.current === value) binding.current = null;
+    };
+  }, [owner, key, anchor, loaded]);
+  useLayoutEffect(() => {
+    if (binding.current && input) owner.updateBinding(binding.current, input);
+  });
+  const frame = useSyncExternalStore(
+    (listener) => (frameId ? owner.subscribeFrame(frameId, listener) : () => {}),
+    () => (frameId ? owner.readFrame(frameId) : null),
   );
-  const scopeId = JSON.stringify([
-    context.hostId,
-    context.threadId,
-    sourceThreadId,
-    file,
-    context.turnId,
-    cacheKey,
-    attempt,
-  ]);
-  const retryResource = () => {
-    retry();
-    void query.refetch();
-  };
-  if (query.isError || (query.isSuccess && query.data.contents === null))
+  if (query.isError || (query.isSuccess && query.data?.contents === null))
     return (
       <div
         role="alert"
@@ -378,34 +155,32 @@ function LoadedVisualization({
         className="flex h-60 items-center justify-center gap-3 text-sm text-token-text-secondary"
       >
         <span>This response couldn’t load</span>
-        <button type="button" onClick={retryResource}>
+        <button
+          type="button"
+          onClick={() => {
+            retry();
+            void query.refetch();
+          }}
+        >
           Retry
         </button>
       </div>
     );
-  if (!query.data || query.data.contents === null)
-    return (
-      <div
-        role="status"
-        data-content-search-skip="true"
-        aria-label="Loading interactive response"
-        className="h-60 animate-pulse rounded-lg bg-token-foreground/5"
-      />
-    );
-  const stateIdentity = resolveInlineVisualizationStateIdentity({
-    hostId: context.hostId,
-    threadId: context.threadId,
-    file,
-    resolvedPath: query.data.path,
-  });
   return (
-    <VisualizationFrame
-      key={scopeId}
-      html={query.data.contents}
-      scopeId={scopeId}
-      retry={retryResource}
-      canExpand={canExpandInlineVisualization({ mode, variant: "inline" })}
-      stateIdentity={stateIdentity}
-    />
+    <div
+      ref={setAnchor}
+      data-visualization-anchor="true"
+      data-visualization-frame-anchor={frameId ?? undefined}
+      data-content-search-skip="true"
+      style={{ height: frame?.initialHeight ?? INLINE_VISUALIZATION_INITIAL_HEIGHT }}
+    >
+      {!loaded ? (
+        <div
+          role="status"
+          aria-label="Loading interactive response"
+          className="h-full animate-pulse rounded-lg bg-token-foreground/5"
+        />
+      ) : null}
+    </div>
   );
 }

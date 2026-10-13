@@ -278,6 +278,13 @@ test("benchmarks native paginated history without running a model Turn", async (
     let attachmentEvidence: NativeAttachmentEvidence | null = null;
     const authPath = path.join(harness.profile.codexHome, "auth.json");
     let authCopied = false;
+    const profileIdentity = {
+      runId: harness.profile.runId,
+      isolatedHome: harness.profile.nodexHome,
+      isolatedCodexHome: harness.profile.codexHome,
+    };
+    let ownedElectronPid: number | null = null;
+    let lastProcessEvidence: Awaited<ReturnType<typeof processEvidence>> | null = null;
     try {
       const target = path.join(
         harness.profile.codexHome,
@@ -319,6 +326,7 @@ test("benchmarks native paginated history without running a model Turn", async (
         await adopter.close();
       }
       const page = await harness.launch();
+      ownedElectronPid = harness.application.process().pid ?? null;
       await harness.application.evaluate(({ BrowserWindow }) => {
         const windows = BrowserWindow.getAllWindows();
         if (windows.length !== 1) throw new Error("Benchmark requires one owned window");
@@ -416,6 +424,7 @@ test("benchmarks native paginated history without running a model Turn", async (
         })
         .toContain("resumed");
       const before = await processEvidence(harness);
+      lastProcessEvidence = before;
       const geometry = await page
         .locator("[data-local-conversation-thread-body=true]")
         .evaluate((element) => ({
@@ -452,6 +461,7 @@ test("benchmarks native paginated history without running a model Turn", async (
       const wheel = await measureTranscriptWheel(page, 30);
       const find = await measureFind(page, corpus.corpus, `${resultPath}.find-failure.json`);
       const after = await processEvidence(harness);
+      lastProcessEvidence = after;
       const electronPid = harness.application.process().pid;
       await harness.stopElectron();
       // A separate official native process runs only after the app process has closed.
@@ -533,11 +543,7 @@ test("benchmarks native paginated history without running a model Turn", async (
             attachmentEvidence,
             sourceBuild: preparedBuild,
             runtime: preflight.runtime,
-            profileIdentity: {
-              runId: harness.profile.runId,
-              isolatedHome: harness.profile.nodexHome,
-              isolatedCodexHome: harness.profile.codexHome,
-            },
+            profileIdentity,
             ownership: { electronPid },
             environment: {
               cpuModel: cpus()[0]?.model,
@@ -591,7 +597,7 @@ test("benchmarks native paginated history without running a model Turn", async (
     } catch (error) {
       await writeFile(
         resultPath,
-        `${JSON.stringify({ corpus: corpus.corpus, failed: true, authCopied, attachmentEvidence, error: error instanceof Error ? error.message : String(error), nativeSamples }, null, 2)}\n`,
+        `${JSON.stringify({ corpus: corpus.corpus, failed: true, authCopied, profileIdentity, ownership: { electronPid: ownedElectronPid, lastProcessEvidence }, attachmentEvidence, error: error instanceof Error ? error.message : String(error), nativeSamples }, null, 2)}\n`,
       );
       throw error;
     } finally {

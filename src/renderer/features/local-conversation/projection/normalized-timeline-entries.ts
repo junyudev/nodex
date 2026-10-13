@@ -124,7 +124,14 @@ export function projectNormalizedTimelineEntries(input: {
   readonly historyRows: readonly CodexHistoryRow[] | null;
 } {
   const timeline = input.structure?.itemTimeline;
-  if (!timeline) return { entries: input.entries, historyRows: input.structure?.timeline ?? null };
+  if (!timeline)
+    return {
+      entries: input.entries,
+      historyRows:
+        input.structure?.timeline?.map((row) =>
+          row.kind === "content" ? { ...row, turnKey: row.key } : row,
+        ) ?? null,
+    };
 
   const byTurnId = new Map(
     input.entries.flatMap((entry) =>

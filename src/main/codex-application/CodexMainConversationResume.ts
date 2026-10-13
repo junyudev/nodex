@@ -198,7 +198,7 @@ export const make = Effect.gen(function* () {
                       threadId,
                       cause: new Error("Conversation resume is already buffering native events"),
                     });
-                  entity.setResumeState("resuming");
+                  entity.setResumeState("resuming", { hostId, generation: nativeGeneration });
                   const metadata = yield* Fiber.join(metadataRead);
                   yield* checkCurrent;
                   if (metadata && metadata.id !== threadId)
@@ -246,6 +246,7 @@ export const make = Effect.gen(function* () {
                     manager.stream.setRole(threadId, { role: "owner" });
                     acquiredRole = true;
                   }
+                  const admittedQueueOwner = manager.stream.getRole(threadId);
                   const environmentSelectionEvidenceAtDispatch =
                     entity.readCanonicalState()?.environmentSelectionEvidence;
                   const response = yield* requestMainConversationResume(
@@ -266,6 +267,13 @@ export const make = Effect.gen(function* () {
                       cause: new Error("Resume returned another thread"),
                     });
                   const entry = yield* directory.acceptResumeResult({
+                    canRecordQueueAcceptance: () =>
+                      !invalidated &&
+                      managers.current(hostId) === manager &&
+                      manager.generation === nativeGeneration &&
+                      entities.current(threadId) === entity &&
+                      admittedQueueOwner?.role === "owner" &&
+                      manager.stream.getRole(threadId) === admittedQueueOwner,
                     response: projectCodexGatewayThreadResumeResponse(response),
                     requestedCwd: prepared.requestedCwd,
                     environmentSelectionEvidenceAtDispatch,

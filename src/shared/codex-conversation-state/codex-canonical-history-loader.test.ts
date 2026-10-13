@@ -1,6 +1,7 @@
 import { hydrateCanonicalHistorySearchMatch } from "./codex-canonical-history-search";
 import { describe, expect, test } from "vite-plus/test";
 import { produce } from "immer";
+import { discardCodexAcceptedServerQueueSubmission } from "../codex-native-queued-submission";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -33,7 +34,7 @@ import {
 
 type Method = "thread/turns/list" | "thread/items/list";
 
-test("late history completion evidence preserves newer live item lifecycle observations", () => {
+test("history completion advances monotonically alongside live item evidence", () => {
   const state = createCodexCanonicalHydratedConversationState(
     { ...buildAgentActivityV2CorpusThread([]), turns: [rawTurn("turn")] },
     {
@@ -52,7 +53,7 @@ test("late history completion evidence preserves newer live item lifecycle obser
   const [result] = withCanonicalHistoryItemCompletion([live], {
     completedItemIdsByTurnId: { turn: { finished: false, started: true, historyOnly: true } },
   });
-  expect(result!.completedItemIds).toEqual({ finished: true, started: false, historyOnly: true });
+  expect(result!.completedItemIds).toEqual({ finished: true, started: true, historyOnly: true });
 });
 type Request = {
   method: Method;
@@ -190,6 +191,153 @@ describe("canonical history operation ownership", () => {
     });
     expect(f.read().lastInjectedPassiveContextKey).toBe("confirmed-live-context");
   });
+  test.each(["owner", "readonly", "lost-owner", "started-echo"] as const)(
+    "native queue cleanup recovery follows the actual history owner: %s",
+    async (role) => {
+      const f = harness();
+      let owns = role !== "readonly";
+      f.client.canRecordQueueAcceptance = () => owns;
+      const input = [{ type: "text" as const, text: "Stored native input", text_elements: [] }];
+      const raw = { id: "native-queue", clientUserMessageId: "queue-client", input };
+      f.mutate((draft) => {
+        const turn = conversationTurnDraft(
+          draft,
+          residentConversationTurnEntries(draft)[0]!.address,
+        )!;
+        turn.status = "inProgress";
+        turn.itemsPagination!.openingUserMessageId = "original-opening";
+        turn.itemsPagination!.oldestUserInput = [
+          { type: "text", text: "Original opening", text_elements: [] },
+        ];
+        turn.items = [
+          {
+            type: "steeringUserMessage",
+            id: "pending",
+            status: "pending",
+            targetTurnId: "turn",
+            targetTurnStartedAtMs: null,
+            clientUserMessageId: raw.clientUserMessageId,
+            input,
+            serverQueuedSubmission: raw,
+            attachments: [],
+            restoreMessage: { context: { commentAttachments: [] } },
+            compareKey: { rawText: input[0]!.text, imageCount: 0 },
+          },
+        ];
+      });
+      const entered = deferred<void>();
+      const released = deferred<void>();
+      f.handle(async () => {
+        entered.resolve();
+        await released.promise;
+        return {
+          data: [
+            {
+              turnId: "turn",
+              item: {
+                type: "userMessage",
+                id: "echo",
+                clientId: raw.clientUserMessageId,
+                content: input,
+              },
+              startedAtMs: 10,
+              completedAtMs: role === "started-echo" ? null : 20,
+            },
+          ],
+          nextCursor: null,
+          backwardsCursor: null,
+        };
+      });
+      using loader = new CanonicalHistoryItemLoader(f.client);
+      const pending = loader.loadTurnItems("conversation", "turn", false, {
+        priority: "interactive",
+      });
+      await entered.promise;
+      if (role === "lost-owner") owns = false;
+      released.resolve();
+      await pending;
+      expect(f.read().unconfirmedServerQueueMessages).toEqual(role === "owner" ? [raw] : undefined);
+      const steer = residentConversationTurns(f.read())[0]?.items.find(
+        (item) => item.type === "steeringUserMessage",
+      );
+      expect(steer).toMatchObject({
+        status: "accepted",
+        acceptedInput: input,
+        serverQueuedSubmission: raw,
+      });
+    },
+  );
+
+  test("a restored started echo advances to completed evidence without another dispatch", async () => {
+    const f = harness();
+    f.client.canRecordQueueAcceptance = () => true;
+    const input = [{ type: "text" as const, text: "Stored native input", text_elements: [] }];
+    const raw = { id: "native-queue", clientUserMessageId: "queue-client", input };
+    f.mutate((draft) => {
+      const turn = conversationTurnDraft(
+        draft,
+        residentConversationTurnEntries(draft)[0]!.address,
+      )!;
+      turn.status = "inProgress";
+      turn.itemsPagination!.openingUserMessageId = "original-opening";
+      turn.itemsPagination!.oldestUserInput = [
+        { type: "text", text: "Original opening", text_elements: [] },
+      ];
+      turn.items = [
+        {
+          type: "steeringUserMessage",
+          id: "pending",
+          status: "pending",
+          targetTurnId: "turn",
+          targetTurnStartedAtMs: null,
+          clientUserMessageId: raw.clientUserMessageId,
+          input,
+          serverQueuedSubmission: raw,
+          attachments: [],
+          restoreMessage: { context: { commentAttachments: [] } },
+          compareKey: { rawText: input[0]!.text, imageCount: 0 },
+        },
+      ];
+    });
+    let read = 0;
+    f.handle(async () => {
+      read++;
+      return {
+        data: [
+          {
+            turnId: "turn",
+            item: {
+              type: "userMessage",
+              id: "echo",
+              clientId: raw.clientUserMessageId,
+              content: input,
+            },
+            startedAtMs: 10,
+            completedAtMs: read === 2 ? 20 : null,
+          },
+        ],
+        nextCursor: read === 3 ? null : `page-${read}`,
+        backwardsCursor: null,
+      };
+    });
+    using loader = new CanonicalHistoryItemLoader(f.client);
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.read().unconfirmedServerQueueMessages).toBeUndefined();
+    expect(residentConversationTurns(f.read())[0]?.completedItemIds?.echo).toBe(false);
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.read().unconfirmedServerQueueMessages).toEqual([raw]);
+    expect(residentConversationTurns(f.read())[0]?.completedItemIds?.echo).toBe(true);
+    f.mutate((draft) => discardCodexAcceptedServerQueueSubmission(draft, raw));
+    await loader.loadTurnItems("conversation", "turn", false, { priority: "interactive" });
+    expect(f.read().unconfirmedServerQueueMessages).toBeUndefined();
+    expect(residentConversationTurns(f.read())[0]?.completedItemIds?.echo).toBe(true);
+    expect(f.calls.map((call) => call.method)).toEqual([
+      "thread/items/list",
+      "thread/items/list",
+      "thread/items/list",
+    ]);
+  });
+
   test("retries the same item anchor with smaller pages and preserves wrapper evidence", async () => {
     const f = harness();
     const anchor = { type: "item" as const, itemId: "anchor" };

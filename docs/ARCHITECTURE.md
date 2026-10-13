@@ -452,6 +452,12 @@ closes controller admission, detaches all global/partition/owner ingress and clo
 Conversation HTML responses use that same sandbox host with a distinct origin scope and presentation-only
 MessagePort handlers. Their typed file query belongs to the conversation application and derives read
 roots from the source Thread's execution context; guest HTML never receives filesystem or tool authority.
+The renderer window owns retained HTML occurrences independently of file-query and transcript-leaf
+lifetimes. Thread surfaces lease connected presentation anchors, while the window preserves each guest
+and its document height until the owning Thread or window lifecycle releases it. Presentation revisions
+revoke gesture and capture authority without retiring the guest's protocol ports; inactive or superseded
+actions cannot publish after a later presentation resumes. The [transcript contract](product-specs/codex-thread-transcript-behavior.md)
+defines occurrence identity, retention, and release behavior.
 External navigation consumes a single native input gesture from the attached guest and its owning window.
 Document download capabilities belong to their execution attempt and consume that same native gesture
 authority. Image capture and guest release resolve the exact owner and init registration; release removes
@@ -785,6 +791,11 @@ operation-specific preconditions belong to the conversation manager; generated n
 routing does not repeat owner election. See [Owner/Followers](product-specs/codex-thread-owner-follower-streaming.md)
 and [Transcript Behavior](product-specs/codex-thread-transcript-behavior.md).
 
+Transcript Markdown consumes a shared immutable syntax projection. Each mounted document owns
+committed element identities, incremental presentation and animation lifetime independently of the
+canonical conversation. Preparing a render cannot mutate those committed identities. Public rendering
+leaves consume that projection without acquiring another source-text or conversation owner.
+
 Sidebar Sections are a Profile-wide organization projection owned by Core Workspace, independent
 of Project execution ownership. Direct placement uses stable Project or Session identities; a
 Session may otherwise inherit its Project's effective Section. Main projects only attached Threads
@@ -800,7 +811,10 @@ so startup and replacement cannot lose an accepted occurrence. The application p
 occurrences, gives Main's manager its own resume/start ingress buffers, and forwards original
 native envelopes to participating windows. Each manager applies ingress according to its own
 role and captured lifetime. Durable product consequences enter Main's Thread causal lane; that
-lane does not serialize or authorize another peer's local canonical mutations.
+lane does not serialize or authorize another peer's local canonical mutations. Reserving a command
+lane does not establish a live native conversation. Native lifecycle authority belongs to the
+captured Entity and its execution host and Endpoint generation; terminal observations preserve
+that authority while serializing durable consequences with workspace handoff.
 
 A Thread causal lane is intentionally non-reentrant. Admission capabilities that can materialize
 or resolve a Thread—and therefore may enter that lane themselves—run before a command acquires the

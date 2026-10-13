@@ -3,6 +3,7 @@ import * as Deferred from "effect/Deferred";
 import { layer as callbacks } from "../app/ScopedCallbackRuntime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -18,12 +19,93 @@ import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadDirectory, CodexThreadDirectoryError } from "./CodexThreadDirectory";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { ConversationCommands, live } from "./ConversationCommands";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import {
+  ConversationEntityMap,
+  live as conversationEntityMapLive,
+} from "./internal/ConversationEntityMap";
 
 const threadDirectory = CodexThreadDirectory.of({
   resolve: ({ threadId }: { readonly threadId: string }) =>
     Effect.succeed(threadId === "acp-thread" ? null : ({} as never)),
 } as unknown as CodexThreadDirectory["Service"]);
+
+it.effect("archive and deletion complete before their real command generation retires", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const archiveStarted = yield* Deferred.make<void>();
+      const releaseArchive = yield* Deferred.make<void>();
+      let holdArchive = false;
+      let deletionEntered = false;
+      const context = yield* Layer.build(
+        live.pipe(
+          Layer.provideMerge(conversationEntityMapLive),
+          Layer.provide(
+            Layer.mergeAll(
+              callbacks,
+              Layer.succeed(
+                CodexConversationArchive,
+                CodexConversationArchive.of({
+                  archive: () =>
+                    Effect.suspend(() =>
+                      holdArchive
+                        ? Deferred.succeed(archiveStarted, undefined).pipe(
+                            Effect.andThen(Deferred.await(releaseArchive)),
+                            Effect.as(true),
+                          )
+                        : Effect.succeed(true),
+                    ),
+                  deleteArchived: () =>
+                    Effect.sync(() => {
+                      deletionEntered = true;
+                      return true;
+                    }),
+                  unarchive: () => Effect.succeed(null),
+                }),
+              ),
+              Layer.succeed(
+                CodexConversationProjection,
+                CodexConversationProjection.of({} as CodexConversationProjection["Service"]),
+              ),
+              Layer.succeed(CodexGateway, CodexGateway.of({} as CodexGateway["Service"])),
+              Layer.succeed(
+                CodexServerRequestResponses,
+                CodexServerRequestResponses.of({} as CodexServerRequestResponses["Service"]),
+              ),
+              Layer.succeed(
+                CodexSubagentDirectory,
+                CodexSubagentDirectory.of({} as CodexSubagentDirectory["Service"]),
+              ),
+              Layer.succeed(
+                CodexThreadGoalRuntime,
+                CodexThreadGoalRuntime.of({} as CodexThreadGoalRuntime["Service"]),
+              ),
+              Layer.succeed(CodexThreadDirectory, threadDirectory),
+            ),
+          ),
+        ),
+      );
+      const commands = Context.get(context, ConversationCommands);
+      const entities = Context.get(context, ConversationEntityMap);
+      assert.isTrue(yield* commands.archive("thread-a"));
+      assert.isNull(entities.current("thread-a"));
+      assert.isTrue(yield* commands.deleteArchived("thread-a"));
+      assert.isNull(entities.current("thread-a"));
+      holdArchive = true;
+      deletionEntered = false;
+      const archiving = yield* commands.archive("thread-a").pipe(Effect.forkChild);
+      yield* Deferred.await(archiveStarted);
+      const deletion = yield* commands.deleteArchived("thread-a").pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseArchive, undefined);
+      assert.isTrue(yield* Fiber.join(archiving));
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(deletion)));
+      assert.isFalse(deletionEntered);
+      assert.isTrue(yield* commands.deleteArchived("thread-a"));
+      assert.isTrue(deletionEntered);
+      assert.isNull(entities.current("thread-a"));
+    }),
+  ),
+);
 
 it.effect("commits interruption without waking queued work before terminal completion", () =>
   Effect.scoped(

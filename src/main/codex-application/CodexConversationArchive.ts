@@ -439,7 +439,11 @@ export const make: Effect.Effect<
         events.publish({
           kind: "codex",
           value: threadMissing
-            ? { type: "threadDeleted", threadId: normalizedThreadId }
+            ? {
+                type: "threadDeleted",
+                hostId: thread.executionHostId,
+                threadId: normalizedThreadId,
+              }
             : { type: "threadArchivedState", threadId: normalizedThreadId, archived: true },
         });
         if (automationRun && automationMessages) {
@@ -543,7 +547,7 @@ export const make: Effect.Effect<
         );
         events.publish({
           kind: "codex",
-          value: { type: "threadDeleted", threadId: normalizedThreadId },
+          value: { type: "threadDeleted", hostId: source.hostId, threadId: normalizedThreadId },
         });
         return true;
       });

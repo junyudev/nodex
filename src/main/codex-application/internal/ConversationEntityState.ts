@@ -276,6 +276,13 @@ export const conversationIngressOverflow = (threadId: string) =>
   });
 
 export interface ConversationEntityState {
+  /** Physical execution and terminal leases belong to this exact process-local generation. */
+  readonly retainNativeExecution: (
+    scope: Pick<CodexApplicationProtocolOccurrence, "hostId" | "generation">,
+  ) => Disposable;
+  readonly hasNativeLifecycle: (
+    scope: Pick<CodexApplicationProtocolOccurrence, "hostId" | "generation">,
+  ) => boolean;
   readonly mutateCanonicalState: (
     recipe: (draft: Draft<CodexCanonicalConversationState>) => void,
     observedAtMs: number,
@@ -304,7 +311,10 @@ export interface ConversationEntityState {
   /** Applies the canonical read-state transition to every loaded conversation projection. */
   readonly setHasUnreadTurn: (hasUnreadTurn: boolean) => boolean;
   readonly readResumeState: () => CodexConversationResumeState;
-  readonly setResumeState: (state: CodexConversationResumeState) => void;
+  readonly setResumeState: (
+    state: CodexConversationResumeState,
+    scope?: Pick<CodexApplicationProtocolOccurrence, "hostId" | "generation">,
+  ) => void;
   readonly isStreaming: () => boolean;
   readonly setStreaming: (isStreaming: boolean) => void;
   readonly readTurnPagination: () => CodexConversationTurnPagination;
@@ -445,6 +455,10 @@ export interface ConversationEntityState {
 }
 
 export interface ConversationEntityStateRegistry {
+  /** Reserves the causal generation without materializing a native lifecycle capability. */
+  readonly reserveGeneration: (threadId: string) => number;
+  readonly currentGeneration: (threadId: string) => number | undefined;
+  readonly isCurrentGeneration: (threadId: string, generation: number) => boolean;
   readonly subscribeRetired: (
     listener: (threadId: string, generation: number) => void,
   ) => Disposable;
@@ -739,6 +753,9 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
     threadId: string,
     aggregate: MutableConversationEntityState,
   ): ConversationEntityState => {
+    const nativeExecutions = new Map<string, number>();
+    let resumeScope: Pick<CodexApplicationProtocolOccurrence, "hostId" | "generation"> | null =
+      null;
     const mutateCanonicalState = (
       recipe: (draft: Draft<CodexCanonicalConversationState>) => void,
       observedAtMs: number,
@@ -813,6 +830,35 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
     };
 
     return {
+      retainNativeExecution: (scope) => {
+        const key = `${scope.hostId}\u0000${scope.generation}`;
+        nativeExecutions.set(key, (nativeExecutions.get(key) ?? 0) + 1);
+        let released = false;
+        return {
+          [Symbol.dispose]: () => {
+            if (released) return;
+            released = true;
+            const remaining = (nativeExecutions.get(key) ?? 1) - 1;
+            if (remaining === 0) nativeExecutions.delete(key);
+            else nativeExecutions.set(key, remaining);
+          },
+        };
+      },
+      hasNativeLifecycle: ({ hostId, generation }) => {
+        const canonical = aggregate.document.canonicalState;
+        const sourceHost = canonical?.hostId ?? aggregate.snapshot?.executionHostId;
+        if (sourceHost !== undefined && sourceHost !== hostId) return false;
+        return (
+          (sourceHost === hostId && (canonical !== null || aggregate.snapshot !== null)) ||
+          (aggregate.resumeState === "resuming" &&
+            resumeScope?.hostId === hostId &&
+            resumeScope.generation === generation) ||
+          (aggregate.threadStartDeferred &&
+            aggregate.threadStartEventBufferFence?.hostId === hostId &&
+            aggregate.threadStartEventBufferFence.generation === generation) ||
+          nativeExecutions.has(`${hostId}\u0000${generation}`)
+        );
+      },
       mutateCanonicalState: (recipe, observedAtMs, broadcast = true) => {
         const previous = aggregate.mutationBroadcast;
         aggregate.mutationBroadcast = broadcast;
@@ -904,7 +950,8 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         return true;
       },
       readResumeState: () => aggregate.resumeState,
-      setResumeState: (state) => {
+      setResumeState: (state, scope) => {
+        resumeScope = state === "resuming" && scope ? scope : null;
         const canonical = aggregate.document.canonicalState;
         if (
           aggregate.resumeState === state &&
@@ -1533,6 +1580,10 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
   };
 
   return {
+    reserveGeneration: (threadId) => ensureState(threadId).generation,
+    currentGeneration: (threadId) => aggregates.get(threadId)?.generation,
+    isCurrentGeneration: (threadId, generation) =>
+      aggregates.get(threadId)?.generation === generation,
     subscribeRetired: (listener) => {
       retirementListeners.add(listener);
       return {

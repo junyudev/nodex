@@ -1086,6 +1086,7 @@ export interface ThreadComposerShellPendingSteerRowModel {
 }
 
 export interface ThreadComposerShellQueuedFollowUpRowModel {
+  readonly canSendNow?: boolean;
   followUpId: string;
   threadId: string;
   prompt: string;

@@ -1,5 +1,9 @@
 import { enablePatches, produceWithPatches, type Draft, type Patch } from "immer";
 import {
+  appendCodexAcceptedServerQueueSubmission,
+  equalCodexQueueValue,
+} from "../codex-native-queued-submission";
+import {
   residentConversationTurnEntries,
   conversationTurnDraft,
   appendConversationTurnDraft,
@@ -655,6 +659,16 @@ function mutateItemCompleted(
     if (pending?.type === "steeringUserMessage") {
       pending.status = "accepted";
       pending.serverUserMessageId = item.id;
+      pending.acceptedInput = item.content;
+      const nativeQueued = pending.serverQueuedSubmission;
+      if (
+        nativeQueued &&
+        item.clientId === nativeQueued.clientUserMessageId &&
+        pending.clientUserMessageId === nativeQueued.clientUserMessageId &&
+        equalCodexQueueValue(nativeQueued.input, pending.input) &&
+        equalCodexQueueValue(nativeQueued.input, item.content)
+      )
+        appendCodexAcceptedServerQueueSubmission(state, nativeQueued);
       const echoIndex = turn.items.findIndex((candidate) => candidate.id === item.id);
       if (echoIndex >= 0 && pendingIndex > echoIndex)
         turn.items.splice(echoIndex, 0, ...turn.items.splice(pendingIndex, 1));

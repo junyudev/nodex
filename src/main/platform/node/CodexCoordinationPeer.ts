@@ -11,6 +11,11 @@ import {
   type CodexPeerBroadcast,
 } from "../../../shared/codex-peer-protocol";
 import { CodexPeerClient } from "./CodexPeerClient";
+import {
+  isCodexQueuedMessageFollowerMethod,
+  parseCodexQueuedMessageFollowerRequest,
+  parseCodexQueuedMessageFollowerResult,
+} from "../../../shared/codex-queued-message-follower-request";
 
 type CoordinationPeerView = {
   [Method in keyof ConversationCoordinationView]: (
@@ -90,6 +95,8 @@ class CoordinationHost extends RpcTarget implements ConversationCoordinationHost
   async requestThreadFollower(
     input: Parameters<ConversationCoordinationHost["requestThreadFollower"]>[0],
   ) {
+    if (isCodexQueuedMessageFollowerMethod(input.request.method))
+      parseCodexQueuedMessageFollowerRequest(input.request.method, input.request.params);
     const timeoutMs = await this.initializationBudget(input.timeoutMs);
     const { method, params } = input.request;
     if (method === "thread-follower-start-turn" && hasUntrustedAppInput(params)) {
@@ -208,6 +215,13 @@ export function connectCoordinationPeer(
     peer.addRequestHandler(
       method,
       async (params, request) => {
+        if (isCodexQueuedMessageFollowerMethod(method)) {
+          try {
+            parseCodexQueuedMessageFollowerRequest(method, params);
+          } catch {
+            return false;
+          }
+        }
         const target = params as { conversationId: string };
         return (
           (await withServiceDeadline(
@@ -221,10 +235,25 @@ export function connectCoordinationPeer(
         );
       },
       async (request) => {
+        const queued = isCodexQueuedMessageFollowerMethod(method)
+          ? parseCodexQueuedMessageFollowerRequest(method, request.params)
+          : null;
+        const view = getView();
+        if (queued) {
+          const role = await withServiceDeadline(
+            view.getThreadRole({
+              hostId: request.hostId ?? "local",
+              conversationId: queued.params.conversationId,
+            }),
+            5_000,
+            "thread-role-timeout",
+          );
+          if (role !== "owner") throw new Error("Queued message receiver is not the owner");
+        }
         const response = await readServiceResponse<
           Awaited<ReturnType<ConversationCoordinationView["requestThreadFollower"]>>
         >(
-          getView().requestThreadFollower({
+          view.requestThreadFollower({
             hostId: request.hostId ?? "local",
             request: { method, params: request.params },
           }),
@@ -232,6 +261,8 @@ export function connectCoordinationPeer(
           `${method}-timeout`,
         );
         if (response.method !== method) throw new Error("thread-follower-response-method-mismatch");
+        if (isCodexQueuedMessageFollowerMethod(method))
+          return parseCodexQueuedMessageFollowerResult(response.result);
         return response.result;
       },
     );

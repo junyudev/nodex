@@ -1936,6 +1936,10 @@ export interface IpcApi {
     args: [input: { readonly sandboxId: string; readonly initId: string }];
     result: boolean;
   };
+  "codex:visualization:set-presentation": {
+    args: [input: import("./mcp-app/mcp-app-sandbox-contract").McpAppSandboxPresentationInput];
+    result: boolean;
+  };
   "codex:account:rate-limit-reset:consume": {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;

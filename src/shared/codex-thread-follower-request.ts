@@ -5,8 +5,10 @@ import type { PermissionsRequestApprovalResponse } from "@nodex/codex-app-server
 import type { ToolRequestUserInputResponse } from "@nodex/codex-app-server-protocol/v2/ToolRequestUserInputResponse";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
 import type { TurnSteerParams } from "@nodex/codex-app-server-protocol/v2/TurnSteerParams";
+import type { QueuedSubmission } from "@nodex/codex-app-server-protocol/v2/QueuedSubmission";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { CodexVisualizationPassiveContext } from "./codex-visualization-passive-context";
+import type { CodexQueuedMessageFollowerParams } from "./codex-queued-message-follower-request";
 
 /** Transport carries a prepared native request; owners must not reconstruct it from composer text. */
 export interface ConversationFollowerTurnStart {
@@ -23,12 +25,13 @@ export interface ConversationFollowerTurnStart {
     mcpAppModelContextAttachments?: unknown;
     responseItems?: unknown;
     passiveContext?: CodexVisualizationPassiveContext;
+    serverQueuedSubmission?: QueuedSubmission;
   };
 }
 
 type Conversation = { conversationId: string };
 type Request = Conversation & { requestId: RequestId };
-export interface ConversationFollowerParams {
+export interface ConversationFollowerParams extends CodexQueuedMessageFollowerParams {
   "thread-follower-set-queued-follow-ups-state": Conversation & {
     state: Record<string, readonly unknown[]>;
   };
@@ -65,6 +68,7 @@ export interface ConversationFollowerParams {
     serviceTier?: TurnStartParams["serviceTier"];
     attachments?: unknown;
     clientUserMessageId?: string;
+    serverQueuedSubmission?: QueuedSubmission;
     additionalContext?: unknown;
     toolOutput?: unknown;
   };

@@ -17,6 +17,13 @@ export class QueuedMessageLocks {
   releaseStartTurn(id: string): void {
     this.starting.delete(id);
   }
+  /** Native acceptance suppresses another delivery even if its active lease later fails. */
+  recordAccepted({
+    conversationId,
+    messageId,
+  }: Pick<QueuedMessageLockIdentity, "conversationId" | "messageId">): void {
+    this.sent.set(`${conversationId}\n${messageId}`, this.now() + 600_000);
+  }
   tryAcquire({ conversationId, messageId, lockId }: QueuedMessageLockIdentity): boolean {
     const now = this.now();
     for (const [key, expiresAt] of this.sent) if (expiresAt <= now) this.sent.delete(key);
@@ -33,6 +40,6 @@ export class QueuedMessageLocks {
     sent,
   }: QueuedMessageLockIdentity & { sent: boolean }): void {
     if (this.active.get(conversationId)?.lockId === lockId) this.active.delete(conversationId);
-    if (sent) this.sent.set(`${conversationId}\n${messageId}`, this.now() + 600_000);
+    if (sent) this.recordAccepted({ conversationId, messageId });
   }
 }

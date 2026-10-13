@@ -50,6 +50,7 @@ export interface BuildTurnRenderModelInput {
   canOpenSubagents?: boolean;
   backgroundAgents?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   turnKey?: string;
+  turnSearchKey?: string;
   cwd?: string | null;
   hostId?: string;
   projectlessOutputDirectory?: string | null;
@@ -414,6 +415,7 @@ export function buildTurnRenderModel(input: BuildTurnRenderModelInput): ThreadTu
   return buildTurnViewModel({
     turnId: input.turn.turnId,
     turnKey,
+    turnSearchKey: input.turnSearchKey,
     turn: input.turn,
     buckets,
     workedForItem,
@@ -490,6 +492,7 @@ export function createTurnRenderModelSelector(
       resolveSelectorIdentity(input.mcpApps),
       resolveSelectorIdentity(input.mcpServerStatuses),
       input.entry.turnKey,
+      input.entry.turnSearchKey,
       (input.backgroundAgents ?? []).map((row) => [
         row.conversationId,
         row.parentTurnKey,
@@ -520,6 +523,7 @@ export function createTurnRenderModelSelector(
       showFullTranscript: input.showFullTranscript,
       canOpenSubagents: input.canOpenSubagents,
       turnKey: input.entry.turnKey,
+      turnSearchKey: input.entry.turnSearchKey,
       cwd: input.cwd,
       hostId: input.hostId,
       projectlessOutputDirectory: input.projectlessOutputDirectory,

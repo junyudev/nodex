@@ -4686,7 +4686,7 @@ export type CodexEvent =
   | { type: "appsUpdated"; apps: ProtocolAppInfo[] }
   | { type: "threadSummary"; thread: CodexThreadSummary }
   | { type: "subagentOverviewInvalidated"; rootThreadId: string }
-  | { type: "threadDeleted"; threadId: string }
+  | { type: "threadDeleted"; hostId: string; threadId: string }
   | { type: "threadArchivedState"; threadId: string; archived: boolean }
   | { type: "scheduledAutomationChanged"; event: CodexScheduledAutomationChangedEvent }
   | { type: "automationRunsUpdated"; event: CodexAutomationRunsUpdatedEvent }

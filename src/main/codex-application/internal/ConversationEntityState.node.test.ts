@@ -170,6 +170,27 @@ it("reports retirement only for the released generation after removing its autho
   assert.deepEqual(observed, [first.generation]);
 });
 
+it("requires a source host for presentation liveness and an exact Endpoint for cold resume", () => {
+  const registry = makeConversationEntityStateRegistry();
+  const entity = registry.acquire(threadId);
+  const source = { hostId: "local", generation: 3 };
+  entity.setStreaming(true);
+  entity.setResumeState("resuming");
+  assert.isFalse(entity.hasNativeLifecycle(source));
+  entity.setResumeState("resuming", source);
+  assert.isTrue(entity.hasNativeLifecycle(source));
+  assert.isFalse(entity.hasNativeLifecycle({ hostId: "remote", generation: 3 }));
+  assert.isFalse(entity.hasNativeLifecycle({ hostId: "local", generation: 4 }));
+  entity.setResumeState("needs_resume");
+  assert.isFalse(entity.hasNativeLifecycle(source));
+  entity.installSnapshot(snapshot());
+  assert.isFalse(entity.hasNativeLifecycle(source));
+  entity.installSnapshot({ ...snapshot(), executionHostId: "local" });
+  assert.isTrue(entity.hasNativeLifecycle(source));
+  assert.isFalse(entity.hasNativeLifecycle({ hostId: "remote", generation: 3 }));
+  registry.releaseAll();
+});
+
 it("keeps explicitly incomplete Turn history through live metadata updates without a cursor", () => {
   const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
   aggregate.acceptCanonicalState(hydratedState([completedTurn("turn-incomplete")]));

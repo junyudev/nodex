@@ -96,6 +96,10 @@ export const make = Effect.gen(function* () {
       };
       const client: CanonicalHistoryClient = {
         hostId: manager.hostId,
+        canRecordQueueAcceptance: () => {
+          assertLifetime(lifetime);
+          return lifetime.owner.role === "owner";
+        },
         supportsPaginatedHistory: () => capability.flags.paginatedHistory,
         supportsThreadTimeline: () =>
           canUseCodexThreadTimeline(

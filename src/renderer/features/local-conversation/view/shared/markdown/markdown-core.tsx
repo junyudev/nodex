@@ -1,26 +1,21 @@
-import { useMemo } from "react";
-import { Streamdown, defaultRemarkPlugins, type Components } from "streamdown";
-import { remarkInlineVisualizations } from "../../../../../lib/inline-visualization/inline-visualization-directives";
+import { type Components } from "streamdown";
+import { MarkdownDocumentRenderer } from "@/lib/markdown/markdown-document-renderer";
+import { readMarkdownSyntaxPolicy } from "@/lib/markdown/markdown-policy";
 import { ConversationVisualizationContext } from "../../inline-visualization-context";
 import { LocalConversationInlineVisualization } from "../../local-conversation-inline-visualization";
 import { resolveInlineVisualizationMode } from "../../../../../lib/inline-visualization/inline-visualization-presentation";
 import { MARKDOWN_CONTENT_CLASS_NAME } from "@/components/shared/inline-markdown-code";
 import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
-import { useDocumentTheme } from "@/lib/use-document-theme";
 import {
   FileMarkdownMediaProvider,
-  FileMarkdownMediaStreamdown,
+  fileMarkdownMediaComponents,
 } from "@/lib/file-markdown-media/file-markdown-media";
 import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
-import {
-  StreamdownMermaidError,
-  streamdownComponents,
-  streamdownPlugins,
-  streamdownRemarkPluginsWithBreaks,
-} from "../../../../../lib/streamdown";
+import { streamdownComponents } from "../../../../../lib/streamdown";
 
 interface MarkdownCoreProps {
   content: string;
+  sourceIdentity?: string;
   parseIncompleteMarkdown?: boolean;
   preserveLineBreaks?: boolean;
   animateStreamingText?: boolean;
@@ -42,24 +37,9 @@ const visualizationComponents: Components = {
       />
     ) : null,
 };
-const visualizationTags = { "nodex-visualization": ["file", "threadid", "mode"] };
-const visualizationPlugins = [...Object.values(defaultRemarkPlugins), remarkInlineVisualizations];
-const visualizationBreakPlugins = [
-  ...streamdownRemarkPluginsWithBreaks,
-  remarkInlineVisualizations,
-];
-
-function normalizeMarkdown(content: string): string {
-  const normalizedNewlines = content
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .replace(/[\u2028\u2029\u0085]/g, "\n");
-
-  return normalizedNewlines.replace(/\n{3,}/g, "\n\n");
-}
-
 export function MarkdownCore({
   content,
+  sourceIdentity,
   parseIncompleteMarkdown = false,
   preserveLineBreaks = false,
   animateStreamingText = false,
@@ -69,64 +49,34 @@ export function MarkdownCore({
   visualizationContext,
   fileMediaScope,
 }: MarkdownCoreProps) {
-  const theme = useDocumentTheme();
-  const normalizedContent = useMemo(() => normalizeMarkdown(content), [content]);
-  const shouldAnimateStreamingText = animateStreamingText && parseIncompleteMarkdown;
-  const Document = fileMediaScope ? FileMarkdownMediaStreamdown : Streamdown;
+  const policy = readMarkdownSyntaxPolicy({
+    preserveLineBreaks,
+    visualizations: Boolean(visualizationContext),
+    fileMedia: Boolean(fileMediaScope),
+    repairIncomplete: parseIncompleteMarkdown,
+  });
+  const components = visualizationContext ? visualizationComponents : streamdownComponents;
 
   return (
     <ConversationVisualizationContext.Provider value={visualizationContext ?? null}>
       <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
         <FileMarkdownMediaProvider scope={fileMediaScope}>
-          <Document
-            components={visualizationContext ? visualizationComponents : streamdownComponents}
-            plugins={streamdownPlugins}
-            remarkPlugins={
-              visualizationContext
-                ? preserveLineBreaks
-                  ? visualizationBreakPlugins
-                  : visualizationPlugins
-                : preserveLineBreaks
-                  ? streamdownRemarkPluginsWithBreaks
-                  : undefined
+          <MarkdownDocumentRenderer
+            source={content}
+            sourceIdentity={sourceIdentity}
+            streaming={parseIncompleteMarkdown}
+            animate={animateStreamingText}
+            adaptive={adaptiveStreaming}
+            policy={policy}
+            components={
+              fileMediaScope ? { ...components, ...fileMarkdownMediaComponents } : components
             }
-            allowedTags={visualizationContext ? visualizationTags : undefined}
-            mermaid={{
-              config: { theme: theme === "dark" ? "dark" : "neutral" },
-              errorComponent: StreamdownMermaidError,
-            }}
-            parseIncompleteMarkdown={parseIncompleteMarkdown}
-            // Keep stateful document leaves mounted when a response finishes.
-            mode={visualizationContext || parseIncompleteMarkdown ? "streaming" : "static"}
-            animated={
-              shouldAnimateStreamingText
-                ? {
-                    animation: "fadeIn",
-                    sep: "word",
-                    duration: 200,
-                    ...(adaptiveStreaming ? { stagger: 0 } : {}),
-                    easing: "cubic-bezier(.37, .55, .86, .88)",
-                  }
-                : undefined
-            }
-            isAnimating={shouldAnimateStreamingText}
-            lineNumbers={false}
             className={`
           [&>*:first-child]:mt-0
           [&>*:last-child]:mb-0
           ${MARKDOWN_CONTENT_CLASS_NAME}
         `}
-            controls={{
-              table: false,
-              code: {
-                copy: true,
-                download: false,
-              },
-              mermaid: true,
-            }}
-          >
-            {normalizedContent}
-          </Document>
+          />
         </FileMarkdownMediaProvider>
       </FileLinkWorkspaceProvider>
     </ConversationVisualizationContext.Provider>

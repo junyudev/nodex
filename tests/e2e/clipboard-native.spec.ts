@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import packageJson from "../../package.json";
 
 import type { NativeClipboardBridge } from "../../src/main/platform/electron/native-clipboard";
 
@@ -20,7 +21,9 @@ test("enhances a browser copy without losing private formats or overwriting newe
   });
   try {
     if (process.env.NODEX_ELECTRON_CLIPBOARD_CANDIDATE) {
-      expect(await application.evaluate(() => process.versions.electron)).toBe("44.4.3");
+      expect(await application.evaluate(() => process.versions.electron)).toBe(
+        packageJson.devDependencies.electron,
+      );
     }
     const page = await application.firstWindow();
     const editor = page.getByRole("textbox");

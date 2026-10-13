@@ -141,7 +141,7 @@ describe("hydrated steering reconciliation", () => {
       { ...base, items: [echo] },
     );
     expect(result.items).toEqual([
-      { ...steer, status: "accepted", serverUserMessageId: "echo" },
+      { ...steer, status: "accepted", serverUserMessageId: "echo", acceptedInput: echo.content },
       { type: "steered", id: "echo" },
     ]);
   });
@@ -188,7 +188,12 @@ describe("hydrated steering reconciliation", () => {
     const result = mergeCodexCanonicalTurnStates([{ ...base, items: [steer] }], [target]);
     expect(result[0]!.items).toEqual([]);
     expect(result[1]!.items).toEqual([
-      { ...steer, status: "accepted", serverUserMessageId: "echo" },
+      {
+        ...steer,
+        status: "accepted",
+        serverUserMessageId: "echo",
+        acceptedInput: [...steer.input],
+      },
       { type: "steered", id: "echo" },
     ]);
   });
@@ -271,7 +276,12 @@ describe("paginated steering opening authority", () => {
       expect(result.canonical.turns[0]!.items).toEqual(
         accepted
           ? [
-              { ...steer, status: "accepted", serverUserMessageId: "echo" },
+              {
+                ...steer,
+                status: "accepted",
+                serverUserMessageId: "echo",
+                acceptedInput: echo.content,
+              },
               { type: "steered", id: "echo" },
             ]
           : [steer, echo],

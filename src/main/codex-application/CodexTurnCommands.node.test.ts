@@ -1,5 +1,6 @@
 import { install as installMainActions } from "./CodexMainConversationActions";
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
+import { QueuedMessageLocks } from "../../shared/codex-queued-message-locks";
 import { CodexMainConversationEdit } from "./CodexMainConversationEdit";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexMainConversationInterrupt } from "./CodexMainConversationInterrupt";
@@ -23,6 +24,9 @@ import {
   testSubmitPresentation,
 } from "./CodexTurnPresentation.test-support";
 import type {
+  QueuedSubmission,
+  ThreadQueueListParams,
+  ThreadQueueListResponse,
   TurnStartResponse,
   TurnSteerParams,
   TurnSteerResponse,
@@ -153,6 +157,7 @@ const makeHarness = (input: {
   readonly onCaptured?: () => Effect.Effect<void>;
   readonly onManagerGet?: (count: number) => void;
   readonly beforeDispatch?: (method: string) => void;
+  readonly queueList?: (params: ThreadQueueListParams) => Effect.Effect<ThreadQueueListResponse>;
   readonly steerPlan?: SteerFixture;
   readonly steerRequest?: (
     expectedTurnId: string,
@@ -165,6 +170,15 @@ const makeHarness = (input: {
       Effect.provideService(Scope.Scope, scope),
     );
     const events: string[] = [];
+    const queueReads: ThreadQueueListParams[] = [];
+    const queueLocks = new QueuedMessageLocks();
+    const queued = {
+      recordAcceptedSend: (identity: { conversationId: string; messageId: string }) => {
+        events.push(`queue-accepted:${identity.messageId}`);
+        queueLocks.recordAccepted(identity);
+      },
+      reconcileAcceptedAsOwner: () => Effect.void,
+    } as unknown as CodexQueuedFollowUps["Service"];
     const forwarded: ConversationFollowerTurnStart[] = [];
     const dispatchFences: Array<{
       method: string;
@@ -208,9 +222,14 @@ const makeHarness = (input: {
       localHostId: "local",
       requestRawOnHost: () => Effect.die("unused"),
       requestOnHost: ((_hostId: string, method: string, params: unknown) => {
+        if (method === "thread/queue/list") {
+          const query = params as ThreadQueueListParams;
+          queueReads.push(query);
+          return input.queueList?.(query) ?? Effect.succeed({ data: [], nextCursor: null });
+        }
         if (method !== "config/read") return Effect.die(`unexpected host method: ${method}`);
-        const input = params as { includeLayers: boolean; cwd: string | null };
-        configReads.push(input);
+        const query = params as { includeLayers: boolean; cwd: string | null };
+        configReads.push(query);
         return Effect.succeed({
           config: {
             sandbox_mode: "workspace-write",
@@ -488,6 +507,7 @@ const makeHarness = (input: {
         ]),
       );
     const commands: CodexTurnCommandsService = yield* make.pipe(
+      Effect.provideService(CodexQueuedFollowUps, queued),
       Effect.provideService(CodexVisualizationState, {
         read: () => Effect.die("unused"),
         write: () => Effect.die("unused"),
@@ -553,7 +573,7 @@ const makeHarness = (input: {
       Effect.provideService(CodexApplicationEventHub, {
         publish: () => {},
       } as unknown as CodexApplicationEventHub["Service"]),
-      Effect.provideService(CodexQueuedFollowUps, {} as CodexQueuedFollowUps["Service"]),
+      Effect.provideService(CodexQueuedFollowUps, queued),
       Effect.provideService(CodexMainConversationEdit, {} as CodexMainConversationEdit["Service"]),
       Effect.provideService(
         CodexMainConversationInterrupt,
@@ -586,8 +606,11 @@ const makeHarness = (input: {
       forwarded,
       dispatchFences,
       configReads,
+      queueReads,
+      queueLocks,
       injectedItems,
       preparationInputs,
+      dispatchFollower: managers.dispatchFollowerRequest,
       resetListenerCount: () => resetCallbacks.size,
       requests: () => requests,
       scope,
@@ -1777,6 +1800,269 @@ const queuedPreparationContext = {
   runtimeWorkspaceRoots: ["/repo"],
   usePermissionSelection: false,
 } as const;
+
+const nativeQueueReceipt = (): QueuedSubmission => ({
+  id: "native-row",
+  clientUserMessageId: "native-client",
+  input: [{ type: "text", text: "captured generated input", text_elements: [] }],
+});
+const nativeQueueMessage = {
+  id: "native-row",
+  cwd: "/repo",
+  context: {
+    prompt: "editable display text",
+    fileAttachments: [],
+    addedFiles: [],
+    commentAttachments: [],
+    imageAttachments: [],
+  },
+};
+
+it.effect("rejects a follower that changes the admitted native queue receipt", () =>
+  Effect.gen(function* () {
+    const raw = nativeQueueReceipt();
+    const harness = yield* makeHarness({
+      request: () => Effect.succeed(response()),
+      appServerVersion: "0.162.0-alpha.17.2",
+      queueList: () => Effect.succeed({ data: [raw], nextCursor: null }),
+    });
+    try {
+      const prepared = yield* harness.commands.prepareNativeQueuedMessage(
+        "thread-a",
+        nativeQueueMessage,
+        "steer",
+        {
+          ...queuedPreparationContext,
+          clientUserMessageId: raw.clientUserMessageId,
+          serverQueuedSubmission: raw,
+        },
+      );
+      const result = yield* harness
+        .dispatchFollower("local", {
+          method: "thread-follower-steer-turn",
+          params: { ...prepared.steer, serverQueuedSubmission: { ...raw, id: "another-row" } },
+        })
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      assert.strictEqual(harness.dispatchFences.length, 0);
+    } finally {
+      yield* Scope.close(harness.scope, Exit.void);
+    }
+  }),
+);
+
+it.effect("rejects an app context rewrite of a bound native queue submission", () =>
+  Effect.gen(function* () {
+    const raw = nativeQueueReceipt();
+    const harness = yield* makeHarness({
+      request: () => Effect.succeed(response()),
+      appServerVersion: "0.162.0-alpha.17.2",
+      queueList: () => Effect.succeed({ data: [raw], nextCursor: null }),
+    });
+    try {
+      const captured = {
+        ...createEmptyCodexPreparedPrompt(),
+        promptText: "editable display text",
+        inputItems: raw.input,
+      };
+      const result = yield* harness.commands
+        .prepareNativeStart(
+          "thread-a",
+          captured.promptText,
+          {
+            clientUserMessageId: raw.clientUserMessageId,
+            preparedPrompt: captured,
+            untrustedAppMessage: {
+              source: "visualization",
+              sourceId: "widget",
+              text: "new app input",
+            },
+          },
+          {
+            threadId: "thread-a",
+            clientUserMessageId: raw.clientUserMessageId,
+            input: raw.input,
+          },
+          { serverQueuedSubmission: raw },
+        )
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      assert.strictEqual(harness.queueReads.length, 1);
+      assert.strictEqual(harness.dispatchFences.length, 0);
+      assert.isFalse(harness.events.some((event) => event.startsWith("queue-accepted:")));
+    } finally {
+      yield* Scope.close(harness.scope, Exit.void);
+    }
+  }),
+);
+
+it.effect("admits the captured native queue input from a later page without recompiling it", () =>
+  Effect.gen(function* () {
+    const raw = nativeQueueReceipt();
+    const harness = yield* makeHarness({
+      request: () => Effect.succeed(response()),
+      appServerVersion: "0.162.0-alpha.17.2",
+      queueList: ({ cursor }) =>
+        Effect.succeed(
+          cursor === null
+            ? { data: [], nextCursor: "page-2" }
+            : {
+                data: [raw],
+                nextCursor: null,
+              },
+        ),
+    });
+    try {
+      const prepared = yield* harness.commands.prepareNativeQueuedMessage(
+        "thread-a",
+        nativeQueueMessage,
+        "steer",
+        {
+          ...queuedPreparationContext,
+          clientUserMessageId: raw.clientUserMessageId,
+          serverQueuedSubmission: raw,
+        },
+      );
+      assert.deepEqual(prepared.steer.input, raw.input);
+      assert.deepEqual(prepared.steer.serverQueuedSubmission, raw);
+      assert.deepEqual(
+        harness.queueReads.map(({ cursor }) => cursor),
+        [null, "page-2"],
+      );
+      assert.strictEqual(harness.dispatchFences.length, 0);
+    } finally {
+      yield* Scope.close(harness.scope, Exit.void);
+    }
+  }),
+);
+
+for (const mismatch of ["input", "client", "missing", "cursor", "connection"] as const)
+  it.effect(`rejects native queue admission with ${mismatch} before sending a turn`, () =>
+    Effect.gen(function* () {
+      const raw = nativeQueueReceipt();
+      const harness = yield* makeHarness({
+        request: () => Effect.succeed(response()),
+        appServerVersion: "0.162.0-alpha.17.2",
+        queueList: () =>
+          Effect.sync(() => {
+            if (mismatch === "connection") harness.reconnect();
+            if (mismatch === "missing") return { data: [], nextCursor: null };
+            if (mismatch === "cursor") return { data: [], nextCursor: "same-page" };
+            return { data: [mismatch === "input" ? { ...raw, input: [] } : raw], nextCursor: null };
+          }),
+      });
+      try {
+        const result = yield* harness.commands
+          .prepareNativeQueuedMessage("thread-a", nativeQueueMessage, "steer", {
+            ...queuedPreparationContext,
+            clientUserMessageId: mismatch === "client" ? "wrong-client" : raw.clientUserMessageId,
+            serverQueuedSubmission: raw,
+          })
+          .pipe(Effect.result);
+        assert.strictEqual(result._tag, "Failure");
+        assert.strictEqual(harness.dispatchFences.length, 0);
+        assert.strictEqual(harness.queueReads.length, mismatch === "cursor" ? 2 : 1);
+      } finally {
+        yield* Scope.close(harness.scope, Exit.void);
+      }
+    }),
+  );
+
+for (const mode of ["start", "steer"] as const)
+  for (const owner of ["main", "renderer", "retired"] as const)
+    it.effect(
+      `records native ${mode} acceptance under ${owner} ownership without duplicate delivery`,
+      () =>
+        Effect.gen(function* () {
+          const raw = nativeQueueReceipt();
+          const preparedPlan = {
+            ...executionStateFixture().preparedPlan,
+            request: {
+              ...executionStateFixture().preparedPlan.request,
+              clientUserMessageId: raw.clientUserMessageId,
+              input: raw.input,
+            },
+          };
+          const harness = yield* makeHarness({
+            appServerVersion: "0.162.0-alpha.17.2",
+            initialState: executionStateFixture().initialState,
+            preparedPlan,
+            queueList: () => Effect.succeed({ data: [raw], nextCursor: null }),
+            request: () =>
+              Effect.sync(() => {
+                if (owner === "retired") harness.changeOwner();
+                return response();
+              }),
+            steerRequest: (turnId) =>
+              Effect.sync(() => {
+                if (owner === "retired") harness.changeOwner();
+                return { turnId };
+              }),
+          });
+          try {
+            if (owner === "renderer") harness.changeOwner();
+            const peer = owner === "renderer" ? "renderer-owner" : undefined;
+            const prepared = yield* harness.commands.prepareNativeQueuedMessage(
+              "thread-a",
+              nativeQueueMessage,
+              mode,
+              {
+                ...queuedPreparationContext,
+                clientUserMessageId: raw.clientUserMessageId,
+                serverQueuedSubmission: raw,
+              },
+            );
+            const result =
+              mode === "start"
+                ? yield* Effect.gen(function* () {
+                    assert.ok(prepared.start);
+                    const materialized = yield* harness.commands.inspectPreparedNativeStart(
+                      prepared.start,
+                      peer,
+                    );
+                    assert.deepEqual(materialized.request.input, raw.input);
+                    return yield* harness.commands.executePreparedNativeStart(
+                      materialized.request,
+                      peer,
+                    );
+                  }).pipe(Effect.result)
+                : yield* harness.commands
+                    .executePreparedNativeSteer(
+                      {
+                        method: "turn/steer",
+                        params: {
+                          threadId: "thread-a",
+                          expectedTurnId: "active-turn",
+                          clientUserMessageId: raw.clientUserMessageId,
+                          input: prepared.steer.input,
+                          additionalContext: prepared.steer.additionalContext,
+                        },
+                      },
+                      raw.clientUserMessageId,
+                      peer,
+                    )
+                    .pipe(Effect.result);
+            assert.strictEqual(result._tag, owner === "retired" ? "Failure" : "Success");
+            assert.strictEqual(
+              harness.events.filter((event) => event === "queue-accepted:native-row").length,
+              1,
+            );
+            assert.isFalse(
+              harness.queueLocks.tryAcquire({
+                conversationId: "thread-a",
+                messageId: raw.id,
+                lockId: "new-owner",
+              }),
+            );
+            assert.deepEqual(
+              harness.aggregate.readCanonicalState()?.unconfirmedServerQueueMessages,
+              owner === "main" ? [raw] : undefined,
+            );
+          } finally {
+            yield* Scope.close(harness.scope, Exit.void);
+          }
+        }),
+    );
 
 const passiveContextFixture = (hostId: string, threadId: string, count: number) =>
   compileCodexVisualizationPassiveContext({

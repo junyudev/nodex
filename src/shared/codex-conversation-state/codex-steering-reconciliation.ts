@@ -66,6 +66,7 @@ export function acceptPendingSteer(
   turn: CodexCanonicalTurnState,
   pendingIndex: number,
   completedItemId: string,
+  acceptedInput: readonly UserInput[],
 ): CodexCanonicalTurnState {
   const pending = turn.items[pendingIndex];
   if (pending?.type !== "steeringUserMessage") {
@@ -77,6 +78,7 @@ export function acceptPendingSteer(
     ...pending,
     status: "accepted",
     serverUserMessageId: completedItemId,
+    acceptedInput,
   } satisfies CodexCanonicalSteeringUserMessageItem;
   const steeredItem = {
     type: "steered",
@@ -147,7 +149,7 @@ export function reconcileCodexHydratedSteering(
       continue;
     if (isOpeningMessage(result, item, pagination)) continue;
     const index = findMatchingPendingSteerIndex(result.items, item.clientId, item.content, result);
-    if (index >= 0) result = acceptPendingSteer(result, index, item.id);
+    if (index >= 0) result = acceptPendingSteer(result, index, item.id, item.content);
   }
   return result;
 }

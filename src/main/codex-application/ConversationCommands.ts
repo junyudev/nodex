@@ -215,12 +215,16 @@ export const live: Layer.Layer<
 
     return ConversationCommands.of({
       archive: (threadId) =>
-        runSerial(threadId, archive.archive(threadId)).pipe(
-          Effect.tap((archived) => (archived ? conversations.retire(threadId) : Effect.void)),
+        conversations.runTerminalCommand(
+          threadId,
+          archive.archive(threadId),
+          (archived) => archived,
         ),
       deleteArchived: (threadId) =>
-        runSerial(threadId, archive.deleteArchived(threadId)).pipe(
-          Effect.tap((deleted) => (deleted ? conversations.retire(threadId) : Effect.void)),
+        conversations.runTerminalCommand(
+          threadId,
+          archive.deleteArchived(threadId),
+          (deleted) => deleted,
         ),
       unarchive: (threadId) => runSerial(threadId, archive.unarchive(threadId)),
       setMemoryMode: (threadId, mode) =>

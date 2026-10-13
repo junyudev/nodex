@@ -1,4 +1,5 @@
 import type { CodexCanonicalItem } from "./codex-conversation-state";
+import { areStructurallyEqual } from "../structural-equality";
 
 /** Inserts new items before their next resident anchor, preserving resident values on overlap. */
 export function mergeCodexAnchoredHistoryItems<T>(
@@ -43,6 +44,36 @@ const isFinalAnswer = (
   typeof item.text === "string" &&
   typeof item.memoryCitation === "object";
 
+/** A second history merge must not roll an already reconciled steer back to its pending row. */
+function mergeSteeringAcceptance(
+  resident: CodexCanonicalItem,
+  incoming: CodexCanonicalItem,
+): CodexCanonicalItem | undefined {
+  if (resident.type !== "steeringUserMessage" || incoming.type !== "steeringUserMessage")
+    return undefined;
+  if (incoming.status !== "accepted") return resident.status === "accepted" ? resident : undefined;
+  if (
+    incoming.serverUserMessageId == null ||
+    resident.clientUserMessageId !== incoming.clientUserMessageId ||
+    resident.targetTurnId !== incoming.targetTurnId ||
+    resident.targetTurnStartedAtMs !== incoming.targetTurnStartedAtMs ||
+    !areStructurallyEqual(resident.input, incoming.input)
+  )
+    return resident;
+  if (
+    resident.serverUserMessageId != null &&
+    (resident.serverUserMessageId !== incoming.serverUserMessageId ||
+      resident.acceptedInput != null)
+  )
+    return resident;
+  return {
+    ...resident,
+    status: incoming.status,
+    serverUserMessageId: incoming.serverUserMessageId,
+    acceptedInput: incoming.acceptedInput,
+  };
+}
+
 /** Resolves persisted aliases before inserting incoming occurrences around resident anchors. */
 export function mergeCodexCanonicalHistoryItems(
   existing: readonly CodexCanonicalItem[],
@@ -65,13 +96,15 @@ export function mergeCodexCanonicalHistoryItems(
         isFinalAnswer(resident) &&
         item.memoryCitation == null &&
         resident.memoryCitation != null;
+      const acceptedSteer = mergeSteeringAcceptance(resident, item);
       updates.set(
         resident.id,
-        preserveCitation
-          ? { ...item, memoryCitation: resident.memoryCitation }
-          : preferIncomingItems || (snapshot && item.type === "agentMessage")
-            ? item
-            : resident,
+        acceptedSteer ??
+          (preserveCitation
+            ? { ...item, memoryCitation: resident.memoryCitation }
+            : preferIncomingItems || (snapshot && item.type === "agentMessage")
+              ? item
+              : resident),
       );
       continue;
     }

@@ -45,6 +45,8 @@ interface OwnedMcpAppAttachment extends McpAppPendingAttachment {
 interface AttachedMcpAppGuest extends OwnedMcpAppAttachment {
   guest: WebContents;
   lastUserGestureAt?: number;
+  active: boolean;
+  presentationRevision: number;
 }
 
 interface PendingMcpAppAttachment {
@@ -90,6 +92,13 @@ export interface McpAppSandboxController {
   readonly createHost: (owner: WebContents) => McpAppSandboxHost;
   readonly consumeUserGesture: (owner: WebContents, sandboxId: string, initId?: string) => boolean;
   readonly releaseGuest: (owner: WebContents, sandboxId: string, initId: string) => boolean;
+  readonly setGuestPresentation: (
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+    active: boolean,
+    revision: number,
+  ) => boolean;
   readonly captureImage: (
     owner: WebContents,
     sandboxId: string,
@@ -339,6 +348,20 @@ class McpAppSandboxControllerState {
     if (!this.#installed || owner.isDestroyed()) return false;
     for (const host of this.#hosts) {
       if (host.releaseGuest(owner, sandboxId, initId)) return true;
+    }
+    return false;
+  }
+
+  setGuestPresentation(
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+    active: boolean,
+    revision: number,
+  ): boolean {
+    if (!this.#installed || owner.isDestroyed()) return false;
+    for (const host of this.#hosts) {
+      if (host.setGuestPresentation(owner, sandboxId, initId, active, revision)) return true;
     }
     return false;
   }
@@ -612,6 +635,8 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     const attached: AttachedMcpAppGuest = {
       ...pending,
       guest,
+      active: true,
+      presentationRevision: 0,
     };
     this.#attachedGuests.set(guest.id, attached);
     this.#coordinator.registerGuest(guest.id, this);
@@ -636,7 +661,7 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     const attached = [...this.#attachedGuests.values()].find(
       (value) => value.sandboxId === sandboxId && (initId === undefined || value.initId === initId),
     );
-    if (!attached || attached.guest.isDestroyed()) return false;
+    if (!attached || !attached.active || attached.guest.isDestroyed()) return false;
     const timestamp = attached.lastUserGestureAt;
     delete attached.lastUserGestureAt;
     return timestamp !== undefined && performance.now() - timestamp <= 5_000;
@@ -652,10 +677,13 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       (value) => value.sandboxId === sandboxId && value.initId === initId,
     );
     if (!attached) return null;
+    const presentationRevision = attached.presentationRevision;
     const isCurrent = () =>
       !this.#disposed &&
       !owner.isDestroyed() &&
       this.#attachedGuests.get(attached.guest.id) === attached &&
+      attached.active &&
+      attached.presentationRevision === presentationRevision &&
       !attached.guest.isDestroyed();
     return Effect.suspend(() => {
       if (!isCurrent())
@@ -685,14 +713,37 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
     return true;
   }
 
+  setGuestPresentation(
+    owner: WebContents,
+    sandboxId: string,
+    initId: string,
+    active: boolean,
+    revision: number,
+  ): boolean {
+    if (this.#disposed || this.#owner.id !== owner.id) return false;
+    if (!Number.isSafeInteger(revision) || revision < 1) return false;
+    const attached = [...this.#attachedGuests.values()].find(
+      (value) => value.sandboxId === sandboxId && value.initId === initId,
+    );
+    if (!attached || attached.guest.isDestroyed()) return false;
+    if (revision < attached.presentationRevision) return false;
+    if (revision === attached.presentationRevision) return attached.active === active;
+    attached.presentationRevision = revision;
+    attached.active = active;
+    delete attached.lastUserGestureAt;
+    return true;
+  }
+
   #installGuestPolicy(attached: AttachedMcpAppGuest): void {
     const { guest, sourceUrl } = attached;
     guest.on("before-mouse-event", (_event, input) => {
+      if (!attached.active) return;
       if (input.type !== "mouseDown") return;
       attached.lastUserGestureAt = performance.now();
       guest.focus();
     });
     guest.on("before-input-event", (_event, input) => {
+      if (!attached.active) return;
       if (input.type !== "keyDown" || input.isAutoRepeat || !["Enter", " "].includes(input.key))
         return;
       attached.lastUserGestureAt = performance.now();
@@ -804,5 +855,7 @@ export const makeMcpAppSandboxController = (
         state.consumeUserGesture(owner, sandboxId, initId),
       captureImage: (owner, sandboxId, initId) => state.captureImage(owner, sandboxId, initId),
       releaseGuest: (owner, sandboxId, initId) => state.releaseGuest(owner, sandboxId, initId),
+      setGuestPresentation: (owner, sandboxId, initId, active, revision) =>
+        state.setGuestPresentation(owner, sandboxId, initId, active, revision),
     };
   });

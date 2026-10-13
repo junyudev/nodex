@@ -36,6 +36,7 @@ const setup = (
     captures: unknown[];
     copies: NativeImage[];
     releases: unknown[];
+    presentations: unknown[];
   }) => Effect.Effect<void, Error>,
 ) => {
   const handlers = new Map<string, Handler>();
@@ -44,6 +45,7 @@ const setup = (
   const captures: unknown[] = [];
   const copies: NativeImage[] = [];
   const releases: unknown[] = [];
+  const presentations: unknown[] = [];
   const image = {
     getSize: () => ({ width: 2000, height: 1000 }),
     crop: (rect: unknown) => ({ toPNG: () => Buffer.from(JSON.stringify(rect)) }),
@@ -69,6 +71,16 @@ const setup = (
         }),
     }),
     Layer.succeed(McpAppSandboxRuntime, {
+      setGuestPresentation: (
+        owner: WebContents,
+        sandbox: string,
+        init: string,
+        active: boolean,
+        revision: number,
+      ) => {
+        presentations.push([owner.id, sandbox, init, active, revision]);
+        return true;
+      },
       releaseGuest: (owner: WebContents, sandbox: string, init: string) => {
         releases.push([owner.id, sandbox, init]);
         return true;
@@ -101,6 +113,7 @@ const setup = (
     captures,
     copies,
     releases,
+    presentations,
     grant: () => {
       granted = true;
     },
@@ -256,6 +269,37 @@ it.effect("releases a registered presentation only from its trusted owner and ex
         "Failure",
       );
       assert.strictEqual(releases.length, 1);
+    }),
+  ),
+);
+
+it.effect("validates a resumable guest presentation before dispatching to its owner", () =>
+  setup(({ handlers, presentations }) =>
+    Effect.gen(function* () {
+      const update = handlers.get("codex:visualization:set-presentation")!;
+      const input = { sandboxId, initId: "init-fixture", active: false, revision: 1 };
+      assert.isTrue(yield* update(event(), input));
+      assert.deepEqual(presentations, [[42, sandboxId, "init-fixture", false, 1]]);
+      for (const invalid of [
+        { ...input, sandboxId: "forged" },
+        { ...input, initId: "" },
+        { ...input, initId: "other/document" },
+        { ...input, active: "false" },
+        { ...input, revision: 0 },
+        { ...input, revision: 1.5 },
+        { ...input, revision: Number.MAX_SAFE_INTEGER + 1 },
+        { ...input, revision: Infinity },
+      ])
+        assert.strictEqual((yield* Effect.result(update(event(), invalid)))._tag, "Failure");
+      assert.strictEqual(
+        (yield* Effect.result(update(event("https://untrusted.example"), input)))._tag,
+        "Failure",
+      );
+      assert.strictEqual(
+        (yield* Effect.result(update(event("http://localhost:5173", "webview"), input)))._tag,
+        "Failure",
+      );
+      assert.strictEqual(presentations.length, 1);
     }),
   ),
 );

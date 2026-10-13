@@ -216,10 +216,11 @@ it.effect("serially commits archive and delete observations before scheduling si
     const events: unknown[] = [];
     const workspace: CoreModuleClients["workspace"] = {
       read: () =>
-        Effect.sync(() => {
-          if (!stored) return { value: { kind: "thread", thread: coreThread() } } as never;
-          return { value: { kind: "thread", thread: stored } } as never;
-        }),
+        Effect.suspend(() =>
+          stored
+            ? Effect.succeed({ value: { kind: "thread", thread: stored } } as never)
+            : Effect.fail(missingThread("thread-a") as never),
+        ),
       apply: (input) =>
         Effect.sync(() => {
           operations.push(input.operationId);
@@ -265,6 +266,28 @@ it.effect("serially commits archive and delete observations before scheduling si
       ),
     );
 
+    // A terminal notification from another execution host cannot mutate this durable Thread.
+    const foreignBefore = stored;
+    assert.isFalse(
+      yield* service.acceptsTerminalObservation({ hostId: "remote", threadId: "thread-a" }),
+    );
+    assert.isTrue(
+      yield* service.acceptsTerminalObservation({ hostId: "local", threadId: "thread-a" }),
+    );
+    for (const method of ["thread/archived", "thread/deleted"] as const) {
+      yield* service.observe({
+        hostId: "remote",
+        generation: 1,
+        occurrenceId: `remote:1:${method}`,
+        occurrenceToken: 40,
+        notification: { method, params: { threadId: "thread-a" } },
+      });
+    }
+    assert.strictEqual(stored, foreignBefore);
+    assert.deepEqual(operations, []);
+    assert.deepEqual(sidebar, []);
+    assert.deepEqual(events, []);
+
     yield* service.observe({
       hostId: "local",
       generation: 1,
@@ -291,8 +314,25 @@ it.effect("serially commits archive and delete observations before scheduling si
         kind: "codex",
         value: { type: "threadArchivedState", threadId: "thread-a", archived: true },
       },
-      { kind: "codex", value: { type: "threadDeleted", threadId: "thread-a" } },
+      { kind: "codex", value: { type: "threadDeleted", hostId: "local", threadId: "thread-a" } },
     ]);
+    assert.isTrue(
+      yield* service.acceptsTerminalObservation({ hostId: "local", threadId: "thread-a" }),
+    );
+    stored = coreThread({ backend_binding: { kind: "claude", instance_config_id: "claude-a" } });
+    const otherBackend = stored;
+    assert.isFalse(
+      yield* service.acceptsTerminalObservation({ hostId: "local", threadId: "thread-a" }),
+    );
+    yield* service.observe({
+      hostId: "local",
+      generation: 1,
+      occurrenceId: "local:1:other-backend:43",
+      occurrenceToken: 43,
+      notification: { method: "thread/deleted", params: { threadId: "thread-a" } },
+    });
+    assert.strictEqual(stored, otherBackend);
+    assert.strictEqual(operations.length, 2);
   }),
 );
 
@@ -377,7 +417,10 @@ it.effect("invalidates the durable root after deleting a nested Subagent", () =>
     assert.deepEqual(
       events.filter((event) => (event as { kind?: unknown }).kind === "codex").slice(-2),
       [
-        { kind: "codex", value: { type: "threadDeleted", threadId: "grandchild-a" } },
+        {
+          kind: "codex",
+          value: { type: "threadDeleted", hostId: "local", threadId: "grandchild-a" },
+        },
         {
           kind: "codex",
           value: { type: "subagentOverviewInvalidated", rootThreadId: "root-a" },

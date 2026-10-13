@@ -45,6 +45,7 @@ export function LocalConversationTimelinePromotion({
       ? markdownStreaming
       : entry.turnStatus === "inProgress",
     entry.historyEntityKey,
+    entry.turnSearchKey,
   );
   if (!entry.timelinePresentation) return null;
   const presentation = resolveTimelineInlinePresentation(raw, entry.timelinePresentation);
@@ -59,7 +60,7 @@ export function LocalConversationTimelinePromotion({
           <LocalConversationInlineVisualization
             file={presentation.file}
             sourceThreadId={presentation.sourceThreadId}
-            cacheKey={entry.turnKey}
+            cacheKey={entry.turnSearchKey}
             mode="narrow"
           />
         </div>
@@ -74,6 +75,7 @@ export function LocalConversationTimelinePromotion({
     >
       <MarkdownRenderer
         content={content}
+        preserveLineBreaks
         cwd={cwd}
         parseIncompleteMarkdown={markdownStreaming}
         animateStreamingText={markdownStreaming}

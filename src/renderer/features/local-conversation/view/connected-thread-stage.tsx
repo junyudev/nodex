@@ -16,6 +16,7 @@ import {
   useEffect,
   useEffectEvent,
   useMemo,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -82,6 +83,7 @@ import { LocalConversationStageScreen } from "./local-conversation-stage-screen"
 import { CodexAfterPaintMarker } from "../codex-turn-first-response-view";
 import { codexTurnFirstResponseTracker } from "../codex-turn-first-response";
 import { RemoteHostedPipHostLayoutReporter } from "./remote-hosted-pip-host-layout-reporter";
+import { InlineVisualizationSurfaceProvider } from "./inline-visualization-window";
 import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
 import {
@@ -183,6 +185,7 @@ function usePresentedConversationIds(
 }
 
 interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
+  visualizationSurfaceId?: string;
   actions: ThreadStageActions;
   composerScopeIdentity?: string | null;
   onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
@@ -1159,6 +1162,26 @@ export function ConnectedThreadComposerDock({
 }
 
 export function ConnectedThreadStage({
+  visualizationSurfaceId,
+  ...props
+}: ConnectedThreadStageProps) {
+  const instanceId = useId();
+  const threadId = resolveConnectedStageActiveThreadId(props);
+  const runtime = useConversationRuntime(threadId, props.activeThreadSummary?.executionHostId);
+  const routeActive = props.routeActive ?? true;
+  return (
+    <InlineVisualizationSurfaceProvider
+      id={visualizationSurfaceId ?? instanceId}
+      hostId={runtime.hostId}
+      threadId={threadId}
+      active={routeActive && (props.threadBodyVisible ?? routeActive)}
+    >
+      <ConnectedThreadStageContent {...props} />
+    </InlineVisualizationSurfaceProvider>
+  );
+}
+
+function ConnectedThreadStageContent({
   actions: providedActions,
   composerScopeIdentity = null,
   onForkFromTurnIntoWorktree,

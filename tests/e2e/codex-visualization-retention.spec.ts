@@ -1,0 +1,360 @@
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  ElectronScenarioHarness,
+  readBoundedElectronRuntimeLogs,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { resolveCodexThreadVisualizationDirectory } from "../../src/main/codex/codex-dynamic-first-turn-context";
+import {
+  parseMcpAppSandboxPartition,
+  parseMcpAppSandboxSourceUrl,
+} from "../../src/shared/mcp-app/mcp-app-sandbox-contract";
+import type {
+  NativeSessionAttachResult,
+  NativeSessionCatalogPage,
+} from "../../src/shared/native-session-catalog";
+import type { ProjectSession } from "../../src/shared/types";
+import { invokeIpc } from "./support/agent-smoke-harness";
+import { nativeReadOnlyBenchmarkEnvironment } from "./support/native-transcript-benchmark-preflight";
+import {
+  resolveNativeVisualizationFixtureRuntime,
+  seedNativeVisualizationHistory,
+} from "./support/native-visualization-history-fixture";
+import { readOwnedWidget, clickOwnedWidget } from "./support/owned-inline-visualization-guest";
+
+const documentFor = (label: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font:16px sans-serif;background:white;color:#222}main{padding:20px;min-height:180px}button{padding:8px}section{height:380px}</style></head><body><main id="retained-fixture"><strong>${label}</strong><button id="counter">Increment</button><output id="count">0</output><button id="toggle">Details</button><section id="details" hidden>Expanded body</section><button id="sdk">Try tool</button><output id="sdk-result"></output><output id="nonce"></output></main><script>let count=0;document.getElementById('nonce').textContent=crypto.randomUUID();document.getElementById('counter').addEventListener('click',()=>document.getElementById('count').textContent=String(++count));document.getElementById('toggle').addEventListener('click',()=>document.getElementById('details').hidden=!document.getElementById('details').hidden);document.getElementById('sdk').addEventListener('click',async()=>{try{await window.openai.callTool('ungranted_tool',{});document.getElementById('sdk-result').textContent='accepted'}catch{document.getElementById('sdk-result').textContent='denied'}});</script></body></html>`;
+
+interface GuestEvidence {
+  readonly id: number;
+  readonly frameId: string;
+  readonly partition: string;
+  readonly src: string;
+  readonly width: number;
+  readonly height: number;
+}
+async function exists(file: string) {
+  try {
+    await stat(file);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
+async function activeGuests(page: Page): Promise<GuestEvidence[]> {
+  return await page
+    .locator(
+      '[data-inline-visualization="true"][data-visualization-active="true"][data-visualization-status="ready"] webview',
+    )
+    .evaluateAll((elements) =>
+      elements.map((element) => {
+        const root = element.closest('[data-inline-visualization="true"]')!;
+        const bounds = element.getBoundingClientRect();
+        return {
+          id: (element as unknown as { getWebContentsId(): number }).getWebContentsId(),
+          frameId: root.getAttribute("data-visualization-frame-id")!,
+          partition: element.getAttribute("partition")!,
+          src: element.getAttribute("src")!,
+          width: bounds.width,
+          height: bounds.height,
+        };
+      }),
+    );
+}
+async function state(application: ElectronApplication, id: number) {
+  return await readOwnedWidget<{ nonce: string; count: number; api: boolean }>(
+    application,
+    id,
+    "retained-fixture",
+    "({nonce:document.getElementById('nonce').textContent,count:Number(document.getElementById('count').textContent),api:typeof window.openai?.callTool==='function'})",
+  );
+}
+async function focusEvidence(application: ElectronApplication, id: number) {
+  return await application.evaluate(
+    ({ webContents }, guestId) => ({
+      guest: webContents.fromId(guestId)?.isFocused() ?? false,
+      owner: webContents.getFocusedWebContents()?.getType() ?? null,
+    }),
+    id,
+  );
+}
+
+test("retains native HTML guests across real Thread navigation and releases deleted Thread guests", async ({}, testInfo) => {
+  test.setTimeout(180_000);
+  const repositoryRoot = path.resolve(".");
+  const runtime = await resolveNativeVisualizationFixtureRuntime(repositoryRoot);
+  const harness = await ElectronScenarioHarness.create({
+    label: "codex-visualization-retention",
+    codex: "empty",
+    // The real connection requires an account even for history; no Turn uses this synthetic key.
+    codexApiKey: "nodex-read-only-history-test-key",
+    cwd: repositoryRoot,
+    prepareAgentRuntime: false,
+    environment: nativeReadOnlyBenchmarkEnvironment(process.env),
+  });
+  const auth = path.join(harness.profile.codexHome, "auth.json");
+  let page: Page | null = null;
+  const nativeFixtures: Awaited<ReturnType<typeof seedNativeVisualizationHistory>>[] = [];
+  let evidence: object | null = null;
+  const rendererErrors: string[] = [];
+  try {
+    expect(await exists(auth)).toBe(false);
+    const workspace = harness.profile.initialProjectsDirectory;
+    for (const label of ["A", "B"] as const) {
+      const fixture = await seedNativeVisualizationHistory({
+        executable: runtime.executable,
+        codexHome: harness.profile.codexHome,
+        cwd: workspace,
+        title: `Retained HTML ${label}`,
+        turnId: `retained-history-${label}`,
+        answer:
+          label === "A"
+            ? '::codex-inline-vis{file="retained.html" mode="wide"}\n\n::codex-inline-vis{file="retained.html" mode="wide"}'
+            : '::codex-inline-vis{file="retained.html" mode="wide"}',
+      });
+      nativeFixtures.push(fixture);
+      const directory = resolveCodexThreadVisualizationDirectory(
+        harness.profile.codexHome,
+        fixture.threadId,
+      );
+      if (!directory) throw new Error("Native Thread has no visualization directory");
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, "retained.html"), documentFor(label));
+    }
+    page = await harness.launch();
+    page.on("pageerror", (error) => rendererErrors.push(error.stack ?? error.message));
+    expect(await invokeIpc(page, "codex:connection:status")).toMatchObject({
+      status: "connected",
+    });
+    expect(await invokeIpc(page, "codex:account:read")).toMatchObject({
+      account: { type: "apiKey" },
+    });
+    await harness.application.evaluate(({ BrowserWindow }) => {
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length !== 1) throw new Error("Retention fixture requires one owned window");
+      windows[0]!.setBounds({ x: 0, y: 0, width: 1400, height: 900 });
+    });
+    const catalog = (await invokeIpc(page, "native-sessions:list", {
+      backendKind: "codex",
+    })) as NativeSessionCatalogPage;
+    expect(path.resolve(catalog.nativeHome)).toBe(path.resolve(harness.profile.codexHome));
+    const sessions: ProjectSession[] = [];
+    for (const fixture of nativeFixtures) {
+      expect(catalog.entries.some((entry) => entry.nativeSessionId === fixture.threadId)).toBe(
+        true,
+      );
+      const attached = (await invokeIpc(page, "native-sessions:attach", {
+        backendKind: "codex",
+        nativeSessionId: fixture.threadId,
+        expectedHome: catalog.nativeHome,
+        projectId: null,
+      })) as NativeSessionAttachResult;
+      expect(attached.threadId).toBe(fixture.threadId);
+      const session = (await invokeIpc(
+        page,
+        "project-sessions:get",
+        attached.sessionId,
+      )) as ProjectSession;
+      expect(session.thread?.threadId).toBe(fixture.threadId);
+      sessions.push(session);
+    }
+    await page.reload();
+    await page.evaluate(() => window.api?.awaitInitialization?.());
+    const navigate = async (index: number, count: number) => {
+      await page!.getByText(sessions[index]!.displayTitle, { exact: true }).first().click();
+      await expect
+        .poll(async () => (await activeGuests(page!)).length, { timeout: 60_000 })
+        .toBe(count);
+      await page!.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      return await activeGuests(page!);
+    };
+    const a = await navigate(0, 2);
+    expect(a[0]!.id).not.toBe(a[1]!.id);
+    const nonceA = await state(harness.application, a[0]!.id);
+    const nonceOther = await state(harness.application, a[1]!.id);
+    expect(nonceA.nonce).not.toBe(nonceOther.nonce);
+    expect(nonceA.api && nonceOther.api).toBe(true);
+    await clickOwnedWidget(harness.application, a[0]!.id, "retained-fixture", "#toggle");
+    await expect
+      .poll(
+        async () =>
+          (await page!.locator(`[data-visualization-frame-id="${a[0]!.frameId}"]`).boundingBox())!
+            .height,
+      )
+      .toBeGreaterThan(380);
+    await clickOwnedWidget(harness.application, a[0]!.id, "retained-fixture", "#counter");
+    await clickOwnedWidget(harness.application, a[1]!.id, "retained-fixture", "#counter");
+    await clickOwnedWidget(harness.application, a[1]!.id, "retained-fixture", "#counter");
+    await expect.poll(async () => (await state(harness.application, a[0]!.id)).count).toBe(1);
+    await expect.poll(async () => (await state(harness.application, a[1]!.id)).count).toBe(2);
+    const heightA = (await page
+      .locator(`[data-visualization-frame-id="${a[0]!.frameId}"]`)
+      .boundingBox())!.height;
+    const focusBefore = await focusEvidence(harness.application, a[1]!.id);
+    const b = (await navigate(1, 1))[0]!;
+    await expect(page.locator(`[data-visualization-frame-id="${a[0]!.frameId}"]`)).toHaveAttribute(
+      "data-visualization-active",
+      "false",
+    );
+    expect((await state(harness.application, a[0]!.id)).nonce).toBe(nonceA.nonce);
+    const focusInactive = await focusEvidence(harness.application, a[1]!.id);
+    await harness.application.evaluate(({ webContents }, id) => {
+      const guest = webContents.fromId(id);
+      if (!guest || guest.isDestroyed()) throw new Error("Inactive guest was released prematurely");
+      guest.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+      guest.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+    }, a[1]!.id);
+    const inactiveDirectInput = await state(harness.application, a[1]!.id);
+    const sandboxId = parseMcpAppSandboxPartition(a[0]!.partition);
+    const initId = parseMcpAppSandboxSourceUrl(a[0]!.src)?.initId;
+    if (!sandboxId || !initId) throw new Error("Guest has no typed presentation identity");
+    expect(
+      await invokeIpc(page, "codex:visualization:consume-gesture", { sandboxId, initId }),
+    ).toBe(false);
+    await expect(
+      invokeIpc(page, "codex:visualization:capture-image", {
+        sandboxId,
+        initId,
+        captureRect: { x: 5, y: 5, width: a[0]!.width - 10, height: a[0]!.height - 10 },
+        viewportSize: { width: a[0]!.width, height: a[0]!.height },
+      }),
+    ).rejects.toThrow();
+    // The resource query expires after 15 seconds; live guest retention has a separate owner.
+    await page.waitForTimeout(16_001);
+    expect((await state(harness.application, a[0]!.id)).nonce).toBe(nonceA.nonce);
+    const returned = await navigate(0, 2);
+    expect(returned.map((guest) => guest.id).sort((left, right) => left - right)).toEqual(
+      a.map((guest) => guest.id).sort((left, right) => left - right),
+    );
+    expect(await state(harness.application, a[0]!.id)).toEqual({ ...nonceA, count: 1 });
+    expect(await state(harness.application, a[1]!.id)).toEqual({
+      ...nonceOther,
+      count: inactiveDirectInput.count,
+    });
+    expect(
+      Math.abs(
+        (await page.locator(`[data-visualization-frame-id="${a[0]!.frameId}"]`).boundingBox())!
+          .height - heightA,
+      ),
+    ).toBeLessThanOrEqual(1);
+    await clickOwnedWidget(harness.application, a[0]!.id, "retained-fixture", "#sdk");
+    await expect
+      .poll(() =>
+        readOwnedWidget(
+          harness.application,
+          a[0]!.id,
+          "retained-fixture",
+          "document.getElementById('sdk-result').textContent",
+        ),
+      )
+      .toBe("denied");
+    await clickOwnedWidget(harness.application, a[0]!.id, "retained-fixture", "#counter");
+    await expect.poll(async () => (await state(harness.application, a[0]!.id)).count).toBe(2);
+    const retentionEvidence = {
+      runtime,
+      nativeFixtures,
+      retainedA: a,
+      returnedA: returned,
+      stateA: await state(harness.application, a[0]!.id),
+      stateOther: await state(harness.application, a[1]!.id),
+      heightA,
+      focusBefore,
+      focusInactive,
+      inactiveDirectInput,
+      inputBoundary: "owned guest direct-target input; OS routing is not inferred",
+      sameNativeIds: true,
+      noAuthCopy: true,
+      authentication: "public synthetic apiKey login; no model execution",
+      noModelTurn: true,
+    };
+    evidence = retentionEvidence;
+    expect(await invokeIpc(page, "codex:thread:archive", nativeFixtures[1]!.threadId)).toBe(true);
+    expect(await invokeIpc(page, "codex:thread:delete-archived", nativeFixtures[1]!.threadId)).toBe(
+      true,
+    );
+    await expect
+      .poll(() =>
+        harness.application.evaluate(
+          ({ webContents }, id) => webContents.fromId(id)?.isDestroyed() ?? true,
+          b.id,
+        ),
+      )
+      .toBe(true);
+    expect(
+      (await activeGuests(page)).map((guest) => guest.id).sort((left, right) => left - right),
+    ).toEqual(a.map((guest) => guest.id).sort((left, right) => left - right));
+    expect(rendererErrors).toEqual([]);
+    evidence = {
+      ...retentionEvidence,
+      deletedB: b,
+      deletionVerified: true,
+      rendererErrors,
+    };
+  } catch (error) {
+    if (page) {
+      await writeFile(
+        testInfo.outputPath("failure-state.json"),
+        JSON.stringify(
+          {
+            rendererErrors,
+            nativeFixtures,
+            ownedHome: harness.profile.runRoot,
+            dom: await page.evaluate(() => ({
+              text: document.body.innerText.slice(0, 12_000),
+              frames: Array.from(
+                document.querySelectorAll("[data-inline-visualization]"),
+                (element) => ({
+                  id: element.getAttribute("data-visualization-frame-id"),
+                  active: element.getAttribute("data-visualization-active"),
+                  status: element.getAttribute("data-visualization-status"),
+                  text: element.textContent?.slice(0, 500),
+                }),
+              ),
+              anchors: document.querySelectorAll("[data-visualization-anchor]").length,
+              guests: document.querySelectorAll("webview").length,
+            })),
+            guests: await harness.application.evaluate(({ webContents }) =>
+              webContents.getAllWebContents().map((guest) => ({
+                id: guest.id,
+                type: guest.getType(),
+                url: guest.getURL(),
+                destroyed: guest.isDestroyed(),
+              })),
+            ),
+          },
+          null,
+          2,
+        ) + "\n",
+      );
+      await testInfo.attach("desktop-runtime", {
+        body: await readBoundedElectronRuntimeLogs(harness.profile),
+        contentType: "text/plain",
+      });
+    }
+    throw error;
+  } finally {
+    await rm(auth, { force: true });
+    await harness.close();
+    await writeFile(
+      testInfo.outputPath("retained-evidence.json"),
+      JSON.stringify(
+        {
+          evidence,
+          cleanup: {
+            ownedHomeRemoved: !(await exists(harness.profile.runRoot)),
+            authAbsent: !(await exists(auth)),
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+});

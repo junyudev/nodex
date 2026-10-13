@@ -1,4 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
+import { produce } from "immer";
+import {
+  appendCodexAcceptedServerQueueSubmission,
+  discardCodexAcceptedServerQueueSubmission,
+} from "../codex-native-queued-submission";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { Thread, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { createCodexQueuedFollowUp } from "../codex-queued-follow-up-state";
@@ -1144,9 +1149,82 @@ describe("canonical item lifecycle reducer", () => {
         ? next.turns[0]?.items[0]?.status
         : null,
     ).toBe("accepted");
+    expect(
+      next.turns[0]?.items[0]?.type === "steeringUserMessage"
+        ? next.turns[0]?.items[0]?.acceptedInput
+        : null,
+    ).toEqual(content);
     expect(next.turns[0]?.items[1]?.type).toBe("steered");
     expect(next.turns[0]?.items[1]?.id).toBe("accepted-user-id");
   });
+
+  test.each(["started", "matching", "wrong-input", "already-cleaned"] as const)(
+    "a handed-off native queue steer records cleanup only for its actual completed input: %s",
+    (form) => {
+      const initial = buildState();
+      const input = [
+        {
+          type: "text" as const,
+          text: "Stored native context\n## My request:\nContinue",
+          text_elements: [],
+        },
+      ];
+      const raw = { id: "native-row", clientUserMessageId: "native-client", input };
+      const pending: CodexCanonicalSteeringUserMessageItem = {
+        type: "steeringUserMessage",
+        id: "handoff-steer",
+        targetTurnId: TURN_ID,
+        targetTurnStartedAtMs: null,
+        status: "pending",
+        clientUserMessageId: raw.clientUserMessageId,
+        input,
+        serverQueuedSubmission: raw,
+        attachments: [],
+        restoreMessage: { context: { commentAttachments: [] } },
+        compareKey: { rawText: input[0]!.text, imageCount: 0 },
+      };
+      let state: CodexCanonicalConversationState = {
+        ...initial,
+        turns: [{ ...initial.turns[0]!, items: [pending] }],
+      };
+      if (form === "already-cleaned")
+        state = produce(state, (draft) => {
+          appendCodexAcceptedServerQueueSubmission(draft, raw);
+          discardCodexAcceptedServerQueueSubmission(draft, raw);
+        });
+      const echo: ThreadItem = {
+        type: "userMessage",
+        id: "native-user",
+        clientId: raw.clientUserMessageId,
+        content:
+          form === "wrong-input"
+            ? [{ type: "text", text: "Other request", text_elements: [] }]
+            : input,
+      };
+      const next = reduceLifecycle(
+        state,
+        form === "started"
+          ? {
+              method: "item/started",
+              params: { threadId: THREAD_ID, turnId: TURN_ID, item: echo, startedAtMs: 11000 },
+            }
+          : {
+              method: "item/completed",
+              params: { threadId: THREAD_ID, turnId: TURN_ID, item: echo, completedAtMs: 11000 },
+            },
+        buildClock().context,
+      );
+      expect(next.unconfirmedServerQueueMessages).toEqual(form === "matching" ? [raw] : undefined);
+      expect(next.turns[0]?.items[0]).toMatchObject({
+        type: "steeringUserMessage",
+        status: form === "started" ? "pending" : "accepted",
+      });
+      const nextSteer = next.turns[0]?.items[0];
+      expect(
+        nextSteer?.type === "steeringUserMessage" ? nextSteer.serverQueuedSubmission : null,
+      ).toEqual(form === "already-cleaned" ? undefined : raw);
+    },
+  );
 
   for (const initialStatus of ["pending", "accepted"] as const)
     test(`matches identical ${initialStatus} steers by app-server client identity`, () => {

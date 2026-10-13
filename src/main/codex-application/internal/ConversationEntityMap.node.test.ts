@@ -18,6 +18,7 @@ it.effect("serializes commands admitted to the same Thread generation", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const firstStarted = yield* Deferred.make<void>();
     const releaseFirst = yield* Deferred.make<void>();
     const order: string[] = [];
@@ -53,6 +54,7 @@ it.effect("keeps different Thread generations causally independent", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const firstStarted = yield* Deferred.make<void>();
     const releaseFirst = yield* Deferred.make<void>();
     const secondStarted = yield* Deferred.make<void>();
@@ -81,6 +83,7 @@ it.effect("marks every loaded generation non-live after connection loss", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const first = conversations.entity("thread-a");
     const second = conversations.entity("thread-b");
     first.setResumeState("resumed");
@@ -105,6 +108,7 @@ it.effect("never mixes deferred Thread starts across host generations", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const aggregate = conversations.entity("thread-generation-fence");
     const occurrence = (generation: number): CodexApplicationNotificationOccurrence => ({
       kind: "notification",
@@ -146,6 +150,7 @@ it.effect("close interrupts the live lane and fences it from the next generation
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const aggregate = conversations.entity("thread-a");
     const firstGeneration = aggregate.generation;
     const started = yield* Deferred.make<void>();
@@ -178,7 +183,10 @@ it.effect("close interrupts the live lane and fences it from the next generation
     assert.isFalse(queuedEntered);
     assert.isNull(conversations.current("thread-a"));
 
-    yield* conversations.runCommand("thread-a", Effect.void);
+    yield* conversations.runCommand(
+      "thread-a",
+      Effect.sync(() => conversations.entity("thread-a")),
+    );
     const secondGeneration = conversations.current("thread-a")?.generation;
     assert.isDefined(secondGeneration);
     assert.notStrictEqual(secondGeneration, firstGeneration);
@@ -193,6 +201,7 @@ it.effect("Main Scope close interrupts every lane and releases aggregate generat
   Effect.gen(function* () {
     const ownerScope = yield* Scope.make();
     const conversations = yield* build(ownerScope);
+    conversations.entity("thread-a");
     const started = yield* Deferred.make<void>();
     const interrupted = yield* Deferred.make<void>();
     const active = yield* conversations
@@ -213,12 +222,114 @@ it.effect("Main Scope close interrupts every lane and releases aggregate generat
   }),
 );
 
+it.effect.each([true, false])(
+  "replacement admission cannot inherit an aggregate whose old cleanup is still settling (materialized: %s)",
+  (materialized) =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      if (materialized) conversations.entity("thread-a");
+      const retiredGenerations: number[] = [];
+      const subscription = conversations.subscribeRetired((_id, generation) =>
+        retiredGenerations.push(generation),
+      );
+      const entered = yield* Deferred.make<void>();
+      const cleanupEntered = yield* Deferred.make<void>();
+      const finishCleanup = yield* Deferred.make<void>();
+      const replacementEntered = yield* Deferred.make<void>();
+      const finishReplacement = yield* Deferred.make<void>();
+      const old = yield* conversations
+        .runCommand(
+          "thread-a",
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() =>
+              Deferred.succeed(cleanupEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(finishCleanup)),
+              ),
+            ),
+          ),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      if (!materialized) assert.isNull(conversations.current("thread-a"));
+      const retiring = yield* conversations.retire("thread-a").pipe(Effect.forkChild);
+      yield* Deferred.await(cleanupEntered);
+      const replacement = yield* conversations
+        .runCommand(
+          "thread-a",
+          Effect.sync(() => conversations.entity("thread-a")).pipe(
+            Effect.andThen(Deferred.succeed(replacementEntered, undefined)),
+            Effect.andThen(Deferred.await(finishReplacement)),
+          ),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(replacementEntered);
+      const replacementEntity = conversations.current("thread-a")!;
+      assert.strictEqual(retiredGenerations.length, 1);
+      assert.notStrictEqual(replacementEntity.generation, retiredGenerations[0]);
+      yield* Deferred.succeed(finishCleanup, undefined);
+      yield* Fiber.join(retiring);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(old)));
+      assert.strictEqual(conversations.current("thread-a"), replacementEntity);
+      yield* Deferred.succeed(finishReplacement, undefined);
+      yield* Fiber.join(replacement);
+      subscription[Symbol.dispose]();
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "a rejected terminal result preserves the generation and pending terminal work remains cancellable",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      conversations.entity("thread-a");
+      assert.isFalse(
+        yield* conversations.runTerminalCommand("thread-a", Effect.succeed(false), (v) => v),
+      );
+      const entity = conversations.current("thread-a");
+      const rejected = yield* conversations
+        .runTerminalCommand("thread-a", Effect.fail("denied"), () => true)
+        .pipe(Effect.result);
+      assert.strictEqual(rejected._tag, "Failure");
+      yield* conversations.runCommand("thread-a", Effect.void);
+      assert.strictEqual(conversations.current("thread-a"), entity);
+      const entered = yield* Deferred.make<void>();
+      const terminal = yield* conversations
+        .runTerminalCommand(
+          "thread-a",
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+          () => true,
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      let queuedEntered = false;
+      const queued = yield* conversations
+        .runCommand(
+          "thread-a",
+          Effect.sync(() => {
+            queuedEntered = true;
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Scope.close(scope, Exit.void);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(terminal)));
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(queued)));
+      assert.isFalse(queuedEntered);
+      assert.isNull(conversations.current("thread-a"));
+    }),
+);
+
 it.effect(
   "drains accepted execution before sealing handoff and leaves recovery commands available",
   () =>
     Effect.gen(function* () {
       const scope = yield* Scope.make();
       const conversations = yield* build(scope);
+      conversations.entity("thread-a");
       const started = yield* Deferred.make<void>();
       const release = yield* Deferred.make<void>();
       const moving = yield* Deferred.make<void>();
@@ -226,6 +337,7 @@ it.effect(
       const admission = yield* conversations
         .admitExecution(
           "thread-a",
+          { hostId: "local", generation: 1 },
           Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
         )
         .pipe(Effect.forkChild);
@@ -242,7 +354,11 @@ it.effect(
       yield* Fiber.join(admission);
       yield* Deferred.await(moving);
       const rejected = yield* conversations
-        .admitExecution("thread-a", Effect.die("must not submit"))
+        .admitExecution(
+          "thread-a",
+          { hostId: "local", generation: 1 },
+          Effect.die("must not submit"),
+        )
         .pipe(Effect.result);
       assert.strictEqual(rejected._tag, "Failure");
       let recovered = false;
@@ -253,10 +369,18 @@ it.effect(
         }),
       );
       assert.isTrue(recovered);
-      yield* conversations.admitExecution("other-thread", Effect.void);
+      yield* conversations.admitExecution(
+        "other-thread",
+        { hostId: "local", generation: 1 },
+        Effect.void,
+      );
       yield* Deferred.succeed(finishMove, undefined);
       yield* Fiber.join(move);
-      yield* conversations.admitExecution("thread-a", Effect.void);
+      yield* conversations.admitExecution(
+        "thread-a",
+        { hostId: "local", generation: 1 },
+        Effect.void,
+      );
       yield* Scope.close(scope, Exit.void);
     }),
 );
@@ -265,11 +389,16 @@ it.effect("reopens admission after handoff fails or is interrupted", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const conversations = yield* build(scope);
+    conversations.entity("thread-a");
     const failed = yield* conversations
       .withExecutionHandoff("thread-a", Effect.fail("move failed"))
       .pipe(Effect.result);
     assert.strictEqual(failed._tag, "Failure");
-    yield* conversations.admitExecution("thread-a", Effect.void);
+    yield* conversations.admitExecution(
+      "thread-a",
+      { hostId: "local", generation: 1 },
+      Effect.void,
+    );
     const started = yield* Deferred.make<void>();
     const moving = yield* conversations
       .withExecutionHandoff(
@@ -279,9 +408,320 @@ it.effect("reopens admission after handoff fails or is interrupted", () =>
       .pipe(Effect.forkChild);
     yield* Deferred.await(started);
     yield* Fiber.interrupt(moving);
-    yield* conversations.admitExecution("thread-a", Effect.void);
+    yield* conversations.admitExecution(
+      "thread-a",
+      { hostId: "local", generation: 1 },
+      Effect.void,
+    );
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect("Profile close interrupts a handoff still waiting for an active execution permit", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    conversations.entity("thread-a");
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const interrupted = yield* Deferred.make<void>();
+    const closed = yield* Deferred.make<void>();
+    const active = yield* conversations
+      .admitExecution(
+        "thread-a",
+        { hostId: "local", generation: 1 },
+        Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+          Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+        ),
+      )
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(entered);
+    let handoffEntered = false;
+    const handoff = yield* conversations
+      .withExecutionHandoff(
+        "thread-a",
+        Effect.sync(() => {
+          handoffEntered = true;
+        }),
+      )
+      .pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    const closing = yield* Scope.close(scope, Exit.void).pipe(
+      Effect.andThen(Deferred.succeed(closed, undefined)),
+      Effect.forkChild,
+    );
+    yield* Effect.gen(function* () {
+      for (let attempt = 0; attempt < 20 && !(yield* Deferred.isDone(closed)); attempt += 1) {
+        yield* Effect.yieldNow;
+      }
+      assert.isTrue(yield* Deferred.isDone(closed));
+      assert.isTrue(yield* Deferred.isDone(interrupted));
+      assert.isFalse(handoffEntered);
+      assert.isNull(conversations.current("thread-a"));
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(active)));
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(handoff)));
+    }).pipe(
+      Effect.ensuring(
+        Deferred.succeed(release, undefined).pipe(Effect.andThen(Fiber.join(closing))),
+      ),
+    );
+  }),
+);
+
+it.effect(
+  "native closure targets a cold execution lease and caller cancellation clears that lease",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      const entered = yield* Deferred.make<void>();
+      const execution = yield* conversations
+        .admitExecution(
+          "cold",
+          { hostId: "local", generation: 1 },
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      assert.isNull(conversations.current("cold")?.readCanonicalState());
+      assert.isNull(
+        conversations.captureNativeTerminalTarget("cold", { hostId: "remote", generation: 1 }),
+      );
+      assert.isNull(
+        conversations.captureNativeTerminalTarget("cold", { hostId: "local", generation: 2 }),
+      );
+      const target = conversations.captureNativeTerminalTarget("cold", {
+        hostId: "local",
+        generation: 1,
+      });
+      assert.isNotNull(target);
+      yield* conversations.runThreadObservation("cold", Effect.succeed(true), {
+        generation: target!,
+        isTerminal: Boolean,
+      });
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(execution)));
+      assert.isNull(conversations.current("cold"));
+      const nextEntered = yield* Deferred.make<void>();
+      const pending = yield* conversations
+        .admitExecution(
+          "cold",
+          { hostId: "local", generation: 1 },
+          Deferred.succeed(nextEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(nextEntered);
+      yield* Fiber.interrupt(pending);
+      assert.isNull(
+        conversations.captureNativeTerminalTarget("cold", { hostId: "local", generation: 1 }),
+      );
+      yield* conversations.runCommand("cold", Effect.void);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect("temporary lane borrowing does not own resources acquired in the caller Scope", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const callerScope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    conversations.entity("thread-a");
+    const entered = yield* Deferred.make<void>();
+    const finish = yield* Deferred.make<void>();
+    let released = 0;
+    const command = yield* conversations
+      .runCommand(
+        "thread-a",
+        Effect.gen(function* () {
+          yield* Effect.acquireRelease(Effect.void, () =>
+            Effect.sync(() => {
+              released += 1;
+            }),
+          );
+          yield* Deferred.succeed(entered, undefined);
+          yield* Deferred.await(finish);
+        }),
+      )
+      .pipe(Effect.provideService(Scope.Scope, callerScope), Effect.forkChild);
+    yield* Deferred.await(entered);
+    yield* Effect.yieldNow;
+    assert.strictEqual(released, 0);
+    yield* Deferred.succeed(finish, undefined);
+    yield* Fiber.join(command);
+    assert.strictEqual(released, 0);
+    yield* Scope.close(callerScope, Exit.void);
+    assert.strictEqual(released, 1);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "global observations serialize with workspace changes without creating native authority",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const order: string[] = [];
+      const observation = yield* conversations
+        .runThreadObservation(
+          "cold-global",
+          Effect.gen(function* () {
+            order.push("read-source-host");
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(release);
+            order.push("delete-source-row");
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      assert.isNull(conversations.current("cold-global"));
+      const handoff = yield* conversations
+        .runCommand(
+          "cold-global",
+          Effect.sync(() => {
+            order.push("commit-other-host");
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      assert.deepEqual(order, ["read-source-host"]);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(observation);
+      yield* Fiber.join(handoff);
+      assert.deepEqual(order, ["read-source-host", "delete-source-row", "commit-other-host"]);
+      assert.isNull(conversations.current("cold-global"));
+      assert.isNull(
+        conversations.captureNativeTerminalTarget("cold-global", {
+          hostId: "local",
+          generation: 1,
+        }),
+      );
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect("Profile closure cannot readmit a global observation waiting behind a command", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const conversations = yield* build(scope);
+    const entered = yield* Deferred.make<void>();
+    const active = yield* conversations
+      .runCommand(
+        "cold-global",
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never)),
+      )
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(entered);
+    let applications = 0;
+    const waiting = yield* conversations
+      .runThreadObservation(
+        "cold-global",
+        Effect.sync(() => {
+          applications += 1;
+        }),
+      )
+      .pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    yield* Scope.close(scope, Exit.void);
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(active)));
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(waiting)));
+    assert.strictEqual(applications, 0);
+    assert.isNull(conversations.current("cold-global"));
+  }),
+);
+
+it.effect(
+  "cancelling a waiting global observation cannot replay it after terminal retirement",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const cancelled = yield* Deferred.make<void>();
+      const terminal = yield* conversations
+        .runTerminalCommand(
+          "cold-global",
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(release)),
+            Effect.as(true),
+          ),
+          Boolean,
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      let applications = 0;
+      const waiting = yield* conversations
+        .runThreadObservation(
+          "cold-global",
+          Effect.sync(() => {
+            applications += 1;
+          }),
+        )
+        .pipe(
+          Effect.onInterrupt(() => Deferred.succeed(cancelled, undefined)),
+          Effect.forkChild,
+        );
+      yield* Effect.yieldNow;
+      const cancelling = yield* Fiber.interrupt(waiting).pipe(Effect.forkChild);
+      yield* Deferred.await(cancelled);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(cancelling);
+      assert.isTrue(yield* Fiber.join(terminal));
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(waiting)));
+      assert.strictEqual(applications, 0);
+      yield* conversations.runCommand("cold-global", Effect.void);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "caller cancellation after terminal acceptance cannot strand or close a replacement",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const conversations = yield* build(scope);
+      conversations.entity("thread-a");
+      const entered = yield* Deferred.make<void>();
+      const cleanupEntered = yield* Deferred.make<void>();
+      const finishCleanup = yield* Deferred.make<void>();
+      const active = yield* conversations
+        .admitExecution(
+          "thread-a",
+          { hostId: "local", generation: 1 },
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() =>
+              Deferred.succeed(cleanupEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(finishCleanup)),
+              ),
+            ),
+          ),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      const previous = conversations.current("thread-a");
+      const terminal = yield* conversations
+        .runTerminalCommand("thread-a", Effect.succeed(true), (result) => result)
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(cleanupEntered);
+      const cancelled = yield* Fiber.interrupt(terminal).pipe(Effect.forkChild);
+      yield* conversations.runCommand(
+        "thread-a",
+        Effect.sync(() => conversations.entity("thread-a")),
+      );
+      const replacement = conversations.current("thread-a");
+      assert.isNotNull(replacement);
+      assert.notStrictEqual(replacement?.generation, previous?.generation);
+      yield* Deferred.succeed(finishCleanup, undefined);
+      yield* Fiber.join(cancelled);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(active)));
+      assert.strictEqual(conversations.current("thread-a"), replacement);
+      yield* conversations.runCommand("thread-a", Effect.void);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect(
@@ -290,18 +730,27 @@ it.effect(
     Effect.gen(function* () {
       const scope = yield* Scope.make();
       const conversations = yield* build(scope);
+      conversations.entity("thread-a");
       const before = yield* conversations.executionEpoch("thread-a");
       yield* conversations.withExecutionHandoff(
         "thread-a",
         conversations.setRecoveryRequired("thread-a", true),
       );
       const rejected = yield* conversations
-        .admitExecution("thread-a", Effect.die("must not execute"))
+        .admitExecution(
+          "thread-a",
+          { hostId: "local", generation: 1 },
+          Effect.die("must not execute"),
+        )
         .pipe(Effect.result);
       assert.strictEqual(rejected._tag, "Failure");
       yield* conversations.retire("thread-a");
       const reopened = yield* conversations
-        .admitExecution("thread-a", Effect.die("must remain blocked"))
+        .admitExecution(
+          "thread-a",
+          { hostId: "local", generation: 1 },
+          Effect.die("must remain blocked"),
+        )
         .pipe(Effect.result);
       assert.strictEqual(reopened._tag, "Failure");
       yield* conversations.withExecutionHandoff(
@@ -309,11 +758,17 @@ it.effect(
         conversations.setRecoveryRequired("thread-a", false),
       );
       const stale = yield* conversations
-        .admitExecution("thread-a", Effect.die("old receipt"), before)
+        .admitExecution(
+          "thread-a",
+          { hostId: "local", generation: 1 },
+          Effect.die("old receipt"),
+          before,
+        )
         .pipe(Effect.result);
       assert.strictEqual(stale._tag, "Failure");
       yield* conversations.admitExecution(
         "thread-a",
+        { hostId: "local", generation: 1 },
         Effect.void,
         yield* conversations.executionEpoch("thread-a"),
       );

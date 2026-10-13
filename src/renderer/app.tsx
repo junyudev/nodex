@@ -8,6 +8,8 @@ import { LocalConversationProvider } from "@/features/local-conversation";
 import { HeartbeatAutomationController } from "@/features/local-conversation/heartbeat-automation-controller";
 import { DesktopNotificationPermissionBootstrap } from "@/features/local-conversation/desktop-notification-permission-bootstrap";
 import { LocalConversationViewStateCleanupController } from "@/features/local-conversation/view/local-conversation-view-state-cleanup-controller";
+import { InlineVisualizationWindowProvider } from "@/features/local-conversation/view/inline-visualization-window";
+import { InlineVisualizationWindowLifecycle } from "@/features/local-conversation/view/inline-visualization-window-lifecycle";
 import { NodexModalHost } from "@/lib/modal-registry";
 import type { WindowSessionBootstrap } from "@/lib/types";
 import type { CoreAuthorityStatus } from "../shared/core-authority-status";
@@ -80,37 +82,40 @@ export default function App({ windowSessionBootstrap }: AppProps) {
   return (
     <NodexToastProvider>
       <LocalConversationProvider>
-        <DesktopNotificationPermissionBootstrap />
-        <LocalConversationViewStateCleanupController />
-        <HeartbeatAutomationController />
-        <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
-        <CoreAuthorityStatusNotice
-          status={
-            coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
-              ? READY_CORE_AUTHORITY_STATUS
-              : coreAuthorityStatus
-          }
-          onRetry={retryCoreAuthority}
-          onRelaunch={relaunchForCoreAuthority}
-        />
-        {appUpdateStatus?.status === "downloaded" &&
-        dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
-          <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
-            <div className="pointer-events-auto">
-              <AppUpdateRestartNotice
-                status={appUpdateStatus}
-                onDismiss={() => {
-                  setDismissedUpdateVersion(appUpdateStatus.availableVersion);
-                }}
-                onRestart={() => {
-                  void installAppUpdate();
-                }}
-              />
+        <InlineVisualizationWindowProvider>
+          <InlineVisualizationWindowLifecycle />
+          <DesktopNotificationPermissionBootstrap />
+          <LocalConversationViewStateCleanupController />
+          <HeartbeatAutomationController />
+          <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
+          <CoreAuthorityStatusNotice
+            status={
+              coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
+                ? READY_CORE_AUTHORITY_STATUS
+                : coreAuthorityStatus
+            }
+            onRetry={retryCoreAuthority}
+            onRelaunch={relaunchForCoreAuthority}
+          />
+          {appUpdateStatus?.status === "downloaded" &&
+          dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
+            <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
+              <div className="pointer-events-auto">
+                <AppUpdateRestartNotice
+                  status={appUpdateStatus}
+                  onDismiss={() => {
+                    setDismissedUpdateVersion(appUpdateStatus.availableVersion);
+                  }}
+                  onRestart={() => {
+                    void installAppUpdate();
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ) : null}
-        <MermaidDiagramModalController />
-        <NodexModalHost />
+          ) : null}
+          <MermaidDiagramModalController />
+          <NodexModalHost />
+        </InlineVisualizationWindowProvider>
       </LocalConversationProvider>
     </NodexToastProvider>
   );

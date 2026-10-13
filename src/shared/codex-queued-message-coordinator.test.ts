@@ -46,6 +46,7 @@ function fixture() {
       state = next;
     },
     read: () => state,
+    readRole: () => role,
   };
 }
 test("owner FIFO reevaluates each recipe against committed storage rather than optimistic stale state", async () => {
@@ -147,5 +148,102 @@ test("execution wakes do not invalidate an in-flight storage refresh", async () 
   expect(f.queue.readMessages("thread")).toEqual(["fresh"]);
   expect(f.queue.isRefreshing("thread")).toBe(false);
   expect(loads).toBe(1);
+  f.queue[Symbol.dispose]();
+});
+
+test("owner receipt cleanup cannot forward a stale automatic mutation after becoming a follower", async () => {
+  const f = fixture();
+  let forwarded = false;
+  f.client.requestFollower = async () => {
+    forwarded = true;
+  };
+  const cleanup = f.queue.updateAsOwner("thread", () => []);
+  f.setRole({ role: "follower", ownerClientId: "new-owner" });
+  await expect(cleanup).rejects.toThrow("no longer owns");
+  expect(forwarded).toBe(false);
+  expect(f.read().thread).toEqual(["persisted"]);
+  f.queue[Symbol.dispose]();
+});
+
+test.each(["follower", "disposed", "replacement-owner"] as const)(
+  "owner receipt cleanup rejects %s while storage is waiting for its read/lock",
+  async (transition) => {
+    const f = fixture();
+    if (transition === "replacement-owner") {
+      f.client.captureOwnerWrite = () => {
+        const admitted = f.readRole();
+        return {
+          assertCurrent: () => {
+            if (f.readRole() !== admitted)
+              throw new Error("This window no longer owns the admitted thread incarnation");
+          },
+          [Symbol.dispose]: () => {},
+        };
+      };
+    }
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    let writes = 0;
+    f.client.storage.update = async (recipe) => {
+      entered.resolve();
+      await release.promise;
+      const next = recipe(f.read());
+      writes++;
+      f.setState(next);
+    };
+    const cleanup = f.queue.updateAsOwner("thread", () => []);
+    const rejected = expect(cleanup).rejects.toThrow(
+      transition === "disposed" ? "retired" : "no longer owns",
+    );
+    await entered.promise;
+    f.setState({ thread: ["new-owner-input"] });
+    if (transition === "disposed") f.queue[Symbol.dispose]();
+    else {
+      f.setRole({ role: "follower", ownerClientId: "new-owner" });
+      if (transition === "replacement-owner") f.setRole({ role: "owner" });
+    }
+    release.resolve();
+    await rejected;
+    expect(writes).toBe(0);
+    expect(f.read().thread).toEqual(["new-owner-input"]);
+    f.queue[Symbol.dispose]();
+  },
+);
+
+test("a committed owner write cannot acknowledge or broadcast under its replacement", async () => {
+  const f = fixture();
+  const entered = deferred<void>();
+  const commit = deferred<void>();
+  const broadcast = [] as Array<readonly string[]>;
+  let disposals = 0;
+  f.client.captureOwnerWrite = () => {
+    const admitted = f.readRole();
+    return {
+      assertCurrent: () => {
+        if (f.readRole() !== admitted) throw new Error("Owner incarnation changed");
+      },
+      [Symbol.dispose]: () => {
+        disposals++;
+      },
+    };
+  };
+  f.client.broadcast = async (_id, messages) => {
+    broadcast.push(messages);
+  };
+  f.client.storage.update = async (recipe) => {
+    f.setState(recipe(f.read()));
+    entered.resolve();
+    await commit.promise;
+  };
+  const write = f.queue.updateAsOwner("thread", () => ["committed input"]);
+  const rejection = expect(write).rejects.toThrow("Owner incarnation changed");
+  await entered.promise;
+  f.setRole({ role: "follower", ownerClientId: "new-owner" });
+  f.setRole({ role: "owner" });
+  commit.resolve();
+  await rejection;
+  expect(f.read().thread).toEqual(["committed input"]);
+  expect(broadcast).toEqual([]);
+  expect(disposals).toBe(1);
   f.queue[Symbol.dispose]();
 });

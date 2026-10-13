@@ -333,6 +333,96 @@ describe("Codex 30751 thread metadata", () => {
     expect(reconciled.latestCollaborationMode.settings.reasoning_effort).toBe("medium");
   });
 
+  test("resume preserves an existing cleanup-only native queue receipt", () => {
+    const raw = {
+      id: "native",
+      clientUserMessageId: "client",
+      input: [{ type: "text" as const, text: "Accepted input", text_elements: [] }],
+    };
+    const existing = { ...buildState(), unconfirmedServerQueueMessages: [raw] };
+    const resumed = { ...buildState(), unconfirmedServerQueueMessages: undefined };
+    const after = reconcileCodexResumedConversationState({
+      existing,
+      resumed,
+      thread: { ...buildThread("Resumed"), turns: [] },
+    });
+    expect(after.unconfirmedServerQueueMessages).toEqual([raw]);
+  });
+
+  test.each([false, true])(
+    "merged resume records completed native queue cleanup only with owner admission: %s",
+    (recordNativeQueueAcceptance) => {
+      const raw = {
+        id: "native",
+        clientUserMessageId: "client",
+        input: [{ type: "text" as const, text: "Accepted input", text_elements: [] }],
+      };
+      const turn = createCodexCanonicalTurnState(
+        {
+          rootTurnId: null,
+          id: "restored",
+          items: [],
+          itemsView: "full",
+          status: "completed",
+          error: null,
+          startedAt: 1,
+          completedAt: 2,
+          durationMs: 1000,
+        },
+        {
+          threadId: "thread-token",
+          input: [],
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "readOnly", networkAccess: false },
+          model: "test",
+          cwd: "/work",
+          attachments: [],
+          effort: null,
+          summary: "none",
+          personality: null,
+          outputSchema: null,
+          collaborationMode: null,
+        },
+      );
+      const resumed: CodexCanonicalConversationState = {
+        ...buildState(),
+        turns: [
+          {
+            ...turn,
+            items: [
+              {
+                type: "steeringUserMessage",
+                id: "pending",
+                targetTurnId: "restored",
+                targetTurnStartedAtMs: 1000,
+                status: "accepted",
+                serverUserMessageId: "actual-echo",
+                clientUserMessageId: raw.clientUserMessageId,
+                input: raw.input,
+                acceptedInput: raw.input,
+                serverQueuedSubmission: raw,
+                attachments: [],
+                restoreMessage: { context: { commentAttachments: [] } },
+                compareKey: { rawText: "Accepted input", imageCount: 0 },
+              },
+            ],
+            completedItemIds: { "actual-echo": true },
+          },
+        ],
+      };
+      const result = reconcileCodexResumedConversationState({
+        existing: buildState(),
+        resumed,
+        thread: { ...buildThread("Resumed"), turns: [] },
+        recordNativeQueueAcceptance,
+      });
+      expect(result.unconfirmedServerQueueMessages).toEqual(
+        recordNativeQueueAcceptance ? [raw] : undefined,
+      );
+    },
+  );
+
   test("resume reconciliation does not replace a locally edited title", () => {
     const existing = { ...buildState(), title: "Local edit" };
     const resumedThread: Thread = {

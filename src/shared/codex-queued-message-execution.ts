@@ -24,6 +24,7 @@ export type QueuePreparation<Submission> =
   | { status: "ready"; submission: Submission }
   | { status: "paused"; reason: string };
 export interface QueueOperation<Message, Submission> {
+  isCurrent?(): boolean;
   prepare(
     conversationId: string,
     message: Message,
@@ -35,7 +36,12 @@ export interface QueueOperation<Message, Submission> {
     message: Message,
     result: QueueSendResult | { status: "paused"; reason: string },
   ): void;
-  onError?(conversationId: string, message: Message, error: unknown): void;
+  onError?(
+    conversationId: string,
+    message: Message,
+    error: unknown,
+    submission?: Submission,
+  ): void | Promise<void>;
 }
 export interface QueueExecutionRuntime<Message, Submission> extends QueueOperation<
   Message,
@@ -75,6 +81,8 @@ interface QueueExecutionClient<Message, Resume, Start, Steer> {
   submissionHost: QueueSubmissionHost<Resume, Start, Steer>;
   role(conversationId: string): QueuedMessageRole;
   canSend(conversationId: string, message: Message): boolean;
+  messagesEqual?(left: Message, right: Message): boolean;
+  selectAutomaticMessage?(messages: readonly Message[]): Message | undefined;
   validate(messages: readonly Message[]): void;
   error(operation: string, error: unknown): void;
 }
@@ -128,7 +136,7 @@ export class QueuedMessageExecution<
         coordinator.requestExecutionWake();
       return;
     }
-    const head = coordinator.readMessages(id)?.[0];
+    const head = this.automaticMessage(id);
     if (!head || head.pausedReason != null) return;
     if (this.running.has(id)) {
       this.rerun.add(id);
@@ -157,7 +165,7 @@ export class QueuedMessageExecution<
     operation: QueueOperation<Message, QueueSubmission<Resume, Start, Steer>>,
   ): Promise<{ status: "sent"; turnId: string }> {
     using _deferral = this.deferAutomaticTurns(id);
-    const current = () => !this.disposed;
+    const current = () => !this.disposed && operation.isCurrent?.() !== false;
     let prepared = await operation.prepare(id, message, "steer");
     if (prepared.status === "paused") throw new Error(prepared.reason);
     if (prepared.submission.conversationId !== id)
@@ -174,6 +182,36 @@ export class QueuedMessageExecution<
     }
     if (result.status !== "sent") throw new Error("Explicit message submission was not sent");
     return { status: "sent", turnId: result.turnId };
+  }
+  /** A native queue row uses the same cross-window send admission as captured local rows. */
+  async sendExternalNow<Result extends { readonly status: "queued" | "sent" } | null>(
+    id: string,
+    messageId: string,
+    send: (accepted: () => void) => Promise<Result>,
+  ): Promise<Result | null> {
+    using _deferral = this.deferAutomaticTurns(id);
+    const { runtime, submissionHost } = this.client;
+    if (this.disposed || submissionHost.hasPendingTurnStart(id) || !runtime.tryAcquireStartTurn(id))
+      return null;
+    let lock: Awaited<ReturnType<typeof runtime.acquireSendLock>> = null;
+    let sent = false;
+    try {
+      await runtime.waitUntilReady?.(id);
+      if (this.disposed || submissionHost.hasPendingTurnStart(id)) return null;
+      lock = await runtime.acquireSendLock(id, messageId);
+      if (!lock || this.disposed || submissionHost.hasPendingTurnStart(id)) return null;
+      const result = await send(() => {
+        sent = true;
+      });
+      sent ||= result?.status === "sent";
+      return result;
+    } finally {
+      try {
+        await lock?.release(sent);
+      } finally {
+        runtime.releaseStartTurn(id);
+      }
+    }
   }
   private async submit(
     submission: QueueSubmission<Resume, Start, Steer>,
@@ -234,16 +272,18 @@ export class QueuedMessageExecution<
     let lock: Awaited<ReturnType<typeof runtime.acquireSendLock>> = null;
     let sent = false;
     let attempted = false;
+    let attemptedSubmission: QueueSubmission<Resume, Start, Steer> | undefined;
     const operation = manual?.operation ?? runtime;
     const current = (): boolean =>
       !this.disposed &&
+      operation.isCurrent?.() !== false &&
       !coordinator.isPending(id) &&
       !coordinator.isRefreshing(id) &&
       message != null &&
       (manual
         ? coordinator.readMessages(id)?.find((candidate) => candidate.id === manual.messageId) ===
           message
-        : coordinator.readMessages(id)?.[0] === message &&
+        : this.automaticMessage(id) === message &&
           !this.deferrals.has(id) &&
           runtime.isClientReady(id) &&
           this.client.canSend(id, message));
@@ -253,7 +293,7 @@ export class QueuedMessageExecution<
       if (!manual && (this.deferrals.has(id) || !runtime.isClientReady(id))) return;
       message = manual
         ? coordinator.readMessages(id)?.find((candidate) => candidate.id === manual.messageId)
-        : coordinator.readMessages(id)?.[0];
+        : this.automaticMessage(id);
       if (!message || !current() || !runtime.tryAcquireStartTurn(id)) return;
       acquired = true;
       if (manual) {
@@ -265,13 +305,14 @@ export class QueuedMessageExecution<
       let prepared = await operation.prepare(id, message, manual ? "steer" : "start");
       if (!current()) return;
       if (prepared.status === "paused") {
-        this.pause(id, message.id, prepared.reason);
+        this.pause(id, message, prepared.reason);
         return;
       }
       if (!manual && this.client.role(id)?.role !== "owner") return;
       if (prepared.submission.conversationId !== id)
         throw new Error("Prepared submission belongs to another thread");
       attempted = true;
+      attemptedSubmission = prepared.submission;
       operation.onAttempt?.(id, message);
       let result = await this.submit(prepared.submission, !manual, current);
       if (result.status === "needs-start-preparation") {
@@ -282,12 +323,13 @@ export class QueuedMessageExecution<
           return;
         }
         if (prepared.status === "paused") {
-          this.pause(id, message.id, prepared.reason);
+          this.pause(id, message, prepared.reason);
           operation.onResult?.(id, message, prepared);
           return;
         }
         if (prepared.submission.conversationId !== id || prepared.submission.start == null)
           throw new Error("Start preparation did not produce a matching turn request");
+        attemptedSubmission = prepared.submission;
         result = await this.submit(
           { ...prepared.submission, afterInactiveTurnId },
           !manual,
@@ -298,9 +340,9 @@ export class QueuedMessageExecution<
         throw new Error("Start preparation did not produce a turn request");
       if (result.status === "sent") {
         sent = true;
-        if (!this.disposed)
+        if (!this.disposed && operation.isCurrent?.() !== false)
           coordinator.mutate(id, (messages) =>
-            messages.filter((candidate) => candidate.id !== message?.id),
+            messages.filter((candidate) => !this.sameMessage(candidate, message!)),
           );
       }
       operation.onResult?.(id, message, result);
@@ -311,13 +353,19 @@ export class QueuedMessageExecution<
       }
       if (!sent && attempted && message) {
         try {
-          operation.onError?.(id, message, error);
+          await (operation.onError ?? runtime.onError)?.(id, message, error, attemptedSubmission);
         } catch (reportError) {
           this.client.error("report", reportError);
         }
       }
-      if (!sent && !this.disposed && message && (manual || this.client.role(id)?.role === "owner"))
-        this.pause(id, message.id, runtime.errorReason(error));
+      if (
+        !sent &&
+        !this.disposed &&
+        operation.isCurrent?.() !== false &&
+        message &&
+        (manual || this.client.role(id)?.role === "owner")
+      )
+        this.pause(id, message, runtime.errorReason(error));
       this.client.error("execute", error);
       if (manual && !sent) throw error;
     } finally {
@@ -330,10 +378,19 @@ export class QueuedMessageExecution<
       if (manual) this.wake(id);
     }
   }
-  private pause(id: string, messageId: string, reason: string): void {
+  private sameMessage(left: Message, right: Message): boolean {
+    return this.client.messagesEqual?.(left, right) ?? left === right;
+  }
+  private automaticMessage(id: string): Message | undefined {
+    const messages = this.client.coordinator.readMessages(id) ?? [];
+    return this.client.selectAutomaticMessage
+      ? this.client.selectAutomaticMessage(messages)
+      : messages[0];
+  }
+  private pause(id: string, message: Message, reason: string): void {
     this.client.coordinator.mutate(id, (messages) =>
-      messages.map((message) =>
-        message.id === messageId ? { ...message, pausedReason: reason } : message,
+      messages.map((candidate) =>
+        this.sameMessage(message, candidate) ? { ...candidate, pausedReason: reason } : candidate,
       ),
     );
   }

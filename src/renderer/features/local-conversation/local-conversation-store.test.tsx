@@ -155,6 +155,7 @@ let followerActionResult: unknown = null;
 let followerActionError: Error | null = null;
 let followerActionHandler: ((input: unknown) => unknown | Promise<unknown>) | null = null;
 let ownerStreamPublishHandler: ((input: unknown) => unknown | Promise<unknown>) | null = null;
+let ownerQueuePublishSourceClientId: string | null = null;
 let ownerRequestResponseHandler:
   | ((channel: string, args: unknown[]) => boolean | Promise<boolean>)
   | null = null;
@@ -238,7 +239,14 @@ vi.mock("./conversation-coordination-connection", () => ({
     const host: ConversationCoordinationHost = {
       threadArchived: (input) => record("threadArchived", input),
       threadUnarchived: (input) => record("threadUnarchived", input),
-      threadQueuedFollowUpsChanged: (input) => record("threadQueuedFollowUpsChanged", input),
+      threadQueuedFollowUpsChanged: async (input) => {
+        await record("threadQueuedFollowUpsChanged", input);
+        if (ownerQueuePublishSourceClientId)
+          coordinationBroadcast?.("threadQueuedFollowUpsChanged", {
+            sourceClientId: ownerQueuePublishSourceClientId,
+            params: input,
+          });
+      },
       setThreadOwnership: (input) => record("setThreadOwnership", input),
       threadStreamStateChanged: async (input) => {
         await record("threadStreamStateChanged", input.params);
@@ -336,6 +344,7 @@ vi.mock("./local-conversation-deps", () => ({
         if (!conversation)
           throw new Error("Queued native preparation requires a loaded conversation");
         const clientUserMessageId = preparationContext?.clientUserMessageId ?? message.id;
+        const serverQueuedSubmission = preparationContext?.serverQueuedSubmission;
         const params = buildFreshLaunchCanonicalParams({
           conversation,
           threadId: String(args[0]),
@@ -345,7 +354,8 @@ vi.mock("./local-conversation-deps", () => ({
         const steer = {
           conversationId: String(args[0]),
           clientUserMessageId,
-          input: params.input,
+          input: serverQueuedSubmission?.input ?? params.input,
+          ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
           restoreMessage: {
             id: message.id,
             cwd: message.cwd,
@@ -360,8 +370,14 @@ vi.mock("./local-conversation-deps", () => ({
         );
         return {
           start: {
-            request: { ...params, input: [app.input, ...params.input.slice(1)] },
-            context: { responseItems: app.responseItems },
+            request: {
+              ...params,
+              input: serverQueuedSubmission?.input ?? [app.input, ...params.input.slice(1)],
+            },
+            context: {
+              responseItems: serverQueuedSubmission ? [] : app.responseItems,
+              ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
+            },
           },
           steer,
           requiresIdle: false,
@@ -1271,6 +1287,7 @@ function resetLocalConversationStoreTestHarness(reset: () => void): void {
   nativeFixtureDocuments.clear();
   queuedFollowUpCommandHandler = null;
   serverQueueRequestHandler = null;
+  ownerQueuePublishSourceClientId = null;
   selectedSubagentHydrateResult = null;
   selectedSubagentHydrateHandler = null;
   codexEventListeners.clear();
@@ -2066,6 +2083,7 @@ describe("local-conversation-store", () => {
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
     vi.stubGlobal("MessageChannel", MessageChannel);
     nativeSupportsPaginatedHistory = true;
     resumeThreadRole = "owner";
@@ -2106,6 +2124,17 @@ describe("local-conversation-store", () => {
       const entityKey = owner.readStructure()!.turns[0]!.entityKey;
       expect(owner.readItem(entityKey, "command")).toMatchObject({ aggregatedOutput: "Before" });
       const slots = owner.readItemSlots(entityKey);
+      const historyReads = () =>
+        recordedNativeRequests().flatMap((record) => {
+          const input = record.args[0] as {
+            request?: {
+              method?: string;
+              params?: import("@nodex/codex-app-server-protocol/v2").ThreadTurnsListParams;
+            };
+          };
+          return input.request?.method === "thread/turns/list" ? [input.request.params] : [];
+        });
+      expect(historyReads().map((params) => params?.cursor)).toEqual([null]);
       release();
       await resume;
       await waitFor(() => expect(owner.readStructure()?.resumeState).toBe("resumed"));
@@ -2130,12 +2159,7 @@ describe("local-conversation-store", () => {
       expect(owner.readStructure()).toBe(originalStructure);
       expect(owner.readItemSlots(entityKey)).toBe(originalSlots);
       expect(slots?.length).toBe(2);
-      const reads = recordedNativeRequests().filter(
-        (record) =>
-          (record.args[0] as { request?: { method?: string } }).request?.method ===
-          "thread/turns/list",
-      );
-      expect(reads).toHaveLength(1);
+      expect(historyReads().map((params) => params?.cursor)).toEqual([null, "fixture-tail"]);
       composerPredictionEnabled = true;
       dispatchCodexAppServerMessage("native-notification", {
         type: "nativeNotification",
@@ -4459,6 +4483,7 @@ describe("local-conversation-store", () => {
         },
       };
       resumeThreadResult = initialConversation;
+      ownerQueuePublishSourceClientId = ownerClientId;
       ownerStreamPublishHandler = (input) => {
         const publish = input as {
           conversationId?: string;
@@ -4524,6 +4549,7 @@ describe("local-conversation-store", () => {
       }
       await followerManager.removeQueuedFollowUp("thread-1", queuedFollowUpId);
       await flushAsyncWork(2);
+      expect(ownerManager.readConversation("thread-1")?.queuedFollowUps.entries).toHaveLength(0);
       expect(
         String(followerManager.readConversation("thread-1")?.queuedFollowUps.entries.length ?? -1),
       ).toBe("0");
@@ -4726,10 +4752,22 @@ describe("local-conversation-store", () => {
           (record.args[0] as { request: { method: string } }).request.method ===
             "thread-follower-set-queued-follow-ups-state",
       );
-      expect(queuedWrites).toHaveLength(2);
+      expect(queuedWrites).toHaveLength(1);
+      const queuedRemovals = invokeRecords.filter(
+        (record) =>
+          record.channel === "peer:requestThreadFollower" &&
+          (record.args[0] as { request: { method: string } }).request.method ===
+            "thread-follower-remove-queued-message",
+      );
+      expect(queuedRemovals).toHaveLength(1);
+      expect(queuedRemovals[0]?.args[0]).toMatchObject({
+        targetClientId: ownerClientId,
+        request: { params: { conversationId: "thread-1", messageId: queuedFollowUpId } },
+      });
     } finally {
       followerActionHandler = null;
       ownerStreamPublishHandler = null;
+      ownerQueuePublishSourceClientId = null;
       followerActionResult = null;
       followerActionError = null;
       resumeThreadResult = null;
@@ -14961,6 +14999,26 @@ describe("local-conversation-store", () => {
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    let ownerMessages: readonly import("../../../shared/codex-queued-message").CodexQueuedMessage[] =
+      [];
+    followerActionHandler = (input) => {
+      const action = input as {
+        request: import("../../../shared/codex-thread-follower-request").NativeConversationFollowerRequest;
+      };
+      if (action.request.method === "thread-follower-set-queued-follow-ups-state") {
+        ownerMessages = action.request.params.state["thread-1"] as typeof ownerMessages;
+        return { ok: true };
+      }
+      if (action.request.method !== "thread-follower-remove-queued-message")
+        throw new Error("Unexpected queued follower action");
+      const messageId = action.request.params.messageId;
+      ownerMessages = ownerMessages.filter((message) => message.id !== messageId);
+      coordinationBroadcast?.("threadQueuedFollowUpsChanged", {
+        sourceClientId: "owner-a",
+        params: { hostId: "local", conversationId: "thread-1", messages: ownerMessages },
+      });
+      return { applied: true };
+    };
     try {
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
         hostId: "local",
@@ -14997,23 +15055,31 @@ describe("local-conversation-store", () => {
         );
       expect(requests).toHaveLength(4);
       expect(
-        requests.every(
-          (request) =>
-            request.targetClientId === "owner-a" &&
-            request.request.method === "thread-follower-set-queued-follow-ups-state" &&
-            request.request.params.conversationId === "thread-1",
-        ),
+        requests
+          .slice(0, 3)
+          .every(
+            (request) =>
+              request.targetClientId === "owner-a" &&
+              request.request.method === "thread-follower-set-queued-follow-ups-state" &&
+              request.request.params.conversationId === "thread-1",
+          ),
       ).toBe(true);
       expect(
-        requests.map((request) =>
-          request.request.params.state["thread-1"]?.map((message) => message.id),
-        ),
+        requests
+          .slice(0, 3)
+          .map((request) => request.request.params.state["thread-1"]?.map((message) => message.id)),
       ).toEqual([
         ["queued-native-1"],
         ["queued-native-1", "queued-native-2"],
         ["queued-native-2", "queued-native-1"],
-        ["queued-native-2"],
       ]);
+      expect(requests[3]).toMatchObject({
+        targetClientId: "owner-a",
+        request: {
+          method: "thread-follower-remove-queued-message",
+          params: { conversationId: "thread-1", messageId: "queued-native-1" },
+        },
+      });
       expect(requests[0]?.request.params.state["thread-1"]?.[0]).toMatchObject({
         context: { prompt: "first queued prompt", fileAttachments: [], imageAttachments: [] },
         submissionOptions: { serviceTier: "fast" },
@@ -15022,6 +15088,7 @@ describe("local-conversation-store", () => {
         manager.readConversation("thread-1")?.queuedFollowUps.entries.map((row) => row.prompt),
       ).toEqual(["second queued prompt"]);
     } finally {
+      followerActionHandler = null;
       followerActionResult = null;
       manager.destroy();
     }
@@ -16701,6 +16768,632 @@ describe("local-conversation-store", () => {
     },
   );
 
+  test("mixed native text and local app input keep their real row actions and client identities", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    let serial = 0;
+    let serverItems: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission[] = [];
+    serverQueueRequestHandler = async (method, params) => {
+      const input = params as {
+        queuedSubmissionId?: string;
+        clientUserMessageId?: string;
+        input?: import("@nodex/codex-app-server-protocol/v2").UserInput[];
+        queuedSubmissionIds?: string[];
+      };
+      if (method === "thread/queue/list") return { data: [...serverItems], nextCursor: null };
+      if (method === "thread/queue/add") {
+        const item = {
+          id: `native-${++serial}`,
+          clientUserMessageId: input.clientUserMessageId!,
+          input: input.input!,
+        };
+        serverItems.push(item);
+        return { queuedSubmission: item };
+      }
+      if (method === "thread/queue/update") {
+        const item = serverItems.find((item) => item.id === input.queuedSubmissionId)!;
+        item.input = input.input!;
+        return { queuedSubmission: item };
+      }
+      if (method === "thread/queue/delete") {
+        serverItems = serverItems.filter((item) => item.id !== input.queuedSubmissionId);
+        return { deleted: true };
+      }
+      if (method === "thread/queue/reorder") return {};
+      throw new Error(`Unexpected queue method ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    const app = {
+      untrustedAppMessage: {
+        source: "visualization" as const,
+        sourceId: "widget",
+        text: "App changes",
+        structuredContent: { selected: "Dots" },
+      },
+    };
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      await manager.enqueueQueuedFollowUp("thread-1", "Native first");
+      await manager.enqueueQueuedFollowUp("thread-1", "App changes", app);
+      await manager.enqueueQueuedFollowUp("thread-1", "Native second");
+      const rows = () => manager.readConversation("thread-1")!.queuedFollowUps.entries;
+      expect(rows().map((row) => [row.prompt, row.deliveryOwner])).toEqual([
+        ["Native first", "server"],
+        ["Native second", "server"],
+        ["App changes", "local"],
+      ]);
+      expect(rows()[0]?.clientUserMessageId).toBe(serverItems[0]?.clientUserMessageId);
+      const localId = rows()[2]!.followUpId;
+      expect(await manager.replaceQueuedFollowUp("thread-1", "native-1", 0, "Edited native")).toBe(
+        true,
+      );
+      expect(await manager.replaceQueuedFollowUp("thread-1", localId, 0, "Edited app", app)).toBe(
+        true,
+      );
+      await manager.reorderQueuedFollowUps("thread-1", [localId, "native-2", "native-1"]);
+      expect(rows().map((row) => row.prompt)).toEqual([
+        "Native second",
+        "Edited native",
+        "Edited app",
+      ]);
+      expect(queuedMessageFixtureState["thread-1"]?.map((message) => message.id)).toEqual([
+        localId,
+      ]);
+      invokeRecords = [];
+      const sentClientId = rows().find((row) => row.followUpId === "native-1")!.clientUserMessageId;
+      await manager.sendQueuedFollowUpNow("thread-1", "native-1");
+      expect(
+        invokeRecords.find((record) => record.channel === "codex:turn:native-steer:execute")
+          ?.args[0],
+      ).toMatchObject({
+        clientUserMessageId: sentClientId,
+      });
+      expect(rows().map((row) => row.prompt)).toEqual(["Native second", "Edited app"]);
+      await manager.removeQueuedFollowUp("thread-1", localId);
+      expect(rows().map((row) => row.prompt)).toEqual(["Native second"]);
+      expect(serverItems.map((item) => item.id)).toEqual(["native-2"]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("mixed confirmed app delivery waits for native drain then injects once before starting", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    let serverItems = [
+      {
+        id: "native-before",
+        clientUserMessageId: "native-client",
+        input: [{ type: "text" as const, text: "Native first", text_elements: [] }],
+      },
+    ];
+    serverQueueRequestHandler = async (method) => {
+      if (method === "thread/queue/list") return { data: [...serverItems], nextCursor: null };
+      throw new Error(`App input reached native queue: ${method}`);
+    };
+    resumeThreadResult = withCanonicalState({
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        {
+          threadId: "thread-1",
+          turnId: "completed",
+          status: "completed",
+          itemIds: ["answer"],
+          items: [buildAssistantMessage("thread-1", "completed", "answer", "Ready")],
+        },
+      ],
+    });
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    let release = () => {};
+    const confirmation = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    nativePassiveInjection = async (key) => {
+      await confirmation;
+      return { passiveContextKey: key };
+    };
+    try {
+      manager.start();
+      await waitFor(() => expect(manager.readConnection().status).toBe("connected"));
+      await manager.requestThreadStreamResume("thread-1");
+      await manager.enqueueQueuedFollowUp("thread-1", "App changes", {
+        untrustedAppMessage: {
+          source: "visualization",
+          sourceId: "widget",
+          text: "App changes",
+          structuredContent: { selected: "Dots" },
+        },
+      });
+      await flushAsyncWork();
+      expect(
+        manager
+          .readConversation("thread-1")
+          ?.queuedFollowUps.entries.map((row) => row.deliveryOwner),
+      ).toEqual(["server", "local"]);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native:inject"),
+      ).toHaveLength(0);
+      serverItems = [];
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "mixed-drain",
+        occurrenceToken: 1,
+        notification: { method: "thread/queue/changed", params: { threadId: "thread-1" } },
+      });
+      await waitFor(() =>
+        expect(
+          invokeRecords.filter((record) => record.channel === "codex:turn:native:inject"),
+        ).toHaveLength(1),
+      );
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native:execute"),
+      ).toHaveLength(0);
+      expect(queuedMessageFixtureState["thread-1"]).toHaveLength(1);
+      release();
+      await waitFor(() =>
+        expect(
+          invokeRecords.filter((record) => record.channel === "codex:turn:native:execute"),
+        ).toHaveLength(1),
+      );
+      await waitFor(() => expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]));
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native:inject"),
+      ).toHaveLength(1);
+    } finally {
+      release();
+      nativePassiveInjection = undefined;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("mixed queue client correlation deduplicates native receipt until the local row is removed", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    queuedMessageFixtureState = {
+      "thread-1": [
+        {
+          id: "correlated-client",
+          cwd: "/project-1",
+          context: {
+            prompt: "Captured row",
+            fileAttachments: [],
+            addedFiles: [],
+            commentAttachments: [],
+            imageAttachments: [],
+          },
+        },
+      ],
+    };
+    rendererQueuedMessageStorage.invalidate();
+    serverQueueRequestHandler = async (method) => {
+      if (method === "thread/queue/list")
+        return {
+          data: [
+            {
+              id: "native-receipt",
+              clientUserMessageId: "correlated-client",
+              input: [{ type: "text", text: "Native row", text_elements: [] }],
+            },
+          ],
+          nextCursor: null,
+        };
+      throw new Error(`Wrong correlated delivery owner ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      // The public action waits for both owner reads, even with already captured local input.
+      await manager.removeQueuedFollowUp("thread-1", "missing");
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+        { followUpId: "correlated-client", deliveryOwner: "local" },
+      ]);
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toHaveLength(1);
+      await manager.removeQueuedFollowUp("thread-1", "correlated-client");
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+        {
+          followUpId: "native-receipt",
+          clientUserMessageId: "correlated-client",
+          deliveryOwner: "server",
+        },
+      ]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("ephemeral local queue does not borrow an enabled ordinary native queue capability", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    serverQueueRequestHandler = async (method) => {
+      throw new Error(`Ephemeral native queue dispatch ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      ephemeral: true,
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      expect(manager.readConversation("thread-1")?.canonicalState?.ephemeral).toBe(true);
+      await manager.enqueueQueuedFollowUp("thread-1", "Ephemeral input");
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+        { prompt: "Ephemeral input", deliveryOwner: "local" },
+      ]);
+      expect(
+        queuedMessageFixtureState["thread-1"]?.map((message) => message.context.prompt),
+      ).toEqual(["Ephemeral input"]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test.each([false, true])(
+    "actual unknown native add receipt preserves captured settings edited=%s",
+    async (edited) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      invokeRecords = [];
+      nativeSupportsThreadQueue = true;
+      let nativeReceipt: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission | undefined;
+      serverQueueRequestHandler = async (method, params) => {
+        if (method === "thread/queue/list")
+          return { data: nativeReceipt ? [nativeReceipt] : [], nextCursor: null };
+        if (method === "thread/queue/add") {
+          const input =
+            params as import("@nodex/codex-app-server-protocol/v2").ThreadQueueAddParams;
+          nativeReceipt = {
+            id: "native-receipt",
+            clientUserMessageId: input.clientUserMessageId!,
+            input: input.input,
+          };
+          throw new CodexTurnDeliveryError("Native add delivery unknown", {
+            stage: "outcome-unknown",
+            method: "thread/queue/add",
+            requestId: "physical-native-add",
+          });
+        }
+        throw new Error(`A receipt must not dispatch again ${method}`);
+      };
+      resumeThreadResult = {
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+        ],
+      };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        await manager.requestThreadStreamResume("thread-1");
+        await expect(manager.enqueueQueuedFollowUp("thread-1", "Captured input")).rejects.toThrow(
+          "delivery unknown",
+        );
+        const captured = queuedMessageFixtureState["thread-1"]?.[0];
+        if (!captured) throw new Error("Actual unknown add must retain its captured queue input");
+        expect(captured.submission).toMatchObject({
+          status: "outcome-unknown",
+          method: "thread/queue/add",
+          requestId: "physical-native-add",
+          captured: { id: captured.id, context: { prompt: "Captured input" } },
+        });
+        if (edited)
+          expect(
+            await manager.replaceQueuedFollowUp("thread-1", captured.id, 0, "Captured input", {
+              serviceTier: "fast",
+            }),
+          ).toBe(true);
+        dispatchCodexAppServerMessage("native-notification", {
+          type: "nativeNotification",
+          hostId: "local",
+          generation: resumeThreadGeneration,
+          occurrenceId: "unknown-add-receipt",
+          occurrenceToken: 1,
+          notification: { method: "thread/queue/changed", params: { threadId: "thread-1" } },
+        });
+        await flushAsyncWork();
+        await manager.removeQueuedFollowUp("thread-1", "missing");
+        if (edited) {
+          expect(queuedMessageFixtureState["thread-1"]).toHaveLength(1);
+          expect(queuedMessageFixtureState["thread-1"]?.[0]?.submissionOptions?.serviceTier).toBe(
+            "fast",
+          );
+          expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+            { followUpId: captured.id, deliveryOwner: "local", serviceTier: "fast" },
+          ]);
+        } else {
+          expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
+          expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+            {
+              followUpId: "native-receipt",
+              clientUserMessageId: captured.id,
+              deliveryOwner: "server",
+              prompt: "Captured input",
+            },
+          ]);
+        }
+        expect(
+          recordedNativeRequests().filter(
+            (record) =>
+              (record.args[0] as { request?: { method?: string } })?.request?.method ===
+              "thread/queue/add",
+          ),
+        ).toHaveLength(1);
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
+  test("queue receipt keeps a same-id public edit when an old native user echo arrives", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    queuedMessageFixtureState = {
+      "thread-1": [
+        {
+          id: "edited-client",
+          cwd: "/project-1",
+          context: {
+            prompt: "Old input",
+            fileAttachments: [],
+            addedFiles: [],
+            commentAttachments: [],
+            imageAttachments: [],
+          },
+        },
+      ],
+    };
+    rendererQueuedMessageStorage.invalidate();
+    serverQueueRequestHandler = async (method) => {
+      if (method === "thread/queue/list") return { data: [], nextCursor: null };
+      throw new Error(`Old echo must not dispatch ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      expect(await manager.replaceQueuedFollowUp("thread-1", "edited-client", 0, "New input")).toBe(
+        true,
+      );
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "old-edited-echo",
+        occurrenceToken: 1,
+        notification: {
+          method: "item/completed",
+          params: {
+            threadId: "thread-1",
+            turnId: "active",
+            completedAtMs: 1,
+            item: {
+              id: "old-user-echo",
+              type: "userMessage",
+              clientId: "edited-client",
+              content: [{ type: "text", text: "Old input", text_elements: [] }],
+            },
+          },
+        },
+      });
+      await flushAsyncWork();
+      expect(
+        residentConversationTurns(
+          manager.readConversation("thread-1")?.canonicalState,
+        )[0]?.items.some((item) => item.id === "old-user-echo"),
+      ).toBe(true);
+      await manager.removeQueuedFollowUp("thread-1", "missing");
+      expect(
+        queuedMessageFixtureState["thread-1"]?.map((message) => [
+          message.id,
+          message.context.prompt,
+        ]),
+      ).toEqual([["edited-client", "New input"]]);
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
+        { followUpId: "edited-client", prompt: "New input" },
+      ]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test.each(["pending", "queued", "sending", "outcome-unknown"])(
+    "queue receipt requires matching input for a %s captured submission",
+    async (status) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      nativeSupportsThreadQueue = true;
+      queuedMessageFixtureState = {
+        "thread-1": [
+          {
+            id: "echo-client",
+            cwd: "/project-1",
+            submission: { status },
+            context: {
+              prompt: "New input",
+              fileAttachments: [],
+              addedFiles: [],
+              commentAttachments: [],
+              imageAttachments: [],
+            },
+          },
+        ],
+      };
+      rendererQueuedMessageStorage.invalidate();
+      serverQueueRequestHandler = async (method) => {
+        if (method === "thread/queue/list") return { data: [], nextCursor: null };
+        throw new Error(`Old echo must not dispatch ${method}`);
+      };
+      const echo = buildUserMessage("thread-1", "active", "old-user", "Old input");
+      echo.rawItem = {
+        id: "old-user",
+        type: "userMessage",
+        clientId: "echo-client",
+        content: [{ type: "text", text: "Old input", text_elements: [] }],
+      };
+      resumeThreadResult = withCanonicalState({
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          {
+            threadId: "thread-1",
+            turnId: "active",
+            status: "inProgress",
+            itemIds: ["old-user"],
+            items: [echo],
+          },
+        ],
+      });
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        await manager.requestThreadStreamResume("thread-1");
+        await manager.removeQueuedFollowUp("thread-1", "missing");
+        expect(
+          queuedMessageFixtureState["thread-1"]?.map((message) => message.context.prompt),
+        ).toEqual(["New input"]);
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
+  test("queue receipt settles actual unknown local steering only after its completed matching echo", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    nativeSupportsThreadQueue = true;
+    queuedMessageFixtureState = {
+      "thread-1": [
+        {
+          id: "unknown-client",
+          cwd: "/project-1",
+          context: {
+            prompt: "Actual input",
+            fileAttachments: [],
+            addedFiles: [],
+            commentAttachments: [],
+            imageAttachments: [],
+          },
+        },
+      ],
+    };
+    rendererQueuedMessageStorage.invalidate();
+    serverQueueRequestHandler = async (method) => {
+      if (method === "thread/queue/list") return { data: [], nextCursor: null };
+      throw new Error(`Local unknown input reached native queue ${method}`);
+    };
+    ownerTurnSteerHandler = () => {
+      throw new CodexTurnDeliveryError("Actual steer outcome unknown", {
+        stage: "outcome-unknown",
+        method: "turn/steer",
+        requestId: "unknown-local-steer",
+      });
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      await expect(manager.sendQueuedFollowUpNow("thread-1", "unknown-client")).rejects.toThrow(
+        "outcome unknown",
+      );
+      await flushAsyncWork();
+      expect(
+        manager.readConversation("thread-1")?.canonicalState?.unconfirmedTurnSubmissions,
+      ).toMatchObject([{ clientUserMessageId: "unknown-client", method: "turn/steer" }]);
+      expect(queuedMessageFixtureState["thread-1"]).toHaveLength(1);
+      await manager.sendQueuedFollowUpNow("thread-1", "unknown-client");
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native-steer:execute"),
+      ).toHaveLength(1);
+      const echo = {
+        id: "accepted-user",
+        type: "userMessage" as const,
+        clientId: "unknown-client",
+        content: [{ type: "text" as const, text: "Actual input", text_elements: [] }],
+      };
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "unknown-started",
+        occurrenceToken: 1,
+        notification: {
+          method: "item/started",
+          params: { threadId: "thread-1", turnId: "active", startedAtMs: 1, item: echo },
+        },
+      });
+      await flushAsyncWork();
+      await manager.removeQueuedFollowUp("thread-1", "missing");
+      expect(queuedMessageFixtureState["thread-1"]).toHaveLength(1);
+      dispatchCodexAppServerMessage("native-notification", {
+        type: "nativeNotification",
+        hostId: "local",
+        generation: resumeThreadGeneration,
+        occurrenceId: "unknown-completed",
+        occurrenceToken: 2,
+        notification: {
+          method: "item/completed",
+          params: { threadId: "thread-1", turnId: "active", completedAtMs: 2, item: echo },
+        },
+      });
+      await flushAsyncWork();
+      expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native-steer:execute"),
+      ).toHaveLength(1);
+    } finally {
+      ownerTurnSteerHandler = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
   test("enabled server queue owns new follow-ups when the persisted queue is empty", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -16756,7 +17449,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("a nonempty persisted queue keeps precedence when the server queue gate is enabled", async () => {
+  test("pending ordinary local work keeps new text local while the native queue remains visible", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -16781,7 +17474,8 @@ describe("local-conversation-store", () => {
     };
     rendererQueuedMessageStorage.invalidate();
     serverQueueRequestHandler = async (method) => {
-      throw new Error(`Server queue must stay unselected: ${method}`);
+      if (method === "thread/queue/list") return { data: [], nextCursor: null };
+      throw new Error(`Unexpected native queue mutation: ${method}`);
     };
     resumeThreadResult = buildConversation("thread-1", "project-1");
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
@@ -16793,10 +17487,13 @@ describe("local-conversation-store", () => {
         queuedMessageFixtureState["thread-1"]?.map((message) => message.context.prompt),
       ).toEqual(["local existing", "second local prompt"]);
       expect(
-        recordedNativeRequests().some((record) =>
-          (
-            record.args[0] as { request?: { method?: string } } | undefined
-          )?.request?.method?.startsWith("thread/queue/"),
+        recordedNativeRequests().some(
+          (record) =>
+            (
+              record.args[0] as { request?: { method?: string } } | undefined
+            )?.request?.method?.startsWith("thread/queue/") &&
+            (record.args[0] as { request?: { method?: string } }).request?.method !==
+              "thread/queue/list",
         ),
       ).toBe(false);
     } finally {
@@ -16939,6 +17636,101 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("native queue follower actions preserve the per-operation owner route", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    nativeSupportsThreadQueue = true;
+    let items: import("@nodex/codex-app-server-protocol/v2").QueuedSubmission[] = [
+      "native-a",
+      "native-b",
+    ].map((id) => ({
+      id,
+      clientUserMessageId: `client-${id}`,
+      input: [{ type: "text", text: id, text_elements: [] }],
+    }));
+    const mutations: string[] = [];
+    serverQueueRequestHandler = async (method, params) => {
+      if (method === "thread/queue/list") return { data: structuredClone(items), nextCursor: null };
+      mutations.push(method);
+      if (method === "thread/queue/reorder") {
+        const ordered = (params as { queuedSubmissionIds: string[] }).queuedSubmissionIds;
+        items.sort((a, b) => ordered.indexOf(a.id) - ordered.indexOf(b.id));
+        return {};
+      }
+      if (method === "thread/queue/delete") {
+        const id = (params as { queuedSubmissionId: string }).queuedSubmissionId;
+        items = items.filter((item) => item.id !== id);
+        return { deleted: true };
+      }
+      throw new Error(`Forbidden follower dispatch ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    resumeThreadRole = "owner";
+    const follower = trackNativeTestManager(new CodexAppServerManager("local"));
+    let owner: InstanceType<typeof CodexAppServerManager> | undefined;
+    try {
+      await follower.requestThreadStreamResume("thread-1");
+      dispatchTestThreadStreamStateChanged(follower, {
+        hostId: "local",
+        conversationId: "thread-1",
+        sourceClientId: "queue-owner",
+        change: {
+          type: "snapshot",
+          revision: 999,
+          conversationState: follower.readConversation("thread-1")!.canonicalState!,
+        },
+      });
+      await flushAsyncWork();
+      expect(follower.getStreamRole("thread-1")?.role).toBe("follower");
+      await expect(follower.enqueueQueuedFollowUp("thread-1", "follower add")).rejects.toThrow(
+        "not owner",
+      );
+      await expect(
+        follower.replaceQueuedFollowUp("thread-1", "native-a", 0, "follower edit"),
+      ).rejects.toThrow("not owner");
+      await expect(follower.resumeQueuedFollowUps("thread-1")).rejects.toThrow("not owner");
+      expect(mutations).toEqual([]);
+      await follower.reorderQueuedFollowUps("thread-1", ["native-b", "native-a"]);
+      expect(mutations).toEqual(["thread/queue/reorder"]);
+      resumeThreadRole = "owner";
+      owner = trackNativeTestManager(new CodexAppServerManager("local"));
+      await owner.requestThreadStreamResume("thread-1");
+      followerActionHandler = async (input) => {
+        const action = input as {
+          request: import("../../../shared/codex-thread-follower-request").NativeConversationFollowerRequest;
+        };
+        return (await owner!.handleThreadFollowerRequest(action.request)).result;
+      };
+      await follower.removeQueuedFollowUp("thread-1", "native-a");
+      expect(items.map((item) => item.id)).toEqual(["native-b"]);
+      await follower.resolveQueuedFollowUpsAfterFreshStart("thread-1", 0, "clear");
+      expect(items).toEqual([]);
+      expect(
+        invokeRecords
+          .filter((record) => record.channel === "peer:requestThreadFollower")
+          .map((record) => (record.args[0] as { request: { method: string } }).request.method),
+      ).toEqual([
+        "thread-follower-set-queued-follow-ups-state",
+        "thread-follower-remove-queued-message",
+        "thread-follower-clear-queued-messages",
+      ]);
+      expect(follower.readConversation("thread-1")?.queuedFollowUps.entries).toEqual([]);
+    } finally {
+      followerActionHandler = null;
+      resumeThreadRole = "owner";
+      resumeThreadResult = null;
+      owner?.destroy();
+      follower.destroy();
+    }
+  });
+
   test("streaming server send-now steers with the server client message id then deletes the queue item", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -17010,6 +17802,74 @@ describe("local-conversation-store", () => {
       expect(deleteIndex).toBeGreaterThan(steerIndex);
       expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toEqual([]);
       expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("accepted native steering recovers queue deletion without another Turn dispatch", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    invokeRecords = [];
+    nativeSupportsThreadQueue = true;
+    const raw = {
+      id: "server-queued",
+      clientUserMessageId: "server-client",
+      input: [
+        {
+          type: "text" as const,
+          text: "Generated context\n## My request:\nQueue request\n",
+          text_elements: [],
+        },
+      ],
+    };
+    let items = [raw];
+    let fail = true;
+    let deletes = 0;
+    serverQueueRequestHandler = async (method) => {
+      if (method === "thread/queue/list") return { data: structuredClone(items), nextCursor: null };
+      if (method === "thread/queue/delete") {
+        deletes++;
+        if (fail) throw new Error("Native cleanup failed after acceptance");
+        items = [];
+        return { deleted: true };
+      }
+      throw new Error(`A delivered native input cannot restart ${method}`);
+    };
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        { threadId: "thread-1", turnId: "active", status: "inProgress", itemIds: [], items: [] },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      await expect(manager.sendQueuedFollowUpNow("thread-1", raw.id)).rejects.toThrow(
+        "cleanup failed",
+      );
+      expect(
+        manager.readConversation("thread-1")?.canonicalState?.unconfirmedServerQueueMessages,
+      ).toEqual([raw]);
+      const sent = invokeRecords.filter(
+        (record) => record.channel === "codex:turn:native-steer:execute",
+      );
+      expect(sent).toHaveLength(1);
+      expect(sent[0]?.args[0]).toMatchObject({
+        request: { params: { input: raw.input, clientUserMessageId: raw.clientUserMessageId } },
+      });
+      fail = false;
+      await manager.removeQueuedFollowUp("thread-1", "missing");
+      expect(
+        manager.readConversation("thread-1")?.canonicalState?.unconfirmedServerQueueMessages,
+      ).toBeUndefined();
+      expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toEqual([]);
+      expect(deletes).toBe(2);
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:turn:native-steer:execute"),
+      ).toHaveLength(1);
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -23596,7 +24456,12 @@ describe("local-conversation-store", () => {
         "thread-durable-delete",
       );
       for (const listener of codexEventListeners)
-        listener({ type: "threadDeleted", threadId: "thread-durable-delete" });
+        listener({ type: "threadDeleted", hostId: "remote", threadId: "thread-durable-delete" });
+      expect(manager.readConversation("thread-durable-delete")?.threadId).toBe(
+        "thread-durable-delete",
+      );
+      for (const listener of codexEventListeners)
+        listener({ type: "threadDeleted", hostId: "local", threadId: "thread-durable-delete" });
       expect(manager.readThreadSummary("thread-durable-delete")).toBe(null);
       expect(manager.readConversation("thread-durable-delete")).toBe(null);
     } finally {

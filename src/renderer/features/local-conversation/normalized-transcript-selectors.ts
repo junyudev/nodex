@@ -95,6 +95,11 @@ export function selectNormalizedConversationTurnEntries(input: {
 }): readonly NormalizedConversationTurnEntry[] {
   const requestsByTurnId = selectConversationTurnRequestsByTurnId(input.conversation);
   const latestEntityKey = input.structure.turnEntityKeys.at(-1);
+  const positionsByEntity = new Map(
+    input.structure.timeline?.flatMap((row) =>
+      row.kind === "content" ? [[row.entityKey, row.key] as const] : [],
+    ),
+  );
   const pendingStartedTurnIds = new Set<string>();
   for (const entry of input.structure.itemTimeline?.entries ?? []) {
     if (entry.type === "turnStarted") pendingStartedTurnIds.add(entry.turnId);
@@ -120,8 +125,10 @@ export function selectNormalizedConversationTurnEntries(input: {
     entriesByRow.set(row, cache);
     const previous = cache.get(input.owner);
     const isMostRecentTurn = row.entityKey === latestEntityKey;
+    const historyPositionKey = positionsByEntity.get(row.entityKey);
     if (
       previous?.row === row &&
+      previous.entry.historyPositionKey === historyPositionKey &&
       previous.entry.isMostRecentTurn === isMostRecentTurn &&
       equalRequests(previous.entry.requests, nextRequests)
     )
@@ -130,12 +137,14 @@ export function selectNormalizedConversationTurnEntries(input: {
       previous && equalRequests(previous.entry.requests, nextRequests)
         ? previous.entry.requests
         : nextRequests;
-    const turnKey = buildCodexTurnOccurrenceKey(details.turnId, index, details.entityKey);
+    const turnSearchKey = buildCodexTurnOccurrenceKey(details.turnId, index, details.entityKey);
+    const turnKey = historyPositionKey ?? turnSearchKey;
     const entry: NormalizedConversationTurnEntry = {
       historyEntityKey: row.entityKey,
+      ...(historyPositionKey === undefined ? {} : { historyPositionKey }),
       turnId: details.turnId,
       turnKey,
-      turnSearchKey: turnKey,
+      turnSearchKey,
       turnItemIds: row.itemIds,
       turnStatus: details.status,
       turnStartedAtMs: details.turnStartedAtMs,

@@ -13,7 +13,7 @@ import {
   parseMcpAppSandboxPartition,
   parseMcpAppSandboxSourceUrl,
 } from "../../src/shared/mcp-app/mcp-app-sandbox-contract";
-import { createAgentSmokeDraft, sendAgentPrompt } from "./support/agent-smoke-harness";
+import { createAgentSmokeDraft, invokeIpc, sendAgentPrompt } from "./support/agent-smoke-harness";
 
 const widgetDocument = (id: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif;background:white;color:#222}.content{padding:20px;min-height:140px}button{font:inherit}section{height:540px;background:#eef2f6;margin-top:16px}</style></head><body><main class="content" id="fixture-${id}"><button id="toggle-${id}">Show details</button><button id="increment-${id}">Increment</button><button id="tool-${id}">Try tool</button><output id="counter-${id}" aria-label="Interaction count">0</output><div role="status" id="tool-result-${id}" aria-label="Tool result">Pending</div><section id="details-${id}" hidden>Expanded content</section></main><script>let count=0;document.getElementById('increment-${id}').addEventListener('click',()=>{document.getElementById('counter-${id}').textContent=String(++count)});document.getElementById('toggle-${id}').addEventListener('click',()=>{const detail=document.getElementById('details-${id}');detail.hidden=!detail.hidden});document.getElementById('tool-${id}').addEventListener('click',async()=>{const result=document.getElementById('tool-result-${id}');if(typeof window.openai?.callTool!=='function'){result.textContent='API unavailable';return}try{await window.openai.callTool('ungranted_tool',{});result.textContent='Tool accepted'}catch(error){result.textContent=String(error?.message??error)}});</script></body></html>`;
@@ -185,7 +185,7 @@ async function clickGuestButton(
   );
 }
 
-test("restores interactive HTML responses and retains guest state through fullscreen and release", async ({}, testInfo) => {
+test("restores interactive HTML responses, retains guests during navigation and releases them on window close", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const artifactDirectory = path.resolve(
     process.env.NODEX_TRANSCRIPT_REVIEW_DIR ?? testInfo.outputPath(),
@@ -293,6 +293,8 @@ test("restores interactive HTML responses and retains guest state through fullsc
     );
     await rename(replacement, statePath);
     const page = await harness.restart();
+    const rendererErrors: string[] = [];
+    page.on("pageerror", (error) => rendererErrors.push(error.stack ?? error.message));
     await expect(
       page.locator('[data-inline-visualization="true"][data-visualization-status="ready"]'),
     ).toHaveCount(2, { timeout: 60_000 });
@@ -859,7 +861,32 @@ test("restores interactive HTML responses and retains guest state through fullsc
     await page
       .getByRole("button", { name: "Start new chat in Interactive responses", exact: true })
       .click();
-    await expect(page.locator('webview[title="Interactive response"]')).toHaveCount(0);
+    await expect(
+      page.locator('[data-inline-visualization="true"][data-visualization-active="true"]'),
+    ).toHaveCount(0);
+    expect((await guestIds(page)).sort((left, right) => left - right)).toEqual(
+      [...idsBeforeRelease].sort((left, right) => left - right),
+    );
+    expect(
+      await harness.application.evaluate(
+        ({ webContents }, ids) =>
+          ids.every((id) => webContents.fromId(id)?.isDestroyed() === false),
+        idsBeforeRelease,
+      ),
+    ).toBe(true);
+    const opened = harness.application.waitForEvent("window");
+    expect(
+      await invokeIpc(page, "window:new", {
+        activeProjectId: draft.projectId,
+        activeProjectSessionId: null,
+      }),
+    ).toBe(true);
+    const survivingWindow = await opened;
+    await survivingWindow.waitForURL((url) => url.protocol !== "about:");
+    const closed = page.waitForEvent("close");
+    const ownerWindow = await harness.application.browserWindow(page);
+    await ownerWindow.evaluate((window) => window.close());
+    await closed;
     await expect
       .poll(() =>
         harness.application.evaluate(
@@ -872,6 +899,7 @@ test("restores interactive HTML responses and retains guest state through fullsc
         ),
       )
       .toBe(true);
+    expect(rendererErrors).toEqual([]);
     await writeFile(
       path.join(artifactDirectory, "widget-native-result.json"),
       `${JSON.stringify(
@@ -891,6 +919,9 @@ test("restores interactive HTML responses and retains guest state through fullsc
           },
           originalGuestId: liveGuest,
           restoredGuestId: restoredGuest,
+          retainedGuestIdsAfterNavigation: idsBeforeRelease,
+          releasedOnWindowClose: true,
+          rendererErrors,
           releasedGuestIds: [
             ...new Set([...idsBeforeRelease, directoryGuest, workspaceGuest, liveGuest]),
           ],

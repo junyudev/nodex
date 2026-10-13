@@ -13,6 +13,7 @@ export interface QueuedMessageStorage<Message> {
 export interface QueuedMessageCoordinatorClient<Message> {
   storage: QueuedMessageStorage<Message>;
   role(conversationId: string): QueuedMessageRole;
+  captureOwnerWrite?(conversationId: string): Disposable & { assertCurrent(): void };
   validate(messages: readonly Message[]): void;
   requestFollower(
     conversationId: string,
@@ -111,6 +112,12 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
   ): Promise<readonly Message[]> {
     return this.write(conversationId, recipe, false);
   }
+  updateAsOwner(
+    conversationId: string,
+    recipe: (messages: readonly Message[]) => readonly Message[],
+  ): Promise<readonly Message[]> {
+    return this.write(conversationId, recipe, true);
+  }
   receiveBroadcast(
     sourceClientId: string,
     conversationId: string,
@@ -134,6 +141,7 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
     let before = this.readMessages(conversationId) ?? EMPTY;
     let next = recipe(before);
     this.client.validate(next);
+    const ownerWrite = requireOwner ? this.client.captureOwnerWrite?.(conversationId) : undefined;
     const pending = this.pending.get(conversationId) ?? {
       count: 0,
       committedMessages: this.messages.get(conversationId)?.messages,
@@ -144,6 +152,7 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
     this.install(conversationId, next);
     const write = this.pendingWrites.then(async () => {
       if (this.disposed) throw new Error("Queued message coordinator retired");
+      ownerWrite?.assertCurrent();
       const broadcast = pending.broadcast;
       const role = this.client.role(conversationId);
       if (requireOwner && role?.role !== "owner")
@@ -156,6 +165,10 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
         );
       else {
         await this.client.storage.update((state) => {
+          ownerWrite?.assertCurrent();
+          if (requireOwner && this.disposed) throw new Error("Queued message coordinator retired");
+          if (requireOwner && this.client.role(conversationId)?.role !== "owner")
+            throw new Error("This window no longer owns the thread");
           before = state[conversationId] ?? EMPTY;
           next = recipe(before);
           this.client.validate(next);
@@ -164,6 +177,7 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
           else result[conversationId] = next;
           return result;
         });
+        ownerWrite?.assertCurrent();
         if (!this.disposed && this.client.role(conversationId)?.role === "owner")
           void this.client
             .broadcast(conversationId, next)
@@ -176,6 +190,7 @@ export class QueuedMessageCoordinator<Message> implements Disposable {
     return write
       .then(() => before)
       .finally(() => {
+        ownerWrite?.[Symbol.dispose]();
         if (--pending.count !== 0) return;
         this.pending.delete(conversationId);
         if (this.disposed) return;

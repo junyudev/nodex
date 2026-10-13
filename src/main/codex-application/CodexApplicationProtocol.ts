@@ -666,6 +666,7 @@ export const make: Effect.Effect<
   const observeNotification = (
     occurrence: CodexApplicationNotificationOccurrence,
     notification: CodexServerNotification,
+    terminalTargetGeneration?: number | null,
   ): Effect.Effect<CodexConversationDisposition> => {
     const threadId = codexProtocolNotificationThreadId(notification);
     return notificationAdmission.decide({ notification, threadId }).pipe(
@@ -680,6 +681,7 @@ export const make: Effect.Effect<
                     notification,
                     occurrenceId: occurrence.occurrenceId,
                     occurrenceToken: occurrence.occurrenceToken,
+                    ...(terminalTargetGeneration === undefined ? {} : { terminalTargetGeneration }),
                   })
                   .pipe(
                     Effect.catch((error) =>
@@ -875,10 +877,44 @@ export const make: Effect.Effect<
       return inbox
         .interpretNotification(metadataOccurrence, Effect.succeed("retain" as const))
         .pipe(Effect.asVoid);
+    if (notification.method === "thread/archived" || notification.method === "thread/deleted") {
+      const existing = conversations.current(threadId);
+      const admission = existing?.offerProtocolOccurrence({
+        occurrence: metadataOccurrence,
+        startsThread: false,
+        deferThreadStart: null,
+      });
+      if (admission === "buffered") return Effect.void;
+      if (admission === "overflow") return Effect.die(conversationIngressOverflow(threadId));
+      if (admission === "generation-mismatch") {
+        return inbox
+          .failGeneration(
+            metadataOccurrence,
+            new Error("Terminal notification crossed a buffered Thread host generation"),
+          )
+          .pipe(Effect.asVoid);
+      }
+      const target = conversations.captureNativeTerminalTarget(threadId, {
+        hostId: occurrence.hostId,
+        generation: occurrence.generation,
+      });
+      return inbox
+        .interpretNotification(
+          metadataOccurrence,
+          conversations.runThreadObservation(
+            threadId,
+            observeNotification(metadataOccurrence, notification, target),
+            target === null
+              ? undefined
+              : { generation: target, isTerminal: (disposition) => disposition === "retire" },
+          ),
+        )
+        .pipe(Effect.asVoid);
+    }
     return inbox
       .interpretNotification(
         metadataOccurrence,
-        conversations.runCommand(
+        conversations.runTerminalCommand(
           threadId,
           Effect.sync(() => {
             return conversations.entity(threadId).offerProtocolOccurrence({
@@ -917,15 +953,10 @@ export const make: Effect.Effect<
                 : observeNotification(metadataOccurrence, notification);
             }),
           ),
+          (disposition) => disposition === "retire",
         ),
       )
-      .pipe(
-        Effect.flatMap((interpretation) =>
-          interpretation.kind === "completed" && interpretation.value === "retire"
-            ? conversations.retire(threadId)
-            : Effect.void,
-        ),
-      );
+      .pipe(Effect.asVoid);
   };
 
   const replayOccurrence = (
@@ -1014,22 +1045,26 @@ export const make: Effect.Effect<
 
   const releaseResume = (threadId: string): Effect.Effect<void> =>
     conversations
-      .runCommand(
+      .runTerminalCommand(
         threadId,
-        resumeIngress.release(
-          threadId,
-          conversations.current(threadId)?.readCanonicalState() ?? null,
+        Effect.suspend(() =>
+          resumeIngress.release(
+            threadId,
+            conversations.current(threadId)?.readCanonicalState() ?? null,
+          ),
         ),
+        (retire) => retire,
       )
-      .pipe(Effect.flatMap((retire) => (retire ? conversations.retire(threadId) : Effect.void)));
+      .pipe(Effect.asVoid);
 
   const releaseThreadStart = (release: ThreadCreationRelease): Effect.Effect<void> => {
     const aggregate = conversations.current(release.threadId);
     if (!aggregate) return Effect.void;
     return conversations
-      .runCommand(
+      .runTerminalCommand(
         release.threadId,
         Effect.sync(() => {
+          if (conversations.current(release.threadId) !== aggregate) return null;
           const buffered = aggregate.takeThreadStartEventBuffer(release);
           if (buffered?.kind !== "matched") return buffered;
           return {
@@ -1067,10 +1102,9 @@ export const make: Effect.Effect<
                   ),
           ),
         ),
+        (retire) => retire,
       )
-      .pipe(
-        Effect.flatMap((retire) => (retire ? conversations.retire(release.threadId) : Effect.void)),
-      );
+      .pipe(Effect.asVoid);
   };
 
   const service = CodexApplicationProtocol.of({

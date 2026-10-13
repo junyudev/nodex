@@ -77,6 +77,8 @@ export interface CodexProtocolNotificationInput {
   readonly notification: CodexServerNotification;
   readonly occurrenceId: string;
   readonly occurrenceToken: number;
+  /** Captured process-local lifecycle; null keeps a terminal observation global-only. */
+  readonly terminalTargetGeneration?: number | null;
 }
 
 export type CodexConversationDisposition = "retain" | "retire";
@@ -433,7 +435,12 @@ export const make: Effect.Effect<
     const candidate = projectLocal ? conversations.current(threadId) : null;
     const candidateHostId = candidate?.readCanonicalState()?.hostId;
     const aggregate =
-      candidateHostId === undefined || candidateHostId === input.hostId ? candidate : null;
+      (candidateHostId === undefined || candidateHostId === input.hostId) &&
+      (!(notification.method === "thread/archived" || notification.method === "thread/deleted") ||
+        (input.terminalTargetGeneration !== null &&
+          candidate?.generation === input.terminalTargetGeneration))
+        ? candidate
+        : null;
     if (notification.method === "serverRequest/resolved") {
       if (aggregate) {
         const state = aggregate.readServerRequestState();
@@ -603,8 +610,10 @@ export const make: Effect.Effect<
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       const decision = yield* automation.complete(threadId, notification.params.turn);
       yield* publishTurnCompleted(input.hostId, threadId, notification.params.turn, decision);
-      if (notification.params.turn.status === "interrupted")
-        yield* queued.acceptTerminalOutcomeInCurrentLane({ threadId, interrupted: true });
+      yield* queued.acceptTerminalOutcomeInCurrentLane({
+        threadId,
+        interrupted: notification.params.turn.status === "interrupted",
+      });
       yield* conversationProjection.reconcileThreadStatus(threadId);
     }
     if (durableNotification) {
@@ -629,7 +638,7 @@ export const make: Effect.Effect<
       const reason = new Error(
         `Codex Thread '${threadId}' was ${notification.method.slice("thread/".length)}`,
       );
-      terminalInputBuffers.clearConversation(threadId);
+      if (aggregate) terminalInputBuffers.clearConversation(threadId);
       // A confirmed deletion must retire the conversation even if auxiliary storage is unavailable.
       if (notification.method === "thread/deleted")
         yield* visualizations.clearThread({ hostId: input.hostId, threadId }).pipe(
@@ -642,8 +651,27 @@ export const make: Effect.Effect<
           ),
           Effect.ignore,
         );
-      yield* durable.pipe(Effect.ensuring(lifecycle.close(threadId, reason)));
-      yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
+      yield* durable.pipe(
+        Effect.ensuring(
+          input.terminalTargetGeneration !== null && input.terminalTargetGeneration !== undefined
+            ? Effect.suspend(() => {
+                const current = conversations.current(threadId);
+                if (!current) return Effect.void;
+                return current?.generation === input.terminalTargetGeneration &&
+                  (current.readCanonicalState()?.hostId ??
+                    current.readSnapshot()?.executionHostId ??
+                    input.hostId) === input.hostId
+                  ? lifecycle.close(threadId, reason)
+                  : Effect.void;
+              })
+            : Effect.void,
+        ),
+      );
+      if (
+        input.terminalTargetGeneration !== null &&
+        conversations.current(threadId)?.generation === input.terminalTargetGeneration
+      )
+        yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
       yield* subagents.observeNotification({
         hostId: input.hostId,
         generation: input.generation,
@@ -657,15 +685,67 @@ export const make: Effect.Effect<
   return CodexProtocolNotificationEffects.of({
     apply: (input) =>
       Effect.gen(function* () {
+        const terminal =
+          input.notification.method === "thread/archived" ||
+          input.notification.method === "thread/deleted";
+        let appliedInput = input;
+        if (terminal) {
+          const manager = managers.current(input.hostId);
+          if (!manager || manager.generation !== input.generation) return "retain" as const;
+          const targetThreadId = codexProtocolNotificationThreadId(input.notification)!;
+          const capturedEntity = conversations.current(targetThreadId);
+          const canonicalHost =
+            capturedEntity?.readCanonicalState()?.hostId ??
+            capturedEntity?.readSnapshot()?.executionHostId;
+          if (canonicalHost !== undefined && canonicalHost !== input.hostId)
+            return "retain" as const;
+          let target =
+            input.terminalTargetGeneration === undefined
+              ? conversations.captureNativeTerminalTarget(targetThreadId, {
+                  hostId: input.hostId,
+                  generation: input.generation,
+                })
+              : input.terminalTargetGeneration;
+          const accepted = yield* durableThreads
+            .acceptsTerminalObservation({
+              hostId: input.hostId,
+              threadId: targetThreadId,
+            })
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.fail(
+                  new CodexNotificationConsequenceError({
+                    method: input.notification.method,
+                    threadId: targetThreadId,
+                    cause,
+                  }),
+                ),
+              ),
+            );
+          if (
+            !accepted ||
+            managers.current(input.hostId) !== manager ||
+            manager.generation !== input.generation
+          )
+            return "retain" as const;
+          const current = conversations.current(targetThreadId);
+          const currentHost =
+            current?.readCanonicalState()?.hostId ?? current?.readSnapshot()?.executionHostId;
+          if (currentHost !== undefined && currentHost !== input.hostId) return "retain" as const;
+          if (
+            target !== null &&
+            (current?.generation !== target ||
+              !current.hasNativeLifecycle({ hostId: input.hostId, generation: input.generation }))
+          )
+            target = null;
+          appliedInput = { ...input, terminalTargetGeneration: target };
+        }
         if (input.notification.method === "thread/started") {
           conversations.registerThreadMetadata(input.notification.params.thread);
         }
         const disposition: CodexConversationDisposition =
-          input.notification.method === "thread/archived" ||
-          input.notification.method === "thread/deleted"
-            ? "retire"
-            : "retain";
-        return yield* apply(input).pipe(
+          terminal && appliedInput.terminalTargetGeneration !== null ? "retire" : "retain";
+        return yield* apply(appliedInput).pipe(
           Effect.catchCause((cause) =>
             isInterruptedOnly(cause)
               ? Effect.interrupt

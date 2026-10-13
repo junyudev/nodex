@@ -44,8 +44,20 @@ it.effect("decodes source follower decisions through the authorized response own
         ) => Effect.Effect<unknown, MainConversationManagerError>)
       | undefined;
     const decisions: unknown[] = [];
+    const queueControls: unknown[] = [];
     yield* install.pipe(
-      Effect.provideService(CodexQueuedFollowUps, {} as CodexQueuedFollowUps["Service"]),
+      Effect.provideService(CodexQueuedFollowUps, {
+        removeAsOwner: (hostId: string, threadId: string, messageId: string) =>
+          Effect.sync(() => {
+            queueControls.push({ hostId, threadId, messageId });
+            return false;
+          }),
+        clearAsOwner: (hostId: string, threadId: string) =>
+          Effect.sync(() => {
+            queueControls.push({ hostId, threadId });
+            return true;
+          }),
+      } as unknown as CodexQueuedFollowUps["Service"]),
       Effect.provideService(CodexMainConversationEdit, { edit: () => Effect.die("unused") }),
       Effect.provide(callbackLayer),
       Effect.provideService(CodexApplicationEventHub, {} as CodexApplicationEventHub["Service"]),
@@ -102,6 +114,30 @@ it.effect("decodes source follower decisions through the authorized response own
     }).pipe(Effect.result);
     assert.strictEqual(rejected._tag, "Failure");
     assert.strictEqual(decisions.length, 1);
+    assert.deepEqual(
+      yield* handler("remote", {
+        method: "thread-follower-remove-queued-message",
+        params: { conversationId: "thread", messageId: "native-message" },
+      }),
+      { applied: false },
+    );
+    assert.deepEqual(
+      yield* handler("remote", {
+        method: "thread-follower-clear-queued-messages",
+        params: { conversationId: "thread" },
+      }),
+      { applied: true },
+    );
+    assert.deepEqual(queueControls, [
+      { hostId: "remote", threadId: "thread", messageId: "native-message" },
+      { hostId: "remote", threadId: "thread" },
+    ]);
+    const invalidQueue = yield* handler("remote", {
+      method: "thread-follower-remove-queued-message",
+      params: { conversationId: "thread", messageId: " " },
+    }).pipe(Effect.result);
+    assert.strictEqual(invalidQueue._tag, "Failure");
+    assert.strictEqual(queueControls.length, 2);
   }),
 );
 

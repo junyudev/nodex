@@ -2,6 +2,7 @@ import { directive } from "micromark-extension-directive";
 import { directiveFromMarkdown } from "mdast-util-directive";
 import type { Nodes, Root } from "mdast";
 import type { Plugin } from "unified";
+import "remark-parse";
 import {
   resolveInlineVisualizationMode,
   type InlineVisualizationMode,
@@ -24,13 +25,6 @@ function readDirectiveAttributes(
     sourceThreadId: attributes?.threadId || null,
     mode: resolveInlineVisualizationMode(attributes?.mode),
   };
-}
-
-declare module "unified" {
-  interface Data {
-    micromarkExtensions?: ReturnType<typeof directive>[];
-    fromMarkdownExtensions?: ReturnType<typeof directiveFromMarkdown>[];
-  }
 }
 
 /** Real directive nodes exclude fenced/inline code and permit normal attribute ordering. */

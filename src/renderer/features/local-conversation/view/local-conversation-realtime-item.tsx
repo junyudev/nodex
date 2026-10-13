@@ -48,6 +48,7 @@ export function LocalConversationRealtimeItem({
       ) : (
         <MarkdownRenderer
           content={item.text}
+          preserveLineBreaks
           cwd={cwd}
           parseIncompleteMarkdown={!value.completed}
           animateStreamingText={!value.completed}

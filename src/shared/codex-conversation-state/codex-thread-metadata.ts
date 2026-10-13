@@ -1,5 +1,9 @@
 import { castDraft, produce, type Draft } from "immer";
 import {
+  appendCodexAcceptedServerQueueSubmission,
+  collectCodexAcceptedServerQueueSubmissions,
+} from "../codex-native-queued-submission";
+import {
   residentConversationTurns,
   residentConversationTurnEntries,
   conversationTurnDraft,
@@ -97,6 +101,9 @@ export interface ReconcileCodexResumedConversationInput {
   readonly settingsPatch?: CanonicalThreadSettingsPatch;
   /** Renderer acceptance reconciles metadata before its separately fetched history is installed. */
   readonly preserveResidentHistory?: boolean;
+  /** Only the admitted resume owner may recover native cleanup from its merged snapshot. */
+  readonly recordNativeQueueAcceptance?: boolean;
+  readonly queueAcceptanceTurns?: readonly import("./codex-conversation-state").CodexCanonicalTurnState[];
 }
 
 function hydratedThreadSettingsFromCanonical(
@@ -134,11 +141,16 @@ export function reconcileCodexResumedConversationState(
   input: ReconcileCodexResumedConversationInput,
 ): CodexCanonicalConversationState {
   const { existing, resumed, thread } = input;
+  const acceptedQueue =
+    input.recordNativeQueueAcceptance === true && !input.preserveResidentHistory
+      ? collectCodexAcceptedServerQueueSubmissions(input.queueAcceptanceTurns ?? resumed.turns)
+      : [];
   if (!existing) {
-    if (!input.settingsPatch) return resumed;
-    return produce(resumed, (draft) =>
-      mutateCanonicalThreadSettingsPatch(draft, input.settingsPatch!),
-    );
+    if (!input.settingsPatch && !acceptedQueue.length) return resumed;
+    return produce(resumed, (draft) => {
+      if (input.settingsPatch) mutateCanonicalThreadSettingsPatch(draft, input.settingsPatch);
+      for (const raw of acceptedQueue) appendCodexAcceptedServerQueueSubmission(draft, raw);
+    });
   }
 
   const rawRecencyAt = thread.recencyAt === null ? null : thread.recencyAt * 1_000;
@@ -181,6 +193,8 @@ export function reconcileCodexResumedConversationState(
     draft.completedThreadGoalTurnId = existing.completedThreadGoalTurnId;
     draft.threadGoalResumeConfirmation = existing.threadGoalResumeConfirmation;
     draft.unconfirmedTurnSubmissions = castDraft(existing.unconfirmedTurnSubmissions);
+    draft.unconfirmedServerQueueMessages = castDraft(existing.unconfirmedServerQueueMessages);
+    for (const raw of acceptedQueue) appendCodexAcceptedServerQueueSubmission(draft, raw);
     if (input.preserveResidentHistory) {
       draft.turns = castDraft(existing.turns);
       draft.turnHistory = castDraft(existing.turnHistory);

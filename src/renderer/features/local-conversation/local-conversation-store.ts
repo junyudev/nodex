@@ -1,6 +1,10 @@
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
 import { codexImageInputSource } from "../../../shared/codex-image-input";
 import {
+  appendCodexAcceptedServerQueueSubmission,
+  discardCodexAcceptedServerQueueSubmission,
+} from "../../../shared/codex-native-queued-submission";
+import {
   buildCodexCommandApprovalRequest,
   buildCodexFileApprovalRequest,
   buildCodexPermissionRequest,
@@ -81,12 +85,21 @@ import {
 } from "../../../shared/codex-conversation-state/codex-turn-selectors";
 import { QueuedMessageLocks } from "../../../shared/codex-queued-message-locks";
 import type { ConversationFollowerTurnStart } from "../../../shared/codex-thread-follower-request";
+import {
+  isCodexQueuedMessageFollowerMethod,
+  parseCodexQueuedMessageFollowerRequest,
+  parseCodexQueuedMessageFollowerResult,
+  type CodexQueuedMessageFollowerRequest,
+} from "../../../shared/codex-queued-message-follower-request";
 const queuedStartLocks = new QueuedMessageLocks();
 import { QueuedMessageCoordinator } from "../../../shared/codex-queued-message-coordinator";
 import {
   isCodexQueuedMessage,
   projectCodexQueuedMessage,
   queuedMessagePromptInput,
+  captureCodexQueuedMessage,
+  createCodexQueuedMessageDeliveryReceipt,
+  readCodexQueuedMessageDeliveryReceipt,
   type CodexQueuedMessage,
 } from "../../../shared/codex-queued-message";
 import {
@@ -95,9 +108,15 @@ import {
 } from "../../../shared/codex-untrusted-app-input";
 import {
   CodexServerQueuedMessages,
+  equalCodexQueueValue,
   preserveGeneratedQueueText,
   type CodexServerQueueInput,
 } from "./codex-server-queued-messages";
+import {
+  hasPendingOrdinaryLocalQueuedMessage,
+  readMixedCodexQueuedMessages,
+} from "./codex-mixed-queued-messages";
+import { canEnqueueNativeCodexQueue } from "./codex-native-queue-policy";
 import { rendererQueuedMessageStorage } from "./renderer-queued-message-storage";
 import { registerAppCloseFlushHandler } from "../../lib/app-close-flush";
 import {
@@ -2142,6 +2161,8 @@ export class CodexAppServerManager {
   >;
   private readonly queuedMessages: QueuedMessageCoordinator<CodexQueuedMessage>;
   private readonly serverQueuedMessages: CodexServerQueuedMessages;
+  private readonly serverQueueReceiptReconciliations = new Map<string, Promise<void>>();
+  private readonly serverQueueReceiptReruns = new Set<string>();
   private readonly retention: CanonicalConversationRetention;
   private connection: CodexConnectionState = INITIAL_CONNECTION;
   private account: CodexAccountSnapshot | null = null;
@@ -2408,6 +2429,8 @@ export class CodexAppServerManager {
 
     this.historyClient = {
       hostId,
+      canRecordQueueAcceptance: (id) =>
+        !this.destroyed && this.streamState.getRole(id)?.role === "owner",
       supportsPaginatedHistory: () => this.supportsPaginatedHistory,
       supportsThreadTimeline: () => this.canReadThreadTimeline(),
       sendTimelineRequest: async (params, options) => {
@@ -2551,6 +2574,8 @@ export class CodexAppServerManager {
     this.queuedMessages = new QueuedMessageCoordinator({
       storage: rendererQueuedMessageStorage,
       role: (id) => this.streamState.getRole(id),
+      captureOwnerWrite: (id) =>
+        this.observeOwnerActionLifetime(id, "queued message storage write"),
       validate: (messages) => {
         if (!messages.every(isCodexQueuedMessage)) throw new Error("Invalid queued messages");
       },
@@ -2580,7 +2605,7 @@ export class CodexAppServerManager {
         for (const threadId of id ? [id] : this.conversationsById.keys()) {
           this.refreshQueuedMessageProjection(threadId);
           if (
-            this.isServerQueueSelected(threadId) &&
+            this.isServerQueueEnabled(threadId) &&
             this.serverQueuedMessages.read(threadId) == null
           )
             void this.serverQueuedMessages
@@ -2592,6 +2617,20 @@ export class CodexAppServerManager {
       error: (operation, error) => console.error("Queued messages failed", { operation, error }),
     });
     this.serverQueuedMessages = new CodexServerQueuedMessages({
+      captureMutationLifetime: (id, operation) =>
+        this.observeOwnerActionLifetime(
+          id,
+          `queue ${operation}`,
+          operation === "reorder" || operation === "send-now",
+        ),
+      isEnabled: (id) => this.isServerQueueEnabled(id),
+      canEnqueue: (id, message) =>
+        canEnqueueNativeCodexQueue({
+          hostId: this.hostId,
+          conversation: this.historyClient.getConversation(id),
+          message,
+          settingsPending: this.settingsUpdates.has(id),
+        }),
       request: (method, params) => this.nativeAppServer.request(method, params),
       compileInput: compileServerQueuedMessageInput,
       getConversationCwd: (id) => this.historyClient.getConversation(id)?.cwd ?? null,
@@ -2602,7 +2641,22 @@ export class CodexAppServerManager {
         const conversation = this.conversationsById.get(id);
         return conversation ? isConversationStreaming(conversation) : false;
       },
-      onQueueChanged: (id) => this.refreshQueuedMessageProjection(id),
+      onQueueChanged: (id) => {
+        this.refreshQueuedMessageProjection(id);
+        void this.reconcileServerQueueReceipts(id)
+          .then(() => this.wakeQueuedMessages(id))
+          .catch((error) => console.error("Server queue receipt reconciliation failed", error));
+      },
+      onEnqueueUnknown: (id, message, input, error) =>
+        this.retainQueuedMessageUnknownDelivery(id, message, input, error, true),
+      readAccepted: (id) =>
+        this.historyClient.getConversation(id)?.unconfirmedServerQueueMessages ?? [],
+      discardAccepted: (id, submission) => {
+        if (this.streamState.getRole(id)?.role !== "owner" || this.destroyed) return;
+        this.historyClient.updateConversation(id, (draft) =>
+          discardCodexAcceptedServerQueueSubmission(draft, submission),
+        );
+      },
     });
     this.queuedExecution = new QueuedMessageExecution<
       CodexQueuedMessage,
@@ -2613,12 +2667,20 @@ export class CodexAppServerManager {
       coordinator: this.queuedMessages,
       role: (id) => this.streamState.getRole(id),
       canSend: (id, message) =>
-        !this.isServerQueueSelected(id) &&
+        (!this.isServerQueueEnabled(id) ||
+          (this.serverQueuedMessages.findByClientMessageId(id, message.id) === undefined &&
+            (!requiresUntrustedAppInputConfirmation(message.context) ||
+              this.serverQueuedMessages.read(id)?.length === 0))) &&
         canAutomaticallySendQueuedMessage({
           conversation: this.historyClient.getConversation(id),
           message,
           role: this.streamState.getRole(id),
         }),
+      messagesEqual: (left, right) =>
+        equalCodexQueueValue(captureCodexQueuedMessage(left), captureCodexQueuedMessage(right)),
+      selectAutomaticMessage: (messages) =>
+        messages.find((message) => readCodexQueuedMessageDeliveryReceipt(message) !== null) ??
+        messages[0],
       validate: (messages) => {
         if (!messages.every(isCodexQueuedMessage)) throw new Error("Invalid queued messages");
       },
@@ -2651,6 +2713,20 @@ export class CodexAppServerManager {
         errorReason: (error) => (error instanceof Error ? error.message : String(error)),
         prepare: (conversationId, message, mode) =>
           this.prepareQueuedSubmission(conversationId, message, mode, "executor"),
+        onError: async (id, message, error, submission) => {
+          if (
+            !(error instanceof CodexTurnDeliveryError) ||
+            error.delivery.stage !== "outcome-unknown"
+          )
+            return;
+          const input =
+            error.delivery.method === "turn/start"
+              ? submission?.start?.request.input
+              : error.delivery.method === "turn/steer"
+                ? submission?.steer.input
+                : undefined;
+          if (input) await this.retainQueuedMessageUnknownDelivery(id, message, input, error);
+        },
       },
       submissionHost: {
         needsResume: (id) =>
@@ -2700,7 +2776,7 @@ export class CodexAppServerManager {
           return;
         }
         if (event.type === "threadDeleted") {
-          this.handleThreadDeleted({ hostId: this.hostId, threadId: event.threadId });
+          this.handleThreadDeleted(event);
         }
       }),
       subscribeCodexAppServerMessage("shared-object-updated", (event) => {
@@ -2764,7 +2840,7 @@ export class CodexAppServerManager {
           ? params.thread.id
           : null;
     if (threadId && event.notification.method === "thread/queue/changed") {
-      if (this.isServerQueueEnabled())
+      if (this.isServerQueueEnabled(threadId))
         void this.serverQueuedMessages
           .refresh(threadId)
           .catch((error) => console.error("Server queue refresh failed", error));
@@ -2890,6 +2966,19 @@ export class CodexAppServerManager {
     for (const effect of receipt.result) {
       if (effect.type === "markConversationStreaming") this.activeStreamingIds.add(effect.threadId);
       if (effect.type === "clearCompletedGoal") this.consumeOwnerThreadMetadataEffects([effect]);
+    }
+    if (
+      event.notification.method === "item/completed" &&
+      event.notification.params.item.type === "userMessage"
+    ) {
+      this.wakeQueuedMessages(threadId);
+      if (
+        this.isServerQueueEnabled(threadId) &&
+        receipt.after.unconfirmedServerQueueMessages?.length
+      )
+        void this.serverQueuedMessages
+          .reconcileAccepted(threadId)
+          .catch((error) => console.error("Accepted native queue cleanup failed", error));
     }
     if (event.notification.method === "turn/completed") {
       if (event.notification.params.turn.status !== "inProgress") {
@@ -3026,6 +3115,26 @@ export class CodexAppServerManager {
     if (typeof params?.conversationId !== "string")
       throw new Error("Conversation follower request is missing its conversation identity");
     this.assertOwnerForConversation(params.conversationId);
+    if (isCodexQueuedMessageFollowerMethod(request.method)) {
+      const operation = parseCodexQueuedMessageFollowerRequest(request.method, request.params);
+      using lifetime = this.observeOwnerActionLifetime(
+        params.conversationId,
+        "queued message follower action",
+      );
+      if (operation.method === "thread-follower-remove-queued-message")
+        await this.removeQueuedFollowUpAsOwner(
+          operation.params.conversationId,
+          operation.params.messageId,
+        );
+      else
+        await this.resolveQueuedFollowUpsAfterFreshStartAsOwner(
+          operation.params.conversationId,
+          0,
+          "clear",
+        );
+      lifetime.assertCurrent();
+      return { method: operation.method, result: { applied: true } };
+    }
     if (request.method === "thread-follower-command-approval-decision") {
       const params =
         request.params as ConversationFollowerParams["thread-follower-command-approval-decision"];
@@ -3395,7 +3504,7 @@ export class CodexAppServerManager {
       "default",
       evidence,
     );
-    if (interruptionChanged && this.isServerQueueSelected(state.id)) {
+    if (interruptionChanged && this.isServerQueueEnabled(state.id)) {
       this.refreshQueuedMessageProjection(state.id);
     }
   }
@@ -3512,6 +3621,8 @@ export class CodexAppServerManager {
     this.serverQueuedMessages[Symbol.dispose]();
     if (this.destroyed) return;
     this.destroyed = true;
+    this.serverQueueReceiptReconciliations.clear();
+    this.serverQueueReceiptReruns.clear();
     for (const owner of this.pendingArtifactRecoveries.values()) owner.dispose();
     this.pendingArtifactRecoveries.clear();
     for (const owner of this.transcriptReadOwners.values()) owner.dispose();
@@ -4604,6 +4715,7 @@ export class CodexAppServerManager {
             olderCursor === null
               ? null
               : { cursor: olderCursor, source: page?.source, oldestLoadedTurnId },
+            this.historyClient.canRecordQueueAcceptance?.(threadId) === true,
           );
           applyCanonicalHistoryTimelineDraft(draft, page?.timeline, "replace");
           refreshResumedConversationTurnParams(draft, response, cwd);
@@ -5616,8 +5728,8 @@ export class CodexAppServerManager {
   }
 
   /** Observe one admitted owner without creating a separate lifetime authority. */
-  private observeOwnerActionLifetime(threadId: string, action: string) {
-    this.assertOwnerForConversation(threadId);
+  private observeOwnerActionLifetime(threadId: string, action: string, allowStableRole = false) {
+    if (!allowStableRole) this.assertOwnerForConversation(threadId);
     const owner = this.streamState.getRole(threadId);
     const nativeRevision = this.nativeHostContextRevision;
     const entityGeneration =
@@ -5636,7 +5748,7 @@ export class CodexAppServerManager {
         this.streamState.getRole(threadId) !== owner
       )
         throw new Error(`Conversation owner changed during ${action}`);
-      this.assertOwnerForConversation(threadId);
+      if (!allowStableRole) this.assertOwnerForConversation(threadId);
     };
     this.conversationRemovedCallbacks.add(onRemoved);
     return {
@@ -6394,33 +6506,167 @@ export class CodexAppServerManager {
     const trace = clientUserMessageId
       ? codexTurnFirstResponseTracker.getTrace(clientUserMessageId)
       : undefined;
-    return execute({
+    const result = await execute({
       ...submission.options,
       ...(clientUserMessageId ? { clientUserMessageId } : {}),
       ...(trace ? { trace } : {}),
     });
+    submission.assertCurrent();
+    const serverQueuedSubmission = operation.context?.serverQueuedSubmission;
+    if (serverQueuedSubmission)
+      this.historyClient.updateConversation(request.threadId, (draft) =>
+        appendCodexAcceptedServerQueueSubmission(draft, serverQueuedSubmission),
+      );
+    return result;
   }
 
   private queuedActiveTurn(id: string): string | null {
     const turn = latestConversationTurn(this.historyClient.getConversation(id));
     return turn?.status === "inProgress" ? turn.turnId : null;
   }
-  private isServerQueueEnabled(): boolean {
-    return this.nativeHostContext?.supportsThreadQueue === true;
-  }
-  private isServerQueueSelected(id: string): boolean {
-    if (!this.isServerQueueEnabled()) return false;
-    const local = this.queuedMessages.readMessages(id);
-    return local !== undefined && local.length === 0;
+  private isServerQueueEnabled(id: string): boolean {
+    return (
+      this.nativeHostContext?.supportsThreadQueue === true &&
+      this.historyClient.getConversation(id)?.ephemeral !== true
+    );
   }
   private async loadQueuedMessages(id: string): Promise<void> {
     await this.queuedMessages.loadMessages(id);
-    if (this.isServerQueueSelected(id) && this.serverQueuedMessages.read(id) == null)
+    if (this.isServerQueueEnabled(id) && this.serverQueuedMessages.read(id) == null)
       await this.serverQueuedMessages.load(id);
+    if (this.isServerQueueEnabled(id) && this.streamState.getRole(id)?.role === "owner")
+      await this.serverQueuedMessages.reconcileAccepted(id);
+    await this.reconcileServerQueueReceipts(id);
     this.refreshQueuedMessageProjection(id);
   }
+  private reconcileServerQueueReceipts(id: string): Promise<void> {
+    const pending = this.serverQueueReceiptReconciliations.get(id);
+    if (pending) {
+      this.serverQueueReceiptReruns.add(id);
+      return pending;
+    }
+    const reconciliation = (async () => {
+      if (
+        this.destroyed ||
+        !this.isServerQueueEnabled(id) ||
+        this.streamState.getRole(id)?.role !== "owner"
+      )
+        return;
+      using lifetime = this.observeOwnerActionLifetime(id, "queue receipt reconciliation");
+      const candidates = (this.queuedMessages.readMessages(id) ?? []).filter(
+        (message) =>
+          !requiresUntrustedAppInputConfirmation(message.context) &&
+          readCodexQueuedMessageDeliveryReceipt(message)?.hostId === this.hostId,
+      );
+      if (!candidates.length) return;
+      const accepted = new Map<string, CodexQueuedMessage>();
+      const canonical = this.historyClient.getConversation(id);
+      const echoed = residentConversationTurns(canonical).flatMap((turn) =>
+        turn.turnId === null
+          ? []
+          : turn.items.flatMap((item) => {
+              if (
+                item.type === "steeringUserMessage" &&
+                item.status === "accepted" &&
+                item.clientUserMessageId &&
+                item.acceptedInput
+              )
+                return [
+                  {
+                    clientId: item.clientUserMessageId,
+                    input: item.acceptedInput,
+                    submittedInput: item.input,
+                  },
+                ];
+              if (
+                item.type === "userMessage" &&
+                item.clientId &&
+                (turn.completedItemIds?.[item.id] || turn.status === "completed")
+              )
+                return [
+                  { clientId: item.clientId, input: item.content, submittedInput: item.content },
+                ];
+              return [];
+            }),
+      );
+      for (const message of candidates) {
+        const receipt = readCodexQueuedMessageDeliveryReceipt(message)!;
+        if (!equalCodexQueueValue(captureCodexQueuedMessage(message), receipt.captured)) continue;
+        const compiled = await compileServerQueuedMessageInput(message, undefined, false);
+        lifetime.assertCurrent();
+        if (compiled.responseItems.length || !equalCodexQueueValue(compiled.input, receipt.input))
+          continue;
+        const echoedAcceptance = echoed.some(
+          (echo) =>
+            echo.clientId === message.id &&
+            equalCodexQueueValue(echo.input, receipt.input) &&
+            equalCodexQueueValue(echo.submittedInput, receipt.input),
+        );
+        const nativeAcceptance =
+          echoedAcceptance || (await this.serverQueuedMessages.matchesClientReceipt(id, message));
+        lifetime.assertCurrent();
+        if (nativeAcceptance) accepted.set(message.id, message);
+      }
+      if (this.destroyed || this.streamState.getRole(id)?.role !== "owner" || !accepted.size)
+        return;
+      await this.queuedMessages.updateAsOwner(id, (messages) =>
+        messages.filter((message) => !equalCodexQueueValue(message, accepted.get(message.id))),
+      );
+      lifetime.assertCurrent();
+      if (this.destroyed || this.streamState.getRole(id)?.role !== "owner") return;
+      this.historyClient.updateConversation(id, (draft) => {
+        for (const message of accepted.values()) {
+          const receipt = readCodexQueuedMessageDeliveryReceipt(message);
+          if (receipt) clearCodexUnconfirmedTurnSubmission(draft, receipt.requestId);
+        }
+      });
+    })().finally(() => {
+      if (this.serverQueueReceiptReconciliations.get(id) === reconciliation)
+        this.serverQueueReceiptReconciliations.delete(id);
+      if (this.serverQueueReceiptReruns.delete(id) && !this.destroyed)
+        queueMicrotask(() => this.wakeQueuedMessages(id));
+    });
+    this.serverQueueReceiptReconciliations.set(id, reconciliation);
+    return reconciliation;
+  }
+  private async retainQueuedMessageUnknownDelivery(
+    id: string,
+    message: CodexQueuedMessage,
+    input: readonly import("@nodex/codex-app-server-protocol/v2").UserInput[],
+    error: CodexTurnDeliveryError,
+    append = false,
+  ): Promise<void> {
+    if (
+      error.delivery.stage !== "outcome-unknown" ||
+      requiresUntrustedAppInputConfirmation(message.context)
+    )
+      return;
+    const receipt = createCodexQueuedMessageDeliveryReceipt(
+      this.hostId,
+      message,
+      input,
+      error.delivery,
+    );
+    if (!receipt || this.destroyed || this.streamState.getRole(id)?.role !== "owner") return;
+    await this.queuedMessages.updateAsOwner(id, (messages) => {
+      const current = messages.find((candidate) => candidate.id === message.id);
+      if (current && !equalCodexQueueValue(captureCodexQueuedMessage(current), receipt.captured))
+        return messages;
+      if (!current && !append) return messages;
+      const retained = {
+        ...(current ?? message),
+        submission: receipt,
+        pausedReason: error.message,
+      };
+      return current
+        ? messages.map((candidate) => (candidate === current ? retained : candidate))
+        : [...messages, retained];
+    });
+  }
   private wakeQueuedMessages(id: string): void {
-    this.queuedExecution?.wake(id);
+    void this.reconcileServerQueueReceipts(id)
+      .then(() => this.queuedExecution?.wake(id))
+      .catch((error) => console.error("Queue acceptance reconciliation failed", error));
   }
   private async prepareQueuedSubmission(
     conversationId: string,
@@ -6429,6 +6675,24 @@ export class CodexAppServerManager {
     source: ConversationResumeSource,
     clientUserMessageId?: string,
   ) {
+    const serverQueuedSubmission = clientUserMessageId
+      ? this.serverQueuedMessages.readNativeSubmission(conversationId, message.id)
+      : undefined;
+    using lifetime = serverQueuedSubmission
+      ? this.observeOwnerActionLifetime(conversationId, "queue preparation", true)
+      : undefined;
+    const assertCurrent = () => {
+      lifetime?.assertCurrent();
+      if (
+        serverQueuedSubmission &&
+        !equalCodexQueueValue(
+          serverQueuedSubmission,
+          this.serverQueuedMessages.readNativeSubmission(conversationId, message.id),
+        )
+      )
+        throw new Error("Native queued input changed during preparation");
+    };
+    assertCurrent();
     const conversation = this.historyClient.getConversation(conversationId);
     const needsResume =
       conversation?.resumeState !== "resumed" || !this.streamState.getRole(conversationId);
@@ -6440,6 +6704,7 @@ export class CodexAppServerManager {
           "codex:thread:history-hydration:prepare",
           conversationId,
         );
+        assertCurrent();
         workspaceRoots = workspace.context.runtimeWorkspaceRoots;
       } else {
         workspaceRoots =
@@ -6469,12 +6734,14 @@ export class CodexAppServerManager {
         workspaceRoots: resume.workspaceRoots,
         collaborationMode: resume.collaborationMode,
       });
+      assertCurrent();
       if (!resumed) throw new QueueNotReady("Thread is not ready");
     }
     await runConversationOperation(
       "codex:turn:native-steer:release",
       clientUserMessageId ?? message.id,
     );
+    assertCurrent();
     const prepared = await runConversationOperation(
       "codex:queued-messages:prepare-native",
       conversationId,
@@ -6484,8 +6751,10 @@ export class CodexAppServerManager {
         runtimeWorkspaceRoots: workspaceRoots,
         usePermissionSelection,
         ...(clientUserMessageId ? { clientUserMessageId } : {}),
+        ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
       },
     );
+    assertCurrent();
     return {
       status: "ready" as const,
       submission: {
@@ -6557,8 +6826,14 @@ export class CodexAppServerManager {
     message: CodexQueuedMessage,
     clientUserMessageId: string,
   ): Promise<{ status: "sent"; messageId: string; turnId: string }> {
+    using lifetime = this.observeOwnerActionLifetime(
+      threadId,
+      "native queued message delivery",
+      true,
+    );
     try {
       const result = await this.queuedExecution.sendPreparedNow(threadId, message, {
+        isCurrent: lifetime.isCurrent,
         prepare: (id, queuedMessage, mode) =>
           this.prepareQueuedSubmission(id, queuedMessage, mode, "view", clientUserMessageId),
       });
@@ -6575,13 +6850,26 @@ export class CodexAppServerManager {
     id: string,
     previous: CodexConversationSnapshot["queuedFollowUps"],
   ): CodexConversationSnapshot["queuedFollowUps"] {
-    const messages = this.isServerQueueSelected(id)
-      ? this.serverQueuedMessages.read(id)
-      : this.queuedMessages.readMessages(id);
+    const messages = readMixedCodexQueuedMessages({
+      local: this.queuedMessages.readMessages(id),
+      server: this.serverQueuedMessages.read(id),
+      serverEnabled: this.isServerQueueEnabled(id),
+      findServerByClientId: (clientId) =>
+        this.serverQueuedMessages.findByClientMessageId(id, clientId),
+      readServerClientId: (messageId) =>
+        this.serverQueuedMessages.readClientMessageId(id, messageId),
+    });
     return {
       ...previous,
       status: messages === undefined ? "loading" : "ready",
-      entries: (messages ?? []).map((message) => projectCodexQueuedMessage(id, message)),
+      entries: (messages ?? []).map(({ message, ...delivery }) =>
+        projectCodexQueuedMessage(id, message, {
+          ...delivery,
+          canSendNow:
+            readCodexQueuedMessageDeliveryReceipt(message) === null &&
+            (delivery.owner === "local" || this.hostId !== "durable"),
+        }),
+      ),
       ledgerRevision: previous.ledgerRevision + 1,
       projectionRevision: previous.projectionRevision + 1,
       error: null,
@@ -6602,6 +6890,7 @@ export class CodexAppServerManager {
     opts?: import("../../../shared/codex-queued-message").CodexQueuedMessagePrepareOptions,
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<void> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queued message capture", true);
     const message = await runConversationOperation(
       "codex:queued-messages:prepare",
       threadId,
@@ -6609,10 +6898,19 @@ export class CodexAppServerManager {
       opts,
       presentationTicket,
     );
+    lifetime.assertCurrent();
     await this.loadQueuedMessages(threadId);
+    lifetime.assertCurrent();
     if (
-      this.isServerQueueSelected(threadId) &&
-      !requiresUntrustedAppInputConfirmation(message.context)
+      this.isServerQueueEnabled(threadId) &&
+      !requiresUntrustedAppInputConfirmation(message.context) &&
+      !hasPendingOrdinaryLocalQueuedMessage(this.queuedMessages.readMessages(threadId) ?? []) &&
+      canEnqueueNativeCodexQueue({
+        hostId: this.hostId,
+        conversation: this.historyClient.getConversation(threadId),
+        message,
+        settingsPending: this.settingsUpdates.has(threadId),
+      })
     ) {
       await this.serverQueuedMessages.enqueue(threadId, message);
       return;
@@ -6621,14 +6919,56 @@ export class CodexAppServerManager {
   }
   private enqueueQueuedFollowUpAsOwner = this.enqueueQueuedFollowUp.bind(this);
 
+  private async forwardQueuedMessageAction(
+    request: CodexQueuedMessageFollowerRequest,
+  ): Promise<boolean> {
+    const id = request.params.conversationId;
+    const role = this.streamState.getRole(id);
+    if (role?.role !== "follower") return false;
+    using lifetime = this.observeOwnerActionLifetime(id, "queued message forwarding", true);
+    const host = await getConversationCoordinationHost();
+    lifetime.assertCurrent();
+    const response = await host.requestThreadFollower({
+      hostId: this.hostId,
+      targetClientId: role.ownerClientId,
+      request,
+    });
+    lifetime.assertCurrent();
+    if (response.resultType !== "success")
+      throw new Error(response.resultType === "error" ? response.error : "Queue owner unavailable");
+    if (!parseCodexQueuedMessageFollowerResult(response.result).applied)
+      throw new Error("Queue owner did not apply the requested operation");
+    if (this.isServerQueueEnabled(id)) await this.serverQueuedMessages.refresh(id);
+    lifetime.assertCurrent();
+    await this.loadQueuedMessages(id);
+    lifetime.assertCurrent();
+    return true;
+  }
+
   async removeQueuedFollowUp(threadId: string, followUpId: string): Promise<void> {
+    if (
+      await this.forwardQueuedMessageAction({
+        method: "thread-follower-remove-queued-message",
+        params: { conversationId: threadId, messageId: followUpId },
+      })
+    )
+      return;
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queued message removal");
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
+    lifetime.assertCurrent();
+    if (
+      this.isServerQueueEnabled(threadId) &&
+      !this.queuedMessages.readMessages(threadId)?.some((message) => message.id === followUpId)
+    ) {
       await this.serverQueuedMessages.remove(threadId, followUpId);
       return;
     }
-    await this.queuedMessages.update(threadId, (messages) =>
-      messages.filter((message) => message.id !== followUpId),
+    const captured = this.queuedMessages
+      .readMessages(threadId)
+      ?.find((message) => message.id === followUpId);
+    if (!captured) return;
+    await this.queuedMessages.updateAsOwner(threadId, (messages) =>
+      messages.filter((message) => !equalCodexQueueValue(message, captured)),
     );
   }
   private removeQueuedFollowUpAsOwner = this.removeQueuedFollowUp.bind(this);
@@ -6641,6 +6981,7 @@ export class CodexAppServerManager {
     opts?: import("../../../shared/codex-queued-message").CodexQueuedMessagePrepareOptions,
     presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<boolean> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queued message edit", true);
     const replacement = await runConversationOperation(
       "codex:queued-messages:prepare",
       threadId,
@@ -6648,8 +6989,13 @@ export class CodexAppServerManager {
       opts,
       presentationTicket,
     );
+    lifetime.assertCurrent();
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
+    lifetime.assertCurrent();
+    if (
+      this.isServerQueueEnabled(threadId) &&
+      !this.queuedMessages.readMessages(threadId)?.some((message) => message.id === followUpId)
+    ) {
       const messages = this.serverQueuedMessages.read(threadId) ?? [];
       const index = messages.findIndex((message) => message.id === followUpId);
       if (index === -1) return false;
@@ -6670,10 +7016,16 @@ export class CodexAppServerManager {
   private replaceQueuedFollowUpAsOwner = this.replaceQueuedFollowUp.bind(this);
 
   async reorderQueuedFollowUps(threadId: string, orderedFollowUpIds: string[]): Promise<void> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queue reorder", true);
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
-      await this.serverQueuedMessages.reorder(threadId, orderedFollowUpIds);
-      return;
+    lifetime.assertCurrent();
+    if (this.isServerQueueEnabled(threadId)) {
+      const ids = new Set(this.serverQueuedMessages.read(threadId)?.map((message) => message.id));
+      await this.serverQueuedMessages.reorder(
+        threadId,
+        orderedFollowUpIds.filter((id) => ids.has(id)),
+      );
+      lifetime.assertCurrent();
     }
     await this.queuedMessages.update(threadId, (messages) => {
       const byId = new Map(messages.map((message) => [message.id, message]));
@@ -6688,10 +7040,14 @@ export class CodexAppServerManager {
   private reorderQueuedFollowUpsAsOwner = this.reorderQueuedFollowUps.bind(this);
 
   async resumeQueuedFollowUps(threadId: string): Promise<void> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queue resume");
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
+    lifetime.assertCurrent();
+    if (hasPendingConversationTurnStart(this.historyClient.getConversation(threadId))) return;
+    using _deferral = this.queuedExecution.deferAutomaticTurns(threadId);
+    if (this.isServerQueueEnabled(threadId) && this.hostId !== "durable") {
       await this.serverQueuedMessages.resume(threadId);
-      return;
+      lifetime.assertCurrent();
     }
     await this.queuedMessages.update(threadId, (messages) =>
       messages.map(resumeInterruptedQueuedMessage),
@@ -6704,14 +7060,30 @@ export class CodexAppServerManager {
     _expectedLedgerRevision: number,
     resolution: "resume" | "clear",
   ): Promise<boolean> {
-    await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
-      if (resolution === "clear") await this.serverQueuedMessages.clear(threadId);
-      else await this.serverQueuedMessages.resume(threadId);
+    if (
+      resolution === "clear" &&
+      (await this.forwardQueuedMessageAction({
+        method: "thread-follower-clear-queued-messages",
+        params: { conversationId: threadId },
+      }))
+    )
       return true;
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queue resolution");
+    await this.loadQueuedMessages(threadId);
+    lifetime.assertCurrent();
+    const captured = this.queuedMessages.readMessages(threadId) ?? [];
+    using _deferral = this.queuedExecution.deferAutomaticTurns(threadId);
+    if (this.isServerQueueEnabled(threadId)) {
+      if (resolution === "clear") await this.serverQueuedMessages.clear(threadId);
+      else if (this.hostId !== "durable") await this.serverQueuedMessages.resume(threadId);
+      lifetime.assertCurrent();
     }
-    await this.queuedMessages.update(threadId, (messages) =>
-      resolution === "clear" ? [] : messages.map((message) => ({ ...message, pausedReason: null })),
+    await this.queuedMessages.updateAsOwner(threadId, (messages) =>
+      resolution === "clear"
+        ? messages.filter(
+            (message) => !captured.some((candidate) => equalCodexQueueValue(candidate, message)),
+          )
+        : messages.map(resumeInterruptedQueuedMessage),
     );
     return true;
   }
@@ -6719,17 +7091,31 @@ export class CodexAppServerManager {
     this.resolveQueuedFollowUpsAfterFreshStart.bind(this);
 
   async sendQueuedFollowUpNow(threadId: string, followUpId: string): Promise<void> {
+    using lifetime = this.observeOwnerActionLifetime(threadId, "queued message send", true);
     await this.loadQueuedMessages(threadId);
-    if (this.isServerQueueSelected(threadId)) {
-      await this.serverQueuedMessages.sendNow(
-        threadId,
-        followUpId,
-        (message, clientUserMessageId) =>
-          this.sendServerQueuedMessageNow(threadId, message, clientUserMessageId),
+    lifetime.assertCurrent();
+    const localMessage = this.queuedMessages
+      .readMessages(threadId)
+      ?.find((message) => message.id === followUpId);
+    if (localMessage && readCodexQueuedMessageDeliveryReceipt(localMessage)) return;
+    if (
+      this.isServerQueueEnabled(threadId) &&
+      !this.queuedMessages.readMessages(threadId)?.some((message) => message.id === followUpId)
+    ) {
+      if (this.hostId === "durable") return;
+      await this.queuedExecution.sendExternalNow(threadId, followUpId, (accepted) =>
+        this.serverQueuedMessages.sendNow(
+          threadId,
+          followUpId,
+          (message, clientUserMessageId) =>
+            this.sendServerQueuedMessageNow(threadId, message, clientUserMessageId),
+          accepted,
+        ),
       );
       return;
     }
     await this.queuedExecution.sendNow(threadId, followUpId, {
+      isCurrent: lifetime.isCurrent,
       prepare: (id, message, mode) => this.prepareQueuedSubmission(id, message, mode, "view"),
     });
   }
@@ -7241,7 +7627,7 @@ export class CodexAppServerManager {
     const lifetime = this.observeOwnerActionLifetime(id, "steering");
     const { assertCurrent } = lifetime;
     try {
-      return await runCanonicalOwnerSteer(
+      const result = await runCanonicalOwnerSteer(
         {
           read: () => {
             assertCurrent();
@@ -7297,6 +7683,13 @@ export class CodexAppServerManager {
         },
         input,
       );
+      assertCurrent();
+      const serverQueuedSubmission = input.serverQueuedSubmission;
+      if (serverQueuedSubmission)
+        this.historyClient.updateConversation(id, (draft) =>
+          appendCodexAcceptedServerQueueSubmission(draft, serverQueuedSubmission),
+        );
+      return result;
     } finally {
       lifetime[Symbol.dispose]();
     }

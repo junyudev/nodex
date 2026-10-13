@@ -1,5 +1,6 @@
 import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
 import { parseCodexQueuedMessageState } from "../../shared/codex-queued-message";
+import { parseCodexQueuedMessageFollowerRequest } from "../../shared/codex-queued-message-follower-request";
 import { CodexMainConversationEdit } from "./CodexMainConversationEdit";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -105,6 +106,23 @@ export const install = Effect.gen(function* () {
           yield* queued.acceptFromFollower(threadId, state[threadId] ?? []);
           return { ok: true };
         }
+        case "thread-follower-remove-queued-message": {
+          const target = yield* Effect.try(() =>
+            parseCodexQueuedMessageFollowerRequest(request.method, params),
+          );
+          if (target.method !== "thread-follower-remove-queued-message")
+            return yield* new MainConversationManagerError({
+              hostId,
+              cause: new Error("Invalid queue removal method"),
+            });
+          return {
+            applied: yield* queued.removeAsOwner(hostId, threadId, target.params.messageId),
+          };
+        }
+        case "thread-follower-clear-queued-messages": {
+          yield* Effect.try(() => parseCodexQueuedMessageFollowerRequest(request.method, params));
+          return { applied: yield* queued.clearAsOwner(hostId, threadId) };
+        }
         case "thread-follower-steer-turn": {
           const clientUserMessageId = yield* Schema.decodeUnknownEffect(Schema.String)(
             params.clientUserMessageId,
@@ -117,7 +135,8 @@ export const install = Effect.gen(function* () {
             !isDeepStrictEqual(params.attachments ?? [], prepared.attachments ?? []) ||
             !isDeepStrictEqual(params.additionalContext, prepared.additionalContext) ||
             !isDeepStrictEqual(params.serviceTier, prepared.serviceTier) ||
-            !isDeepStrictEqual(params.toolOutput, prepared.toolOutput)
+            !isDeepStrictEqual(params.toolOutput, prepared.toolOutput) ||
+            !isDeepStrictEqual(params.serverQueuedSubmission, prepared.serverQueuedSubmission)
           )
             return yield* new MainConversationManagerError({
               hostId,
@@ -212,6 +231,14 @@ export const install = Effect.gen(function* () {
               ),
             catch: (cause) => new MainConversationManagerError({ hostId, cause }),
           });
+          if (prepared.serverQueuedSubmission)
+            yield* queued
+              .reconcileAcceptedAsOwner(hostId, threadId)
+              .pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("Accepted queued steer could not be removed", error),
+                ),
+              );
           return { result };
         }
         case "thread-follower-interrupt-turn": {
@@ -283,7 +310,16 @@ export const install = Effect.gen(function* () {
               ?.context as import("../../shared/codex-thread-follower-request").ConversationFollowerTurnStart["context"],
           };
           const prepared = yield* turns.inspectPreparedNativeStart(operation);
-          return { result: yield* turns.executePreparedNativeStart(prepared.request) };
+          const result = yield* turns.executePreparedNativeStart(prepared.request);
+          if (operation.context?.serverQueuedSubmission)
+            yield* queued
+              .reconcileAcceptedAsOwner(hostId, threadId)
+              .pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("Accepted queued start could not be removed", error),
+                ),
+              );
+          return { result };
         }
         case "thread-follower-compact-thread": {
           yield* compaction.startAsOwner(hostId, threadId);

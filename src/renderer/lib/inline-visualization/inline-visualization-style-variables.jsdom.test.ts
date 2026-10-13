@@ -27,6 +27,7 @@ type GuestWindow = Window &
     initialStyles: { readonly size: string; readonly font: string; readonly persistence: unknown };
   };
 const guests: HTMLIFrameElement[] = [];
+const guestErrors: string[] = [];
 const runtimes: InlineVisualizationRuntime[] = [];
 const runs = vi.fn();
 const globalsSent = vi.fn();
@@ -57,6 +58,11 @@ beforeEach(() => {
     document.body.append(frame);
     guests.push(frame);
     const guest = frame.contentWindow as GuestWindow;
+    guest.Range.prototype.getBoundingClientRect = () => new guest.DOMRect();
+    guest.addEventListener("error", (event) => {
+      guestErrors.push(event.message);
+      event.preventDefault();
+    });
     const globals: Record<string, unknown> = {};
     const update = async (value: Parameters<McpAppSkybridgeApi["setAdditionalGlobals"]>[0]) => {
       Object.assign(globals, record(record(value).additionalGlobals));
@@ -119,6 +125,7 @@ afterEach(async () => {
   document.documentElement.className = rootClass;
   document.body.setAttribute("style", bodyStyle);
   document.body.className = bodyClass;
+  expect(guestErrors.splice(0)).toEqual([]);
 });
 
 function mount() {
@@ -148,7 +155,7 @@ test("actual host typography preferences reach the authored document on first ex
     font: "Preferred Sans, serif",
     persistence: "none",
   });
-  const sent = globalsSent.mock.calls.at(-1)?.[0].additionalGlobals.visualizationStyleVariables;
+  const sent = guest.openai.visualizationStyleVariables;
   expect(sent).toMatchObject({
     "--font-mono": "Preferred Mono, monospace",
     "--radius": "14px",
@@ -185,7 +192,7 @@ test("a real host appearance change updates semantic colors and accent-derived c
   mount();
   await waitFor(() => expect(runs).toHaveBeenCalledOnce());
   const guest = guests[0]!.contentWindow as GuestWindow;
-  const light = globalsSent.mock.calls.at(-1)?.[0].additionalGlobals.visualizationStyleVariables;
+  const light = record(guest.openai.visualizationStyleVariables);
   await act(async () => {
     applyCodexThemeVariant(document.documentElement, "dark", document.body);
     document.documentElement.classList.add("dark");
@@ -193,7 +200,7 @@ test("a real host appearance change updates semantic colors and accent-derived c
     await Promise.resolve();
   });
   await waitFor(() => expect(guest.document.documentElement.dataset.theme).toBe("dark"));
-  const dark = globalsSent.mock.calls.at(-1)?.[0].additionalGlobals.visualizationStyleVariables;
+  const dark = record(guest.openai.visualizationStyleVariables);
   expect(dark).toMatchObject({
     "--background": "#111111",
     "--primary": "#df5142",
@@ -298,7 +305,7 @@ test("native resize callbacks publish only changed content width and are fenced 
       clientHeight: { get: () => height },
     });
     await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
-    expect(globalsSent.mock.calls.at(-1)?.[0].additionalGlobals.maxWidth).toBe(500);
+    expect((guests[0]!.contentWindow as GuestWindow).openai.maxWidth).toBe(500);
     expect(hostContextsSent.mock.calls.at(-1)?.[0].hostContext.containerDimensions.maxWidth).toBe(
       500,
     );

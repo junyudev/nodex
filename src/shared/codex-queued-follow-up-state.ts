@@ -18,6 +18,8 @@ export type CodexQueuedFollowUpPause =
 
 /** Composer presentation derived from the manager's captured queue messages. */
 export interface CodexQueuedFollowUp {
+  readonly deliveryOwner?: "local" | "server";
+  readonly canSendNow?: boolean;
   readonly followUpId: string;
   readonly clientUserMessageId: string;
   readonly threadId: string;

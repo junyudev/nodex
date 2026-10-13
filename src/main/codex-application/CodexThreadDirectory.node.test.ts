@@ -2260,6 +2260,114 @@ it.effect.each([false, true])(
           expectedTurns.map((value) => value.id),
         );
         assert.strictEqual(empty.snapshot?.turnPagination?.hasLoadedOldest, true);
+        const queuedInput = [
+          { type: "text" as const, text: "captured queue input", text_elements: [] },
+        ];
+        const queueReceipt = {
+          id: "native-row",
+          clientUserMessageId: "queued-client",
+          input: queuedInput,
+        };
+        conversations.entity("thread-a").mutateCanonicalState((draft) => {
+          const entry = residentConversationTurnEntries(draft)[0];
+          if (!entry) throw new Error("Expected a resident turn");
+          conversationTurnDraft(draft, entry.address)!.items.push({
+            type: "steeringUserMessage",
+            id: "pending-native-row",
+            targetTurnId: "oldest",
+            targetTurnStartedAtMs: null,
+            status: "pending",
+            clientUserMessageId: "queued-client",
+            input: queuedInput,
+            attachments: [],
+            serverQueuedSubmission: queueReceipt,
+            restoreMessage: { context: { commentAttachments: [] } },
+            compareKey: { rawText: "captured queue input", imageCount: 0 },
+          });
+        }, Date.now());
+        const queueEchoPage = {
+          ...page,
+          data: [
+            {
+              ...turn("oldest"),
+              items: [
+                {
+                  type: "userMessage" as const,
+                  id: "queue-echo",
+                  clientId: "queued-client",
+                  content: queuedInput,
+                },
+              ],
+            },
+          ],
+        };
+        const readOnlyQueue = yield* directory.acceptResumeResult({
+          ...input,
+          response: { ...response, initialTurnsPage: queueEchoPage },
+        });
+        assert.isUndefined(readOnlyQueue.canonical?.unconfirmedServerQueueMessages);
+        const ownedQueue = yield* directory.acceptResumeResult({
+          ...input,
+          canRecordQueueAcceptance: () => true,
+          response: { ...response, initialTurnsPage: queueEchoPage },
+        });
+        assert.deepEqual(ownedQueue.canonical?.unconfirmedServerQueueMessages, [queueReceipt]);
+        const ackInput = [{ type: "text" as const, text: "ack captured input", text_elements: [] }];
+        const ackReceipt = {
+          id: "native-ack-row",
+          clientUserMessageId: "ack-client",
+          input: ackInput,
+        };
+        conversations.entity("thread-a").mutateCanonicalState((draft) => {
+          const entry = residentConversationTurnEntries(draft)[0];
+          if (!entry) throw new Error("Expected a resident turn");
+          conversationTurnDraft(draft, entry.address)!.items.push({
+            type: "steeringUserMessage",
+            id: "pending-ack-row",
+            targetTurnId: "oldest",
+            targetTurnStartedAtMs: null,
+            status: "accepted",
+            clientUserMessageId: "ack-client",
+            input: ackInput,
+            attachments: [],
+            serverQueuedSubmission: ackReceipt,
+            restoreMessage: { context: { commentAttachments: [] } },
+            compareKey: { rawText: "ack captured input", imageCount: 0 },
+          });
+        }, Date.now());
+        const ownedAck = yield* directory.acceptResumeResult({
+          ...input,
+          canRecordQueueAcceptance: () => true,
+          response: {
+            ...response,
+            initialTurnsPage: {
+              ...page,
+              data: [
+                {
+                  ...turn("oldest"),
+                  items: [
+                    {
+                      type: "userMessage",
+                      id: "ack-echo",
+                      clientId: "ack-client",
+                      content: ackInput,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+        assert.deepEqual(ownedAck.canonical?.unconfirmedServerQueueMessages, [
+          queueReceipt,
+          ackReceipt,
+        ]);
+        const installedAck = residentConversationTurns(
+          conversations.current("thread-a")!.readCanonicalState(),
+        )[0]?.items.find((item) => item.id === "pending-ack-row");
+        assert.ok(installedAck?.type === "steeringUserMessage");
+        assert.strictEqual(installedAck.serverUserMessageId, "ack-echo");
+        assert.deepEqual(installedAck.acceptedInput, ackInput);
         const baseline = yield* directory.resolve({ threadId: "thread-a", fidelity: "durable" });
         for (const mode of ["wrong-thread", "stale", "failure"] as const) {
           readMode = mode;
