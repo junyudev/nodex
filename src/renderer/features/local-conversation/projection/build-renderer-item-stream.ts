@@ -188,7 +188,7 @@ function normalizeSubagentConversationId(agentThreadId: string): string {
   return agentThreadId;
 }
 
-function resolveSubagentActivityRows(input: {
+export function resolveSubagentActivityRows(input: {
   activityItems: readonly SubagentActivity[];
   backgroundAgents: readonly ThreadComposerShellBackgroundAgentRowModel[];
   laterActivityItems: readonly SubagentActivity[];
@@ -239,6 +239,7 @@ function resolveSubagentActivityRows(input: {
       {
         conversationId,
         canOpen: backgroundAgent !== undefined || activity.displayStatus === "active",
+        ...(backgroundAgent?.canInteract === true ? { canInteract: true } : {}),
         displayName,
         agentRole: backgroundAgent?.agentRole ?? null,
         spawnModel: backgroundAgent?.spawnModel ?? null,
@@ -638,6 +639,7 @@ function buildFallbackSubagentBlock(
       displayName: agent.displayName,
       canOpen: true,
       agentRole: agent.agentRole,
+      ...(agent.canInteract === true ? { canInteract: true } : {}),
       spawnModel: agent.spawnModel,
       status: agent.status,
       activityStatus: agent.status === "done" ? "done" : "started",

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { startTransition, Suspense, useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
 import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
 import { render } from "../../../test/dom";
@@ -8,10 +8,12 @@ import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/
 import type { CodexHistoryRow } from "../../../../shared/codex-conversation-state/codex-history-topology";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import {
+  applyLocalConversationTurnMeasurementEffect,
   LocalConversationVirtualizedTurnList,
   type LocalConversationVirtualizedTurnListEntry,
   type LocalConversationVirtualizedTurnListApi,
 } from "./local-conversation-virtualized-turn-list";
+import { createThreadResponseSpaceController } from "./local-conversation-response-space";
 import type { VisibleConversationTurnEntry } from "../selectors";
 import type { CodexHistoryViewportBoundary } from "../../../../shared/codex-history-policy";
 import type {
@@ -261,6 +263,100 @@ function hasFixedHeightClippingAncestor(element: Element): boolean {
   return false;
 }
 
+describe("turn measurement compensation phases", () => {
+  test("uses application-time response space when placement changes after measurement capture", () => {
+    const fixture = createMeasurementResponseSpace();
+    // Capture a native measurement target while no submit placement space exists.
+    const nativeTargetPx = 32;
+    expect(fixture.space.getHeightPx()).toBe(0);
+    fixture.space.place();
+    expect(fixture.space.getHeightPx()).toBe(360);
+    fixture.writes.length = 0;
+
+    applyLocalConversationTurnMeasurementEffect({
+      effect: {
+        latestTurnHeightChange: {
+          bottomViewportOverflowPx: 0,
+          followContentHeightPx: null,
+          heightDeltaPx: 32,
+          heightPx: 132,
+          turnElement: null,
+        },
+        nativeScrollDistanceFromBottomPx: nativeTargetPx,
+        restoreScrollDistanceFromBottom: false,
+      },
+      getResponseSpacerHeightPx: fixture.space.getHeightPx,
+      onLatestTurnHeightChange: ({ heightDeltaPx }) =>
+        fixture.space.consumeGrowth(heightDeltaPx ?? 0),
+      restoreScrollDistanceFromBottomPx: () => {
+        throw new Error("Unexpected history restore.");
+      },
+      compensateScrollToDistanceFromBottomPx: (virtualDistance) =>
+        fixture.compensate(virtualDistance + fixture.space.getHeightPx()),
+    });
+
+    expect(fixture.space.getHeightPx()).toBe(328);
+    // Native target + post-callback space - application-time space = 32 + 328 - 360.
+    expect(fixture.writes).toEqual([0]);
+  });
+
+  test("restores through the history owner after the height callback without a second compensation", () => {
+    const fixture = createMeasurementResponseSpace();
+    fixture.space.place();
+    fixture.writes.length = 0;
+    applyLocalConversationTurnMeasurementEffect({
+      effect: {
+        latestTurnHeightChange: {
+          bottomViewportOverflowPx: 0,
+          followContentHeightPx: null,
+          heightDeltaPx: 32,
+          heightPx: 132,
+          turnElement: null,
+        },
+        nativeScrollDistanceFromBottomPx: 999,
+        restoreScrollDistanceFromBottom: true,
+      },
+      getResponseSpacerHeightPx: fixture.space.getHeightPx,
+      onLatestTurnHeightChange: ({ heightDeltaPx }) =>
+        fixture.space.consumeGrowth(heightDeltaPx ?? 0),
+      restoreScrollDistanceFromBottomPx: () => {
+        expect(fixture.space.getHeightPx()).toBe(328);
+        fixture.compensate(17);
+      },
+      compensateScrollToDistanceFromBottomPx: () => {
+        throw new Error("History restore already owns native placement.");
+      },
+    });
+    expect(fixture.writes).toEqual([17]);
+  });
+});
+
+function createMeasurementResponseSpace() {
+  const viewport = document.createElement("div");
+  Object.defineProperties(viewport, {
+    clientHeight: { value: 600 },
+    scrollHeight: { value: 2_000 },
+  });
+  const writes: number[] = [];
+  let nativeDistance = 0;
+  const compensate = (distance: number) => {
+    nativeDistance = distance;
+    writes.push(distance);
+  };
+  const scroll = {
+    getScrollElement: () => viewport,
+    getScrollDistanceFromBottomPx: () => nativeDistance,
+    getLastScrollDistanceFromBottomPx: () => nativeDistance,
+    getUnroundedScrollDistanceFromBottomPx: (fallback: number) => fallback,
+    compensateScrollToDistanceFromBottomPx: compensate,
+    scrollToDistanceFromBottomPx: compensate,
+    holdViewport: () => {},
+  };
+  const space = createThreadResponseSpaceController(scroll);
+  space.updateContext(scroll, true);
+  return { space, writes, compensate };
+}
+
 describe("LocalConversationVirtualizedTurnList", () => {
   test("cancels pending navigation without waiting for a frame and releases viewer protection", async () => {
     installQueuedRequestAnimationFrame();
@@ -428,6 +524,87 @@ describe("LocalConversationVirtualizedTurnList", () => {
         latestTurnPhase: "prework",
         turnKey: "turn_1",
       },
+    });
+  });
+
+  test("keeps restore metadata on the committed turn when a later render suspends", async () => {
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({ turn_1: 480, turn_2: 480 });
+    const initial = buildTurnEntry({
+      assistantText: "Committed answer",
+      index: 1,
+      isMostRecentTurn: true,
+    });
+    initial.turn = {
+      ...initial.turn,
+      status: "inProgress",
+      firstTurnWorkItemStartedAtMs: 10,
+      items: initial.turn.items.map((item) =>
+        item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
+      ),
+    };
+    const pending = buildTurnEntry({
+      assistantText: "Suspended answer",
+      index: 2,
+      isMostRecentTurn: true,
+    });
+    const forever = new Promise<never>(() => {});
+    let attempted = false;
+    function PendingSibling({ suspend }: { readonly suspend: boolean }) {
+      if (!suspend) return null;
+      attempted = true;
+      throw forever;
+    }
+    let update: (() => void) | null = null;
+    let captured: VirtualizedLatestTurnRestoreState | null = null;
+    function Fixture() {
+      const [suspend, setSuspend] = useState(false);
+      update = () => setSuspend(true);
+      return (
+        <Suspense fallback={<div>Loading pending render</div>}>
+          <LocalConversationVirtualizedTurnList
+            entries={[suspend ? pending : initial]}
+            conversationId="thread_1"
+            threadCwd="/tmp/project"
+            editableTurnId={null}
+            canForkFromTurn={true}
+            initialLatestTurnRestoreState={{
+              followMode: "prework_watch",
+              isLatestTurnInProgress: true,
+              latestTurnFollowContentHeightPx: 320,
+              latestTurnHeightPx: 480,
+              latestTurnPhase: "prework",
+              turnKey: "turn_1",
+            }}
+            onLatestTurnRestoreStateChange={(state) => {
+              captured = state;
+            }}
+            scrollElement={null}
+          />
+          <PendingSibling suspend={suspend} />
+        </Suspense>
+      );
+    }
+    const view = render(
+      <TooltipProvider>
+        <EnsureLocalConversationThreadScrollController>
+          <Fixture />
+        </EnsureLocalConversationThreadScrollController>
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      if (!update) throw new Error("missing fixture control");
+      startTransition(update);
+      await Promise.resolve();
+    });
+    expect(attempted).toBe(true);
+    expect(view.queryByText("Loading pending render")).toBeNull();
+    expect(view.getByText("Committed answer")).toBeTruthy();
+    view.unmount();
+    expect(captured).toMatchObject({
+      turnKey: "turn_1",
+      isLatestTurnInProgress: true,
+      latestTurnPhase: "prework",
     });
   });
 

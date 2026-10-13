@@ -1644,6 +1644,7 @@ describe("workbench session shell / automations-conversation", () => {
   test("session composer submit passes the selected new-worktree target", async () => {
     setStartThreadForSessionResult({
       kind: "pending",
+      hostId: "local",
       pendingWorktreeId: "local:pending-session-composer",
       clientThreadId: "client-new-thread:pending-session-composer",
     });

@@ -314,6 +314,7 @@ export const make: Effect.Effect<
       );
       return {
         kind: "pending" as const,
+        hostId: executionHostId,
         pendingWorktreeId: allocated.result.pendingWorktreeId,
         clientThreadId: allocated.result.clientThreadId,
       };
@@ -547,6 +548,7 @@ export const make: Effect.Effect<
         freshLaunches.register(freshLaunch);
         return {
           kind: "started" as const,
+          hostId: capability.hostId,
           detail,
           freshLaunch: {
             launchId: freshLaunch.launchId,
@@ -579,7 +581,7 @@ export const make: Effect.Effect<
         return yield* fail("first-turn", input.sessionId, new Error("Invalid first Turn"));
       }
       yield* completion.accepted(outcome);
-      return { kind: "started" as const, detail };
+      return { kind: "started" as const, hostId: capability.hostId, detail };
     }).pipe(
       Effect.onExit((exit) =>
         Exit.isSuccess(exit)

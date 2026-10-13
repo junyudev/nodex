@@ -8,6 +8,7 @@ import type {
   CodexPendingWorktreesChangedEvent,
 } from "../../../shared/codex-pending-worktree";
 import { renderWithMaitai } from "../../test/thread-maitai";
+import { settleAsyncRender } from "../../test/dom";
 import {
   PendingWorktreeRoute,
   PendingWorktreeRouteView,
@@ -190,6 +191,58 @@ function startingResolution(entry: StartConversationEntry): CodexPendingWorktree
 }
 
 describe("PendingWorktreeRoute", () => {
+  test("a host-qualified route cannot show or mutate another host's pending operation", async () => {
+    const transport = new TestPendingWorktreeTransport(
+      makeEntry({ threadStartHostId: "foreign" }),
+      { state: "succeeded", clientThreadId: CLIENT_THREAD_ID, threadId: "foreign-thread" },
+    );
+    const opened: string[] = [];
+    const view = render(
+      <PendingWorktreeRoute
+        clientThreadId={CLIENT_THREAD_ID}
+        expectedHostId="expected"
+        readTarget={async () => null}
+        transport={transport}
+        onClose={() => {}}
+        onOpenThread={async (id) => {
+          opened.push(id);
+          return true;
+        }}
+      />,
+    );
+    await settleAsyncRender();
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(view.queryByRole("button", { name: "Work locally" })).toBeNull();
+    expect(opened).toEqual([]);
+    expect(transport.calls).toEqual([]);
+  });
+  test("a confirmed execution host can open its pending worktree on a different workspace host", async () => {
+    const entry = makeEntry({ hostId: "workspace", threadStartHostId: "execution" });
+    const transport = new TestPendingWorktreeTransport(entry, waitingResolution(entry));
+    const view = render(
+      <PendingWorktreeRoute
+        clientThreadId={CLIENT_THREAD_ID}
+        expectedHostId="execution"
+        transport={transport}
+        readTarget={async () => ({
+          hostId: "execution",
+          threadId: "early-native",
+          clientThreadId: CLIENT_THREAD_ID,
+          ready: false,
+          parentThreadId: null,
+          pendingWorktreeId: entry.id,
+        })}
+        onClose={() => {}}
+        onOpenThread={async () => true}
+      />,
+    );
+    const cancel = await view.findByRole("button", { name: "Cancel" });
+    await act(async () => {
+      fireEvent.click(cancel);
+      await Promise.resolve();
+    });
+    expect(transport.calls).toContain(`cancel:workspace:${entry.id}`);
+  });
   test("streams queued and setup output from typed pending-worktree snapshots", async () => {
     const queued = makeEntry();
     const transport = new TestPendingWorktreeTransport(queued, waitingResolution(queued));

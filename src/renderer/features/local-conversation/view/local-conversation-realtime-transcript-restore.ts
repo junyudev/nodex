@@ -9,6 +9,20 @@ export interface RealtimeTranscriptViewportAnchor {
   readonly topWithinViewportPx: number;
 }
 
+/** Row removal and native residency are decided only after the new layout commits. */
+export function resolveRetiringRealtimeTranscriptViewportAnchor(input: {
+  readonly retiringRows: ReadonlyMap<string, readonly RealtimeTranscriptViewportAnchor[]>;
+  readonly committedRowKeys: ReadonlySet<string>;
+  readonly residentItemIds: ReadonlySet<string>;
+}): RealtimeTranscriptViewportAnchor | null {
+  for (const [key, anchors] of input.retiringRows) {
+    if (input.committedRowKeys.has(key)) continue;
+    const anchor = anchors.find((candidate) => input.residentItemIds.has(candidate.itemId));
+    if (anchor) return anchor;
+  }
+  return null;
+}
+
 /** A changed first segment may rename a row; only a resident native identity can restore it. */
 export function resolveRealtimeTranscriptRestoreState(
   state: VirtualizedTurnListRestoreState | null,
@@ -36,13 +50,16 @@ export function resolveRealtimeTranscriptRestoreState(
   };
 }
 
-/** Capture the first visible native leaf without reading or subscribing to transcript text. */
-export function readRealtimeTranscriptViewportAnchor(input: {
+interface RealtimeTranscriptViewportAnchorInput {
   readonly rows: Iterable<HTMLElement>;
   readonly scrollElement: HTMLElement;
   readonly residentItemIds: ReadonlySet<string>;
   readonly windowZoom: number;
-}): RealtimeTranscriptViewportAnchor | null {
+}
+
+function* visibleRealtimeTranscriptAnchors(
+  input: RealtimeTranscriptViewportAnchorInput,
+): Generator<RealtimeTranscriptViewportAnchor> {
   const viewport = input.scrollElement.getBoundingClientRect();
   for (const row of input.rows) {
     for (const element of row.querySelectorAll<HTMLElement>("[data-native-realtime-item-id]")) {
@@ -50,10 +67,24 @@ export function readRealtimeTranscriptViewportAnchor(input: {
       if (!itemId || !input.residentItemIds.has(itemId)) continue;
       const rect = element.getBoundingClientRect();
       if (rect.height <= 0 || rect.bottom <= viewport.top || rect.top >= viewport.bottom) continue;
-      return { itemId, topWithinViewportPx: (rect.top - viewport.top) / input.windowZoom };
+      yield { itemId, topWithinViewportPx: (rect.top - viewport.top) / input.windowZoom };
     }
   }
-  return null;
+}
+
+/** Capture visible native leaves before removal; residency may change later in the commit. */
+export function readRealtimeTranscriptViewportAnchors(
+  input: RealtimeTranscriptViewportAnchorInput,
+): readonly RealtimeTranscriptViewportAnchor[] {
+  return [...visibleRealtimeTranscriptAnchors(input)];
+}
+
+/** Capture the first visible resident native leaf without reading transcript text. */
+export function readRealtimeTranscriptViewportAnchor(
+  input: Parameters<typeof readRealtimeTranscriptViewportAnchors>[0],
+): RealtimeTranscriptViewportAnchor | null {
+  const first = visibleRealtimeTranscriptAnchors(input).next();
+  return first.done ? null : first.value;
 }
 
 export function resolveRealtimeTranscriptAnchorDistance(input: {

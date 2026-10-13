@@ -34,6 +34,7 @@ import { getLogger } from "../logging/logger";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
+import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import {
   buildWorkspaceThreadSummary,
   hasSidebarThreadSummaryChanged,
@@ -447,6 +448,21 @@ export const make = (
       const summary = buildWorkspaceThreadSummary(thread);
       if (thread.parentThreadId || thread.archived) return null;
       if (
+        thread.threadSource !== "system" &&
+        thread.threadSource !== "composer_predictions" &&
+        internalThreads.classification(thread.threadId) !== "structured-title" &&
+        thread.sessionId &&
+        isCodexAgentBackendBinding(thread.backendBinding)
+      ) {
+        const linked = yield* readCodexLinkedRootSession(core, {
+          hostId: thread.executionHostId,
+          threadId: thread.threadId,
+        });
+        if (!linked || linked.archived || linked.thread?.archived) return null;
+        internalThreads.observeLinkedRoot(thread.threadId);
+        return linked;
+      }
+      if (
         internalThreads.shouldSuppress(thread.threadId) ||
         isNonSidebarThreadWithoutParent(summary as unknown as Record<string, unknown>)
       ) {
@@ -759,8 +775,17 @@ export const make = (
             if (hidden) markScope(state.metadata, hidden.durable.projectId);
             return;
           }
+          const linked =
+            !parentThreadId &&
+            thread.threadSource !== "system" &&
+            internalThreads.classification(threadId) !== "structured-title" &&
+            previous?.durable.sessionId
+              ? yield* readCodexLinkedRootSession(core, { hostId: gateway.localHostId, threadId })
+              : null;
+          if (linked) internalThreads.observeLinkedRoot(threadId);
           if (
             !parentThreadId &&
+            !linked &&
             (internalKind ||
               isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>))
           ) {

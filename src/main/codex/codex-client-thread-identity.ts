@@ -70,3 +70,47 @@ export function resolveCodexThreadIdForClientThreadId(
   }
   return null;
 }
+
+/** Candidates carry only persisted coordinates; Core still confirms their live host binding. */
+export function readCodexClientThreadIdentityCandidates(
+  store: PersistedAtomStore,
+  clientThreadId: string,
+  expectedHostId?: string,
+): readonly CodexClientThreadIdentity[] {
+  if (!isCodexClientThreadId(clientThreadId)) return [];
+  const candidates: CodexClientThreadIdentity[] = [];
+  for (const [key, value] of Object.entries(store.readState())) {
+    if (value !== clientThreadId || !key.startsWith(CODEX_CLIENT_THREAD_ID_ATOM_PREFIX)) continue;
+    let coordinate: string;
+    try {
+      coordinate = decodeURIComponent(key.slice(CODEX_CLIENT_THREAD_ID_ATOM_PREFIX.length));
+    } catch {
+      continue;
+    }
+    if (expectedHostId !== undefined) {
+      const prefix = `${expectedHostId}:`;
+      if (coordinate.startsWith(prefix) && coordinate.length > prefix.length)
+        candidates.push({
+          hostId: expectedHostId,
+          threadId: coordinate.slice(prefix.length),
+          clientThreadId,
+        });
+      continue;
+    }
+    // The persisted key predates structured coordinates. Do not guess which colon belongs
+    // to a host/native id: the caller admits only the unique Core-confirmed candidate.
+    for (
+      let index = coordinate.indexOf(":");
+      index >= 0;
+      index = coordinate.indexOf(":", index + 1)
+    ) {
+      if (index === 0 || index === coordinate.length - 1) continue;
+      candidates.push({
+        hostId: coordinate.slice(0, index),
+        threadId: coordinate.slice(index + 1),
+        clientThreadId,
+      });
+    }
+  }
+  return candidates;
+}

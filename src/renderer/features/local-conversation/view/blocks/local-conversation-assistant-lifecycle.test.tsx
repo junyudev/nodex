@@ -66,6 +66,65 @@ function Assistant({ block, live }: { block: ThreadTranscriptBlockModel; live: b
 }
 
 describe("assistant document lifecycle", () => {
+  test("whole-response and code-block Copy consume their distinct authored sources", async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const payload =
+      '【F:src/a%20b.ts†L2】 cite\n::unknown{x=y}\n:codex-followup[Go]{prompt="run"}';
+    const source = `\`\`\`text\n${payload}\n\`\`\``;
+    const mounted = render(
+      <Assistant block={assistantDocument("completed", source)} live={false} />,
+    );
+    try {
+      await waitForStreamdownCodeHighlight(mounted.container);
+      const codeButton = mounted.container.querySelector<HTMLButtonElement>(
+        '[data-streamdown="code-block-copy-button"]',
+      )!;
+      await act(async () => {
+        fireEvent.click(codeButton);
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(payload));
+      writeText.mockClear();
+      await act(async () => {
+        fireEvent.click(mounted.getByRole("button", { name: /^Copy$/ }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith(
+          '```text\nsrc/a b.ts:2 \n::unknown{x=y}\n:codex-followup[Go]{prompt="run"}\n```',
+        ),
+      );
+      expect(writeText).toHaveBeenCalledTimes(1);
+    } finally {
+      mounted.unmount();
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+  test("copies complete authored markup and blank lines through the ordinary action", async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    const source = '  **Hello**\n\n\n\n::unknown{file="report.html" title="X"}\n\nSecond  ';
+    const mounted = render(
+      <Assistant block={assistantDocument("completed", source)} live={false} />,
+    );
+    try {
+      const button = await mounted.findByRole("button", { name: /^Copy$/ });
+      await act(async () => {
+        fireEvent.click(button);
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(source.trim()));
+    } finally {
+      mounted.unmount();
+      if (original) Object.defineProperty(navigator, "clipboard", original);
+      else Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   test.each(["alpha\n\n\n\nbeta", "alpha\u2028beta\u2029gamma\u0085delta"])(
     "copies authored code through the actual assistant caller: %j",
     async (payload) => {
@@ -90,7 +149,7 @@ ${payload}
           fireEvent.click(button);
           await Promise.resolve();
         });
-        await waitFor(() => expect(writeText).toHaveBeenCalledWith(payload));
+        await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(payload));
         mounted.rerender(
           <StrictMode>
             <Assistant block={assistantDocument("completed", source)} live={false} />
@@ -106,6 +165,7 @@ ${payload}
           await Promise.resolve();
         });
         await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(payload));
+        expect(writeText).toHaveBeenCalledTimes(1);
       } finally {
         mounted.unmount();
         if (original) Object.defineProperty(navigator, "clipboard", original);

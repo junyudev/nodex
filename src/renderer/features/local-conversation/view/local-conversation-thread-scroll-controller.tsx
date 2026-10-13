@@ -29,6 +29,10 @@ import {
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
 } from "./local-conversation-turn-virtualization";
 import type { LocalConversationThreadRestoreSnapshot } from "./local-conversation-thread-view-state";
+import {
+  createLocalConversationNativeFindScroll,
+  type LocalConversationNativeFindScroll,
+} from "./local-conversation-native-find-scroll";
 
 const USER_SCROLL_GRACE_WINDOW_MS = 1_000;
 const PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS = 64;
@@ -61,6 +65,7 @@ export interface ThreadScrollModeResolutionInput {
 
 export interface LocalConversationThreadScrollControllerValue {
   isScrolledFromBottom: boolean;
+  nativeFindTurnKey: string | null;
   scrollElement: HTMLDivElement | null;
   notifyContentLayout: () => void;
   suppressAutoStickToBottom: () => void;
@@ -88,6 +93,11 @@ export interface LocalConversationThreadScrollControllerValue {
     targetElement: HTMLElement,
     behavior?: ScrollBehavior,
     block?: ScrollLogicalPosition,
+    findNavigation?: {
+      readonly turnKey?: string;
+      readonly readTarget: () => HTMLElement | null;
+      readonly signal?: AbortSignal;
+    },
   ) => void;
   scrollToDistanceFromBottomPx: (distanceFromBottomPx: number, behavior?: ScrollBehavior) => void;
   setFooterResizeViewportPreserveDisabled: (disabled: boolean) => void;
@@ -186,7 +196,7 @@ export function resolveThreadScrollKeyDirection(
   event: KeyboardEvent,
   viewport: HTMLElement,
 ): "away" | "toward" | null {
-  if (event.defaultPrevented || event.repeat) return null;
+  if (event.defaultPrevented) return null;
   const target = event.target;
   if (
     target instanceof HTMLElement &&
@@ -228,6 +238,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   const reducedMotion = useResolvedReducedMotion();
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [isScrolledFromBottom, setIsScrolledFromBottom] = useState(false);
+  const [nativeFindTurnKey, setNativeFindTurnKey] = useState<string | null>(null);
   const [responseSpacerState, setResponseSpacerState] = useState<ThreadResponseSpacerState | null>(
     null,
   );
@@ -255,11 +266,24 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     wheelDistanceFromBottomPx: number;
   } | null>(null);
   const pendingLatestTurnSubmitPlacementRef = useRef<PendingLatestTurnSubmitPlacement | null>(null);
+  const nativeFindScrollRef = useRef<LocalConversationNativeFindScroll | null>(null);
 
-  const registerScrollElement = useCallback((element: HTMLDivElement | null) => {
-    scrollElementRef.current = element;
-    setScrollElement(element);
+  const cancelNativeFindScroll = useCallback(() => {
+    const navigation = nativeFindScrollRef.current;
+    nativeFindScrollRef.current = null;
+    navigation?.cancel();
+    if (navigation) setNativeFindTurnKey(null);
+    if (navigation && scrollModeRef.current === "programmaticFind") scrollModeRef.current = "user";
   }, []);
+
+  const registerScrollElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (scrollElementRef.current !== element) cancelNativeFindScroll();
+      scrollElementRef.current = element;
+      setScrollElement(element);
+    },
+    [cancelNativeFindScroll],
+  );
 
   useEffect(() => {
     responseSpacerStateRef.current = responseSpacerState;
@@ -323,42 +347,50 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
           ? { requested: nextDistanceFromBottomPx, actual }
           : null;
       recordScrollDistance(actual);
+      // Layout compensation must finish without retiring the current search destination.
+      nativeFindScrollRef.current?.resume();
     },
     [recordScrollDistance],
   );
 
-  const setScrollMode = useCallback((mode: ThreadScrollMode) => {
-    if (scrollModeRef.current === mode) return;
-    scrollModeRef.current = mode;
+  const setScrollMode = useCallback(
+    (mode: ThreadScrollMode) => {
+      if (mode !== "programmaticFind") cancelNativeFindScroll();
+      else userScrollGraceUntilRef.current = 0;
+      if (scrollModeRef.current === mode) return;
+      scrollModeRef.current = mode;
 
-    if (programmaticFindSettleTimeoutRef.current !== null) {
-      window.clearTimeout(programmaticFindSettleTimeoutRef.current);
-      programmaticFindSettleTimeoutRef.current = null;
-    }
+      if (programmaticFindSettleTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticFindSettleTimeoutRef.current);
+        programmaticFindSettleTimeoutRef.current = null;
+      }
 
-    if (mode !== "programmaticFind") {
-      return;
-    }
-
-    programmaticFindSettleTimeoutRef.current = window.setTimeout(() => {
-      programmaticFindSettleTimeoutRef.current = null;
-      if (scrollModeRef.current !== "programmaticFind") {
+      if (mode !== "programmaticFind") {
         return;
       }
 
-      const element = scrollElementRef.current;
-      if (!element) {
-        scrollModeRef.current = "user";
-        return;
-      }
+      programmaticFindSettleTimeoutRef.current = window.setTimeout(() => {
+        programmaticFindSettleTimeoutRef.current = null;
+        if (scrollModeRef.current !== "programmaticFind") {
+          return;
+        }
+        if (nativeFindScrollRef.current) return;
 
-      const isNearBottom = isThreadScrollNearBottom({
-        scrollDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
-      });
-      scrollModeRef.current = isNearBottom ? "stickToBottom" : "user";
-      setIsScrolledFromBottom(!isNearBottom);
-    }, PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS);
-  }, []);
+        const element = scrollElementRef.current;
+        if (!element) {
+          scrollModeRef.current = "user";
+          return;
+        }
+
+        const isNearBottom = isThreadScrollNearBottom({
+          scrollDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
+        });
+        scrollModeRef.current = isNearBottom ? "stickToBottom" : "user";
+        setIsScrolledFromBottom(!isNearBottom);
+      }, PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS);
+    },
+    [cancelNativeFindScroll],
+  );
 
   const getScrollMode = useCallback(() => scrollModeRef.current, []);
 
@@ -424,6 +456,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   }, []);
 
   const prepareLatestTurnSubmitPlacement = useCallback(() => {
+    cancelNativeFindScroll();
     const element = scrollElementRef.current;
     const placement = buildPendingLatestTurnSubmitPlacement({
       distanceFromBottomPx: getScrollDistanceFromBottomPx(),
@@ -432,7 +465,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     });
     pendingLatestTurnSubmitPlacementRef.current = placement;
     return placement;
-  }, [getScrollDistanceFromBottomPx]);
+  }, [cancelNativeFindScroll, getScrollDistanceFromBottomPx]);
 
   const consumePendingLatestTurnSubmitPlacement = useCallback(() => {
     const placement = pendingLatestTurnSubmitPlacementRef.current;
@@ -448,6 +481,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     (distanceFromBottomPx: number, behavior: ScrollBehavior = "auto") => {
       const element = scrollElementRef.current;
       if (element === null) return;
+      cancelNativeFindScroll();
       cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       programmaticScrollSettledUntilRef.current =
@@ -457,6 +491,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       writeNativeScrollDistance(element, distanceFromBottomPx, behavior);
     },
     [
+      cancelNativeFindScroll,
       cancelPendingPreserve,
       cancelScrollToBottomAnimation,
       setScrollMode,
@@ -469,14 +504,47 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       targetElement: HTMLElement,
       behavior: ScrollBehavior = "auto",
       block: ScrollLogicalPosition = "start",
+      findNavigation?: {
+        readonly turnKey?: string;
+        readonly readTarget: () => HTMLElement | null;
+        readonly signal?: AbortSignal;
+      },
     ) => {
+      cancelNativeFindScroll();
       cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       programmaticScrollSettledUntilRef.current =
         performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
+      const element = scrollElementRef.current;
+      if (findNavigation && element && behavior === "smooth" && block === "center") {
+        setScrollMode("programmaticFind");
+        setNativeFindTurnKey(
+          findNavigation.turnKey ??
+            targetElement.closest<HTMLElement>("[data-turn-key]")?.dataset.turnKey ??
+            null,
+        );
+        const navigation = createLocalConversationNativeFindScroll({
+          scrollElement: element,
+          readTarget: findNavigation.readTarget,
+          signal: findNavigation.signal,
+          onFinish: () => {
+            if (nativeFindScrollRef.current !== navigation) return;
+            nativeFindScrollRef.current = null;
+            setNativeFindTurnKey(null);
+            if (scrollModeRef.current !== "programmaticFind") return;
+            const isNearBottom = isThreadScrollNearBottom({
+              scrollDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
+            });
+            setScrollMode(isNearBottom ? "stickToBottom" : "user");
+            setIsScrolledFromBottom(!isNearBottom);
+          },
+        });
+        nativeFindScrollRef.current = navigation;
+        return;
+      }
       targetElement.scrollIntoView({ behavior, block, inline: "nearest" });
     },
-    [cancelPendingPreserve, cancelScrollToBottomAnimation],
+    [cancelNativeFindScroll, cancelPendingPreserve, cancelScrollToBottomAnimation, setScrollMode],
   );
 
   const setFooterResizeViewportPreserveDisabled = useCallback(
@@ -702,12 +770,15 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       userScrollDirection = event.deltaY < 0 ? "away" : "toward";
       userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
       roundedScrollRequestRef.current = null;
+      cancelNativeFindScroll();
       cancelScrollToBottomAnimation();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const direction = resolveThreadScrollKeyDirection(event, scrollElement);
       if (!direction) return;
+      cancelNativeFindScroll();
+      if (event.repeat) return;
       userScrollDirection = direction;
       userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
       roundedScrollRequestRef.current = null;
@@ -717,6 +788,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       userScrollDirection = null;
       scrollbarPointerStart = null;
       if (event.pointerType !== "mouse" || event.target !== scrollElement) return;
+      cancelNativeFindScroll();
       cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       roundedScrollRequestRef.current = null;
@@ -742,6 +814,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 8) return;
       touch = null;
       if (Math.abs(deltaY) <= Math.abs(deltaX)) return;
+      cancelNativeFindScroll();
       userScrollDirection = deltaY > 0 ? "away" : "toward";
       userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
       roundedScrollRequestRef.current = null;
@@ -781,6 +854,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       scrollElement.removeEventListener("scroll", handleScroll);
     };
   }, [
+    cancelNativeFindScroll,
     cancelPendingPreserve,
     cancelScrollToBottomAnimation,
     maybeStickToBottom,
@@ -791,13 +865,14 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
 
   useEffect(
     () => () => {
+      cancelNativeFindScroll();
       if (programmaticFindSettleTimeoutRef.current !== null) {
         window.clearTimeout(programmaticFindSettleTimeoutRef.current);
       }
       cancelPendingPreserve();
       cancelScrollToBottomAnimation();
     },
-    [cancelPendingPreserve, cancelScrollToBottomAnimation],
+    [cancelNativeFindScroll, cancelPendingPreserve, cancelScrollToBottomAnimation],
   );
 
   const controller = useMemo<LocalConversationThreadScrollControllerContextValue>(
@@ -816,6 +891,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getScrollElement,
       getScrollMode,
       isScrolledFromBottom,
+      nativeFindTurnKey,
       jumpToBottom,
       maybeStickToBottom,
       notifyContentLayout,
@@ -848,6 +924,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getScrollElement,
       getScrollMode,
       isScrolledFromBottom,
+      nativeFindTurnKey,
       jumpToBottom,
       maybeStickToBottom,
       notifyContentLayout,
@@ -904,6 +981,11 @@ export const LocalConversationThreadScrollLayout = forwardRef<
 ) {
   const controller = useLocalConversationThreadScrollController();
   const reducedMotion = useResolvedReducedMotion();
+  const registerScrollElement = controller.registerScrollElement;
+  const registerViewport = useCallback(
+    (element: HTMLDivElement | null) => registerScrollElement(element),
+    [registerScrollElement],
+  );
   const footerRef = useRef<HTMLDivElement | null>(null);
   const setFooterHeightPx = controller.setFooterHeightPx;
   const scrollElement = controller.scrollElement;
@@ -971,7 +1053,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
       className="relative h-full flex-1 [content-visibility:auto]"
     >
       <div
-        ref={controller.registerScrollElement}
+        ref={registerViewport}
         data-local-conversation-thread-body="true"
         role="region"
         aria-label="Conversation"

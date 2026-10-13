@@ -27,6 +27,7 @@ export type CodexTimelineTurnEntry = NormalizedConversationTurnEntry & {
   readonly timelineWholeItem?: TimelineWholeItemPresentation;
   readonly timelineUserActions: boolean;
   readonly timelineEndResources?: boolean;
+  readonly timelineDedicatedSubagentThreadIds?: readonly string[];
 };
 
 interface CodexRealtimeTimelineEntryBase {
@@ -174,9 +175,28 @@ export function projectNormalizedTimelineEntries(input: {
     timeline.entries.flatMap((entry) => (entry.type === "turnCompleted" ? [entry.turnId] : [])),
   );
   const observationItemsByTurn = new Map<string, Map<string, CodexCanonicalItem>>();
+  const timelineRawByAddress = new Map<string, CodexCanonicalItem | null>();
+  const wholeItemsByAddress = new Map<string, TimelineWholeItemPresentation | null>();
+  const readWholeItemPresentation = (
+    turnId: string,
+    raw: CodexCanonicalItem,
+    presentation: ThreadRealtimeBemItemPresentation | undefined,
+  ) => {
+    if (presentation?.type !== "wholeItem") return null;
+    const address = JSON.stringify([turnId, raw.id]);
+    if (wholeItemsByAddress.has(address)) return wholeItemsByAddress.get(address) ?? null;
+    const value = resolveTimelineWholeItemPresentation(raw, presentation);
+    wholeItemsByAddress.set(address, value);
+    return value;
+  };
   const readTimelineItem = (base: NormalizedConversationTurnEntry, itemId: string) => {
+    const address = JSON.stringify([base.historyEntityKey, itemId]);
+    if (timelineRawByAddress.has(address)) return timelineRawByAddress.get(address) ?? null;
     const direct = input.owner.readItem(base.historyEntityKey, itemId);
-    if (direct && direct.type !== "steered") return direct;
+    if (direct && direct.type !== "steered") {
+      timelineRawByAddress.set(address, direct);
+      return direct;
+    }
     let aliases = observationItemsByTurn.get(base.historyEntityKey);
     if (!aliases) {
       aliases = new Map();
@@ -187,8 +207,61 @@ export function projectNormalizedTimelineEntries(input: {
       }
       observationItemsByTurn.set(base.historyEntityKey, aliases);
     }
-    return aliases.get(itemId) ?? direct;
+    const result = aliases.get(itemId) ?? direct;
+    timelineRawByAddress.set(address, result);
+    return result;
   };
+  const subagentActivities = new Map<
+    string,
+    { readonly ids: string[]; readonly seen: Set<string> }
+  >();
+  const dedicatedSubagentsByTurn = new Map<string, Set<string>>();
+  const createdReceiptCounts = new Map<string, number>();
+  const dedicatedSubagents = new Set<string>();
+  const groupKey = (turnId: string, agentThreadId: string) =>
+    JSON.stringify([turnId, agentThreadId]);
+  for (const entry of timeline.entries) {
+    const receipt =
+      entry.type === "item"
+        ? { turnId: entry.turnId, itemId: entry.item.id }
+        : entry.type === "realtime" && entry.item.type === "bemItemPromoted"
+          ? entry.item
+          : null;
+    const base = receipt ? byTurnId.get(receipt.turnId) : null;
+    const raw = base && receipt ? readTimelineItem(base, receipt.itemId) : null;
+    if (
+      raw &&
+      receipt &&
+      entry.type === "realtime" &&
+      entry.item.type === "bemItemPromoted" &&
+      readWholeItemPresentation(receipt.turnId, raw, entry.item.presentation)?.type ===
+        "createdThreads"
+    ) {
+      const address = JSON.stringify([receipt.turnId, raw.id]);
+      createdReceiptCounts.set(address, (createdReceiptCounts.get(address) ?? 0) + 1);
+    }
+    if (raw?.type !== "subAgentActivity" || !receipt) continue;
+    const key = groupKey(receipt.turnId, raw.agentThreadId);
+    const group = subagentActivities.get(key) ?? { ids: [], seen: new Set<string>() };
+    if (!group.seen.has(raw.id)) {
+      group.seen.add(raw.id);
+      group.ids.push(raw.id);
+    }
+    subagentActivities.set(key, group);
+    if (
+      entry.type === "realtime" &&
+      entry.item.type === "bemItemPromoted" &&
+      readWholeItemPresentation(receipt.turnId, raw, entry.item.presentation)?.type ===
+        "subagentActivity"
+    ) {
+      dedicatedSubagents.add(key);
+      const children = dedicatedSubagentsByTurn.get(receipt.turnId) ?? new Set<string>();
+      children.add(raw.agentThreadId);
+      dedicatedSubagentsByTurn.set(receipt.turnId, children);
+    }
+  }
+  const renderedCreatedItems = new Set<string>();
+  const renderedSubagents = new Set<string>();
   const anchors = new Map<Descriptor, string | undefined>();
   let currentTurnKey: string | undefined;
   let voice:
@@ -258,7 +331,34 @@ export function projectNormalizedTimelineEntries(input: {
     if (!base) return;
     const raw = readTimelineItem(base, itemId);
     if (!raw) return;
-    const wholeItem = resolveTimelineWholeItemPresentation(raw, promotion?.presentation);
+    let wholeItem = readWholeItemPresentation(turnId, raw, promotion?.presentation);
+    if (raw.type === "subAgentActivity") {
+      const key = groupKey(turnId, raw.agentThreadId);
+      if (dedicatedSubagents.has(key)) {
+        if (wholeItem?.type !== "subagentActivity" || renderedSubagents.has(key)) return;
+        renderedSubagents.add(key);
+        open(turnId);
+        voice = null;
+        descriptors.push({
+          base,
+          turnKey: `timeline:presentation:${promotion!.id}`,
+          itemIds: subagentActivities.get(key)?.ids ?? [raw.id],
+          includeInput: false,
+          includeTurnExtras: false,
+          presentationStatus: "completed",
+          userActions: false,
+          presentation: promotion!.presentation,
+          wholeItem,
+        });
+        return;
+      }
+    }
+    if (wholeItem?.type === "createdThreads") {
+      const key = JSON.stringify([turnId, raw.id]);
+      if (renderedCreatedItems.has(key)) return;
+      renderedCreatedItems.add(key);
+      wholeItem = { ...wholeItem, resultCount: createdReceiptCounts.get(key) ?? 1 };
+    }
     if (
       (raw.type === "userMessage" || raw.type === "steeringUserMessage") &&
       isDelegation(inputText(raw.type === "userMessage" ? raw.content : raw.input))
@@ -529,6 +629,13 @@ export function projectNormalizedTimelineEntries(input: {
       ...(descriptor.presentation ? { timelinePresentation: descriptor.presentation } : {}),
       ...(descriptor.wholeItem ? { timelineWholeItem: descriptor.wholeItem } : {}),
       ...(descriptor.endResources ? { timelineEndResources: true } : {}),
+      ...(descriptor.base.turnId && dedicatedSubagentsByTurn.has(descriptor.base.turnId)
+        ? {
+            timelineDedicatedSubagentThreadIds: [
+              ...dedicatedSubagentsByTurn.get(descriptor.base.turnId)!,
+            ],
+          }
+        : {}),
       turnStatus: descriptor.presentationStatus,
       isMostRecentTurn: false,
       hasUserMessage:

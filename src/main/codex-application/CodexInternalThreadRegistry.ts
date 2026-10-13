@@ -25,6 +25,8 @@ export class CodexInternalThreadRegistry extends Context.Service<
     readonly leaseStructuredTitle: (threadId: string) => Effect.Effect<void, never, Scope.Scope>;
     /** Permanently classifies a protocol-started helper for the lifetime of that Thread. */
     readonly observeStarted: (thread: Thread) => CodexInternalThreadKind | null;
+    /** Clears only a source-label classification after the caller confirms Core's live root link. */
+    readonly observeLinkedRoot: (threadId: string) => void;
     readonly classification: (threadId: string) => CodexInternalThreadKind | null;
     readonly shouldSuppress: (threadId: string | null) => boolean;
     readonly clear: (threadId: string) => void;
@@ -92,9 +94,15 @@ export const make: Effect.Effect<CodexInternalThreadRegistry["Service"], never, 
         if (!threadId) return null;
         const current = entries.get(threadId);
         if (!current) return null;
-        return (
-          current.observedKind ?? (current.structuredTitleLeases > 0 ? "structured-title" : null)
-        );
+        return current.structuredTitleLeases > 0 ? "structured-title" : current.observedKind;
+      },
+      observeLinkedRoot: (rawThreadId) => {
+        const threadId = normalizeThreadId(rawThreadId);
+        if (!threadId) return;
+        const current = entries.get(threadId);
+        if (current?.observedKind !== "non-sidebar") return;
+        current.observedKind = null;
+        if (current.structuredTitleLeases === 0) entries.delete(threadId);
       },
       shouldSuppress: (rawThreadId) => {
         const threadId = rawThreadId ? normalizeThreadId(rawThreadId) : null;

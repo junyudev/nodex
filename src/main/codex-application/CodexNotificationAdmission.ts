@@ -13,6 +13,8 @@ import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 
 export type CodexNotificationAdmissionDecision =
   | { readonly _tag: "Admit" }
@@ -25,6 +27,7 @@ export type CodexNotificationAdmissionDecision =
 export interface CodexNotificationAdmissionInput {
   readonly notification: CodexServerNotification;
   readonly threadId: string | null;
+  readonly hostId?: string;
 }
 
 export class CodexNotificationAdmission extends Context.Service<
@@ -63,6 +66,7 @@ export const make: Effect.Effect<
   | CodexTurnAuthority
   | CodexTurnPresentation
   | ConversationEntityMap
+  | CoreModules
   | Scope.Scope
 > = Effect.gen(function* () {
   const internalThreads = yield* CodexInternalThreadRegistry;
@@ -70,6 +74,7 @@ export const make: Effect.Effect<
   const authority = yield* CodexTurnAuthority;
   const presentation = yield* CodexTurnPresentation;
   const conversations = yield* ConversationEntityMap;
+  const core = yield* CoreModules;
   const inheritedBySubagentThreadId = new Map<string, FrozenNodexAgentTurnAuthority>();
 
   yield* Effect.addFinalizer(() => Effect.sync(() => inheritedBySubagentThreadId.clear()));
@@ -106,9 +111,15 @@ export const make: Effect.Effect<
 
   const observeStartedThread = (
     notification: Extract<CodexServerNotification, { method: "thread/started" }>,
+    linkedRoot: boolean,
   ): Effect.Effect<void> => {
     const thread = notification.params.thread;
     internalThreads.observeStarted(thread);
+    if (linkedRoot) {
+      internalThreads.observeLinkedRoot(thread.id);
+      subagents.clear(thread.id);
+      return Effect.void;
+    }
 
     const metadata = extractCodexThreadSubagentMetadata(thread);
     const isSubagent =
@@ -139,7 +150,7 @@ export const make: Effect.Effect<
   };
 
   return CodexNotificationAdmission.of({
-    decide: ({ notification, threadId }) =>
+    decide: ({ notification, threadId, hostId }) =>
       Effect.gen(function* () {
         if (notification.method === "turn/started") {
           for (const item of notification.params.turn.items) {
@@ -177,7 +188,37 @@ export const make: Effect.Effect<
           presentation.finish(notification.params.threadId, notification.params.turn.id);
         }
         if (notification.method === "turn/started") yield* observeStartedTurn(notification);
-        if (notification.method === "thread/started") yield* observeStartedThread(notification);
+        const started =
+          notification.method === "thread/started" ? notification.params.thread : null;
+        const hardInternal =
+          started?.ephemeral ||
+          started?.threadSource === "system" ||
+          started?.threadSource === "composer_predictions" ||
+          (started !== null &&
+            extractCodexThreadSubagentMetadata(started).parentThreadId !== null) ||
+          (threadId !== null && internalThreads.classification(threadId) === "structured-title");
+        const sourceLabel =
+          started?.threadSource === "subagent" ||
+          (started !== null && hasCodexSubagentSource(started.source));
+        const linked =
+          hostId &&
+          threadId &&
+          !hardInternal &&
+          (sourceLabel || internalThreads.shouldSuppress(threadId))
+            ? yield* readCodexLinkedRootSession(core, { hostId, threadId }).pipe(
+                Effect.catchCause(() => Effect.succeed(null)),
+              )
+            : null;
+        const linkedRoot =
+          linked !== null &&
+          threadId !== null &&
+          internalThreads.classification(threadId) !== "structured-title";
+        if (linkedRoot && threadId !== null) {
+          internalThreads.observeLinkedRoot(threadId);
+          subagents.clear(threadId);
+        }
+        if (notification.method === "thread/started")
+          yield* observeStartedThread(notification, linkedRoot);
 
         const suppressInternal = internalThreads.shouldSuppress(threadId);
         const closesThread =

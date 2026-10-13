@@ -139,6 +139,7 @@ export interface AnchorPreservedDistanceInput {
 
 export interface MeasuredVisibleAnchorInput {
   distanceFromBottomPx: number;
+  preferLatestVisibleRow?: boolean;
   layout: VirtualizedTurnLayout;
   measuredHeightsByKey: Readonly<Record<string, number>>;
   nextLayout: VirtualizedTurnLayout;
@@ -564,6 +565,7 @@ export function resolveAnchorPreservedDistanceFromBottom({
 
 export function resolveMeasuredVisibleAnchorKey({
   distanceFromBottomPx,
+  preferLatestVisibleRow = false,
   layout,
   measuredHeightsByKey,
   nextLayout,
@@ -573,21 +575,35 @@ export function resolveMeasuredVisibleAnchorKey({
     distanceFromBottomPx,
     layout,
     overscanCount: 0,
-    viewportHeightPx,
+    viewportHeightPx: Math.max(0, viewportHeightPx + Math.min(0, distanceFromBottomPx)),
   });
+  const viewportTopDistancePx = distanceFromBottomPx + viewportHeightPx;
+  let anchorKey: string | null = null;
 
   for (let index = visibleRange.startIndex; index < visibleRange.endIndex; index += 1) {
     const turnKey = layout.turnKeys[index];
+    const heightPx = layout.heightsPx[index] ?? 0;
+    const bottomOffsetPx = layout.bottomOffsetsPx[index] ?? 0;
+    const topDistanceFromBottomPx = bottomOffsetPx + heightPx;
     if (
-      turnKey != null &&
-      measuredHeightsByKey[turnKey] != null &&
-      nextLayout.turnIndexByKey.has(turnKey)
-    ) {
-      return turnKey;
+      turnKey == null ||
+      layout.gapKeys.has(turnKey) ||
+      (layout.collapseEmptyRows && heightPx <= 0) ||
+      measuredHeightsByKey[turnKey] == null ||
+      !nextLayout.turnIndexByKey.has(turnKey) ||
+      bottomOffsetPx >= viewportTopDistancePx ||
+      topDistanceFromBottomPx <= distanceFromBottomPx
+    )
+      continue;
+    if (preferLatestVisibleRow) {
+      anchorKey = turnKey;
+      continue;
     }
+    anchorKey ??= turnKey;
+    if (topDistanceFromBottomPx <= viewportTopDistancePx) return turnKey;
   }
 
-  return null;
+  return anchorKey;
 }
 
 export function resolveTurnCenterDistanceFromBottom({

@@ -526,8 +526,11 @@ describe("LocalConversationThreadBody", () => {
         await waitFor(() =>
           expect(view.getByLabelText("Find result").textContent).toBe(`1 / ${occurrences} results`),
         );
-        const active = view.container.querySelector("mark.codex-thread-find-active");
-        expect(active?.textContent).toBe("needle");
+        const active = await waitFor(() => {
+          const mark = view.container.querySelector("mark.codex-thread-find-active");
+          expect(mark?.textContent).toBe("needle");
+          return mark!;
+        });
         const unit = active?.closest("[data-content-search-unit-key]");
         expect(unit).not.toBeNull();
         expect(unit?.querySelector("kbd")).toBeNull();
@@ -1181,8 +1184,8 @@ describe("LocalConversationThreadBody", () => {
     });
   });
 
-  test("opens the created chat from a create_thread tool card through stage actions", async () => {
-    const openedThreads: string[] = [];
+  test("opens a created chat from its activity row through typed stage navigation", async () => {
+    const openedThreads: Array<Parameters<ThreadStageActions["onOpenThread"]>> = [];
     const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
     const dynamicEntry = buildDynamicCreateThreadEntry();
     const conversation = buildConversation({
@@ -1199,8 +1202,8 @@ describe("LocalConversationThreadBody", () => {
         <LocalConversationThreadBody
           model={buildModel({ conversation })}
           actions={buildActions({
-            onOpenThread: (threadId) => {
-              openedThreads.push(threadId);
+            onOpenThread: (threadId, context) => {
+              openedThreads.push([threadId, context]);
             },
           })}
           onErrorMessage={() => {}}
@@ -1210,11 +1213,13 @@ describe("LocalConversationThreadBody", () => {
     await settleAsyncRender();
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Open chat" }));
+      fireEvent.click(view.getByRole("button", { name: "Created chat" }));
       await Promise.resolve();
     });
 
-    expect(openedThreads).toEqual(["thread-created"]);
+    expect(openedThreads).toEqual([
+      ["thread-created", { createdTarget: { threadId: "thread-created" } }],
+    ]);
   });
 
   test("lets the shared scroll layout own viewport and content wrappers", async () => {
@@ -1454,6 +1459,105 @@ describe("LocalConversationThreadBody", () => {
     expect(restoreCalls.length).toBe(1);
     expect(restoreCalls[0]?.threadId).toBe("thread_1");
     expect(restoreCalls[0]?.projectId).toBe("project_1");
+  });
+
+  test("releases archived restore pending state after rejection so the action can retry", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    let rejectRestore: (error: Error) => void = () => {};
+    const pending = new Promise<void>((_, reject) => {
+      rejectRestore = reject;
+    });
+    const restore = vi
+      .fn()
+      .mockImplementationOnce(() => pending)
+      .mockResolvedValueOnce(undefined);
+    const reportError = vi.fn();
+    const view = render(
+      <TooltipProvider>
+        <LocalConversationThreadBody
+          model={buildModel({
+            conversation: buildConversation({ archived: true, resumeState: "needs_resume" }),
+          })}
+          actions={buildActions({ onUnarchiveThread: restore })}
+          onErrorMessage={reportError}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Restore" }));
+    });
+    expect(view.getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => {
+      rejectRestore(new Error("Restore unavailable"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Restore" }).hasAttribute("disabled")).toBe(false),
+    );
+    expect(reportError).toHaveBeenLastCalledWith("Restore unavailable");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Restore" }));
+    });
+    await waitFor(() => expect(restore).toHaveBeenCalledTimes(2));
+    expect(reportError).toHaveBeenLastCalledWith(null);
+    view.unmount();
+  });
+
+  test("releases a rejected latest-turn fork lock and accepts a second submission", async () => {
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    let rejectFork: (error: Error) => void = () => {};
+    const pending = new Promise<void>((_, reject) => {
+      rejectFork = reject;
+    });
+    const fork = vi
+      .fn()
+      .mockImplementationOnce(() => pending)
+      .mockResolvedValueOnce(undefined);
+    const reportError = vi.fn();
+    const view = render(
+      <TooltipProvider>
+        <LocalConversationThreadBody
+          model={buildModel({
+            conversation: buildConversation({
+              turns: [
+                buildTurn({
+                  turnId: "turn_latest",
+                  status: "completed",
+                  items: [
+                    buildUserEntry({
+                      turnId: "turn_latest",
+                      itemId: "user_latest",
+                      markdownText: "Fork me",
+                    }),
+                    buildAssistantEntry({ turnId: "turn_latest", itemId: "assistant_latest" }),
+                  ],
+                }),
+              ],
+            }),
+          })}
+          actions={buildActions({ onForkFromTurn: fork })}
+          onErrorMessage={reportError}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Fork chat from here"));
+    });
+    expect(fork).toHaveBeenCalledOnce();
+    await act(async () => {
+      rejectFork(new Error("Fork unavailable"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(view.getByLabelText("Fork chat from here").hasAttribute("disabled")).toBe(false),
+    );
+    expect(reportError).toHaveBeenLastCalledWith("Fork unavailable");
+    await act(async () => {
+      fireEvent.click(view.getByLabelText("Fork chat from here"));
+    });
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(2));
+    expect(reportError).toHaveBeenLastCalledWith(null);
+    view.unmount();
   });
 
   test("keeps an older-turn fork confirmation disabled until submission finishes", async () => {

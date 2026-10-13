@@ -28,6 +28,29 @@ function copyAction() {
 }
 
 describe("CopyMessageActionButton", () => {
+  test("rejects a retired source before reading HTML and permits a new valid source", async () => {
+    const getText = vi.fn<() => string | null>().mockReturnValue(null);
+    const getHtml = vi.fn(() => "<p>old</p>");
+    vi.mocked(writeMessageToClipboard).mockResolvedValue(true);
+    const view = render(
+      <NodexTooltipProvider>
+        <CopyMessageActionButton text="stale fallback" getText={getText} getHtml={getHtml} />
+      </NodexTooltipProvider>,
+    );
+    const button = view.getByRole("button", { name: "Copy message" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(writeMessageToClipboard).not.toHaveBeenCalled();
+    expect(getHtml).not.toHaveBeenCalled();
+    expect(view.queryByRole("button", { name: "Copied" })).toBeNull();
+    getText.mockReturnValue("current source");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(writeMessageToClipboard).toHaveBeenCalledExactlyOnceWith("current source", "<p>old</p>");
+    expect(view.getByRole("button", { name: "Copied" })).toBe(button);
+  });
   test("preserves keyboard focus and ignores repeated clicks during feedback", async () => {
     vi.useFakeTimers();
     vi.mocked(writeMessageToClipboard).mockResolvedValue(true);

@@ -24,6 +24,7 @@ import { createCodexCanonicalHydratedConversationState } from "../../shared/code
 import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
 import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { produce } from "immer";
+import { CoreModules } from "../core-runtime/CoreModules";
 
 const thread = (input: {
   readonly id: string;
@@ -72,7 +73,11 @@ const parentAuthority: FrozenNodexAgentTurnAuthority = {
   source: "builtin_full_access",
 };
 
-const makeHarness = (trace: string[], parentState?: CodexCanonicalConversationState) =>
+const makeHarness = (
+  trace: string[],
+  parentState?: CodexCanonicalConversationState,
+  core?: CoreModules["Service"],
+) =>
   Effect.gen(function* () {
     const internalThreads = yield* makeInternalThreads;
     const knownSubagents = new Set<string>();
@@ -150,6 +155,15 @@ const makeHarness = (trace: string[], parentState?: CodexCanonicalConversationSt
     } as unknown as ConversationEntityMap["Service"]);
     const presentation = yield* makeTestTurnPresentation;
     const admission = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        core ??
+          ({
+            workspace: {
+              read: () => Effect.die("Unqualified legacy admission must not query Core"),
+            },
+          } as unknown as CoreModules["Service"]),
+      ),
       Effect.provideService(CodexInternalThreadRegistry, internalThreads),
       Effect.provideService(CodexSubagentDirectory, subagents),
       Effect.provideService(CodexTurnAuthority, authority),
@@ -215,6 +229,69 @@ it.effect.each(["inProgress", "completed"] as const)(
         );
       }),
     ),
+);
+
+it.effect(
+  "admits a Core-linked root with a subagent label and keeps subsequent deltas free of Core reads",
+  () =>
+    Effect.gen(function* () {
+      let reads = 0;
+      const core = CoreModules.of({
+        workspace: {
+          read: (input: Parameters<CoreModules["Service"]["workspace"]["read"]>[0]) =>
+            Effect.sync(() => {
+              reads++;
+              assert.deepStrictEqual(input, {
+                kind: "codex_thread_session",
+                thread_id: "created",
+                expected_execution_host_id: "remote",
+              });
+              return {
+                value: {
+                  kind: "codex_thread_session",
+                  thread: {
+                    thread_id: "created",
+                    backend_binding: { kind: "codex" },
+                    execution_host_id: "remote",
+                    parent_thread_id: null,
+                    session_id: "session",
+                    thread_source: "subagent",
+                    status: { status_type: "idle", active_flags: [] },
+                  },
+                  session: {
+                    id: "session",
+                    project_id: null,
+                    thread_id: "created",
+                    display_title: "Created",
+                    no_thread_fallback_title: "Created",
+                  },
+                },
+              } as never;
+            }),
+        },
+      } as unknown as CoreModules["Service"]);
+      const test = yield* makeHarness([], undefined, core);
+      const started = startedThread(thread({ id: "created", threadSource: "subagent" }));
+      assert.deepStrictEqual(
+        yield* test.admission.decide({
+          notification: started,
+          threadId: "created",
+          hostId: "remote",
+        }),
+        { _tag: "Admit" },
+      );
+      assert.strictEqual(reads, 1);
+      for (let index = 0; index < 30; index++)
+        assert.deepStrictEqual(
+          yield* test.admission.decide({
+            notification: delta("created"),
+            threadId: "created",
+            hostId: "remote",
+          }),
+          { _tag: "Admit" },
+        );
+      assert.strictEqual(reads, 1);
+    }),
 );
 
 it.effect("suppresses structured-title and non-sidebar helpers before visible projection", () =>

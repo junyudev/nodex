@@ -44,6 +44,8 @@ import {
   make as makeMainConversationHistory,
 } from "../codex-application/CodexMainConversationHistory";
 import { install as installMainConversationActions } from "../codex-application/CodexMainConversationActions";
+import { live as threadTargets } from "../codex-application/CodexThreadTargets";
+import { live as createdThreadResolution } from "../codex-application/CodexCreatedThreadResolution";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -605,7 +607,7 @@ const threadCatalog = Layer.unwrap(
       makeCodexThreadCatalog({ foldPathCase: config.platform === "win32" }),
     );
   }),
-).pipe(Layer.provideMerge(threadExecution));
+).pipe(Layer.provideMerge(Layer.merge(threadExecution, threadTargets)));
 const sidebarSectionSync = Layer.effect(CodexSidebarSectionSync, makeCodexSidebarSectionSync).pipe(
   Layer.provideMerge(threadCatalog),
 );
@@ -633,6 +635,7 @@ const pendingWorktrees = Layer.effect(
   CodexPendingWorktreeRuntime,
   makeCodexPendingWorktreeRuntime,
 ).pipe(Layer.provideMerge(conversationCreation));
+const createdThreadTargets = createdThreadResolution.pipe(Layer.provideMerge(pendingWorktrees));
 const managedWorktreeRetention = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;
@@ -642,7 +645,7 @@ const managedWorktreeRetention = Layer.unwrap(
       ),
     });
   }),
-).pipe(Layer.provideMerge(pendingWorktrees));
+).pipe(Layer.provideMerge(createdThreadTargets));
 const crossHostThreadHandoff = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;

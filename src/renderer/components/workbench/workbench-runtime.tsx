@@ -532,7 +532,7 @@ export function WorkbenchRuntime({
     [workbenchWindow],
   );
   const setPendingWorktreeClientThreadId = useCallback(
-    (clientThreadId: string | null) => {
+    (clientThreadId: string | null, expectedHostId?: string) => {
       if (clientThreadId === null) {
         if (workbenchWindow.location.kind === "pending-worktree") {
           workbenchWindow.closeRoute();
@@ -544,6 +544,7 @@ export function WorkbenchRuntime({
           {
             ...workbenchWindow.location,
             clientThreadId,
+            expectedHostId,
           },
           { record: false },
         );
@@ -552,6 +553,7 @@ export function WorkbenchRuntime({
       workbenchWindow.openRoute({
         kind: "pending-worktree",
         clientThreadId,
+        expectedHostId,
       });
     },
     [workbenchWindow],
@@ -3215,11 +3217,21 @@ export function WorkbenchRuntime({
         clientThreadId: pendingWorktreeClientThreadId,
         props: {
           agentMode: workbenchCodexControl.permissionMode,
+          expectedHostId:
+            workbenchWindow.location.kind === "pending-worktree"
+              ? workbenchWindow.location.expectedHostId
+              : undefined,
           externalHeader: true,
           onClose: closePendingWorktreeRoute,
           onOpenThread: async (threadId) => {
             if (!pendingWorktreeClientThreadId) return;
-            return await openResolvedPendingThreadSession(pendingWorktreeClientThreadId, threadId);
+            return await openResolvedPendingThreadSession(
+              pendingWorktreeClientThreadId,
+              threadId,
+              workbenchWindow.location.kind === "pending-worktree"
+                ? workbenchWindow.location.expectedHostId
+                : undefined,
+            );
           },
           onOpenPendingWorktree: setPendingWorktreeClientThreadId,
           onCancelToSource: handOffCancelledPendingWorktree,

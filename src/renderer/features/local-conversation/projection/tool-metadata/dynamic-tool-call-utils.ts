@@ -1,7 +1,10 @@
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
 import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
-import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../../../../shared/codex-client-thread";
+import {
+  readCreatedThreadActivityResult,
+  type CodexCreatedThreadResult,
+} from "../../../../../shared/codex-created-thread-result";
 import {
   NODEX_APP_V2_TOOLS,
   NODEX_APP_V3_TOOLS,
@@ -911,32 +914,12 @@ export function resolveDynamicToolRegistryLabel(
   return getDynamicToolRegistryEntry(call)?.resolveLabel(call, isLeadingSummaryPart) ?? null;
 }
 
-export type CodexAppCreateThreadResult =
-  | { threadId: string; clientThreadId?: never }
-  | { clientThreadId: string; threadId?: never };
+export type CodexAppCreateThreadResult = CodexCreatedThreadResult;
 
 export function parseCodexAppCreateThreadResult(
   call: CodexDynamicToolCallView,
 ): CodexAppCreateThreadResult | null {
-  if (call.tool !== "create_thread") return null;
-  const inputText = (call.contentItems ?? []).find((item) => item.type === "inputText")?.text;
-  if (!inputText) return null;
-  try {
-    const parsed = JSON.parse(inputText);
-    const result = asRecord(parsed);
-    if (typeof result?.threadId === "string" && result.threadId.length > 0) {
-      return { threadId: result.threadId };
-    }
-    if (
-      typeof result?.clientThreadId === "string" &&
-      result.clientThreadId.startsWith(CODEX_CLIENT_THREAD_ID_PREFIX)
-    ) {
-      return { clientThreadId: result.clientThreadId };
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  return readCreatedThreadActivityResult(call);
 }
 
 export function resolveDynamicToolLabelFromName(toolName: string): string {

@@ -695,13 +695,18 @@ export const make: Effect.Effect<
 
   const resolveRootContext = Effect.fn("CodexSubagentDirectory.resolveRootContext")(function* (
     rawRootThreadId: string,
+    expectedHostId?: string,
   ): Effect.fn.Return<RootContext, CodexSubagentDirectoryError> {
     const rootThreadId = rawRootThreadId.trim();
     if (!rootThreadId) {
       return yield* error("read", rawRootThreadId, new Error("Root Thread id is required"));
     }
     const root = yield* threadDirectory
-      .resolve({ threadId: rootThreadId, fidelity: "durable" })
+      .resolve({
+        threadId: rootThreadId,
+        fidelity: "durable",
+        ...(expectedHostId === undefined ? {} : { expectedHostId }),
+      })
       .pipe(Effect.mapError((cause) => error("read", rootThreadId, cause)));
     if (!root) {
       return yield* error("read", rootThreadId, new Error("Root Thread was not found"));
@@ -1515,7 +1520,7 @@ export const make: Effect.Effect<
   const readOverview = Effect.fn("CodexSubagentDirectory.readOverview")(function* (
     input: CodexSubagentOverviewReadInput,
   ): Effect.fn.Return<CodexSubagentOverviewWindow, CodexSubagentDirectoryError> {
-    const context = yield* resolveRootContext(input.rootThreadId);
+    const context = yield* resolveRootContext(input.rootThreadId, input.expectedHostId);
     const current = yield* readAllOverview(context);
     const key = discoveryKey(context);
     const running = FiberMap.getUnsafe(discoveries, key);
@@ -2138,11 +2143,20 @@ export const make: Effect.Effect<
         const normalizedInput = { rootThreadId, threadId };
         if (!rootThreadId || !threadId)
           return emptySelectedResult(normalizedInput, "Thread id is required");
+        // Strict targets establish their root binding before discovery can issue native reads.
+        const strictRoot =
+          input.expectedHostId === undefined
+            ? null
+            : yield* resolveRootContext(rootThreadId, input.expectedHostId);
         const rootGeneration = conversations.read(rootThreadId)?.generation;
         const childGeneration = conversations.read(threadId)?.generation;
         let accepted = yield* isDescendant(rootThreadId, threadId);
         if (!accepted) {
-          yield* readOverview({ rootThreadId, mode: "expanded" });
+          yield* readOverview({
+            rootThreadId,
+            mode: "expanded",
+            ...(input.expectedHostId === undefined ? {} : { expectedHostId: input.expectedHostId }),
+          });
           accepted = yield* isDescendant(rootThreadId, threadId);
         }
         if (!accepted) {
@@ -2152,15 +2166,25 @@ export const make: Effect.Effect<
           );
         }
 
-        const rootContext = yield* resolveRootContext(rootThreadId);
+        const rootContext = strictRoot ?? (yield* resolveRootContext(rootThreadId));
         const resident = yield* threadDirectory
-          .resolve({ threadId, fidelity: "durable" })
+          .resolve({
+            threadId,
+            fidelity: "durable",
+            ...(input.expectedHostId === undefined ? {} : { expectedHostId: input.expectedHostId }),
+          })
           .pipe(Effect.mapError((cause) => error("hydrate", rootThreadId, cause, threadId)));
         const hasSparseResidentHistory = hasSelectedSubagentHistory(resident);
         const selected = hasSparseResidentHistory
           ? resident
           : yield* threadDirectory
-              .resolve({ threadId, fidelity: "tail" })
+              .resolve({
+                threadId,
+                fidelity: "tail",
+                ...(input.expectedHostId === undefined
+                  ? {}
+                  : { expectedHostId: input.expectedHostId }),
+              })
               .pipe(Effect.mapError((cause) => error("hydrate", rootThreadId, cause, threadId)));
         if (!selected)
           return emptySelectedResult(normalizedInput, "Selected Thread is unavailable");
@@ -2179,6 +2203,12 @@ export const make: Effect.Effect<
             "Selected Thread is outside the current Subagent projection",
           );
         const hostCurrent = yield* capabilities.isCurrent(rootContext.capability);
+        if (input.expectedHostId !== undefined) {
+          yield* resolveRootContext(rootThreadId, input.expectedHostId);
+          yield* threadDirectory
+            .resolve({ threadId, fidelity: "durable", expectedHostId: input.expectedHostId })
+            .pipe(Effect.mapError((cause) => error("hydrate", rootThreadId, cause, threadId)));
+        }
         const view = conversations.read(threadId);
         if (
           !hostCurrent ||

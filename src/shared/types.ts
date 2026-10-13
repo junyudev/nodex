@@ -2571,11 +2571,13 @@ export interface CodexFreshThreadLaunch {
 export type CodexThreadStartForSessionResult =
   | {
       kind: "started";
+      hostId: string;
       detail: CodexThreadDetail;
       freshLaunch?: CodexFreshThreadLaunch;
     }
   | {
       kind: "pending";
+      hostId: string;
       pendingWorktreeId: string;
       clientThreadId: string;
     };
@@ -4641,11 +4643,13 @@ export interface CodexSubagentOverviewWindow {
 export interface CodexSubagentOverviewReadInput {
   rootThreadId: string;
   mode: "initial" | "expanded";
+  expectedHostId?: string;
 }
 
 export interface CodexSelectedSubagentHydrateInput {
   rootThreadId: string;
   threadId: string;
+  expectedHostId?: string;
 }
 
 export interface CodexSelectedSubagentHydrateResult {
@@ -4677,6 +4681,12 @@ export type CodexThreadStartProgressPhase =
 export type CodexThreadStartProgressStream = "info" | "stdout" | "stderr";
 
 export type CodexEvent =
+  | {
+      type: "createdThreadTargetChanged";
+      hostId: string;
+      threadId: string;
+      clientThreadId?: string;
+    }
   | { type: "queuedMessageStateChanged" }
   | { type: "connection"; connection: CodexConnectionState }
   | { type: "account"; account: CodexAccountSnapshot }

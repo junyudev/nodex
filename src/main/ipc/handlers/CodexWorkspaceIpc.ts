@@ -27,6 +27,9 @@ import { materializeCodexJson } from "@nodex/effect-codex-app-server/transport-v
 import { CodexApplicationEventHub } from "../../codex-application/CodexApplicationEventHub";
 import { CodexNodeReplRuntime } from "../../codex-application/CodexNodeReplRuntime";
 import { CodexThreadDirectory } from "../../codex-application/CodexThreadDirectory";
+import { CodexThreadTargets } from "../../codex-application/CodexThreadTargets";
+import { CodexCreatedThreadResolution } from "../../codex-application/CodexCreatedThreadResolution";
+import { registerCodexThreadTargetEndpoints } from "./codex-thread-target-endpoints";
 import { CodexConversationPeerRuntime } from "../../platform/node/CodexConversationPeerRuntime";
 import { CodexMainConversationManagers } from "../../codex-application/CodexMainConversationManagers";
 import { CodexAppServerCapabilities } from "../../codex-runtime/CodexAppServerCapabilities";
@@ -243,6 +246,8 @@ export const live = Layer.effectDiscard(
     const threadGoals = yield* CodexThreadGoalRuntime;
     const threadSettings = yield* CodexThreadSettingsRuntime;
     const threadCatalog = yield* CodexThreadCatalog;
+    const threadTargets = yield* CodexThreadTargets;
+    const createdThreadResolution = yield* CodexCreatedThreadResolution;
     const threadTitles = yield* CodexThreadTitlePersistence;
     const conversationCommands = yield* ConversationCommands;
     const sidebarSync = yield* CodexSidebarSyncRuntime;
@@ -691,6 +696,10 @@ export const live = Layer.effectDiscard(
             (cause) => new CodexIpcError({ operation: "codex:thread:ensure-session", cause }),
           ),
         ),
+    );
+
+    registrations.push(
+      registerCodexThreadTargetEndpoints(mappedIpc, threadTargets, createdThreadResolution),
     );
 
     registerEffectQuery("codex:threads:palette:list", (_, input) =>

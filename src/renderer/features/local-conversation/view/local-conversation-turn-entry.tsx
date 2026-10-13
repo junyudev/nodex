@@ -16,6 +16,8 @@ import {
 import { isCodexTimelineTurnEntry } from "../projection/normalized-timeline-entries";
 import { LocalConversationTimelinePromotion } from "./local-conversation-timeline-promotion";
 import { LocalConversationTimelineImage } from "./local-conversation-timeline-image";
+import { LocalConversationTimelineCreatedThreads } from "./local-conversation-timeline-created-threads";
+import { LocalConversationTimelineSubagent } from "./local-conversation-timeline-subagent";
 import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadPlanSidePanelState,
@@ -144,7 +146,13 @@ function LocalConversationTurnEntryComponent({
             canEditTurnUserPrefix: allowUserActions && canEditTurnUserPrefix,
             canForkTurn: allowUserActions && canForkTurn,
             canOpenSubagents: Boolean(onOpenThread),
-            backgroundAgents: backgroundAgentRows,
+            backgroundAgents:
+              isTimelineEntry && entry.timelineDedicatedSubagentThreadIds
+                ? backgroundAgentRows?.filter(
+                    (row) =>
+                      !entry.timelineDedicatedSubagentThreadIds?.includes(row.conversationId),
+                  )
+                : backgroundAgentRows,
             cwd: threadCwd,
             projectlessOutputDirectory,
             mcpApps: mcpApps ?? [],
@@ -269,6 +277,22 @@ function LocalConversationEndResourcesEntry(props: LocalConversationTurnEntryPro
 
 function LocalConversationTurnEntrySurface(props: LocalConversationTurnEntryProps) {
   const { entry } = props;
+  if (isCodexTimelineTurnEntry(entry) && entry.timelineWholeItem?.type === "createdThreads") {
+    props.onRendered?.(entry.turnKey);
+    return (
+      <LocalConversationTimelineCreatedThreads entry={entry} onOpenThread={props.onOpenThread} />
+    );
+  }
+  if (isCodexTimelineTurnEntry(entry) && entry.timelineWholeItem?.type === "subagentActivity") {
+    props.onRendered?.(entry.turnKey);
+    return (
+      <LocalConversationTimelineSubagent
+        entry={entry}
+        backgroundAgentRows={props.backgroundAgentRows}
+        onOpenThread={props.onOpenThread}
+      />
+    );
+  }
   if (isCodexTimelineTurnEntry(entry) && entry.timelineEndResources)
     return <LocalConversationEndResourcesEntry {...props} />;
   if (isCodexTimelineTurnEntry(entry) && entry.timelineWholeItem?.type === "generatedImage") {

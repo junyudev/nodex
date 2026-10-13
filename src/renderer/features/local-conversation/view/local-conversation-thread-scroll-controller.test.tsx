@@ -558,7 +558,324 @@ describe("LocalConversationThreadScrollLayout", () => {
     ).toBe(280);
     expect(activeController.consumePendingLatestTurnSubmitPlacement() === null).toBe(true);
   });
+
+  test("keeps native Find active through the old settle window and resumes after layout writes", async () => {
+    const fixture = await renderNativeFindController();
+    try {
+      await fixture.beginFind();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      });
+      expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+      expect(fixture.controller.nativeFindTurnKey).toBe("find-turn");
+      expect(fixture.controller.shouldFollowContentGrowth()).toBe(false);
+
+      await act(async () => {
+        fixture.controller.compensateScrollToDistanceFromBottomPx(240);
+        await settleAsyncRender();
+      });
+      expect(fixture.scrollWrites.at(-1)).toEqual({ behavior: "instant", top: -240 });
+      expect(fixture.findScrolls).toHaveLength(2);
+      expect(fixture.findScrolls[1]).toEqual({
+        behavior: "smooth",
+        block: "center",
+        inline: "nearest",
+      });
+
+      await act(async () => {
+        fixture.controller.setFooterHeightPx(40);
+        fixture.controller.setFooterHeightPx(80);
+        await settleAsyncRender();
+      });
+      expect(fixture.scrollWrites.at(-1)).toEqual({ behavior: "instant", top: -280 });
+      expect(fixture.findScrolls).toHaveLength(3);
+      expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+      expect(fixture.controller.nativeFindTurnKey).toBe("find-turn");
+
+      await act(async () => {
+        fixture.controller.preserveScrollPositionForNextLayout();
+        fixture.setScrollHeight(2_100);
+        await settleAsyncRender();
+        await settleAsyncRender();
+      });
+      expect(fixture.scrollWrites.at(-1)).toEqual({ behavior: "auto", top: -280 });
+      expect(fixture.findScrolls).toHaveLength(4);
+
+      await act(async () => {
+        fixture.setTargetTop(240);
+        fixture.viewport.dispatchEvent(new Event("scrollend"));
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).toBe("user");
+      expect(fixture.controller.nativeFindTurnKey).toBeNull();
+      await fixture.compensateAndSettle();
+      expect(fixture.findScrolls).toHaveLength(4);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("does not classify native Find motion using a preceding wheel gesture", async () => {
+    const fixture = await renderNativeFindController();
+    try {
+      await act(async () => {
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+        fixture.viewport.scrollTop = -120;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).toBe("user");
+      await fixture.beginFind();
+      await act(async () => {
+        // The browser moves toward the result in the same direction as the earlier wheel.
+        fixture.viewport.scrollTop = -280;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+      await fixture.compensateAndSettle();
+      expect(fixture.findScrolls).toHaveLength(2);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test.each([
+    "wheel",
+    "repeated scroll key",
+    "scrollbar",
+    "vertical touch",
+    "submit",
+    "another element navigation",
+    "another distance navigation",
+    "jump to bottom",
+    "viewport hold",
+  ] as const)("cancels native Find on %s before subsequent compensation", async (intent) => {
+    const fixture = await renderNativeFindController();
+    try {
+      await fixture.beginFind();
+      await act(async () => {
+        switch (intent) {
+          case "wheel":
+            fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20 }));
+            break;
+          case "repeated scroll key":
+            fixture.viewport.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "PageUp", repeat: true }),
+            );
+            break;
+          case "scrollbar": {
+            const event = new PointerEvent("pointerdown");
+            Object.defineProperty(event, "pointerType", { value: "mouse" });
+            fixture.viewport.dispatchEvent(event);
+            fixture.viewport.dispatchEvent(new PointerEvent("pointerup"));
+            break;
+          }
+          case "vertical touch":
+            dispatchTestTouch(fixture.viewport, "touchstart", 0, 0);
+            dispatchTestTouch(fixture.viewport, "touchmove", 0, 16);
+            dispatchTestTouch(fixture.viewport, "touchend");
+            break;
+          case "submit":
+            fixture.controller.prepareLatestTurnSubmitPlacement();
+            break;
+          case "another element navigation":
+            fixture.controller.scrollElementIntoView(fixture.otherTarget, "smooth", "start");
+            break;
+          case "another distance navigation":
+            fixture.controller.scrollToDistanceFromBottomPx(300, "instant");
+            break;
+          case "jump to bottom":
+            fixture.controller.jumpToBottom();
+            break;
+          case "viewport hold":
+            fixture.controller.holdViewport();
+            break;
+        }
+        await Promise.resolve();
+      });
+      expect(fixture.controller.getScrollMode()).not.toBe("programmaticFind");
+      expect(fixture.controller.nativeFindTurnKey).toBeNull();
+      await fixture.compensateAndSettle();
+      expect(fixture.findScrolls).toHaveLength(1);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("keeps native Find through gestures that do not scroll the conversation", async () => {
+    const fixture = await renderNativeFindController();
+    try {
+      await fixture.beginFind();
+      await act(async () => {
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaX: 20, deltaY: 1 }));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, ctrlKey: true }));
+        fixture.input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }),
+        );
+        const event = new PointerEvent("pointerdown", { bubbles: true });
+        Object.defineProperty(event, "pointerType", { value: "mouse" });
+        fixture.otherTarget.dispatchEvent(event);
+        fixture.otherTarget.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
+        dispatchTestTouch(fixture.viewport, "touchstart", 0, 0);
+        dispatchTestTouch(fixture.viewport, "touchmove", 16, 1);
+        dispatchTestTouch(fixture.viewport, "touchend");
+        await Promise.resolve();
+      });
+      await fixture.compensateAndSettle();
+      expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+      expect(fixture.controller.nativeFindTurnKey).toBe("find-turn");
+      expect(fixture.findScrolls).toHaveLength(2);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("retains only the current Find turn and releases it on abort without accepting an old finish", async () => {
+    const fixture = await renderNativeFindController();
+    try {
+      await fixture.beginFind();
+      const next = new AbortController();
+      await act(async () => {
+        fixture.controller.scrollElementIntoView(fixture.otherTarget, "smooth", "center", {
+          turnKey: "replacement-turn",
+          readTarget: () => fixture.otherTarget,
+          signal: next.signal,
+        });
+        // Canceling the first operation queues its completion after the second is installed.
+        await Promise.resolve();
+      });
+      expect(fixture.controller.nativeFindTurnKey).toBe("replacement-turn");
+      expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
+      await act(async () => {
+        next.abort();
+        await Promise.resolve();
+      });
+      expect(fixture.controller.nativeFindTurnKey).toBeNull();
+      expect(fixture.controller.getScrollMode()).toBe("user");
+      await fixture.compensateAndSettle();
+      expect(fixture.findScrolls).toHaveLength(1);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  test("unmount cancels queued native recentering and fences retained controller callbacks", async () => {
+    const fixture = await renderNativeFindController();
+    await fixture.beginFind();
+    await act(async () => {
+      fixture.controller.compensateScrollToDistanceFromBottomPx(240);
+      fixture.view.unmount();
+      await settleAsyncRender();
+    });
+    await fixture.compensateAndSettle();
+    expect(fixture.findScrolls).toHaveLength(1);
+    expect(fixture.controller.getScrollElement()).toBeNull();
+  });
 });
+
+/** The native scrolling boundary is recorded; the provider, intent listeners, and Find lease are real. */
+async function renderNativeFindController() {
+  const controllers: LocalConversationThreadScrollControllerValue[] = [];
+  const view = render(
+    <EnsureLocalConversationThreadScrollController>
+      <LocalConversationThreadScrollLayout>
+        <ControllerProbe onController={(controller) => controllers.push(controller)} />
+        <div data-turn-key="find-turn">
+          <mark data-testid="find-target">Current Find result</mark>
+        </div>
+        <button data-testid="other-target">Another destination</button>
+        <input aria-label="Draft" />
+      </LocalConversationThreadScrollLayout>
+    </EnsureLocalConversationThreadScrollController>,
+  );
+  await settleAsyncRender();
+  const controller = controllers.at(-1);
+  const viewport = view.container.querySelector<HTMLDivElement>(
+    "[data-local-conversation-thread-body='true']",
+  );
+  const target = view.getByTestId("find-target");
+  const otherTarget = view.getByTestId("other-target");
+  const input = view.getByRole("textbox");
+  if (!controller || !viewport) throw new Error("Expected a mounted conversation controller.");
+  let scrollHeight = 2_000;
+  let targetTop = 800;
+  const findScrolls: ScrollIntoViewOptions[] = [];
+  const scrollWrites: ScrollToOptions[] = [];
+  Object.defineProperties(viewport, {
+    scrollHeight: { configurable: true, get: () => scrollHeight },
+    clientHeight: { configurable: true, value: 500 },
+    offsetHeight: { configurable: true, value: 500 },
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => createDomRect({ x: 0, y: 0, width: 500, height: 500 }),
+    },
+    scrollTo: {
+      configurable: true,
+      value: (options: ScrollToOptions) => {
+        scrollWrites.push(options);
+        viewport.scrollTop = options.top ?? 0;
+      },
+    },
+  });
+  Object.defineProperties(target, {
+    getBoundingClientRect: {
+      configurable: true,
+      value: () => createDomRect({ x: 0, y: targetTop, width: 100, height: 20 }),
+    },
+    scrollIntoView: {
+      configurable: true,
+      value: (options: ScrollIntoViewOptions) => findScrolls.push(options),
+    },
+  });
+  viewport.scrollTop = -100;
+  return {
+    get controller() {
+      return controllers.at(-1) ?? controller;
+    },
+    viewport,
+    target,
+    otherTarget,
+    input,
+    view,
+    findScrolls,
+    scrollWrites,
+    setScrollHeight: (height: number) => {
+      scrollHeight = height;
+    },
+    setTargetTop: (top: number) => {
+      targetTop = top;
+    },
+    beginFind: () =>
+      act(async () => {
+        controller.holdViewport();
+        controller.setScrollMode("programmaticFind");
+        controller.scrollElementIntoView(target, "smooth", "center", {
+          readTarget: () => target,
+        });
+        await Promise.resolve();
+        expect(findScrolls).toHaveLength(1);
+      }),
+    compensateAndSettle: () =>
+      act(async () => {
+        controller.compensateScrollToDistanceFromBottomPx(320);
+        await settleAsyncRender();
+      }),
+    dispose: () =>
+      act(async () => {
+        view.unmount();
+        await Promise.resolve();
+      }),
+  };
+}
+
+function dispatchTestTouch(element: HTMLElement, type: string, x?: number, y?: number) {
+  const event = new Event(type);
+  Object.defineProperty(event, "touches", {
+    value: x === undefined || y === undefined ? [] : [{ identifier: 1, clientX: x, clientY: y }],
+  });
+  element.dispatchEvent(event);
+}
 
 function createDomRect({
   height,

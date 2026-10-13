@@ -87,6 +87,7 @@ import {
 import {
   projectCodexThreadDirectoryMaterialization,
   projectCoreWorkspaceThread,
+  projectCodexThreadTargetObservation,
 } from "./CodexThreadDirectoryProjection";
 
 export type CodexThreadDirectoryFidelity =
@@ -108,6 +109,13 @@ export interface CodexThreadDirectoryEntry {
   readonly summary: CodexThreadSummary;
   readonly canonical: CodexCanonicalConversationState | null;
   readonly snapshot: CodexConversationSnapshot | null;
+}
+
+interface CodexThreadDirectoryTargetGuard {
+  readonly hostId: string;
+  readonly projectId: string | null;
+  readonly sessionId: string | null;
+  readonly parentThreadId: string | null;
 }
 
 type RuntimeExecutionProfileResponse = Pick<
@@ -176,6 +184,7 @@ export class CodexThreadDirectory extends Context.Service<
       readonly threadId: string;
       readonly fidelity: CodexThreadDirectoryResolveFidelity;
       readonly hostId?: string;
+      readonly expectedHostId?: string;
       /** Keeps speculative relationship hydration off interactive and notification lanes. */
       readonly metadataScheduling?: {
         readonly conversationId: string;
@@ -512,6 +521,7 @@ export const make: Effect.Effect<
       readonly executionHostId?: string;
       readonly fallbackCwd?: string | null;
       readonly hasUnreadTurn?: boolean;
+      readonly targetGuard?: CodexThreadDirectoryTargetGuard;
     }): Effect.fn.Return<DurableThread, CodexThreadDirectoryError> {
       const record = input.thread as unknown as Record<string, unknown>;
       const threadId = typeof record.id === "string" ? record.id.trim() : "";
@@ -559,14 +569,37 @@ export const make: Effect.Effect<
         ...materialization.patch,
         ...(input.hasUnreadTurn !== undefined ? { has_unread_turn: input.hasUnreadTurn } : {}),
       };
+      const guardedObservation = input.targetGuard
+        ? projectCodexThreadTargetObservation(
+            materialization,
+            previous?.thread ?? null,
+            input.targetGuard.projectId,
+          )
+        : null;
+      if (input.targetGuard && guardedObservation === null)
+        return yield* error("materialize", threadId, new Error("Selected metadata is incomplete"));
       yield* core.workspace
         .apply({
           operationId: createOperationId("thread-directory.upsert"),
-          intent: {
-            kind: "upsert_thread",
-            thread_id: threadId,
-            patch,
-          },
+          intent:
+            input.targetGuard && guardedObservation
+              ? {
+                  kind: "observe_codex_thread_metadata",
+                  thread_id: threadId,
+                  expected_execution_host_id: input.targetGuard.hostId,
+                  expected_binding: {
+                    kind: "existing",
+                    project_id: input.targetGuard.projectId,
+                    session_id: input.targetGuard.sessionId,
+                  },
+                  expected_parent_thread_id: input.targetGuard.parentThreadId,
+                  observation: guardedObservation,
+                }
+              : {
+                  kind: "upsert_thread",
+                  thread_id: threadId,
+                  patch,
+                },
         })
         .pipe(Effect.mapError((cause) => error("materialize", threadId, cause)));
       const persisted = yield* readDurable(threadId);
@@ -1174,6 +1207,7 @@ export const make: Effect.Effect<
     fidelity: Exclude<CodexThreadDirectoryResolveFidelity, "durable">,
     hostId: string,
     metadataScheduling?: { readonly conversationId: string; readonly widgetId: string },
+    targetGuard?: CodexThreadDirectoryTargetGuard,
   ): Effect.fn.Return<CodexThreadDirectoryEntry, CodexThreadDirectoryError> {
     const readMetadata = (capability: CodexAppServerCapabilitySnapshot) =>
       gateway
@@ -1280,6 +1314,7 @@ export const make: Effect.Effect<
       const durable = yield* persistObservation({
         thread: metadataThread,
         executionHostId: hostId,
+        ...(targetGuard ? { targetGuard } : {}),
       });
       if (capability.flags.paginatedHistory && metadataThread.historyMode === "paginated") {
         const page = yield* historyPages
@@ -1360,7 +1395,11 @@ export const make: Effect.Effect<
     yield* requireMetadataShell("read", threadId, rawThread, false);
     yield* requireCurrentCapability(threadId, capability, "accepting Thread metadata");
     const thread = normalizeThread(rawThread);
-    const durable = yield* persistObservation({ thread, executionHostId: hostId });
+    const durable = yield* persistObservation({
+      thread,
+      executionHostId: hostId,
+      ...(targetGuard ? { targetGuard } : {}),
+    });
     return entry(durable, "metadata", thread.historyMode);
   });
 
@@ -1368,6 +1407,7 @@ export const make: Effect.Effect<
     readonly threadId: string;
     readonly fidelity: CodexThreadDirectoryResolveFidelity;
     readonly hostId?: string;
+    readonly expectedHostId?: string;
     readonly metadataScheduling?: {
       readonly conversationId: string;
       readonly widgetId: string;
@@ -1377,6 +1417,22 @@ export const make: Effect.Effect<
     if (!threadId) return null;
     const durable = yield* readDurable(threadId);
     if (durable && !isCodexAgentBackendBinding(durable.thread.backendBinding)) return null;
+    const expectedHostId = input.expectedHostId?.trim();
+    if (
+      input.expectedHostId !== undefined &&
+      (!expectedHostId || !durable || durable.thread.executionHostId !== expectedHostId)
+    )
+      return yield* error(
+        "read",
+        threadId,
+        new Error("Selected conversation execution binding changed"),
+      );
+    if (expectedHostId && input.fidelity === "live")
+      return yield* error(
+        "read",
+        threadId,
+        new Error("Selected target hydration requires a bounded readonly history path"),
+      );
     if (input.fidelity === "durable" && durable) return entry(durable, "durable");
     const hostId = durable?.thread.executionHostId ?? input.hostId?.trim();
     if (!hostId) return null;
@@ -1386,10 +1442,35 @@ export const make: Effect.Effect<
         readRemote(threadId, "metadata", hostId, input.metadataScheduling),
       );
     }
-    return yield* conversations.runCommand(
+    const targetGuard =
+      expectedHostId && durable
+        ? {
+            hostId: expectedHostId,
+            projectId: durable.thread.projectId,
+            sessionId: durable.thread.sessionId,
+            parentThreadId: durable.thread.parentThreadId,
+          }
+        : undefined;
+    const resolved = yield* conversations.runCommand(
       threadId,
-      readRemote(threadId, input.fidelity, hostId, input.metadataScheduling),
+      readRemote(threadId, input.fidelity, hostId, input.metadataScheduling, targetGuard),
     );
+    if (targetGuard) {
+      const current = yield* readDurable(threadId);
+      if (
+        !current ||
+        current.thread.executionHostId !== targetGuard.hostId ||
+        current.thread.projectId !== targetGuard.projectId ||
+        current.thread.sessionId !== targetGuard.sessionId ||
+        current.thread.parentThreadId !== targetGuard.parentThreadId
+      )
+        return yield* error(
+          "read",
+          threadId,
+          new Error("Selected conversation binding changed while opening"),
+        );
+    }
+    return resolved;
   });
 
   const acceptForkResult = Effect.fn("CodexThreadDirectory.acceptForkResult")(function* (input: {

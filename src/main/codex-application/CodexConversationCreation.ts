@@ -233,8 +233,15 @@ export const make: Effect.Effect<
       })
       .pipe(Effect.mapError((cause) => fail("fork", entry, cause)));
     if (entry.clientThreadId) {
+      const linked = forked.session.thread;
+      if (!linked || linked.threadId !== forked.threadId)
+        return yield* fail(
+          "remember-client-thread",
+          entry,
+          new Error("Fork Session has no confirmed native target"),
+        );
       yield* clientIdentity
-        .remember(forked.threadId, entry.clientThreadId)
+        .remember(forked.threadId, entry.clientThreadId, linked.executionHostId)
         .pipe(Effect.mapError((cause) => fail("remember-client-thread", entry, cause)));
     }
     yield* finishWorktree(entry, forked.threadId, workspaceRoot, includeWorktreeInit, false);
@@ -466,7 +473,7 @@ export const make: Effect.Effect<
       // final required commit so renderer ownership cannot race first-Turn or worktree metadata.
       if (entry.clientThreadId) {
         yield* clientIdentity
-          .remember(threadId, entry.clientThreadId)
+          .remember(threadId, entry.clientThreadId, entry.threadStartHostId ?? entry.hostId)
           .pipe(Effect.mapError((cause) => fail("remember-client-thread", entry, cause)));
       }
       return { threadId };

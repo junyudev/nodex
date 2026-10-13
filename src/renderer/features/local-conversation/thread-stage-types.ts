@@ -214,6 +214,9 @@ export interface ThreadOpenSubagentPayload {
 }
 
 export interface ThreadOpenThreadContext {
+  readonly hostId?: string;
+  readonly createdTarget?: import("../../../shared/codex-created-thread-result").CodexCreatedThreadResult;
+  readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
   subagent?: ThreadOpenSubagentPayload;
 }
 
@@ -610,6 +613,8 @@ export type ThreadSubagentActivityStatus = "started" | "updated" | "interrupted"
 
 export interface ThreadSubagentActivityInlineRowModel {
   canOpen: boolean;
+  /** Only verified directory eligibility selects an interactive child task tab. */
+  canInteract?: boolean;
   conversationId: string;
   displayName: string;
   agentRole: string | null;

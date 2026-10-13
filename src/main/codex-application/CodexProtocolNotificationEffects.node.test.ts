@@ -60,6 +60,11 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     let widgetClearFailure = false;
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const deliveredHosts: string[] = [];
+    const targetChanges: {
+      type: "createdThreadTargetChanged";
+      hostId: string;
+      threadId: string;
+    }[] = [];
     const mapContext = yield* Layer.build(entityMapLive);
     const entityMap = Context.get(mapContext, ConversationEntityMap);
     const conversations = { ...entityMap, acquire: entityMap.entity };
@@ -101,6 +106,8 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
           CodexApplicationEventHub.of({
             events: Stream.empty,
             publish: (event) => {
+              if (event.kind === "codex" && event.value.type === "createdThreadTargetChanged")
+                targetChanges.push(event.value);
               if (event.kind === "threadNotification" && event.value.type === "turn-completed") {
                 deliveredDecisions.push(event.value.automationNotificationDecision ?? null);
                 deliveredHosts.push(event.value.hostId);
@@ -256,6 +263,9 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     ]);
 
     assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY"]);
+    assert.deepEqual(targetChanges, [
+      { type: "createdThreadTargetChanged", hostId: "remote-a", threadId: "thread-a" },
+    ]);
     automationDecision = null;
     trace.length = 0;
     yield* service.apply({

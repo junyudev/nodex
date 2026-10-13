@@ -2799,7 +2799,7 @@ fn validate_stored_timestamp(field: &str, value: i64) -> Result<(), StoreError> 
         .map_err(|_| corrupt(format!("Codex Thread {field} is invalid")))
 }
 
-fn validate_id(field: &str, value: &str) -> Result<(), StoreError> {
+pub(super) fn validate_id(field: &str, value: &str) -> Result<(), StoreError> {
     if !value.is_empty()
         && value == value.trim()
         && value.len() <= MAX_ID_BYTES

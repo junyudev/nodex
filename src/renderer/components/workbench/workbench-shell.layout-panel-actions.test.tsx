@@ -3022,8 +3022,8 @@ describe("workbench session shell / layout-panel-actions", () => {
       getConnectedThreadStagePropsByThreadId("thread-child-2")?.backgroundAgentCanInteract,
     ).toBe(true);
     expect(hydrateSelectedSubagentCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadId: "thread-child" },
-      { rootThreadId: "thread-alpha", threadId: "thread-child-2" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child", expectedHostId: "local" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child-2", expectedHostId: "local" },
     ]);
 
     await act(async () => {
@@ -3064,9 +3064,9 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     expect(getPanelTabById(screen.container, "subagents:thread-alpha")).toBeTruthy();
     expect(hydrateSelectedSubagentCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadId: "thread-child" },
-      { rootThreadId: "thread-alpha", threadId: "thread-child-2" },
-      { rootThreadId: "thread-alpha", threadId: "thread-legacy" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child", expectedHostId: "local" },
+      { rootThreadId: "thread-alpha", threadId: "thread-child-2", expectedHostId: "local" },
+      { rootThreadId: "thread-alpha", threadId: "thread-legacy", expectedHostId: "local" },
     ]);
 
     sideChatConversations["thread-stale"] = {

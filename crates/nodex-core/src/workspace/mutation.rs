@@ -284,6 +284,14 @@ pub(super) fn apply(
                     crate::ModuleWriterResult<ProjectWorkspaceCommitValue, ProjectWorkspaceReceipt>,
                 >(stored.result)
                 .map_err(|_| corrupt("Stored Project Workspace receipt is invalid"))?;
+                if let ProjectWorkspaceIntent::EnsureCodexThreadSession {
+                    thread_id, expected_execution_host_id, ..
+                } = admitted_intent {
+                    super::codex_thread_navigation::validate_replayed_session(
+                        transaction, &library_id, thread_id, expected_execution_host_id,
+                        &committed.value.affected_session_ids,
+                    )?;
+                }
                 committed.receipt.mutation.duplicate = true;
                 return Ok(ProjectWorkspaceApplyOutcome {
                     committed,
@@ -810,6 +818,22 @@ pub(super) fn apply(
                     &request_hash,
                     thread_id,
                     location,
+                ),
+                ProjectWorkspaceIntent::EnsureCodexThreadSession {
+                    thread_id, expected_execution_host_id, expected_binding,
+                    session_id, title, observation,
+                } => super::codex_thread_navigation::ensure_session(
+                    transaction, &library_id, &context, &store_epoch,
+                    &request.operation_id, &request_hash, thread_id, expected_execution_host_id,
+                    expected_binding, session_id, title, observation.as_deref(),
+                ),
+                ProjectWorkspaceIntent::ObserveCodexThreadMetadata {
+                    thread_id, expected_execution_host_id, expected_binding,
+                    expected_parent_thread_id, observation,
+                } => super::codex_thread_navigation::observe_metadata(
+                    transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                    &request_hash, thread_id, expected_execution_host_id, expected_binding,
+                    expected_parent_thread_id.as_deref(), observation,
                 ),
                 ProjectWorkspaceIntent::AttachNativeSession {session_id,thread_id,project_id,backend_binding,native_session_id,native_home,title,cwd,created_at,updated_at} => thread::attach_native_session(
                     transaction, &library_id, &context, &store_epoch, &request.operation_id, &request_hash,

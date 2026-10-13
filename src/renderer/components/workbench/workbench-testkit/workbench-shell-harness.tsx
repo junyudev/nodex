@@ -215,6 +215,7 @@ export let startTurnCalls: unknown[][] = [];
 export let pageChatItems: PageChatItem[] = [];
 export let startThreadForSessionResult: CodexThreadStartForSessionResult = {
   kind: "started",
+  hostId: "local",
   detail: { threadId: "thread-started" } as CodexThreadDetail,
 };
 export let requestThreadStreamSnapshotCalls: string[] = [];
@@ -4426,6 +4427,7 @@ beforeEach(() => {
   pageChatItems = [];
   startThreadForSessionResult = {
     kind: "started",
+    hostId: "local",
     detail: { threadId: "thread-started" } as CodexThreadDetail,
   };
   requestThreadStreamSnapshotCalls = [];

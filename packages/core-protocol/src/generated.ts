@@ -7274,6 +7274,23 @@ export interface components {
                 readonly location: components["schemas"]["ProjectWorkspaceThreadExecutionLocation"];
                 readonly thread_id: string;
             } | {
+                readonly expected_binding: components["schemas"]["ProjectWorkspaceCodexThreadBinding"];
+                readonly expected_execution_host_id: string;
+                /** @enum {string} */
+                readonly kind: "ensure_codex_thread_session";
+                readonly observation?: null | components["schemas"]["ProjectWorkspaceCodexThreadObservation"];
+                readonly session_id: string;
+                readonly thread_id: string;
+                readonly title: string;
+            } | {
+                readonly expected_binding: components["schemas"]["ProjectWorkspaceCodexThreadBinding"];
+                readonly expected_execution_host_id: string;
+                readonly expected_parent_thread_id?: string | null;
+                /** @enum {string} */
+                readonly kind: "observe_codex_thread_metadata";
+                readonly observation: components["schemas"]["ProjectWorkspaceCodexThreadObservation"];
+                readonly thread_id: string;
+            } | {
                 readonly backend_binding: components["schemas"]["AgentBackendBinding"];
                 /** Format: int64 */
                 readonly created_at: number;
@@ -8405,6 +8422,11 @@ export interface components {
                 readonly provenance: components["schemas"]["AgentTurnProvenance"];
                 readonly session_id: string;
             } | {
+                readonly expected_execution_host_id: string;
+                /** @enum {string} */
+                readonly kind: "codex_thread_session";
+                readonly thread_id: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "thread";
                 readonly thread_id: string;
@@ -8975,6 +8997,30 @@ export interface components {
         readonly ProjectWorkspaceBootstrapStatus: "empty" | "ready";
         /** @enum {string} */
         readonly ProjectWorkspaceBuiltinSidebarLane: "projects" | "pinned_projects" | "pinned_sessions";
+        readonly ProjectWorkspaceCodexThreadBinding: {
+            /** @enum {string} */
+            readonly kind: "absent";
+        } | {
+            /** @enum {string} */
+            readonly kind: "existing";
+            readonly project_id?: string | null;
+            readonly session_id?: string | null;
+        };
+        /** @description Metadata cannot reassign a backend, host, parent, or an existing Project/link. */
+        readonly ProjectWorkspaceCodexThreadObservation: {
+            /** Format: int64 */
+            readonly created_at: number;
+            readonly cwd?: string | null;
+            readonly project_id?: string | null;
+            /** Format: int64 */
+            readonly recency_at: number;
+            readonly status: components["schemas"]["ProjectWorkspaceThreadStatus"];
+            readonly thread_name?: string | null;
+            readonly thread_preview: string;
+            readonly thread_source?: string | null;
+            /** Format: int64 */
+            readonly updated_at: number;
+        };
         readonly ProjectWorkspaceDynamicToolCatalog: {
             readonly namespace: string;
             /** Format: int64 */
@@ -9223,6 +9269,23 @@ export interface components {
             /** @enum {string} */
             readonly kind: "set_thread_execution_location";
             readonly location: components["schemas"]["ProjectWorkspaceThreadExecutionLocation"];
+            readonly thread_id: string;
+        } | {
+            readonly expected_binding: components["schemas"]["ProjectWorkspaceCodexThreadBinding"];
+            readonly expected_execution_host_id: string;
+            /** @enum {string} */
+            readonly kind: "ensure_codex_thread_session";
+            readonly observation?: null | components["schemas"]["ProjectWorkspaceCodexThreadObservation"];
+            readonly session_id: string;
+            readonly thread_id: string;
+            readonly title: string;
+        } | {
+            readonly expected_binding: components["schemas"]["ProjectWorkspaceCodexThreadBinding"];
+            readonly expected_execution_host_id: string;
+            readonly expected_parent_thread_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "observe_codex_thread_metadata";
+            readonly observation: components["schemas"]["ProjectWorkspaceCodexThreadObservation"];
             readonly thread_id: string;
         } | {
             readonly backend_binding: components["schemas"]["AgentBackendBinding"];
@@ -11158,6 +11221,11 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "codex_thread_session";
+                    readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                    readonly thread: components["schemas"]["ProjectWorkspaceThread"];
+                } | {
                     /** @enum {string} */
                     readonly kind: "local_codex_thread_ids";
                     readonly thread_ids: components["schemas"]["CollectionWindow_String"];

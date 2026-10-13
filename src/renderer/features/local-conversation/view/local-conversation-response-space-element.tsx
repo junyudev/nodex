@@ -1,4 +1,4 @@
-import { useEffect, useInsertionEffect, useLayoutEffect } from "react";
+import { useCallback, useEffect, useInsertionEffect, useLayoutEffect } from "react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import type { ThreadResponseSpaceController } from "./local-conversation-response-space";
@@ -15,6 +15,11 @@ export function LocalConversationResponseSpaceElement({
   const scroll = useLocalConversationThreadScrollController();
   const { getScrollElement, addScrollListener, addUserScrollListener, scrollElement } = scroll;
   const reducedMotion = useResolvedReducedMotion();
+  const setElement = controller.setElement;
+  const registerElement = useCallback(
+    (element: HTMLDivElement | null) => setElement(element),
+    [setElement],
+  );
   useInsertionEffect(() => {
     controller.updateContext(scroll, reducedMotion, onReleased);
   }, [controller, onReleased, reducedMotion, scroll]);
@@ -60,7 +65,8 @@ export function LocalConversationResponseSpaceElement({
     controller.reconcileViewport();
     let frame: number | null = null;
     const schedule = () => {
-      frame ??= window.requestAnimationFrame(() => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
         frame = null;
         controller.reconcileViewport();
       });
@@ -76,5 +82,5 @@ export function LocalConversationResponseSpaceElement({
       if (frame !== null) window.cancelAnimationFrame(frame);
     };
   }, [controller, getScrollElement, scrollElement]);
-  return <div ref={controller.setElement} className="shrink-0" aria-hidden="true" />;
+  return <div ref={registerElement} className="shrink-0" aria-hidden="true" />;
 }

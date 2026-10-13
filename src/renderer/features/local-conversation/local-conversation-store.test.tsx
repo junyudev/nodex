@@ -1939,6 +1939,33 @@ describe("complete-history admission lifetime", () => {
 });
 
 describe("local-conversation-store", () => {
+  test("resident child metadata observers do not start unknown hosts or acquire transcript interest", async () => {
+    const { CodexAppServerManager, CodexAppServerManagerRegistry } =
+      await import("./local-conversation-store");
+    const registry = new CodexAppServerManagerRegistry();
+    expect(registry.readForHostId("unknown")).toBeNull();
+    expect(registry.getAll()).toEqual([]);
+    const manager = trackNativeTestManager(new CodexAppServerManager("remote-readonly"));
+    const start = vi.spyOn(manager, "start");
+    const metadata = vi.fn(),
+      connection = vi.fn();
+    const stopMetadata = manager.observeThreadMetadata("child", metadata);
+    const stopConnection = manager.observeConnection(connection);
+    expect(start).not.toHaveBeenCalled();
+    expect(manager.readTranscriptReadOwner("child")).toBeNull();
+    manager.hydrateThreadSummaries("project-1", [buildThreadSummary("child", "project-1")]);
+    expect(metadata).toHaveBeenCalledTimes(1);
+    expect(manager.readThreadSummary("child")?.threadName).toBe("child");
+    expect(start).not.toHaveBeenCalled();
+    stopMetadata();
+    stopConnection();
+    metadata.mockClear();
+    manager.hydrateThreadSummaries("project-1", [
+      { ...buildThreadSummary("child", "project-1"), threadName: "Changed title" },
+    ]);
+    expect(metadata).not.toHaveBeenCalled();
+    expect(manager.readTranscriptReadOwner("child")).toBeNull();
+  });
   test("replaces the transcript read owner when archive and restore share one React batch", async () => {
     invokeCalls = [];
     invokeRecords = [];

@@ -452,6 +452,69 @@ describe("UserMessageBubble collapse", () => {
     expect(getByRole("textbox", { name: "Edit message" })).toBeTruthy();
   });
 
+  test("keeps a failed edit retryable and closes the editor only after success", async () => {
+    const block = buildUserMessageBlock("Original request");
+    block.userMessageActions = { canEdit: true, sentAtMs: null };
+    let rejectFirst: (error: Error) => void = () => {};
+    let completeRetry: () => void = () => {};
+    const first = new Promise<void>((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    const retry = new Promise<void>((resolve) => {
+      completeRetry = resolve;
+    });
+    const onEditLastUserTurn = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(retry);
+    const { getByRole, queryByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          onEditLastUserTurn={onEditLastUserTurn}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Edit message" }));
+    });
+    const input = getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "  Revised request  " } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.submit(input.form!);
+      await Promise.resolve();
+    });
+    expect(onEditLastUserTurn).toHaveBeenCalledExactlyOnceWith({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      message: "Revised request",
+    });
+    expect((getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => {
+      rejectFirst(new Error("Edit failed"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect((getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(false),
+    );
+    expect((getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement).value).toBe(
+      "  Revised request  ",
+    );
+    await act(async () => {
+      fireEvent.submit(input.form!);
+      await Promise.resolve();
+    });
+    expect(onEditLastUserTurn).toHaveBeenCalledTimes(2);
+    expect(queryByRole("textbox", { name: "Edit message" })).not.toBeNull();
+    await act(async () => {
+      completeRetry();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
+  });
+
   test("explicitly hidden user actions preserve status while omitting copy and edit", () => {
     const block = buildUserMessageBlock("Blocked request");
     block.entry.deliveryStatus = "not-sent";

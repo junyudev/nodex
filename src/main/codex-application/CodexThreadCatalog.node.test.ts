@@ -150,7 +150,10 @@ const catalog = (input: {
     ),
     Effect.provideService(
       CodexInternalThreadRegistry,
-      CodexInternalThreadRegistry.of({ shouldSuppress: () => false } as never),
+      CodexInternalThreadRegistry.of({
+        shouldSuppress: () => false,
+        classification: () => null,
+      } as never),
     ),
     Effect.provideService(
       CodexSidebarSyncRuntime,

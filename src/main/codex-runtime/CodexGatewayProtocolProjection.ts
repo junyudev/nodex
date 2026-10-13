@@ -5,6 +5,7 @@ import type {
 import type { ThreadResumeParams } from "@nodex/codex-app-server-protocol/v2/ThreadResumeParams";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/ThreadResumeResponse";
+import type { ThreadItemsListResponse } from "@nodex/codex-app-server-protocol/v2/ThreadItemsListResponse";
 
 export type CodexGatewayThreadReadThread = ClientRequestResponsesByMethod["thread/read"]["thread"];
 
@@ -16,6 +17,11 @@ export type CodexGatewayThreadReadThread = ClientRequestResponsesByMethod["threa
  */
 export const projectCodexGatewayThreadReadThread = (thread: CodexGatewayThreadReadThread): Thread =>
   thread as unknown as Thread;
+
+/** The item-page projection has the same generated JSON grammar and does not decode twice. */
+export const projectCodexGatewayThreadItemsList = (
+  page: ClientRequestResponsesByMethod["thread/items/list"],
+): ThreadItemsListResponse => page as unknown as ThreadItemsListResponse;
 
 export type CodexGatewayThreadResumeResponse = ClientRequestResponsesByMethod["thread/resume"];
 

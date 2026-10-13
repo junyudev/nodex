@@ -1,5 +1,6 @@
 mod agent_command;
 mod child_thread_window;
+mod codex_thread_navigation;
 mod execution;
 mod local_codex_thread_ids;
 mod managed_worktree_lifecycle;

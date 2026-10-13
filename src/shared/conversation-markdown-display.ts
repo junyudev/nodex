@@ -97,7 +97,7 @@ function visualizationDeclaration(marker: string): string | null {
   return `::codex-${live ? "live" : "inline"}-vis{${absolute ? "path" : "file"}="${path}"${title}${mode}}`;
 }
 
-function prepareVisualizationMarkers(source: string): string {
+export function prepareConversationVisualizationMarkers(source: string): string {
   if (!source.includes(visualizationMarker)) return source;
   // Marker conversion is rare; public authored root nodes identify block-code exclusion.
   const code = fromMarkdown(source).children.flatMap((node) =>
@@ -146,15 +146,18 @@ function hideStreamingMetadata(source: string): string {
     .join("\n");
 }
 
-interface Fence {
+export interface ConversationMarkdownFence {
   readonly marker: "`" | "~";
   readonly length: number;
 }
 
-function readFence(previous: Fence | null, line: string): Fence | null {
+export function readConversationMarkdownFence(
+  previous: ConversationMarkdownFence | null,
+  line: string,
+): ConversationMarkdownFence | null {
   const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
   if (!match) return previous;
-  const marker = match[1]![0] as Fence["marker"];
+  const marker = match[1]![0] as ConversationMarkdownFence["marker"];
   if (previous)
     return marker === previous.marker && match[1]!.length >= previous.length && !match[2]!.trim()
       ? null
@@ -170,8 +173,9 @@ function isEscaped(source: string, offset: number): boolean {
 }
 
 function hasOpenFence(source: string): boolean {
-  let fence: Fence | null = null;
-  for (const line of source.split("\n")) fence = readFence(fence, line.trimStart());
+  let fence: ConversationMarkdownFence | null = null;
+  for (const line of source.split("\n"))
+    fence = readConversationMarkdownFence(fence, line.trimStart());
   return fence !== null;
 }
 
@@ -192,11 +196,11 @@ function scanCodeSpans(source: string, cursor: number, limit: number, span: numb
 }
 
 function readOpenCodeSpan(source: string): number | null {
-  let fence: Fence | null = null;
+  let fence: ConversationMarkdownFence | null = null;
   let span: number | null = null;
   for (const line of source.split("\n")) {
     const inside = fence !== null;
-    fence = readFence(fence, line.trimStart());
+    fence = readConversationMarkdownFence(fence, line.trimStart());
     if (inside || fence !== null) continue;
     span = scanCodeSpans(line, 0, line.length, span).span;
   }
@@ -331,7 +335,7 @@ function hideIncompleteLink(source: string): string {
   const listPrefix = /^\s*(?:[-+*]|\d+[.)])\s+/.exec(source.slice(lineStart))?.[0];
   let span = readOpenCodeSpan(source.slice(0, first));
   let cursor = first;
-  const fence = readFence(null, source.slice(lineStart, first).trimStart());
+  const fence = readConversationMarkdownFence(null, source.slice(lineStart, first).trimStart());
   const closeFence = fence?.marker === "`" ? source.indexOf("`", first) : -1;
   let insideFence = fence !== null;
   for (let offset = first; offset !== -1; offset = source.indexOf("[", offset + 1)) {
@@ -472,7 +476,10 @@ export function prepareConversationMarkdownDisplay(
 ): ConversationMarkdownDisplaySource {
   let prepared = source.replace(/\r\n?/g, "\n");
   if (options.inlineVisualizations)
-    prepared = guardVisualizationTail(prepareVisualizationMarkers(prepared), options.streaming);
+    prepared = guardVisualizationTail(
+      prepareConversationVisualizationMarkers(prepared),
+      options.streaming,
+    );
   const result = options.streaming
     ? prepareStreamingTail(
         hideStreamingMetadata(prepared),

@@ -1,4 +1,7 @@
 import { AssistantMessageActionsRow } from "../shared/assistant-message-actions";
+import { LocalConversationCreatedThreadCards } from "../local-conversation-created-thread-cards";
+import { readAssistantCreatedThreadResults } from "../../projection/assistant-created-thread-results";
+import { useCreatedThreadSourceAeon } from "../../created-thread-host-hooks";
 import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import {
@@ -96,6 +99,7 @@ import {
 } from "../../normalized-transcript-hooks";
 
 export interface ThreadLeafBlockProps {
+  hostId?: string;
   block: ThreadTranscriptBlockModel;
   isLatestTurn: boolean;
   isStreamingTurn: boolean;
@@ -659,11 +663,41 @@ function SubagentActivityInlineAvatar({
 export function ThreadSubagentActivityInlineGroupBlock({
   block,
   onOpenThread,
+  hostId,
 }: ThreadLeafBlockProps) {
   const rows =
     block.type === "subagentActivityInlineGroup"
       ? (block.subagentActivityRows ?? EMPTY_SUBAGENT_ACTIVITY_ROWS)
       : EMPTY_SUBAGENT_ACTIVITY_ROWS;
+  if (block.type !== "subagentActivityInlineGroup") return null;
+  if (block.entry.subagentActivity?.isMessage)
+    return (
+      <div className="flex items-center gap-1.5 text-size-chat text-token-text-secondary select-none">
+        <SendIcon className="icon-xs shrink-0" aria-hidden="true" />
+        <span>{`Sent message to ${block.entry.subagentActivity.displayName ?? "parent"}`}</span>
+      </div>
+    );
+  return (
+    <SubagentActivityInlineRows
+      rows={rows}
+      statusLabel={block.subagentActivityStatusLabel}
+      onOpenThread={onOpenThread}
+      sourceRoot={hostId ? { hostId, threadId: block.entry.threadId } : undefined}
+    />
+  );
+}
+
+export function SubagentActivityInlineRows({
+  rows,
+  statusLabel: suppliedStatusLabel,
+  onOpenThread,
+  sourceRoot,
+}: {
+  readonly rows: readonly ThreadSubagentActivityInlineRowModel[];
+  readonly statusLabel?: string;
+  readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
+}) {
   const reducedMotion = useResolvedReducedMotion();
   const [seenConversationIds, setSeenConversationIds] = useState<ReadonlySet<string>>(
     () => new Set(rows.map((row) => row.conversationId)),
@@ -686,20 +720,11 @@ export function ThreadSubagentActivityInlineGroupBlock({
     });
   }, [reducedMotion, rows]);
 
-  if (block.type !== "subagentActivityInlineGroup") return null;
-  if (block.entry.subagentActivity?.isMessage) {
-    return (
-      <div className="flex items-center gap-1.5 text-size-chat text-token-text-secondary select-none">
-        <SendIcon className="icon-xs shrink-0" aria-hidden="true" />
-        <span>{`Sent message to ${block.entry.subagentActivity.displayName ?? "parent"}`}</span>
-      </div>
-    );
-  }
   if (rows.length === 0) return null;
 
   const { avatarCount, namedCount, hiddenCount } = getSubagentActivityDisplayBudget(rows.length);
   const visibleRows = rows.slice(0, avatarCount);
-  const statusLabel = block.subagentActivityStatusLabel ?? resolveSubagentActivityStatusLabel(rows);
+  const statusLabel = suppliedStatusLabel ?? resolveSubagentActivityStatusLabel(rows);
   const sentenceStatus =
     statusLabel === "interrupted"
       ? rows.length === 1
@@ -710,15 +735,17 @@ export function ThreadSubagentActivityInlineGroupBlock({
     if (!onOpenThread || !row.canOpen) return undefined;
     return () => {
       void onOpenThread(row.conversationId, {
+        ...(sourceRoot ? { hostId: sourceRoot.hostId, sourceRoot } : {}),
         subagent: {
-          agentRole: null,
+          agentRole: row.agentRole,
           conversationId: row.conversationId,
-          diffStats: null,
+          diffStats: row.diffStats,
           displayName: row.displayName,
           showInlineActivity: true,
-          spawnModel: null,
+          spawnModel: row.spawnModel,
           status: row.status,
           statusSummary: row.statusSummary,
+          ...(row.canInteract === true ? { canInteract: true } : {}),
         },
       });
     };
@@ -794,6 +821,19 @@ export function ThreadUserAttachmentStripBlock({ block }: ThreadSpecialBlockProp
   return <UserAttachmentStrip attachments={block.attachments} />;
 }
 
+async function submitUserMessageEdit(
+  operation: () => void | Promise<void>,
+  onSuccess: () => void,
+  onSettled: () => void,
+) {
+  try {
+    await operation();
+    onSuccess();
+  } finally {
+    onSettled();
+  }
+}
+
 export function UserMessageBubble({
   block,
   isSearchMatch = false,
@@ -855,18 +895,19 @@ export function UserMessageBubble({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (!onEditLastUserTurn || isSubmittingEdit || block.turnId === null) return;
+      const turnId = block.turnId;
 
       setIsSubmittingEdit(true);
-      try {
-        await onEditLastUserTurn({
-          threadId: block.entry.threadId,
-          turnId: block.turnId,
-          message: draftMessage.trim(),
-        });
-        setIsEditing(false);
-      } finally {
-        setIsSubmittingEdit(false);
-      }
+      await submitUserMessageEdit(
+        () =>
+          onEditLastUserTurn({
+            threadId: block.entry.threadId,
+            turnId,
+            message: draftMessage.trim(),
+          }),
+        () => setIsEditing(false),
+        () => setIsSubmittingEdit(false),
+      );
     },
     [block.entry.threadId, block.turnId, draftMessage, isSubmittingEdit, onEditLastUserTurn],
   );
@@ -1161,19 +1202,28 @@ export function ThreadWorkedForBlock({ block }: { block: ThreadWorkedForBlockMod
 
 export function ThreadAssistantBodyBlock({
   block: inputBlock,
+  hostId,
   isLatestTurn,
   isStreamingTurn,
   isSearchMatch = false,
   isActiveSearchMatch = false,
   projectWorkspacePath,
+  projectlessOutputDirectory,
   threadCwd,
   onForkFromTurn,
+  onOpenThread,
   assistantAfter,
   alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
   const markdownText = block.entry.markdownText ?? "";
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
+  const aeon = useCreatedThreadSourceAeon(hostId ?? null, block.entry.threadId);
+  const createdThreads = readAssistantCreatedThreadResults({
+    source: markdownText,
+    completed: block.entry.status === "completed",
+    aeon,
+  });
   const visualizationContext = useConversationVisualizationContext(
     block.entry.threadId,
     block.turnId,
@@ -1241,10 +1291,22 @@ export function ThreadAssistantBodyBlock({
             visualizationContext={visualizationContext}
           />
         </div>
+        {createdThreads.length > 0 ? (
+          <div className="mt-3">
+            <LocalConversationCreatedThreadCards
+              sourceRoot={hostId ? { hostId, threadId: block.entry.threadId } : undefined}
+              results={createdThreads}
+              onOpenThread={onOpenThread}
+            />
+          </div>
+        ) : null}
         {assistantAfter ? <div className="mt-3">{assistantAfter}</div> : null}
         {assistantActions ? (
           <AssistantMessageActionsRow
             actions={assistantActions}
+            copySource={block.entry}
+            cwd={threadCwd}
+            projectlessOutputDirectory={projectlessOutputDirectory}
             threadId={block.entry.threadId}
             turnId={block.turnId}
             isLatestTurn={isLatestTurn}
@@ -1259,6 +1321,8 @@ export function ThreadAssistantBodyBlock({
 
 export function ThreadAssistantActionsBlock({
   block,
+  threadCwd,
+  projectlessOutputDirectory,
   isLatestTurn,
   onForkFromTurn,
   alwaysShowAssistantMessageActions = false,
@@ -1285,6 +1349,9 @@ export function ThreadAssistantActionsBlock({
     >
       <AssistantMessageActionsRow
         actions={block.actions}
+        copySource={block.entry}
+        cwd={threadCwd}
+        projectlessOutputDirectory={projectlessOutputDirectory}
         threadId={block.entry.threadId}
         turnId={block.turnId}
         isLatestTurn={isLatestTurn}

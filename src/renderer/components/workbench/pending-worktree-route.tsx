@@ -41,6 +41,11 @@ import type {
 import type { CodexAgentMode } from "../../../shared/types";
 import { PendingWorktreeProgress } from "./pending-worktree-progress";
 import { resolvePendingWorktreeRouteActions } from "./pending-worktree-route-model";
+import { resolveCreatedThreadTarget } from "../../lib/codex-created-thread-runtime";
+import type {
+  CodexCreatedThreadResolveInput,
+  CodexCreatedThreadResolution,
+} from "../../../shared/codex-child-thread-summary";
 
 export type { PendingWorktreeRouteTransport } from "@/lib/pending-worktree-runtime";
 
@@ -69,13 +74,27 @@ function errorMessage(error: unknown): string {
 function findPendingWorktreeEntry(
   entries: readonly CodexPendingWorktreeEntry[],
   clientThreadId: string,
+  pendingWorktreeId?: string,
 ): CodexPendingWorktreeEntry | null {
   return (
     entries.find(
       (entry) =>
-        entry.launchMode !== "create-stable-worktree" && entry.clientThreadId === clientThreadId,
+        entry.launchMode !== "create-stable-worktree" &&
+        entry.clientThreadId === clientThreadId &&
+        (pendingWorktreeId === undefined || entry.id === pendingWorktreeId),
     ) ?? null
   );
+}
+
+function verifiedPendingResolution(
+  resolution: CodexPendingWorktreeThreadResolution | null,
+  target: CodexCreatedThreadResolution | null | undefined,
+): CodexPendingWorktreeThreadResolution | null {
+  if (target === undefined) return resolution;
+  if (!resolution || !target) return null;
+  if (resolution.state === "succeeded")
+    return target.ready && target.threadId === resolution.threadId ? resolution : null;
+  return target.pendingWorktreeId === resolution.pendingWorktreeId ? resolution : null;
 }
 
 export interface PendingWorktreeRouteViewProps {
@@ -313,6 +332,10 @@ function PendingWorktreeRouteStatusSurface({
 
 export interface PendingWorktreeRouteProps {
   clientThreadId: string;
+  expectedHostId?: string;
+  readTarget?: (
+    input: CodexCreatedThreadResolveInput,
+  ) => Promise<CodexCreatedThreadResolution | null>;
   agentMode?: CodexAgentMode;
   externalHeader?: boolean;
   transport?: PendingWorktreeRouteTransport;
@@ -325,6 +348,8 @@ export interface PendingWorktreeRouteProps {
 
 export function PendingWorktreeRoute({
   clientThreadId,
+  expectedHostId,
+  readTarget = resolveCreatedThreadTarget,
   agentMode = "auto",
   transport = pendingWorktreeRouteTransport,
   onClose,
@@ -351,16 +376,26 @@ export function PendingWorktreeRoute({
       const sequence = loadSequenceRef.current + 1;
       loadSequenceRef.current = sequence;
       try {
-        const [entries, resolution] = await Promise.all([
+        const [entries, resolution, target] = await Promise.all([
           entriesOverride ?? transport.list(),
           transport.resolveThread(clientThreadId),
+          expectedHostId === undefined
+            ? Promise.resolve(undefined)
+            : readTarget({ clientThreadId, expectedHostId }),
         ]);
         if (loadSequenceRef.current !== sequence) return;
-        const entry = findPendingWorktreeEntry(entries, clientThreadId);
+        const admitted =
+          target === undefined ||
+          (target?.hostId === expectedHostId && target?.clientThreadId === clientThreadId);
+        const entry =
+          admitted && (target === undefined || target?.pendingWorktreeId !== undefined)
+            ? findPendingWorktreeEntry(entries, clientThreadId, target?.pendingWorktreeId)
+            : null;
+        const matchingResolution = admitted ? verifiedPendingResolution(resolution, target) : null;
         setSnapshot({
-          status: entry || resolution ? "ready" : "missing",
+          status: entry || matchingResolution ? "ready" : "missing",
           entry,
-          resolution,
+          resolution: matchingResolution,
           errorMessage: null,
         });
       } catch (error) {
@@ -373,7 +408,7 @@ export function PendingWorktreeRoute({
         });
       }
     },
-    [clientThreadId, transport],
+    [clientThreadId, expectedHostId, readTarget, transport],
   );
 
   useEffect(() => {

@@ -20,6 +20,11 @@ import {
   measureTranscriptWheel,
 } from "./support/transcript-read-only-benchmark";
 import {
+  disposeTranscriptFindDiagnostics,
+  installTranscriptFindDiagnostics,
+  readTranscriptFindDiagnostics,
+} from "./support/transcript-find-diagnostics";
+import {
   installTranscriptPortProbe as instrumentTranscriptPorts,
   readTranscriptPortEvidence as readPortCounts,
   beginTranscriptReleasedIdleObservation,
@@ -27,6 +32,7 @@ import {
 
 const sampleCount = 30;
 const traceEnabled = process.env.NODEX_TRANSCRIPT_TRACE === "1";
+const findDiagnosticsEnabled = process.env.NODEX_TRANSCRIPT_FIND_DIAGNOSTICS === "1";
 const execFileAsync = promisify(execFile);
 interface NativeRequest {
   readonly method: string;
@@ -448,6 +454,7 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
       if (corpus.id === "long") expect(searchTargetWasResident).toBe(false);
       const searchRequestOffset = (await readRequests(logPath)).length;
       const readOnlyWheel = await measureTranscriptWheel(second);
+      if (findDiagnosticsEnabled) await installTranscriptFindDiagnostics(second);
       await second.keyboard.press("ControlOrMeta+f");
       const query = second.getByPlaceholder("Search chat…");
       await expect(query).toBeVisible();
@@ -472,6 +479,7 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
               })),
             wheel: readOnlyWheel,
             find: readOnlyFind,
+            diagnosticOnly: findDiagnosticsEnabled,
             boundary:
               "Real wheel to first scroll event plus two rAF; Find fill to exact active visible mark plus two rAF. Normal product UI and history adapters. Synthetic text matches the shared corpus. This Nodex run uses the fake native history fixture; reference uses native rollout files. No streaming paint or cross-backend equality claim.",
           },
@@ -486,6 +494,11 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
       await expect(targetMark).toHaveText(searchTerm);
       await expect(targetMark).toBeVisible();
       const searchHighlightVisible = await targetMark.isVisible();
+      if (findDiagnosticsEnabled)
+        await writeFile(
+          path.join(artifactDirectory, `${corpus.id}-find-diagnostic.json`),
+          JSON.stringify(await readTranscriptFindDiagnostics(second), null, 2),
+        );
       if (corpus.id === "long") {
         await expect
           .poll(
@@ -721,6 +734,14 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
         ),
       );
       const failedPage = diagnosticPage ?? harness.page;
+      const findDiagnostic = findDiagnosticsEnabled
+        ? await readTranscriptFindDiagnostics(failedPage).catch(() => null)
+        : null;
+      if (findDiagnosticsEnabled)
+        await writeFile(
+          path.join(artifactDirectory, `${corpus.id}-find-diagnostic.json`),
+          JSON.stringify(findDiagnostic, null, 2),
+        );
       if (process.env.NODEX_TRANSCRIPT_DIAGNOSE === "1") {
         const samples = [];
         for (let index = 0; index < 4; index++) {
@@ -781,9 +802,10 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
               failedPage,
               "codex:thread:history-search",
               state.thread.id,
-              `Synthetic history ${Math.floor(corpus.turnCount / 2)
-                .toString()
-                .padStart(4, "0")}`,
+              findDiagnostic?.query ??
+                `Synthetic history ${Math.floor(corpus.turnCount / 2)
+                  .toString()
+                  .padStart(4, "0")}`,
             ).catch((cause) => ({ error: String(cause) })),
             null,
             2,
@@ -815,6 +837,8 @@ for (const corpus of TRANSCRIPT_PERFORMANCE_CORPORA) {
       });
       throw error;
     } finally {
+      if (findDiagnosticsEnabled && diagnosticPage)
+        await disposeTranscriptFindDiagnostics(diagnosticPage).catch(() => {});
       await recordingPage?.screencast.stop().catch(() => {});
       if (!failed && traceEnabled)
         await harness.application

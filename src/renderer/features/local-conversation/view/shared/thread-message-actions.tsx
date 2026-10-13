@@ -156,7 +156,7 @@ export function CopyMessageActionButton({
   className,
 }: {
   text?: string;
-  getText?: () => string;
+  getText?: () => string | null;
   html?: string | null;
   getHtml?: () => string | null;
   label?: string;
@@ -188,11 +188,14 @@ export function CopyMessageActionButton({
     if (resetTimerRef.current !== null || copyingRef.current) return;
     copyingRef.current = true;
     const didCopy = await writeAndReleaseMessageCopy(
-      () =>
-        writeMessageToClipboard(
-          getText?.() ?? text ?? "",
+      () => {
+        const currentText = getText ? getText() : (text ?? "");
+        if (currentText === null) return Promise.resolve(false);
+        return writeMessageToClipboard(
+          currentText,
           getHtml?.() ?? html ?? getMessageCopyHtml(trigger),
-        ),
+        );
+      },
       () => {
         copyingRef.current = false;
       },

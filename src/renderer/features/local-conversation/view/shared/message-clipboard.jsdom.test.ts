@@ -11,21 +11,21 @@ afterEach(() => {
 });
 
 describe("message clipboard", () => {
-  test("normalizes displayed citations and annotations while preserving code examples", () => {
+  test("normalizes global file citations while preserving unknown and unresolved annotations", () => {
     expect(
       normalizeMessageCopyText(
         'See 【F:src/a%20b.ts†L2-L4】 citeturn1 :codex-annotation{index="2"}\n\n::note{value="hidden"}\n\n`【F:src/a.ts†L1】`\n\n```text\n::note{value="keep"}\n```',
       ),
     ).toBe(
-      'See src/a b.ts:2-4  Annotation 2\n\n`【F:src/a.ts†L1】`\n\n```text\n::note{value="keep"}\n```',
+      'See src/a b.ts:2-4  :codex-annotation{index="2"}\n\n::note{value="hidden"}\n\n`src/a.ts`\n\n```text\n::note{value="keep"}\n```',
     );
   });
 
-  test("compacts prose gaps without changing blank lines inside code blocks", () => {
+  test("retains authored prose gaps and unknown directives alongside code blocks", () => {
     const code = "```text\nfirst\n\n\nlast\n```";
     expect(
       normalizeMessageCopyText(`Before.\n\n::note{value="hidden"}\n\n${code}\n\n\nAfter.`),
-    ).toBe(`Before.\n\n${code}\n\nAfter.`);
+    ).toBe(`Before.\n\n::note{value="hidden"}\n\n${code}\n\n\nAfter.`);
   });
 
   test("copies semantic formatting and portable file links without toolbar chrome", () => {

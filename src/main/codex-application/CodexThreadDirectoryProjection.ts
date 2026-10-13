@@ -85,6 +85,33 @@ export interface CodexThreadDirectoryMaterialization {
   readonly parentThreadId: string | null;
 }
 
+/** Closed observational fields cannot change execution ownership or a Session/parent link. */
+export function projectCodexThreadTargetObservation(
+  materialization: CodexThreadDirectoryMaterialization,
+  existing: DesktopProjectWorkspaceThread | null,
+  projectId: string | null,
+): NonNullable<
+  Extract<
+    ProjectWorkspaceApplyInput["intent"],
+    { kind: "ensure_codex_thread_session" }
+  >["observation"]
+> | null {
+  const patch = materialization.patch;
+  if (!patch.status || typeof patch.updated_at !== "number" || typeof patch.recency_at !== "number")
+    return null;
+  return {
+    project_id: projectId,
+    cwd: patch.cwd ?? existing?.cwd ?? null,
+    thread_name: patch.thread_name ?? existing?.threadName ?? null,
+    thread_source: patch.thread_source ?? null,
+    thread_preview: patch.thread_preview ?? "",
+    status: patch.status,
+    created_at: patch.created_at ?? existing?.createdAt ?? 0,
+    updated_at: patch.updated_at,
+    recency_at: patch.recency_at,
+  };
+}
+
 /**
  * Projects one app-server observation into the durable Core identity patch. Existing Core
  * execution ownership always wins over observational cwd spellings.

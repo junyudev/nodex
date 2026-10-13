@@ -269,6 +269,7 @@ function ThreadTurnBody({
   const renderBlock = (block: ThreadBlockModel) => (
     <ThreadBlockRenderer
       block={block}
+      hostId={hostId}
       isLatestTurn={turn.isLatestTurn}
       isStreamingTurn={turn.isStreamingTurn}
       projectWorkspacePath={projectWorkspacePath}
@@ -294,6 +295,7 @@ function ThreadTurnBody({
   const renderAgentUnit = (unit: ThreadAgentRenderUnit, compactUserMessageActions = false) => (
     <ThreadBlockRenderer
       block={unit.block}
+      hostId={hostId}
       isLatestTurn={turn.isLatestTurn}
       isStreamingTurn={turn.isStreamingTurn}
       projectWorkspacePath={projectWorkspacePath}

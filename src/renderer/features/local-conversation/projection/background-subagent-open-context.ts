@@ -5,8 +5,10 @@ import type {
 
 export function buildBackgroundAgentOpenContext(
   row: ThreadComposerShellBackgroundAgentRowModel,
+  sourceRoot?: ThreadOpenThreadContext["sourceRoot"],
 ): ThreadOpenThreadContext {
   return {
+    ...(sourceRoot ? { hostId: sourceRoot.hostId, sourceRoot } : {}),
     subagent: {
       agentRole: row.agentRole,
       conversationId: row.conversationId,

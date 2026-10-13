@@ -33,6 +33,7 @@ import type {
 } from "../../thread-stage-types";
 
 interface ThreadBlockRendererProps {
+  hostId?: string;
   block: ThreadBlockModel;
   isLatestTurn: boolean;
   isStreamingTurn: boolean;
@@ -72,6 +73,7 @@ interface ThreadBlockRendererProps {
 }
 
 export function ThreadBlockRenderer({
+  hostId,
   block,
   isLatestTurn,
   isStreamingTurn,
@@ -185,6 +187,7 @@ export function ThreadBlockRenderer({
   if (block.type === "subagentActivityInlineGroup") {
     return (
       <ThreadSubagentActivityInlineGroupBlock
+        hostId={hostId}
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
@@ -268,6 +271,7 @@ export function ThreadBlockRenderer({
           {block.assistantAfterBlocks.map((assistantAfterBlock) => (
             <ThreadBlockRenderer
               key={assistantAfterBlock.id}
+              hostId={hostId}
               block={assistantAfterBlock}
               isLatestTurn={isLatestTurn}
               isStreamingTurn={isStreamingTurn}
@@ -294,11 +298,16 @@ export function ThreadBlockRenderer({
       ) : null;
     const body = (
       <ThreadAssistantBodyBlock
+        hostId={hostId}
+        onOpenThread={onOpenThread}
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
         isSearchMatch={isSearchMatch}
         isActiveSearchMatch={isActiveSearchMatch}
+        threadCwd={threadCwd}
+        projectWorkspacePath={projectWorkspacePath}
+        projectlessOutputDirectory={projectlessOutputDirectory}
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
         assistantAfter={assistantAfter}
@@ -335,6 +344,8 @@ export function ThreadBlockRenderer({
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
+        threadCwd={threadCwd}
+        projectlessOutputDirectory={projectlessOutputDirectory}
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
         alwaysShowAssistantMessageActions={alwaysShowAssistantMessageActions}

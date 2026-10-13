@@ -1,7 +1,8 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { enablePatches, produceWithPatches, type Draft } from "immer";
+import { castDraft, enablePatches, produceWithPatches, type Draft } from "immer";
 import { useLayoutEffect } from "react";
+import { flushSync } from "react-dom";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
 import { renderWithMaitai as render } from "../../../test/thread-maitai";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
@@ -121,6 +122,27 @@ function history(index: number): Turn {
     ],
   };
 }
+function hydrateHistory(turns: Turn[]): CodexCanonicalConversationState {
+  return createCodexCanonicalHydratedConversationState(
+    {
+      ...buildAgentActivityV2CorpusThread([]),
+      id: key.threadId,
+      historyMode: "paginated",
+      turns,
+    },
+    {
+      hostId: "local",
+      model: "model",
+      reasoningEffort: null,
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/workspace"],
+    },
+  );
+}
 const actions: ThreadStageActions = {
   onCollaborationModeChange: () => {},
   onModelChange: () => {},
@@ -165,29 +187,38 @@ function FindControls() {
 }
 
 describe("actual transcript Find placement", () => {
-  test("centers an already mounted native history match after streaming completion and user wheel", async (context) => {
-    let state = createCodexCanonicalHydratedConversationState(
-      {
-        ...buildAgentActivityV2CorpusThread([]),
-        id: key.threadId,
-        historyMode: "paginated",
-        turns: Array.from({ length: 10 }, (_, index) =>
-          index === 9
-            ? { ...history(index + 1), status: "inProgress", completedAt: null }
-            : history(index + 1),
-        ),
-      },
-      {
-        hostId: "local",
-        model: "model",
-        reasoningEffort: null,
-        cwd: "/workspace",
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        sandboxPolicy: { type: "readOnly", networkAccess: false },
-        activePermissionProfile: null,
-        runtimeWorkspaceRoots: ["/workspace"],
-      },
+  test.for([
+    {
+      name: "centers an already mounted native history match after streaming completion and user wheel",
+      latePage: false,
+      nearTarget: false,
+      alreadyCentered: false,
+    },
+    {
+      name: "keeps native smooth Find centered when a newer history page arrives during the scroll",
+      latePage: true,
+      nearTarget: false,
+      alreadyCentered: false,
+    },
+    {
+      name: "centers a match just below the viewport when a newer history page arrives during native smooth Find",
+      latePage: true,
+      nearTarget: true,
+      alreadyCentered: false,
+    },
+    {
+      name: "finishes native Find for an already centered match without waiting for scrollend",
+      latePage: false,
+      nearTarget: false,
+      alreadyCentered: true,
+    },
+  ])("$name", async ({ latePage, nearTarget, alreadyCentered }, context) => {
+    let state = hydrateHistory(
+      Array.from({ length: 10 }, (_, index) =>
+        index === 9
+          ? { ...history(index + 1), status: "inProgress", completedAt: null }
+          : history(index + 1),
+      ),
     );
     const scrollState: { current: LocalConversationThreadScrollControllerValue | null } = {
       current: null,
@@ -222,7 +253,7 @@ describe("actual transcript Find placement", () => {
     const restore = {
       ...EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT,
       virtualizedTurnList: {
-        renderedWindow: { anchorKey: targetEntry.turnKey, count: 6 },
+        renderedWindow: { anchorKey: targetEntry.turnKey, count: latePage ? 10 : 6 },
         turnHeightsByKey: {},
       },
     };
@@ -246,10 +277,10 @@ describe("actual transcript Find placement", () => {
         }}
         body={{
           threadId: key.threadId,
-          turnCount: 10,
+          turnCount: state.turns.length,
           isThreadRunning: running,
           activeTurnId: running ? "history-turn-0010" : null,
-          latestTurnId: "history-turn-0010",
+          latestTurnId: state.turns.at(-1)?.turnId ?? null,
           emptyState: { type: "none" },
           showThreadStartProgressPanel: false,
         }}
@@ -286,6 +317,33 @@ describe("actual transcript Find placement", () => {
     const view = render(rows(true));
     const modes: string[] = [];
     let scrollCalls = 0;
+    let scrollEndCount = 0;
+    const recordScrollEnd = () => {
+      scrollEndCount++;
+    };
+    let pageTimer: ReturnType<typeof setTimeout> | null = null;
+    let acceptPage: () => void = () => {};
+    let rejectPage: (error: unknown) => void = () => {};
+    const pageDelivery = new Promise<void>((resolve, reject) => {
+      acceptPage = resolve;
+      rejectPage = reject;
+    });
+    const latePageEvidence: Array<{
+      phase: string;
+      atMs: number;
+      height: number;
+      top: number;
+      mode: string;
+      targetTop?: number;
+      markTop?: number;
+    }> = [];
+    const scrollWrites: Array<{
+      atMs: number;
+      top: number;
+      behavior: string | undefined;
+      targetTop?: number;
+      markTop?: number;
+    }> = [];
     try {
       const viewport = await waitFor(() => {
         const element = view.container.querySelector<HTMLElement>(
@@ -321,13 +379,132 @@ describe("actual transcript Find placement", () => {
         await Promise.resolve();
       });
       expect(readController().getScrollMode()).toBe("stickToBottom");
+      if (alreadyCentered) {
+        await act(async () => {
+          view.getByText(term, { exact: true }).scrollIntoView({
+            behavior: "instant",
+            block: "center",
+            inline: "nearest",
+          });
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+        });
+        // The later inline mark uses the text glyph box, not its surrounding block's line box.
+        await act(async () => {
+          const range = document.createRange();
+          range.selectNodeContents(view.getByText(term, { exact: true }));
+          const text = range.getBoundingClientRect();
+          const clip = viewport.getBoundingClientRect();
+          const style = getComputedStyle(viewport);
+          const center =
+            (clip.top +
+              (parseFloat(style.scrollPaddingTop) || 0) +
+              clip.bottom -
+              (parseFloat(style.scrollPaddingBottom) || 0)) /
+            2;
+          viewport.scrollTo({
+            behavior: "instant",
+            top: viewport.scrollTop + (text.top + text.bottom) / 2 - center,
+          });
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+        });
+      }
+      if (nearTarget) {
+        // The first physical move admits rows whose actual heights replace estimates.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          await act(async () => {
+            const target = view.getByText(term, { exact: true });
+            const desiredTop = viewport.getBoundingClientRect().bottom + 26;
+            const nextScrollTop =
+              viewport.scrollTop + target.getBoundingClientRect().top - desiredTop;
+            fireEvent.wheel(viewport, { deltaY: nextScrollTop - viewport.scrollTop });
+            viewport.scrollTop = nextScrollTop;
+            fireEvent.scroll(viewport);
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            );
+          });
+        }
+        const targetTop = view.getByText(term, { exact: true }).getBoundingClientRect().top;
+        expect(targetTop - viewport.getBoundingClientRect().bottom).toBeGreaterThan(20);
+        expect(targetTop - viewport.getBoundingClientRect().bottom).toBeLessThan(32);
+      }
+      const initialFindScrollTop = viewport.scrollTop;
+      if (alreadyCentered) viewport.addEventListener("scrollend", recordScrollEnd);
       const originalScroll = HTMLElement.prototype.scrollIntoView;
+      const originalScrollTo = viewport.scrollTo;
+      vi.spyOn(viewport, "scrollTo").mockImplementation((...args: unknown[]) => {
+        const request = args[0];
+        const options = typeof request === "object" && request !== null ? request : null;
+        scrollWrites.push({
+          atMs: performance.now(),
+          top:
+            options && "top" in options && typeof options.top === "number"
+              ? options.top
+              : typeof request === "number"
+                ? request
+                : viewport.scrollTop,
+          behavior:
+            options && "behavior" in options && typeof options.behavior === "string"
+              ? options.behavior
+              : undefined,
+          targetTop: view.queryByText(term, { exact: true })?.getBoundingClientRect().top,
+          markTop: view.container
+            .querySelector("mark.codex-thread-find-active")
+            ?.getBoundingClientRect().top,
+        });
+        Reflect.apply(originalScrollTo, viewport, args);
+      });
       const nativeScroll = vi
         .spyOn(HTMLElement.prototype, "scrollIntoView")
         .mockImplementation(function (this: HTMLElement, options) {
           scrollCalls++;
           modes.push(readController().getScrollMode());
           originalScroll.call(this, options);
+          if (latePage && pageTimer === null) {
+            latePageEvidence.push({
+              phase: "native-smooth-started",
+              atMs: performance.now(),
+              height: viewport.scrollHeight,
+              top: viewport.scrollTop,
+              mode: readController().getScrollMode(),
+              targetTop: view.queryByText(term, { exact: true })?.getBoundingClientRect().top,
+              markTop: view.container
+                .querySelector("mark.codex-thread-find-active")
+                ?.getBoundingClientRect().top,
+            });
+            pageTimer = setTimeout(() => {
+              try {
+                latePageEvidence.push({
+                  phase: "before-newer-page",
+                  atMs: performance.now(),
+                  height: viewport.scrollHeight,
+                  top: viewport.scrollTop,
+                  mode: readController().getScrollMode(),
+                  targetTop: view.queryByText(term, { exact: true })?.getBoundingClientRect().top,
+                  markTop: view.container
+                    .querySelector("mark.codex-thread-find-active")
+                    ?.getBoundingClientRect().top,
+                });
+                const newer = history(11);
+                const answer = newer.items.find((item) => item.type === "agentMessage");
+                if (answer?.type === "agentMessage") answer.text = answer.text.repeat(6);
+                const admitted = hydrateHistory([newer]).turns;
+                flushSync(() => {
+                  update((draft) => {
+                    draft.turns.push(...castDraft(admitted));
+                  });
+                  view.rerender(rows(false));
+                });
+                acceptPage();
+              } catch (error) {
+                rejectPage(error);
+              }
+            }, 75);
+          }
         });
       const targetRow = view.getByText(term, { exact: true }).closest("[data-turn-key]");
       await act(async () => {
@@ -337,6 +514,28 @@ describe("actual transcript Find placement", () => {
       await waitFor(() =>
         expect(view.getByLabelText("Find result").textContent).toBe("1 / 1 results"),
       );
+      await waitFor(() => expect(scrollCalls).toBeGreaterThan(0), { interval: 1 });
+      await act(async () => {
+        if (latePage) await pageDelivery;
+        await new Promise<void>((resolve) => setTimeout(resolve, 600));
+      });
+      if (latePage) {
+        await act(async () => {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          );
+        });
+        latePageEvidence.push({
+          phase: "newer-page-measured",
+          atMs: performance.now(),
+          height: viewport.scrollHeight,
+          top: viewport.scrollTop,
+          mode: readController().getScrollMode(),
+        });
+        expect(owner.readStructure()!.turns).toHaveLength(11);
+        expect(latePageEvidence.at(-1)!.height).toBeGreaterThan(latePageEvidence[0]!.height);
+        expect(latePageEvidence[1]!.atMs).toBeGreaterThan(latePageEvidence[0]!.atMs);
+      }
       await waitFor(
         () => {
           const mark = view.container.querySelector<HTMLElement>("mark.codex-thread-find-active");
@@ -346,10 +545,23 @@ describe("actual transcript Find placement", () => {
           expect(rect.height).toBeGreaterThan(0);
           expect(rect.bottom).toBeGreaterThan(clip.top);
           expect(rect.top).toBeLessThan(clip.bottom);
+          if (latePage || alreadyCentered) {
+            const style = getComputedStyle(viewport);
+            const visibleTop = clip.top + (parseFloat(style.scrollPaddingTop) || 0);
+            const visibleBottom = clip.bottom - (parseFloat(style.scrollPaddingBottom) || 0);
+            expect(
+              Math.abs((rect.top + rect.bottom) / 2 - (visibleTop + visibleBottom) / 2),
+            ).toBeLessThanOrEqual(2);
+          }
         },
         { timeout: 3_000 },
       );
-      expect(modes).toEqual(["programmaticFind"]);
+      if (alreadyCentered) {
+        expect(readController().nativeFindTurnKey).toBeNull();
+        expect(readController().getScrollMode()).not.toBe("programmaticFind");
+        expect(scrollEndCount).toBe(0);
+        expect(Math.abs(viewport.scrollTop - initialFindScrollTop)).toBeLessThanOrEqual(1);
+      }
       expect(
         view.container.querySelector("mark.codex-thread-find-active")?.closest("[data-turn-key]"),
       ).toBe(targetRow);
@@ -360,18 +572,26 @@ describe("actual transcript Find placement", () => {
         inline: "nearest",
       });
     } finally {
+      if (pageTimer !== null) clearTimeout(pageTimer);
       const active = view.container.querySelector<HTMLElement>("mark.codex-thread-find-active");
       const viewport = scrollState.current?.getScrollElement();
       const evidence = {
         modes,
         scrollCalls,
+        scrollEndCount,
         mode: scrollState.current?.getScrollMode(),
         top: viewport?.scrollTop,
         markTop: active?.getBoundingClientRect().top,
         markBottom: active?.getBoundingClientRect().bottom,
         markHeight: active?.getBoundingClientRect().height,
         clip: viewport?.getBoundingClientRect().toJSON(),
+        latePageEvidence,
+        scrollWrites,
+        targetPresent: view.queryByText(term, { exact: true }) !== null,
       };
+      viewport?.removeEventListener("scrollend", recordScrollEnd);
+      if (latePage || alreadyCentered)
+        console.info("native Find geometry", JSON.stringify(evidence));
       view.unmount();
       retain();
       await context.annotate("resident native Find placement", "viewport geometry", {

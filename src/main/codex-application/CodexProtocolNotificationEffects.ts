@@ -745,7 +745,49 @@ export const make: Effect.Effect<
         }
         const disposition: CodexConversationDisposition =
           terminal && appliedInput.terminalTargetGeneration !== null ? "retire" : "retain";
+        const targetManager = managers.current(input.hostId);
         return yield* apply(appliedInput).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              if (
+                targetManager === null ||
+                managers.current(input.hostId) !== targetManager ||
+                targetManager.generation !== input.generation
+              )
+                return;
+              const notification = input.notification;
+              const item =
+                notification.method === "item/completed" ? notification.params.item : null;
+              const metadataChanged =
+                notification.method === "thread/started" ||
+                notification.method === "thread/name/updated" ||
+                notification.method === "thread/status/changed" ||
+                notification.method === "turn/started" ||
+                notification.method === "turn/completed" ||
+                terminal;
+              if (
+                !metadataChanged &&
+                item?.type !== "agentMessage" &&
+                item?.type !== "subAgentActivity" &&
+                item?.type !== "collabAgentToolCall"
+              )
+                return;
+              const threadId = codexProtocolNotificationThreadId(notification);
+              const ids = new Set(threadId ? [threadId] : []);
+              if (item?.type === "subAgentActivity") ids.add(item.agentThreadId);
+              if (item?.type === "collabAgentToolCall")
+                for (const receiver of item.receiverThreadIds) ids.add(receiver);
+              for (const target of ids)
+                events.publish({
+                  kind: "codex",
+                  value: {
+                    type: "createdThreadTargetChanged",
+                    hostId: input.hostId,
+                    threadId: target,
+                  },
+                });
+            }),
+          ),
           Effect.catchCause((cause) =>
             isInterruptedOnly(cause)
               ? Effect.interrupt

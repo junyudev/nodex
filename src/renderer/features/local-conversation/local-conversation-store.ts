@@ -3767,6 +3767,11 @@ export class CodexAppServerManager {
 
   subscribeConnection(listener: StoreListener): () => void {
     this.start();
+    return this.observeConnection(listener);
+  }
+
+  /** Read-only consumers observe an existing host without starting its connection. */
+  observeConnection(listener: StoreListener): () => void {
     return subscribeSet(this.connectionCallbacks, listener);
   }
 
@@ -3793,11 +3798,25 @@ export class CodexAppServerManager {
 
   addConversationCallback(threadId: string, listener: ConversationListener): () => void {
     this.start();
+    return this.observeConversation(threadId, listener);
+  }
+
+  observeConversation(threadId: string, listener: ConversationListener): () => void {
     const listeners = getOrCreateListenerSet(this.conversationCallbacks, threadId);
     const unsubscribe = subscribeSet(listeners, listener);
     return () => {
       unsubscribe();
       cleanupListenerSet(this.conversationCallbacks, threadId);
+    };
+  }
+
+  /** Resident header consumers do not acquire a connection or history interest. */
+  observeThreadMetadata(threadId: string, listener: StoreListener): () => void {
+    const releaseConversation = this.observeConversation(threadId, listener);
+    const releaseHeaders = subscribeSet(this.anyConversationMetaCallbacks, listener);
+    return () => {
+      releaseConversation();
+      releaseHeaders();
     };
   }
 
@@ -9456,6 +9475,10 @@ export class CodexAppServerManagerRegistry {
     const manager = new CodexAppServerManager(hostId);
     this.addManager(manager);
     return manager;
+  }
+
+  readForHostId(hostId: string): CodexAppServerManager | null {
+    return this.managers.get(hostId) ?? null;
   }
 
   getForConversationId(conversationId: string): CodexAppServerManager {

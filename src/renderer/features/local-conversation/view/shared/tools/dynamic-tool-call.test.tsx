@@ -139,9 +139,9 @@ describe("DynamicToolCall", () => {
     expect(openedThreads.join(",")).toBe("thread-1");
   });
 
-  test("renders completed create_thread success as an open-task card", async () => {
-    const openedThreads: string[] = [];
-    const { getByRole, container } = render(
+  test("opens the completed creation activity with its exact host target", async () => {
+    const openedThreads: Array<{ id: string; context: unknown }> = [];
+    const { getByRole } = render(
       <DynamicToolCall
         item={buildDynamicEntry({
           tool: "create_thread",
@@ -149,29 +149,32 @@ describe("DynamicToolCall", () => {
             prompt: "Continue in a background chat",
             target: { type: "projectless" },
           },
-          contentItems: [{ type: "inputText", text: '{"threadId":"thread-created"}' }],
+          contentItems: [
+            { type: "inputText", text: '{"threadId":"thread-created","hostId":"remote"}' },
+          ],
         })}
-        onOpenThread={(threadId) => {
-          openedThreads.push(threadId);
+        onOpenThread={(threadId, context) => {
+          openedThreads.push({ id: threadId, context });
         }}
       />,
     );
 
-    expect(textContent(container).includes("Chat created")).toBe(true);
-    expect(textContent(container).includes("Open chat")).toBe(true);
-    expect(getByRole("button", { name: "Open chat" }).getAttribute("aria-label")).toBe("Open chat");
-
     await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Open chat" }));
+      fireEvent.click(getByRole("button", { name: "Created chat" }));
       await Promise.resolve();
     });
 
-    expect(openedThreads.join(",")).toBe("thread-created");
+    expect(openedThreads).toEqual([
+      {
+        id: "thread-created",
+        context: { createdTarget: { threadId: "thread-created", hostId: "remote" } },
+      },
+    ]);
   });
 
   test("opens create_thread client results through normal thread navigation", async () => {
-    const openedThreads: string[] = [];
-    const { getByRole, container } = render(
+    const openedThreads: Array<{ id: string; context: unknown }> = [];
+    const { getByRole } = render(
       <DynamicToolCall
         item={buildDynamicEntry({
           tool: "create_thread",
@@ -190,22 +193,27 @@ describe("DynamicToolCall", () => {
             },
           ],
         })}
-        onOpenThread={(threadId) => {
-          openedThreads.push(threadId);
+        onOpenThread={(threadId, context) => {
+          openedThreads.push({ id: threadId, context });
         }}
       />,
     );
 
-    expect(textContent(container).includes("Worktree chat")).toBe(true);
-    expect(textContent(container).includes("Open chat")).toBe(true);
-    expect(getByRole("button", { name: "Open chat" }).getAttribute("aria-label")).toBe("Open chat");
-
     await act(async () => {
-      fireEvent.click(getByRole("button", { name: "Open chat" }));
+      fireEvent.click(getByRole("button", { name: "Created worktree chat" }));
       await Promise.resolve();
     });
 
-    expect(openedThreads.join(",")).toBe("client-new-thread:11111111-1111-4111-8111-111111111111");
+    expect(openedThreads).toEqual([
+      {
+        id: "client-new-thread:11111111-1111-4111-8111-111111111111",
+        context: {
+          createdTarget: {
+            clientThreadId: "client-new-thread:11111111-1111-4111-8111-111111111111",
+          },
+        },
+      },
+    ]);
   });
 
   test("renders settings and Chrome tab-context calls with registered labels", () => {

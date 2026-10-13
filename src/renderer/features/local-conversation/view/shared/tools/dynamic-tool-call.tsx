@@ -22,7 +22,6 @@ import { ToolActivityIcon, semanticToolIcon } from "./tool-call-icons";
 import {
   ActivitySpinnerIcon,
   AppActivityIcon,
-  CreatedTaskIcon,
   DeniedCircleIcon,
   SuccessCircleIcon,
 } from "@/components/shared/icons";
@@ -39,54 +38,6 @@ import {
   resolveDynamicToolRegistryLabel,
   type DynamicToolRegistryEntry,
 } from "./dynamic-tool-call-utils";
-
-function openCodexAppCreatedThreadResult(
-  result: ReturnType<typeof parseCodexAppCreateThreadResult>,
-  onOpenThread?: ToolComponentProps["onOpenThread"],
-) {
-  if (!result) return;
-  void onOpenThread?.(
-    typeof result.threadId === "string" ? result.threadId : result.clientThreadId,
-  );
-}
-
-function CodexAppCreatedThreadCard({
-  onOpenThread,
-  result,
-}: {
-  onOpenThread?: ToolComponentProps["onOpenThread"];
-  result: NonNullable<ReturnType<typeof parseCodexAppCreateThreadResult>>;
-}) {
-  const isPendingWorktree = "clientThreadId" in result;
-  const ariaLabel = "Open chat";
-  const title = isPendingWorktree ? "Worktree chat" : "Chat created";
-  const action = "Open chat";
-
-  return (
-    <div className="flex max-w-full flex-col overflow-hidden rounded-lg bg-token-dropdown-background/50 text-token-foreground [--thread-resource-card-row-padding-x:0.75rem] electron:elevation-stroke extension:border extension:border-token-border extension:bg-token-input-background/50 extension:shadow-sm">
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        className="w-full cursor-interaction text-left hover:bg-token-list-hover-background/30 focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none focus-visible:ring-inset"
-        onClick={() => openCodexAppCreatedThreadResult(result, onOpenThread)}
-      >
-        <span className="flex min-w-0 items-center gap-2.5 px-[var(--thread-resource-card-row-padding-x)] py-3 text-left">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-token-bg-secondary text-token-text-secondary">
-            <CreatedTaskIcon className="icon-sm" aria-hidden />
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-size-chat truncate font-medium text-token-foreground">
-              {title}
-            </span>
-          </span>
-          <span className="text-token-button-tertiary-foreground flex h-token-button-composer shrink-0 items-center gap-1 overflow-hidden rounded-lg border border-token-border bg-transparent px-2 py-0 text-base leading-[18px] whitespace-nowrap">
-            {action}
-          </span>
-        </span>
-      </button>
-    </div>
-  );
-}
 
 function AutomationUpdateToolCall({
   call,
@@ -366,21 +317,18 @@ function CodexAppThreadToolCall({
     );
   }
 
-  if (
-    variant === "row" &&
-    call.tool === "create_thread" &&
-    call.completed &&
-    call.success === true
-  ) {
-    const result = parseCodexAppCreateThreadResult(call);
-    if (result) {
-      return <CodexAppCreatedThreadCard onOpenThread={onOpenThread} result={result} />;
-    }
-  }
-
   const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
   if (!label) return null;
-  const navigationThreadId = variant === "row" ? getThreadNavigationTarget(call) : null;
+  const createdTarget = variant === "row" ? parseCodexAppCreateThreadResult(call) : null;
+  const codexTarget = createdTarget?.kind === "chatgpt" ? null : createdTarget;
+  const existingTarget =
+    variant === "row" && call.tool !== "create_thread" ? getThreadNavigationTarget(call) : null;
+  const navigationThreadId =
+    codexTarget !== null
+      ? "threadId" in codexTarget
+        ? codexTarget.threadId
+        : codexTarget.clientThreadId
+      : existingTarget;
   const isNavigableRow = navigationThreadId !== null;
   const iconClassName = cn(
     "icon-xs shrink-0 text-token-conversation-body",
@@ -399,7 +347,10 @@ function CodexAppThreadToolCall({
       onClick={
         navigationThreadId && onOpenThread
           ? () => {
-              void onOpenThread(navigationThreadId);
+              void onOpenThread(
+                navigationThreadId,
+                codexTarget ? { createdTarget: codexTarget } : undefined,
+              );
             }
           : undefined
       }

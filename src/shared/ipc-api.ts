@@ -2138,6 +2138,18 @@ export interface IpcApi {
     args: [threadId: string];
     result: ProjectSession | null;
   };
+  "codex:thread:ensure-open": {
+    args: [input: import("./codex-child-thread-summary").CodexChildThreadSummaryInput];
+    result: ProjectSession | null;
+  };
+  "codex:thread:child-summary": {
+    args: [input: import("./codex-child-thread-summary").CodexChildThreadSummaryInput];
+    result: import("./codex-child-thread-summary").CodexChildThreadSummary;
+  };
+  "codex:created-thread:resolve": {
+    args: [input: import("./codex-child-thread-summary").CodexCreatedThreadResolveInput];
+    result: import("./codex-child-thread-summary").CodexCreatedThreadResolution | null;
+  };
   "codex:threads:palette:list": {
     args: [input: CommandPaletteThreadListInput];
     result: CommandPaletteThreadSummary[];

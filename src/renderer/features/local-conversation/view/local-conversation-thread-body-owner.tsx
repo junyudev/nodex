@@ -1,8 +1,16 @@
 import { ThreadForkSubmissionContext } from "./shared/thread-fork-state";
 import { CodexThreadNavigationMarker } from "./codex-thread-navigation-marker";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { appScope, useScopeHandle } from "@/lib/maitai";
+import {
+  useCallback,
+  useEffect,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { appScope, useScopeHandle, type ScopeHandle } from "@/lib/maitai";
 import {
   ActivitySpinnerIcon,
   CheckmarkIcon,
@@ -44,11 +52,13 @@ import {
   type VisibleConversationContext,
 } from "../selectors";
 import { useCodexTranscriptStructure } from "../normalized-transcript-hooks";
+import type { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import { revealContentSearchUnit } from "../../content-search/content-search-reveal-owner";
 import { selectNormalizedConversationEntriesWithFirstSubmission } from "../normalized-transcript-selectors";
 import {
   isCodexRealtimeTimelineEntry,
   projectNormalizedTimelineEntries,
+  type CodexTimelineViewEntry,
 } from "../projection/normalized-timeline-entries";
 import { readCanonicalClientUserMessageId } from "../../conversation-launch/session-first-submission-owner";
 import type {
@@ -125,6 +135,156 @@ function turnHasUserMessage(turn: CodexConversationTurn): boolean {
   return turn.items.some(
     (item) => item.kind === "userMessage" || item.semanticKind === "userMessage",
   );
+}
+
+/** Holds committed search inputs and mounted DOM/API handles without subscribing to text. */
+function createThreadBodySearchReadPort(
+  initialEntries: readonly CodexTimelineViewEntry[],
+  initialTurns: readonly ConversationTurnListEntry[],
+) {
+  let entries = initialEntries;
+  let turns = initialTurns;
+  let root: HTMLDivElement | null = null;
+  let listApi: LocalConversationVirtualizedTurnListApi | null = null;
+  return {
+    updateCommittedEntries: (
+      nextEntries: readonly CodexTimelineViewEntry[],
+      nextTurns: readonly ConversationTurnListEntry[],
+    ) => {
+      entries = nextEntries;
+      turns = nextTurns;
+    },
+    readProjectedEntries: () => entries,
+    readTurns: () =>
+      turns.flatMap((entry) => {
+        const materialized = materializeConversationTurnListEntry(entry);
+        return materialized ? [materialized] : [];
+      }),
+    readListApi: () => listApi,
+    setListApi: (next: LocalConversationVirtualizedTurnListApi | null) => {
+      listApi = next;
+    },
+    readRoot: () => root,
+    setRoot: (next: HTMLDivElement | null) => {
+      root = next;
+    },
+  };
+}
+
+/** Search callbacks read committed inputs only when a search or reveal runs. */
+function createThreadBodySearchSource({
+  appHandle,
+  bodyThreadId,
+  cwd,
+  projectlessOutputDirectory,
+  threadId,
+  transcriptOwner,
+  reads,
+}: {
+  readonly appHandle: ScopeHandle;
+  readonly bodyThreadId: string | null;
+  readonly cwd: string | null | undefined;
+  readonly projectlessOutputDirectory: string | null | undefined;
+  readonly threadId: string | null;
+  readonly transcriptOwner: CodexTranscriptReadOwner | null;
+  readonly reads: ReturnType<typeof createThreadBodySearchReadPort>;
+}) {
+  return createLocalConversationSearchSource({
+    routeContextId: bodyThreadId ? `conversation:${bodyThreadId}` : "unavailable",
+    cwd,
+    projectlessOutputDirectory,
+    getProjectedEntries: reads.readProjectedEntries,
+    readOwner: () => transcriptOwner,
+    getTurns: reads.readTurns,
+    scrollAdapter: {
+      scrollToTurn: async (turnKey, options) => {
+        if (options?.signal?.aborted) return;
+        const targetEntry = reads.readProjectedEntries().find((entry) => entry.turnKey === turnKey);
+        if (threadId && targetEntry && !isCodexRealtimeTimelineEntry(targetEntry)) {
+          const collapseKey = {
+            conversationId: threadId,
+            turnSearchKey: targetEntry.turnSearchKey,
+          };
+          if (appHandle.get(localConversationTurnCollapseOverrideFamily(collapseKey)) !== false) {
+            setLocalConversationTurnCollapseOverride(appHandle, collapseKey, false);
+          }
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+          if (options?.signal?.aborted) return;
+        }
+        const api = reads.readListApi();
+        if (!api) return;
+        await api.scrollToKey(turnKey, undefined, { signal: options?.signal });
+        if (options?.signal?.aborted) return;
+        await waitForLocalConversationSearchLayout(options?.signal);
+      },
+      getTurnContainer: (turnKey) =>
+        reads
+          .readRoot()
+          ?.querySelector<HTMLElement>(`[data-content-search-turn-key="${turnKey}"]`) ?? null,
+    },
+  });
+}
+
+function createThreadBodySearchHighlights(
+  reads: ReturnType<typeof createThreadBodySearchReadPort>,
+  persistedSearchTargets: Map<string, LocalConversationSearchTarget>,
+  searchSource: ReturnType<typeof createLocalConversationSearchSource>,
+) {
+  return createLocalConversationSearchHighlightOwner({
+    readRoot: reads.readRoot,
+    resolveTarget: (match) => {
+      if (isConversationSearchMatchMeta(match.meta)) return match.meta;
+      if (!isLocalConversationPersistedSearchMatchMeta(match.meta)) return null;
+      return persistedSearchTargets.get(match.id) ?? searchSource.findPersistedTarget(match.meta);
+    },
+  });
+}
+
+async function readThreadBodyPersistedSearch({
+  threadId,
+  query,
+  resident,
+  searchSource,
+  limit,
+  signal,
+}: {
+  readonly threadId: string;
+  readonly query: string;
+  readonly resident: ReturnType<typeof projectLocalConversationResidentSearchResult>;
+  readonly searchSource: ReturnType<typeof createLocalConversationSearchSource>;
+  readonly limit: number;
+  readonly signal?: AbortSignal;
+}) {
+  try {
+    const result = await searchLocalPersistedHistory(threadId, query);
+    if (signal?.aborted || result.status !== "completed") return null;
+    return {
+      page: result.page,
+      merged: mergeLocalConversationSearchResults({
+        resident,
+        persisted: projectLocalConversationPersistedSearchResult({
+          page: result.page,
+          contextId: searchSource.routeContextId,
+          limit,
+        }),
+        resolveResidentTarget: searchSource.findPersistedTarget,
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function withThreadBodyCleanup(operation: () => Promise<void>, cleanup: () => void) {
+  try {
+    await operation();
+  } finally {
+    cleanup();
+  }
 }
 
 function turnEntryHasMcpApp(entry: LocalConversationVirtualizedTurnListEntry | undefined): boolean {
@@ -454,11 +614,11 @@ export function LocalConversationThreadBodyOwner({
   const threadScrollController = useLocalConversationThreadScrollController();
   const { scrollElement } = threadScrollController;
   const searchScrollControllerRef = useRef(threadScrollController);
-  searchScrollControllerRef.current = threadScrollController;
+  useInsertionEffect(() => {
+    searchScrollControllerRef.current = threadScrollController;
+  }, [threadScrollController]);
   const appHandle = useScopeHandle(appScope);
   const setupProgressLogRef = useRef<HTMLDivElement>(null);
-  const contentRootRef = useRef<HTMLDivElement | null>(null);
-  const listApiRef = useRef<LocalConversationVirtualizedTurnListApi | null>(null);
   const [forkDialogState, setForkDialogState] = useState<{
     threadId: string;
     turnId: string;
@@ -500,21 +660,22 @@ export function LocalConversationThreadBodyOwner({
       : resolveLatestEditableTurnId(turns)
     : null;
   const canForkFromTurn = capabilityFlags.canForkFromTurn;
-  const firstSubmissionPresentationRef = useRef<CodexConversationTurn | null>(null);
-  if (firstSubmissionTurn) firstSubmissionPresentationRef.current = firstSubmissionTurn;
-  const presentation = firstSubmissionPresentationRef.current;
+  const [firstSubmissionPresentation, setFirstSubmissionPresentation] =
+    useState<CodexConversationTurn | null>(firstSubmissionTurn ?? null);
+  const presentation = firstSubmissionTurn ?? firstSubmissionPresentation;
   const presentationClientId = presentation ? readCanonicalClientUserMessageId(presentation) : null;
-  if (
+  const shouldRetireFirstSubmission = Boolean(
     presentation &&
     ((presentation.threadId !== threadId && !firstSubmissionTurn) ||
       transcriptStructure?.turns.some(
         (row) => row.value.details.params.clientUserMessageId === presentationClientId,
-      ))
-  )
-    firstSubmissionPresentationRef.current = null;
+      )),
+  );
   // The launch owner may acknowledge its legacy canonical projection before this
   // subscription has committed a multipart reset. Only the read owner retires this row.
-  const retainedFirstSubmission = firstSubmissionPresentationRef.current;
+  const retainedFirstSubmission = shouldRetireFirstSubmission ? null : presentation;
+  if (retainedFirstSubmission !== firstSubmissionPresentation)
+    setFirstSubmissionPresentation(retainedFirstSubmission);
   const turnEntries = useMemo(
     () =>
       transcriptOwner && parentTurns.length === 0
@@ -628,18 +789,20 @@ export function LocalConversationThreadBodyOwner({
     [cwd, projectlessOutputDirectory, turnEntries],
   );
   const userMessageNavigationItemsRef = useRef(userMessageNavigationItems);
-  userMessageNavigationItemsRef.current = userMessageNavigationItems;
-  const currentTurnEntriesRef = useRef(displayedTurnEntries);
-  currentTurnEntriesRef.current = displayedTurnEntries;
-  const projectedEntriesRef = useRef(timelineProjection.entries);
-  projectedEntriesRef.current = timelineProjection.entries;
+  const [searchReads] = useState(() =>
+    createThreadBodySearchReadPort(timelineProjection.entries, displayedTurnEntries),
+  );
+  useInsertionEffect(() => {
+    userMessageNavigationItemsRef.current = userMessageNavigationItems;
+    searchReads.updateCommittedEntries(timelineProjection.entries, displayedTurnEntries);
+  }, [displayedTurnEntries, timelineProjection.entries, userMessageNavigationItems, searchReads]);
   const persistedSearchSessionRef = useRef<{
     threadId: string;
     hostId: string;
     hostGeneration: number;
     topologyGeneration: number;
   } | null>(null);
-  const persistedSearchTargetsRef = useRef(new Map<string, LocalConversationSearchTarget>());
+  const [persistedSearchTargets] = useState(() => new Map<string, LocalConversationSearchTarget>());
   const latestTurnSearchKey = turnEntries.at(-1)?.turnSearchKey ?? null;
   const previousLatestTurnSearchKeyRef = useRef(latestTurnSearchKey);
 
@@ -744,53 +907,24 @@ export function LocalConversationThreadBodyOwner({
 
   const searchSource = useMemo(
     () =>
-      createLocalConversationSearchSource({
-        routeContextId: body.threadId ? `conversation:${body.threadId}` : "unavailable",
+      createThreadBodySearchSource({
+        appHandle,
+        bodyThreadId: body.threadId,
         cwd,
         projectlessOutputDirectory,
-        getProjectedEntries: () => projectedEntriesRef.current,
-        readOwner: () => transcriptOwner,
-        getTurns: () =>
-          currentTurnEntriesRef.current.flatMap((entry) => {
-            const materialized = materializeConversationTurnListEntry(entry);
-            return materialized ? [materialized] : [];
-          }),
-        scrollAdapter: {
-          scrollToTurn: async (turnKey, options) => {
-            if (options?.signal?.aborted) return;
-            const targetEntry = projectedEntriesRef.current.find(
-              (entry) => entry.turnKey === turnKey,
-            );
-            if (threadId && targetEntry && !isCodexRealtimeTimelineEntry(targetEntry)) {
-              const collapseKey = {
-                conversationId: threadId,
-                turnSearchKey: targetEntry.turnSearchKey,
-              };
-              if (
-                appHandle.get(localConversationTurnCollapseOverrideFamily(collapseKey)) !== false
-              ) {
-                setLocalConversationTurnCollapseOverride(appHandle, collapseKey, false);
-              }
-              await new Promise<void>((resolve) => {
-                requestAnimationFrame(() => {
-                  resolve();
-                });
-              });
-              if (options?.signal?.aborted) return;
-            }
-            const api = listApiRef.current;
-            if (!api) return;
-            await api.scrollToKey(turnKey, undefined, { signal: options?.signal });
-            if (options?.signal?.aborted) return;
-            await waitForLocalConversationSearchLayout(options?.signal);
-          },
-          getTurnContainer: (turnKey) =>
-            contentRootRef.current?.querySelector<HTMLElement>(
-              `[data-content-search-turn-key="${turnKey}"]`,
-            ) ?? null,
-        },
+        threadId,
+        transcriptOwner,
+        reads: searchReads,
       }),
-    [appHandle, body.threadId, cwd, projectlessOutputDirectory, threadId, transcriptOwner],
+    [
+      appHandle,
+      body.threadId,
+      cwd,
+      projectlessOutputDirectory,
+      threadId,
+      transcriptOwner,
+      searchReads,
+    ],
   );
 
   useEffect(() => {
@@ -800,11 +934,11 @@ export function LocalConversationThreadBodyOwner({
   useEffect(() => () => searchSource.clearCachedData(), [searchSource]);
 
   useEffect(() => {
-    clearContentSearchMarks(contentRootRef.current);
+    clearContentSearchMarks(searchReads.readRoot());
     persistedSearchSessionRef.current = null;
-    persistedSearchTargetsRef.current.clear();
+    persistedSearchTargets.clear();
     setForkDialogState(null);
-  }, [body.threadId]);
+  }, [body.threadId, persistedSearchTargets, searchReads]);
 
   useEffect(() => {
     if (!body.showThreadStartProgressPanel) return;
@@ -822,26 +956,15 @@ export function LocalConversationThreadBodyOwner({
   ]);
 
   const searchHighlights = useMemo(
-    () =>
-      createLocalConversationSearchHighlightOwner({
-        readRoot: () => contentRootRef.current,
-        resolveTarget: (match) => {
-          if (isConversationSearchMatchMeta(match.meta)) return match.meta;
-          if (!isLocalConversationPersistedSearchMatchMeta(match.meta)) return null;
-          return (
-            persistedSearchTargetsRef.current.get(match.id) ??
-            searchSource.findPersistedTarget(match.meta)
-          );
-        },
-      }),
-    [searchSource],
+    () => createThreadBodySearchHighlights(searchReads, persistedSearchTargets, searchSource),
+    [persistedSearchTargets, searchReads, searchSource],
   );
   const setContentRoot = useCallback(
     (element: HTMLDivElement | null) => {
-      contentRootRef.current = element;
+      searchReads.setRoot(element);
       searchHighlights.refresh();
     },
-    [searchHighlights],
+    [searchHighlights, searchReads],
   );
   const contentSearchSource = useMemo<ContentSearchLocalSource>(() => {
     return {
@@ -861,51 +984,40 @@ export function LocalConversationThreadBodyOwner({
         });
         const persistedThreadId = threadId ?? body.threadId;
         if (persistedThreadId) {
-          try {
-            const result = await searchLocalPersistedHistory(persistedThreadId, literalQuery);
-            if (options?.signal.aborted) {
-              return { query, matches: [], totalMatches: 0, capped: false };
-            }
-            if (result.status === "unavailable") {
-              persistedSearchSessionRef.current = null;
-              persistedSearchTargetsRef.current.clear();
-            } else {
-              const page = result.page;
-              persistedSearchSessionRef.current = {
-                threadId: page.threadId,
-                hostId: page.hostId,
-                hostGeneration: page.hostGeneration,
-                topologyGeneration: page.topologyGeneration,
-              };
-              persistedSearchTargetsRef.current.clear();
-              return mergeLocalConversationSearchResults({
-                resident,
-                persisted: projectLocalConversationPersistedSearchResult({
-                  page,
-                  contextId: searchSource.routeContextId,
-                  limit,
-                }),
-                resolveResidentTarget: searchSource.findPersistedTarget,
-              });
-            }
-          } catch {
-            if (options?.signal.aborted) {
-              return { query, matches: [], totalMatches: 0, capped: false };
-            }
+          const result = await readThreadBodyPersistedSearch({
+            threadId: persistedThreadId,
+            query: literalQuery,
+            resident,
+            searchSource,
+            limit,
+            signal: options?.signal,
+          });
+          if (options?.signal.aborted)
+            return { query, matches: [], totalMatches: 0, capped: false };
+          if (result) {
+            const page = result.page;
+            persistedSearchSessionRef.current = {
+              threadId: page.threadId,
+              hostId: page.hostId,
+              hostGeneration: page.hostGeneration,
+              topologyGeneration: page.topologyGeneration,
+            };
+            persistedSearchTargets.clear();
+            return result.merged;
           }
         }
 
         persistedSearchSessionRef.current = null;
-        persistedSearchTargetsRef.current.clear();
+        persistedSearchTargets.clear();
         return resident;
       },
       async ensureVisible(match, { signal }) {
         if (isConversationSearchMatchMeta(match.meta)) {
           const target = match.meta;
           const unit = Array.from(
-            contentRootRef.current?.querySelectorAll<HTMLElement>(
-              "[data-content-search-unit-key]",
-            ) ?? [],
+            searchReads
+              .readRoot()
+              ?.querySelectorAll<HTMLElement>("[data-content-search-unit-key]") ?? [],
           ).find((unit) => unit.dataset.contentSearchUnitKey === target.unitKey);
           if (unit && revealContentSearchUnit(unit)) {
             await waitForLocalConversationSearchLayout(signal);
@@ -922,7 +1034,7 @@ export function LocalConversationThreadBodyOwner({
         const persistedThreadId = threadId ?? body.threadId;
         if (!persistedThreadId || meta.threadId !== persistedThreadId) return;
 
-        persistedSearchTargetsRef.current.delete(match.id);
+        persistedSearchTargets.delete(match.id);
         const session = persistedSearchSessionRef.current;
         const topologyGeneration =
           session?.threadId === meta.threadId &&
@@ -952,7 +1064,7 @@ export function LocalConversationThreadBodyOwner({
         });
         if (signal.aborted) return;
         if (target) {
-          persistedSearchTargetsRef.current.set(match.id, target);
+          persistedSearchTargets.set(match.id, target);
           await searchSource.scrollAdapter.scrollToTurn(target.turnKey, { signal });
           if (!signal.aborted) searchHighlights.refresh();
           return;
@@ -963,10 +1075,10 @@ export function LocalConversationThreadBodyOwner({
         const target = isConversationSearchMatchMeta(match.meta)
           ? match.meta
           : isLocalConversationPersistedSearchMatchMeta(match.meta)
-            ? persistedSearchTargetsRef.current.get(match.id)
+            ? persistedSearchTargets.get(match.id)
             : null;
         if (!target) return;
-        const root = contentRootRef.current;
+        const root = searchReads.readRoot();
         if (!root) return;
         if (options?.signal?.aborted) return;
         const unit = Array.from(
@@ -984,7 +1096,11 @@ export function LocalConversationThreadBodyOwner({
             // A resident mark skips row placement, but still retires latest-turn following.
             scroll.holdViewport();
             scroll.setScrollMode("programmaticFind");
-            scroll.scrollElementIntoView(activeElement, "smooth", "center");
+            scroll.scrollElementIntoView(activeElement, "smooth", "center", {
+              turnKey: target.turnKey,
+              signal: options?.signal,
+              readTarget: () => searchHighlights.readActiveMatch(match.id),
+            });
           },
         });
       },
@@ -992,7 +1108,14 @@ export function LocalConversationThreadBodyOwner({
         searchHighlights.clear();
       },
     };
-  }, [body.threadId, searchSource, threadId, searchHighlights]);
+  }, [
+    body.threadId,
+    persistedSearchTargets,
+    searchSource,
+    threadId,
+    searchHighlights,
+    searchReads,
+  ]);
   useRegisterContentSearchSource(contentSearchSource);
 
   const handleEditLastUserTurn = useCallback(
@@ -1017,15 +1140,20 @@ export function LocalConversationThreadBodyOwner({
       forkSubmissionInFlightRef.current = true;
       setForkingTurnId(turnId);
       onErrorMessage(null);
-      try {
-        await fork();
-        setForkDialogState(null);
-      } catch (error) {
-        onErrorMessage(error instanceof Error ? error.message : fallbackError);
-      } finally {
-        forkSubmissionInFlightRef.current = false;
-        setForkingTurnId(null);
-      }
+      await withThreadBodyCleanup(
+        async () => {
+          try {
+            await fork();
+            setForkDialogState(null);
+          } catch (error) {
+            onErrorMessage(error instanceof Error ? error.message : fallbackError);
+          }
+        },
+        () => {
+          forkSubmissionInFlightRef.current = false;
+          setForkingTurnId(null);
+        },
+      );
     },
     [onErrorMessage],
   );
@@ -1079,19 +1207,22 @@ export function LocalConversationThreadBodyOwner({
 
     setIsRestoringArchivedThread(true);
     onErrorMessage(null);
-    try {
-      await actions.onUnarchiveThread(threadId, projectId);
-    } catch (error) {
-      onErrorMessage(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsRestoringArchivedThread(false);
-    }
+    await withThreadBodyCleanup(
+      async () => {
+        try {
+          await actions.onUnarchiveThread(threadId, projectId);
+        } catch (error) {
+          onErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      },
+      () => setIsRestoringArchivedThread(false),
+    );
   }, [actions, isRestoringArchivedThread, onErrorMessage, projectId, threadId]);
 
   const handleRevealUserMessageNavigationItem = useCallback(
     async (item: ThreadUserMessageNavigationItem): Promise<HTMLElement | null> => {
       const unitSelector = `[data-content-search-unit-key="${escapeAttributeSelectorValue(item.id)}"]`;
-      const api = listApiRef.current;
+      const api = searchReads.readListApi();
       if (api) {
         await api.scrollToKey(item.turnKey, (turnElement) =>
           turnElement.querySelector<HTMLElement>(unitSelector),
@@ -1099,9 +1230,9 @@ export function LocalConversationThreadBodyOwner({
         await nextAnimationFrame();
       }
 
-      return contentRootRef.current?.querySelector<HTMLElement>(unitSelector) ?? null;
+      return searchReads.readRoot()?.querySelector<HTMLElement>(unitSelector) ?? null;
     },
-    [],
+    [searchReads],
   );
   const handlePublishPromptRailReveal = useCallback(async (reveal: CodexPromptRailReveal) => {
     await prepareLocalConversationPromptRailNavigation(reveal);
@@ -1283,7 +1414,7 @@ export function LocalConversationThreadBodyOwner({
                 onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
                 scrollElement={scrollElement}
                 onApiChange={(api) => {
-                  listApiRef.current = api;
+                  searchReads.setListApi(api);
                 }}
               />
             </ThreadForkSubmissionContext>

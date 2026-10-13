@@ -86,6 +86,7 @@ const makeRuntime = (options: CodexStructuredThreadTitleOptions, lifecycle: stri
             );
           }),
         observeStarted: () => null,
+        observeLinkedRoot: () => {},
         classification: () => null,
         shouldSuppress: () => false,
         clear: () => undefined,

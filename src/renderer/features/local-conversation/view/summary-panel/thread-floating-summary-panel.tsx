@@ -136,6 +136,7 @@ const EMPTY_MCP_SERVER_STATUSES: ProtocolListMcpServerStatusResponse = {
 };
 
 export interface ThreadSummaryPanelContentProps {
+  sourceRoot?: { readonly hostId: string; readonly threadId: string };
   activeThreadId: string | null;
   activeThreadTitle?: string | null;
   activeThreadIsManagedWorktree?: boolean;
@@ -914,6 +915,7 @@ function useSummaryPanelBranchState({
 }
 
 export function ThreadSummaryPanelSurface({
+  sourceRoot,
   activeThreadId,
   activeThreadTitle = null,
   activeThreadIsManagedWorktree = false,
@@ -1675,7 +1677,7 @@ export function ThreadSummaryPanelSurface({
                               ? () => {
                                   void onOpenThread(
                                     row.conversationId,
-                                    buildBackgroundAgentOpenContext(row),
+                                    buildBackgroundAgentOpenContext(row, sourceRoot),
                                   );
                                 }
                               : undefined

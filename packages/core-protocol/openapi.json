@@ -30184,6 +30184,88 @@
               },
               {
                 "type": "object",
+                "description": "Opens a root Codex conversation without transferring execution ownership.",
+                "required": [
+                  "thread_id",
+                  "expected_execution_host_id",
+                  "expected_binding",
+                  "session_id",
+                  "title",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_binding": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadBinding"
+                  },
+                  "expected_execution_host_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "ensure_codex_thread_session"
+                    ]
+                  },
+                  "observation": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
+                      }
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Applies metadata only while the observed native conversation binding remains current.",
+                "required": [
+                  "thread_id",
+                  "expected_execution_host_id",
+                  "expected_binding",
+                  "observation",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_binding": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadBinding"
+                  },
+                  "expected_execution_host_id": {
+                    "type": "string"
+                  },
+                  "expected_parent_thread_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "observe_codex_thread_metadata"
+                    ]
+                  },
+                  "observation": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Admits one existing native conversation without creating or replaying Agent messages.",
                 "required": [
                   "session_id",
@@ -35220,6 +35302,29 @@
               },
               {
                 "type": "object",
+                "description": "One live root Thread/Session binding, confirmed within the read transaction.",
+                "required": [
+                  "thread_id",
+                  "expected_execution_host_id",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_execution_host_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "codex_thread_session"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "thread_id",
                   "kind"
@@ -37172,6 +37277,106 @@
           "pinned_sessions"
         ]
       },
+      "ProjectWorkspaceCodexThreadBinding": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "absent"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "existing"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "ProjectWorkspaceCodexThreadObservation": {
+        "type": "object",
+        "description": "Metadata cannot reassign a backend, host, parent, or an existing Project/link.",
+        "required": [
+          "thread_preview",
+          "status",
+          "created_at",
+          "updated_at",
+          "recency_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cwd": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recency_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectWorkspaceThreadStatus"
+          },
+          "thread_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "thread_preview": {
+            "type": "string"
+          },
+          "thread_source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProjectWorkspaceDynamicToolCatalog": {
         "type": "object",
         "required": [
@@ -38357,6 +38562,88 @@
               },
               "location": {
                 "$ref": "#/components/schemas/ProjectWorkspaceThreadExecutionLocation"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Opens a root Codex conversation without transferring execution ownership.",
+            "required": [
+              "thread_id",
+              "expected_execution_host_id",
+              "expected_binding",
+              "session_id",
+              "title",
+              "kind"
+            ],
+            "properties": {
+              "expected_binding": {
+                "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadBinding"
+              },
+              "expected_execution_host_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ensure_codex_thread_session"
+                ]
+              },
+              "observation": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
+                  }
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Applies metadata only while the observed native conversation binding remains current.",
+            "required": [
+              "thread_id",
+              "expected_execution_host_id",
+              "expected_binding",
+              "observation",
+              "kind"
+            ],
+            "properties": {
+              "expected_binding": {
+                "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadBinding"
+              },
+              "expected_execution_host_id": {
+                "type": "string"
+              },
+              "expected_parent_thread_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_codex_thread_metadata"
+                ]
+              },
+              "observation": {
+                "$ref": "#/components/schemas/ProjectWorkspaceCodexThreadObservation"
               },
               "thread_id": {
                 "type": "string"
@@ -47612,6 +47899,28 @@
                   },
                   "value": {
                     "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "thread",
+                          "session",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "codex_thread_session"
+                            ]
+                          },
+                          "session": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          },
+                          "thread": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceThread"
+                          }
+                        }
+                      },
                       {
                         "type": "object",
                         "required": [

@@ -1,4 +1,12 @@
 import { cn } from "@/lib/utils";
+import { useContext } from "react";
+import type { CodexConversationItem } from "../../../../lib/types";
+import {
+  CodexTranscriptReadOwnerContext,
+  CodexTranscriptTurnEntityContext,
+  CodexTranscriptTurnStatusContext,
+} from "../../normalized-transcript-hooks";
+import { normalizeMessageCopyText } from "../../message-copy-text";
 import {
   AutoReviewStatsIndicator,
   GoalAchievedIndicator,
@@ -20,6 +28,9 @@ import {
 
 export function AssistantMessageActionsRow({
   actions,
+  copySource,
+  cwd,
+  projectlessOutputDirectory,
   threadId,
   turnId,
   isLatestTurn,
@@ -27,6 +38,9 @@ export function AssistantMessageActionsRow({
   alwaysShowActions = false,
 }: {
   actions: ThreadAssistantMessageActionsModel;
+  copySource?: CodexConversationItem;
+  cwd?: string | null;
+  projectlessOutputDirectory?: string | null;
   threadId: string;
   turnId: string | null;
   isLatestTurn: boolean;
@@ -38,6 +52,32 @@ export function AssistantMessageActionsRow({
   }) => void | Promise<void>;
   alwaysShowActions?: boolean;
 }) {
+  const owner = useContext(CodexTranscriptReadOwnerContext);
+  const entityKey = useContext(CodexTranscriptTurnEntityContext);
+  const presentationStatus = useContext(CodexTranscriptTurnStatusContext);
+  const readCopyText = () => {
+    if (!copySource) return actions.copyText;
+    const rawId = copySource.rawItemId;
+    if (rawId && (!owner || !entityKey)) return null;
+    const current =
+      owner && entityKey && rawId
+        ? owner.readProjectedItem(entityKey, rawId, copySource.itemId, presentationStatus)
+        : copySource;
+    // A bound address cannot fall back to the render-time source after retirement.
+    if (
+      !current ||
+      current.threadId !== threadId ||
+      current.turnId !== turnId ||
+      current.itemId !== copySource.itemId ||
+      current.kind !== copySource.kind
+    )
+      return null;
+    const text = normalizeMessageCopyText(current.markdownText ?? "", {
+      cwd,
+      projectlessOutputDirectory,
+    });
+    return text.trim().length > 0 ? text : null;
+  };
   const { isForking, forkDisabled } = useThreadForkSubmission(turnId);
   const shouldShowActions =
     actions.copyText !== null ||
@@ -60,6 +100,7 @@ export function AssistantMessageActionsRow({
           {actions.copyText !== null ? (
             <CopyMessageActionButton
               text={actions.copyText}
+              getText={readCopyText}
               label="Copy"
               tooltipLabel="Copy response"
               responseIcon

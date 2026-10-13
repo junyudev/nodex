@@ -265,6 +265,135 @@ describe("virtualized viewport restore state", () => {
   });
 });
 
+describe("measured visible anchor selection", () => {
+  const threeRows = () =>
+    buildVirtualizedTurnLayout({
+      entries: ["older", "middle", "latest"].map((turnKey) => ({
+        turnKey,
+        estimatedHeightPx: 100,
+      })),
+      gapPx: 0,
+    });
+
+  test("uses the first top-contained row after a partially clipped older row", () => {
+    const layout = threeRows();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: 50,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { older: 100, middle: 100, latest: 100 },
+        viewportHeightPx: 200,
+      }),
+    ).toBe("middle");
+  });
+
+  test("can prefer the latest truly overlapping measured row", () => {
+    const layout = threeRows();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: 50,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { older: 100, middle: 100, latest: 100 },
+        viewportHeightPx: 200,
+        preferLatestVisibleRow: true,
+      }),
+    ).toBe("latest");
+  });
+
+  test("retains the first partial candidate when no top-contained row is measured", () => {
+    const layout = threeRows();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: 50,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { older: 100 },
+        viewportHeightPx: 200,
+      }),
+    ).toBe("older");
+  });
+
+  test("excludes gaps and collapsed zero-height rows from the anchor", () => {
+    const layout = buildVirtualizedTurnLayout({
+      entries: [
+        { turnKey: "gap", type: "gap", estimatedHeightPx: 120 },
+        { turnKey: "empty", estimatedHeightPx: 0 },
+        { turnKey: "content", estimatedHeightPx: 100 },
+      ],
+      measuredHeightsByKey: { gap: 120, empty: 0, content: 100 },
+      gapPx: 0,
+      collapseEmptyRows: true,
+    });
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: 0,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { gap: 120, empty: 0, content: 100 },
+        viewportHeightPx: 400,
+      }),
+    ).toBe("content");
+  });
+
+  test("ignores unmeasured rows and candidates removed from the next layout", () => {
+    const layout = threeRows();
+    const nextLayout = buildVirtualizedTurnLayout({
+      entries: [{ turnKey: "latest", estimatedHeightPx: 100 }],
+      gapPx: 0,
+    });
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: 50,
+        layout,
+        nextLayout,
+        measuredHeightsByKey: { older: 100, latest: 100 },
+        viewportHeightPx: 200,
+      }),
+    ).toBe("latest");
+  });
+
+  test("negative distance clips the content viewport instead of admitting rows behind submit space", () => {
+    const layout = threeRows();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: -80,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { older: 100 },
+        viewportHeightPx: 220,
+      }),
+    ).toBeNull();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        distanceFromBottomPx: -80,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { middle: 100, latest: 100 },
+        viewportHeightPx: 220,
+        preferLatestVisibleRow: true,
+      }),
+    ).toBe("latest");
+  });
+
+  test.each([
+    { distanceFromBottomPx: 100, viewportHeightPx: 0 },
+    { distanceFromBottomPx: -120, viewportHeightPx: 100 },
+    { distanceFromBottomPx: 1_000, viewportHeightPx: 100 },
+  ])("requires a strict content overlap at $distanceFromBottomPx/$viewportHeightPx", (position) => {
+    const layout = threeRows();
+    expect(
+      resolveMeasuredVisibleAnchorKey({
+        ...position,
+        layout,
+        nextLayout: layout,
+        measuredHeightsByKey: { older: 100, middle: 100, latest: 100 },
+      }),
+    ).toBeNull();
+  });
+});
+
 describe("turn reveal distances", () => {
   test("centers a turn using bottom-origin distance", () => {
     const layout = buildLayout([100, 120, 80]);

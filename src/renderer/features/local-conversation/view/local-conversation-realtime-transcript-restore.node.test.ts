@@ -3,6 +3,7 @@ import type { CodexRealtimeTranscriptEntry } from "../projection/normalized-time
 import {
   resolveRealtimeTranscriptRestoreState,
   resolveRealtimeTranscriptAnchorDistance,
+  resolveRetiringRealtimeTranscriptViewportAnchor,
 } from "./local-conversation-realtime-transcript-restore";
 import {
   buildVirtualizedTurnLayout,
@@ -26,6 +27,43 @@ function group(segmentIds: readonly string[]): CodexRealtimeTranscriptEntry {
 }
 
 describe("native voice row restoration", () => {
+  test("selects a surviving visible native segment after a row rename releases its first leaf", () => {
+    const released = { itemId: "released", topWithinViewportPx: -20 };
+    const retained = { itemId: "retained", topWithinViewportPx: 90 };
+    expect(
+      resolveRetiringRealtimeTranscriptViewportAnchor({
+        retiringRows: new Map([["old-row", [released, retained]]]),
+        committedRowKeys: new Set(["renamed-row"]),
+        residentItemIds: new Set(["retained"]),
+      }),
+    ).toBe(retained);
+  });
+
+  test("ignores ref replacement on a retained row and continues to a genuinely removed row", () => {
+    const unchanged = { itemId: "unchanged", topWithinViewportPx: 20 };
+    const retained = { itemId: "retained", topWithinViewportPx: 90 };
+    expect(
+      resolveRetiringRealtimeTranscriptViewportAnchor({
+        retiringRows: new Map([
+          ["same-row", [unchanged]],
+          ["old-row", [retained]],
+        ]),
+        committedRowKeys: new Set(["same-row", "renamed-row"]),
+        residentItemIds: new Set(["unchanged", "retained"]),
+      }),
+    ).toBe(retained);
+  });
+
+  test("does not compensate when every captured visible native identity is gone", () => {
+    expect(
+      resolveRetiringRealtimeTranscriptViewportAnchor({
+        retiringRows: new Map([["old-row", [{ itemId: "released", topWithinViewportPx: 20 }]]]),
+        committedRowKeys: new Set(["new-row"]),
+        residentItemIds: new Set(["different"]),
+      }),
+    ).toBeNull();
+  });
+
   test.each([{ ids: ["older", "first", "second"] }, { ids: ["second"] }])(
     "restores a renamed row through a retained native segment %j",
     ({ ids }) => {

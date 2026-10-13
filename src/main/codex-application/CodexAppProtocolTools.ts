@@ -1305,9 +1305,10 @@ export const make: Effect.Effect<
         );
         return buildCodexAppDynamicToolSuccess(
           launch.kind === "pending"
-            ? { clientThreadId: launch.clientThreadId }
+            ? { clientThreadId: launch.clientThreadId, hostId: launch.hostId }
             : {
                 threadId: launch.detail.threadId,
+                hostId: launch.hostId,
                 ...(projectlessWorkspace
                   ? { projectlessOutputDirectory: projectlessWorkspace.outputDirectory }
                   : {}),

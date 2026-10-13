@@ -73,6 +73,13 @@ import {
 import { linkPageChat } from "./page-chat-runtime";
 import { subscribeCodexEvents } from "./api";
 import { queryKeys } from "./query-keys";
+import { seedProjectSessionDetail } from "./project-session-query-cache";
+import {
+  createdThreadResolveInput,
+  ensureCreatedThreadSession,
+  resolveCreatedThreadTarget,
+} from "./codex-created-thread-runtime";
+import { prepareCreatedThreadNavigation } from "./created-thread-navigation";
 import type { WorkbenchSceneNavigator } from "./workbench-scene-navigator";
 import type {
   CodexCollaborationModeKind,
@@ -140,7 +147,10 @@ interface WorkbenchSessionCommandsInput {
     workspaceRoot: string | null | undefined,
   ) => Promise<string | null>;
   readonly closePendingWorktreeRoute: () => void;
-  readonly setPendingWorktreeClientThreadId: (clientThreadId: string | null) => void;
+  readonly setPendingWorktreeClientThreadId: (
+    clientThreadId: string | null,
+    expectedHostId?: string,
+  ) => void;
   readonly setSettingsPath: (path: string | null) => void;
   readonly setAutomationsPath: (path: string | null) => void;
   readonly onOpenProjectSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
@@ -729,14 +739,15 @@ export function useWorkbenchSessionCommands({
     async (
       rootThreadId: string,
       subagent: ThreadOpenSubagentPayload | null = null,
+      sourceSession: ProjectSession | null = activeSession,
     ): Promise<boolean> => {
-      if (!activeSession || activeSession.projectId === null) return false;
-      const projectId = activeSession.projectId;
+      if (!sourceSession || sourceSession.projectId === null) return false;
+      const projectId = sourceSession.projectId;
       const normalizedRootThreadId = rootThreadId.trim();
       const selectedThreadId = subagent?.conversationId.trim() || null;
       if (!normalizedRootThreadId || selectedThreadId === normalizedRootThreadId) return false;
       const panelId = "right" as const;
-      const leafId = resolveSessionPanelActiveLeafId(activeSession, panelId);
+      const leafId = resolveSessionPanelActiveLeafId(sourceSession, panelId);
       const tabId = makeSubagentsPanelTabId(normalizedRootThreadId);
       const requestSequence = ++subagentSelectionRequestRef.current;
       const routeTab = (input: {
@@ -747,7 +758,7 @@ export function useWorkbenchSessionCommands({
       }): SubagentsPanelTab => ({
         subagentsPanel: true,
         id: tabId,
-        sessionId: activeSession.id,
+        sessionId: sourceSession.id,
         projectId,
         panelId,
         leafId,
@@ -766,7 +777,7 @@ export function useWorkbenchSessionCommands({
       const settlePendingRoute = (tab: SubagentsPanelTab): void => {
         panelControllerRef.current.updateBackgroundAgentTabsBySession((current) =>
           settlePendingSubagentsPanelTab(current, {
-            sessionId: activeSession.id,
+            sessionId: sourceSession.id,
             tabId,
             requestId: requestSequence,
             tab,
@@ -786,18 +797,25 @@ export function useWorkbenchSessionCommands({
                 showLoading:
                   !readLocalConversation(
                     normalizedRootThreadId,
-                    activeSession.thread?.executionHostId,
+                    sourceSession.thread?.executionHostId,
                   )?.turns.length ||
                   !isResidentSubagentDescendant(
                     normalizedRootThreadId,
                     selectedThreadId,
-                    activeSession.thread?.executionHostId ?? null,
+                    sourceSession.thread?.executionHostId ?? null,
                   ),
               }
             : null,
         }),
       );
-      const panelOpen = ensureActivePanelOpenWithoutRefresh(panelId).catch(() => undefined);
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
+        ...current,
+        [makeWorkbenchSessionPanelSlotKey(sourceSession.id, panelId)]: false,
+      }));
+      const panelOpen =
+        sourceSession.id === activeSession?.id
+          ? ensureActivePanelOpenWithoutRefresh(panelId).catch(() => undefined)
+          : Promise.resolve();
       if (!selectedThreadId) {
         await panelOpen;
         return true;
@@ -807,6 +825,7 @@ export function useWorkbenchSessionCommands({
         const hydrated = await workbenchCodexControl.hydrateSelectedSubagent({
           rootThreadId: normalizedRootThreadId,
           threadId: selectedThreadId,
+          expectedHostId: sourceSession.thread?.executionHostId,
         });
         if (requestSequence !== subagentSelectionRequestRef.current) return true;
         if (
@@ -846,12 +865,17 @@ export function useWorkbenchSessionCommands({
   );
 
   const openBackgroundAgentTab = useCallback(
-    async (rootThreadId: string, subagent: ThreadOpenSubagentPayload): Promise<boolean> => {
-      if (!activeSession || activeSession.projectId === null) return false;
+    async (
+      rootThreadId: string,
+      subagent: ThreadOpenSubagentPayload,
+      sourceSession: ProjectSession | null = activeSession,
+    ): Promise<boolean> => {
+      if (!sourceSession || sourceSession.projectId === null) return false;
       const hydrated = await workbenchCodexControl.hydrateSelectedSubagent(
         {
           rootThreadId,
           threadId: subagent.conversationId,
+          expectedHostId: sourceSession.thread?.executionHostId,
         },
         { resume: false },
       );
@@ -860,21 +884,30 @@ export function useWorkbenchSessionCommands({
         return false;
       }
       if (!hydrated.canInteract)
-        return openSubagentsPanelTab(rootThreadId, { ...subagent, canInteract: false });
+        return openSubagentsPanelTab(
+          rootThreadId,
+          { ...subagent, canInteract: false },
+          sourceSession,
+        );
       const tab: BackgroundAgentPanelTab = {
         backgroundAgent: true,
         id: makeBackgroundAgentPanelTabId(subagent.conversationId),
-        sessionId: activeSession.id,
-        projectId: activeSession.projectId,
+        sessionId: sourceSession.id,
+        projectId: sourceSession.projectId,
         panelId: "right",
-        leafId: resolveSessionPanelActiveLeafId(activeSession, "right"),
+        leafId: resolveSessionPanelActiveLeafId(sourceSession, "right"),
         threadId: subagent.conversationId,
         title: subagent.displayName,
         stateKey: Date.now(),
         subagent: { ...subagent, canInteract: hydrated.canInteract },
       };
       panelControllerRef.current.upsertEphemeralTab(tab);
-      await ensureActivePanelOpenWithoutRefresh("right");
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
+        ...current,
+        [makeWorkbenchSessionPanelSlotKey(sourceSession.id, "right")]: false,
+      }));
+      if (sourceSession.id === activeSession?.id)
+        await ensureActivePanelOpenWithoutRefresh("right");
       return true;
     },
     [
@@ -890,6 +923,83 @@ export function useWorkbenchSessionCommands({
       threadId: string,
       context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
     ): Promise<boolean> => {
+      const createdInput = context?.createdTarget
+        ? createdThreadResolveInput(context.createdTarget)
+        : context?.hostId
+          ? { threadId, expectedHostId: context.hostId }
+          : null;
+      if (context?.createdTarget || context?.hostId) {
+        if (!createdInput) return false;
+        try {
+          const navigation = await prepareCreatedThreadNavigation(createdInput, {
+            resolve: resolveCreatedThreadTarget,
+            ensureOpen: ensureCreatedThreadSession,
+          });
+          if (!navigation) return false;
+          if (navigation.type === "pending") {
+            setSettingsPath(null);
+            setLocalEnvironmentSettingsInitial(null);
+            setAutomationsPath(null);
+            setPendingWorktreeClientThreadId(navigation.clientThreadId, navigation.hostId);
+            return true;
+          }
+          if (navigation.type === "child") {
+            const source = context.sourceRoot;
+            if (!source || source.hostId !== navigation.resolution.hostId) return false;
+            const root = await prepareCreatedThreadNavigation(
+              { threadId: source.threadId, expectedHostId: source.hostId },
+              {
+                resolve: resolveCreatedThreadTarget,
+                ensureOpen: ensureCreatedThreadSession,
+              },
+            );
+            if (root?.type !== "session") return false;
+            seedProjectSessionDetail(queryClient, root.session);
+            const projected = presentWorkbenchSession({
+              domain: root.session,
+              scene: sessionCatalog.resolveScene(root.session),
+            });
+            const subagent =
+              context.subagent ??
+              ({
+                conversationId: navigation.resolution.threadId!,
+                displayName: "Subagent",
+                agentRole: null,
+                diffStats: null,
+                spawnModel: null,
+                status: "unknown",
+                statusSummary: null,
+              } satisfies ThreadOpenSubagentPayload);
+            closePendingWorktreeRoute();
+            selectSession(projected);
+            return subagent.canInteract
+              ? openBackgroundAgentTab(source.threadId, subagent, projected)
+              : openSubagentsPanelTab(source.threadId, subagent, projected);
+          }
+          const { session, resolution } = navigation;
+          seedProjectSessionDetail(queryClient, session);
+          if (resolution?.clientThreadId) {
+            const stableKey = threadScopeIdentityRegistry.resolve({
+              clientThreadId: resolution.clientThreadId,
+            });
+            threadScopeIdentityRegistry.register(stableKey, {
+              clientThreadId: resolution.clientThreadId,
+              threadId: resolution.threadId,
+            });
+          }
+          closePendingWorktreeRoute();
+          selectSession(
+            presentWorkbenchSession({
+              domain: session,
+              scene: sessionCatalog.resolveScene(session),
+            }),
+          );
+          return true;
+        } catch {
+          toast.danger("Failed to open chat");
+          return false;
+        }
+      }
       if (threadId.startsWith(CODEX_CLIENT_THREAD_ID_PREFIX)) {
         setSettingsPath(null);
         setLocalEnvironmentSettingsInitial(null);
@@ -942,6 +1052,8 @@ export function useWorkbenchSessionCommands({
       setLocalEnvironmentSettingsInitial,
       setPendingWorktreeClientThreadId,
       setSettingsPath,
+      queryClient,
+      threadScopeIdentityRegistry,
     ],
   );
 
@@ -953,12 +1065,19 @@ export function useWorkbenchSessionCommands({
   );
 
   const openResolvedPendingThreadSession = useCallback(
-    async (clientThreadId: string, threadId: string): Promise<boolean> => {
-      const stableKey = threadScopeIdentityRegistry.resolve({ clientThreadId });
-      threadScopeIdentityRegistry.register(stableKey, { clientThreadId, threadId });
-      return openAttachedThreadSessionResult(threadId);
+    async (clientThreadId: string, threadId: string, expectedHostId?: string): Promise<boolean> => {
+      const resolution = await resolveCreatedThreadTarget({ clientThreadId, expectedHostId });
+      if (
+        !resolution?.ready ||
+        resolution.threadId !== threadId ||
+        (expectedHostId !== undefined && resolution.hostId !== expectedHostId)
+      )
+        return false;
+      return openAttachedThreadSessionResult(threadId, {
+        createdTarget: { clientThreadId, hostId: resolution.hostId },
+      });
     },
-    [openAttachedThreadSessionResult, threadScopeIdentityRegistry],
+    [openAttachedThreadSessionResult],
   );
 
   const openAttachedThreadSessionById = useCallback(

@@ -217,6 +217,7 @@ export type WorkbenchLocationV7 =
   | {
       readonly kind: "pending-worktree";
       readonly clientThreadId: string;
+      readonly expectedHostId?: string;
       readonly returnTo: WorkbenchSceneLocation;
     };
 

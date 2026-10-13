@@ -669,7 +669,7 @@ export const make: Effect.Effect<
     terminalTargetGeneration?: number | null,
   ): Effect.Effect<CodexConversationDisposition> => {
     const threadId = codexProtocolNotificationThreadId(notification);
-    return notificationAdmission.decide({ notification, threadId }).pipe(
+    return notificationAdmission.decide({ notification, threadId, hostId: occurrence.hostId }).pipe(
       Effect.flatMap((decision) =>
         decision._tag === "Admit"
           ? inbox.observeAppCallNotification(occurrence, notification).pipe(

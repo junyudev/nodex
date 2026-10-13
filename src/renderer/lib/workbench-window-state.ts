@@ -199,6 +199,7 @@ export function openWorkbenchRoute(
     | {
         readonly kind: "pending-worktree";
         readonly clientThreadId: string;
+        readonly expectedHostId?: string;
       },
 ): WorkbenchWindowState {
   const returnTo = getWorkbenchSceneReturnLocation(state.location);

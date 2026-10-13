@@ -293,7 +293,7 @@ function buildAssistantMessageActionsModel(
   if (assistantItem.entry.assistantPhase === "commentary") return null;
 
   const copyText = normalizeMessageCopyText(assistantItem.entry.markdownText ?? "");
-  const hasCopyableContent = copyText.length > 0;
+  const hasCopyableContent = copyText.trim().length > 0;
   const isCompleted = !input.isStreamingTurn && assistantItem.status !== "inProgress";
   const canFork = isCompleted && Boolean(input.canForkTurn);
   const canCopy = hasCopyableContent && (isCompleted || input.allowCopyWhileStreaming === true);

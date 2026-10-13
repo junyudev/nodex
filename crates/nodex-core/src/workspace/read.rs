@@ -294,6 +294,31 @@ pub(super) fn read(
                 thread,
             })
         }
+        ProjectWorkspaceRead::CodexThreadSession {
+            thread_id,
+            expected_execution_host_id,
+        } => {
+            validate_id("thread_id", &thread_id)?;
+            let thread = read_thread(connection, library_id, &thread_id)?
+                .ok_or_else(|| not_found("Conversation is unavailable"))?;
+            let session_id = thread
+                .session_id
+                .as_ref()
+                .ok_or_else(|| not_found("Conversation has no Session"))?;
+            super::codex_thread_navigation::validate_replayed_session(
+                connection,
+                library_id,
+                &thread_id,
+                &expected_execution_host_id,
+                std::slice::from_ref(session_id),
+            )?;
+            let session = read_session(connection, library_id, session_id)?
+                .ok_or_else(|| not_found("Conversation Session is unavailable"))?;
+            Ok(ProjectWorkspaceReadValue::CodexThreadSession {
+                thread: Box::new(thread),
+                session: session_summary(session),
+            })
+        }
         ProjectWorkspaceRead::Thread { thread_id } => {
             validate_id("thread_id", &thread_id)?;
             Ok(ProjectWorkspaceReadValue::Thread {

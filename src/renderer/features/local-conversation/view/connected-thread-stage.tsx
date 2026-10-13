@@ -125,8 +125,6 @@ export type ConnectedThreadStageInput = Omit<
   | "primaryRequest"
 >;
 
-let presentedConversationSurfaceSequence = 0;
-
 function useRetainedConversation(
   conversationId: string | null,
   active: boolean,
@@ -145,9 +143,7 @@ function usePresentedConversationIds(
   preferredHostId?: string | null,
 ): void {
   const runtime = useConversationRuntime(conversationIds[0] ?? null, preferredHostId);
-  const [surfaceId] = useState(
-    () => `connected-thread-stage:${++presentedConversationSurfaceSequence}`,
-  );
+  const surfaceId = `connected-thread-stage:${useId()}`;
   const currentIdsRef = useRef(new Map<string, typeof runtime>());
   const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
   const updatePresentedIds = useEffectEvent((nextIds: readonly string[]) => {
@@ -658,12 +654,12 @@ export function ConnectedThreadStageFooter({
   });
   const { refetch: refetchComposerPlugins } = composerPluginsQuery;
   const { refetch: refetchComposerSkills } = composerSkillsQuery;
+  const claudeSkillsReload =
+    input.provider?.kind === "claude" ? input.provider.refreshSkills : null;
   const skillsReloadControl = useMemo<ConversationSkillsReloadControl | null>(() => {
     if (runtime.kind !== "codex") {
-      return runtime.kind === "claude" &&
-        input.provider?.kind === "claude" &&
-        input.provider.refreshSkills
-        ? { provider: "claude", reload: input.provider.refreshSkills }
+      return runtime.kind === "claude" && claudeSkillsReload
+        ? { provider: "claude", reload: claudeSkillsReload }
         : null;
     }
     if (!workspaceSearchContext) return null;
@@ -676,13 +672,7 @@ export function ConnectedThreadStageFooter({
         queryClient.setQueryData(options.queryKey, skills);
       },
     };
-  }, [
-    runtime.kind,
-    input.provider?.kind,
-    input.provider?.refreshSkills,
-    workspaceSearchContext,
-    queryClient,
-  ]);
+  }, [runtime.kind, claudeSkillsReload, workspaceSearchContext, queryClient]);
   const onComposerCapabilitiesChanged = actions.onComposerCapabilitiesChanged;
   const refreshComposerCapabilities = useCallback(async () => {
     if (runtime.kind !== "codex") {
@@ -748,21 +738,26 @@ export function ConnectedThreadStageFooter({
     () => [...turns].reverse().find((turn) => turn.status === "inProgress") ?? null,
     [turns],
   );
+  const selectedExecutionProfile = input.selectedExecutionProfile ?? null;
+  const savedExecutionProfile = input.activeThreadSummary?.executionProfile ?? null;
+  const liveModel = liveThreadSettings?.model;
+  const liveReasoningEffort = liveThreadSettings?.reasoningEffort;
+  const liveServiceTier = liveThreadSettings?.serviceTier;
   const executionProfile = useMemo(() => {
-    if (!activeThreadId) return input.selectedExecutionProfile ?? null;
-    if (!liveThreadSettings?.model) return input.activeThreadSummary?.executionProfile ?? null;
+    if (!activeThreadId) return selectedExecutionProfile;
+    if (!liveModel) return savedExecutionProfile;
     return {
-      modelId: liveThreadSettings.model,
-      reasoningEffort: liveThreadSettings.reasoningEffort,
-      serviceTier: liveThreadSettings.serviceTier ?? null,
+      modelId: liveModel,
+      reasoningEffort: liveReasoningEffort ?? null,
+      serviceTier: liveServiceTier ?? null,
     };
   }, [
     activeThreadId,
-    input.activeThreadSummary?.executionProfile,
-    input.selectedExecutionProfile,
-    liveThreadSettings?.model,
-    liveThreadSettings?.reasoningEffort,
-    liveThreadSettings?.serviceTier,
+    savedExecutionProfile,
+    selectedExecutionProfile,
+    liveModel,
+    liveReasoningEffort,
+    liveServiceTier,
   ]);
   const effectiveSettings = resolveEffectiveThreadStageSettings({
     activeThreadId,
@@ -1437,6 +1432,10 @@ function ConnectedThreadStageContent({
       actions,
       taskDetailsKind: runtime.kind === "codex" ? ("thread" as const) : ("observation" as const),
       onOpenThread: actions.onOpenThread,
+      sourceRoot:
+        runtime.kind === "codex" && activeThreadId
+          ? { hostId: runtime.hostId, threadId: activeThreadId }
+          : undefined,
       onErrorMessage: setErrorMessage,
     }),
     [
@@ -1459,6 +1458,7 @@ function ConnectedThreadStageContent({
       input.projectWorkspacePath,
       actions,
       turns,
+      setErrorMessage,
     ],
   );
   useRetainedConversation(

@@ -8,6 +8,7 @@ import {
   listCodexClientThreadIdentities,
   resolveCodexThreadIdForClientThreadId,
   setCodexClientThreadIdentity,
+  readCodexClientThreadIdentityCandidates,
 } from "./codex-client-thread-identity";
 import { PersistedAtomStore } from "../local-store/persisted-atoms";
 
@@ -20,6 +21,24 @@ function useTempPersistedAtoms(): PersistedAtomStore {
 }
 
 describe("Codex client-thread identity", () => {
+  test("retains host/native colon ambiguity as candidates and keeps explicit-host lookups exact", () => {
+    const store = useTempPersistedAtoms();
+    const clientThreadId = "client-new-thread:hosted";
+    setCodexClientThreadIdentity(store, {
+      hostId: "ssh:owner",
+      threadId: "native:thread",
+      clientThreadId,
+    });
+    expect(readCodexClientThreadIdentityCandidates(store, clientThreadId, "ssh:owner")).toEqual([
+      { hostId: "ssh:owner", threadId: "native:thread", clientThreadId },
+    ]);
+    expect(readCodexClientThreadIdentityCandidates(store, clientThreadId)).toEqual([
+      { hostId: "ssh", threadId: "owner:native:thread", clientThreadId },
+      { hostId: "ssh:owner", threadId: "native:thread", clientThreadId },
+      { hostId: "ssh:owner:native", threadId: "thread", clientThreadId },
+    ]);
+    expect(readCodexClientThreadIdentityCandidates(store, clientThreadId, "foreign")).toEqual([]);
+  });
   afterEach(() => {
     for (const directory of tempDirectories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });

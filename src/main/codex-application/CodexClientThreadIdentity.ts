@@ -8,8 +8,10 @@ import {
   getCodexClientThreadId,
   resolveCodexThreadIdForClientThreadId,
   setCodexClientThreadIdentity,
+  readCodexClientThreadIdentityCandidates,
 } from "../codex/codex-client-thread-identity";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 
 export class CodexClientThreadIdentityError extends Schema.TaggedError<CodexClientThreadIdentityError>()(
   "CodexClientThreadIdentityError",
@@ -25,14 +27,27 @@ export class CodexClientThreadIdentity extends Context.Service<
     readonly remember: (
       threadId: string,
       clientThreadId: string,
+      hostId?: string,
     ) => Effect.Effect<void, CodexClientThreadIdentityError>;
-    readonly forget: (threadId: string) => Effect.Effect<void, CodexClientThreadIdentityError>;
+    readonly forget: (
+      threadId: string,
+      hostId?: string,
+    ) => Effect.Effect<void, CodexClientThreadIdentityError>;
     readonly threadIdFor: (
       clientThreadId: string,
+      hostId?: string,
     ) => Effect.Effect<string | null, CodexClientThreadIdentityError>;
     readonly clientThreadIdFor: (
       threadId: string,
+      hostId?: string,
     ) => Effect.Effect<string | null, CodexClientThreadIdentityError>;
+    readonly candidates: (
+      clientThreadId: string,
+      expectedHostId?: string,
+    ) => Effect.Effect<
+      readonly import("../codex/codex-client-thread-identity").CodexClientThreadIdentity[],
+      CodexClientThreadIdentityError
+    >;
     /** Resolves the browser-facing Session identity used while a pending Thread is materializing. */
     readonly resolveBrowserConversationId: (
       conversationId: string,
@@ -42,19 +57,24 @@ export class CodexClientThreadIdentity extends Context.Service<
 
 export const make = (
   store: PersistedAtomStore,
-): Effect.Effect<CodexClientThreadIdentity["Service"], never, ProjectWorkspace> =>
+): Effect.Effect<
+  CodexClientThreadIdentity["Service"],
+  never,
+  ProjectWorkspace | CodexApplicationEventHub
+> =>
   Effect.gen(function* () {
     const workspace = yield* ProjectWorkspace;
+    const events = yield* CodexApplicationEventHub;
     const attempt = <A>(operation: string, evaluate: () => A) =>
       Effect.try({
         try: evaluate,
         catch: (cause) => new CodexClientThreadIdentityError({ operation, cause }),
       });
-    const remember = (threadId: string, clientThreadId: string) =>
+    const remember = (threadId: string, clientThreadId: string, hostId = CODEX_APP_LOCAL_HOST_ID) =>
       attempt("remember", () => {
         const existingThreadId = resolveCodexThreadIdForClientThreadId(
           store,
-          CODEX_APP_LOCAL_HOST_ID,
+          hostId,
           clientThreadId,
         );
         if (existingThreadId && existingThreadId !== threadId) {
@@ -64,34 +84,40 @@ export const make = (
         }
         if (
           !setCodexClientThreadIdentity(store, {
-            hostId: CODEX_APP_LOCAL_HOST_ID,
+            hostId,
             threadId,
             clientThreadId,
           })
         ) {
           throw new Error(`Invalid client Thread identity for '${threadId}'`);
         }
+        events.publish({
+          kind: "codex",
+          value: { type: "createdThreadTargetChanged", hostId, threadId, clientThreadId },
+        });
       });
-    const threadIdFor = (clientThreadId: string) =>
+    const threadIdFor = (clientThreadId: string, hostId = CODEX_APP_LOCAL_HOST_ID) =>
       attempt("resolve-thread", () =>
-        resolveCodexThreadIdForClientThreadId(store, CODEX_APP_LOCAL_HOST_ID, clientThreadId),
+        resolveCodexThreadIdForClientThreadId(store, hostId, clientThreadId),
       );
-    const clientThreadIdFor = (threadId: string) =>
-      attempt("resolve-client", () =>
-        getCodexClientThreadId(store, CODEX_APP_LOCAL_HOST_ID, threadId),
-      );
+    const clientThreadIdFor = (threadId: string, hostId = CODEX_APP_LOCAL_HOST_ID) =>
+      attempt("resolve-client", () => getCodexClientThreadId(store, hostId, threadId));
 
     return CodexClientThreadIdentity.of({
       remember,
-      forget: (threadId) =>
+      forget: (threadId, hostId = CODEX_APP_LOCAL_HOST_ID) =>
         attempt("forget", () => {
           store.update({
-            key: codexClientThreadIdentityAtomKey(CODEX_APP_LOCAL_HOST_ID, threadId),
+            key: codexClientThreadIdentityAtomKey(hostId, threadId),
             value: null,
           });
         }),
       threadIdFor,
       clientThreadIdFor,
+      candidates: (clientThreadId, expectedHostId) =>
+        attempt("read-candidates", () =>
+          readCodexClientThreadIdentityCandidates(store, clientThreadId, expectedHostId),
+        ),
       resolveBrowserConversationId: (conversationId) =>
         Effect.gen(function* () {
           const directSession = yield* workspace.getProjectSession(conversationId).pipe(

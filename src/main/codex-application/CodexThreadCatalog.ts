@@ -43,6 +43,7 @@ import {
 } from "../codex/codex-sidebar-thread-move";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
+import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { projectCoreWorkspaceThread } from "./CodexThreadDirectoryProjection";
@@ -725,29 +726,43 @@ export const make = (
               }
               for (const item of response.data) {
                 const thread = item.thread;
+                const persisted = localById.get(thread.id);
+                const sourceExcluded =
+                  isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>) ||
+                  internalThreads.shouldSuppress(thread.id);
+                const linked =
+                  sourceExcluded &&
+                  persisted?.sessionId &&
+                  !thread.ephemeral &&
+                  !thread.parentThreadId &&
+                  thread.threadSource !== "system" &&
+                  internalThreads.classification(thread.id) !== "structured-title"
+                    ? yield* readCodexLinkedRootSession(core, {
+                        hostId: gateway.localHostId,
+                        threadId: thread.id,
+                      }).pipe(Effect.catch(() => Effect.succeed(null)))
+                    : null;
                 if (
                   thread.ephemeral ||
                   thread.parentThreadId ||
-                  internalThreads.shouldSuppress(thread.id) ||
-                  isNonSidebarThreadWithoutParent(thread as unknown as Record<string, unknown>) ||
+                  (sourceExcluded && !linked) ||
                   seen.has(thread.id)
                 ) {
                   continue;
                 }
                 seen.add(thread.id);
-                const persisted = localById.get(thread.id);
                 const inferred = resolveSidebarProjectIdForCwd(
                   thread.cwd,
                   projects,
                   options.foldPathCase === true,
                 );
-                const projectId = persisted?.projectId ?? inferred;
+                const projectId = linked ? linked.projectId : (persisted?.projectId ?? inferred);
                 const status = parseThreadStatus(thread.status);
                 const result: CommandPaletteThreadSearchResult = {
                   thread: {
                     backendBinding: CODEX_AGENT_BACKEND_BINDING,
                     threadId: thread.id,
-                    sessionId: persisted?.sessionId ?? null,
+                    sessionId: linked?.id ?? persisted?.sessionId ?? null,
                     projectId,
                     projectName: projectId
                       ? (projectNames.get(projectId) ?? persisted?.projectName ?? null)

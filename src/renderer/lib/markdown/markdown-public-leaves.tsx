@@ -8,8 +8,9 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { CodeBlock, CodeBlockCopyButton, StreamdownContext, type Components } from "streamdown";
+import { CodeBlock, StreamdownContext, type Components } from "streamdown";
 import type { Element } from "hast";
+import { MarkdownCodeCopyButton } from "./markdown-code-copy-button";
 import {
   FileMarkdownImageFrame,
   useFileMarkdownImagePresentation,
@@ -88,7 +89,7 @@ export function MarkdownCodeBlock({
       lineNumbers={context.lineNumbers && !/\bnoLineNumbers\b/u.test(meta)}
       startLine={Number(meta.match(/startLine=(\d+)/u)?.[1] ?? 1)}
     >
-      {showCopy ? <CodeBlockCopyButton code={text} disabled={incomplete} /> : null}
+      {showCopy ? <MarkdownCodeCopyButton text={text} disabled={incomplete} /> : null}
     </CodeBlock>
   );
 }

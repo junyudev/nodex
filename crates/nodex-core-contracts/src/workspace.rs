@@ -83,6 +83,11 @@ pub enum ProjectWorkspaceRead {
         provenance: crate::agent::AgentTurnProvenance,
         session_id: String,
     },
+    /// One live root Thread/Session binding, confirmed within the read transaction.
+    CodexThreadSession {
+        thread_id: String,
+        expected_execution_host_id: String,
+    },
     Thread {
         thread_id: String,
     },
@@ -131,6 +136,10 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    CodexThreadSession {
+        thread: Box<ProjectWorkspaceThread>,
+        session: ProjectWorkspaceSessionSummary,
+    },
     LocalCodexThreadIds {
         thread_ids: CollectionWindow<String>,
     },
@@ -1432,6 +1441,23 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         location: ProjectWorkspaceThreadExecutionLocation,
     },
+    /// Opens a root Codex conversation without transferring execution ownership.
+    EnsureCodexThreadSession {
+        thread_id: String,
+        expected_execution_host_id: String,
+        expected_binding: ProjectWorkspaceCodexThreadBinding,
+        session_id: String,
+        title: String,
+        observation: Option<Box<ProjectWorkspaceCodexThreadObservation>>,
+    },
+    /// Applies metadata only while the observed native conversation binding remains current.
+    ObserveCodexThreadMetadata {
+        thread_id: String,
+        expected_execution_host_id: String,
+        expected_binding: ProjectWorkspaceCodexThreadBinding,
+        expected_parent_thread_id: Option<String>,
+        observation: Box<ProjectWorkspaceCodexThreadObservation>,
+    },
     /// Admits one existing native conversation without creating or replaying Agent messages.
     AttachNativeSession {
         session_id: String,
@@ -1614,6 +1640,31 @@ pub enum ProjectSessionIntent {
         page_id: String,
         page_access_project_id: String,
     },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceCodexThreadBinding {
+    Absent,
+    Existing {
+        project_id: Option<String>,
+        session_id: Option<String>,
+    },
+}
+
+/// Metadata cannot reassign a backend, host, parent, or an existing Project/link.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkspaceCodexThreadObservation {
+    pub project_id: Option<String>,
+    pub cwd: Option<String>,
+    pub thread_name: Option<String>,
+    pub thread_source: Option<String>,
+    pub thread_preview: String,
+    pub status: ProjectWorkspaceThreadStatus,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub recency_at: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

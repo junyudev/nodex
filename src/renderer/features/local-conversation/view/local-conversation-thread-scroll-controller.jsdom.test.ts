@@ -64,12 +64,12 @@ describe("thread keyboard scroll intent", () => {
     expect(resolveThreadScrollKeyDirection(up, viewport)).toBeNull();
     expect(resolveThreadScrollKeyDirection(space, viewport)).toBeNull();
   });
-  test("ignores repeated and already consumed keyboard events", () => {
+  test("recognizes repeated scrolling keys while ignoring already consumed events", () => {
     const viewport = document.createElement("div");
     const repeat = new KeyboardEvent("keydown", { key: "Home", repeat: true });
     const consumed = new KeyboardEvent("keydown", { key: "End", cancelable: true });
     consumed.preventDefault();
-    expect(resolveThreadScrollKeyDirection(repeat, viewport)).toBeNull();
+    expect(resolveThreadScrollKeyDirection(repeat, viewport)).toBe("away");
     expect(resolveThreadScrollKeyDirection(consumed, viewport)).toBeNull();
   });
 });

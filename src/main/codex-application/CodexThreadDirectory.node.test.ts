@@ -2924,3 +2924,128 @@ it.effect("owner Scope close interrupts an in-flight remote hydration", () =>
     assert.isTrue(interrupted);
   }),
 );
+
+it.effect("strict selected target rejects a foreign durable host before any native hydration", () =>
+  Effect.gen(function* () {
+    const core = makeCore(
+      new Map([["child", coreThread("child", { execution_host_id: "foreign" })]]),
+    );
+    let requests = 0;
+    const directory = yield* directoryFoundations.pipe(
+      Effect.provideService(
+        CodexApplicationEventHub,
+        CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+      ),
+      Effect.provideService(
+        CodexConversationProjection,
+        CodexConversationProjection.of({
+          hydrate: () => Effect.die("No selected history may be installed"),
+        } as never),
+      ),
+      Effect.provideService(
+        CodexGateway,
+        makeGateway((() => {
+          requests++;
+          return Effect.die("No foreign native request");
+        }) as RequestOnHost),
+      ),
+      Effect.provideService(ConversationEntityMap, makeConversations()),
+      Effect.provideService(CoreModules, core),
+    );
+    assert.isTrue(
+      Exit.isFailure(
+        yield* directory
+          .resolve({ threadId: "child", fidelity: "tail", expectedHostId: "remote-a" })
+          .pipe(Effect.exit),
+      ),
+    );
+    assert.strictEqual(requests, 0);
+  }),
+);
+
+for (const race of ["host", "link", "parent"] as const)
+  it.effect(`strict hydration sends its pre-request binding to Core after a ${race} race`, () =>
+    Effect.gen(function* () {
+      const original = coreThread("child", {
+        parent_thread_id: "root",
+        session_id: "original-session",
+      });
+      const threads = new Map([
+        ["child", original],
+        ["root", coreThread("root")],
+      ]);
+      const base = makeCore(threads);
+      let writes = 0;
+      const core = CoreModules.of({
+        ...base,
+        workspace: {
+          ...base.workspace,
+          apply: (input) => {
+            writes++;
+            assert.strictEqual(input.intent.kind, "observe_codex_thread_metadata");
+            if (input.intent.kind !== "observe_codex_thread_metadata")
+              return Effect.die("Wrong metadata admission");
+            assert.strictEqual(input.intent.expected_execution_host_id, "remote-a");
+            assert.deepStrictEqual(input.intent.expected_binding, {
+              kind: "existing",
+              project_id: "project-a",
+              session_id: "original-session",
+            });
+            assert.strictEqual(input.intent.expected_parent_thread_id, "root");
+            return Effect.fail(
+              new CoreRuntimeError({
+                message: "Binding changed",
+                operation: "workspace.apply",
+                reason: "operation",
+                retryable: false,
+                cause: new CoreModuleResponseError({
+                  code: "conflict",
+                  message: "Binding changed",
+                  retryable: false,
+                  recovery: { kind: "none" },
+                }),
+              }),
+            );
+          },
+        },
+      });
+      const request = ((_host: string, method: string) =>
+        Effect.sync(() => {
+          assert.strictEqual(method, "thread/read");
+          threads.set("child", {
+            ...original,
+            ...(race === "host"
+              ? { execution_host_id: "foreign" }
+              : race === "link"
+                ? { session_id: "new-session" }
+                : { parent_thread_id: "new-parent" }),
+          });
+          return { thread: { ...appThread("child"), parentThreadId: "root" } };
+        })) as RequestOnHost;
+      const directory = yield* directoryFoundations.pipe(
+        Effect.provideService(
+          CodexApplicationEventHub,
+          CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+        ),
+        Effect.provideService(
+          CodexConversationProjection,
+          CodexConversationProjection.of({
+            hydrate: () => Effect.die("Rejected metadata cannot install history"),
+          } as never),
+        ),
+        Effect.provideService(CodexGateway, makeGateway(request)),
+        Effect.provideService(ConversationEntityMap, makeConversations()),
+        Effect.provideService(CoreModules, core),
+      );
+      assert.isTrue(
+        Exit.isFailure(
+          yield* directory
+            .resolve({ threadId: "child", fidelity: "tail", expectedHostId: "remote-a" })
+            .pipe(Effect.exit),
+        ),
+      );
+      assert.strictEqual(writes, 1);
+      assert.notStrictEqual(threads.get("child"), original);
+      assert.notStrictEqual(threads.get("child")?.thread_name, "Hydrated Thread");
+    }),
+  );

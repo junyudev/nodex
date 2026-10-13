@@ -177,7 +177,7 @@ export function BackgroundAgentSessionTab({
 
 export function SubagentsPanelSessionTab({
   tab,
-  activeSession,
+  activeSession: sourceSession,
   projects,
   onRefreshSessions,
   onOpenMcpAppSidePanel,
@@ -216,7 +216,7 @@ export function SubagentsPanelSessionTab({
   const codexControl = useCodexAppServerControl(
     tab.projectId,
     tab.selectedThreadId ?? tab.rootThreadId,
-    activeSession.thread?.executionHostId ?? null,
+    sourceSession.thread?.executionHostId ?? null,
   );
   const refreshSelectedSubagentAuthority = codexControl.refreshSelectedSubagentAuthority;
   const [selectedCanInteract, setSelectedCanInteract] = useState(false);
@@ -287,9 +287,23 @@ export function SubagentsPanelSessionTab({
         await onRouteSubagent(context.subagent);
         return;
       }
+      if (context?.createdTarget) {
+        const root = sourceSession.thread;
+        if (
+          sourceSession.id !== tab.sessionId ||
+          root?.backendBinding.kind !== "codex" ||
+          root.threadId !== tab.rootThreadId
+        )
+          return;
+        await onOpenThread(threadId, {
+          ...context,
+          sourceRoot: { hostId: root.executionHostId, threadId: tab.rootThreadId },
+        });
+        return;
+      }
       await onOpenThread(threadId, context);
     },
-    [onOpenThread, onRouteSubagent],
+    [onOpenThread, onRouteSubagent, sourceSession, tab.rootThreadId, tab.sessionId],
   );
 
   if (!tab.selectedThreadId) {
@@ -375,7 +389,7 @@ export function SubagentsPanelSessionTab({
       <div className="min-h-0 flex-1">
         <BackgroundAgentSessionTab
           tab={detailTab}
-          activeSession={activeSession}
+          activeSession={sourceSession}
           projects={projects}
           onRefreshSessions={onRefreshSessions}
           onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}

@@ -337,6 +337,7 @@ it.effect("commits the Session link before admitting its first Turn", () =>
     assert.deepStrictEqual(test.threadNames, [{ threadId: "thread-1", name: "Chosen title" }]);
 
     assert.strictEqual(result.kind, "started");
+    assert.strictEqual(result.hostId, "local");
     assert.deepEqual(test.events, [
       "start:1",
       "commit:thread-1",
@@ -668,6 +669,12 @@ it.effect("freezes resolved Agent config into a pending worktree request", () =>
     );
 
     assert.strictEqual(result.kind, "pending");
+    assert.strictEqual(
+      result.hostId,
+      test.pendingWorktreeRequests[0]?.launchMode === "start-conversation"
+        ? test.pendingWorktreeRequests[0].threadStartHostId
+        : "local",
+    );
     const request = test.pendingWorktreeRequests[0];
     assert.strictEqual(request?.launchMode, "start-conversation");
     if (request?.launchMode !== "start-conversation") return;

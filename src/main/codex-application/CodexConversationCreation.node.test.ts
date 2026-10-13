@@ -196,7 +196,11 @@ it.effect.each([
           Effect.provideService(
             CodexClientThreadIdentity,
             CodexClientThreadIdentity.of({
-              remember: () => Effect.sync(() => launchEvents.push("identity:remembered")),
+              remember: (_threadId: string, _clientThreadId: string, hostId?: string) =>
+                Effect.sync(() => {
+                  assert.strictEqual(hostId, targetHostId);
+                  launchEvents.push("identity:remembered");
+                }),
               forget: () => Effect.void,
             } as unknown as CodexClientThreadIdentity["Service"]),
           ),

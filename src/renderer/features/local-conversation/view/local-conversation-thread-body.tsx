@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
+import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { ThreadScope } from "@/lib/workbench-ui-scopes";
 import type {
@@ -178,7 +178,7 @@ function AttachedLocalConversationThreadBody({
   const appHandle = useScopeHandle(appScope);
   const { addScrollListener } = useLocalConversationThreadScrollController();
   const restoreAtom = localConversationThreadRestoreSnapshotFamily(conversationId);
-  const initialRestoreSnapshotRef = useRef(appHandle.get(restoreAtom));
+  const [initialRestoreSnapshot] = useState(() => appHandle.get(restoreAtom));
 
   const updateRestoreSnapshot = useCallback(
     (update: RestoreSnapshotUpdate) => {
@@ -203,7 +203,7 @@ function AttachedLocalConversationThreadBody({
   return (
     <LocalConversationThreadBodyLayout
       {...props}
-      initialRestoreSnapshot={initialRestoreSnapshotRef.current}
+      initialRestoreSnapshot={initialRestoreSnapshot}
       onRestoreSnapshotChange={updateRestoreSnapshot}
     />
   );
