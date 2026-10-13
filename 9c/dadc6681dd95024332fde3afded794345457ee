@@ -1,0 +1,25 @@
+docs/LINTING.md
+  s_8496bd2fc78127::t_6dc40dbe7f1786 55-61
+scripts/ci/verify-semantic-tooling.ts
+  s_8496bd2fc78127::t_29a3a34689c701 121-213
+scripts/ci/verify-tooling-contracts.ts
+  s_8496bd2fc78127::t_bcb7a1eb95238c 1-5,265,270
+vite.config.ts
+  s_8496bd2fc78127::t_3fbb6a5d3fd52f 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9cdadc6681dd95024332fde3afded794345457ee",
+  "prompts": {},
+  "sessions": {
+    "s_8496bd2fc78127": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13082-7498-74b2-bdc7-72b09daab7a1",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
