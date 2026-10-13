@@ -1,0 +1,74 @@
+src/main/codex-runtime/CodexRequestSchedulerPolicy.node.test.ts
+  s_84bf5c78324d85::t_e2887175f9f2ef 12,35,62,80,88-91,180-182,251,271,296,307-313,316-322,333,355,368-413,558
+src/main/platform/node/CodexPeerMetrics.node.test.ts
+  s_84bf5c78324d85::t_08e56c33cbcdce 1-125
+src/renderer/features/local-conversation/codex-turn-first-response-view.tsx
+  s_84bf5c78324d85::t_3e6ca706cb3d81 15-19
+src/shared/codex-conversation-stream.ts
+  s_84bf5c78324d85::t_8907cc1e504572 302-304
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_84bf5c78324d85::t_08e56c33cbcdce 4
+  s_84bf5c78324d85::t_77ebf8da1bd984 216-218
+src/main/codex-runtime/CodexRequestSchedulerPolicy.ts
+  s_84bf5c78324d85::t_e2887175f9f2ef 65
+  s_84bf5c78324d85::t_8907cc1e504572 2,4-5,44,60,66,104,174-181,416-422
+docs/RELIABILITY.md
+  s_84bf5c78324d85::t_77ebf8da1bd984 426-429,444-449,468-470
+src/main/codex-runtime/CodexGateway.ts
+  s_84bf5c78324d85::t_8907cc1e504572 152,155
+src/main/platform/node/CodexPeerRouter.ts
+  s_84bf5c78324d85::t_74fb197d0f4bde 75,82-83,87-88,172-173,208,216-217,229-230,272,278-279
+  s_84bf5c78324d85::t_4f2815e8f2df16 4,73-74,127
+src/shared/codex-request-policy.ts
+  s_84bf5c78324d85::t_3e6ca706cb3d81 136,153,170
+src/main/dev-runtime-metrics.ts
+  s_84bf5c78324d85::t_8910e58cc6e755 4,38
+src/shared/codex-conversation-stream.test.ts
+  s_84bf5c78324d85::t_a0297e9a7c1c97 83-85
+  s_84bf5c78324d85::t_61a6ae5ba2613a 57-82,86-90
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_84bf5c78324d85::t_8907cc1e504572 19,1037
+src/shared/codex-renderer-request.ts
+  s_84bf5c78324d85::t_8907cc1e504572 15-16
+src/main/platform/node/CodexPeerClient.ts
+  s_84bf5c78324d85::t_4f2815e8f2df16 4,82,109,188-189
+  s_84bf5c78324d85::t_74fb197d0f4bde 190,197-201,290-291,308-309,320-321
+src/main/platform/node/CodexPeerFraming.ts
+  s_84bf5c78324d85::t_74fb197d0f4bde 32,84-85,93-102
+  s_84bf5c78324d85::t_4f2815e8f2df16 3,20-23,43,54,66,69,79-81,86-90
+  s_7231ce0e013023::t_1c60d39317a671 91-92
+docs/development.md
+  s_84bf5c78324d85::t_77ebf8da1bd984 125-126
+src/main/codex-runtime/CodexRequestScheduler.node.test.ts
+  s_84bf5c78324d85::t_7248dc892c67b9 15,65-66,71-72,84,101-102,253-258,283-286,295-300,303-306,419-424,444-447,453,572-584,611-613,642-645,652-655,658-661
+src/main/platform/node/CodexPeerMetrics.ts
+  s_84bf5c78324d85::t_1afb4bd9b26ec5 1-251
+src/renderer/features/local-conversation/codex-turn-first-response-view.test.tsx
+  s_84bf5c78324d85::t_46043474f58206 1-62
+src/renderer/features/local-conversation/renderer-app-server-request-client.node.test.ts
+  s_84bf5c78324d85::t_38379f60554f89 3,146-172,380-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc7ab534172f425b0e27ceb97a39bd99e642d628",
+  "prompts": {},
+  "sessions": {
+    "s_7231ce0e013023": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9f26-3497-72d3-8162-c616ac149604",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
