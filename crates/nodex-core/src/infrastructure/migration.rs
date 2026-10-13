@@ -296,6 +296,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 177,
         apply: migrate_v176_to_v177,
     },
+    MigrationStep {
+        from_revision: 177,
+        to_revision: 178,
+        apply: migrate_v177_to_v178,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2317,6 +2322,21 @@ fn migrate_v175_to_v176(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"inbox":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v177_to_v178(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v177_to_v178.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"agent_runtime_session_bindings":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6453,6 +6473,73 @@ mod tests {
         connection.execute("UPDATE thread_backend_sessions SET native_home='/native/home' WHERE thread_id='codex'",[]).expect("claim native home");
         connection.execute_batch("INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at,agent_backend_kind,agent_backend_instance_config_id) VALUES ('duplicate',1,1,'today','claude','native-work');").expect("second metadata identity");
         assert!(connection.execute("INSERT INTO thread_backend_sessions(thread_id,backend_kind,instance_config_id,backend_session_id,updated_at,native_home) VALUES ('duplicate','claude','native-work','native-session',2,'/native/home')",[]).is_err());
+    }
+
+    #[test]
+    fn agent_runtime_binding_migration_preserves_session_identity_and_existing_execution_links() {
+        let directory = tempdir().expect("Profile");
+        let path = directory.path().join("nodex.db");
+        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
+            .expect("published predecessor");
+        let mut connection = open_writer(&path).expect("writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            let steps = resolve_migration_path(174, 177, MIGRATION_STEPS)
+                .expect("published Inbox predecessor path");
+            for step in steps {
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "prepare-runtime-binding.db".into(),
+                        source_schema_fingerprint: published_format(step.from_revision)?
+                            .schema_fingerprint,
+                        target_schema_fingerprint: published_format(step.to_revision)?
+                            .schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+                validate_schema_identity(transaction, step.to_revision)?;
+            }
+            Ok(())
+        })
+        .expect("published Inbox and Session schema");
+        connection.execute_batch(
+            "INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at) \
+             VALUES ('session:retained','Task',0,'2026-10-13T00:00:00.000Z','2026-10-13T00:00:00.000Z'); \
+             INSERT INTO project_session_threads(session_id,thread_id,linked_at) \
+             VALUES ('session:retained','fixture-acp','2026-10-13T00:00:00.000Z');"
+        ).expect("existing Session identity and execution binding");
+        let migrated = prepare_profile_store(&mut connection, directory.path())
+            .expect("runtime binding upgrade");
+        assert_eq!(migrated.migrated_from_version, Some(177));
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION)
+            .expect("published runtime authority schema");
+        assert_eq!(connection.query_row(
+            "SELECT session_id,thread_id FROM project_session_threads WHERE session_id='session:retained'", [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        ).unwrap(), ("session:retained".into(), "fixture-acp".into()));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM project_session_execution_bindings",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert!(connection.execute(
+            "INSERT INTO project_session_execution_bindings(session_id,runtime_id,runtime_thread_id,launch_request_id,launch_request_hash,bound_at) VALUES ('session:retained','engine','thread','launch',?1,'today')", ["a".repeat(64)]
+        ).is_err());
+        drop(connection);
+        let mut reopened = open_writer(&path).expect("reopen");
+        assert_eq!(
+            prepare_profile_store(&mut reopened, directory.path())
+                .expect("current reopen")
+                .migrated_from_version,
+            None
+        );
     }
 
     #[test]

@@ -11,7 +11,7 @@ It is deliberately not a file inventory, migration ledger, product specification
 
 ## System at a glance
 
-Nodex is a local-first, block-based agent orchestrator. One detached native Rust Core is the exclusive SQLite and collaborative-document authority for a Profile. Electron is the Desktop Host: it supervises Core, owns windows and operating system integration, hosts the pinned native Codex app-server and capability-negotiated external runtimes, and exposes typed capabilities to sandboxed renderers. The native CLI reaches the same Core contracts without going through Electron.
+Nodex is a local-first, block-based agent orchestrator. One detached native Rust Core is the exclusive content SQLite and collaborative-document authority for a Profile. Electron is the Desktop Host: it supervises Core, owns windows and operating system integration, hosts the pinned native Codex app-server and capability-negotiated external runtimes, and exposes typed capabilities to sandboxed renderers. The native CLI reaches the same Core contracts without going through Electron.
 
 ```mermaid
 flowchart LR
@@ -89,6 +89,15 @@ Project                              execution context
 ```
 
 One Profile owns one Library. Library owns durable content; Project owns execution context and access to content. Archiving or deleting a Project never owns, moves, or deletes Library content.
+
+An Agent Runtime bound Session retains its Core product identity while its root Thread
+has one external execution owner. Core atomically admits the immutable reference and
+Page links, and freezes leased content authority for verified Runs. Native and external
+execution bindings are mutually exclusive. The execution runtime owns its separate SQL
+transaction for history, delegated work, receipts and pending effects; it does not open
+Core's content database or infer Library permission from its workspace. See
+[Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
+[ADR 0067](adr/0067-agent-runtime-execution-authority.md).
 
 Blocks, Documents, owner registries, search/asset projections, and top-level placement are physically Library-scoped. A Project coordinate retained by a receipt, change log, automation record, recovery artifact, or delivery packet names actor/execution/delivery provenance, not content ownership. `library_block_placements` is the sole root-order authority; runtime mutations do not dual-write a Project-local placement graph.
 

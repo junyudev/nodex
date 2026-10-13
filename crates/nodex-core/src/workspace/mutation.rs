@@ -247,6 +247,7 @@ pub(super) fn apply(
                     if matches!(
                         intent.as_ref(),
                         ProjectWorkspaceIntent::AdmitSessionLaunch { .. }
+                            | ProjectWorkspaceIntent::CreateAgentRuntimeSession { .. }
                             | ProjectWorkspaceIntent::AdmitSessionMessage { .. }
                             | ProjectWorkspaceIntent::AdmitSessionHandoff { .. }
                             | ProjectWorkspaceIntent::AdmitSessionFork { .. }
@@ -889,6 +890,31 @@ pub(super) fn apply(
                     initial_page_ids,
                     None,
                 ),
+                ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                    session_id,
+                    project_id,
+                    title,
+                    initial_page_ids,
+                    runtime_id,
+                    runtime_thread_id,
+                    launch_request_id,
+                    launch_request_hash,
+                } => super::agent_runtime_binding::create_session(
+                    transaction,
+                    &library_id,
+                    &context,
+                    &store_epoch,
+                    &request.operation_id,
+                    &request_hash,
+                    session_id,
+                    project_id.as_deref(),
+                    title,
+                    initial_page_ids,
+                    runtime_id,
+                    runtime_thread_id,
+                    launch_request_id,
+                    launch_request_hash,
+                ),
                 ProjectWorkspaceIntent::CreateSessionInSidebarSection {
                     session_id,
                     section_id,
@@ -1355,6 +1381,26 @@ pub(super) fn apply(
                         (coordinate.thread_id.as_str(), coordinate.turn_id.as_str())
                     }),
                 ),
+                ProjectWorkspaceIntent::AdmitAgentRuntimeTurnAuthority {
+                    session_id, identity, source, read_only, parent,
+                } => super::agent_runtime_authority::admit(
+                    transaction, &library_id, &context, &store_epoch,
+                    &request.operation_id, &request_hash, session_id, identity,
+                    *source, *read_only, parent.as_ref(),
+                ),
+                ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity } => {
+                    super::agent_runtime_authority::revoke(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash,
+                        &identity.runtime_id, None, Some(identity),
+                    )
+                }
+                ProjectWorkspaceIntent::RevokeAgentRuntimeAuthorities { runtime_id, lease_id } => {
+                    super::agent_runtime_authority::revoke(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, runtime_id, lease_id.as_deref(), None,
+                    )
+                }
                 ProjectWorkspaceIntent::UpsertBackgroundProcess {
                     process,
                     preserve_started_at,

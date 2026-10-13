@@ -300,6 +300,54 @@ pub(super) fn read(
                 session: session_summary(row),
             })
         }
+        ProjectWorkspaceRead::AgentRuntimeSessionBinding { session_id } => {
+            Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+                binding: super::agent_runtime_binding::read_binding(
+                    connection,
+                    context,
+                    library_id,
+                    &session_id,
+                )?,
+            })
+        }
+        ProjectWorkspaceRead::AgentRuntimeParentAdmission {
+            runtime_id,
+            thread_id,
+            run_id,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeParentAdmission {
+            identity: super::agent_runtime_authority::read_parent_admission(
+                connection,
+                context,
+                library_id,
+                &runtime_id,
+                &thread_id,
+                &run_id,
+            )?,
+        }),
+        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
+            identity,
+            include_revoked,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority {
+            resolution: super::agent_runtime_authority::read_authority(
+                connection,
+                context,
+                library_id,
+                &identity,
+                include_revoked.unwrap_or(false),
+            )?,
+        }),
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution {
+            runtime_id,
+            runtime_thread_id,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+            binding: super::agent_runtime_binding::read_binding_by_execution(
+                connection,
+                context,
+                library_id,
+                &runtime_id,
+                &runtime_thread_id,
+            )?,
+        }),
         ProjectWorkspaceRead::AgentSession {
             provenance,
             session_id,

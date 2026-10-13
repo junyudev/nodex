@@ -26,7 +26,9 @@ pub(super) fn admit<'a>(
     )? {
         return Err(denied("Read-only Turns cannot change application state"));
     }
-    if let ProjectWorkspaceIntent::AdmitSessionLaunch { project_id, .. } = intent.as_ref() {
+    if let ProjectWorkspaceIntent::AdmitSessionLaunch { project_id, .. }
+    | ProjectWorkspaceIntent::CreateAgentRuntimeSession { project_id, .. } = intent.as_ref()
+    {
         if provenance.authority.scope
             != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library
             && project_id.as_deref() != provenance.authority.actor_project_id.as_deref()

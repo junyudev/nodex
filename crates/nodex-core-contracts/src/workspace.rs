@@ -12,7 +12,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 35;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 36;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -85,6 +85,27 @@ pub enum ProjectWorkspaceRead {
     },
     Session {
         session_id: String,
+    },
+    /// The external runtime identity reserved for one Session; execution remains runtime-owned.
+    AgentRuntimeSessionBinding {
+        session_id: String,
+    },
+    /// Resolves one root execution identity through the unique binding index.
+    AgentRuntimeSessionBindingByExecution {
+        runtime_id: String,
+        runtime_thread_id: String,
+    },
+    AgentRuntimeTurnAuthority {
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+        /// Host-only inheritance evidence; revoked credentials still cannot authorize tools.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        include_revoked: Option<bool>,
+    },
+    /// The newest immutable admission for a verified parent Run, solely for inheritance.
+    AgentRuntimeParentAdmission {
+        runtime_id: String,
+        thread_id: String,
+        run_id: String,
     },
     AgentSession {
         provenance: crate::agent::AgentTurnProvenance,
@@ -226,6 +247,15 @@ pub enum ProjectWorkspaceReadValue {
     },
     Session {
         session: ProjectWorkspaceSessionSummary,
+    },
+    AgentRuntimeSessionBinding {
+        binding: Option<ProjectWorkspaceAgentRuntimeSessionBinding>,
+    },
+    AgentRuntimeTurnAuthority {
+        resolution: ProjectWorkspaceTurnAuthorityResolution,
+    },
+    AgentRuntimeParentAdmission {
+        identity: Option<ProjectWorkspaceAgentRuntimeTurnIdentity>,
     },
     AgentSession {
         session: ProjectWorkspaceSessionSummary,
@@ -1200,6 +1230,28 @@ pub struct ProjectWorkspaceSessionSummary {
     pub updated_at: String,
 }
 
+/// A stable Session-to-runtime link, without provider, Run, or transcript projections.
+/// The host retries an interrupted launch with the same request and Thread identities.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeSessionBinding {
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub runtime_id: String,
+    pub runtime_thread_id: String,
+    pub launch_request_id: String,
+    pub launch_request_hash: String,
+    pub bound_at: String,
+}
+
+/// Persistent engine and execution identity plus one Host-authenticated credential lifetime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeTurnIdentity {
+    pub runtime_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub lease_id: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceTaskSummary {
     pub session: ProjectWorkspaceSessionSummary,
@@ -1413,6 +1465,18 @@ pub enum ProjectWorkspaceIntent {
         title: String,
         initial_page_ids: Vec<String>,
     },
+    /// Atomically reserves the Session, authorized Linked chats, and runtime launch identity.
+    /// Core does not execute the launch or persist the external Thread's mutable state.
+    CreateAgentRuntimeSession {
+        session_id: String,
+        project_id: Option<String>,
+        title: String,
+        initial_page_ids: Vec<String>,
+        runtime_id: String,
+        runtime_thread_id: String,
+        launch_request_id: String,
+        launch_request_hash: String,
+    },
     /// Reserves one host launch with Session creation. Only a fresh receipt admits execution;
     /// replay must reconcile the Session binding without launching another backend Thread.
     AdmitSessionLaunch {
@@ -1624,6 +1688,24 @@ pub enum ProjectWorkspaceIntent {
         source: ProjectWorkspaceTurnAuthoritySource,
         read_only: bool,
         inherited_from: Option<ProjectWorkspaceTurnCoordinate>,
+    },
+    /// Host verifies the runtime's active Run and child lineage before admitting content access.
+    /// Read the resolution after every apply: receipt replay never reactivates revoked authority.
+    AdmitAgentRuntimeTurnAuthority {
+        session_id: String,
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+        source: ProjectWorkspaceTurnAuthoritySource,
+        read_only: bool,
+        parent: Option<ProjectWorkspaceAgentRuntimeTurnIdentity>,
+    },
+    RevokeAgentRuntimeTurnAuthority {
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+    },
+    /// Revokes outstanding credentials when an engine connection is replaced or stopped.
+    RevokeAgentRuntimeAuthorities {
+        runtime_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lease_id: Option<String>,
     },
     UpsertBackgroundProcess {
         process: ProjectWorkspaceBackgroundProcess,

@@ -7222,6 +7222,17 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                readonly initial_page_ids: readonly string[];
+                /** @enum {string} */
+                readonly kind: "create_agent_runtime_session";
+                readonly launch_request_hash: string;
+                readonly launch_request_id: string;
+                readonly project_id?: string | null;
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+                readonly session_id: string;
+                readonly title: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "admit_session_launch";
                 readonly launch_request_hash: string;
@@ -7457,6 +7468,23 @@ export interface components {
                 readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
                 readonly thread_id: string;
                 readonly turn_id: string;
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "admit_agent_runtime_turn_authority";
+                readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                readonly read_only: boolean;
+                readonly session_id: string;
+                readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_turn_authority";
+            } | {
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_authorities";
+                readonly lease_id?: string | null;
+                readonly runtime_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "upsert_background_process";
@@ -8513,6 +8541,27 @@ export interface components {
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding_by_execution";
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @description Host-only inheritance evidence; revoked credentials still cannot authorize tools. */
+                readonly include_revoked?: boolean | null;
+                /** @enum {string} */
+                readonly kind: "agent_runtime_turn_authority";
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_parent_admission";
+                readonly run_id: string;
+                readonly runtime_id: string;
+                readonly thread_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "agent_session";
                 readonly provenance: components["schemas"]["AgentTurnProvenance"];
                 readonly session_id: string;
@@ -9085,6 +9134,26 @@ export interface components {
             readonly mode_id?: string | null;
             readonly model?: string | null;
         };
+        /**
+         * @description A stable Session-to-runtime link, without provider, Run, or transcript projections.
+         *     The host retries an interrupted launch with the same request and Thread identities.
+         */
+        readonly ProjectWorkspaceAgentRuntimeSessionBinding: {
+            readonly bound_at: string;
+            readonly launch_request_hash: string;
+            readonly launch_request_id: string;
+            readonly project_id?: string | null;
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
+            readonly session_id: string;
+        };
+        /** @description Persistent engine and execution identity plus one Host-authenticated credential lifetime. */
+        readonly ProjectWorkspaceAgentRuntimeTurnIdentity: {
+            readonly lease_id: string;
+            readonly run_id: string;
+            readonly runtime_id: string;
+            readonly thread_id: string;
+        };
         readonly ProjectWorkspaceApplyRequest: components["schemas"]["ModuleApplyRequest_ProjectWorkspaceIntent"];
         readonly ProjectWorkspaceApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_ProjectWorkspaceCommitValue_ProjectWorkspaceReceipt"];
         readonly ProjectWorkspaceBackgroundProcess: {
@@ -9501,6 +9570,17 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            readonly initial_page_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "create_agent_runtime_session";
+            readonly launch_request_hash: string;
+            readonly launch_request_id: string;
+            readonly project_id?: string | null;
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
+            readonly session_id: string;
+            readonly title: string;
+        } | {
             /** @enum {string} */
             readonly kind: "admit_session_launch";
             readonly launch_request_hash: string;
@@ -9736,6 +9816,23 @@ export interface components {
             readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
             readonly thread_id: string;
             readonly turn_id: string;
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            /** @enum {string} */
+            readonly kind: "admit_agent_runtime_turn_authority";
+            readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            readonly read_only: boolean;
+            readonly session_id: string;
+            readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_turn_authority";
+        } | {
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_authorities";
+            readonly lease_id?: string | null;
+            readonly runtime_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "upsert_background_process";
@@ -11689,6 +11786,18 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                } | {
+                    readonly binding?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_session_binding";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_turn_authority";
+                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
+                } | {
+                    readonly identity?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_parent_admission";
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_session";

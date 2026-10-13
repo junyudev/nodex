@@ -31,6 +31,41 @@ pub(super) fn create_session(
     initial_page_ids: &[String],
     sidebar_section_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let now = prepare_session(
+        connection,
+        library_id,
+        session_id,
+        project_id,
+        title,
+        initial_page_ids,
+        sidebar_section_id,
+    )?;
+    finish_lifecycle_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "create_session",
+        project_id.into_iter().map(str::to_owned).collect(),
+        vec![session_id.to_owned()],
+        Vec::new(),
+        vec![project_session_scope(project_id)],
+        project_id,
+        now,
+    )
+}
+
+pub(super) fn prepare_session(
+    connection: &Connection,
+    library_id: &str,
+    session_id: &str,
+    project_id: Option<&str>,
+    title: &str,
+    initial_page_ids: &[String],
+    sidebar_section_id: Option<&str>,
+) -> Result<String, StoreError> {
     validate_id("session_id", session_id)?;
     if let Some(project_id) = project_id {
         validate_id("project_id", project_id)?;
@@ -50,21 +85,7 @@ pub(super) fn create_session(
             connection, library_id, section_id, session_id, &now,
         )?;
     }
-    finish_lifecycle_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "create_session",
-        project_id.into_iter().map(str::to_owned).collect(),
-        vec![session_id.to_owned()],
-        Vec::new(),
-        vec![project_session_scope(project_id)],
-        project_id,
-        now,
-    )
+    Ok(now)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -252,6 +273,13 @@ pub(super) fn move_session(
             now,
         );
     }
+    if super::agent_runtime_binding::is_runtime_bound(connection, session_id)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Agent Runtime Session execution scope cannot change",
+            false,
+        ));
+    }
     if authority.is_default_draft {
         let target_has_default = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM project_sessions \
@@ -432,7 +460,7 @@ fn read_ordered_session_ids(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn finish_lifecycle_mutation(
+pub(super) fn finish_lifecycle_mutation(
     connection: &Connection,
     _library_id: &str,
     context: &BoundModuleContext,

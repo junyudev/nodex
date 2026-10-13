@@ -29944,6 +29944,58 @@
               },
               {
                 "type": "object",
+                "description": "Atomically reserves the Session, authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
+                "required": [
+                  "session_id",
+                  "title",
+                  "initial_page_ids",
+                  "runtime_id",
+                  "runtime_thread_id",
+                  "launch_request_id",
+                  "launch_request_hash",
+                  "kind"
+                ],
+                "properties": {
+                  "initial_page_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "create_agent_runtime_session"
+                    ]
+                  },
+                  "launch_request_hash": {
+                    "type": "string"
+                  },
+                  "launch_request_id": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "runtime_thread_id": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
                 "required": [
                   "session_id",
@@ -31043,6 +31095,90 @@
                     "type": "string"
                   },
                   "turn_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Host verifies the runtime's active Run and child lineage before admitting content access.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
+                "required": [
+                  "session_id",
+                  "identity",
+                  "source",
+                  "read_only",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_agent_runtime_turn_authority"
+                    ]
+                  },
+                  "parent": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                      }
+                    ]
+                  },
+                  "read_only": {
+                    "type": "boolean"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revoke_agent_runtime_turn_authority"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Revokes outstanding credentials when an engine connection is replaced or stopped.",
+                "required": [
+                  "runtime_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revoke_agent_runtime_authorities"
+                    ]
+                  },
+                  "lease_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "runtime_id": {
                     "type": "string"
                   }
                 }
@@ -35762,6 +35898,100 @@
               },
               {
                 "type": "object",
+                "description": "The external runtime identity reserved for one Session; execution remains runtime-owned.",
+                "required": [
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_session_binding"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Resolves one root execution identity through the unique binding index.",
+                "required": [
+                  "runtime_id",
+                  "runtime_thread_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_session_binding_by_execution"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "runtime_thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                  },
+                  "include_revoked": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Host-only inheritance evidence; revoked credentials still cannot authorize tools."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_turn_authority"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "The newest immutable admission for a verified parent Run, solely for inheritance.",
+                "required": [
+                  "runtime_id",
+                  "thread_id",
+                  "run_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_parent_admission"
+                    ]
+                  },
+                  "run_id": {
+                    "type": "string"
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "provenance",
                   "session_id",
@@ -37746,6 +37976,68 @@
           }
         }
       },
+      "ProjectWorkspaceAgentRuntimeSessionBinding": {
+        "type": "object",
+        "description": "A stable Session-to-runtime link, without provider, Run, or transcript projections.\nThe host retries an interrupted launch with the same request and Thread identities.",
+        "required": [
+          "session_id",
+          "runtime_id",
+          "runtime_thread_id",
+          "launch_request_id",
+          "launch_request_hash",
+          "bound_at"
+        ],
+        "properties": {
+          "bound_at": {
+            "type": "string"
+          },
+          "launch_request_hash": {
+            "type": "string"
+          },
+          "launch_request_id": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runtime_id": {
+            "type": "string"
+          },
+          "runtime_thread_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceAgentRuntimeTurnIdentity": {
+        "type": "object",
+        "description": "Persistent engine and execution identity plus one Host-authenticated credential lifetime.",
+        "required": [
+          "runtime_id",
+          "thread_id",
+          "run_id",
+          "lease_id"
+        ],
+        "properties": {
+          "lease_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceApplyRequest": {
         "$ref": "#/components/schemas/ModuleApplyRequest_ProjectWorkspaceIntent"
       },
@@ -39575,6 +39867,58 @@
           },
           {
             "type": "object",
+            "description": "Atomically reserves the Session, authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
+            "required": [
+              "session_id",
+              "title",
+              "initial_page_ids",
+              "runtime_id",
+              "runtime_thread_id",
+              "launch_request_id",
+              "launch_request_hash",
+              "kind"
+            ],
+            "properties": {
+              "initial_page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_agent_runtime_session"
+                ]
+              },
+              "launch_request_hash": {
+                "type": "string"
+              },
+              "launch_request_id": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime_id": {
+                "type": "string"
+              },
+              "runtime_thread_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
             "required": [
               "session_id",
@@ -40674,6 +41018,90 @@
                 "type": "string"
               },
               "turn_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Host verifies the runtime's active Run and child lineage before admitting content access.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
+            "required": [
+              "session_id",
+              "identity",
+              "source",
+              "read_only",
+              "kind"
+            ],
+            "properties": {
+              "identity": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_agent_runtime_turn_authority"
+                ]
+              },
+              "parent": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                  }
+                ]
+              },
+              "read_only": {
+                "type": "boolean"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity",
+              "kind"
+            ],
+            "properties": {
+              "identity": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revoke_agent_runtime_turn_authority"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Revokes outstanding credentials when an engine connection is replaced or stopped.",
+            "required": [
+              "runtime_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revoke_agent_runtime_authorities"
+                ]
+              },
+              "lease_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "runtime_id": {
                 "type": "string"
               }
             }
@@ -50046,6 +50474,72 @@
                           },
                           "session": {
                             "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "binding": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeSessionBinding"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_session_binding"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "resolution",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_turn_authority"
+                            ]
+                          },
+                          "resolution": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityResolution"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "identity": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_parent_admission"
+                            ]
                           }
                         }
                       },

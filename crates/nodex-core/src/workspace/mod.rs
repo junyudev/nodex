@@ -1,4 +1,6 @@
 mod agent_command;
+mod agent_runtime_authority;
+mod agent_runtime_binding;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;

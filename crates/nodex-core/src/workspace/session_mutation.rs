@@ -441,6 +441,13 @@ fn link_thread(
     >,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
+    if super::agent_runtime_binding::is_runtime_bound(connection, session_id)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Session execution belongs to Agent Runtime",
+            false,
+        ));
+    }
     if let Some(project_id) = expected_project_id {
         validate_id("expected_project_id", project_id)?;
     }

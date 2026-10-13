@@ -23,6 +23,31 @@ Accepted system-wide decisions live in `docs/adr/`.
 
 ## Canonical terms
 
+### Agent Runtime
+
+The Agent Runtime coordinates execution conversations and their work. It owns Runs,
+native provider sessions, queued messages, delegated tasks and result delivery. It
+does not own Library content or grant access to it.
+
+### Session
+
+A Session is the product identity of a chat in a Project or the projectless workspace.
+Page Linked chats, sidebar placement and Workbench presentation refer to this identity.
+A Session's execution reference identifies its conversation without making those
+relationships owners of the conversation or its delegated tasks.
+
+### Thread
+
+A Thread is an execution conversation with its own history, model selection and Runs.
+A Session binds one root Thread. A delegated Thread belongs to that root's execution
+lineage and does not require a separate sidebar Session.
+
+### Run
+
+A Run is one admitted unit of Agent work in a Thread. Attempts may resume or retry
+that work without changing its identity. A delegated task can outlive its parent's
+foreground Turn; durable result delivery determines when the parent consumes its result.
+
 ### Agent Backend
 
 An Agent Backend is the runtime and protocol family that executes a Thread or supported Scheduled
@@ -121,7 +146,7 @@ existing Document from a projection. Only a ready descriptor for the registered
 sync engine may mount.
 
 Page Stage always exposes title, body, history, and Page-intrinsic run/schedule
-behavior. Live Agent execution state belongs to Thread/session/Codex runtime.
+behavior. Live Agent execution state belongs to the Thread's execution owner.
 Source-defined properties and View actions exist only for a Data
 Source-parented Page with exact Source/property coordinates. Opening a Page
 never moves it or creates/reactivates membership.
