@@ -1,11 +1,22 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   isCodexCompactWindowUrl,
+  resolveCodexRendererCommandPlatform,
   resolveCodexRendererOsFromText,
   resolveCodexRendererWindowChrome,
 } from "./codex-window-runtime";
 
 describe("codex window runtime helpers", () => {
+  test.each([
+    ["MacIntel", "", "macOS"],
+    ["Win32", "", "windows"],
+    ["Linux x86_64", "", "linux"],
+    ["", "Linux browser", "linux"],
+    ["Plan 9", "", "linux"],
+  ] as const)("projects %s/%s to command platform %s", (platform, userAgent, expected) => {
+    expect(resolveCodexRendererCommandPlatform({ platform, userAgent })).toBe(expected);
+  });
+
   test("normalizes renderer OS from navigator platform text", () => {
     expect(resolveCodexRendererOsFromText("MacIntel")).toBe("darwin");
     expect(resolveCodexRendererOsFromText("Win32")).toBe("win32");

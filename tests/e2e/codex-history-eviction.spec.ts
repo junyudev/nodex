@@ -109,7 +109,6 @@ test("releases completed item prefixes at the live viewport and reloads through 
         timeout: 30_000,
       })
       .toEqual(["resumed"]);
-    const pressureStarted = performance.now();
     await appendFile(
       path.join(stateDirectory, "commands.jsonl"),
       `${JSON.stringify({ type: "pressure" })}\n`,
@@ -122,7 +121,6 @@ test("releases completed item prefixes at the live viewport and reloads through 
         timeout: 30_000,
       })
       .toBe(1001);
-    const pressureReadyMs = performance.now() - pressureStarted;
     const scroll = page.locator("[data-local-conversation-thread-body='true']");
     await scroll.hover();
     await page.mouse.wheel(0, 100_000);
@@ -144,16 +142,9 @@ test("releases completed item prefixes at the live viewport and reloads through 
     expect(evictionFrame.pressureSlotItemIds).toEqual(evictionFrame.pressureItemIds);
     expect(evictionFrame.pressureItemIds[0]).toBe("pressure-command-0502");
     expect(evictionFrame.pressureItemIds.includes("pressure-command-0000")).toBe(false);
-    const metricsAfterEviction = await harness.application.evaluate(({ app }) =>
-      app.getAppMetrics().map((entry) => ({ type: entry.type, memory: entry.memory })),
-    );
     await writeFile(
       path.join(artifactDirectory, "eviction-preparation.json"),
-      JSON.stringify(
-        { status: "prepared", pressureReadyMs, retained, metricsAfterEviction },
-        null,
-        2,
-      ),
+      JSON.stringify({ status: "prepared", retained }, null, 2),
     );
     const logPath = path.join(stateDirectory, "requests.jsonl");
     const requests = async () =>
@@ -318,10 +309,8 @@ test("releases completed item prefixes at the live viewport and reloads through 
       anchorReloadFrame,
       reloaded,
       nativeRequests: await requests(),
-      metricsAfterEviction,
-      pressureReadyMs,
-      measurementLimit:
-        "Synthetic Nodex absolute values. Passive normalized MessageChannel identity observation creates no follower or retention interest; raw read-owner cache release is separately covered by its focused behavior suite.",
+      observationBoundary:
+        "Passive normalized MessageChannel identity observation creates no follower or retention interest; raw read-owner cache release is separately covered by its focused behavior suite.",
     };
     await writeFile(
       path.join(artifactDirectory, "eviction-result.json"),

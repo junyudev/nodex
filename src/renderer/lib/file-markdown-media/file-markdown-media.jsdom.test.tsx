@@ -228,11 +228,11 @@ describe("file Markdown media owner", () => {
 
   test("downloads the selected picture source bytes and releases its download URL", async () => {
     const clicked: { href: string; name: string }[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(
-      function (this: HTMLAnchorElement) {
-        clicked.push({ href: this.href, name: this.download });
-      },
-    );
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked.push({ href: this.href, name: this.download });
+    });
     const fetchImage = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(

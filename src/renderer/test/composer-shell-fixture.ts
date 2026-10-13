@@ -895,6 +895,7 @@ export function buildComposerShellFixture(
     preset === "implement-plan" ? "gpt-5.6-sol" : (availableModels[0]?.model ?? "");
   const selectedReasoningEffort = preset === "implement-plan" ? "xhigh" : "high";
   return {
+    connectionStatus: "connected",
     workspaceSearchContext: {
       hostId: "local",
       roots: ["/tmp/project"],

@@ -8,6 +8,7 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { ShortcutKeycaps, ShortcutKeycapSequence } from "@/components/ui/shortcut-keycaps";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
   createCommandKeymapState,
   formatAcceleratorLabel,
@@ -55,7 +56,8 @@ export function KeyboardShortcutHelpDialog({
   onCustomize,
 }: KeyboardShortcutHelpDialogProps) {
   const [query, setQuery] = useState("");
-  const state = commandKeymapState ?? createCommandKeymapState();
+  const state =
+    commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
   const groups = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const entries = state.entries.filter((entry) => {

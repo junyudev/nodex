@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { resolveCodexRendererCommandPlatform } from "./codex-window-runtime";
 import {
   CREATE_PAGE_COMMAND_ID,
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
@@ -345,7 +346,8 @@ export function resolveWorkbenchMouseNavigationShortcut(
   e: Pick<MouseEvent, "button">,
   commandKeymapState?: CommandKeymapState | null,
 ): "back" | "forward" | null {
-  const state = commandKeymapState ?? createCommandKeymapState();
+  const state =
+    commandKeymapState ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform());
   if (matchesMouseEventToCommand(e, state, "navigateBack")) return "back";
   if (matchesMouseEventToCommand(e, state, "navigateForward")) return "forward";
   return null;

@@ -43,7 +43,7 @@ describe("renderer compiler source boundary", () => {
 
 test("persists public compiler diagnostics without serializing class internals", () => {
   const detail = CompilerDiagnostic.create({
-    category: ErrorCategory.RenderPurity,
+    category: ErrorCategory.Purity,
     reason: "An input changed during render",
     description: "Move the change to its owner",
   });
@@ -62,7 +62,7 @@ test("persists public compiler diagnostics without serializing class internals",
     fnLoc: null,
     reason: "An input changed during render",
     description: "Move the change to its owner",
-    category: ErrorCategory.RenderPurity,
+    category: ErrorCategory.Purity,
     loc: null,
   });
 });

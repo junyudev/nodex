@@ -1,3 +1,5 @@
+import { resolveRuntimePlatform, type RuntimePlatform } from "../../shared/command-keybindings";
+
 export type CodexRendererOs = "darwin" | "linux" | "unknown" | "win32";
 export type CodexRendererWindowType = "browser" | "electron";
 export type CodexRendererWindowChrome = "application-menu" | "native";
@@ -18,6 +20,14 @@ export function resolveCodexRendererOs(
 ): CodexRendererOs {
   const platform = navigatorLike.platform || navigatorLike.userAgent || "";
   return resolveCodexRendererOsFromText(platform);
+}
+
+/** Pending keymap reads use browser platform data; Node defaults remain Main-owned. */
+export function resolveCodexRendererCommandPlatform(
+  navigatorLike: Pick<Navigator, "platform" | "userAgent"> = navigator,
+): RuntimePlatform {
+  const os = resolveCodexRendererOs(navigatorLike);
+  return resolveRuntimePlatform(os === "unknown" ? "linux" : os);
 }
 
 export function resolveCodexRendererWindowChrome(

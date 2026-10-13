@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import {
   createCommandKeymapState,
   matchesKeyboardEventToCommand,
@@ -89,7 +90,10 @@ interface UseComposerDictationInput {
 
 export function isComposerDictationShortcut(
   event: globalThis.KeyboardEvent,
-  commandKeymapState: CommandKeymapState = createCommandKeymapState(),
+  commandKeymapState: CommandKeymapState = createCommandKeymapState(
+    {},
+    resolveCodexRendererCommandPlatform(),
+  ),
 ): boolean {
   if (event.defaultPrevented) return false;
   return matchesKeyboardEventToCommand(event, commandKeymapState, "composerDictationHold");

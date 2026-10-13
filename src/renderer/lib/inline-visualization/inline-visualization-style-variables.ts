@@ -146,31 +146,31 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
     resolve(properties, "background-color", fallback);
   try {
     const foreground = color(
-      ["--color-text-foreground", "--foreground", "--color-text"],
+      ["--app-color-text-foreground", "--color-text", "--foreground"],
       dark ? "#ffffff" : "#1a1c1f",
     );
     const accent = color(
-      ["--color-text-accent", "--color-accent-blue", "--primary"],
+      ["--app-color-text-accent", "--color-text-info"],
       dark ? "#83c3ff" : "#339cff",
     );
     const radius = resolve(["--radius-lg"], "border-radius", "10px");
     const series = chartSeries(accent, theme);
     return {
       "--accent": background(
-        ["--color-background-accent", "--accent"],
+        ["--app-color-background-accent", "--color-background-info-surface"],
         dark ? "#0d273f" : "#e5f2ff",
       ),
       "--accent-foreground": accent,
       "--background": background(
-        ["--color-background-surface", "--background"],
+        ["--app-color-background-surface", "--color-surface", "--background"],
         dark ? "#181818" : "#ffffff",
       ),
       "--border": color(
-        ["--color-border", "--border"],
+        ["--app-color-border", "--color-border", "--border"],
         dark ? "rgb(255 255 255 / 8.2%)" : "rgb(26 28 31 / 8%)",
       ),
       "--border-strong": color(
-        ["--color-border-heavy", "--color-border-strong"],
+        ["--app-color-border-heavy", "--color-border-strong"],
         dark ? "rgb(255 255 255 / 12%)" : "rgb(26 28 31 / 12%)",
       ),
       "--card": `color-mix(in oklab, ${foreground} 5%, transparent)`,
@@ -190,12 +190,12 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
         dark ? "#ff8549" : "#e25507",
       ),
       "--font-mono": resolve(
-        ["--font-mono", "--vscode-editor-font-family"],
+        ["--font-mono"],
         "font-family",
         'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
       ),
       "--font-sans": resolve(
-        ["--font-sans", "--vscode-font-family", "--font-sans-default"],
+        ["--font-sans", "--font-sans-default"],
         "font-family",
         '-apple-system, system-ui, "Segoe UI", sans-serif',
       ),
@@ -216,17 +216,21 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
       ),
       "--muted": `color-mix(in srgb, ${foreground} 10%, transparent)`,
       "--muted-foreground": color(
-        ["--color-text-foreground-secondary", "--foreground-secondary"],
+        ["--app-color-text-foreground-secondary", "--foreground-secondary"],
         dark ? "rgb(255 255 255 / 49.8%)" : "rgb(26 28 31 / 49.4%)",
       ),
       "--popover": background(
-        ["--color-background-elevated-secondary", "--popover"],
+        [
+          "--app-color-background-elevated-secondary",
+          "--color-surface-elevated-secondary",
+          "--popover",
+        ],
         dark ? "#2d2d2d" : "#ffffff",
       ),
       "--popover-foreground": foreground,
       "--primary": accent,
       "--primary-foreground": color(
-        ["--color-text-on-accent", "--primary-foreground"],
+        ["--app-color-text-on-accent", "--primary-foreground"],
         dark ? "#0d0d0d" : "#ffffff",
       ),
       "--radius": radius,
@@ -235,30 +239,34 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
       "--radius-md": resolve(["--radius-md"], "border-radius", "8px"),
       "--radius-sm": resolve(["--radius-sm"], "border-radius", "6px"),
       "--ring": color(
-        ["--color-border-focus", "--ring"],
+        ["--app-color-border-focus", "--color-token-focus-border", "--ring"],
         dark ? "rgb(131 195 255 / 76%)" : "#339cff",
       ),
       "--secondary": background(
-        ["--color-background-primary-soft-alpha", "--secondary"],
+        [
+          "--app-color-background-button-secondary",
+          "--color-background-primary-soft-active",
+          "--secondary",
+        ],
         dark ? "#303030" : "#f3f3f3",
       ),
       "--secondary-foreground": foreground,
-      "--blue": color(["--color-accent-blue", "--vscode-charts-blue"], "#339cff"),
+      "--blue": color(["--app-color-accent-blue", "--color-chart-blue"], "#339cff"),
       "--orange": color(
-        ["--color-accent-orange", "--vscode-charts-orange"],
+        ["--app-color-accent-orange", "--color-chart-orange"],
         dark ? "#fb6a22" : "#e25507",
       ),
       "--green": color(
-        ["--color-accent-green", "--vscode-charts-green"],
+        ["--app-color-accent-green", "--color-chart-green"],
         dark ? "#40c977" : "#00a240",
       ),
-      "--red": color(["--color-accent-red", "--vscode-charts-red"], dark ? "#ff6764" : "#e02e2a"),
+      "--red": color(["--app-color-accent-red", "--color-chart-red"], dark ? "#ff6764" : "#e02e2a"),
       "--purple": color(
-        ["--color-accent-purple", "--vscode-charts-purple"],
+        ["--app-color-accent-purple", "--color-chart-purple"],
         dark ? "#ad7bf9" : "#924ff7",
       ),
       "--yellow": color(
-        ["--color-accent-yellow", "--vscode-charts-yellow"],
+        ["--app-color-accent-yellow", "--color-chart-yellow"],
         dark ? "#ffd240" : "#ffc300",
       ),
       "--visualize-paint-gutter": "5px",

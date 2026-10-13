@@ -52,7 +52,7 @@ describe("Effect Codex schema generation", () => {
         additionalProperties: false,
       });
       const parser = createGeneratedCodexSchema<Record<string, unknown>>(schema);
-      const native = {
+      const native: Record<string, unknown> = {
         type,
         ...Object.fromEntries(
           Object.entries(fields).map(([name, wireName]) => [

@@ -258,7 +258,7 @@ export function createInlineVisualizationRuntime(input: {
   const element = document.createElement("div");
   element.className = "flex h-full min-h-0 w-full";
   input.mountTarget?.append(element);
-  let webview = document.createElement("webview");
+  let webview: HTMLElement = document.createElement("webview");
   let preparedLease: InlineVisualizationPreparedLease | null = null;
   const controller = new AbortController();
   const listeners = new Set<() => void>();

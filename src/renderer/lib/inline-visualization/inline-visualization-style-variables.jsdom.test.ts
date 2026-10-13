@@ -138,6 +138,22 @@ function mount() {
   return runtime;
 }
 
+function renderedColor(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error("Expected an applied color");
+  const probe = document.createElement("span");
+  probe.style.color = value;
+  document.body.append(probe);
+  try {
+    return getComputedStyle(probe).color || value;
+  } finally {
+    probe.remove();
+  }
+}
+
+function hostColor(variable: `--${string}`): string {
+  return renderedColor(getComputedStyle(document.documentElement).getPropertyValue(variable));
+}
+
 test("actual host typography preferences reach the authored document on first execution and update the retained guest", async () => {
   document.documentElement.className = "";
   applyCodexThemeVariant(document.documentElement, "light", document.body);
@@ -194,17 +210,20 @@ test("a real host appearance change updates semantic colors and accent-derived c
   const guest = guests[0]!.contentWindow as GuestWindow;
   const light = record(guest.openai.visualizationStyleVariables);
   await act(async () => {
-    applyCodexThemeVariant(document.documentElement, "dark", document.body);
+    applyCodexThemeVariant(document.documentElement, "dark", document.body, {
+      kind: "custom",
+      color: "#df5142",
+    });
     document.documentElement.classList.add("dark");
-    document.documentElement.style.setProperty("--color-text-accent", "#df5142");
     await Promise.resolve();
   });
   await waitFor(() => expect(guest.document.documentElement.dataset.theme).toBe("dark"));
   const dark = record(guest.openai.visualizationStyleVariables);
   expect(dark).toMatchObject({
-    "--background": "#111111",
-    "--primary": "#df5142",
-    "--viz-series-1": "#df5142",
+    "--primary": hostColor("--app-color-text-accent"),
+    "--viz-series-1": hostColor("--app-color-text-accent"),
+    "--primary-foreground": hostColor("--app-color-text-on-accent"),
+    "--ring": hostColor("--app-color-border-focus"),
     "--orange": "#fb6a22",
     "--green": "#40c977",
     "--red": "#ff6764",
@@ -215,6 +234,53 @@ test("a real host appearance change updates semantic colors and accent-derived c
   ).toBe(6);
   expect(runs).toHaveBeenCalledOnce();
 });
+
+test.each(["light", "dark"] as const)(
+  "changing the accent within %s updates the same authored document without replacing status colors",
+  async (appearance) => {
+    document.documentElement.classList.toggle("dark", appearance === "dark");
+    applyCodexThemeVariant(document.documentElement, appearance, document.body, {
+      kind: "preset",
+      name: "green",
+    });
+    mount();
+    await waitFor(() => expect(runs).toHaveBeenCalledOnce());
+    const frame = guests[0]!;
+    const guest = frame.contentWindow as GuestWindow;
+    const green = record(guest.openai.visualizationStyleVariables);
+    expect(renderedColor(green["--primary"])).toBe(hostColor("--app-color-text-accent"));
+    await act(async () => {
+      applyCodexThemeVariant(document.documentElement, appearance, document.body, {
+        kind: "preset",
+        name: "pink",
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(record(guest.openai.visualizationStyleVariables)["--primary"]).not.toBe(
+        green["--primary"],
+      ),
+    );
+    const pink = record(guest.openai.visualizationStyleVariables);
+    expect(renderedColor(pink["--primary"])).toBe(hostColor("--app-color-text-accent"));
+    expect(renderedColor(pink["--primary-foreground"])).toBe(
+      hostColor("--app-color-text-on-accent"),
+    );
+    expect(renderedColor(pink["--ring"])).toBe(hostColor("--app-color-border-focus"));
+    expect(
+      renderedColor(
+        guest.getComputedStyle(guest.document.documentElement).getPropertyValue("--primary"),
+      ),
+    ).toBe(hostColor("--app-color-text-accent"));
+    expect(pink["--ring"]).not.toBe(green["--ring"]);
+    expect(pink["--viz-series-1"]).toBe(pink["--primary"]);
+    expect(pink["--orange"]).toBe(green["--orange"]);
+    expect(pink["--green"]).toBe(green["--green"]);
+    expect(pink["--red"]).toBe(green["--red"]);
+    expect(guests[0]).toBe(frame);
+    expect(runs).toHaveBeenCalledOnce();
+  },
+);
 
 test("drag and layout presentation changes send no widget context while fractional typography and cursor preferences update the same guest", async () => {
   document.documentElement.className = "";
