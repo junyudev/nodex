@@ -1,0 +1,229 @@
+src/main/app-tools/NativeAppToolSession.node.test.ts
+  s_ab40e4a5315f81::t_c31f477b9f9af4 4,103-139,141,147-148,150-151,154,158,161-162
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_ab40e4a5315f81::t_1de56ed8785353 796-797,809,817
+  s_ab40e4a5315f81::t_9d8a5b94874b0e 798
+src/main/app-tools/AppToolCaller.ts
+  s_ab40e4a5315f81::t_2bb2148beb4fca 24-53,93
+CHANGELOG.md
+  s_ab40e4a5315f81::t_9ab86ea4e13eea 11
+src/main/agent-backend/AgentBackendApplication.ts
+  s_ab40e4a5315f81::t_b41e18b30e2a0d 14-18,168,191,203,1260,1278,1324,1328-1331,1393,1558,1566,1833-1836,1866,2650-2651,2709
+  s_ab40e4a5315f81::t_f1f1df860338cb 839-840
+  s_ab40e4a5315f81::t_cc819188b48a2f 2712,2721-2722,2820
+src/renderer/features/local-conversation/use-claude-model-catalog.test.tsx
+  s_ab40e4a5315f81::t_2afe7eba6def9f 10
+src/main/agent-backend/claude/ClaudeSessionManager.node.test.ts
+  s_ab40e4a5315f81::t_90d2e8757a6101 240-247,1128-1170,1173-1199
+  s_ab40e4a5315f81::t_fa9be8ae05ef21 87,442-443,447
+  s_ab40e4a5315f81::t_6b7b3e54b80107 230,314
+  s_ab40e4a5315f81::t_c98df8bd4242b8 88,238-239,248-252,444-446
+  s_ab40e4a5315f81::t_25109a7ffab9f2 98,325,328,1171-1172,1200
+  s_ab40e4a5315f81::t_2e5ad17f8b8ae0 1201
+src/main/agent-backend/claude/ClaudeSessionManager.ts
+  s_ab40e4a5315f81::t_cbbfb8d82d82b0 1303,1355,1439,1478
+  s_ab40e4a5315f81::t_fa9be8ae05ef21 914,920-921
+  s_ab40e4a5315f81::t_5a9cf168663e84 915-919
+  s_ab40e4a5315f81::t_26869705ba0d3e 125,382,704,1156
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_ab40e4a5315f81::t_2bc57423eecc18 34,176,235-237
+src/main/ipc/handlers/AgentBackendIpc.node.test.ts
+  s_ab40e4a5315f81::t_4921aca64f2b61 13-14,51-53,56,59-71,134-150,156
+  s_ab40e4a5315f81::t_61c15a84243986 151-155,157-158
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_ab40e4a5315f81::t_508f04d7d6b1f3 7-10,71-74,79-80,82-87,94-101,105-106,112-114,116-125,128,132-136,138,140
+  s_ab40e4a5315f81::t_e940bc0432cb64 75-78,81,88-93,102-104,107-111,115
+  s_ab40e4a5315f81::t_36618be84d61f5 141
+  s_ab40e4a5315f81::t_17c14d15e748f2 137
+  s_ab40e4a5315f81::t_12f2545e37d243 127
+  s_ab40e4a5315f81::t_855af152b2eb0e 126,130,139
+  s_ab40e4a5315f81::t_a608a46d3df772 129,131
+src/main/app-tools/NativeAppToolSession.ts
+  s_ab40e4a5315f81::t_b5f209ecdbb803 19,22,60,63,124-125,149-153,162-167,174-178
+  s_ab40e4a5315f81::t_0eeae22674e241 126-127,134
+  s_ab40e4a5315f81::t_fa118fd1803840 168-173
+src/shared/claude-agent-settings.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 90
+src/main/platform/node/ClaudeSdkBoundary.node.test.ts
+  s_ab40e4a5315f81::t_904d5c10d575e9 69-70,112,135,322-323,330-332,339
+  s_ab40e4a5315f81::t_90d2e8757a6101 154-178,238,250,254,262,266-267,324-329,333-338,340,353-358,393
+  s_ab40e4a5315f81::t_4921aca64f2b61 179-187,343
+docs/product-specs/agent-backend-behavior.md
+  s_ab40e4a5315f81::t_79836799ecc8e2 293-295,318,321-328,334
+  s_ab40e4a5315f81::t_9ab86ea4e13eea 162,173-178
+  s_ab40e4a5315f81::t_3bce0e00b5551e 163-166,169
+  s_ab40e4a5315f81::t_dab183e990aed0 159,170
+  s_ab40e4a5315f81::t_e958f74da86f1c 160-161,171-172
+  s_ab40e4a5315f81::t_a003f9cdbe5e0a 167-168
+src/renderer/features/local-conversation/agent-conversation-adapter.test.tsx
+  s_ab40e4a5315f81::t_2afe7eba6def9f 191
+  s_ab40e4a5315f81::t_a7e5b167485afe 192-197,359-372,396,406,415-424
+scripts/scenarios/runtime/scripted-claude-agent.mjs
+  s_ab40e4a5315f81::t_82faaeb0bdf7ef 168,209,254-255
+src/main/app-tools/AppToolInterpreter.node.test.ts
+  s_ab40e4a5315f81::t_79b4fdb76c6561 201-205
+src/shared/agent-conversation.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 560,568
+src/main/platform/node/ClaudeIntelligence.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 15,33,85-86
+src/renderer/components/shared/agent-runtime/native-ultracode-control.tsx
+  s_ab40e4a5315f81::t_9d8a5b94874b0e 20,26-27
+  s_ab40e4a5315f81::t_2bc57423eecc18 1-19,25,28-35,48-69
+  s_ab40e4a5315f81::t_855af152b2eb0e 21-23,38-43,46-47
+  s_ab40e4a5315f81::t_3bce0e00b5551e 24
+  s_ab40e4a5315f81::t_dab183e990aed0 36-37,44-45
+crates/nodex-core-contracts/src/workspace.rs
+  s_ab40e4a5315f81::t_c3453c5d4d0844 559-560
+  s_ab40e4a5315f81::t_3b0a2553bf124f 1690-1706,1712
+  s_ab40e4a5315f81::t_0e108191ccc44e 1707-1711
+src/main/agent-backend/NativeSessionState.ts
+  s_ab40e4a5315f81::t_c3453c5d4d0844 122,162
+src/main/settings/claude-agent-environment.node.test.ts
+  s_ab40e4a5315f81::t_6b7b3e54b80107 128-139,141
+  s_ab40e4a5315f81::t_36c232cf899f9f 140
+src/main/app-tools/ClaudeAppToolClaims.node.test.ts
+  s_ab40e4a5315f81::t_977c39d241107a 279,307
+  s_ab40e4a5315f81::t_1bb81a4fb37509 39-45,253-276
+  s_ab40e4a5315f81::t_1396400e553877 4-5,215-216,226
+  s_ab40e4a5315f81::t_13672bef66c90d 46,163-214,217-225,227-252,280-306
+  s_ab40e4a5315f81::t_9f08075a671bcc 1-3,6-38,47-162,277-278
+src/main/agent-backend/claude/ClaudeModels.node.test.ts
+  s_ab40e4a5315f81::t_ef038d1012646d 70,85,103,109-111
+  s_ab40e4a5315f81::t_cbb4799b381065 112-123,211,230
+docs/adr/0064-native-application-mcp.md
+  s_ab40e4a5315f81::t_50f1749894664d 24,30-36,58
+src/main/ipc/handlers/AgentBackendIpc.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 99
+  s_ab40e4a5315f81::t_cbbfb8d82d82b0 340-342,426-428,467-469
+src/main/platform/node/ClaudeIntelligence.node.test.ts
+  s_ab40e4a5315f81::t_6b7b3e54b80107 36-42,117-123,132
+  s_ab40e4a5315f81::t_756368b6f741db 129,133-150
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_ab40e4a5315f81::t_2bc57423eecc18 38,403-405,407-409
+  s_ab40e4a5315f81::t_9d8a5b94874b0e 64
+  s_ab40e4a5315f81::t_6a7c392cfc263e 406
+  s_ab40e4a5315f81::t_1de56ed8785353 54,62-63
+  s_ab40e4a5315f81::t_31592d78898992 410
+src/main/agent-backend/claude/ClaudeModels.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 170,186-187
+src/renderer/components/workbench/claude-agent-settings-control.test.tsx
+  s_ab40e4a5315f81::t_82faaeb0bdf7ef 37-39,116-118,126
+  s_ab40e4a5315f81::t_bc8c4cacd66ad3 7,12-23,30,32,34-36,40-42,44-50,56-57,59-60,67-71,77-78,115,119-125,128-135
+  s_ab40e4a5315f81::t_221a20c74b6e24 127
+  s_ab40e4a5315f81::t_c59fb0c39f172d 24-29,31,33,51-55,61-66,72-76,79-113
+  s_ab40e4a5315f81::t_7bdac4f48097cc 43,58
+  s_f05dea28d21868::t_af5dbd2e24cb0e 114
+src/shared/claude-models.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 15,24
+src/renderer/lib/native-intelligence-selection.ts
+  s_ab40e4a5315f81::t_1de56ed8785353 24,39
+tests/e2e/support/composer-model-picker.ts
+  s_ab40e4a5315f81::t_82faaeb0bdf7ef 23
+src/renderer/lib/workbench-settings-runtime.ts
+  s_ab40e4a5315f81::t_fab065935993de 2,17,212-213
+src/main/agent-backend/AgentSessionHandle.ts
+  s_ab40e4a5315f81::t_b41e18b30e2a0d 20-22,43,72,107,113
+src/main/agent-backend/acp/AcpBackendSessionManager.ts
+  s_ab40e4a5315f81::t_b41e18b30e2a0d 73
+src/renderer/components/workbench/workbench-settings-overlay-deps.ts
+  s_ab40e4a5315f81::t_fab065935993de 5
+src/main/app-tools/ClaudeAppToolClaims.ts
+  s_ab40e4a5315f81::t_25c498ddb010b6 9-15,17-18,40,44,46-47,49,69,79,92,94-100,132,134-135,147,156,162-163,194-206,208-210,218,220-221,232,234-237,244-255,257-258,311
+  s_ab40e4a5315f81::t_934ea5b65eb2ce 45,80,101
+  s_ab40e4a5315f81::t_997638a8760f5b 1-8,16,19-23,25-29,31,34-39,41-43,56-68,74-78,81-90,102,104-107,109-115,122-131,133,136,139-146,149-155,157-160,164-181,185,188-193,222-230,233,256,259-261,292-310,312,314-322
+  s_ab40e4a5315f81::t_5423ec09e9ed45 24,32-33,48,50-55,70-73,91,103,116-121,137-138,148,161,186-187,207,211-217,219,231,238-243,262-291,313
+  s_ab40e4a5315f81::t_f47418fe38b1f1 30,93,108,182-184
+src/main/agent-backend/AgentBackendApplication.native.node.test.ts
+  s_ab40e4a5315f81::t_66499dee5626d3 75,180
+  s_ab40e4a5315f81::t_d08c4702a7cc83 24-25,143-144,592-622,627
+  s_ab40e4a5315f81::t_013761d248f794 2128-2139
+  s_ab40e4a5315f81::t_c3453c5d4d0844 325
+  s_ab40e4a5315f81::t_1552e4933f8676 2186-2187,2189,2197-2237
+  s_ab40e4a5315f81::t_8e3ed52a858ecd 326-331,543,623-626,628,642,2140-2147,2171,2238-2244,2377
+src/main/agent-backend/NativeSessionState.node.test.ts
+  s_ab40e4a5315f81::t_c3453c5d4d0844 21,23,53
+src/main/platform/node/ClaudeSdk.node.test.ts
+  s_ab40e4a5315f81::t_6b7b3e54b80107 63-76,79-84,86-91,94
+  s_ab40e4a5315f81::t_5a9cf168663e84 77-78
+  s_ab40e4a5315f81::t_13d827d88923d6 85,92-93,95-98
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_ab40e4a5315f81::t_1de56ed8785353 324-327
+docs/product-specs/agent-interface-behavior.md
+  s_ab40e4a5315f81::t_79836799ecc8e2 68-77
+docs/ARCHITECTURE.md
+  s_ab40e4a5315f81::t_79836799ecc8e2 289-294
+docs/SECURITY.md
+  s_ab40e4a5315f81::t_79836799ecc8e2 594
+docs/CONFIGURATION.md
+  s_ab40e4a5315f81::t_79836799ecc8e2 96
+src/renderer/components/workbench/claude-agent-settings-control.tsx
+  s_ab40e4a5315f81::t_2bc57423eecc18 97,116,123
+  s_ab40e4a5315f81::t_1de56ed8785353 6,11,22,24,30-31,39,85,92,94-96,98,109-111,113-115,117-118,120-122,124-125,127-134,146,154-157,163-166,172-178,182-186
+  s_ab40e4a5315f81::t_5256e4628f0eb8 10,158-159,161-162
+  s_ab40e4a5315f81::t_fab065935993de 14,23,28
+  s_ab40e4a5315f81::t_6b841d010f2e91 187
+  s_ab40e4a5315f81::t_3739fd403b2ea5 72,86-91,93,112,119,126,135-139,179-181
+  s_ab40e4a5315f81::t_dab183e990aed0 32-34,36
+  s_ab40e4a5315f81::t_6c185e866c63d3 37-38,167-171
+  s_ab40e4a5315f81::t_2f22a68033e898 140-145,147-153,160
+  s_ab40e4a5315f81::t_566c4a3466e951 35
+src/renderer/features/local-conversation/agent-conversation-owner.node.test.ts
+  s_ab40e4a5315f81::t_2afe7eba6def9f 89
+src/renderer/lib/native-intelligence-selection.node.test.ts
+  s_ab40e4a5315f81::t_bc8c4cacd66ad3 10-11,14,20-21,24
+  s_ab40e4a5315f81::t_584cdc3100bb15 25-30
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_ab40e4a5315f81::t_82faaeb0bdf7ef 161,199-200,202,204,206,208-212,422,443,445,460-461,463-465,485-486
+  s_ab40e4a5315f81::t_2a5f5170b5edb8 153-159,446-459,470-479
+  s_ab40e4a5315f81::t_dab183e990aed0 162-165
+  s_ab40e4a5315f81::t_12f2545e37d243 166,201,444,462
+  s_ab40e4a5315f81::t_17c14d15e748f2 160,183,203,207
+  s_ab40e4a5315f81::t_0bc6227f88920d 205,466-469,480-484
+docs/adr/0065-native-claude-code-backend.md
+  s_ab40e4a5315f81::t_50f1749894664d 21
+src/main/app-tools/AppToolInterpreter.ts
+  s_ab40e4a5315f81::t_f6b871a5ea5c3e 128-133
+src/main/codex-application/NodexAgentAuthorizationRuntime.node.test.ts
+  s_ab40e4a5315f81::t_1a6361d7467c95 11-13,115-139,143-165,170,181-182,184-189
+  s_ab40e4a5315f81::t_0fa6b4700c091b 140-142,166-169,171-180,183
+  s_ab40e4a5315f81::t_38778b422152dc 190
+src/main/platform/node/ClaudeSdk.ts
+  s_ab40e4a5315f81::t_26869705ba0d3e 125,233,283,289-290,411,511,524-525,549-554,565
+  s_ab40e4a5315f81::t_cbbfb8d82d82b0 100,481,484
+  s_ab40e4a5315f81::t_3da43382bbfc9c 26,81-85,298,345-374,455-457,572-575
+  s_ab40e4a5315f81::t_5a9cf168663e84 282,400-405
+  s_ab40e4a5315f81::t_1481b75fc83adc 576-577
+src/renderer/components/workbench/workbench-automation-intelligence.test.tsx
+  s_ab40e4a5315f81::t_2afe7eba6def9f 18
+  s_ab40e4a5315f81::t_7351bb67bea6a3 19-24
+packages/core-protocol/openapi.json
+  s_ab40e4a5315f81::t_b5f4f6da8d6414 39297-39302
+packages/core-protocol/src/generated.ts
+  s_ab40e4a5315f81::t_e1fcd17dcfa24e 9430
+src/renderer/components/workbench/agent-instance-settings-control.tsx
+  s_ab40e4a5315f81::t_2a121af40cf0b1 59,65,99,162,243-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7818091f8d78e78a9de4a02c07e577a6dda72c98",
+  "prompts": {},
+  "sessions": {
+    "s_ab40e4a5315f81": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11ca9-0e4e-7be1-87b9-67d252f9ab1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f05dea28d21868": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10576-cbf5-7cd2-a16e-0420e593ce1e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
