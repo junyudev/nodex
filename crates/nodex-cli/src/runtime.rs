@@ -1546,6 +1546,7 @@ fn backup_create(
         operation_id,
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
         intent: StoreAdministrationIntent::CreateBackup {
+                        profile_snapshot: None,
             label,
             include_assets: true,
             trigger: BackupTrigger::Manual,

@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 nodex-core = { path = "../nodex-core" }
+nodex-profile.workspace = true
 nodex-core-contracts.workspace = true
 nodex-core-protocol.workspace = true
 async-stream.workspace = true

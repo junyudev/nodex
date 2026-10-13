@@ -68,6 +68,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution { .. }
         | ProjectWorkspaceRead::AgentRuntimeTurnAuthority { .. }
         | ProjectWorkspaceRead::AgentRuntimeParentAdmission { .. }
+        | ProjectWorkspaceRead::AgentAuthority { .. }
         | ProjectWorkspaceRead::AgentSession { .. }
         | ProjectWorkspaceRead::CodexThreadSession { .. }
         | ProjectWorkspaceRead::Thread { .. }

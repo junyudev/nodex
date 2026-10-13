@@ -6024,6 +6024,7 @@
                 "includes_assets",
                 "db_bytes",
                 "assets_bytes",
+                "execution_bytes",
                 "total_bytes",
                 "byte_length"
               ],
@@ -6045,6 +6046,11 @@
                   "type": "string"
                 },
                 "db_bytes": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "execution_bytes": {
                   "type": "integer",
                   "format": "int64",
                   "minimum": 0
@@ -31703,6 +31709,16 @@
                       "null"
                     ]
                   },
+                  "profile_snapshot": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProfileSnapshotSource"
+                      }
+                    ]
+                  },
                   "trigger": {
                     "$ref": "#/components/schemas/BackupTrigger"
                   }
@@ -31776,6 +31792,16 @@
                     "type": "string",
                     "enum": [
                       "restore_backup"
+                    ]
+                  },
+                  "profile_snapshot": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProfileSnapshotSource"
+                      }
                     ]
                   }
                 }
@@ -35996,6 +36022,25 @@
               },
               {
                 "type": "object",
+                "description": "Authenticates current Turn credentials before creating a new execution root.",
+                "required": [
+                  "provenance",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_authority"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "provenance",
                   "session_id",
@@ -36661,6 +36706,27 @@
                 }
               }
             ]
+          }
+        }
+      },
+      "NativeHistorySnapshotSource": {
+        "type": "object",
+        "required": [
+          "provider_instance_id",
+          "driver"
+        ],
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "home_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider_instance_id": {
+            "type": "string"
           }
         }
       },
@@ -37538,6 +37604,47 @@
           },
           "receipt_id": {
             "type": "string"
+          }
+        }
+      },
+      "ProfileSnapshotSource": {
+        "type": "object",
+        "description": "Ephemeral, path-only evidence supplied by the physical execution snapshot owner.\nThese paths never enter the durable operation fingerprint or Backup manifest.",
+        "required": [
+          "runtime_id",
+          "runtime_generation",
+          "sequence",
+          "database_path",
+          "environment_id_path",
+          "attachments_path",
+          "native_histories"
+        ],
+        "properties": {
+          "attachments_path": {
+            "type": "string"
+          },
+          "database_path": {
+            "type": "string"
+          },
+          "environment_id_path": {
+            "type": "string"
+          },
+          "native_histories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NativeHistorySnapshotSource"
+            }
+          },
+          "runtime_generation": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -50574,6 +50681,24 @@
                             "enum": [
                               "agent_runtime_parent_admission"
                             ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "resolution",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_authority"
+                            ]
+                          },
+                          "resolution": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityResolution"
                           }
                         }
                       },

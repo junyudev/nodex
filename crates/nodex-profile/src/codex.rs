@@ -100,7 +100,7 @@ impl IdleWriters {
     }
 }
 
-struct DatabaseSource {
+pub(crate) struct DatabaseSource {
     path: PathBuf,
     connection: Connection,
     version: i64,
@@ -108,7 +108,7 @@ struct DatabaseSource {
 }
 
 impl DatabaseSource {
-    fn open(path: PathBuf) -> Result<Self> {
+    pub(crate) fn open(path: PathBuf) -> Result<Self> {
         let fingerprint = files::fingerprint(&path)?;
         for suffix in ["-wal", "-shm"] {
             let sidecar = PathBuf::from(format!("{}{suffix}", path.display()));
@@ -134,7 +134,7 @@ impl DatabaseSource {
         })
     }
 
-    fn snapshot(&self, destination: &Path) -> Result<()> {
+    pub(crate) fn snapshot(&self, destination: &Path) -> Result<()> {
         drop(files::create_file(destination)?);
         let mut target = Connection::open(destination)?;
         {
@@ -162,7 +162,7 @@ impl DatabaseSource {
         Ok(())
     }
 
-    fn verify_unchanged(&self) -> Result<()> {
+    pub(crate) fn verify_unchanged(&self) -> Result<()> {
         let current: i64 = self
             .connection
             .query_row("PRAGMA data_version", [], |row| row.get(0))?;
@@ -232,15 +232,34 @@ pub(crate) fn capture(
     target_profile: &Path,
     threads: &[ProfileCloneThread],
 ) -> Result<ConversationSnapshotReceipt> {
+    let source = source_codex_home(source_profile)?;
+    let result = capture_home(
+        &source,
+        &staging_profile.join("agent"),
+        &target_profile.join("agent"),
+        threads,
+    )?;
+    if source_codex_home(source_profile)? != source {
+        return Err(invalid(
+            "Source Profile's active Codex home changed during capture",
+        ));
+    }
+    Ok(result)
+}
+
+/// Captures an explicitly selected instance into the Profile's managed history closure.
+pub(crate) fn capture_home(
+    source: &Path,
+    staging: &Path,
+    target: &Path,
+    threads: &[ProfileCloneThread],
+) -> Result<ConversationSnapshotReceipt> {
     let required: BTreeSet<String> = threads
         .iter()
         .filter(|thread| thread.backend_kind == "codex" && thread.execution_host_id == "local")
         .map(|thread| thread.thread_id.clone())
         .collect();
     let started = now();
-    let source = source_codex_home(source_profile)?;
-    let staging = staging_profile.join("agent");
-    let target = target_profile.join("agent");
     files::private_directory(&staging)?;
     if !files::exists(&source)? {
         return receipt(
@@ -256,7 +275,6 @@ pub(crate) fn capture(
     files::require_directory(&source)?;
     validate_config(&source)?;
     validate_database_layout(&source)?;
-    let lease = crate::control::SnapshotLease::acquire(source_profile)?;
     let writers = IdleWriters::acquire(&source)?;
     let before = files::inventory(&source, DIRECTORIES, FILES)?;
     let databases = DATABASES
@@ -299,16 +317,8 @@ pub(crate) fn capture(
             "Source conversation files changed during capture; retry after stopping its Agent runtime",
         ));
     }
-    if source_codex_home(source_profile)? != source {
-        return Err(invalid(
-            "Source Profile's active Codex home changed during capture",
-        ));
-    }
     drop(databases);
     drop(writers);
-    if let Some(lease) = lease {
-        lease.finish()?;
-    }
     crate::goals::relocate_managed_references(&source, &staging, &target)?;
     let rollouts = read_rollouts(&staging, before.keys(), METADATA_BUDGET)?;
     let projections = read_projections(&staging, METADATA_BUDGET)?;

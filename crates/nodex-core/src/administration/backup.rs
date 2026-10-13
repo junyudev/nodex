@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use nodex_core_contracts::administration::{
     BackupCapacity, BackupJobPhase, BackupJobProgress, BackupJobRecord, BackupJobState,
-    BackupRecord, BackupTrigger,
+    BackupRecord, BackupTrigger, ProfileSnapshotSource,
 };
 use rusqlite::backup::{Backup, StepResult};
 use rusqlite::{Connection, OptionalExtension};
@@ -20,7 +20,7 @@ use crate::infrastructure::schema::CURRENT_STORE_REVISION;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, open_immutable_reader};
 use crate::infrastructure::store_validation::validate_current_store;
 
-const BACKUP_MANIFEST_VERSION: u32 = 3;
+const BACKUP_MANIFEST_VERSION: u32 = 4;
 const BACKUP_INTEGRITY_EVIDENCE_VERSION: u32 = 1;
 const BACKUP_DATABASE_FILE_NAME: &str = "nodex.db";
 const BACKUP_ASSETS_DIRECTORY_NAME: &str = "assets";
@@ -118,6 +118,8 @@ struct BackupIntegrityEvidence {
     version: u32,
     database_sha256: String,
     asset_tree_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_tree_sha256: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -135,6 +137,8 @@ struct BackupManifest {
     db_bytes: u64,
     #[serde(default)]
     assets_bytes: u64,
+    #[serde(default)]
+    execution_bytes: u64,
     #[serde(default)]
     total_bytes: u64,
     store_schema_version: Option<u32>,
@@ -230,6 +234,15 @@ pub(super) fn backup_capacity(
     };
     let estimated_next_backup_bytes = database_bytes
         .checked_add(asset_bytes)
+        .and_then(|bytes| {
+            bytes.checked_add(
+                inventory
+                    .iter()
+                    .map(|item| item.record.execution_bytes)
+                    .max()
+                    .unwrap_or(0),
+            )
+        })
         .ok_or_else(|| internal("Estimated Backup byte length exceeds its bound"))?;
     let safety_margin_bytes = MIN_BACKUP_SAFETY_MARGIN_BYTES.max(estimated_next_backup_bytes / 10);
     let filesystem = rustix::fs::statvfs(profile_home)
@@ -429,6 +442,7 @@ pub(super) fn stage_backup_deletions(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(super) fn create_backup(
     connection: &Connection,
     profile_home: &Path,
@@ -440,6 +454,43 @@ pub(super) fn create_backup(
     trigger: BackupTrigger,
     progress: &dyn Fn(BackupJobPhase) -> Result<(), StoreError>,
     cancellation_requested: &dyn Fn() -> Result<bool, StoreError>,
+) -> Result<VerifiedStagedBackup, StoreError> {
+    struct StoreOnly;
+    impl super::ProfileSnapshotParticipant for StoreOnly {
+        fn capture(&self, _: super::ProfileSnapshotCapture<'_>) -> Result<bool, StoreError> {
+            Ok(false)
+        }
+    }
+    create_profile_backup(
+        connection,
+        profile_home,
+        profile_id,
+        operation_id,
+        request_hash,
+        label,
+        include_assets,
+        trigger,
+        progress,
+        cancellation_requested,
+        &StoreOnly,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn create_profile_backup(
+    connection: &Connection,
+    profile_home: &Path,
+    profile_id: &str,
+    operation_id: &str,
+    request_hash: &str,
+    label: Option<&str>,
+    include_assets: bool,
+    trigger: BackupTrigger,
+    progress: &dyn Fn(BackupJobPhase) -> Result<(), StoreError>,
+    cancellation_requested: &dyn Fn() -> Result<bool, StoreError>,
+    participant: &dyn super::ProfileSnapshotParticipant,
+    profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<VerifiedStagedBackup, StoreError> {
     let trigger = trigger_name(trigger);
     stage_backup_with_trigger(
@@ -453,6 +504,8 @@ pub(super) fn create_backup(
         trigger,
         progress,
         cancellation_requested,
+        participant,
+        profile_snapshot,
     )
 }
 
@@ -546,6 +599,8 @@ pub(super) fn create_safety_backup(
     restore_operation_id: &str,
     request_hash: &str,
     restored_backup_id: &str,
+    participant: &dyn super::ProfileSnapshotParticipant,
+    profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<BackupRecord, StoreError> {
     let role_digest = Sha256::digest(format!("pre-restore\0{restore_operation_id}"));
     let operation_id = format!("pre-restore-{}", hex(&role_digest));
@@ -561,6 +616,8 @@ pub(super) fn create_safety_backup(
         "pre-restore",
         &|_| Ok(()),
         &|| Ok(false),
+        participant,
+        profile_snapshot,
     )?;
     let record = staged.record().clone();
     publish_verified_backup(staged)?;
@@ -586,7 +643,20 @@ fn stage_backup_with_trigger(
     trigger: &str,
     progress: &dyn Fn(BackupJobPhase) -> Result<(), StoreError>,
     cancellation_requested: &dyn Fn() -> Result<bool, StoreError>,
+    participant: &dyn super::ProfileSnapshotParticipant,
+    profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<VerifiedStagedBackup, StoreError> {
+    let participant_bytes = participant.estimated_bytes(profile_home, profile_snapshot)?;
+    let filesystem = rustix::fs::statvfs(profile_home)
+        .map_err(|error| io_error(std::io::Error::from_raw_os_error(error.raw_os_error())))?;
+    let available = filesystem.f_bavail.saturating_mul(filesystem.f_frsize);
+    if available < participant_bytes.saturating_add(MIN_BACKUP_SAFETY_MARGIN_BYTES) {
+        return Err(StoreError::new(
+            StoreErrorCode::ResourceExhausted,
+            "Execution history requires more backup disk space and safety headroom",
+            false,
+        ));
+    }
     let root = prepare_backup_root(profile_home)?;
     let backup_id = backup_id(profile_id, operation_id);
     begin_backup_job(
@@ -646,6 +716,8 @@ fn stage_backup_with_trigger(
         trigger,
         progress,
         cancellation_requested,
+        participant,
+        profile_snapshot,
     );
     let record = match result {
         Ok(record) => record,
@@ -765,6 +837,8 @@ fn stage_backup(
     trigger: &str,
     progress: &dyn Fn(BackupJobPhase) -> Result<(), StoreError>,
     cancellation_requested: &dyn Fn() -> Result<bool, StoreError>,
+    participant: &dyn super::ProfileSnapshotParticipant,
+    profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<BackupRecord, StoreError> {
     let asset_snapshot_lease =
         crate::infrastructure::managed_asset_snapshot::acquire_snapshot_lease()?;
@@ -842,6 +916,28 @@ fn stage_backup(
     update_backup_job_progress(profile_home, operation_id, |progress| {
         progress.validation_ms = duration_millis(validation_started_at.elapsed());
     })?;
+    let staged_store = open_immutable_reader(&database_path)?;
+    let required = super::profile_clone::read_clone_executions(&staged_store)?;
+    let has_execution = participant.capture(super::ProfileSnapshotCapture {
+        source_profile: profile_home,
+        staging_profile: staging_directory,
+        target_profile: profile_home,
+        source: profile_snapshot,
+        required: &required,
+    })?;
+    let execution = staging_directory.join("agent-runtime");
+    if has_execution != execution.exists() {
+        return Err(corrupt(
+            "Profile snapshot participant returned an inconsistent execution closure",
+        ));
+    }
+    let (execution_bytes, execution_tree_sha256) = if has_execution {
+        sync_tree(&execution)?;
+        let (bytes, digest) = digest_asset_tree(&execution)?;
+        (bytes, Some(digest))
+    } else {
+        (0, None)
+    };
     let db_bytes = regular_file_length(&database_path)?;
     if cancellation_requested()? {
         return Err(backup_cancelled());
@@ -865,8 +961,10 @@ fn stage_backup(
         includes_assets: include_assets,
         db_bytes,
         assets_bytes,
+        execution_bytes,
         total_bytes: db_bytes
             .checked_add(assets_bytes)
+            .and_then(|bytes| bytes.checked_add(execution_bytes))
             .ok_or_else(|| internal("Backup byte length exceeds the supported range"))?,
         store_schema_version: Some(store_schema_version),
         store_epoch: Some(store_epoch),
@@ -874,6 +972,7 @@ fn stage_backup(
             version: BACKUP_INTEGRITY_EVIDENCE_VERSION,
             database_sha256,
             asset_tree_sha256,
+            execution_tree_sha256,
         }),
         core_operation_id: Some(operation_id.to_owned()),
         core_request_hash: Some(request_hash.to_owned()),
@@ -1010,10 +1109,15 @@ fn validate_evidence_backed_profile_clone(
         0
     };
     if manifest.assets_bytes != asset_bytes
-        || manifest.total_bytes != manifest.db_bytes.saturating_add(asset_bytes)
+        || manifest.total_bytes
+            != manifest
+                .db_bytes
+                .saturating_add(asset_bytes)
+                .saturating_add(manifest.execution_bytes)
     {
         return Err(corrupt("Published backup manifest byte counts are invalid"));
     }
+    validate_execution_integrity(&directory, &manifest)?;
     Ok(EvidenceBackedProfileClone {
         directory,
         manifest,
@@ -1092,6 +1196,19 @@ pub(super) fn stage_restore_candidate(
             fs::create_dir(&assets).map_err(io_error)?;
             sync_directory(&assets)?;
         }
+        if backup
+            .manifest
+            .integrity_evidence
+            .as_ref()
+            .is_some_and(|e| e.execution_tree_sha256.is_some())
+        {
+            copy_assets(
+                &backup.directory.join("agent-runtime"),
+                &staging.join("agent-runtime"),
+                CopyDurability::Durable,
+            )?;
+            validate_execution_integrity(&staging, &backup.manifest)?;
+        }
         let (schema_version, store_epoch) = validate_backup_database(&database)?;
         if backup.manifest.store_schema_version != Some(schema_version)
             || backup.manifest.store_epoch.as_deref() != Some(store_epoch.as_str())
@@ -1156,10 +1273,15 @@ fn validate_published_backup(
         0
     };
     if manifest.assets_bytes != asset_bytes
-        || manifest.total_bytes != manifest.db_bytes.saturating_add(asset_bytes)
+        || manifest.total_bytes
+            != manifest
+                .db_bytes
+                .saturating_add(asset_bytes)
+                .saturating_add(manifest.execution_bytes)
     {
         return Err(corrupt("Published backup manifest byte counts are invalid"));
     }
+    validate_execution_integrity(directory, &manifest)?;
     if let Some(evidence) = &manifest.integrity_evidence {
         let database_sha256 = sha256_regular_file(&database_path)?;
         let (digested_asset_bytes, asset_tree_sha256) = if manifest.includes_assets {
@@ -2019,13 +2141,44 @@ fn read_manifest(directory: &Path) -> Result<BackupManifest, StoreError> {
     serde_json::from_slice(&bytes).map_err(|_| corrupt("Backup manifest JSON is invalid"))
 }
 
+fn validate_execution_integrity(
+    directory: &Path,
+    manifest: &BackupManifest,
+) -> Result<(), StoreError> {
+    let execution = directory.join("agent-runtime");
+    let expected = manifest
+        .integrity_evidence
+        .as_ref()
+        .and_then(|e| e.execution_tree_sha256.as_ref());
+    let Some(expected) = expected else {
+        if execution.exists() || manifest.execution_bytes != 0 {
+            return Err(corrupt(
+                "Backup has execution files outside its integrity evidence",
+            ));
+        }
+        return Ok(());
+    };
+    let (bytes, digest) = digest_asset_tree(&execution)?;
+    if bytes != manifest.execution_bytes || digest != *expected {
+        return Err(corrupt(
+            "Backup execution history diverges from its integrity evidence",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_manifest(manifest: &BackupManifest) -> Result<(), StoreError> {
     let valid_integrity_evidence = match (&manifest.integrity_evidence, manifest.version) {
         (None, 1 | 2) => true,
-        (Some(evidence), BACKUP_MANIFEST_VERSION) => {
+        (Some(evidence), 3 | BACKUP_MANIFEST_VERSION) => {
             evidence.version == BACKUP_INTEGRITY_EVIDENCE_VERSION
                 && is_sha256(&evidence.database_sha256)
                 && is_sha256(&evidence.asset_tree_sha256)
+                && evidence
+                    .execution_tree_sha256
+                    .as_ref()
+                    .is_none_or(|value| is_sha256(value))
+                && (manifest.execution_bytes == 0 || evidence.execution_tree_sha256.is_some())
                 && (manifest.includes_assets
                     || evidence.asset_tree_sha256 == empty_asset_tree_sha256())
         }
@@ -2073,6 +2226,7 @@ fn to_record(manifest: &BackupManifest) -> BackupRecord {
         includes_assets: manifest.includes_assets,
         db_bytes: manifest.db_bytes,
         assets_bytes: manifest.assets_bytes,
+        execution_bytes: manifest.execution_bytes,
         total_bytes: manifest.total_bytes,
         byte_length: manifest.total_bytes,
     }

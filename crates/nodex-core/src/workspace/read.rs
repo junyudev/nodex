@@ -349,6 +349,20 @@ pub(super) fn read(
                 &runtime_thread_id,
             )?,
         }),
+        ProjectWorkspaceRead::AgentAuthority { provenance } => {
+            super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
+            let authority = &provenance.authority;
+            Ok(ProjectWorkspaceReadValue::AgentAuthority {
+                resolution: execution::resolve_turn_authority(
+                    connection,
+                    library_id,
+                    &authority.thread_id,
+                    &authority.turn_id,
+                    &authority.root_thread_id,
+                    authority.actor_project_id.as_deref(),
+                )?,
+            })
+        }
         ProjectWorkspaceRead::AgentSession {
             provenance,
             session_id,

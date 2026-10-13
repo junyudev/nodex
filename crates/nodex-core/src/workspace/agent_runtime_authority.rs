@@ -61,7 +61,7 @@ pub(super) fn admit(
             }
             // A completed parent's credential can be revoked while its verified child continues.
             // Inheritance uses immutable parent provenance; the Host verifies live child lineage.
-            let parent_resolution = super::execution::resolve_turn_authority(
+            let parent_resolution = super::execution::resolve_retained_turn_restrictions(
                 connection,
                 library_id,
                 &authority_thread_id(&parent.runtime_id, &parent.thread_id),
@@ -234,7 +234,12 @@ pub(super) fn read_authority(
     if binding.runtime_id != identity.runtime_id {
         return Err(denied("Runtime Turn's engine identity is stale"));
     }
-    super::execution::resolve_turn_authority(
+    let resolve = if include_revoked {
+        super::execution::resolve_retained_turn_restrictions
+    } else {
+        super::execution::resolve_turn_authority
+    };
+    resolve(
         connection,
         library_id,
         &authority_thread_id(&identity.runtime_id, &identity.thread_id),
@@ -590,6 +595,57 @@ mod tests {
             panic!("resource plan")
         };
         Ok(*value)
+    }
+
+    #[test]
+    fn authority_preflight_authenticates_current_lease_and_frozen_read_only_policy() {
+        let workspace = setup();
+        let root = identity("thread:root", "run:readonly");
+        apply(
+            &workspace.module,
+            "admit",
+            admission(root.clone(), true, None),
+        );
+        let credential = provenance(&workspace, root.clone());
+        let preflight = |credential: AgentTurnProvenance| {
+            workspace.module.read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::AgentAuthority {
+                        provenance: credential,
+                    },
+                },
+            )
+        };
+        let ProjectWorkspaceReadValue::AgentAuthority { resolution } =
+            preflight(credential.clone()).unwrap().value
+        else {
+            panic!("authenticated authority")
+        };
+        assert_eq!(resolution.authority, Some(credential.authority.clone()));
+        assert!(resolution.persisted && resolution.read_only);
+        let mut forged = credential.clone();
+        forged.authority.scope = ProjectWorkspaceTurnAuthorityScope::Library;
+        assert_eq!(
+            preflight(forged).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+        let mut stale = credential.clone();
+        stale.authority.store_epoch = "old-epoch".into();
+        assert_eq!(
+            preflight(stale).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+        apply(
+            &workspace.module,
+            "revoke",
+            ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity: root },
+        );
+        assert_eq!(
+            preflight(credential).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
     }
 
     #[test]
@@ -1207,6 +1263,67 @@ mod tests {
             admission(replacement.clone(), false, None),
         );
         assert!(resolution(&workspace, replacement).authority.is_some());
+    }
+
+    #[test]
+    fn restored_store_retains_policy_for_resumed_runs_without_reviving_old_credentials() {
+        let workspace = setup();
+        create_page_with_project_access(&workspace, "page:allowed", "project:default");
+        let previous = identity("thread:root", "run:previous");
+        apply(
+            &workspace.module,
+            "admit-before-restore",
+            admission(previous.clone(), true, None),
+        );
+        let stale = provenance(&workspace, previous.clone());
+        apply(
+            &workspace.module,
+            "revoke-before-restore",
+            ProjectWorkspaceIntent::RevokeAgentRuntimeAuthorities {
+                runtime_id: previous.runtime_id.clone(),
+                lease_id: None,
+            },
+        );
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                connection.execute(
+                    "UPDATE block_store_metadata SET store_epoch='epoch:restored' WHERE id=1",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert!(resolution(&workspace, previous.clone()).authority.is_none());
+        assert!(
+            resource_plan(
+                &workspace,
+                stale,
+                "page:allowed",
+                AgentProjectResourceAction::Read
+            )
+            .is_err()
+        );
+        let mut resumed = previous.clone();
+        resumed.lease_id = "lease:after-restore".into();
+        let mut request = request(
+            "resume-after-restore",
+            admission(resumed.clone(), false, None),
+        );
+        request.store_epoch = nodex_core_contracts::StoreEpoch("epoch:restored".into());
+        workspace.module.apply(&context(), request).unwrap();
+        let policy = resolution(&workspace, resumed);
+        assert!(policy.read_only);
+        assert_eq!(policy.authority.unwrap().store_epoch, "epoch:restored");
+        let child = identity("thread:child", "run:child-after-restore");
+        let mut request = super::super::test_support::request(
+            "child-after-restore",
+            admission(child.clone(), false, Some(previous)),
+        );
+        request.store_epoch = nodex_core_contracts::StoreEpoch("epoch:restored".into());
+        workspace.module.apply(&context(), request).unwrap();
+        assert!(resolution(&workspace, child).read_only);
     }
 
     #[test]

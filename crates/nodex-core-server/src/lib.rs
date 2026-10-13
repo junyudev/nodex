@@ -4034,6 +4034,7 @@ pub async fn run_with_selection(
     let replacement_lifecycle_summary = lifecycle_summary.clone();
     let administration =
         StoreAdministrationModule::new(&identity.profile_id, &identity.library_id, &store)
+            .with_profile_snapshot_participant(nodex_profile::ExecutionProfileSnapshotParticipant)
             .with_store_replacement_hook(move |store_epoch| {
                 replacement_library_operations.invalidate_all()?;
                 if let Some(search_snapshots) = &replacement_search_snapshots {

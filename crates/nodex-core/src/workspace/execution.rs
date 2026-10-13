@@ -275,6 +275,47 @@ pub(super) fn resolve_turn_authority(
     root_thread_id: &str,
     actor_project_id: Option<&str>,
 ) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
+    resolve_authority_record(
+        connection,
+        library_id,
+        thread_id,
+        turn_id,
+        root_thread_id,
+        actor_project_id,
+        true,
+    )
+}
+
+/// Retained policy is inheritance evidence; it never admits a content credential.
+pub(super) fn resolve_retained_turn_restrictions(
+    connection: &Connection,
+    library_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+    root_thread_id: &str,
+    actor_project_id: Option<&str>,
+) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
+    resolve_authority_record(
+        connection,
+        library_id,
+        thread_id,
+        turn_id,
+        root_thread_id,
+        actor_project_id,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_authority_record(
+    connection: &Connection,
+    library_id: &str,
+    thread_id: &str,
+    turn_id: &str,
+    root_thread_id: &str,
+    actor_project_id: Option<&str>,
+    require_current_epoch: bool,
+) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
     for (name, value) in [
         ("thread_id", thread_id),
         ("turn_id", turn_id),
@@ -316,7 +357,7 @@ pub(super) fn resolve_turn_authority(
         && authority.actor_project_id.as_deref() == actor_project_id
         && authority.library_id == coordinates.library_id
         && row.profile_id == coordinates.profile_id
-        && authority.store_epoch == coordinates.store_epoch;
+        && (!require_current_epoch || authority.store_epoch == coordinates.store_epoch);
     Ok(ProjectWorkspaceTurnAuthorityResolution {
         authority: matches_current_coordinates.then_some(authority),
         persisted: true,

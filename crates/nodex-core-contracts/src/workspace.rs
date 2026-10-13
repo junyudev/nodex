@@ -107,6 +107,10 @@ pub enum ProjectWorkspaceRead {
         thread_id: String,
         run_id: String,
     },
+    /// Authenticates current Turn credentials before creating a new execution root.
+    AgentAuthority {
+        provenance: crate::agent::AgentTurnProvenance,
+    },
     AgentSession {
         provenance: crate::agent::AgentTurnProvenance,
         session_id: String,
@@ -256,6 +260,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     AgentRuntimeParentAdmission {
         identity: Option<ProjectWorkspaceAgentRuntimeTurnIdentity>,
+    },
+    AgentAuthority {
+        resolution: ProjectWorkspaceTurnAuthorityResolution,
     },
     AgentSession {
         session: ProjectWorkspaceSessionSummary,
