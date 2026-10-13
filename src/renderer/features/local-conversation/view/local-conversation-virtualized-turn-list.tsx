@@ -50,6 +50,7 @@ import {
   resolveVirtualizedTurnViewportState,
   resolveVisibleTurnRangeFromBottomDistance,
   shouldAllowResponseSpacerGrowth,
+  shouldFollowMeasuredTurnGrowth,
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
   type ThreadLatestTurnFollowState,
   type VirtualizedLatestTurnRestoreState,
@@ -58,6 +59,7 @@ import {
   type VisibleTurnRange,
 } from "./local-conversation-turn-virtualization";
 import {
+  getThreadScrollDistanceFromBottomPx,
   useLocalConversationThreadScrollController,
   type LocalConversationThreadScrollControllerValue,
 } from "./local-conversation-thread-scroll-controller";
@@ -348,6 +350,7 @@ interface CoreProps extends Omit<
   preserveMeasuredTurnViewport?: boolean;
   scrollController: LocalConversationThreadScrollControllerValue;
   getPendingRestoreScrollDistanceFromBottomPx: () => number | null;
+  getResponseSpacerHeightPx: () => number;
   restoreScrollDistanceFromBottomPx: () => void;
 }
 
@@ -590,6 +593,7 @@ function LocalConversationVirtualizedTurnListCore({
   preserveMeasuredTurnViewport = false,
   scrollController,
   getPendingRestoreScrollDistanceFromBottomPx,
+  getResponseSpacerHeightPx,
   restoreScrollDistanceFromBottomPx,
 }: CoreProps) {
   const resolvedInitialRestoreState = resolveRealtimeTranscriptRestoreState(
@@ -688,6 +692,16 @@ function LocalConversationVirtualizedTurnListCore({
     if (element) lastScrollElementRef.current = element;
     return element;
   }, [scrollController]);
+
+  const shouldFollowMeasuredGrowth = useCallback(() => {
+    const element = getScrollElement();
+    if (element === null) return false;
+    return shouldFollowMeasuredTurnGrowth({
+      shouldFollowContentGrowth: scrollController.shouldFollowContentGrowth(),
+      responseSpacerHeightPx: getResponseSpacerHeightPx(),
+      physicalDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
+    });
+  }, [getResponseSpacerHeightPx, getScrollElement, scrollController]);
 
   const emitViewportChange = useCallback(
     (
@@ -917,7 +931,7 @@ function LocalConversationVirtualizedTurnListCore({
       if (pendingRestoreDistanceFromBottomPx !== null) {
         nextDistanceFromBottomPx = pendingRestoreDistanceFromBottomPx;
         restoreScrollDistanceFromBottom = true;
-      } else if (scrollController.getScrollMode() === "stickToBottom") {
+      } else if (preserveMeasuredTurnViewport && shouldFollowMeasuredGrowth()) {
         nextDistanceFromBottomPx = 0;
         scrollDistanceFromBottomPx = 0;
       } else if (measuredDistanceDeltaPx !== 0) {
@@ -997,6 +1011,7 @@ function LocalConversationVirtualizedTurnListCore({
       preserveMeasuredTurnViewport,
       publishViewportState,
       scrollController,
+      shouldFollowMeasuredGrowth,
     ],
   );
 
@@ -1354,11 +1369,7 @@ function LocalConversationVirtualizedTurnListCore({
       return;
     const pendingRestoreDistance = getPendingRestoreScrollDistanceFromBottomPx();
     if (pendingRestoreDistance !== null) return;
-    if (
-      scrollController.shouldFollowContentGrowth() &&
-      scrollController.getLastScrollDistanceFromBottomPx() <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
-    )
-      return;
+    if (shouldFollowMeasuredGrowth()) return;
     const anchorKey = resolveMeasuredVisibleAnchorKey({
       distanceFromBottomPx: virtualViewportStateRef.current.distanceFromBottomPx,
       layout: previousLayout,
@@ -1398,6 +1409,7 @@ function LocalConversationVirtualizedTurnListCore({
     preserveMeasuredTurnViewport,
     publishViewportState,
     scrollController,
+    shouldFollowMeasuredGrowth,
     updateViewportState,
   ]);
 
@@ -2224,6 +2236,7 @@ export function LocalConversationVirtualizedTurnList({
         preserveMeasuredTurnViewport
         scrollController={wrappedScrollController}
         getPendingRestoreScrollDistanceFromBottomPx={getPendingRestoreScrollDistanceFromBottomPx}
+        getResponseSpacerHeightPx={responseSpace.getHeightPx}
         restoreScrollDistanceFromBottomPx={restoreScrollDistanceFromBottomPx}
       />
       <LocalConversationResponseSpaceElement

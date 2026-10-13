@@ -54,6 +54,7 @@ beforeEach(() => {
   boundary.query.mockReset().mockResolvedValue(fragment);
   boundary.create.mockReset().mockImplementation((input) => {
     const element = document.createElement("button");
+    input.mountTarget?.append(element);
     element.textContent = input.scopeId;
     const snapshot = {
       status: "ready" as const,

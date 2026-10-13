@@ -205,6 +205,25 @@ describe("window-owned interactive response occurrences", () => {
     expect(owner.readFrame(binding.frameId)?.initialHeight).toBe(10_000);
     owner.dispose();
   });
+  test("an explicit retry replaces its runtime and stays distinct from a first standby claim", () => {
+    const { owner } = harness();
+    owner.setSurface("main", "local", "a");
+    const binding = owner.bind(input(), element());
+    const guest = runtime();
+    owner.attachRuntime(binding.frameId, guest);
+    owner.acceptHeight(binding.frameId, 0, 320);
+    owner.updateBinding(binding, input("a", { attempt: 1 }));
+    expect(guest.dispose).toHaveBeenCalledOnce();
+    expect(owner.readFrame(binding.frameId)).toMatchObject({
+      attempt: 1,
+      documentRevision: 1,
+      initialHeight: 320,
+    });
+    owner.updateBinding(binding, input("a", { attempt: 1 }));
+    expect(guest.dispose).toHaveBeenCalledOnce();
+    expect(owner.readFrame(binding.frameId)?.documentRevision).toBe(1);
+    owner.dispose();
+  });
   test("accepted deletion is host-scoped and disposal cannot be undone by queued cleanup", () => {
     const { owner, flush } = harness();
     const local = input();

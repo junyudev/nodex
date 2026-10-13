@@ -9,6 +9,7 @@ import {
   appendMcpAppSandboxInitId,
   buildMcpAppSandboxPartition,
   buildMcpAppSandboxSourceUrl,
+  deriveMcpAppSandboxIdentity,
   MCP_APP_SANDBOX_SCHEME,
 } from "../../shared/mcp-app/mcp-app-sandbox-contract";
 import type { BackendLogger } from "../logging/logger";
@@ -53,6 +54,98 @@ function makeSession() {
   } as unknown as Session;
   return { events, state, value };
 }
+
+it.effect("inline HTML navigation preserves focus without changing ordinary MCP preferences", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const sandboxSession = makeSession();
+      const owner = Object.assign(new EventEmitter(), { id: 91 }) as unknown as WebContents;
+      const controller = yield* makeMcpAppSandboxController(
+        {
+          allowLocalDevelopment: false,
+          applicationName: "Nodex",
+          guestPreloadPath: "/tmp/mcp-app-preload.js",
+          locale: "en-US",
+          logger: { error: () => undefined, warn: () => undefined } as unknown as BackendLogger,
+          platform: "darwin",
+          preferredSystemLanguages: ["en-US"],
+        },
+        {
+          createHandler: () => async () => new Response("ok"),
+          getState: () => "cold",
+          prewarm: async () => undefined,
+        },
+        { schedule: () => () => undefined },
+        {
+          defaultSession: makeSession().value,
+          fromPartition: () => sandboxSession.value,
+          onGuestMessage: () => () => undefined,
+          showGuestContextMenu: () => undefined,
+        },
+      );
+      const inline = yield* Effect.promise(() =>
+        deriveMcpAppSandboxIdentity({
+          locale: "en-US",
+          originScope: { kind: "inline_visualization", scopeId: "standby-focus" },
+          widgetDomain: null,
+        }),
+      );
+      const ordinary = yield* Effect.promise(() =>
+        deriveMcpAppSandboxIdentity({
+          locale: "en-US",
+          originScope: { kind: "mcp_server", server: "calendar" },
+          widgetDomain: null,
+        }),
+      );
+      const host = controller.createHost(owner);
+      const cases = [
+        { identity: inline, focus: true, expected: false },
+        { identity: ordinary, focus: undefined, expected: undefined },
+        { identity: ordinary, focus: true, expected: true },
+        {
+          identity: {
+            ...ordinary,
+            sourceUrl: buildMcpAppSandboxSourceUrl({
+              locale: "en-US",
+              subdomain: "codex-inline-visualization-0123456789abcdef-extra",
+            }),
+          },
+          focus: true,
+          expected: true,
+        },
+      ];
+      for (const [index, entry] of cases.entries()) {
+        const preferences: WebPreferences = {
+          nodeIntegration: true,
+          sandbox: false,
+          webSecurity: false,
+          ...(entry.focus === undefined ? {} : { focusOnNavigation: entry.focus }),
+        };
+        const params = {
+          partition: entry.identity.partition,
+          src: appendMcpAppSandboxInitId(entry.identity.sourceUrl, `focus-init-${index}`),
+          webpreferences: "focusOnNavigation=true,sandbox=false",
+        };
+        let prevented = false;
+        host.handleWillAttach(
+          {
+            preventDefault: () => {
+              prevented = true;
+            },
+          } as unknown as Electron.Event,
+          preferences,
+          params,
+        );
+        assert.isFalse(prevented);
+        assert.strictEqual(preferences.focusOnNavigation, entry.expected);
+        assert.isFalse(preferences.nodeIntegration);
+        assert.isTrue(preferences.sandbox);
+        assert.isTrue(preferences.webSecurity);
+        assert.isUndefined(params.webpreferences);
+      }
+    }),
+  ),
+);
 
 it.effect("owns the complete MCP App sandbox callback graph with its Scope", () =>
   Effect.gen(function* () {

@@ -1,11 +1,12 @@
 import { useConversationRuntimeOverride } from "./conversation-runtime";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { projectNativeTaskRows } from "./native-task-presentation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { subscribeCodexEvents } from "@/lib/api";
 import type { CodexSubagentRow } from "../../../shared/codex-subagent-row-model";
 import type { CodexSubagentOverviewRow } from "../../../shared/types";
 import { useCodexAppServerManagerForConversationId } from "./local-conversation-store";
+import { useConversationRuntimeTaskObservations } from "./conversation-runtime-hooks";
 
 const EMPTY_ROWS: readonly CodexSubagentRow[] = [];
 
@@ -41,23 +42,20 @@ export function useBackgroundSubagentRows(
 ) {
   const runtime = useConversationRuntimeOverride();
   const enabled = !runtime || runtime.kind === "codex";
-  const subscribeNative = useCallback(
-    (listener: () => void) =>
-      !enabled && runtime ? runtime.subscribe(rootThreadId, listener) : () => {},
-    [enabled, runtime, rootThreadId],
+  const nativeObservations = useConversationRuntimeTaskObservations(
+    enabled ? null : runtime,
+    rootThreadId,
   );
-  const readNative = useCallback(
-    () => (!enabled && runtime ? runtime.read(rootThreadId) : null),
-    [enabled, runtime, rootThreadId],
-  );
-  const nativeSnapshot = useSyncExternalStore(subscribeNative, readNative, readNative);
-  const nativeRows = useMemo(
-    () =>
-      !enabled && runtime && nativeSnapshot
-        ? projectNativeTaskRows(runtime.children(rootThreadId), runtime.read)
-        : EMPTY_ROWS,
-    [enabled, runtime, rootThreadId, nativeSnapshot],
-  );
+  const nativeRows = useMemo(() => {
+    if (!nativeObservations.length) return EMPTY_ROWS;
+    const conversations = new Map(
+      nativeObservations.map((entry) => [entry.membership.threadId, entry.conversation]),
+    );
+    return projectNativeTaskRows(
+      nativeObservations.map((entry) => entry.membership),
+      (id) => conversations.get(id) ?? null,
+    );
+  }, [nativeObservations]);
   const manager = useCodexAppServerManagerForConversationId(rootThreadId, preferredHostId);
   const client = useQueryClient();
   const hostId = manager.getHostId();

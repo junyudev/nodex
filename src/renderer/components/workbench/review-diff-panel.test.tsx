@@ -8,7 +8,11 @@ import { __resetNodexToastStoreForTests, NodexToastProvider } from "../ui/toast"
 import { NodexTooltipProvider } from "../ui/tooltip";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NODEX_REVIEW_DIFF_EXPANSION_LINE_COUNT } from "../../lib/diff-presentation";
-import type { CodexConversationSnapshot, GitReviewLiveEvent } from "@/lib/types";
+import type {
+  CodexConversationSnapshot,
+  GitReviewBaseBranchResult,
+  GitReviewLiveEvent,
+} from "@/lib/types";
 import { buildReviewFileSafety } from "../../../shared/review-file-safety";
 import { ReviewDiffPanel } from "./review-diff-panel";
 import { parsePatchFiles } from "@pierre/diffs";
@@ -1979,6 +1983,27 @@ describe("review diff panel", () => {
       return null;
     };
 
+    const liveClient = createReviewGitWorkerTestClientWithLiveEvents((listener) => {
+      publish = listener;
+    });
+    let resolveInitialBaseBranch!: (result: GitReviewBaseBranchResult) => void;
+    const initialBaseBranch = new Promise<GitReviewBaseBranchResult>((resolve) => {
+      resolveInitialBaseBranch = resolve;
+    });
+    const baseBranchResult: GitReviewBaseBranchResult = {
+      cwd: "/tmp/codex",
+      local: "main",
+      remote: "origin/main",
+      errorMessage: null,
+    };
+    const gitWorkerClient: GitWorkerQueryClient = {
+      ...liveClient,
+      request: (input) =>
+        input.method === "base-branch"
+          ? (initialBaseBranch as ReturnType<GitWorkerQueryClient["request"]>)
+          : liveClient.request(input),
+    };
+
     const view = render(
       <NodexTooltipProvider>
         <ReviewDiffPanel
@@ -1987,52 +2012,49 @@ describe("review diff panel", () => {
           initialSource="branch"
           deps={{
             initialSummaryQuery: false,
-            gitWorkerClient: createReviewGitWorkerTestClientWithLiveEvents((listener) => {
-              publish = listener;
-            }),
+            gitWorkerClient,
           }}
         />
       </NodexTooltipProvider>,
     );
 
-    let baseSubscriptionId = "";
-    await waitFor(() => {
-      const baseSubscription = subscriptions.find(({ query }) => query.method === "base-branch");
-      if (!baseSubscription || !publish) {
-        throw new Error("Expected the live base-branch subscription.");
-      }
-      baseSubscriptionId = baseSubscription.subscriptionId;
-      expect(subscriptions.some(({ query }) => query.method === "review-summary")).toBe(false);
-    });
+    try {
+      let baseSubscriptionId = "";
+      await waitFor(() => {
+        const baseSubscription = subscriptions.find(({ query }) => query.method === "base-branch");
+        if (!baseSubscription || !publish) {
+          throw new Error("Expected the live base-branch subscription.");
+        }
+        baseSubscriptionId = baseSubscription.subscriptionId;
+        expect(subscriptions.some(({ query }) => query.method === "review-summary")).toBe(false);
+      });
 
-    await act(async () => {
-      publish?.({
-        type: "git-live-query-updated",
-        subscriptionId: baseSubscriptionId,
-        generation: 1,
-        requiresRecovery: false,
-        phase: "complete",
-        method: "base-branch",
-        result: {
+      await act(async () => {
+        publish?.({
+          type: "git-live-query-updated",
+          subscriptionId: baseSubscriptionId,
+          generation: 1,
+          requiresRecovery: false,
+          phase: "complete",
+          method: "base-branch",
+          result: baseBranchResult,
+        });
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        const summarySubscription = subscriptions.find(
+          ({ query }) => query.method === "review-summary",
+        );
+        expect(summarySubscription?.query.params).toMatchObject({
           cwd: "/tmp/codex",
-          local: "main",
-          remote: "origin/main",
-          errorMessage: null,
-        },
+          baseBranch: "origin/main",
+        });
       });
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      const summarySubscription = subscriptions.find(
-        ({ query }) => query.method === "review-summary",
-      );
-      expect(summarySubscription?.query.params).toMatchObject({
-        cwd: "/tmp/codex",
-        baseBranch: "origin/main",
-      });
-    });
-    await unmountReviewView(view);
+    } finally {
+      resolveInitialBaseBranch(baseBranchResult);
+      await unmountReviewView(view);
+    }
   });
 
   test("keeps an in-flight tracked path query across the complete publication", async () => {

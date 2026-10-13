@@ -47,7 +47,7 @@ function interactiveWidgetDocument(id: string): string {
 
 const guestIds = async (page: Page): Promise<number[]> =>
   await page
-    .locator('webview[title="Interactive response"]')
+    .locator('[data-inline-visualization="true"] webview[title="Interactive response"]')
     .evaluateAll((elements) =>
       elements.map((element) =>
         (element as unknown as { getWebContentsId(): number }).getWebContentsId(),
@@ -761,7 +761,9 @@ test("restores interactive HTML responses, retains guests during navigation and 
       const composer = page.locator('[data-codex-composer="true"][contenteditable="true"]').first();
       await composer.fill(prompt);
       await page.getByRole("button", { name: "Send prompt", exact: true }).click();
-      await expect(page.getByText(prompt, { exact: true })).toBeVisible();
+      await expect(
+        page.getByLabel("Conversation", { exact: true }).getByText(prompt, { exact: true }),
+      ).toBeVisible();
       await expect
         .poll(async () =>
           (await readRequests()).some(
@@ -772,6 +774,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
         )
         .toBe(true);
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await expect(composer).toHaveText("");
     };
     const beforeFollowUp = (await readRequests()).length;
     await submitFollowUp("Use the saved interactive selection");
@@ -858,6 +861,19 @@ test("restores interactive HTML responses, retains guests during navigation and 
       contentType: "application/json",
     });
     const idsBeforeRelease = await guestIds(page);
+    await expect(page.locator('webview[data-inline-visualization-standby="ready"]')).toHaveCount(
+      1,
+      { timeout: 30_000 },
+    );
+    expect(await page.locator("webview[data-inline-visualization-standby]").count()).toBe(1);
+    const unusedStandbyIds = await page
+      .locator('webview[data-inline-visualization-standby="ready"]')
+      .evaluateAll((elements) =>
+        elements.map((element) =>
+          (element as unknown as { getWebContentsId(): number }).getWebContentsId(),
+        ),
+      );
+    expect(unusedStandbyIds).toHaveLength(1);
     await page
       .getByRole("button", { name: "Start new chat in Interactive responses", exact: true })
       .click();
@@ -895,7 +911,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
               const guest = webContents.fromId(id);
               return !guest || guest.isDestroyed();
             }),
-          [...idsBeforeRelease, directoryGuest, workspaceGuest, liveGuest],
+          [...idsBeforeRelease, ...unusedStandbyIds, directoryGuest, workspaceGuest, liveGuest],
         ),
       )
       .toBe(true);
@@ -923,8 +939,15 @@ test("restores interactive HTML responses, retains guests during navigation and 
           releasedOnWindowClose: true,
           rendererErrors,
           releasedGuestIds: [
-            ...new Set([...idsBeforeRelease, directoryGuest, workspaceGuest, liveGuest]),
+            ...new Set([
+              ...idsBeforeRelease,
+              ...unusedStandbyIds,
+              directoryGuest,
+              workspaceGuest,
+              liveGuest,
+            ]),
           ],
+          releasedUnusedStandbyIds: unusedStandbyIds,
           sameGuestFullscreenAndCompletion: true,
           defaultHelpers: ["calendar", "tabs", "carousel", "tooltip", "icons"],
         },

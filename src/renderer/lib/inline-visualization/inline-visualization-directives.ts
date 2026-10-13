@@ -28,10 +28,15 @@ function readDirectiveAttributes(
 }
 
 /** Real directive nodes exclude fenced/inline code and permit normal attribute ordering. */
-export const remarkInlineVisualizations: Plugin<[], Root> = function () {
+export const remarkInlineVisualizations: Plugin<
+  [{ readonly syntaxAlreadyRegistered?: boolean }?],
+  Root
+> = function (options) {
   const data = this.data();
-  (data.micromarkExtensions ??= []).push(directive());
-  (data.fromMarkdownExtensions ??= []).push(directiveFromMarkdown());
+  if (!options?.syntaxAlreadyRegistered) {
+    (data.micromarkExtensions ??= []).push(directive());
+    (data.fromMarkdownExtensions ??= []).push(directiveFromMarkdown());
+  }
   const visit = (node: Nodes) => {
     if (node.type === "leafDirective" && node.name === "codex-inline-vis") {
       const presentation = readDirectiveAttributes(node.attributes);

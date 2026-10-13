@@ -662,6 +662,18 @@ export interface ComposerPromptEditorHandle {
   syncMentionMetadata: (inventory: ComposerPromptMentionMetadataInventory) => void;
 }
 
+function withLiveDictation(
+  handle: Omit<ComposerPromptEditorHandle, "dictation">,
+  readDictation: () => ComposerDictationEditor | null,
+): ComposerPromptEditorHandle {
+  return {
+    ...handle,
+    get dictation() {
+      return readDictation();
+    },
+  };
+}
+
 interface ComposerPromptEditorProps {
   value: string;
   placeholder: string;
@@ -1049,21 +1061,23 @@ export const ComposerPromptEditor = forwardRef<
   const predictionRef = useRef(prediction);
   const onPredictionInteractionRef = useRef(onPredictionInteraction);
   const mentionInventoryRef = useRef<ComposerPromptMentionMetadataInventory | null>(null);
-  valueRef.current = value;
-  onChangeRef.current = onChange;
-  onKeyDownRef.current = onKeyDown;
-  onLargeTextPasteRef.current = onLargeTextPaste;
-  onPasteFilesRef.current = onPasteFiles;
-  onSuggestionStateChangeRef.current = onSuggestionStateChange;
-  onSuggestionActionRef.current = onSuggestionAction;
-  onIntrinsicContentWidthChangeRef.current = onIntrinsicContentWidthChange;
-  placeholderRef.current = placeholder;
-  singleLineRef.current = singleLine;
-  compactRef.current = compact;
-  allowSlashCommandsRef.current = allowSlashCommands;
-  disabledRef.current = disabled;
-  predictionRef.current = prediction;
-  onPredictionInteractionRef.current = onPredictionInteraction;
+  useLayoutEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+    onKeyDownRef.current = onKeyDown;
+    onLargeTextPasteRef.current = onLargeTextPaste;
+    onPasteFilesRef.current = onPasteFiles;
+    onSuggestionStateChangeRef.current = onSuggestionStateChange;
+    onSuggestionActionRef.current = onSuggestionAction;
+    onIntrinsicContentWidthChangeRef.current = onIntrinsicContentWidthChange;
+    placeholderRef.current = placeholder;
+    singleLineRef.current = singleLine;
+    compactRef.current = compact;
+    allowSlashCommandsRef.current = allowSlashCommands;
+    disabledRef.current = disabled;
+    predictionRef.current = prediction;
+    onPredictionInteractionRef.current = onPredictionInteraction;
+  });
 
   const predictionOptions = useMemo(
     () => ({
@@ -1205,249 +1219,270 @@ export const ComposerPromptEditor = forwardRef<
 
   useImperativeHandle(
     ref,
-    () => ({
-      get dictation() {
-        return dictationRef.current;
-      },
-      getElement: () => viewRef.current?.dom ?? null,
-      focus: () => {
-        viewRef.current?.focus();
-      },
-      focusAtEnd: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        view.dispatch(
-          view.state.tr.setSelection(getPromptDocEndSelection(view.state.doc)).scrollIntoView(),
-        );
-        view.focus();
-      },
-      setText,
-      setPromptText: setText,
-      insertText: (text: string) => {
-        const view = viewRef.current;
-        if (!view) {
-          const nextValue = `${valueRef.current}${text}`;
-          onChangeRef.current(nextValue);
-          return nextValue;
-        }
-
-        const { from, to } = view.state.selection;
-        view.dispatch(replacePromptTextRange(view.state.tr, { from, to, text }).scrollIntoView());
-        view.focus();
-        return readPromptDocText(view.state.doc);
-      },
-      insertDictationText: (transcript: string) => {
-        const text = transcript.trim();
-        const view = viewRef.current;
-        const current = view ? readPromptDocText(view.state.doc) : valueRef.current;
-        if (!text) return current;
-        if (!view) {
-          const next = appendComposerDictationText(current, text);
-          onChangeRef.current(next);
-          return next;
-        }
-        const selection = view.dom.ownerDocument.getSelection();
-        const ownsSelection =
-          selection !== null &&
-          selection.rangeCount > 0 &&
-          selection.anchorNode !== null &&
-          selection.focusNode !== null &&
-          view.dom.contains(selection.anchorNode) &&
-          view.dom.contains(selection.focusNode);
-        const { doc } = view.state;
-        const { from, to } = ownsSelection ? view.state.selection : getPromptDocEndSelection(doc);
-        const before = doc.textBetween(Math.max(0, from - 1), from, "\n");
-        const after = doc.textBetween(to, Math.min(doc.content.size, to + 1), "\n");
-        const inserted = `${before && !/\s$/u.test(before) ? " " : ""}${text}${after && !/^\s/u.test(after) ? " " : ""}`;
-        const transaction = replacePromptTextRange(view.state.tr, { from, to, text: inserted });
-        transaction.setSelection(
-          TextSelection.create(transaction.doc, transaction.mapping.map(to)),
-        );
-        view.dispatch(transaction.scrollIntoView());
-        view.focus();
-        return readPromptDocText(view.state.doc);
-      },
-      completeSuggestionQuery: (query) => {
-        const view = viewRef.current;
-        if (!view) return;
-        const suggestion = readComposerSuggestionState(view.state);
-        if (!suggestion.active || !suggestion.range) return;
-        replaceTextRange({ ...suggestion.range, text: `${suggestion.trigger ?? "@"}${query}` });
-      },
-      insertMention: (mention) => {
-        const view = viewRef.current;
-        const normalizedMention = normalizePromptMention(mention);
-        if (!normalizedMention.name || !normalizedMention.path) {
-          return dictationRef.current
-            ? readPromptDocText(dictationRef.current.document)
-            : view
-              ? readPromptDocText(view.state.doc)
-              : valueRef.current;
-        }
-        if (!view) {
-          const nextValue = `${valueRef.current}[${mentionLabel(normalizedMention)}](${normalizedMention.path}) `;
-          onChangeRef.current(nextValue);
-          return nextValue;
-        }
-
-        const suggestion = readComposerSuggestionState(view.state);
-        const from =
-          suggestion.active && suggestion.range ? suggestion.range.from : view.state.selection.from;
-        const to =
-          suggestion.active && suggestion.range ? suggestion.range.to : view.state.selection.to;
-        const mentionNode = promptSchema.nodes.mention.create(normalizedMention);
-        let transaction = view.state.tr.replaceRangeWith(from, to, mentionNode);
-        const mentionEnd = transaction.mapping.map(from, -1) + mentionNode.nodeSize;
-        const resolvedEnd = transaction.doc.resolve(mentionEnd);
-        const nextTextCharacter =
-          resolvedEnd.parentOffset < resolvedEnd.parent.content.size
-            ? resolvedEnd.parent.childAfter(resolvedEnd.parentOffset).node?.text?.[0]
-            : undefined;
-        const cursor =
-          nextTextCharacter && /\s/u.test(nextTextCharacter) ? mentionEnd : mentionEnd + 1;
-        if (cursor > mentionEnd) {
-          transaction = transaction.insertText(" ", mentionEnd);
-        }
-        transaction
-          .setSelection(
-            TextSelection.create(transaction.doc, Math.min(cursor, transaction.doc.content.size)),
-          )
-          .setMeta(composerSuggestionPluginKey, { type: "close" })
-          .scrollIntoView();
-        view.dispatch(transaction);
-        view.focus();
-        return readPromptDocText(view.state.doc);
-      },
-      replaceTextRange,
-      clearRange: (range) => replaceTextRange({ ...range, text: "" }),
-      toggleContextSuggestions: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        const suggestion = readComposerSuggestionState(view.state);
-        dispatchSuggestionMeta(
-          view,
-          suggestion.active && suggestion.activation === "synthetic" && suggestion.trigger === "+"
-            ? { type: "close" }
-            : {
-                type: "open-synthetic",
-                from: view.state.selection.from,
-                kind: "at-mention",
-                trigger: "+",
-              },
-        );
-        view.focus();
-      },
-      openSlashSubmenu: (source) => {
-        const view = viewRef.current;
-        if (!view) return;
-        const suggestion = readComposerSuggestionState(view.state);
-        if (suggestion.active && suggestion.kind === "slash-command" && suggestion.range !== null) {
-          const queryFrom = suggestion.anchorPos ?? suggestion.range.from;
-          const transaction = view.state.tr;
-          if (suggestion.range.to > queryFrom) {
-            transaction.delete(queryFrom, suggestion.range.to);
-          }
-          view.dispatch(
-            transaction.setMeta(composerSuggestionPluginKey, {
-              type: "set-source",
-              source,
-            } satisfies ComposerSuggestionTransactionMeta),
-          );
-        } else if (source !== null) {
-          const transaction = view.state.tr;
-          if (!transaction.selection.empty) {
-            transaction.setSelection(
-              TextSelection.create(transaction.doc, transaction.selection.to),
+    () =>
+      withLiveDictation(
+        {
+          getElement: () => viewRef.current?.dom ?? null,
+          focus: () => {
+            viewRef.current?.focus();
+          },
+          focusAtEnd: () => {
+            const view = viewRef.current;
+            if (!view) return;
+            view.dispatch(
+              view.state.tr.setSelection(getPromptDocEndSelection(view.state.doc)).scrollIntoView(),
             );
-          }
-          view.dispatch(
-            transaction.setMeta(composerSuggestionPluginKey, {
-              type: "open-synthetic",
-              from: transaction.selection.from,
-              kind: "slash-command",
-              trigger: "/",
-            } satisfies ComposerSuggestionTransactionMeta),
-          );
-          dispatchSuggestionMeta(view, { type: "set-source", source });
-        }
-        view.focus();
-      },
-      closeSuggestions: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        dispatchSuggestionMeta(view, { type: "close" });
-      },
-      dismissSuggestions: () => {
-        const view = viewRef.current;
-        if (!view) return;
-        dispatchSuggestionMeta(view, { type: "dismiss" });
-      },
-      getSelection: () => {
-        const view = viewRef.current;
-        if (!view) return null;
-        return {
-          from: view.state.selection.from,
-          to: view.state.selection.to,
-        };
-      },
-      getSuggestionState: () => {
-        const view = viewRef.current;
-        return view ? readComposerSuggestionState(view.state) : inactiveComposerSuggestionState();
-      },
-      getText: () => {
-        const view = viewRef.current;
-        return dictationRef.current
-          ? readPromptDocText(dictationRef.current.document)
-          : view
-            ? readPromptDocText(view.state.doc)
-            : valueRef.current;
-      },
-      getPersistedText: () => {
-        const view = viewRef.current;
-        return dictationRef.current
-          ? readPromptDocText(dictationRef.current.document)
-          : view
-            ? readPromptDocText(view.state.doc)
-            : valueRef.current;
-      },
-      isCursorAtEnd: () => {
-        const view = viewRef.current;
-        if (!view || !view.state.selection.empty) return false;
+            view.focus();
+          },
+          setText,
+          setPromptText: setText,
+          insertText: (text: string) => {
+            const view = viewRef.current;
+            if (!view) {
+              const nextValue = `${valueRef.current}${text}`;
+              onChangeRef.current(nextValue);
+              return nextValue;
+            }
 
-        const domSelection = view.dom.ownerDocument.getSelection();
-        if (!domSelection || !domSelection.isCollapsed || domSelection.rangeCount === 0)
-          return false;
-        if (!domSelection.anchorNode || !view.dom.contains(domSelection.anchorNode)) return false;
+            const { from, to } = view.state.selection;
+            view.dispatch(
+              replacePromptTextRange(view.state.tr, { from, to, text }).scrollIntoView(),
+            );
+            view.focus();
+            return readPromptDocText(view.state.doc);
+          },
+          insertDictationText: (transcript: string) => {
+            const text = transcript.trim();
+            const view = viewRef.current;
+            const current = view ? readPromptDocText(view.state.doc) : valueRef.current;
+            if (!text) return current;
+            if (!view) {
+              const next = appendComposerDictationText(current, text);
+              onChangeRef.current(next);
+              return next;
+            }
+            const selection = view.dom.ownerDocument.getSelection();
+            const ownsSelection =
+              selection !== null &&
+              selection.rangeCount > 0 &&
+              selection.anchorNode !== null &&
+              selection.focusNode !== null &&
+              view.dom.contains(selection.anchorNode) &&
+              view.dom.contains(selection.focusNode);
+            const { doc } = view.state;
+            const { from, to } = ownsSelection
+              ? view.state.selection
+              : getPromptDocEndSelection(doc);
+            const before = doc.textBetween(Math.max(0, from - 1), from, "\n");
+            const after = doc.textBetween(to, Math.min(doc.content.size, to + 1), "\n");
+            const inserted = `${before && !/\s$/u.test(before) ? " " : ""}${text}${after && !/^\s/u.test(after) ? " " : ""}`;
+            const transaction = replacePromptTextRange(view.state.tr, { from, to, text: inserted });
+            transaction.setSelection(
+              TextSelection.create(transaction.doc, transaction.mapping.map(to)),
+            );
+            view.dispatch(transaction.scrollIntoView());
+            view.focus();
+            return readPromptDocText(view.state.doc);
+          },
+          completeSuggestionQuery: (query) => {
+            const view = viewRef.current;
+            if (!view) return;
+            const suggestion = readComposerSuggestionState(view.state);
+            if (!suggestion.active || !suggestion.range) return;
+            replaceTextRange({ ...suggestion.range, text: `${suggestion.trigger ?? "@"}${query}` });
+          },
+          insertMention: (mention) => {
+            const view = viewRef.current;
+            const normalizedMention = normalizePromptMention(mention);
+            if (!normalizedMention.name || !normalizedMention.path) {
+              return dictationRef.current
+                ? readPromptDocText(dictationRef.current.document)
+                : view
+                  ? readPromptDocText(view.state.doc)
+                  : valueRef.current;
+            }
+            if (!view) {
+              const nextValue = `${valueRef.current}[${mentionLabel(normalizedMention)}](${normalizedMention.path}) `;
+              onChangeRef.current(nextValue);
+              return nextValue;
+            }
 
-        const endPosition = getPromptDocEndSelection(view.state.doc).from;
-        if (view.state.selection.from !== endPosition) return false;
+            const suggestion = readComposerSuggestionState(view.state);
+            const from =
+              suggestion.active && suggestion.range
+                ? suggestion.range.from
+                : view.state.selection.from;
+            const to =
+              suggestion.active && suggestion.range ? suggestion.range.to : view.state.selection.to;
+            const mentionNode = promptSchema.nodes.mention.create(normalizedMention);
+            let transaction = view.state.tr.replaceRangeWith(from, to, mentionNode);
+            const mentionEnd = transaction.mapping.map(from, -1) + mentionNode.nodeSize;
+            const resolvedEnd = transaction.doc.resolve(mentionEnd);
+            const nextTextCharacter =
+              resolvedEnd.parentOffset < resolvedEnd.parent.content.size
+                ? resolvedEnd.parent.childAfter(resolvedEnd.parentOffset).node?.text?.[0]
+                : undefined;
+            const cursor =
+              nextTextCharacter && /\s/u.test(nextTextCharacter) ? mentionEnd : mentionEnd + 1;
+            if (cursor > mentionEnd) {
+              transaction = transaction.insertText(" ", mentionEnd);
+            }
+            transaction
+              .setSelection(
+                TextSelection.create(
+                  transaction.doc,
+                  Math.min(cursor, transaction.doc.content.size),
+                ),
+              )
+              .setMeta(composerSuggestionPluginKey, { type: "close" })
+              .scrollIntoView();
+            view.dispatch(transaction);
+            view.focus();
+            return readPromptDocText(view.state.doc);
+          },
+          replaceTextRange,
+          clearRange: (range) => replaceTextRange({ ...range, text: "" }),
+          toggleContextSuggestions: () => {
+            const view = viewRef.current;
+            if (!view) return;
+            const suggestion = readComposerSuggestionState(view.state);
+            dispatchSuggestionMeta(
+              view,
+              suggestion.active &&
+                suggestion.activation === "synthetic" &&
+                suggestion.trigger === "+"
+                ? { type: "close" }
+                : {
+                    type: "open-synthetic",
+                    from: view.state.selection.from,
+                    kind: "at-mention",
+                    trigger: "+",
+                  },
+            );
+            view.focus();
+          },
+          openSlashSubmenu: (source) => {
+            const view = viewRef.current;
+            if (!view) return;
+            const suggestion = readComposerSuggestionState(view.state);
+            if (
+              suggestion.active &&
+              suggestion.kind === "slash-command" &&
+              suggestion.range !== null
+            ) {
+              const queryFrom = suggestion.anchorPos ?? suggestion.range.from;
+              const transaction = view.state.tr;
+              if (suggestion.range.to > queryFrom) {
+                transaction.delete(queryFrom, suggestion.range.to);
+              }
+              view.dispatch(
+                transaction.setMeta(composerSuggestionPluginKey, {
+                  type: "set-source",
+                  source,
+                } satisfies ComposerSuggestionTransactionMeta),
+              );
+            } else if (source !== null) {
+              const transaction = view.state.tr;
+              if (!transaction.selection.empty) {
+                transaction.setSelection(
+                  TextSelection.create(transaction.doc, transaction.selection.to),
+                );
+              }
+              view.dispatch(
+                transaction.setMeta(composerSuggestionPluginKey, {
+                  type: "open-synthetic",
+                  from: transaction.selection.from,
+                  kind: "slash-command",
+                  trigger: "/",
+                } satisfies ComposerSuggestionTransactionMeta),
+              );
+              dispatchSuggestionMeta(view, { type: "set-source", source });
+            }
+            view.focus();
+          },
+          closeSuggestions: () => {
+            const view = viewRef.current;
+            if (!view) return;
+            dispatchSuggestionMeta(view, { type: "close" });
+          },
+          dismissSuggestions: () => {
+            const view = viewRef.current;
+            if (!view) return;
+            dispatchSuggestionMeta(view, { type: "dismiss" });
+          },
+          getSelection: () => {
+            const view = viewRef.current;
+            if (!view) return null;
+            return {
+              from: view.state.selection.from,
+              to: view.state.selection.to,
+            };
+          },
+          getSuggestionState: () => {
+            const view = viewRef.current;
+            return view
+              ? readComposerSuggestionState(view.state)
+              : inactiveComposerSuggestionState();
+          },
+          getText: () => {
+            const view = viewRef.current;
+            return dictationRef.current
+              ? readPromptDocText(dictationRef.current.document)
+              : view
+                ? readPromptDocText(view.state.doc)
+                : valueRef.current;
+          },
+          getPersistedText: () => {
+            const view = viewRef.current;
+            return dictationRef.current
+              ? readPromptDocText(dictationRef.current.document)
+              : view
+                ? readPromptDocText(view.state.doc)
+                : valueRef.current;
+          },
+          isCursorAtEnd: () => {
+            const view = viewRef.current;
+            if (!view || !view.state.selection.empty) return false;
 
-        try {
-          return view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset) === endPosition;
-        } catch {
-          return true;
-        }
-      },
-      syncMentionMetadata: (inventory) => {
-        mentionInventoryRef.current = inventory;
-        const view = viewRef.current;
-        if (!view) return;
-        const doc = projectPromptMentionMetadata(view.state.doc, inventory);
-        const transaction = view.state.tr;
-        doc.descendants((node, position) => {
-          const previous = view.state.doc.nodeAt(position);
-          if (node.type.name === "mention" && previous && !node.sameMarkup(previous))
-            transaction.setNodeMarkup(position, undefined, node.attrs);
-        });
-        if (transaction.docChanged) view.dispatch(transaction);
-        const predictionState = composerPredictionPluginKey.getState(view.state);
-        if (predictionState)
-          setComposerPredictionDocument(
-            view,
-            projectPromptMentionMetadata(predictionState.doc, inventory),
-          );
-      },
-    }),
+            const domSelection = view.dom.ownerDocument.getSelection();
+            if (!domSelection || !domSelection.isCollapsed || domSelection.rangeCount === 0)
+              return false;
+            if (!domSelection.anchorNode || !view.dom.contains(domSelection.anchorNode))
+              return false;
+
+            const endPosition = getPromptDocEndSelection(view.state.doc).from;
+            if (view.state.selection.from !== endPosition) return false;
+
+            try {
+              return (
+                view.posAtDOM(domSelection.anchorNode, domSelection.anchorOffset) === endPosition
+              );
+            } catch {
+              return true;
+            }
+          },
+          syncMentionMetadata: (inventory) => {
+            mentionInventoryRef.current = inventory;
+            const view = viewRef.current;
+            if (!view) return;
+            const doc = projectPromptMentionMetadata(view.state.doc, inventory);
+            const transaction = view.state.tr;
+            doc.descendants((node, position) => {
+              const previous = view.state.doc.nodeAt(position);
+              if (node.type.name === "mention" && previous && !node.sameMarkup(previous))
+                transaction.setNodeMarkup(position, undefined, node.attrs);
+            });
+            if (transaction.docChanged) view.dispatch(transaction);
+            const predictionState = composerPredictionPluginKey.getState(view.state);
+            if (predictionState)
+              setComposerPredictionDocument(
+                view,
+                projectPromptMentionMetadata(predictionState.doc, inventory),
+              );
+          },
+        },
+        () => dictationRef.current,
+      ),
     [dispatchSuggestionMeta, replaceTextRange, setText],
   );
 

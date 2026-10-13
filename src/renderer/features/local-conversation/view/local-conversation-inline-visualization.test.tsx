@@ -46,6 +46,7 @@ beforeEach(() => {
     const widgetControl = document.createElement("button");
     widgetControl.textContent = "Widget control";
     element.append(widgetControl);
+    input.mountTarget?.append(element);
     const listeners = new Set<() => void>();
     let snapshot: InlineVisualizationSnapshot = {
       status: "ready",

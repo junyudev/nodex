@@ -176,6 +176,83 @@ async function recordGeometry(
 }
 
 describe("transcript viewport motion in Chromium", () => {
+  test("a measured resize respects the physical viewport after programmatic departure from bottom", async (context) => {
+    const turns = Array.from({ length: 10 }, (_, index) => entry(index));
+    const view = renderThread(turns, true);
+    const growLatest = (values: VisibleConversationTurnEntry[]) =>
+      values.map((value, index) =>
+        index === values.length - 1
+          ? {
+              ...value,
+              turn: {
+                ...value.turn,
+                items: value.turn.items.map((item) =>
+                  item.kind === "assistantMessage"
+                    ? {
+                        ...item,
+                        markdownText:
+                          item.markdownText +
+                          "\n\n" +
+                          "A newly measured paragraph changes the final reply height. ".repeat(12),
+                      }
+                    : item,
+                ),
+              },
+            }
+          : value,
+      );
+    try {
+      await act(async () => {
+        await settleFrames(6);
+      });
+      const scroll = view.readController().getScrollElement()!;
+      await act(async () => {
+        // A native navigation scroll does not manufacture a wheel/user intent.
+        scroll.scrollTop = -300;
+        fireEvent.scroll(scroll);
+        await settleFrames(3);
+      });
+      expect(view.readController().getScrollMode()).toBe("stickToBottom");
+      expect(view.readController().responseSpacerState?.getHeightPx() ?? 0).toBe(0);
+      const clip = scroll.getBoundingClientRect();
+      const anchor = [...view.container.querySelectorAll<HTMLElement>("[data-turn-key]")].find(
+        (row) => {
+          const rect = row.getBoundingClientRect();
+          return rect.top > clip.top && rect.bottom < clip.bottom;
+        },
+      )!;
+      expect(anchor).toBeDefined();
+      const before = anchor.getBoundingClientRect().top;
+      const latest = view.container.querySelector<HTMLElement>(
+        '[data-turn-key="viewport-turn-9"]',
+      )!;
+      const beforeHeight = latest.getBoundingClientRect().height;
+      const grown = growLatest(turns);
+      await act(async () => {
+        view.update(grown);
+        await settleFrames(8);
+      });
+      const heightGrowth = latest.getBoundingClientRect().height - beforeHeight;
+      expect(heightGrowth).toBeGreaterThan(40);
+      expect(-scroll.scrollTop).toBeGreaterThan(24);
+      const anchorError = Math.abs(anchor.getBoundingClientRect().top - before);
+      expect(anchorError).toBeLessThanOrEqual(1);
+      await act(async () => {
+        view.readController().jumpToBottom();
+        await settleFrames(3);
+        view.update(growLatest(grown));
+        await settleFrames(8);
+      });
+      expect(Math.abs(scroll.scrollTop)).toBeLessThanOrEqual(1);
+      await recordGeometry(context, "measured physical bottom gate", {
+        heightGrowth,
+        anchorError,
+        bottomDistanceAfterGrowth: -scroll.scrollTop,
+      });
+    } finally {
+      view.dispose();
+    }
+  });
   test("resource expansion retains bottom follow and the current history anchor", async (context) => {
     const withResources = (index: number): VisibleConversationTurnEntry => {
       const value = entry(index);

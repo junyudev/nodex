@@ -19,6 +19,7 @@ import {
   resolveVirtualizedTurnViewportState,
   resolveVisibleTurnRangeFromBottomDistance,
   shouldShowThreadScrollToBottomControl,
+  shouldFollowMeasuredTurnGrowth,
 } from "./local-conversation-turn-virtualization";
 
 function buildLayout(heightsPx: number[]) {
@@ -30,6 +31,37 @@ function buildLayout(heightsPx: number[]) {
     gapPx: 12,
   });
 }
+
+describe("measured content bottom following", () => {
+  test("requires current follow intent, zero response space and the physical 24px boundary", () => {
+    const position = {
+      shouldFollowContentGrowth: true,
+      responseSpacerHeightPx: 0,
+      physicalDistanceFromBottomPx: 24,
+    };
+    expect(shouldFollowMeasuredTurnGrowth(position)).toBe(true);
+    expect(shouldFollowMeasuredTurnGrowth({ ...position, physicalDistanceFromBottomPx: 0 })).toBe(
+      true,
+    );
+    expect(
+      shouldFollowMeasuredTurnGrowth({ ...position, physicalDistanceFromBottomPx: 24.001 }),
+    ).toBe(false);
+    expect(shouldFollowMeasuredTurnGrowth({ ...position, responseSpacerHeightPx: 0.001 })).toBe(
+      false,
+    );
+    expect(shouldFollowMeasuredTurnGrowth({ ...position, shouldFollowContentGrowth: false })).toBe(
+      false,
+    );
+    // A virtual range can be at zero while submit space keeps the physical viewport elsewhere.
+    expect(
+      shouldFollowMeasuredTurnGrowth({
+        ...position,
+        responseSpacerHeightPx: 400,
+        physicalDistanceFromBottomPx: 1,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("buildVirtualizedTurnLayout", () => {
   test("preserves measured zero, minimum height and per-row gaps with physical-pixel rounding", () => {

@@ -1,4 +1,9 @@
 import { deriveMcpAppSandboxIdentity } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
+import type { InlineVisualizationPreparedLease } from "./inline-visualization-prepared";
+import {
+  readInlineVisualizationLocale,
+  subscribeInlineVisualizationLocale,
+} from "./inline-visualization-prewarmer";
 import {
   defineRendererCommand,
   invokePlainCommand,
@@ -217,9 +222,23 @@ function visualizationUserAgent() {
 }
 
 /** One retained guest stays mounted through inline/fullscreen changes and is disposed with its consumer. */
+/** A prepared native connection cannot survive a detach/append fallback. */
+function movePreparedGuest(lease: InlineVisualizationPreparedLease, target: HTMLElement): boolean {
+  if (!lease.element.isConnected || !target.isConnected || typeof target.moveBefore !== "function")
+    return false;
+  try {
+    target.moveBefore(lease.element, null);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createInlineVisualizationRuntime(input: {
   readonly scopeId: string;
   readonly html: string;
+  readonly mountTarget?: HTMLElement;
+  readonly claimStandby?: (locale: string) => InlineVisualizationPreparedLease | null;
   readonly initialHeight?: number;
   readonly active?: boolean;
   readonly onInlineHeight?: (height: number) => void;
@@ -238,7 +257,9 @@ export function createInlineVisualizationRuntime(input: {
 }): InlineVisualizationRuntime {
   const element = document.createElement("div");
   element.className = "flex h-full min-h-0 w-full";
+  input.mountTarget?.append(element);
   let webview = document.createElement("webview");
+  let preparedLease: InlineVisualizationPreparedLease | null = null;
   const controller = new AbortController();
   const listeners = new Set<() => void>();
   const widgetId = input.widgetState?.identity.path ?? crypto.randomUUID();
@@ -252,6 +273,14 @@ export function createInlineVisualizationRuntime(input: {
   let actionController = new AbortController();
   if (!active) actionController.abort();
   let presentationRevision = 0;
+  let acknowledgedPresentation: { readonly revision: number; readonly active: boolean } | null =
+    null;
+  let presentationRequest: {
+    readonly connection: ConnectedMcpAppSandbox;
+    readonly revision: number;
+    readonly active: boolean;
+    readonly result: Promise<boolean>;
+  } | null = null;
   let annotationCommand: VisualizationAnnotationCommand | null = null;
   let environmentReady = false;
   let hasMeasurement = false;
@@ -310,7 +339,7 @@ export function createInlineVisualizationRuntime(input: {
     },
     deviceCapabilities: visualizationUserAgent().capabilities,
     displayMode: snapshot.displayMode,
-    locale: navigator.language,
+    locale: readInlineVisualizationLocale(),
     platform: "desktop",
     safeAreaInsets: { bottom: 0, left: 0, right: 0, top: 0 },
     theme: theme(),
@@ -336,20 +365,48 @@ export function createInlineVisualizationRuntime(input: {
     ]);
   };
   const syncPresentation = async () => {
-    const initId = connected?.initId;
+    const current = connected;
+    const initId = current?.initId;
     const sandboxId = activeSandboxId;
-    if (!initId || !sandboxId || controller.signal.aborted) return;
-    const revision = Math.max(1, presentationRevision);
-    presentationRevision = revision;
-    const accepted = await invokeRendererControl("codex:visualization:set-presentation", {
-      sandboxId,
-      initId,
-      active,
-      revision,
-    });
-    if (!accepted && !controller.signal.aborted && revision === presentationRevision)
-      throw new Error("The response presentation is unavailable");
+    if (!current || !initId || !sandboxId || controller.signal.aborted) return;
+    while (!controller.signal.aborted) {
+      if (connected !== current) return;
+      const revision = Math.max(1, presentationRevision);
+      const capturedActive = active;
+      presentationRevision = revision;
+      if (
+        acknowledgedPresentation?.revision === revision &&
+        acknowledgedPresentation.active === capturedActive
+      )
+        return;
+      if (
+        presentationRequest?.connection !== current ||
+        presentationRequest.revision !== revision ||
+        presentationRequest.active !== capturedActive
+      ) {
+        presentationRequest = {
+          connection: current,
+          revision,
+          active: capturedActive,
+          result: invokeRendererControl("codex:visualization:set-presentation", {
+            sandboxId,
+            initId,
+            active: capturedActive,
+            revision,
+          }),
+        };
+      }
+      const accepted = await presentationRequest.result;
+      if (controller.signal.aborted || connected !== current) return;
+      if (revision !== presentationRevision || capturedActive !== active) continue;
+      if (!accepted) throw new Error("The response presentation is unavailable");
+      acknowledgedPresentation = { revision, active: capturedActive };
+      return;
+    }
   };
+  const cancelLocale = subscribeInlineVisualizationLocale(() => {
+    void updateContext();
+  });
   const setDisplayMode = (mode: "inline" | "fullscreen") => {
     const admittedMode =
       mode === "fullscreen" && (!active || !input.canExpand?.()) ? "inline" : mode;
@@ -456,37 +513,53 @@ export function createInlineVisualizationRuntime(input: {
   const onFailure = () => fail(new Error("This response couldn’t load"));
   const failureEvents = ["crashed", "did-fail-load", "render-process-gone"];
   const configureGuest = () => {
+    webview.inert = false;
     webview.setAttribute("title", "Interactive response");
     webview.setAttribute("tabindex", "0");
     webview.className = "flex h-full min-h-0 w-full border-0 bg-transparent";
     failureEvents.forEach((name) => webview.addEventListener(name, onFailure));
   };
   const releaseConnectedGuest = () =>
-    activeSandboxId && connected?.initId
-      ? invokeRendererControl("codex:visualization:release", {
-          sandboxId: activeSandboxId,
-          initId: connected.initId,
-        }).catch(() => undefined)
-      : Promise.resolve();
+    preparedLease
+      ? preparedLease.dispose()
+      : activeSandboxId && connected?.initId
+        ? invokeRendererControl("codex:visualization:release", {
+            sandboxId: activeSandboxId,
+            initId: connected.initId,
+          }).catch(() => undefined)
+        : Promise.resolve();
   configureGuest();
   const start = async (attempt = 0): Promise<void> => {
     const attemptController = new AbortController();
     const signal = AbortSignal.any([controller.signal, attemptController.signal]);
     const downloadCapability = crypto.randomUUID();
+    let preparedActivationPending = false;
     if (attempt > 0) annotations.resetDocument();
     try {
-      const identity = await deriveMcpAppSandboxIdentity({
-        locale: navigator.language,
-        originScope: {
-          kind: "inline_visualization",
-          scopeId: attempt === 0 ? input.scopeId : `${input.scopeId}:retry`,
-        },
-        widgetDomain: null,
-      });
+      const locale = readInlineVisualizationLocale();
+      const claimed = attempt === 0 && element.isConnected ? input.claimStandby?.(locale) : null;
+      if (claimed && movePreparedGuest(claimed, element)) {
+        failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
+        webview = claimed.element;
+        preparedLease = claimed;
+        configureGuest();
+      } else if (claimed) await claimed.dispose();
+      const identity =
+        preparedLease?.identity ??
+        (await deriveMcpAppSandboxIdentity({
+          locale,
+          originScope: {
+            kind: "inline_visualization",
+            scopeId: attempt === 0 ? input.scopeId : `${input.scopeId}:retry`,
+          },
+          widgetDomain: null,
+        }));
       if (signal.aborted) return;
       activeSandboxId = identity.sandboxId;
-      webview.setAttribute("partition", identity.partition);
-      element.append(webview);
+      if (!preparedLease) {
+        webview.setAttribute("partition", identity.partition);
+        element.append(webview);
+      }
       const handlers = fenceHostHandlers(
         createInlineVisualizationHostHandlers({
           annotations: annotations.handleMessage,
@@ -550,22 +623,34 @@ export function createInlineVisualizationRuntime(input: {
         }),
         signal,
       );
-      connected = await connectMcpAppSandbox({
-        expectedOrigin: identity.origin,
-        expectedSandboxId: identity.sandboxId,
-        signal,
-        sourceUrl: identity.sourceUrl,
-        webview,
-        handlers,
-      });
+      preparedActivationPending = preparedLease !== null;
+      connected = preparedLease
+        ? await preparedLease.activate({ handlers, signal })
+        : await connectMcpAppSandbox({
+            expectedOrigin: identity.origin,
+            expectedSandboxId: identity.sandboxId,
+            signal,
+            sourceUrl: identity.sourceUrl,
+            webview,
+            handlers,
+          });
       if (signal.aborted) {
-        connected.dispose();
+        if (preparedLease) await preparedLease.dispose();
+        else connected.dispose();
         return;
       }
+      if (preparedLease)
+        presentationRevision = Math.max(
+          presentationRevision,
+          preparedLease.presentationRevision + 1,
+        );
       await syncPresentation();
       if (signal.aborted) return;
+      preparedActivationPending = false;
       await updateContext();
       const widgetState = (await input.widgetState?.read()) ?? null;
+      if (signal.aborted) return;
+      await syncPresentation();
       if (signal.aborted) return;
       const generator = connected.api.runWidgetCode({
         csp: INLINE_VISUALIZATION_CSP,
@@ -613,14 +698,20 @@ export function createInlineVisualizationRuntime(input: {
       }
     } catch (error) {
       if (signal.aborted) return;
-      if (asRecord(error)?.name === "TimeoutError" && attempt === 0) {
+      if (
+        (asRecord(error)?.name === "TimeoutError" || preparedActivationPending) &&
+        attempt === 0
+      ) {
         attemptController.abort();
-        connected?.dispose();
+        if (!preparedLease) connected?.dispose();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
         webview.remove();
         const release = releaseConnectedGuest();
         connected = null;
+        preparedLease = null;
         presentationRevision = 0;
+        acknowledgedPresentation = null;
+        presentationRequest = null;
         webview = document.createElement("webview");
         environmentReady = false;
         hasMeasurement = false;
@@ -680,16 +771,17 @@ export function createInlineVisualizationRuntime(input: {
     },
     dispose: () => {
       disposePromise ??= (async () => {
-        const teardown = connected?.api
-          .requestMcpAppsResourceTeardown({ timeoutMs: 500 })
-          .catch(() => undefined);
+        const teardown = !preparedLease
+          ? connected?.api.requestMcpAppsResourceTeardown({ timeoutMs: 500 }).catch(() => undefined)
+          : undefined;
         controller.abort();
         actionController.abort();
         annotations.dispose();
         resize.disconnect();
         themeObserver.disconnect();
+        cancelLocale();
         failureEvents.forEach((name) => webview.removeEventListener(name, onFailure));
-        connected?.dispose();
+        if (!preparedLease) connected?.dispose();
         // Detach the native guest before its ancestor; Main close is a fallback.
         webview.remove();
         element.remove();

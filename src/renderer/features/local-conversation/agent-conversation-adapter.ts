@@ -147,6 +147,7 @@ export function createAgentConversationRuntime(
     hostId: "local",
     read,
     subscribe: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
+    subscribeChildObservations: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
     attachment: (id) => {
       if (!owner || id !== owner.threadId) return idle;
       const state = owner.getSnapshot();

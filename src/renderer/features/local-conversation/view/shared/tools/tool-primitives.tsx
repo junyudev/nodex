@@ -148,7 +148,7 @@ function ThreadActivitySummaryTransitionNode({
 
   useEffect(() => {
     const now = Date.now();
-    lastCommitAtRef.current ??= now;
+    if (lastCommitAtRef.current === null) lastCommitAtRef.current = now;
     if (summaryKey === renderedSummary.key) return;
 
     const nextSummary = {

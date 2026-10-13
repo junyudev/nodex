@@ -1,4 +1,6 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { StrictMode } from "react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { useMotionValue } from "motion/react";
 import {
   HeaderAction,
@@ -57,6 +59,54 @@ function MotionWidthSlot() {
 }
 
 describe("workbench header actions", () => {
+  test("publishes mounted actions, replaces their behavior and releases declarations", async () => {
+    const oldClick = vi.fn();
+    const newClick = vi.fn();
+    function Declaration({ active, onClick }: { active: boolean; onClick: () => void }) {
+      if (!active) return null;
+      return (
+        <HeaderAction actionId="live" slotPosition="center" align="end" order={10}>
+          <button type="button" onClick={onClick}>
+            Live action
+          </button>
+        </HeaderAction>
+      );
+    }
+    const rail = <HeaderInlineActionRail slotPosition="center" data-testid="live-header-rail" />;
+    const content = (active: boolean, onClick: () => void) => (
+      <StrictMode>
+        <HeaderActionProvider actions={<Declaration active={active} onClick={onClick} />}>
+          {rail}
+        </HeaderActionProvider>
+      </StrictMode>
+    );
+    const view = render(content(false, oldClick));
+    expect(view.queryByRole("button", { name: "Live action" })).toBeNull();
+    view.rerender(content(true, oldClick));
+    const button = await within(view.getByTestId("live-header-rail")).findByRole("button", {
+      name: "Live action",
+    });
+    await act(async () => {
+      button.focus();
+      fireEvent.click(button);
+    });
+    expect(oldClick).toHaveBeenCalledOnce();
+    view.rerender(content(true, newClick));
+    await waitFor(() =>
+      expect(
+        within(view.getByTestId("live-header-rail")).getByRole("button", { name: "Live action" }),
+      ).toBe(button),
+    );
+    expect(document.activeElement).toBe(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(oldClick).toHaveBeenCalledOnce();
+    expect(newClick).toHaveBeenCalledOnce();
+    view.rerender(content(false, newClick));
+    await waitFor(() => expect(view.queryByRole("button", { name: "Live action" })).toBeNull());
+  });
+
   test("sorts actions by order then action id with duplicate ids using the last declaration", () => {
     const entries = collectHeaderActions(
       <>

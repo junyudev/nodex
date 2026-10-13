@@ -409,6 +409,141 @@ function FindControls() {
 }
 
 describe("LocalConversationThreadBody", () => {
+  test.each(
+    (["ordinary", "inlineMarkdown", "voiceAssistant"] as const).flatMap((family) => [
+      {
+        family,
+        name: "literal markup",
+        literal: true,
+        occurrences: 1,
+        content: 'before <kbd>needle</kbd> after\n\n::unknown{file="raw &amp; declaration"}',
+      },
+      {
+        family,
+        name: "adjacent phrasing",
+        literal: false,
+        occurrences: 2,
+        content: "**nee**dle\n\n[nee](https://example.com)dle",
+      },
+    ]),
+  )(
+    "finds displayed $name in the actual $family assistant unit",
+    async ({ family, content, occurrences, literal }) => {
+      const item = {
+        type: "agentMessage",
+        id: "answer",
+        text: family === "inlineMarkdown" ? `::codex-realtime-inline{}\n${content}` : content,
+        phase: "final_answer",
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      } as const;
+      const { owner, state } = timelineOwnerFixture(
+        {
+          data:
+            family === "ordinary"
+              ? []
+              : [
+                  {
+                    type: "realtime",
+                    position: 1,
+                    item:
+                      family === "inlineMarkdown"
+                        ? {
+                            type: "bemItemPromoted",
+                            id: "promotion",
+                            realtimeSessionId: "session",
+                            turnId: "one",
+                            itemId: "answer",
+                            presentation: { type: "inlineMarkdown" },
+                          }
+                        : {
+                            type: "transcriptSegment",
+                            id: "voice",
+                            realtimeSessionId: "session",
+                            role: "assistant",
+                            text: content,
+                          },
+                  },
+                ],
+          nextCursor: null,
+          activeRealtimeSessionAtPageStart: null,
+        },
+        family === "voiceAssistant" ? [] : [item],
+      );
+      const retain = owner.subscribeStructure(() => {});
+      const search = vi
+        .spyOn(localConversationStore, "searchLocalPersistedHistory")
+        .mockResolvedValue({
+          status: "completed",
+          page: {
+            threadId: "thread",
+            hostId: "local",
+            hostGeneration: 1,
+            topologyGeneration: 1,
+            query: "needle",
+            occurrences: [],
+            capped: false,
+          },
+        });
+      const model = buildModel({
+        conversation: buildConversation({ threadId: "thread", turns: [], canonicalState: state }),
+      });
+      const view = render(
+        <TooltipProvider>
+          <ContentSearchProvider>
+            <FindControls />
+            <CodexTranscriptReadOwnerContext.Provider value={owner}>
+              <EnsureLocalConversationThreadScrollController>
+                <LocalConversationThreadScrollLayout>
+                  <LocalConversationThreadBodyOwner
+                    {...model}
+                    turnPagination={null}
+                    canonicalRequests={[]}
+                    backgroundAgentRows={[]}
+                    actions={buildActions()}
+                    onErrorMessage={() => {}}
+                    initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                    onRestoreSnapshotChange={() => {}}
+                  />
+                </LocalConversationThreadScrollLayout>
+              </EnsureLocalConversationThreadScrollController>
+            </CodexTranscriptReadOwnerContext.Provider>
+          </ContentSearchProvider>
+        </TooltipProvider>,
+      );
+      try {
+        await settleAsyncRender();
+        if (literal) {
+          await view.findByText("before <kbd>needle</kbd> after");
+          await view.findByText('::unknown{file="raw &amp; declaration"}');
+        } else await view.findByRole("link", { name: "nee" });
+        expect(view.container.querySelector("kbd")).toBeNull();
+        await act(async () => {
+          fireEvent.click(view.getByRole("button", { name: "Find thread text" }));
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(view.getByLabelText("Find result").textContent).toBe(`1 / ${occurrences} results`),
+        );
+        const active = view.container.querySelector("mark.codex-thread-find-active");
+        expect(active?.textContent).toBe("needle");
+        const unit = active?.closest("[data-content-search-unit-key]");
+        expect(unit).not.toBeNull();
+        expect(unit?.querySelector("kbd")).toBeNull();
+        expect(unit?.querySelectorAll("mark")).toHaveLength(occurrences);
+        expect(view.container.querySelector("button mark")).toBeNull();
+        if (family === "voiceAssistant")
+          expect(unit?.getAttribute("data-native-realtime-item-id")).toBe("voice");
+        else expect(owner.readItem("turn:one", "answer")?.type).toBe("agentMessage");
+      } finally {
+        view.unmount();
+        retain();
+        search.mockRestore();
+      }
+    },
+  );
+
   test("finds a collapsed commentary and reveals its own native assistant unit", async () => {
     const originalCreateSource = conversationSearchSource.createLocalConversationSearchSource;
     const rowPlacements = vi.fn();

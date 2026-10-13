@@ -2,6 +2,10 @@ import { unified, type PluggableList } from "unified";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import remend from "remend";
+import {
+  prepareConversationMarkdownDisplay,
+  type MarkdownDisplayDialect,
+} from "../../../shared/conversation-markdown-display";
 import type { Nodes, Root, RootContent } from "mdast";
 import type { Root as HtmlRoot } from "hast";
 import {
@@ -22,6 +26,8 @@ export type ImmutableMarkdown<Value> = Value extends readonly (infer Item)[]
     : Value;
 
 export interface MarkdownSyntaxPolicy {
+  readonly dialect?: MarkdownDisplayDialect;
+  readonly visualizationDirectives?: boolean;
   readonly family: boolean;
   readonly normalizeLists: boolean;
   readonly repairIncomplete: boolean;
@@ -73,9 +79,14 @@ function freezeTree<Value>(value: Value): ImmutableMarkdown<Value> {
 }
 
 /** Normalization belongs to cache misses, so a raw-source hit does no second full scan. */
-function prepareMarkdownSource(source: string, repairIncomplete: boolean): string {
+function prepareMarkdownSource(source: string, policy: MarkdownSyntaxPolicy): string {
+  if (policy.dialect === "conversation")
+    return prepareConversationMarkdownDisplay(source, {
+      streaming: policy.repairIncomplete,
+      inlineVisualizations: policy.visualizationDirectives ?? false,
+    }).source;
   const normalized = source.replace(/\r\n?/g, "\n");
-  return repairIncomplete ? remend(normalized) : normalized;
+  return policy.repairIncomplete ? remend(normalized) : normalized;
 }
 
 function fullDocumentReason(
@@ -171,7 +182,7 @@ export function createMarkdownSyntaxEngine() {
       return cached;
     }
     if (preparedSource === undefined) measurements.normalizedUnits += source.length;
-    const parserSource = preparedSource ?? prepareMarkdownSource(source, policy.repairIncomplete);
+    const parserSource = preparedSource ?? prepareMarkdownSource(source, policy);
     measurements.parsedUnits += parserSource.length;
     measurements.parseCalls += 1;
     const parsed = cache.parser.parse(parserSource);
@@ -242,7 +253,7 @@ export function createMarkdownSyntaxEngine() {
       if (reason) return readFull(source, policy, reason);
       // Repair once before splitting: an inline delimiter may depend on a later block.
       measurements.normalizedUnits += source.length;
-      const prepared = prepareMarkdownSource(source, policy.repairIncomplete);
+      const prepared = prepareMarkdownSource(source, policy);
       const preparedPolicy = policy.repairIncomplete
         ? { ...policy, repairIncomplete: false }
         : policy;

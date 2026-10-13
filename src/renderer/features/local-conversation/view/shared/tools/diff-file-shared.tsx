@@ -64,10 +64,9 @@ function formatDiffNumber(value: number): string {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Math.max(0, value));
 }
 
-function AnimatedDiffNumber({ value }: { value: number }) {
-  const formatted = formatDiffNumber(value);
+function diffNumberParts(formatted: string) {
   let digitPlace = 0;
-  const parts = Array.from(formatted)
+  return Array.from(formatted)
     .reverse()
     .map((char, indexFromRight) => {
       if (!/\d/.test(char)) {
@@ -87,7 +86,11 @@ function AnimatedDiffNumber({ value }: { value: number }) {
       return part;
     })
     .reverse();
+}
 
+function AnimatedDiffNumber({ value }: { value: number }) {
+  const formatted = formatDiffNumber(value);
+  const parts = diffNumberParts(formatted);
   return (
     <>
       {parts.map((part) => {

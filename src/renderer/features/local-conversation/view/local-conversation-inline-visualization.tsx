@@ -129,7 +129,9 @@ function LoadedVisualization({
         }
       : null;
   const currentInput = useRef(input);
-  currentInput.current = input;
+  useLayoutEffect(() => {
+    currentInput.current = input;
+  });
   useLayoutEffect(() => {
     if (!anchor || !loaded || !currentInput.current) return;
     const value = owner.bind(currentInput.current, anchor);

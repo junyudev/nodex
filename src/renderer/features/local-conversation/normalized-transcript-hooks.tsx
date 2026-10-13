@@ -6,10 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import {
-  useCodexAppServerManagerForConversationId,
-  useCodexConversationValue,
-} from "./local-conversation-store";
+import { useCodexAppServerManagerForConversationId } from "./local-conversation-store";
 import { useConversationRuntimeOverride } from "./conversation-runtime";
 import type { CodexConversationTurn } from "../../../shared/types";
 import type { ThreadTranscriptBlockModel } from "./thread-stage-types";
@@ -56,17 +53,18 @@ export function CodexTranscriptReadOwnerProvider({
 export function useCodexTranscriptReadOwner(conversationId: string | null, hostId?: string) {
   const override = useConversationRuntimeOverride();
   const manager = useCodexAppServerManagerForConversationId(conversationId, hostId);
-  const hasCanonicalState = useCodexConversationValue(
-    conversationId,
-    (conversation) => conversation?.canonicalState != null,
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      !override && conversationId
+        ? manager.addConversationCallback(conversationId, listener)
+        : () => {},
+    [conversationId, manager, override],
   );
-  return useMemo(
-    () =>
-      !override && hasCanonicalState && conversationId
-        ? manager.getTranscriptReadOwner(conversationId)
-        : null,
-    [conversationId, hasCanonicalState, manager, override],
+  const readOwner = useCallback(
+    () => (!override && conversationId ? manager.readTranscriptReadOwner(conversationId) : null),
+    [conversationId, manager, override],
   );
+  return useSyncExternalStore(subscribe, readOwner, readOwner);
 }
 
 export function useCodexConversationTranscriptStructure(conversationId: string | null) {
@@ -126,17 +124,10 @@ export function useCodexTranscriptLatestTurnMetadata(entry: ConversationTurnList
         latestSteeringUserMessageKey: steering?.rawItemId ?? steering?.itemId ?? null,
       };
     }
-    const details = owner.readTurnDetails(entityKey);
-    if (owner.readTurnVersion(entityKey) !== version) return null;
-    if (!details) return null;
     const slice = isCodexTimelineTurnEntry(entry) ? entry.timelineSlice : undefined;
-    const itemIds =
-      slice?.itemIds ?? owner.readItemSlots(entityKey)?.entries.map(({ itemId }) => itemId) ?? [];
-    const items = itemIds.flatMap((itemId) => {
-      const item = owner.readItem(entityKey, itemId);
-      return item ? [item] : [];
-    });
-    const steering = owner.readLatestSteeringItem(entityKey);
+    const metadata = owner.readTurnMetadataAtVersion(entityKey, version, slice?.itemIds);
+    if (!metadata) return null;
+    const { details, items, latestSteeringItem: steering } = metadata;
     const activeVoice = slice?.work?.presentation === "voice-work" && slice.work.state === "active";
     let commentary = false;
     let phase: ThreadLatestTurnPhase = "idle";
@@ -193,8 +184,7 @@ export function useCodexTranscriptTurnFromOwner(
   );
   return useMemo(() => {
     if (!owner || !entityKey) return fallback;
-    if (owner.readTurnVersion(entityKey) !== version) return null;
-    return slice ? owner.readTurnSlice(entityKey, slice) : owner.readTurn(entityKey);
+    return owner.readTurnAtVersion(entityKey, version, slice);
   }, [entityKey, fallback, owner, slice, version]);
 }
 

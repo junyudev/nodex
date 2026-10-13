@@ -282,7 +282,7 @@ describe("resident transcript search cache", () => {
     expect(read.findMatches("Current response")).toHaveLength(1);
   });
 
-  test("indexes native voice text, refreshes keyed deltas and prunes removed history", () => {
+  test("indexes displayed assistant voice text and raw user text through keyed deltas", () => {
     const { owner, project } = timelineOwnerFixture({
       data: [
         {
@@ -333,7 +333,7 @@ describe("resident transcript search cache", () => {
     const first = read.getUnitsForProjectedEntry(voice);
     expect(first[0]).toMatchObject({
       key: realtimeSearchUnitKey(voice),
-      text: "literal **needle** needle",
+      text: "literal needle needle",
       turnId: null,
     });
     expect(first[1]).toMatchObject({
@@ -351,7 +351,10 @@ describe("resident transcript search cache", () => {
       type: "changes",
       changes: [{ type: "realtime-text", itemId: "voice", delta: " latest" }],
     });
-    expect(read.findMatches("latest")[0]?.text).toBe("literal **needle** needle latest");
+    expect(read.findMatches("latest")[0]?.text).toBe("literal needle needle latest");
+    expect(owner.readRealtimeItem("voice")?.item).toMatchObject({
+      text: "literal **needle** needle latest",
+    });
     expect(owner.readStructure()?.turns).toHaveLength(0);
     entries = [];
     read.pruneCachedData();

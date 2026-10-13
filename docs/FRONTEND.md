@@ -199,6 +199,29 @@ Forms with structural validation, coercion, or multi-field constraints use
 TanStack Form with a colocated Zod schema. A simple single-field interaction
 uses local state and a submit-time guard.
 
+The shared renderer Vite pipeline compiles first-party components and hooks
+with React Compiler. Keep render pure: resources and committed identities
+belong to their owners and effects; refs carry imperative event or effect
+state, not render-time state. Derive display values directly, and let React
+state represent a render that must remember a previous input. Do not add
+manual memoization or opt-out directives to hide ownership problems.
+
+Consume the value returned by `useSyncExternalStore`. Subscribing only to
+force a render and then reading an unrelated mutable registry is not a
+reactive dependency. If an owner intentionally exposes a revision rather
+than a value snapshot, its addressed query must take and validate that
+revision. Keep the revision in the query's actual inputs so both React and
+compiled projections read the same observation.
+
+Compilation coverage is generated under `.generated/react-compiler/` and
+records the public compiler's success and diagnostic events with source
+identities. A successful build does not mean every function was optimized.
+Review skipped critical components and verify behavior in the production
+client pipeline. Chromium and Electron exercise that pipeline. The installed
+React plugin excludes the compiler when it receives an SSR transform; use the
+recorded client/SSR metadata to establish a test's actual conversion rather
+than inferring it from its DOM environment.
+
 ## Commands, overlays, and gestures
 
 - Register application keyboard actions once at the active window in bubble

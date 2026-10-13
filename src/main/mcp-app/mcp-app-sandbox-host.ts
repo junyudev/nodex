@@ -595,6 +595,9 @@ class McpAppSandboxHostState implements McpAppSandboxHost {
       webSecurity: true,
       webviewTag: false,
     });
+    if (/^codex-inline-visualization-[0-9a-f]{16}$/u.test(decision.source.subdomain)) {
+      webPreferences.focusOnNavigation = false;
+    }
     rawParams.partition = partition;
     delete rawParams.nodeintegration;
     delete rawParams.preload;

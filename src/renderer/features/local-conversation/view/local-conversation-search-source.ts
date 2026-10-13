@@ -1,7 +1,7 @@
 import type { VisibleConversationTurnEntry } from "../selectors";
 import type { ThreadSearchUnitModel } from "../thread-stage-types";
 import { selectTurnRenderModel } from "../projection/build-turn-render-model";
-import { projectCodexMarkdownToPlainText } from "../../../../shared/codex-markdown-text";
+import { projectConversationMarkdownDisplayText } from "../../../lib/markdown/conversation-markdown-display";
 import { projectAssistantText } from "../../../../shared/codex-canonical-item-projector";
 import type { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import {
@@ -160,7 +160,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
         values.every((value, index) => value === cached.realtimeItems?.[index])
       )
         return cached.units;
-      // Spoken transcript text is literal, unlike promoted assistant Markdown.
+      // Voice users retain literal text; assistants share the displayed Markdown grammar.
       const units = values.flatMap((value): ThreadSearchUnitModel[] => {
         if (!value || value.item.type !== "transcriptSegment" || !value.item.text) return [];
         return [
@@ -169,7 +169,10 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
             itemId: value.item.id,
             turnId: null,
             turnKey: entry.turnKey,
-            text: value.item.text,
+            text:
+              value.item.role === "user"
+                ? value.item.text
+                : projectConversationMarkdownDisplayText(value.item.text, !value.completed),
             blockType: value.item.role === "user" ? "userMessage" : "assistantMessage",
           },
         ];
@@ -186,12 +189,14 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
       const itemId = entry.timelineSlice.itemIds[0];
       const raw = itemId ? owner?.readItem(entry.historyEntityKey, itemId) : null;
       if (!raw) return [];
+      const status = owner?.readTurnDetails(entry.historyEntityKey)?.status ?? entry.turnStatus;
       const cached = cachedTimelineUnits.get(entry.turnKey);
-      if (cached?.identity === raw && cached.status === entry.turnStatus) return cached.units;
+      if (cached?.identity === raw && cached.status === status) return cached.units;
       const presentation = resolveTimelineInlinePresentation(raw, entry.timelinePresentation);
       if (presentation?.type !== "markdown") return [];
-      const text = projectCodexMarkdownToPlainText(
-        projectAssistantText(presentation.content, entry.turnStatus === "inProgress") ?? "",
+      const text = projectConversationMarkdownDisplayText(
+        projectAssistantText(presentation.content, status === "inProgress") ?? "",
+        status === "inProgress",
       );
       const units: ThreadSearchUnitModel[] = text
         ? [
@@ -205,7 +210,7 @@ export function createLocalConversationSearchSource(input: LocalConversationSear
             },
           ]
         : [];
-      cachedTimelineUnits.set(entry.turnKey, { identity: raw, status: entry.turnStatus, units });
+      cachedTimelineUnits.set(entry.turnKey, { identity: raw, status, units });
       return units;
     }
     const materialized = materializeConversationTurnListEntry(entry);

@@ -60,7 +60,7 @@ function VisualizationFrame({
   owner: InlineVisualizationFrameOwner;
   record: InlineVisualizationFrameSnapshot;
 }) {
-  const { id, fragment, stateIdentity, documentRevision, active } = record;
+  const { id, fragment, stateIdentity, documentRevision, active, attempt } = record;
   const html = fragment.contents;
   const scopeId = JSON.stringify([id, documentRevision]);
   const canExpand = active && record.canExpand;
@@ -86,6 +86,8 @@ function VisualizationFrame({
     const value = createInlineVisualizationRuntime({
       scopeId,
       html,
+      mountTarget: surface,
+      ...(attempt === 0 ? { claimStandby: (locale) => owner.claimStandby(locale) } : {}),
       initialHeight: owner.readFrame(id)?.initialHeight,
       active: owner.isActive(id),
       onInlineHeight: (height) => owner.acceptHeight(id, documentRevision, height),
@@ -103,10 +105,20 @@ function VisualizationFrame({
       followUp: async (message: InlineVisualizationFollowUpMessage) => owner.followUp(id, message),
       reviewFollowUp: (message, signal) => callbacks.current.reviewFollowUp(message, signal),
     });
-    surface.append(value.element);
     setRuntime(value);
     return owner.attachRuntime(id, value);
-  }, [surface, scopeId, html, owner, id, documentRevision, stateHostId, stateThreadId, statePath]);
+  }, [
+    surface,
+    scopeId,
+    html,
+    owner,
+    id,
+    documentRevision,
+    attempt,
+    stateHostId,
+    stateThreadId,
+    statePath,
+  ]);
   const snapshot = useSyncExternalStore(
     runtime?.subscribe ?? subscribeNothing,
     runtime?.getSnapshot ?? readInitial,

@@ -15,6 +15,16 @@ import { formatThreadMessageTimestamp } from "./thread-message-timestamp";
 const USER_COPY_FEEDBACK_MS = 1500;
 const ASSISTANT_COPY_FEEDBACK_MS = 2000;
 
+async function writeAndReleaseMessageCopy(write: () => Promise<boolean>, release: () => void) {
+  try {
+    return await write();
+  } catch {
+    return false;
+  } finally {
+    release();
+  }
+}
+
 export const threadMessageActionButtonClassName = `
   border-token-border no-drag cursor-interaction flex items-center
   gap-1 border whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed
@@ -177,17 +187,16 @@ export function CopyMessageActionButton({
   const handleCopy = async (trigger: HTMLElement) => {
     if (resetTimerRef.current !== null || copyingRef.current) return;
     copyingRef.current = true;
-    let didCopy = false;
-    try {
-      didCopy = await writeMessageToClipboard(
-        getText?.() ?? text ?? "",
-        getHtml?.() ?? html ?? getMessageCopyHtml(trigger),
-      );
-    } catch {
-      return;
-    } finally {
-      copyingRef.current = false;
-    }
+    const didCopy = await writeAndReleaseMessageCopy(
+      () =>
+        writeMessageToClipboard(
+          getText?.() ?? text ?? "",
+          getHtml?.() ?? html ?? getMessageCopyHtml(trigger),
+        ),
+      () => {
+        copyingRef.current = false;
+      },
+    );
     if (!didCopy || !mountedRef.current) return;
 
     if (resetTimerRef.current !== null) {

@@ -121,11 +121,16 @@ describe("ProjectCatalogStore", () => {
     });
     canonical(store, "Old name", 1);
     const canonicalList = [project("Old name")];
+    const previousRevision = store.getSnapshot().revision;
     const mutation = store.renameProject("project-1", "New name");
 
     expect(store.project(project("Old name"))?.name).toBe("New name");
     expect(store.projects(canonicalList)[0]?.name).toBe("New name");
     expect(store.projects(canonicalList)).not.toBe(canonicalList);
+    expect(store.projectsAtRevision(previousRevision, canonicalList)).toBe(canonicalList);
+    expect(store.projectsAtRevision(store.getSnapshot().revision, canonicalList)[0]?.name).toBe(
+      "New name",
+    );
     expect(store.getSnapshot().pendingCount).toBe(1);
 
     await flushMicrotasks();

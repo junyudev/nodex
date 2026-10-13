@@ -827,15 +827,12 @@ const ComposerAddContextRootMenuContent = forwardRef<
     preferActiveProject: true,
     activeProjectId: projectId ?? undefined,
   });
+  const pluginHostId = fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID;
   const activatePlugin = useCallback(
     async (plugin: CodexComposerPlugin): Promise<boolean> => {
       if (plugin.installed && plugin.enabled) return true;
       try {
-        await composerContextOperations.activatePlugin(
-          plugin.id,
-          fileSearchScope?.hostId ?? DEFAULT_CODEX_HOST_ID,
-          pluginCwds,
-        );
+        await composerContextOperations.activatePlugin(plugin.id, pluginHostId, pluginCwds);
         await onCapabilitiesChanged?.();
         return true;
       } catch (error) {
@@ -846,7 +843,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
         return false;
       }
     },
-    [onCapabilitiesChanged, pluginCwds, fileSearchScope?.hostId],
+    [onCapabilitiesChanged, pluginCwds, pluginHostId],
   );
 
   const inventoryItems = useMemo(() => {

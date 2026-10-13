@@ -76,7 +76,10 @@ export function useProjects() {
     if (!canonicalCatalog) return;
     projectCatalog.publishCanonical(canonicalCatalog);
   }, [canonicalCatalog, projectCatalog]);
-  const projects = projectCatalog.projects(canonicalProjects) as Project[];
+  const projects = projectCatalog.projectsAtRevision(
+    projectCatalogSnapshot.revision,
+    canonicalProjects,
+  ) as Project[];
 
   const refreshProjects = useCallback(async () => {
     setActionError(null);

@@ -13,7 +13,10 @@ import {
 import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
 import { streamdownComponents } from "../../../../../lib/streamdown";
 
+import type { MarkdownDisplayDialect } from "../../../../../../shared/conversation-markdown-display";
+
 interface MarkdownCoreProps {
+  dialect?: MarkdownDisplayDialect;
   content: string;
   sourceIdentity?: string;
   parseIncompleteMarkdown?: boolean;
@@ -39,6 +42,7 @@ const visualizationComponents: Components = {
 };
 export function MarkdownCore({
   content,
+  dialect = "document",
   sourceIdentity,
   parseIncompleteMarkdown = false,
   preserveLineBreaks = false,
@@ -50,6 +54,7 @@ export function MarkdownCore({
   fileMediaScope,
 }: MarkdownCoreProps) {
   const policy = readMarkdownSyntaxPolicy({
+    dialect,
     preserveLineBreaks,
     visualizations: Boolean(visualizationContext),
     fileMedia: Boolean(fileMediaScope),

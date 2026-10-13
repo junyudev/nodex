@@ -1939,6 +1939,128 @@ describe("complete-history admission lifetime", () => {
 });
 
 describe("local-conversation-store", () => {
+  test("replaces the transcript read owner when archive and restore share one React batch", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    const { LocalConversationProvider, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { useCodexConversationTranscriptStructure, useCodexTranscriptTurnFromOwner } =
+      await import("./normalized-transcript-hooks");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    vi.stubGlobal("MessageChannel", MessageChannel);
+    const threadId = "read-owner-restored";
+    const snapshot = (text: string) =>
+      withCanonicalState({
+        ...buildConversation(threadId, "project-1"),
+        turns: [
+          {
+            threadId,
+            turnId: "same-turn",
+            status: "completed" as const,
+            itemIds: ["same-answer"],
+            items: [buildAssistantMessage(threadId, "same-turn", "same-answer", text)],
+          },
+        ],
+      });
+    const observed: {
+      owner: import("./normalized-transcript-read-owner").CodexTranscriptReadOwner | null;
+      mounts: number;
+      unmounts: number;
+    } = { owner: null, mounts: 0, unmounts: 0 };
+    function Probe() {
+      const { owner, structure } = useCodexConversationTranscriptStructure(threadId);
+      const turn = useCodexTranscriptTurnFromOwner(
+        owner,
+        structure?.turns[0]?.entityKey ?? null,
+        null,
+      );
+      useLayoutEffect(() => {
+        observed.owner = owner;
+      }, [owner]);
+      useLayoutEffect(() => {
+        observed.mounts += 1;
+        return () => {
+          observed.unmounts += 1;
+        };
+      }, []);
+      return createElement(
+        "output",
+        { "aria-label": "Restored reply" },
+        turn?.items[0]?.markdownText,
+      );
+    }
+    const view = render(createElement(LocalConversationProvider, null, createElement(Probe)));
+    try {
+      await settleAsyncRender();
+      if (!fixtureGetManager) throw new Error("Peer fixture unavailable");
+      const manager = trackNativeTestManager(fixtureGetManager("local"));
+      await act(async () => {
+        dispatchTestThreadStreamStateChanged(manager, {
+          hostId: "local",
+          conversationId: threadId,
+          sourceClientId: "main",
+          change: { type: "snapshot", revision: 1, conversationState: snapshot("Before archive") },
+        });
+        await flushAsyncWork();
+      });
+      await waitFor(() =>
+        expect(view.container.querySelector("output")?.textContent).toBe("Before archive"),
+      );
+      const original = observed.owner;
+      expect(original).not.toBeNull();
+      await act(async () => {
+        manager.receiveCoordination("threadArchived", {
+          sourceClientId: "main",
+          params: { hostId: "local", conversationId: threadId },
+        });
+        expect(manager.readConversation(threadId)).toBeNull();
+        manager.receiveCoordination("threadUnarchived", {
+          sourceClientId: "main",
+          params: { hostId: "local", conversationId: threadId },
+        });
+        dispatchTestThreadStreamStateChanged(manager, {
+          hostId: "local",
+          conversationId: threadId,
+          sourceClientId: "main",
+          change: { type: "snapshot", revision: 1, conversationState: snapshot("After restore") },
+        });
+        const restored = manager.readConversation(threadId)?.canonicalState;
+        expect(restored).toBeDefined();
+        expect(residentConversationTurns(restored)[0]?.items[0]).toMatchObject({
+          type: "agentMessage",
+          text: "After restore",
+        });
+        await flushAsyncWork();
+      });
+      const replacement = manager.getTranscriptReadOwner(threadId);
+      expect(replacement).not.toBe(original);
+      expect(observed.owner).toBe(replacement);
+      await waitFor(() =>
+        expect(view.container.querySelector("output")?.textContent).toBe("After restore"),
+      );
+      expect(observed.mounts).toBe(1);
+      expect(observed.unmounts).toBe(0);
+      expect(original?.readStructure()).toBeNull();
+      view.unmount();
+      const readTurn = vi.spyOn(replacement, "readTurn");
+      const readSlice = vi.spyOn(replacement, "readTurnSlice");
+      manager.retireNativeHostContext();
+      expect(manager.readTranscriptReadOwner(threadId)).toBe(replacement);
+      expect(readTurn).not.toHaveBeenCalled();
+      expect(readSlice).not.toHaveBeenCalled();
+      manager.destroy();
+      expect(manager.readConversation(threadId)?.canonicalState).toBeDefined();
+      const createOwner = vi.spyOn(manager, "getTranscriptReadOwner");
+      expect(manager.readTranscriptReadOwner(threadId)).toBeNull();
+      expect(createOwner).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("answers current-time server requests through the renderer without response tracing", async () => {
     invokeCalls = [];
     invokeRecords = [];

@@ -27,9 +27,9 @@ function AnnotationControl({
   change: (value: unknown) => void;
 }) {
   const [colorText, setColorText] = useState(String(value));
-  const previousColor = useRef(value);
-  if (previousColor.current !== value) {
-    previousColor.current = value;
+  const [previousColor, setPreviousColor] = useState(value);
+  if (previousColor !== value) {
+    setPreviousColor(value);
     setColorText(String(value));
   }
   if (control.type === "toggle")
@@ -135,7 +135,7 @@ export function InlineVisualizationAnnotationControls({
     )
       return;
     const rect = panel.getBoundingClientRect();
-    initialSize.current ??= { width: rect.width, height: rect.height };
+    if (!initialSize.current) initialSize.current = { width: rect.width, height: rect.height };
     gesture.current = {
       pointerId: event.pointerId,
       x: event.clientX,

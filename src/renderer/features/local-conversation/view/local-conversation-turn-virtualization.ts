@@ -11,6 +11,19 @@ export const DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX = 280;
 export const THREAD_NEAR_BOTTOM_THRESHOLD_PX = 24;
 export const LATEST_TURN_SUBMIT_PLACEMENT_THRESHOLD_PX = 300;
 
+/** Measurement follows the physical bottom only after submit space has been consumed. */
+export function shouldFollowMeasuredTurnGrowth(input: {
+  shouldFollowContentGrowth: boolean;
+  responseSpacerHeightPx: number;
+  physicalDistanceFromBottomPx: number;
+}): boolean {
+  return (
+    input.shouldFollowContentGrowth &&
+    input.responseSpacerHeightPx === 0 &&
+    input.physicalDistanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
+  );
+}
+
 export interface VirtualizedTurnLayoutEntry {
   turnKey: string;
   estimatedHeightPx?: number | null;

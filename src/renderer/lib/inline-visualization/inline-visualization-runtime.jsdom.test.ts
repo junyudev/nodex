@@ -9,6 +9,11 @@ import {
   createInlineVisualizationRuntime,
   type InlineVisualizationRuntime,
 } from "./inline-visualization-runtime";
+import {
+  createInlineVisualizationPreparedLease,
+  type InlineVisualizationPreparedLease,
+} from "./inline-visualization-prepared";
+import { appendMcpAppSandboxInitId } from "../../../shared/mcp-app/mcp-app-sandbox-contract";
 
 type ConnectInput = Parameters<typeof connectMcpAppSandbox>[0];
 import type { InlineVisualizationWidgetStateOwner } from "./inline-visualization-widget-state";
@@ -113,6 +118,8 @@ function sandboxAttempt(input: ConnectInput) {
 
 const attempts: ReturnType<typeof sandboxAttempt>[] = [];
 const runtimes: InlineVisualizationRuntime[] = [];
+const preparedLeases: InlineVisualizationPreparedLease[] = [];
+const cleanupPreparedFixtures: (() => void)[] = [];
 const timeout = () =>
   Object.assign(new Error("Sandbox initialization timed out"), { name: "TimeoutError" });
 function mountRuntime(
@@ -124,7 +131,7 @@ function mountRuntime(
     onInteraction: vi.fn(),
     ...options,
   });
-  document.body.append(runtime.element);
+  if (!runtime.element.isConnected) document.body.append(runtime.element);
   runtimes.push(runtime);
   return runtime;
 }
@@ -141,7 +148,7 @@ beforeEach(() => {
   boundary.presentation.mockReset().mockResolvedValue(true);
   boundary.external.mockClear();
   boundary.image.mockReset().mockResolvedValue(new Uint8Array([1, 2]));
-  boundary.release.mockClear();
+  boundary.release.mockReset().mockResolvedValue(true);
   attempts.length = 0;
   runtimes.length = 0;
   boundary.connect.mockImplementation(async (input) => {
@@ -152,6 +159,208 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await Promise.all(runtimes.map((runtime) => runtime.dispose()));
+  await Promise.all(preparedLeases.splice(0).map((lease) => lease.dispose()));
+  cleanupPreparedFixtures.splice(0).forEach((cleanup) => cleanup());
+});
+
+function preparedContainer() {
+  const container = document.createElement("div");
+  document.body.append(container);
+  cleanupPreparedFixtures.push(() => container.remove());
+  return container;
+}
+function nativeMoveFixture(available = true) {
+  const previous = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "moveBefore");
+  Object.defineProperty(HTMLElement.prototype, "moveBefore", {
+    configurable: true,
+    value: available
+      ? function (this: HTMLElement, child: Node, anchor: Node | null) {
+          this.insertBefore(child, anchor);
+        }
+      : undefined,
+  });
+  cleanupPreparedFixtures.push(() => {
+    if (previous) Object.defineProperty(HTMLElement.prototype, "moveBefore", previous);
+    else Reflect.deleteProperty(HTMLElement.prototype, "moveBefore");
+  });
+}
+async function prepareBlank(onDispose = vi.fn()) {
+  const lease = createInlineVisualizationPreparedLease(navigator.language, onDispose);
+  preparedLeases.push(lease);
+  await lease.prepare(preparedContainer());
+  expect(lease.isReady).toBe(true);
+  return lease;
+}
+
+describe("blank sandbox preparation and claiming", () => {
+  test("cache warm is not ready; strict connection and inactive Main ACK precede the claim", async () => {
+    const paused = deferred<boolean>();
+    boundary.presentation.mockReturnValue(paused.promise);
+    const lease = createInlineVisualizationPreparedLease(navigator.language, vi.fn());
+    preparedLeases.push(lease);
+    const preparing = lease.prepare(preparedContainer());
+    await waitFor(() => expect(attempts).toHaveLength(1));
+    const attempt = attempts[0]!;
+    attempt.input.onSkybridgeCacheState?.("warm");
+    expect(lease.isReady).toBe(false);
+    expect(attempt.run).not.toHaveBeenCalled();
+    expect(() => attempt.input.handlers.callTool("arbitrary tool")).toThrow("inactive");
+    expect(() => attempt.input.handlers.sendFollowUpMessage({ prompt: "Untrusted" })).toThrow(
+      "inactive",
+    );
+    expect(attempt.input.handlers.notifyIntrinsicHeight(350)).toBeUndefined();
+    expect(attempt.input.handlers.updateWidgetState({ value: 1 })).toBeUndefined();
+    paused.resolve(true);
+    await preparing;
+    expect(lease.isReady).toBe(true);
+    expect(lease.presentationRevision).toBe(1);
+    expect(boundary.presentation).toHaveBeenCalledWith("codex:visualization:set-presentation", {
+      sandboxId: lease.identity.sandboxId,
+      initId: "synthetic-init",
+      active: false,
+      revision: 1,
+    });
+  });
+  test("one claim keeps source, partition, API and ports, then waits for measurement separately", async () => {
+    nativeMoveFixture();
+    const lease = await prepareBlank();
+    const attempt = attempts[0]!;
+    const source = lease.element.getAttribute("src");
+    const partition = lease.element.getAttribute("partition");
+    const claim = vi.fn(() => lease);
+    const runtime = mountRuntime({
+      mountTarget: preparedContainer(),
+      claimStandby: claim,
+      initialHeight: 480,
+    });
+    await readAttempt(0);
+    expect(claim).toHaveBeenCalledOnce();
+    expect(boundary.connect).toHaveBeenCalledOnce();
+    expect(runtime.element.firstElementChild).toBe(lease.element);
+    expect(lease.element.getAttribute("src")).toBe(source);
+    expect(lease.element.getAttribute("partition")).toBe(partition);
+    expect(boundary.presentation).toHaveBeenLastCalledWith("codex:visualization:set-presentation", {
+      sandboxId: lease.identity.sandboxId,
+      initId: "synthetic-init",
+      active: true,
+      revision: 2,
+    });
+    expect(runtime.getSnapshot()).toMatchObject({ status: "loading", height: 480 });
+    await act(async () => {
+      attempt.stream.status(2);
+    });
+    expect(runtime.getSnapshot().status).toBe("loading");
+    await act(async () => {
+      attempt.input.handlers.notifyIntrinsicHeight(300);
+    });
+    expect(runtime.getSnapshot()).toMatchObject({ status: "ready", height: 300 });
+    await expect(
+      lease.activate({ handlers: attempt.input.handlers, signal: new AbortController().signal }),
+    ).rejects.toThrow("unavailable");
+    await runtime.dispose();
+    expect(attempt.dispose).toHaveBeenCalledOnce();
+    expect(attempt.teardown).toHaveBeenCalledOnce();
+    expect(() => attempt.input.handlers.callTool("__codex_inline_visualization_ready__")).toThrow(
+      "inactive",
+    );
+    expect(attempt.input.handlers.updateWidgetState({ value: 2 })).toBeUndefined();
+  });
+  test("a stale activation ACK cannot start HTML before the latest hidden presentation ACK", async () => {
+    nativeMoveFixture();
+    const lease = await prepareBlank();
+    const activate = deferred<boolean>();
+    const hide = deferred<boolean>();
+    boundary.presentation.mockImplementation(async (_key, value) => {
+      const revision = (value as { revision: number }).revision;
+      return revision === 2 ? activate.promise : hide.promise;
+    });
+    const runtime = mountRuntime({ mountTarget: preparedContainer(), claimStandby: () => lease });
+    await waitFor(() =>
+      expect(boundary.presentation).toHaveBeenCalledWith(
+        "codex:visualization:set-presentation",
+        expect.objectContaining({ revision: 2 }),
+      ),
+    );
+    runtime.setActive(false);
+    activate.resolve(true);
+    await waitFor(() =>
+      expect(boundary.presentation).toHaveBeenCalledWith(
+        "codex:visualization:set-presentation",
+        expect.objectContaining({ active: false, revision: 3 }),
+      ),
+    );
+    expect(attempts[0]!.run).not.toHaveBeenCalled();
+    hide.resolve(true);
+    await readAttempt(0);
+    expect(runtime.element.inert).toBe(true);
+    expect(attempts[0]!.run).toHaveBeenCalledOnce();
+  });
+  test("unavailable connected move releases the unused lease and uses one cold guest", async () => {
+    nativeMoveFixture(false);
+    const lease = await prepareBlank();
+    const claim = vi.fn(() => lease);
+    const runtime = mountRuntime({ mountTarget: preparedContainer(), claimStandby: claim });
+    await readAttempt(1);
+    expect(claim).toHaveBeenCalledOnce();
+    expect(attempts[0]!.run).not.toHaveBeenCalled();
+    expect(attempts[0]!.teardown).not.toHaveBeenCalled();
+    expect(attempts[0]!.dispose).toHaveBeenCalledOnce();
+    expect(runtime.element.firstElementChild).toBe(attempts[1]!.input.webview);
+  });
+  test("prepared timeout retries cold once and language changes only update the current document", async () => {
+    nativeMoveFixture();
+    const lease = await prepareBlank();
+    const claim = vi.fn(() => lease);
+    mountRuntime({ mountTarget: preparedContainer(), claimStandby: claim });
+    const first = await readAttempt(0);
+    first.stream.fail(timeout());
+    const second = await readAttempt(1);
+    expect(claim).toHaveBeenCalledOnce();
+    expect(first.dispose).toHaveBeenCalledOnce();
+    const language = vi.spyOn(navigator, "language", "get").mockReturnValue("zh-CN");
+    try {
+      await act(async () => {
+        window.dispatchEvent(new Event("languagechange"));
+      });
+      expect(second.connected.api.notifyMcpAppsHostContext).toHaveBeenCalledWith({
+        hostContext: expect.objectContaining({ locale: "zh-CN" }),
+      });
+      expect(second.run).toHaveBeenCalledOnce();
+      expect(boundary.connect).toHaveBeenCalledTimes(2);
+    } finally {
+      language.mockRestore();
+    }
+  });
+  test("late connection after cancellation closes only its matching nonce and never runs HTML", async () => {
+    const result = deferred<ConnectedMcpAppSandbox>();
+    const initId = crypto.randomUUID();
+    boundary.connect.mockImplementation(async (input) => {
+      const attempt = sandboxAttempt(input);
+      attempts.push(attempt);
+      input.webview.setAttribute("src", appendMcpAppSandboxInitId(input.sourceUrl, initId));
+      return result.promise;
+    });
+    const lease = createInlineVisualizationPreparedLease(navigator.language, vi.fn());
+    preparedLeases.push(lease);
+    const preparing = lease.prepare(preparedContainer());
+    await waitFor(() => expect(attempts).toHaveLength(1));
+    const attempt = attempts[0]!;
+    boundary.release.mockImplementation(async () => {
+      expect(lease.element.isConnected).toBe(false);
+      return true;
+    });
+    await lease.dispose();
+    expect(boundary.release).toHaveBeenCalledWith("codex:visualization:release", {
+      sandboxId: lease.identity.sandboxId,
+      initId,
+    });
+    result.resolve({ ...attempt.connected, initId });
+    await preparing;
+    expect(attempt.dispose).toHaveBeenCalledOnce();
+    expect(attempt.run).not.toHaveBeenCalled();
+    expect(boundary.presentation).not.toHaveBeenCalled();
+    expect(lease.isReady).toBe(false);
+  });
 });
 
 describe("inline visualization runtime lifecycle", () => {

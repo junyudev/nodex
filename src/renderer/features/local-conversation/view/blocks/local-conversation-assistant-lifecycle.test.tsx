@@ -5,6 +5,8 @@ import { renderWithMaitai as render } from "@/test/thread-maitai";
 import type { CodexConversationItem, CodexConversationTurn } from "@/lib/types";
 import { buildTurnRenderModel } from "../../projection/build-turn-render-model";
 import type { ThreadTranscriptBlockModel } from "../../thread-stage-types";
+import { StrictMode } from "react";
+import { waitForStreamdownCodeHighlight } from "@/test/dom";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
 
 vi.mock("../local-conversation-inline-visualization", async () => {
@@ -17,7 +19,10 @@ vi.mock("../local-conversation-inline-visualization", async () => {
   };
 });
 
-function assistantDocument(status: CodexConversationTurn["status"]): ThreadTranscriptBlockModel {
+function assistantDocument(
+  status: CodexConversationTurn["status"],
+  source?: string,
+): ThreadTranscriptBlockModel {
   const item: CodexConversationItem = {
     threadId: "thread",
     turnId: "turn",
@@ -29,7 +34,7 @@ function assistantDocument(status: CodexConversationTurn["status"]): ThreadTrans
     assistantPhase: "final_answer",
     role: "assistant",
     status,
-    markdownText: 'Stream baseline\n\n::codex-inline-vis{file="widget.html"}\n\n',
+    markdownText: source ?? 'Stream baseline\n\n::codex-inline-vis{file="widget.html"}\n\n',
     createdAt: 1,
     updatedAt: 2,
   };
@@ -61,6 +66,54 @@ function Assistant({ block, live }: { block: ThreadTranscriptBlockModel; live: b
 }
 
 describe("assistant document lifecycle", () => {
+  test.each(["alpha\n\n\n\nbeta", "alpha\u2028beta\u2029gamma\u0085delta"])(
+    "copies authored code through the actual assistant caller: %j",
+    async (payload) => {
+      const original = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+      const writeText = vi.fn(async (_text: string) => undefined);
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+      const source = `\`\`\`text
+${payload}
+\`\`\``;
+      const mounted = render(
+        <StrictMode>
+          <Assistant block={assistantDocument("inProgress", source)} live />
+        </StrictMode>,
+      );
+      try {
+        await waitForStreamdownCodeHighlight(mounted.container);
+        const button = mounted.container.querySelector<HTMLButtonElement>(
+          '[data-streamdown="code-block-copy-button"]',
+        )!;
+        await act(async () => {
+          button.focus();
+          fireEvent.click(button);
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(payload));
+        mounted.rerender(
+          <StrictMode>
+            <Assistant block={assistantDocument("completed", source)} live={false} />
+          </StrictMode>,
+        );
+        await waitForStreamdownCodeHighlight(mounted.container);
+        expect(mounted.container.querySelector('[data-streamdown="code-block-copy-button"]')).toBe(
+          button,
+        );
+        expect(document.activeElement).toBe(button);
+        await act(async () => {
+          fireEvent.click(button);
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(payload));
+      } finally {
+        mounted.unmount();
+        if (original) Object.defineProperty(navigator, "clipboard", original);
+        else Reflect.deleteProperty(navigator, "clipboard");
+      }
+    },
+  );
+
   test("retains interactive state and focus when completion adds actions and output", async () => {
     const streaming = assistantDocument("inProgress");
     const completed = assistantDocument("completed");

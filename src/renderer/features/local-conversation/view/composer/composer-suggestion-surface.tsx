@@ -101,7 +101,8 @@ export function ComposerSuggestionSurface({
       element.style.setProperty(COMPOSER_TOP_MENU_MAX_HEIGHT_PROPERTY, value);
     };
     const scheduleUpdate = () => {
-      animationFrame ??= window.requestAnimationFrame(() => {
+      if (animationFrame !== null) return;
+      animationFrame = window.requestAnimationFrame(() => {
         animationFrame = null;
         update();
       });

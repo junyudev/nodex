@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   NodexDialog,
   NodexDialogBody,
@@ -10,6 +10,12 @@ import {
 import type { CodexConversationSnapshot } from "../../../../shared/types";
 import type { ConversationRuntime } from "../conversation-runtime";
 import { ScopeContextBridge, type ScopeHandle } from "@/lib/maitai";
+import {
+  useConversationRuntimeChildMemberships,
+  useConversationRuntimeValue,
+} from "../conversation-runtime-hooks";
+
+const selectConversation = (conversation: CodexConversationSnapshot | null) => conversation;
 
 export interface ConversationTaskDialogProps {
   readonly runtime: ConversationRuntime;
@@ -40,18 +46,16 @@ function ConversationTaskDialogContent({
   stopTask,
   onClose,
 }: ConversationTaskDialogProps) {
-  const subscribe = useCallback(
-    (listener: () => void) => runtime.subscribe(parentThreadId, listener),
-    [runtime, parentThreadId],
-  );
-  const readParent = useCallback(() => runtime.read(parentThreadId), [runtime, parentThreadId]);
-  useSyncExternalStore(subscribe, readParent, readParent);
   const [selectedId, setSelectedId] = useState<string | null>(initialTaskId ?? null);
   const [stopping, setStopping] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const tasks = runtime.children(parentThreadId);
+  const tasks = useConversationRuntimeChildMemberships(runtime, parentThreadId);
   const selected = tasks.find((task) => task.threadId === selectedId) ?? tasks[0];
-  const conversation = selected ? runtime.read(selected.threadId) : null;
+  const conversation = useConversationRuntimeValue(
+    runtime,
+    selected?.threadId ?? null,
+    selectConversation,
+  );
   return (
     <ScopeContextBridge handle={parentThreadScope}>
       <NodexDialog

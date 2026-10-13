@@ -13,6 +13,7 @@ import type {
   InlineVisualizationFollowUpHandler,
 } from "./inline-visualization-follow-up-context";
 import { moveNativeSubtree } from "../move-native-subtree";
+import { createInlineVisualizationStandby } from "./inline-visualization-standby";
 
 export interface InlineVisualizationFrameIdentity {
   readonly surfaceId: string;
@@ -53,6 +54,7 @@ export interface InlineVisualizationFrameSnapshot {
   readonly fragment: InlineVisualizationFrameInput["fragment"];
   readonly stateIdentity: CodexVisualizationStateIdentity | null;
   readonly documentRevision: number;
+  readonly attempt: number;
   readonly initialHeight: number;
   readonly active: boolean;
   readonly canExpand: boolean;
@@ -78,7 +80,6 @@ interface Frame {
     readonly fragment: WeakRef<InlineVisualizationFrameInput["fragment"]>;
     readonly value: number;
   } | null;
-  attempt: number;
 }
 
 const EMPTY_IDS: readonly string[] = [];
@@ -93,6 +94,7 @@ export function createInlineVisualizationFrameOwner(
     createId: () => crypto.randomUUID(),
   },
 ) {
+  const standby = createInlineVisualizationStandby();
   const frames = new Map<string, Frame>();
   const byOccurrence = new Map<string, Set<string>>();
   const surfaces = new Map<string, string | null>();
@@ -166,7 +168,7 @@ export function createInlineVisualizationFrameOwner(
       previous.fragment.contents === input.fragment.contents &&
       previous.fragment.path === input.fragment.path;
     const fragment = unchangedFragment ? previous.fragment : input.fragment;
-    const changedDocument = !unchangedFragment || frame.attempt !== input.attempt;
+    const changedDocument = !unchangedFragment || previous.attempt !== input.attempt;
     const initialHeight =
       frame.height?.fragment.deref()?.contents === fragment.contents
         ? frame.height.value
@@ -176,7 +178,6 @@ export function createInlineVisualizationFrameOwner(
       void frame.runtime?.dispose();
       frame.runtime = null;
     }
-    frame.attempt = input.attempt;
     if (
       !changedDocument &&
       previous.canExpand === input.canExpand &&
@@ -187,6 +188,7 @@ export function createInlineVisualizationFrameOwner(
       return;
     frame.snapshot = {
       ...previous,
+      attempt: input.attempt,
       fragment,
       stateIdentity: input.stateIdentity,
       canExpand: input.canExpand,
@@ -205,6 +207,7 @@ export function createInlineVisualizationFrameOwner(
     disposed = true;
     windowLeases = 0;
     windowGeneration += 1;
+    standby.dispose();
     frames.forEach(release);
     surfaces.clear();
     resumes.clear();
@@ -212,6 +215,11 @@ export function createInlineVisualizationFrameOwner(
     parking = null;
   };
   return {
+    startStandby: (container: HTMLElement, locale: string) => {
+      if (disposed) throw new Error("The visualization window has closed");
+      return standby.start(container, locale);
+    },
+    claimStandby: (locale: string) => (disposed ? null : standby.claim(locale)),
     acquireWindow: () => {
       if (disposed) throw new Error("The visualization window has closed");
       windowLeases += 1;
@@ -268,7 +276,6 @@ export function createInlineVisualizationFrameOwner(
           binding: null,
           runtime: null,
           height: null,
-          attempt: input.attempt,
           snapshot: {
             id,
             identity: input.identity,
@@ -276,6 +283,7 @@ export function createInlineVisualizationFrameOwner(
             fragment: input.fragment,
             stateIdentity: input.stateIdentity,
             documentRevision: 0,
+            attempt: input.attempt,
             initialHeight: INLINE_VISUALIZATION_INITIAL_HEIGHT,
             active: false,
             canExpand: input.canExpand,

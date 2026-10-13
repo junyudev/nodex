@@ -9,7 +9,10 @@ import {
   type AdaptiveMarkdownOptions,
 } from "../../../../../lib/markdown/use-adaptive-markdown";
 
+import type { MarkdownDisplayDialect } from "../../../../../../shared/conversation-markdown-display";
+
 export interface MarkdownRendererProps {
+  dialect?: MarkdownDisplayDialect;
   content: string;
   className?: string;
   style?: CSSProperties;
@@ -58,6 +61,7 @@ function handleStreamdownCodeBlockCopyClick(event: MouseEvent<HTMLDivElement>) {
 
 export function MarkdownRenderer({
   content,
+  dialect,
   className,
   style,
   parseIncompleteMarkdown,
@@ -78,6 +82,7 @@ export function MarkdownRenderer({
       {adaptiveBuffering ? (
         <BufferedMarkdown
           content={content}
+          dialect={dialect}
           parseIncompleteMarkdown={parseIncompleteMarkdown}
           preserveLineBreaks={preserveLineBreaks}
           animateStreamingText={animateStreamingText}
@@ -90,6 +95,7 @@ export function MarkdownRenderer({
       ) : (
         <MarkdownCore
           content={content}
+          dialect={dialect}
           parseIncompleteMarkdown={parseIncompleteMarkdown}
           preserveLineBreaks={preserveLineBreaks}
           animateStreamingText={animateStreamingText}

@@ -51,6 +51,70 @@ function fakeRuntime(): McpAppRuntimePort & {
 }
 
 describe("MCP App runtime manager", () => {
+  test("notifies capability observers for identity changes and releases only the unused shared runtime", async () => {
+    vi.useFakeTimers();
+    try {
+      const manager = new McpAppRuntimeManager(fakeRuntime);
+      const first = vi.fn();
+      const second = vi.fn();
+      const foreign = vi.fn();
+      const unsubscribeFirst = manager.subscribeRuntime("capability-1", first);
+      const unsubscribeSecond = manager.subscribeRuntime("capability-1", second);
+      const unsubscribeForeign = manager.subscribeRuntime("capability-2", foreign);
+      expect(manager.get("capability-1")).toBeNull();
+      const initial = config();
+      const original = manager.upsert(initial);
+      manager.upsert({ ...initial, toolInput: { page: 2 } });
+      const other = manager.upsert(config("capability-2"));
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+      expect(foreign).toHaveBeenCalledOnce();
+
+      const inline = document.createElement("div");
+      const panel = document.createElement("div");
+      document.body.append(inline, panel);
+      const releaseInline = manager.registerSurface({
+        capabilityId: "capability-1",
+        element: inline,
+        mode: "inline",
+        visible: true,
+      });
+      const releasePanel = manager.registerSurface({
+        capabilityId: "capability-1",
+        element: panel,
+        mode: "side-panel",
+        visible: true,
+      });
+      const restarted = manager.upsert({
+        ...initial,
+        resource: { ...initial.resource, html: "<main>Updated</main>" },
+      });
+      expect(restarted).not.toBe(original);
+      expect(restarted.element.parentElement).toBe(panel);
+      expect(first).toHaveBeenCalledTimes(2);
+      expect(second).toHaveBeenCalledTimes(2);
+      unsubscribeSecond();
+      releasePanel();
+      const retried = manager.retry("capability-1");
+      expect(retried).not.toBe(restarted);
+      expect(retried?.element.parentElement).toBe(inline);
+      expect(first).toHaveBeenCalledTimes(3);
+      expect(second).toHaveBeenCalledTimes(2);
+      releaseInline();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(manager.get("capability-1")).toBeNull();
+      expect(first).toHaveBeenCalledTimes(4);
+      expect(second).toHaveBeenCalledTimes(2);
+      expect(foreign).toHaveBeenCalledOnce();
+      expect(manager.get("capability-2")).toBe(other);
+      unsubscribeFirst();
+      unsubscribeForeign();
+      inline.remove();
+      panel.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   test("creates one guest runtime and reparents it to the higher-priority surface", () => {
     const created: ReturnType<typeof fakeRuntime>[] = [];
     const manager = new McpAppRuntimeManager(() => {

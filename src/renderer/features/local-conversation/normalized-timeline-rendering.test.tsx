@@ -131,6 +131,7 @@ beforeEach(() => {
   guest.create.mockReset().mockImplementation((input) => {
     const element = document.createElement("div");
     element.innerHTML = input.html;
+    input.mountTarget?.append(element);
     const snapshot = {
       status: "ready" as const,
       height: 150,

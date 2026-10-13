@@ -13,6 +13,7 @@ import {
   useAgentConversationAdapter,
 } from "./agent-conversation-adapter";
 import { nativeAgentDraftOwner } from "../../lib/native-agent-draft-owner";
+import { useConversationRuntimeTaskObservations } from "./conversation-runtime-hooks";
 
 const mocks = vi.hoisted(() => ({
   readPermission: vi.fn(async () => "auto"),
@@ -156,6 +157,69 @@ test("native task and attachment stores update once per owner snapshot and retai
   expect(runtime.children("thread")).not.toBe(children);
   expect(runtime.children("thread")).toBe(runtime.children("thread"));
   expect(runtime.attachment("thread")).toBe(runtime.attachment("thread"));
+});
+
+test("native task observations share one owner subscription across visible children", async () => {
+  let state: AgentConversationOwnerSnapshot = {
+    connection: "ready",
+    presentation: {
+      ...presentation,
+      snapshot: {
+        ...presentation.snapshot,
+        tasks: [
+          ...(presentation.snapshot.tasks ?? []),
+          { id: "review", description: "Review", status: "running", bornTurnSequence: 1 },
+        ],
+        liveBackgroundTaskIds: ["watch", "review"],
+      },
+    },
+    promptPending: false,
+    controlPending: null,
+    error: null,
+  };
+  const listeners = new Set<() => void>();
+  const owner = {
+    threadId: "thread",
+    getSnapshot: () => state,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  } as unknown as AgentConversationOwnerPort;
+  const runtime = createAgentConversationRuntime("claude", summary, owner, "session");
+  const view = renderHook(() => useConversationRuntimeTaskObservations(runtime, "thread"));
+  expect(listeners.size).toBe(1);
+  expect(view.result.current.map((entry) => entry.membership.threadId)).toEqual([
+    "agent-task:thread:watch",
+    "agent-task:thread:review",
+  ]);
+  expect(view.result.current.every((entry) => entry.membership.statusType === "active")).toBe(true);
+  expect(
+    view.result.current.every(
+      (entry) => entry.conversation?.threadId === entry.membership.threadId,
+    ),
+  ).toBe(true);
+  await act(async () => {
+    const current = state.presentation;
+    if (!current) throw new Error("Expected native presentation");
+    state = {
+      ...state,
+      presentation: {
+        ...current,
+        snapshot: {
+          ...current.snapshot,
+          revision: 2,
+          tasks: current.snapshot.tasks?.map((task) => ({ ...task, status: "completed" })),
+          liveBackgroundTaskIds: [],
+        },
+      },
+    };
+    for (const listener of listeners) listener();
+  });
+  expect(view.result.current.every((entry) => entry.membership.statusType === "idle")).toBe(true);
+  expect(listeners.size).toBe(1);
+  view.unmount();
+  expect(listeners.size).toBe(0);
 });
 
 const modelOptions = [

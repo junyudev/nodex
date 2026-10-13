@@ -21,7 +21,6 @@ const EMPTY_DETAIL: DatabaseRowDetailSnapshot = {
 };
 
 const listenersByKey = new Map<string, Set<Listener>>();
-const keyVersions = new Map<string, number>();
 const detailEntries = new Map<string, DatabaseRowDetailSnapshot>();
 interface InFlightRowDetail {
   readonly generation: number;
@@ -51,10 +50,6 @@ function toErrorMessage(value: unknown): string {
   return "Unknown error";
 }
 
-function bumpKeyVersion(key: string): void {
-  keyVersions.set(key, (keyVersions.get(key) ?? 0) + 1);
-}
-
 function advanceEntryGeneration(key: string): number {
   const generation = (entryGenerations.get(key) ?? 0) + 1;
   entryGenerations.set(key, generation);
@@ -64,7 +59,6 @@ function advanceEntryGeneration(key: string): number {
 function emitKeys(keys: Iterable<string>): void {
   const listeners = new Set<Listener>();
   for (const key of keys) {
-    bumpKeyVersion(key);
     for (const listener of listenersByKey.get(key) ?? []) {
       listeners.add(listener);
     }
@@ -90,9 +84,9 @@ function subscribeKey(key: string, listener: Listener): () => void {
   };
 }
 
-function getKeyVersionSnapshot(key: string | null): number {
-  if (!key) return 0;
-  return keyVersions.get(key) ?? 0;
+function getDetailSnapshot(key: string | null): DatabaseRowDetailSnapshot {
+  if (!key) return EMPTY_DETAIL;
+  return detailEntries.get(key) ?? EMPTY_DETAIL;
 }
 
 function isStale(card: DatabasePage | null, revision: number | undefined): boolean {
@@ -201,7 +195,6 @@ export function resetDatabaseRowDetailStoreForTests(): void {
   detailEntries.clear();
   inFlightSingleRequests.clear();
   entryGenerations.clear();
-  keyVersions.clear();
   emitKeys(subscribedKeys);
 }
 
@@ -297,9 +290,8 @@ export function useDatabaseRowDetail(
     () => (listener: Listener) => (key ? subscribeKey(key, listener) : () => undefined),
     [key],
   );
-  const getSnapshot = useMemo(() => () => getKeyVersionSnapshot(key), [key]);
-  useSyncExternalStore(subscribe, getSnapshot);
-  const snapshot = key ? (detailEntries.get(key) ?? EMPTY_DETAIL) : EMPTY_DETAIL;
+  const getSnapshot = useMemo(() => () => getDetailSnapshot(key), [key]);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 
   useEffect(() => {
     if (!pageId) return;

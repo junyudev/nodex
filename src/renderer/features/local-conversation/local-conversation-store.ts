@@ -1,4 +1,9 @@
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
+import {
+  useConversationRuntimeValue,
+  useConversationRuntimeChildMemberships,
+} from "./conversation-runtime-hooks";
+import { useExternalSelector } from "../../lib/use-external-store-selector";
 import { codexImageInputSource } from "../../../shared/codex-image-input";
 import {
   appendCodexAcceptedServerQueueSubmission,
@@ -283,7 +288,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { flushSync } from "react-dom";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
@@ -3523,6 +3527,14 @@ export class CodexAppServerManager {
     });
     this.transcriptReadOwners.set(threadId, owner);
     return owner;
+  }
+
+  /** Read the actual owner identity; restoring a removed Thread replaces its retired owner. */
+  readTranscriptReadOwner(threadId: string): CodexTranscriptReadOwner | null {
+    if (this.destroyed) return null;
+    return this.conversationsById.get(threadId)?.canonicalState
+      ? this.getTranscriptReadOwner(threadId)
+      : null;
   }
 
   subscribeTranscript(
@@ -9695,33 +9707,6 @@ export function useDefaultCodexAppServerManager(): CodexAppServerManager {
   );
 }
 
-function useExternalSelector<T>(
-  subscribe: (listener: StoreListener) => () => void,
-  getSnapshot: () => T,
-  isEqual: (left: T, right: T) => boolean = Object.is,
-): T {
-  const cacheRef = useRef<{
-    hasValue: boolean;
-    value: T;
-  }>({
-    hasValue: false,
-    value: undefined as T,
-  });
-
-  return useSyncExternalStore(subscribe, () => {
-    const nextValue = getSnapshot();
-    if (cacheRef.current.hasValue && isEqual(cacheRef.current.value, nextValue)) {
-      return cacheRef.current.value;
-    }
-
-    cacheRef.current = {
-      hasValue: true,
-      value: nextValue,
-    };
-    return nextValue;
-  });
-}
-
 export function useMaybeCodexAppServerManagerForConversationId(
   conversationId: string | null,
 ): CodexAppServerManager | null {
@@ -9853,11 +9838,7 @@ export function useCodexConversationValue<T>(
   isEqual: (left: T, right: T) => boolean = Object.is,
 ): T {
   const runtime = useConversationRuntime(conversationId);
-  return useExternalSelector(
-    (listener) => runtime.subscribe(conversationId, listener),
-    () => selector(runtime.read(conversationId)),
-    isEqual,
-  );
+  return useConversationRuntimeValue(runtime, conversationId, selector, isEqual);
 }
 
 function useManagerControlSelection<T>(
@@ -10160,12 +10141,7 @@ export function useConversationChildMemberships(
   threadId: string | null,
 ): CodexConversationChildMembership[] {
   const runtime = useConversationRuntime(threadId);
-  return useExternalSelector(
-    (listener) => runtime.subscribe(threadId, listener),
-    () => [...runtime.children(threadId)],
-    (left, right) =>
-      left.length === right.length && left.every((entry, index) => entry === right[index]),
-  );
+  return useConversationRuntimeChildMemberships(runtime, threadId);
 }
 
 export function useConversationPendingSteers(threadId: string | null): CodexPendingSteer[] {

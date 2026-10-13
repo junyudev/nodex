@@ -1,4 +1,5 @@
 import { normalizeMessageCopyText } from "../message-copy-text";
+import { projectConversationMarkdownDisplayText } from "../../../lib/markdown/conversation-markdown-display";
 import { projectCodexMarkdownToPlainText } from "../../../../shared/codex-markdown-text";
 import { buildTurnFooterMetadata, type TurnFooterMetadata } from "./turn-footer-metadata";
 import { buildHookStats, type HookStats } from "./hook-stats";
@@ -390,6 +391,7 @@ function buildGeneratedImageActionsBlock(
 }
 
 function buildSearchUnits(input: {
+  isStreamingTurn: boolean;
   buckets: ThreadTurnRenderBuckets;
   turn: CodexConversationTurn | null;
   turnId: string | null;
@@ -414,7 +416,10 @@ function buildSearchUnits(input: {
     ...input.buckets.postAssistantItems,
   ]) {
     if (block.type !== "assistantMessage") continue;
-    const text = projectCodexMarkdownToPlainText(block.entry.markdownText ?? block.searchableText);
+    const text = projectConversationMarkdownDisplayText(
+      block.entry.markdownText ?? block.searchableText,
+      input.isStreamingTurn && block.entry.status === "inProgress",
+    );
     if (!text) continue;
     const key = assistantSearchUnitKey(input.turnSearchKey, block);
     assistantUnits.set(key, {
@@ -537,6 +542,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
 
   const userMessageSearchBlocks = collectUserMessageSearchBlocks(buckets);
   const searchUnits = buildSearchUnits({
+    isStreamingTurn: input.isStreamingTurn,
     buckets,
     turn: input.turn,
     turnId: input.turnId,

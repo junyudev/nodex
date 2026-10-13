@@ -35,6 +35,26 @@ function htmlText(node: Element): string {
     .join("");
 }
 
+function clickMarkdownDownload(blob: Blob, filename: string) {
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  try {
+    anchor.href = href;
+    anchor.download = filename;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(href);
+  }
+}
+
+function markdownImageFilename(src: string): string {
+  try {
+    return new URL(src).pathname.split("/").at(-1) || "image";
+  } catch {
+    return "image";
+  }
+}
+
 export function MarkdownCodeBlock({
   node,
   incomplete,
@@ -116,15 +136,7 @@ function MarkdownMermaid({
   const download = async () => {
     if (!current?.svg) return;
     const value = await renderMermaidDownload({ svg: current.svg, theme });
-    const href = URL.createObjectURL(value.blob);
-    const anchor = document.createElement("a");
-    try {
-      anchor.href = href;
-      anchor.download = `diagram.${value.format}`;
-      anchor.click();
-    } finally {
-      URL.revokeObjectURL(href);
-    }
+    clickMarkdownDownload(value.blob, `diagram.${value.format}`);
   };
   const drawing: ReactNode = current?.svg ? (
     <div dangerouslySetInnerHTML={{ __html: current.svg }} />
@@ -199,13 +211,7 @@ function MarkdownNativeImage({
   useLayoutEffect(() => {
     const names = new Map<string, string>();
     if (typeof src === "string" && /^(?:https?:|data:image\/)/iu.test(src)) {
-      let name = "image";
-      try {
-        name = new URL(src).pathname.split("/").at(-1) || name;
-      } catch {
-        /* data image has no filename */
-      }
-      names.set(src, name);
+      names.set(src, markdownImageFilename(src));
     }
     return parent?.registerResources(names, true);
   }, [src, parent]);

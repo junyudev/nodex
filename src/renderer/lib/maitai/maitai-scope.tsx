@@ -1,4 +1,11 @@
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Provider, useAtomValue, useSetAtom } from "jotai";
 import {
   acquirePreparedScope,
@@ -53,14 +60,14 @@ export function ScopeProvider<Key, Descriptor>({
   readonly children: ReactNode;
 }) {
   const parent = useRequiredScopeView();
-  const provisionalRef = useRef<PreparedScope | null>(null);
+  const [provisional, setProvisional] = useState<PreparedScope | null>(null);
   const prepared = prepareScope(
     parent,
     scope as ScopeDefinition<unknown, Descriptor>,
     descriptor,
-    provisionalRef.current,
+    provisional,
   );
-  provisionalRef.current = prepared;
+  if (prepared.isNew && prepared !== provisional) setProvisional(prepared);
 
   useLayoutEffect(() => {
     commitPreparedDescriptor(prepared);

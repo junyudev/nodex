@@ -1,5 +1,12 @@
 import type { WorkspaceSearchContext } from "./workspace-search-context";
-import { useCallback, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import type { ProjectSession } from "../../shared/types";
 import {
   ScopeProvider,
@@ -394,11 +401,8 @@ export function SelectedAppShellHeaderContent() {
 function SelectedRouteScopeRegistrar({ selected }: { readonly selected: boolean }) {
   const routeHandle = useScopeHandle(RouteScope);
   // Header ownership follows the retained Route identity, not each prepared descriptor snapshot.
-  const routeOwnerRef = useRef(routeHandle);
-  if (routeOwnerRef.current.path !== routeHandle.path) {
-    routeOwnerRef.current = routeHandle;
-  }
-  const routeOwner = routeOwnerRef.current;
+  const [routeOwner, setRouteOwner] = useState(routeHandle);
+  if (routeOwner.path !== routeHandle.path) setRouteOwner(routeHandle);
   const setSelectedRoute = useSetScopedAtom(selectedRouteScopeHandleAtom);
   useLayoutEffect(() => {
     if (!selected) return;

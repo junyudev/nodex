@@ -43,6 +43,8 @@ describe("latest Turn lifecycle metadata", () => {
       conversation: null,
     })[0]!;
     const readTurn = vi.spyOn(owner, "readTurn");
+    const readSlice = vi.spyOn(owner, "readTurnSlice");
+    const metadataReads = vi.spyOn(owner, "readTurnMetadataAtVersion");
     const values: ReturnType<typeof useCodexTranscriptLatestTurnMetadata>[] = [];
     function Metadata() {
       values.push(useCodexTranscriptLatestTurnMetadata(entry));
@@ -60,6 +62,7 @@ describe("latest Turn lifecycle metadata", () => {
         latestSteeringUserMessageKey: null,
       });
       const count = values.length;
+      const initialReads = metadataReads.mock.calls.length;
       await act(async () => {
         owner.applyEvent({
           type: "changes",
@@ -74,6 +77,7 @@ describe("latest Turn lifecycle metadata", () => {
         });
       });
       expect(values).toHaveLength(count);
+      expect(metadataReads).toHaveBeenCalledTimes(initialReads);
       await act(async () => {
         owner.applyEvent({
           type: "changes",
@@ -114,11 +118,49 @@ describe("latest Turn lifecycle metadata", () => {
         isInProgress: true,
         latestSteeringUserMessageKey: "restore-message",
       });
+      await act(async () => {
+        owner.applyEvent({
+          type: "changes",
+          changes: [
+            {
+              type: "item",
+              key: { ...key, itemId: "second-steer" },
+              value: {
+                type: "steeringUserMessage",
+                id: "second-steer",
+                targetTurnId: "one",
+                targetTurnStartedAtMs: 1_000,
+                status: "pending",
+                clientUserMessageId: "second-client",
+                input: [],
+                attachments: [],
+                restoreMessage: { id: "second-message", context: { commentAttachments: [] } },
+                compareKey: { rawText: "", imageCount: 0 },
+              },
+            },
+            {
+              type: "item-slots-append",
+              key,
+              previousLength: 2,
+              length: 3,
+              entries: [{ index: 2, itemId: "second-steer" }],
+            },
+          ],
+        });
+      });
+      expect(values.at(-1)).toEqual({
+        phase: "final_answer",
+        isInProgress: true,
+        latestSteeringUserMessageKey: "second-message",
+      });
       expect(readTurn).not.toHaveBeenCalled();
+      expect(readSlice).not.toHaveBeenCalled();
     } finally {
       view.unmount();
       retain();
       readTurn.mockRestore();
+      readSlice.mockRestore();
+      metadataReads.mockRestore();
     }
   });
 });

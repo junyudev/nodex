@@ -76,6 +76,87 @@ function insertText(text: string): CodexTranscriptEvent {
 }
 
 describe("normalized transcript read owner", () => {
+  test("revision-qualified reads reject stale and future topology without reading a Turn", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({ type: "reset", value: fixture() });
+    const slice = { itemIds: ["first"], includeInput: false, includeTurnExtras: false };
+    const version = owner.readTurnVersion("turn:one");
+    const neighborVersion = owner.readTurnVersion("turn:two");
+    const neighbor = owner.readTurnAtVersion("turn:two", neighborVersion, slice);
+    const initial = owner.readTurnAtVersion("turn:one", version, slice);
+    expect(initial?.items[0]?.markdownText).toBe("hello");
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "item",
+          key: { ...itemKey, itemId: "new" },
+          value: { type: "plan", id: "new", text: "New work" },
+        },
+        {
+          type: "item-slots-append",
+          key: { ...key, entityKey: "turn:one" },
+          previousLength: 1,
+          length: 2,
+          entries: [{ index: 1, itemId: "new" }],
+        },
+      ],
+    });
+    const currentVersion = owner.readTurnVersion("turn:one");
+    expect(currentVersion).toBeGreaterThan(version);
+    const readTurn = vi.spyOn(owner, "readTurn");
+    const readSlice = vi.spyOn(owner, "readTurnSlice");
+    expect(owner.readTurnAtVersion("turn:one", version)).toBeNull();
+    expect(owner.readTurnAtVersion("turn:one", version, slice)).toBeNull();
+    expect(owner.readTurnAtVersion("turn:one", currentVersion + 1, slice)).toBeNull();
+    expect(readTurn).not.toHaveBeenCalled();
+    expect(readSlice).not.toHaveBeenCalled();
+    expect(owner.readTurnAtVersion("turn:two", neighborVersion, slice)).toBe(neighbor);
+    expect(owner.readTurnAtVersion("turn:one", currentVersion, slice)?.items[0]?.markdownText).toBe(
+      "hello",
+    );
+    expect(readTurn).not.toHaveBeenCalled();
+    owner.dispose();
+    expect(owner.readTurnAtVersion("turn:one", currentVersion, slice)).toBeNull();
+  });
+
+  test("revision-qualified metadata reads only selected raw addresses and rejects a retired version", () => {
+    const owner = new CodexTranscriptReadOwner(key);
+    owner.applyEvent({ type: "reset", value: fixture() });
+    const version = owner.readTurnVersion("turn:one");
+    const readTurn = vi.spyOn(owner, "readTurn");
+    const readSlice = vi.spyOn(owner, "readTurnSlice");
+    const readItem = vi.spyOn(owner, "readItem");
+    const metadata = owner.readTurnMetadataAtVersion("turn:one", version, ["first"]);
+    expect(metadata?.items.map((item) => item.id)).toEqual(["first"]);
+    expect(metadata?.details).toBe(owner.readTurnDetails("turn:one"));
+    expect(metadata?.latestSteeringItem).toBeNull();
+    expect(readItem).toHaveBeenCalledExactlyOnceWith("turn:one", "first");
+    expect(readTurn).not.toHaveBeenCalled();
+    expect(readSlice).not.toHaveBeenCalled();
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...key, entityKey: "turn:one" },
+          details: { ...owner.readTurnDetails("turn:one")!, status: "completed" },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    readItem.mockClear();
+    expect(owner.readTurnMetadataAtVersion("turn:one", version, ["first"])).toBeNull();
+    expect(readItem).not.toHaveBeenCalled();
+    const next = owner.readTurnMetadataAtVersion("turn:one", owner.readTurnVersion("turn:one"), [
+      "first",
+    ]);
+    expect(next?.details.status).toBe("completed");
+    expect(next?.items.map((item) => item.id)).toEqual(["first"]);
+    expect(readTurn).not.toHaveBeenCalled();
+    expect(readSlice).not.toHaveBeenCalled();
+  });
+
   test("an addressed text replacement preserves another slice in the same Turn", () => {
     const owner = new CodexTranscriptReadOwner(key);
     owner.applyEvent({

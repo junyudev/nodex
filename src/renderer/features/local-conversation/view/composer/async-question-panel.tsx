@@ -74,19 +74,20 @@ export function AsyncQuestionPanel({
   const multiple = state.openIds.length > 1;
   const animateQuestions = multiple && !reducedMotion;
   const fade = animateQuestions ? QUESTION_FADE : undefined;
+  const questionId = question?.id;
+  const hasQuestionOptions = Boolean(question?.options.length);
   // Presence transitions keep the outgoing editor mounted until the new question can enter.
   const bindEditor = useCallback(
     (handle: ComposerPromptEditorHandle | null) => {
       editor.current = handle;
-      if (!handle || question?.options.length || runtime.read(threadId).selectedId !== question?.id)
-        return;
+      if (!handle || hasQuestionOptions || runtime.read(threadId).selectedId !== questionId) return;
       // The imperative handle is published before the editor creates its ProseMirror view.
       queueMicrotask(() => {
-        if (editor.current !== handle || runtime.read(threadId).selectedId !== question?.id) return;
+        if (editor.current !== handle || runtime.read(threadId).selectedId !== questionId) return;
         handle.focus();
       });
     },
-    [question?.id, question?.options.length, runtime, threadId],
+    [questionId, hasQuestionOptions, runtime, threadId],
   );
 
   useLayoutEffect(() => {

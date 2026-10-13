@@ -78,6 +78,12 @@ export interface CodexTranscriptTurnSlice {
   readonly work?: CodexTranscriptWorkSlice;
 }
 
+export interface CodexTranscriptTurnMetadataSnapshot {
+  readonly details: CodexTranscriptTurnDetails;
+  readonly items: readonly CodexCanonicalItem[];
+  readonly latestSteeringItem: CodexCanonicalItem | null;
+}
+
 type Listener = () => void;
 interface CachedTurnSlice {
   readonly details: CodexTranscriptTurnDetails;
@@ -322,6 +328,37 @@ export class CodexTranscriptReadOwner {
     const value = { ...turn.details, items };
     this.canonicalTurns.set(entityKey, value);
     return value;
+  }
+
+  /** Bind a render read to the subscribed revision; stale revisions never expose a newer Turn. */
+  readTurnAtVersion(
+    entityKey: string,
+    expectedVersion: number,
+    slice?: CodexTranscriptTurnSlice,
+  ): CodexConversationTurn | null {
+    if (this.readTurnVersion(entityKey) !== expectedVersion) return null;
+    return slice ? this.readTurnSlice(entityKey, slice) : this.readTurn(entityKey);
+  }
+
+  /** A placement query binds selected raw addresses to their published topology revision. */
+  readTurnMetadataAtVersion(
+    entityKey: string,
+    expectedVersion: number,
+    itemIds?: readonly string[],
+  ): CodexTranscriptTurnMetadataSnapshot | null {
+    if (this.readTurnVersion(entityKey) !== expectedVersion) return null;
+    const details = this.readTurnDetails(entityKey);
+    if (!details) return null;
+    const addresses =
+      itemIds ?? this.readItemSlots(entityKey)?.entries.map(({ itemId }) => itemId) ?? [];
+    return {
+      details,
+      items: addresses.flatMap((itemId) => {
+        const item = this.readItem(entityKey, itemId);
+        return item ? [item] : [];
+      }),
+      latestSteeringItem: this.readLatestSteeringItem(entityKey),
+    };
   }
 
   /** A mounted text leaf projects only its addressed raw item, regardless of Turn size. */

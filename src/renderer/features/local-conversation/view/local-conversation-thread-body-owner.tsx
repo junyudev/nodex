@@ -979,12 +979,13 @@ export function LocalConversationThreadBodyOwner({
         return scrollToLocalConversationSearchMatch({
           signal: options?.signal,
           readMatch: () => searchHighlights.readActiveMatch(match.id),
-          scroll: (activeElement) =>
-            searchScrollControllerRef.current.scrollElementIntoView(
-              activeElement,
-              "smooth",
-              "center",
-            ),
+          scroll: (activeElement) => {
+            const scroll = searchScrollControllerRef.current;
+            // A resident mark skips row placement, but still retires latest-turn following.
+            scroll.holdViewport();
+            scroll.setScrollMode("programmaticFind");
+            scroll.scrollElementIntoView(activeElement, "smooth", "center");
+          },
         });
       },
       clear() {

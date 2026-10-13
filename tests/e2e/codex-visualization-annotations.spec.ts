@@ -113,6 +113,8 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
       '[data-inline-visualization="true"][data-visualization-status="ready"]',
     );
     await expect(response).toHaveCount(1, { timeout: 60_000 });
+    const historyFrameId = await response.getAttribute("data-visualization-frame-id");
+    if (!historyFrameId) throw new Error("History visualization has no resource identity");
     const guestId = await response
       .locator("webview")
       .evaluate((element) =>
@@ -260,7 +262,13 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
       path.join(stateDirectory, "commands.jsonl"),
       `${JSON.stringify({ type: "delta", delta: '\n\n::codex-inline-vis{file="stream.html" mode="wide"}\n\n' })}\n`,
     );
-    const streamed = page.locator('[data-inline-visualization="true"]').last();
+    const newFrames = page.locator(
+      `[data-inline-visualization="true"]:not([data-visualization-frame-id="${historyFrameId}"])`,
+    );
+    await expect(newFrames).toHaveCount(1);
+    const streamingFrameId = await newFrames.getAttribute("data-visualization-frame-id");
+    if (!streamingFrameId) throw new Error("Streaming visualization has no resource identity");
+    const streamed = page.locator(`[data-visualization-frame-id="${streamingFrameId}"]`);
     await expect(
       streamed.getByRole("button", { name: "Open fullscreen", exact: true }),
     ).toBeVisible({ timeout: 60_000 });

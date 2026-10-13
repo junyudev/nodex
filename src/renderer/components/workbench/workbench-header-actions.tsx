@@ -5,7 +5,10 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type Ref,
   type ReactElement,
@@ -32,19 +35,33 @@ const HeaderActionsContext = createContext<readonly HeaderActionEntry[]>(EMPTY_H
 const HeaderActionRegistrationContext = createContext<HeaderActionCollector | null>(null);
 
 interface HeaderActionCollector {
-  add: (entry: HeaderActionEntry) => void;
-  getEntries: () => HeaderActionEntry[];
+  register: (token: object, entry: HeaderActionEntry) => () => void;
+  subscribe: (listener: () => void) => () => void;
+  getSnapshot: () => readonly HeaderActionEntry[];
 }
 
 export function HeaderAction(props: HeaderActionProps) {
   const collector = useContext(HeaderActionRegistrationContext);
-  collector?.add({
-    actionId: props.actionId,
-    slotPosition: props.slotPosition,
-    align: props.align,
-    order: props.order,
-    children: props.children,
-  });
+  const [token] = useState(() => ({}));
+  useLayoutEffect(
+    () =>
+      collector?.register(token, {
+        actionId: props.actionId,
+        slotPosition: props.slotPosition,
+        align: props.align,
+        order: props.order,
+        children: props.children,
+      }),
+    [
+      collector,
+      token,
+      props.actionId,
+      props.slotPosition,
+      props.align,
+      props.order,
+      props.children,
+    ],
+  );
 
   return null;
 }
@@ -56,7 +73,7 @@ export function HeaderActionProvider({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const collector = createHeaderActionCollector();
+  const [collector] = useState(createHeaderActionCollector);
 
   return (
     <HeaderActionRegistrationContext.Provider value={collector}>
@@ -138,19 +155,47 @@ function CollectedHeaderActionProvider({
   collector: HeaderActionCollector;
   children: ReactNode;
 }) {
-  const entries = collector.getEntries();
+  const entries = useSyncExternalStore(collector.subscribe, collector.getSnapshot);
 
   return <HeaderActionsContext.Provider value={entries}>{children}</HeaderActionsContext.Provider>;
 }
 
 function createHeaderActionCollector(): HeaderActionCollector {
-  const entries: HeaderActionEntry[] = [];
+  const entries = new Map<
+    object,
+    { readonly sequence: number; readonly entry: HeaderActionEntry }
+  >();
+  const sequences = new WeakMap<object, number>();
+  const listeners = new Set<() => void>();
+  let sequence = 0;
+  let snapshot: readonly HeaderActionEntry[] = EMPTY_HEADER_ACTIONS;
+  const publish = () => {
+    snapshot = sortHeaderActions(
+      [...entries.values()]
+        .sort((left, right) => left.sequence - right.sequence)
+        .map((record) => record.entry),
+    );
+    listeners.forEach((listener) => listener());
+  };
 
   return {
-    add: (entry) => {
-      entries.push(entry);
+    register: (token, entry) => {
+      const order = sequences.get(token) ?? sequence++;
+      sequences.set(token, order);
+      const record = { sequence: order, entry };
+      entries.set(token, record);
+      publish();
+      return () => {
+        if (entries.get(token) !== record) return;
+        entries.delete(token);
+        publish();
+      };
     },
-    getEntries: () => sortHeaderActions(entries),
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snapshot,
   };
 }
 

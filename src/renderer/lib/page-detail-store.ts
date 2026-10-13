@@ -35,7 +35,6 @@ interface InFlightPageDetail {
 interface PageDetailEntry {
   snapshot: PageDetailSnapshot;
   readonly listeners: Set<Listener>;
-  version: number;
   generation: number;
   inFlight: InFlightPageDetail | null;
   projectionAuthority: {
@@ -64,7 +63,6 @@ const detailKey = (projectId: string, pageId: string): string =>
 const createEntry = (): PageDetailEntry => ({
   snapshot: EMPTY_DETAIL,
   listeners: new Set(),
-  version: 0,
   generation: 0,
   inFlight: null,
   projectionAuthority: null,
@@ -86,7 +84,6 @@ const touch = (entry: PageDetailEntry): void => {
 };
 
 const emit = (entry: PageDetailEntry): void => {
-  entry.version += 1;
   for (const listener of entry.listeners) listener();
 };
 
@@ -476,10 +473,10 @@ export const usePageDetail = (
   const registry = useProjectionInvalidationRegistry();
   const key = projectId && pageId ? detailKey(projectId, pageId) : null;
   const subscribeToDetail = useMemo(() => (listener: Listener) => subscribe(key, listener), [key]);
-  useSyncExternalStore(
+  const snapshot = useSyncExternalStore(
     subscribeToDetail,
-    () => (key ? (entries.get(key)?.version ?? 0) : 0),
-    () => 0,
+    () => (key ? (entries.get(key)?.snapshot ?? EMPTY_DETAIL) : EMPTY_DETAIL),
+    () => EMPTY_DETAIL,
   );
 
   useEffect(() => {
@@ -487,7 +484,6 @@ export const usePageDetail = (
     void fetchPageDetail(projectId, pageId, { libraryId }).catch(() => undefined);
   }, [libraryId, pageId, projectId]);
 
-  const snapshot = key ? (entries.get(key)?.snapshot ?? EMPTY_DETAIL) : EMPTY_DETAIL;
   useEffect(() => {
     if (!projectId || !pageId || !libraryId) return;
     retainPageDetailAuthority(libraryId, projectId, pageId, registry);

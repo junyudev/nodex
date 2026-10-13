@@ -115,11 +115,12 @@ const fixture = () => {
     },
   ];
   const listeners = new Set<() => void>();
+  const observations = new Map(rows.map((row) => [row.threadId, conversation(row.threadId, 1)]));
   const resume = vi.fn(async () => {});
   const runtime: ConversationRuntime = {
     kind: "claude",
     hostId: "local",
-    read: (id) => (id === "parent" ? parent : conversation(id ?? "", 1)),
+    read: (id) => (id === "parent" ? parent : id ? (observations.get(id) ?? null) : null),
     subscribe: (_id, listener) => {
       listeners.add(listener);
       return () => {
@@ -139,6 +140,12 @@ const fixture = () => {
   return {
     runtime,
     resume,
+    updateObservation: (id: string, preview: string) => {
+      const current = observations.get(id);
+      if (!current) throw new Error("Expected task observation");
+      observations.set(id, { ...current, threadPreview: preview });
+      listeners.forEach((listener) => listener());
+    },
     finish: () => {
       rows = rows.map((row) => ({ ...row, statusType: "idle" }));
       parent = conversation("parent", 2);
@@ -199,6 +206,44 @@ test("native task details select read-only observations and stop the exact live 
   await waitFor(() => {
     expect(view.queryByRole("button", { name: "Stop Watch build" })).toBeNull();
   });
+});
+
+test("selected task details observe a changed child without replacing its membership", async () => {
+  const source = fixture();
+  function Dialog() {
+    const parentHandle = useScopeHandle(ThreadScope);
+    const [open, setOpen] = useState(false);
+    if (!open)
+      return (
+        <button type="button" onClick={() => setOpen(true)}>
+          Open tasks
+        </button>
+      );
+    return (
+      <ConversationTaskDialog
+        runtime={source.runtime}
+        parentThreadId="parent"
+        parentThreadScope={parentHandle}
+        renderDetail={(child) => <output aria-label="Task detail">{child.threadPreview}</output>}
+        onClose={() => {}}
+      />
+    );
+  }
+  const membership = source.runtime.children("parent")[0];
+  const view = renderWithMaitai(<Dialog />);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Open tasks" }));
+    await Promise.resolve();
+  });
+  await act(async () => {
+    source.updateObservation("agent-task:parent:watch", "Updated task output");
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(view.getByLabelText("Task detail").textContent).toBe("Updated task output"),
+  );
+  expect(source.runtime.children("parent")[0]).toBe(membership);
+  expect(source.resume).not.toHaveBeenCalled();
 });
 
 test("opening a specific task selects its observation and retargets an already open dialog", async () => {

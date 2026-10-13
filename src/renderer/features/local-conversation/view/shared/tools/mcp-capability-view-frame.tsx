@@ -32,7 +32,6 @@ export function McpCapabilityViewFrame({
   runtimeConfig,
 }: McpCapabilityViewFrameProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [, setRuntimeGeneration] = useState(0);
   const [surfaceElement, setSurfaceElement] = useState<HTMLDivElement | null>(null);
   const runtimeManager = useMcpAppRuntimeManager();
   const sendFollowUpMessage = useMcpAppFollowUpHandler();
@@ -46,10 +45,17 @@ export function McpCapabilityViewFrame({
       resource,
       ...(sendFollowUpMessage ? { sendFollowUpMessage } : {}),
     });
-    setRuntimeGeneration((value) => value + 1);
   }, [capabilityId, resource, runtimeConfig, runtimeManager, sendFollowUpMessage]);
 
-  const runtime = runtimeManager.get(capabilityId);
+  const subscribeRuntime = useCallback(
+    (listener: () => void) => runtimeManager.subscribeRuntime(capabilityId, listener),
+    [capabilityId, runtimeManager],
+  );
+  const readRuntime = useCallback(
+    () => runtimeManager.get(capabilityId),
+    [capabilityId, runtimeManager],
+  );
+  const runtime = useSyncExternalStore(subscribeRuntime, readRuntime, readRuntime);
   const surfaceMode: McpAppSurfaceMode = isExpanded ? "fullscreen" : mode;
   useLayoutEffect(() => {
     if (!surfaceElement || !runtime) return;
@@ -120,8 +126,7 @@ export function McpCapabilityViewFrame({
             type="button"
             className="rounded-md border border-token-border px-2.5 py-1 text-token-foreground hover:bg-token-bg-subtle"
             onClick={() => {
-              if (!runtimeManager.retry(capabilityId)) return;
-              setRuntimeGeneration((value) => value + 1);
+              runtimeManager.retry(capabilityId);
             }}
           >
             Retry

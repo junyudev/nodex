@@ -7,6 +7,12 @@ import { fileMarkdownMediaRehypePlugins } from "../file-markdown-media/file-mark
 import { streamdownPlugins } from "../streamdown";
 import type { MarkdownSyntaxPolicy } from "./markdown-syntax";
 
+import { remarkConversationMarkdown } from "./conversation-markdown-grammar";
+import {
+  CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES,
+  type MarkdownDisplayDialect,
+} from "../../../shared/conversation-markdown-display";
+
 const configurations = new Map<string, MarkdownSyntaxPolicy>();
 const proseSchema = {
   ...defaultSchema,
@@ -27,25 +33,49 @@ const visualizationSchema = {
 
 /** Only the application's known block-local extensions may use the prefix lane. */
 export function readMarkdownSyntaxPolicy(input: {
+  readonly dialect?: MarkdownDisplayDialect;
   readonly preserveLineBreaks: boolean;
   readonly visualizations: boolean;
   readonly fileMedia: boolean;
   readonly repairIncomplete: boolean;
 }): MarkdownSyntaxPolicy {
-  const key = `${input.preserveLineBreaks}:${input.visualizations}:${input.fileMedia}:${input.repairIncomplete}`;
+  const conversation = input.dialect === "conversation";
+  const key = `${input.dialect ?? "document"}:${input.preserveLineBreaks}:${input.visualizations}:${input.fileMedia}:${input.repairIncomplete}`;
   let configuration = configurations.get(key);
   if (!configuration) {
+    const grammar: PluggableList = conversation
+      ? [
+          [
+            remarkConversationMarkdown,
+            {
+              renderedDirectiveNames: input.visualizations ? ["codex-inline-vis"] : [],
+              nullDirectiveNames: [
+                ...CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES.filter(
+                  (name) => name !== "code-comment",
+                ),
+                ...(input.visualizations ? ["codex-live-vis"] : []),
+              ],
+            },
+          ],
+          ...Object.entries(defaultRemarkPlugins)
+            .filter(([name]) => name !== "gfm")
+            .map(([, plugin]) => plugin),
+        ]
+      : Object.values(defaultRemarkPlugins);
+    const visualizations: PluggableList = input.visualizations
+      ? [[remarkInlineVisualizations, { syntaxAlreadyRegistered: conversation }]]
+      : [];
     const remarkPlugins: PluggableList = [
       ...streamdownPlugins.cjk.remarkPluginsBefore,
-      ...Object.values(defaultRemarkPlugins),
+      ...grammar,
       ...(input.preserveLineBreaks ? [remarkBreaks] : []),
-      ...(input.visualizations ? [remarkInlineVisualizations] : []),
+      ...visualizations,
       ...streamdownPlugins.cjk.remarkPluginsAfter,
       streamdownPlugins.math.remarkPlugin,
     ];
     const media = input.fileMedia ? fileMarkdownMediaRehypePlugins : null;
     const base: PluggableList = media ?? [
-      defaultRehypePlugins.raw!,
+      ...(conversation ? [] : [defaultRehypePlugins.raw!]),
       [rehypeSanitize, input.visualizations ? visualizationSchema : proseSchema],
       defaultRehypePlugins.harden!,
     ];
@@ -71,6 +101,8 @@ export function readMarkdownSyntaxPolicy(input: {
       remarkPlugins,
       rehypePlugins: [...rehypePlugins, streamdownPlugins.math.rehypePlugin],
       family: input.visualizations,
+      dialect: input.dialect ?? "document",
+      visualizationDirectives: input.visualizations,
       normalizeLists: true,
       repairIncomplete: input.repairIncomplete,
       blockLocal: true,

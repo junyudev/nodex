@@ -60,6 +60,7 @@ function requiresSandboxRestart(previous: McpAppRuntimeConfig, next: McpAppRunti
 
 export class McpAppRuntimeManager {
   readonly #entries = new Map<string, McpAppRuntimeEntry>();
+  readonly #runtimeListeners = new Map<string, Set<() => void>>();
   readonly #createRuntime: (config: McpAppRuntimeConfig) => McpAppRuntimePort;
 
   constructor(
@@ -78,6 +79,7 @@ export class McpAppRuntimeManager {
         existing.runtime = this.#createRuntime(config);
         void previous.dispose();
         this.#placeRuntime(existing);
+        this.#notifyRuntime(config.capabilityId);
         return existing.runtime;
       }
       existing.config = config;
@@ -91,6 +93,7 @@ export class McpAppRuntimeManager {
       surfaces: new Map(),
       teardownTimer: null,
     });
+    this.#notifyRuntime(config.capabilityId);
     return runtime;
   }
 
@@ -101,7 +104,21 @@ export class McpAppRuntimeManager {
     entry.runtime = this.#createRuntime(entry.config);
     void previous.dispose();
     this.#placeRuntime(entry);
+    this.#notifyRuntime(capabilityId);
     return entry.runtime;
+  }
+
+  /** Observe the capability's runtime identity; each runtime owns its own presentation snapshots. */
+  subscribeRuntime(capabilityId: string, listener: () => void): () => void {
+    const listeners = this.#runtimeListeners.get(capabilityId) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.#runtimeListeners.set(capabilityId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0 && this.#runtimeListeners.get(capabilityId) === listeners) {
+        this.#runtimeListeners.delete(capabilityId);
+      }
+    };
   }
 
   get(capabilityId: string): McpAppRuntimePort | null {
@@ -141,8 +158,13 @@ export class McpAppRuntimeManager {
         if (entry.surfaces.size > 0) return;
         this.#entries.delete(input.capabilityId);
         void entry.runtime.dispose();
+        this.#notifyRuntime(input.capabilityId);
       }, RUNTIME_TEARDOWN_GRACE_MS);
     };
+  }
+
+  #notifyRuntime(capabilityId: string): void {
+    for (const listener of [...(this.#runtimeListeners.get(capabilityId) ?? [])]) listener();
   }
 
   #placeRuntime(entry: McpAppRuntimeEntry): void {

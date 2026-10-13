@@ -12,6 +12,12 @@ export interface ConversationRuntime {
   readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly hostId: string;
   readonly subscribe: (threadId: string | null, listener: () => void) => () => void;
+  /** Aggregate providers can publish membership and child observations with one subscription. */
+  readonly subscribeChildObservations?: (
+    threadId: string | null,
+    listener: () => void,
+  ) => () => void;
+  /** Keep the same immutable snapshot reference until its provider publication changes. */
   readonly read: (threadId: string | null) => CodexConversationSnapshot | null;
   readonly attachment: (threadId: string | null) => LocalConversationAttachmentState;
   readonly connection: () => CodexConnectionState;

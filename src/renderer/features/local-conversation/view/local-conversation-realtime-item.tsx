@@ -1,6 +1,7 @@
 import { useCallback, useContext, useSyncExternalStore } from "react";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexRealtimeTimelineEntry } from "../projection/normalized-timeline-entries";
+import { useConversationVisualizationContext } from "./inline-visualization-context";
 import { MarkdownRenderer } from "./shared/markdown/markdown-renderer";
 import { UserMessageText } from "./shared/user-message-collapse";
 import { realtimeSearchUnitKey } from "./local-conversation-search-source";
@@ -9,7 +10,7 @@ import { LocalConversationPendingArtifact } from "./local-conversation-pending-a
 /** This leaf reads retained native history; it neither opens a microphone nor starts a call. */
 export function LocalConversationRealtimeItem({
   entry,
-  itemId = entry.itemId,
+  itemId: explicitItemId,
   cwd,
   conversationId,
 }: {
@@ -18,12 +19,20 @@ export function LocalConversationRealtimeItem({
   readonly conversationId: string;
   readonly cwd: string | null;
 }) {
+  const itemId = explicitItemId ?? entry.itemId;
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const subscribe = useCallback(
     (listener: () => void) => owner?.subscribeRealtimeItem(itemId, listener) ?? (() => {}),
     [itemId, owner],
   );
   const value = useSyncExternalStore(subscribe, () => owner?.readRealtimeItem(itemId) ?? null);
+  const visualizationContext = useConversationVisualizationContext(
+    conversationId,
+    null,
+    value?.completed === false,
+    undefined,
+    realtimeSearchUnitKey(entry, itemId),
+  );
   if (!value || !owner) return null;
   const item = value.item;
   if (item.type === "realtimeSessionClosed")
@@ -48,6 +57,8 @@ export function LocalConversationRealtimeItem({
       ) : (
         <MarkdownRenderer
           content={item.text}
+          dialect="conversation"
+          visualizationContext={visualizationContext}
           preserveLineBreaks
           cwd={cwd}
           parseIncompleteMarkdown={!value.completed}

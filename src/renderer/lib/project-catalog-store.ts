@@ -73,6 +73,11 @@ export interface ProjectCatalogStore {
   /** Projects a pending name over either a catalog item or a detail query value. */
   readonly project: (project: Project | null) => Project | null;
   readonly projects: (projects: readonly Project[]) => readonly Project[];
+  /** Project only the presentation revision observed by the mounted reader. */
+  readonly projectsAtRevision: (
+    revision: number,
+    projects: readonly Project[],
+  ) => readonly Project[];
   /** Installs presentation synchronously, before the transport Port is entered. */
   readonly renameProject: (projectId: string, name: string) => Promise<ProjectCatalogUpdateOutcome>;
   /** Updates Project metadata through the same ordered catalog lane. */
@@ -619,6 +624,16 @@ export function createProjectCatalogStore({
     refreshSnapshot();
   };
 
+  const projects = (values: readonly Project[]): readonly Project[] => {
+    let changed = false;
+    const presented = values.map((value) => {
+      const next = project(value) ?? value;
+      if (next !== value) changed = true;
+      return next;
+    });
+    return changed ? presented : values;
+  };
+
   return {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
@@ -626,15 +641,9 @@ export function createProjectCatalogStore({
       return () => listeners.delete(listener);
     },
     project,
-    projects: (values) => {
-      let changed = false;
-      const presented = values.map((value) => {
-        const next = project(value) ?? value;
-        if (next !== value) changed = true;
-        return next;
-      });
-      return changed ? presented : values;
-    },
+    projects,
+    projectsAtRevision: (revision, values) =>
+      revision === snapshot.revision ? projects(values) : values,
     renameProject,
     updateProject,
     retryProjectUpdate,

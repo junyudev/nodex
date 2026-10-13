@@ -73,7 +73,6 @@ import { logAssistantStreamingDebugState } from "../../../../lib/assistant-strea
 import { useCodexThreadSettings } from "../../../../lib/use-codex-thread-settings";
 import { useResolvedReducedMotion } from "../../../../lib/use-reduced-motion";
 import { cn } from "../../../../lib/utils";
-import { stripCodexRemarkDirectiveLines } from "../../../../../shared/codex-remark-directives";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import { resolveCompletedMcpServerElicitationView } from "../../projection/mcp-server-elicitation-view";
 import { buildHookFeedbackSettingsHref } from "../../projection/hook-feedback-settings";
@@ -1173,9 +1172,7 @@ export function ThreadAssistantBodyBlock({
   alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
-  const markdownText = stripCodexRemarkDirectiveLines(block.entry.markdownText, {
-    keepInlineVisualizations: true,
-  });
+  const markdownText = block.entry.markdownText ?? "";
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
   const visualizationContext = useConversationVisualizationContext(
     block.entry.threadId,
@@ -1228,6 +1225,7 @@ export function ThreadAssistantBodyBlock({
         <div className={THREAD_VISUAL_TOKENS.assistantBody} data-thread-selected-text-target="true">
           <MarkdownRenderer
             content={markdownText}
+            dialect="conversation"
             preserveLineBreaks
             parseIncompleteMarkdown={isAssistantItemStreaming}
             animateStreamingText={isAssistantItemStreaming}

@@ -75,6 +75,7 @@ export function LocalConversationTimelinePromotion({
     >
       <MarkdownRenderer
         content={content}
+        dialect="conversation"
         preserveLineBreaks
         cwd={cwd}
         parseIncompleteMarkdown={markdownStreaming}
