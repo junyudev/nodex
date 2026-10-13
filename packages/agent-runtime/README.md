@@ -29,6 +29,9 @@ up to the single-response budget of 15 MiB. Event observations carry
 wire-projected updates, so large tool output is fetched on demand. There is no
 public full-transcript snapshot operation.
 `thread.read` and `thread.authority` expose control metadata without hydrating history.
+Authority includes the Thread's resolved execution directory, branch and workspace path.
+`tasks.overview` pages active and completed task metadata independently, starting with four active
+and ten completed tasks; prompts, progress and result bodies are never read for this overview.
 `execution.observe` emits only Run status and Thread deletion metadata; filtered observers use
 type-specific SQL queries and live channels before retaining events. Every subscription returns
 its explicit ownership token for scoped cancellation.
@@ -52,6 +55,19 @@ bounded command queue so native execution can await host decisions without
 blocking its replies.
 `attachments.persist` validates image payloads and retains snapshot source metadata. Stable
 content identities and atomic file publication preserve original assets across retries.
+
+`storage.snapshot.acquire` drains admitted public writes, rejects new writes, verifies that no
+active, queued, native background or unknown work remains, and suspends idle providers. It holds
+the database writer transaction while returning an online SQLite copy, attachments directory and
+environment identity file. A Profile capture copies that closure and native provider storage
+before `storage.snapshot.release`. Snapshot release bypasses the request queue; disconnecting
+also releases the fence and removes the temporary database copy.
+
+Before opening SQLite, every runtime holds `<home>/.writer.lock` with a private `owner.json`
+containing `{pid,token}`. Offline Profile capture holds the same exclusive directory. Live or
+malformed ownership refuses admission; stale recovery requires a proven absent PID and the same
+owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
+token, and a PID reused by another process conservatively retains ownership.
 
 Host tools require the currently admitted foreground attempt. Active native
 background work prevents ambiguous session credentials from acquiring a newer

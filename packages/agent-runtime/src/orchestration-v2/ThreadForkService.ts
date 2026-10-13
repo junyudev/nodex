@@ -61,6 +61,7 @@ export interface ThreadForkServiceV2Shape {
     readonly canonicalSourcePoint: OrchestrationV2ContextSourcePoint;
     readonly transferId: ContextTransferId;
     readonly targetThreadId: ThreadId;
+    readonly rootPolicy?: "same_root" | "independent_root";
     readonly title?: string;
     readonly createdBy: OrchestrationV2Actor;
     readonly creationSource: OrchestrationV2CreationSource;
@@ -93,9 +94,13 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
           title: input.title ?? `${input.sourceProjection.thread.title} fork`,
           activeProviderThreadId: null,
           lineage: {
-            parentThreadId: input.sourceProjection.thread.id,
-            relationshipToParent: "fork",
-            rootThreadId: input.sourceProjection.thread.lineage.rootThreadId,
+            parentThreadId:
+              input.rootPolicy === "independent_root" ? null : input.sourceProjection.thread.id,
+            relationshipToParent: input.rootPolicy === "independent_root" ? null : "fork",
+            rootThreadId:
+              input.rootPolicy === "independent_root"
+                ? input.targetThreadId
+                : input.sourceProjection.thread.lineage.rootThreadId,
           },
           forkedFrom: {
             type: "run",

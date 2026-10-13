@@ -153,6 +153,8 @@ export type ProviderSessionManagerV2Error = typeof ProviderSessionManagerV2Error
 export interface ProviderSessionManagerV2Shape {
   /** Foreground Turns and native background work keep their provider configuration alive. */
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>>;
+  /** Snapshot admission requires an explicit idle result from every resident native runtime. */
+  readonly isSnapshotIdle: Effect.Effect<boolean>;
   readonly shutdown: Effect.Effect<void>;
   readonly open: (input: {
     readonly threadId: ThreadId;
@@ -2098,6 +2100,18 @@ export const layerWithOptions = (
       );
 
       return ProviderSessionManagerV2.of({
+        isSnapshotIdle: Effect.gen(function* () {
+          for (const entry of (yield* Ref.get(sessions)).values()) {
+            if (entry.busyTurns.size > 0 || entry.runtime.hasPendingBackgroundWork === undefined)
+              return false;
+            const pending = yield* entry.runtime.hasPendingBackgroundWork.pipe(
+              Effect.timeout("2 seconds"),
+              Effect.catchCause(() => Effect.succeed(true)),
+            );
+            if (pending) return false;
+          }
+          return true;
+        }),
         busyInstances: Effect.gen(function* () {
           const current = yield* Ref.get(sessions);
           const busy = new Set<ProviderInstanceId>();

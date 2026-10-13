@@ -3086,6 +3086,8 @@ export const OrchestrationV2Command = Schema.Union([
     sourceThreadId: ThreadId,
     targetThreadId: ThreadId,
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
+    /** A visible independent Session owns a new execution root while retaining captured history. */
+    rootPolicy: Schema.optional(Schema.Literals(["same_root", "independent_root"])),
     title: Schema.optional(TrimmedNonEmptyString),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),

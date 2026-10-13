@@ -79,7 +79,7 @@ const notificationSchema = z.discriminatedUnion("type", [
 export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimeProcessError>()(
   "AgentRuntimeProcessError",
   {
-    reason: Schema.Literals(["closed", "protocol", "pressure", "request", "start"]),
+    reason: Schema.Literals(["closed", "protocol", "pressure", "request", "rejected", "start"]),
     message: Schema.String,
     cause: Schema.optional(Schema.Defect()),
   },
@@ -114,6 +114,10 @@ export interface AgentRuntimeProcessConnection {
     never,
     Scope.Scope
   >;
+  /** Independent metadata delivery budget; transcript bursts cannot evict lifecycle observations. */
+  readonly subscribeExecutionNotifications: Effect.Effect<
+    Stream.Stream<AgentRuntimeProcessDelivery>, never, Scope.Scope
+  >;
 }
 
 /** The process, pending replies, input queue and host callbacks share the caller's Scope. */
@@ -129,6 +133,8 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     readonly notification: AgentRuntimeNotification;
   }>(256);
   const notificationDelivery = yield* Ref.make(0);
+  const executionNotifications = yield* PubSub.sliding<AgentRuntimeProcessDelivery>(64);
+  const executionDelivery = yield* Ref.make(0);
   const hostRequests = yield* Ref.make<ReadonlySet<string>>(new Set());
   const ready = yield* Deferred.make<AgentRuntimeIdentity, AgentRuntimeProcessError>();
   const terminated = yield* Deferred.make<AgentRuntimeProcessError>();
@@ -226,7 +232,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       yield* Deferred.fail(
         waiter,
         new AgentRuntimeProcessError({
-          reason: "request",
+          reason: "rejected",
           message: reply.data.error.message,
         }),
       );
@@ -244,6 +250,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       return;
     }
     if (notification.type !== "host.request") {
+      if (notification.type === "execution.lifecycle" || notification.type === "event.error") {
+        const delivery = yield* Ref.updateAndGet(executionDelivery, (current) => current + 1);
+        yield* PubSub.publish(executionNotifications, { delivery, notification });
+      }
       const delivery = yield* Ref.updateAndGet(notificationDelivery, (current) => current + 1);
       yield* PubSub.publish(notifications, { delivery, notification });
       return;
@@ -352,7 +362,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const waiter = yield* Deferred.make<unknown, AgentRuntimeProcessError>();
     const refused = yield* Ref.modify(state, (current) => {
       if (current.closed) return [current.closed, current] as const;
-      if (current.pending.size >= MAXIMUM_PENDING_REQUESTS)
+      const capacity = method === "storage.snapshot.release" || method === "shutdown"
+        ? MAXIMUM_PENDING_REQUESTS + 2
+        : MAXIMUM_PENDING_REQUESTS;
+      if (current.pending.size >= capacity)
         return [
           new AgentRuntimeProcessError({
             reason: "pressure",
@@ -395,6 +408,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       ),
       Effect.andThen(Queue.end(input)),
       Effect.andThen(PubSub.shutdown(notifications)),
+      Effect.andThen(PubSub.shutdown(executionNotifications)),
     ),
   );
   const identity = yield* Deferred.await(ready).pipe(
@@ -415,6 +429,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     request,
     notifications: Stream.fromPubSub(notifications),
     subscribeNotifications: PubSub.subscribe(notifications).pipe(
+      Effect.map(Stream.fromSubscription),
+    ),
+    subscribeExecutionNotifications: PubSub.subscribe(executionNotifications).pipe(
       Effect.map(Stream.fromSubscription),
     ),
   } satisfies AgentRuntimeProcessConnection;

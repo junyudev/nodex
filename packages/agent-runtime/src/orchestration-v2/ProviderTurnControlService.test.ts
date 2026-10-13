@@ -223,6 +223,7 @@ it.effect(
           getTurnStartHistory: () => Effect.die("unused"),
           getRuntimeRecoveryProjection: () => Effect.die("unused getRuntimeRecoveryProjection"),
           getHostToolAuthorityContext: () => Effect.die("unused host tool authority"),
+          getThreadSubagentOverview: () => Effect.die("unused task overview"),
           getPlan: () => Effect.die("unused"),
           hasUnpairedRunInterruptRequest: () => Effect.die("unused interrupt read"),
           getThreadAttachmentIds: () => Effect.die("Unused attachment lookup"),
@@ -268,6 +269,7 @@ it.effect(
         ProviderSessionManager.ProviderSessionManagerV2,
         ProviderSessionManager.ProviderSessionManagerV2.of({
           busyInstances: Effect.succeed(new Set()),
+          isSnapshotIdle: Effect.succeed(true),
           shutdown: Effect.void,
           open: () => Effect.die("unused open"),
           get: (providerSessionId) =>

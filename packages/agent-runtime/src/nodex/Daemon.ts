@@ -46,7 +46,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
       Effect.tryPromise(() => write(notification)).pipe(Effect.orDie);
     const runtime = ManagedRuntime.make(
       Application.layer(configuration, notify).pipe(
-        Layer.provide(Logger.layer([Logger.withConsoleError(Logger.formatLogFmt)])),
+        Layer.provideMerge(Logger.layer([Logger.withConsoleError(Logger.formatLogFmt)])),
       ),
     );
     const input = NodeReadline.createInterface({ input: process.stdin, terminal: false });
@@ -55,6 +55,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     const dispose = () => {
       closing = true;
       input.close();
+      process.stdin.destroy();
       disposal ??= runtime.dispose();
       return disposal;
     };
@@ -114,6 +115,10 @@ export async function runAgentRuntimeProcess(): Promise<void> {
               `Invalid host reply: ${error instanceof Error ? error.message : String(error)}\n`,
             );
           }
+          continue;
+        }
+        if (request?.method === "storage.snapshot.release") {
+          launch(request);
           continue;
         }
         if (request?.method === "shutdown") {

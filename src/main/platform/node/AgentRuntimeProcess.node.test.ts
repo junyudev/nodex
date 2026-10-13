@@ -8,7 +8,8 @@ import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
-import { acquireAgentRuntimeProcess } from "./AgentRuntimeProcess";
+import { acquireAgentRuntimeProcess, AgentRuntimeProcessError } from "./AgentRuntimeProcess";
+import * as Schema from "effect/Schema";
 
 const entryPath = fileURLToPath(
   new URL("../../../../tests/fixtures/agent-runtime-stdio.mjs", import.meta.url),
@@ -108,5 +109,44 @@ it.live("unexpected process exit rejects pending work and Scope close reaps the 
       yield* Scope.close(scope, Exit.void);
     }
     assert.throws(() => process.kill(pid, 0));
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("transcript bursts cannot evict lifecycle metadata from its independent delivery budget", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const metadata = yield* connection.subscribeExecutionNotifications;
+    yield* connection.request("execution.observe", {});
+    yield* connection.request("events.observe", {});
+    yield* connection.request("thread.read", { threadId: "thread" });
+    const delivered = yield* metadata.pipe(Stream.take(2), Stream.runCollect, Effect.timeout("2 seconds"));
+    assert.deepEqual(delivered.map((entry) => entry.delivery), [1, 2]);
+    assert.deepEqual(delivered.map((entry) => entry.notification.type), ["execution.lifecycle", "execution.lifecycle"]);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("snapshot release remains admitted with every normal request slot occupied", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const notifications = yield* connection.subscribeNotifications;
+    const pending = yield* Effect.forEach(Array.from({ length: 64 }, (_, index) => index), (index) =>
+      connection.request("project.read", { projectId: `blocked:${index}` }).pipe(Effect.forkScoped({ startImmediately: true })),
+    );
+    yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
+    const refused = yield* connection.request("runtime.identity", {}).pipe(Effect.flip);
+    assert.isTrue(Schema.is(AgentRuntimeProcessError)(refused));
+    assert.strictEqual(refused.reason, "pressure");
+    assert.deepEqual(yield* connection.request("storage.snapshot.release", { leaseId: "lease" }), { released: true });
+    yield* Effect.forEach(pending, Fiber.join);
+    assert.strictEqual((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("distinguishes a known remote refusal from an uncertain transport timeout", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const rejected = yield* connection.request("project.read", { projectId: "reject" }).pipe(Effect.flip);
+    assert.strictEqual(rejected.reason, "rejected");
+    assert.strictEqual((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

@@ -7,3 +7,8 @@ if (command === "acp-mcp-bridge" || command === "acp-mcp-call") {
   const { runAgentRuntimeProcess } = await import("./Daemon.ts");
   await runAgentRuntimeProcess();
 }
+// @effect-diagnostics nodeBuiltinImport:off
+import { Console } from "node:console";
+
+// Every diagnostic shares stderr, including native SDK helpers loaded after this entry.
+globalThis.console = new Console({ stdout: process.stderr, stderr: process.stderr });

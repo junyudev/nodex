@@ -7,6 +7,10 @@ import {
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
+import * as Scope from "effect/Scope";
+import * as Exit from "effect/Exit";
 import { makeWithPorts } from "./ProviderConfiguration.ts";
 
 it.effect(
@@ -61,5 +65,52 @@ it.effect(
         deferredInstanceIds: [],
       });
       expect(closed).toEqual([idle, active, background]);
+    }),
+);
+
+it.effect(
+  "suspends idle probes during a snapshot and restores them only while the process remains open",
+  () =>
+    Effect.gen(function* () {
+      const initial = {
+        codex: { driver: ProviderDriverKind.make("codex"), config: { binaryPath: "codex" } },
+      };
+      const changes: ProviderInstanceConfigMap[] = [];
+      const owner = yield* Scope.make();
+      yield* Effect.addFinalizer(() => Scope.close(owner, Exit.void));
+      const configuration = yield* makeWithPorts(initial, {
+        busyInstances: Effect.succeed(new Set()),
+        closeIdleInstance: () => Effect.void,
+        reconcile: (map) =>
+          Effect.sync(() => {
+            changes.push(map);
+          }),
+      }).pipe(Effect.provideService(Scope.Scope, owner));
+      const entered = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
+      const holder = yield* configuration
+        .withSuspended(
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(finish))),
+        )
+        .pipe(Effect.forkIn(owner));
+      yield* Deferred.await(entered);
+      expect(changes).toEqual([{}]);
+      const configuring = yield* configuration.configure(initial).pipe(Effect.forkChild);
+      yield* TestClock.adjust("2 seconds");
+      expect(configuring.pollUnsafe()).toBeUndefined();
+      expect(changes).toEqual([{}]);
+      yield* Deferred.succeed(finish, undefined);
+      yield* Fiber.join(holder);
+      yield* Fiber.join(configuring);
+      expect(changes).toEqual([{}, initial]);
+      const closedEntered = yield* Deferred.make<void>();
+      yield* configuration
+        .withSuspended(
+          Deferred.succeed(closedEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        )
+        .pipe(Effect.forkIn(owner));
+      yield* Deferred.await(closedEntered);
+      yield* Scope.close(owner, Exit.void);
+      expect(changes).toEqual([{}, initial, {}]);
     }),
 );

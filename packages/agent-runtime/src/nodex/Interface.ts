@@ -16,6 +16,7 @@ import type {
   OrchestrationV2DomainEvent,
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
+  OrchestrationV2Subagent,
 } from "@t3tools/contracts";
 
 /** Plain transport types. Execution schemas and their codecs stay in the engine process. */
@@ -39,6 +40,39 @@ export type AgentSnapshot = Extract<
 export type AgentHistoryPage = AgentWire<OrchestrationV2ThreadHistoryPage>;
 export type AgentShellSnapshot = AgentWire<OrchestrationV2ThreadShellSnapshot>;
 export type AgentTurnItem = AgentWire<OrchestrationV2TurnItem>;
+export type AgentSubagentOverviewItem = AgentWire<
+  Pick<
+    OrchestrationV2Subagent,
+    | "id"
+    | "threadId"
+    | "runId"
+    | "parentNodeId"
+    | "origin"
+    | "driver"
+    | "providerInstanceId"
+    | "providerThreadId"
+    | "childThreadId"
+    | "title"
+    | "model"
+    | "modelSelection"
+    | "status"
+    | "startedAt"
+    | "completedAt"
+    | "updatedAt"
+  >
+> & { readonly childRunId: string | null; readonly resultAvailable: boolean };
+export interface AgentSubagentOverview {
+  readonly active: {
+    readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
+    readonly nextCursor: string | null;
+    readonly hasMore: boolean;
+  };
+  readonly terminal: {
+    readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
+    readonly nextCursor: string | null;
+    readonly hasMore: boolean;
+  };
+}
 
 export interface AgentRuntimeConfiguration {
   /** Absolute, dedicated writable directory owned by this Profile's execution runtime. */
@@ -57,6 +91,16 @@ export interface AgentRuntimeIdentity {
   readonly lastSequence: number;
 }
 
+export interface AgentStorageSnapshot {
+  readonly leaseId: string;
+  readonly runtimeId: string;
+  readonly runtimeGeneration: string;
+  readonly sequence: number;
+  readonly databasePath: string;
+  readonly attachmentsPath: string;
+  readonly environmentIdPath: string;
+}
+
 /** Metadata proof from the engine's current foreground actor, without transcript bodies. */
 export type AgentThreadAuthority = AgentHostTurnIdentity & {
   readonly rootThreadId: string;
@@ -67,10 +111,28 @@ export type AgentThreadAuthority = AgentHostTurnIdentity & {
   readonly readOnly: boolean;
   readonly archived: boolean;
   readonly nativeTurnId: string | null;
+  readonly branch: string | null;
+  readonly worktreePath: string | null;
   readonly hasNativeBackgroundWork: boolean;
 };
 
 export interface AgentRuntimeOperations {
+  readonly "tasks.overview": {
+    readonly input: {
+      readonly threadId: string;
+      readonly activeCursor?: string;
+      readonly terminalCursor?: string;
+    };
+    readonly output: AgentSubagentOverview;
+  };
+  readonly "storage.snapshot.acquire": {
+    readonly input: Record<string, never>;
+    readonly output: AgentStorageSnapshot;
+  };
+  readonly "storage.snapshot.release": {
+    readonly input: { readonly leaseId: string };
+    readonly output: { readonly released: boolean };
+  };
   readonly "attachments.persist": {
     readonly input: AgentWire<PersistChatAttachmentsInput>;
     readonly output: AgentWire<PersistChatAttachmentsResult>;

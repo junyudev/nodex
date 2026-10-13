@@ -33,6 +33,7 @@ const fixture = Effect.gen(function* () {
       terminated: Deferred.await(terminated),
       notifications: Stream.empty,
       subscribeNotifications: Effect.succeed(Stream.empty),
+      subscribeExecutionNotifications: Effect.succeed(Stream.empty),
       request: (method) => Effect.sync(() => requests.push(method)).pipe(Effect.andThen(
         Effect.fail(new AgentRuntimeProcessError({ reason: "closed", message: "Fixture command failed" })),
       )),

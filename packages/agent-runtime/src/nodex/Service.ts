@@ -17,6 +17,7 @@ import {
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
   ProviderInstanceConfigMap,
+  OrchestrationV2Subagent,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
@@ -24,6 +25,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Fiber from "effect/Fiber";
+import * as Scope from "effect/Scope";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -43,6 +45,7 @@ import * as Providers from "../provider/ProviderRegistry.ts";
 import * as Configuration from "../config.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
+import * as StorageSnapshot from "./StorageSnapshot.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
 import {
@@ -71,6 +74,16 @@ const EventType = Schema.Literals(
   }),
 );
 const AgentRequest = Schema.Union([
+  request(
+    "tasks.overview",
+    Schema.Struct({
+      threadId: ThreadId,
+      activeCursor: Schema.optional(Schema.String),
+      terminalCursor: Schema.optional(Schema.String),
+    }),
+  ),
+  request("storage.snapshot.acquire", Schema.Struct({})),
+  request("storage.snapshot.release", Schema.Struct({ leaseId: Schema.String })),
   request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
   request("attachments.persist", PersistChatAttachmentsInput),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
@@ -150,6 +163,35 @@ const encodeHistory = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2Thre
 const encodeItem = Schema.encodeEffect(Schema.toCodecJson(Schema.NullOr(OrchestrationV2TurnItem)));
 const encodeEvent = Schema.encodeEffect(Schema.toCodecJson(OrchestrationV2StoredEvent));
 const encodeAttachments = Schema.encodeEffect(Schema.toCodecJson(PersistChatAttachmentsResult));
+const overviewFields = OrchestrationV2Subagent.fields;
+const OverviewItem = Schema.Struct({
+  id: overviewFields.id,
+  threadId: overviewFields.threadId,
+  runId: overviewFields.runId,
+  parentNodeId: overviewFields.parentNodeId,
+  origin: overviewFields.origin,
+  driver: overviewFields.driver,
+  providerInstanceId: overviewFields.providerInstanceId,
+  providerThreadId: overviewFields.providerThreadId,
+  childThreadId: overviewFields.childThreadId,
+  title: overviewFields.title,
+  model: overviewFields.model,
+  modelSelection: overviewFields.modelSelection,
+  status: overviewFields.status,
+  startedAt: overviewFields.startedAt,
+  completedAt: overviewFields.completedAt,
+  updatedAt: overviewFields.updatedAt,
+  childRunId: Schema.NullOr(RunId),
+  resultAvailable: Schema.Boolean,
+});
+const OverviewPage = Schema.Struct({
+  items: Schema.Array(OverviewItem),
+  nextCursor: Schema.NullOr(Schema.String),
+  hasMore: Schema.Boolean,
+});
+const encodeOverview = Schema.encodeEffect(
+  Schema.toCodecJson(Schema.Struct({ active: OverviewPage, terminal: OverviewPage })),
+);
 
 /** Runtime identity is persisted by the engine and never derived from the current process ID. */
 export const readIdentity = Effect.gen(function* () {
@@ -185,8 +227,13 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const providerConfiguration = yield* ProviderConfiguration.make(
     yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
   );
+  // SQL waiters cannot delay interruption of the lease fiber that releases their connection.
+  const processScope = yield* Scope.make("parallel");
+  yield* Effect.addFinalizer((exit) => Scope.close(processScope, exit));
+  const storageSnapshot = yield* StorageSnapshot.make(identity, providerConfiguration).pipe(
+    Effect.provideService(Scope.Scope, processScope),
+  );
   const readAuthority = yield* Authority.make;
-  const processScope = yield* Effect.scope;
   const configuration = yield* Configuration.ServerConfig;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -200,9 +247,26 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     if (fiber !== undefined) yield* Fiber.interrupt(fiber);
   });
 
-  const handle = Effect.fn("AgentRuntime.handleRequest")(function* (value: unknown) {
-    const input = yield* decodeRequest(value);
+  const execute = Effect.fn("AgentRuntime.executeRequest")(function* (
+    input: typeof AgentRequest.Type,
+  ) {
     switch (input.method) {
+      case "tasks.overview":
+        return yield* projections
+          .getThreadSubagentOverview({
+            threadId: input.input.threadId,
+            ...(input.input.activeCursor === undefined
+              ? {}
+              : { activeCursor: input.input.activeCursor }),
+            ...(input.input.terminalCursor === undefined
+              ? {}
+              : { terminalCursor: input.input.terminalCursor }),
+          })
+          .pipe(Effect.flatMap(encodeOverview));
+      case "storage.snapshot.acquire":
+        return yield* storageSnapshot.acquire;
+      case "storage.snapshot.release":
+        return yield* storageSnapshot.release(input.input.leaseId);
       case "providers.configure":
         return yield* providerConfiguration.configure(input.input.providers);
       case "attachments.persist": {
@@ -384,6 +448,34 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     }
   });
 
+  const handle = Effect.fn("AgentRuntime.handleRequest")(function* (value: unknown) {
+    const input = yield* decodeRequest(value);
+    // New operations participate in the writer fence unless explicitly proven read-only.
+    switch (input.method) {
+      case "storage.snapshot.acquire":
+      case "storage.snapshot.release":
+      case "thread.read":
+      case "tasks.overview":
+      case "thread.authority":
+      case "project.read":
+      case "shell.read":
+      case "thread.snapshot":
+      case "thread.history":
+      case "thread.item":
+      case "thread.item.full":
+      case "events.observe":
+      case "execution.observe":
+      case "events.unobserve":
+      case "runtime.identity":
+      case "shutdown":
+        return yield* execute(input);
+      case "providers.read":
+        if (input.input.refresh !== true) return yield* execute(input);
+        return yield* storageSnapshot.withWriter(execute(input));
+      default:
+        return yield* storageSnapshot.withWriter(execute(input));
+    }
+  });
   return {
     identity,
     handle: (value: unknown) =>

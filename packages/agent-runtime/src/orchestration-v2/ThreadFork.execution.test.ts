@@ -45,18 +45,21 @@ const forkCases = (["codex", "claudeAgent"] as const).flatMap((driverName) => {
     { runEffectWorker: false },
   );
 
-  return (["failed", "interrupted", "cancelled"] as const).map((status) => ({
-    driver,
-    status,
-    instanceId,
-    modelSelection,
-    layer,
-  }));
+  return (["failed", "interrupted", "cancelled"] as const).flatMap((status) =>
+    (["same_root", "independent_root"] as const).map((rootPolicy) => ({
+      driver,
+      status,
+      instanceId,
+      modelSelection,
+      layer,
+      rootPolicy,
+    })),
+  );
 });
 
 it.effect.each(forkCases)(
-  "bounds $driver context when continuing a fork of a $status run",
-  ({ driver, status, instanceId, modelSelection, layer }) =>
+  "bounds $driver context when continuing a $rootPolicy fork of a $status run",
+  ({ driver, status, instanceId, modelSelection, layer, rootPolicy }) =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       const eventSink = yield* EventSink.EventSinkV2;
@@ -224,6 +227,7 @@ it.effect.each(forkCases)(
         sourceThreadId,
         targetThreadId,
         sourcePoint: { type: "run", runId: sourceRunId },
+        rootPolicy,
         createdBy: "user",
         creationSource: "web",
       });
@@ -240,6 +244,17 @@ it.effect.each(forkCases)(
         creationSource: "web",
       });
       const target = yield* orchestrator.getThreadProjection(targetThreadId);
+      assert.equal(
+        target.thread.lineage.rootThreadId,
+        rootPolicy === "independent_root" ? targetThreadId : sourceThreadId,
+      );
+      assert.equal(
+        target.thread.lineage.parentThreadId,
+        rootPolicy === "independent_root" ? null : sourceThreadId,
+      );
+      assert.equal(target.thread.forkedFrom?.type, "run");
+      if (target.thread.forkedFrom?.type === "run")
+        assert.equal(target.thread.forkedFrom.threadId, sourceThreadId);
       assert.equal(target.contextTransfers[0]?.resolution?.strategy, "portable_context");
       assert.lengthOf(target.contextHandoffs, 1);
       const handoff = target.contextHandoffs[0]!;

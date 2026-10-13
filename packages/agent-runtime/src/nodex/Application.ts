@@ -4,6 +4,7 @@ import * as Host from "./Host.ts";
 import * as Runtime from "./Runtime.ts";
 import * as Service from "./Service.ts";
 import * as Bridge from "./HostBridge.ts";
+import * as RuntimeHomeLease from "./RuntimeHomeLease.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
@@ -28,5 +29,6 @@ export const layer = (
   return Service.layer(notify, configuration.providers).pipe(
     Layer.provide(startup),
     Layer.provideMerge(bridge),
+    Layer.provide(Layer.effectDiscard(RuntimeHomeLease.acquire(configuration.home))),
   );
 };

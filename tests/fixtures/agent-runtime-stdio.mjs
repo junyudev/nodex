@@ -11,6 +11,8 @@ const identity = {
 const send = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const success = (id, output) => send({ id, success: true, output });
 const pendingHosts = new Map();
+let executionSubscription;
+const blocked = [];
 send({ type: "ready", identity });
 
 for await (const line of createInterface({ input: process.stdin })) {
@@ -28,6 +30,15 @@ for await (const line of createInterface({ input: process.stdin })) {
   }
   if (request.method === "project.read") {
     if (request.input.projectId === "exit") process.exit(9);
+    if (request.input.projectId === "reject") {
+      send({ id: request.id, success: false, error: { message: "Execution is busy" } });
+      continue;
+    }
+    if (request.input.projectId.startsWith("blocked:")) {
+      blocked.push(request.id);
+      if (blocked.length === 64) send({ type: "event", subscriptionId: "pressure-ready", event: { sequence: 1, event: {} } });
+      continue;
+    }
     setTimeout(() => success(request.id, {
       id: request.input.projectId,
       title: request.input.projectId,
@@ -35,11 +46,31 @@ for await (const line of createInterface({ input: process.stdin })) {
     }), request.input.projectId === "first" ? 30 : 1);
     continue;
   }
+  if (request.method === "storage.snapshot.release") {
+    success(request.id, { released: true });
+    for (const id of blocked.splice(0)) success(id, null);
+    continue;
+  }
   if (request.method === "events.observe") {
     for (let sequence = 1; sequence <= 1_024; sequence += 1) {
       send({ type: "event", subscriptionId: request.id, event: { sequence, event: {} } });
     }
     success(request.id, { subscribed: true, afterSequence: 0 });
+    continue;
+  }
+  if (request.method === "execution.observe") {
+    executionSubscription = request.id;
+    send({ type: "execution.lifecycle", subscriptionId: executionSubscription,
+      runtimeGeneration: identity.runtimeGeneration, sequence: 1, threadId: "thread",
+      eventType: "run.updated", runId: "run", runStatus: "running" });
+    success(request.id, { subscribed: true, subscriptionId: executionSubscription, afterSequence: 0 });
+    continue;
+  }
+  if (request.method === "thread.read") {
+    send({ type: "execution.lifecycle", subscriptionId: executionSubscription,
+      runtimeGeneration: identity.runtimeGeneration, sequence: 1_026, threadId: "thread",
+      eventType: "run.updated", runId: "run", runStatus: "completed" });
+    success(request.id, null);
     continue;
   }
   if (request.method === "command.dispatch") {

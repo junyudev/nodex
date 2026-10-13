@@ -106,7 +106,7 @@ function makeSourceProjection(sourceRun: OrchestrationV2Run): OrchestrationV2Thr
   };
 }
 
-const planFork = (sourceRun: OrchestrationV2Run) =>
+const planFork = (sourceRun: OrchestrationV2Run, rootPolicy?: "same_root" | "independent_root") =>
   Effect.gen(function* () {
     const service = yield* ThreadForkService.ThreadForkServiceV2;
     return yield* service.plan({
@@ -119,6 +119,7 @@ const planFork = (sourceRun: OrchestrationV2Run) =>
       },
       transferId: ContextTransferId.make("context-transfer:fork-snoozed-source"),
       targetThreadId,
+      ...(rootPolicy === undefined ? {} : { rootPolicy }),
       title: "Awake fork",
       createdBy: "user",
       creationSource: "mobile",
@@ -177,6 +178,29 @@ it.effect("forks from a usage-limited failed run", () =>
       runId: sourceRunId,
     });
   }),
+);
+
+it.effect(
+  "starts an independent execution root while retaining the exact captured history source",
+  () =>
+    Effect.gen(function* () {
+      const result = yield* planFork(makeSourceRun("completed"), "independent_root");
+      assert.deepEqual(result.targetThread.lineage, {
+        parentThreadId: null,
+        relationshipToParent: null,
+        rootThreadId: targetThreadId,
+      });
+      assert.deepEqual(result.targetThread.forkedFrom, {
+        type: "run",
+        threadId: sourceThreadId,
+        runId: sourceRunId,
+      });
+      assert.equal(result.targetThread.projectId, makeSourceThread().projectId);
+      assert.equal(result.targetThread.runtimeMode, makeSourceThread().runtimeMode);
+      assert.equal(result.targetThread.interactionMode, makeSourceThread().interactionMode);
+      assert.equal(result.transfer.sourceThreadId, sourceThreadId);
+      assert.equal(result.transfer.targetThreadId, targetThreadId);
+    }),
 );
 
 it.effect("rejects in-progress and rolled-back fork sources", () =>

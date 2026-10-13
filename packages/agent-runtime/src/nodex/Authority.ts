@@ -64,7 +64,9 @@ export const make = Effect.gen(function* () {
       nativeGeneration: runtime.value.nativeGeneration,
       nativeThreadRef: nativeThread.nativeThreadRef,
       nativeTurnId: nativeTurn?.nativeTurnRef?.nativeId ?? null,
-      cwd: runtime.value.providerSession.cwd,
+      cwd: shell.worktreePath ?? runtime.value.providerSession.cwd,
+      branch: shell.branch,
+      worktreePath: shell.worktreePath,
       hasNativeBackgroundWork,
     } satisfies AgentThreadAuthority;
   });

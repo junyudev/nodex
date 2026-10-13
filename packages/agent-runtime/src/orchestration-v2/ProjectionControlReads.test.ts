@@ -352,3 +352,61 @@ it.effect.each(storageCases)(
       );
     }).pipe(Effect.provide(Layer.merge(storeLayer, SqlitePersistence.layerMemory))),
 );
+
+it.effect(
+  "task overview admits indexed metadata pages from 10k tasks without decoding task bodies",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const sql = yield* SqlClient.SqlClient;
+      const now = yield* DateTime.now;
+      yield* store.apply(fixtureEvents(now)[0]!);
+      const timestamp = DateTime.formatIso(now);
+      // Scale is the explicit storage boundary here. Body fields are deliberately invalid for the full task decoder.
+      yield* sql`WITH RECURSIVE task(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM task WHERE n < 10000)
+      INSERT INTO orchestration_v2_projection_subagents
+      (subagent_id,thread_id,run_id,parent_node_id,provider,driver,provider_instance_id,provider_thread_id,
+       child_thread_id,origin,status,started_at,completed_at,updated_at,payload_json)
+      SELECT printf('task:%05d',n), ${threadId}, NULL, ${nodeId}, 'codex', 'codex', 'codex', NULL, NULL,
+        'provider_native', CASE WHEN n % 2 = 0 THEN 'completed' ELSE 'running' END,
+        ${timestamp},NULL,${timestamp},json_object('title','Bounded task','model',NULL,'prompt',json_object('obsolete',1),'result',json_object('obsolete',1))
+      FROM task`;
+      const giant = "x".repeat(2 * 1024 * 1024);
+      yield* sql`UPDATE orchestration_v2_projection_subagents SET payload_json = json_set(payload_json,
+      '$.prompt',${giant},'$.result',${giant}) WHERE subagent_id = 'task:10000'`;
+      assert.equal((yield* Effect.exit(store.getThreadProjection(threadId)))._tag, "Failure");
+      const first = yield* store.getThreadSubagentOverview({ threadId });
+      assert.equal(first.active.items.length, 4);
+      assert.equal(first.terminal.items.length, 10);
+      assert.equal(first.terminal.items[0]?.id, "task:10000");
+      assert.isTrue(first.terminal.items[0]!.resultAvailable);
+      assert.isBelow(JSON.stringify(first).length, 16 * 1024);
+      const second = yield* store.getThreadSubagentOverview({
+        threadId,
+        activeCursor: first.active.nextCursor!,
+        terminalCursor: first.terminal.nextCursor!,
+      });
+      assert.equal(
+        new Set([...first.active.items, ...second.active.items].map((task) => task.id)).size,
+        8,
+      );
+      assert.equal(
+        new Set([...first.terminal.items, ...second.terminal.items].map((task) => task.id)).size,
+        20,
+      );
+      assert.equal(
+        (yield* Effect.exit(
+          store.getThreadSubagentOverview({ threadId, activeCursor: first.terminal.nextCursor! }),
+        ))._tag,
+        "Failure",
+      );
+      const plan = yield* sql<{ detail: string }>`EXPLAIN QUERY PLAN SELECT subagent_id,updated_at
+      FROM orchestration_v2_projection_subagents WHERE thread_id = ${threadId}
+      AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = 'active'
+      ORDER BY updated_at DESC,subagent_id DESC LIMIT 5`;
+      assert.isTrue(plan.some((row) => row.detail.includes("subagent_overview_idx")));
+      assert.isFalse(plan.some((row) => row.detail.includes("TEMP B-TREE")));
+    }).pipe(
+      Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
+    ),
+);
