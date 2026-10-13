@@ -1,0 +1,45 @@
+crates/nodex-core/src/workspace/read.rs
+  s_5cd527886c6c64::t_cf3274495217a8 4,48,630-631,635,664
+  s_5cd527886c6c64::t_fcd773562006b2 665-672,694
+crates/nodex-core/src/workspace/task_window.rs
+  s_5cd527886c6c64::t_cf3274495217a8 6-7,34-35
+  s_5cd527886c6c64::t_b6de16b9782c01 5,36,308-316
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_5cd527886c6c64::t_a85c37c87ba2f7 101,288,348,417-428
+  s_5cd527886c6c64::t_6531ebd604c4ff 11-15,33,68-71,73-100,102-137,160,270,281-287,289-347,349-378,429-448
+crates/nodex-core-contracts/src/workspace.rs
+  s_5cd527886c6c64::t_cf3274495217a8 1190-1191,1196-1200
+  s_5cd527886c6c64::t_ad6e98e4429158 1201-1202,1438,1442
+crates/nodex-core/src/workspace/agent_runtime_authority.rs
+  s_5cd527886c6c64::t_c80956273c52d2 491,1182
+crates/nodex-core/src/workspace/mutation.rs
+  s_5cd527886c6c64::t_2fc70772f1d0b8 707,730
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_5cd527886c6c64::t_be5313d4cfb361 1,223
+docs/product-specs/agent-runtime-behavior.md
+  s_5cd527886c6c64::t_711aec679fe5c1 11-15,48-68
+packages/core-protocol/openapi.json
+  s_5cd527886c6c64::t_afdeac46925b78 29846,29849,29883-29885,38528,38531,38565-38567,40499-40514,40544-40553
+packages/core-protocol/src/generated.ts
+  s_5cd527886c6c64::t_ca99663e18c8a7 7210,9277,9715-9719,9725
+src/main/core-client/project-workspace-adapter.ts
+  s_5cd527886c6c64::t_b818ce2c514629 749-751
+src/shared/types.ts
+  s_5cd527886c6c64::t_189b7fffca070e 1133,1150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c483281273ddb40926dee3771f5db330088b34e3",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
