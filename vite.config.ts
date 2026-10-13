@@ -2,6 +2,8 @@ import { defineConfig } from "vite-plus";
 
 const toolingFixtureMode = process.env.NODEX_TOOLING_FIXTURE_MODE === "1";
 const generatedOrExternalPaths = [
+  ".agents/worktrees/**",
+  ".codex/worktrees/**",
   ".cache/**",
   ".generated/**",
   ".vite-plus/**",

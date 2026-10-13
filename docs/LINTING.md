@@ -52,6 +52,13 @@ Program using the real policy. Its typed fixtures prove compiler errors,
 type-aware rules, Effect scope, suppressions, and advisory exit behavior.
 Separate syntax fixtures outside the project graph still use fixture mode.
 
+Root lint and formatting exclude `.agents/worktrees/**` and `.codex/worktrees/**`.
+Each nested checkout owns its source and checks; running the primary checkout's
+gate must never analyze or format another worktree. `tooling:verify` proves this
+with invalid sources in isolated temporary worktrees, rejects the same invalid
+syntax in owned source, and removes the exclusions to confirm both tools reach
+the counterexamples.
+
 `tsconfig.tooling.json` owns configuration modules, Vitest and Playwright configuration,
 benchmark and test runners, and every owned script test. Production script entrypoints
 belong to the Node project, including `.mts` and `.cts`. JavaScript entrypoints

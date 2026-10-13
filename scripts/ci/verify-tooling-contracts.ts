@@ -1,4 +1,8 @@
-import { verifySemanticTaskCache, verifyTypedSemanticPolicy } from "./verify-semantic-tooling";
+import {
+  verifySemanticTaskCache,
+  verifyTypedSemanticPolicy,
+  verifyWorktreeToolingIsolation,
+} from "./verify-semantic-tooling";
 import {
   verifySourceTypeOwnership,
   verifySourceTypeOwnershipFixtures,
@@ -258,9 +262,10 @@ verifyInvalidFixtures(
 verifyValidFixtures(["scripts/fixtures/tooling/tailwind-valid.tsx"], tailwindEnvironment);
 
 verifyWorkspaceTaskGraph();
+verifyWorktreeToolingIsolation();
 verifySemanticTaskCache();
 verifyTypedSemanticPolicy();
 
 console.log(
-  "Tooling contracts verified: package scripts, typed diagnostic policy, shared task cache, and the Vite+ workspace task graph.",
+  "Tooling contracts verified: package scripts, worktree isolation, typed diagnostic policy, shared task cache, and the Vite+ workspace task graph.",
 );

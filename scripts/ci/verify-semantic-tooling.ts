@@ -118,6 +118,99 @@ interface Diagnostic {
   readonly severity: string;
 }
 
+/** Root checks own this checkout; nested worktrees keep independent lint and format policies. */
+export function verifyWorktreeToolingIsolation(): void {
+  fixtureWorkspace((directory) => {
+    const worktreePaths = [".agents/worktrees/**", ".codex/worktrees/**"];
+    const ownedFilename = "src/invalid.ts";
+    const foreignFilenames = worktreePaths.map((pattern) =>
+      pattern.replace("**", "isolated/src/invalid.ts"),
+    );
+    const writeConfiguration = (includeWorktrees: boolean) => {
+      writeFileSync(
+        path.join(directory, "vite.config.ts"),
+        `
+        import { defineConfig } from 'vite-plus';
+        import policy from ${JSON.stringify(path.join(root, "vite.config.ts"))};
+        const worktreePaths = ${JSON.stringify(includeWorktrees ? worktreePaths : [])};
+        export default defineConfig({
+          lint: { ...policy.lint,
+            ignorePatterns: (policy.lint?.ignorePatterns ?? []).filter((pattern) => !worktreePaths.includes(pattern)),
+            jsPlugins: (policy.lint?.jsPlugins ?? []).map((plugin) =>
+              typeof plugin === 'string' && plugin.startsWith('.') ? ${JSON.stringify(root + "/")} + plugin : plugin) },
+          fmt: { ...policy.fmt,
+            ignorePatterns: (policy.fmt?.ignorePatterns ?? []).filter((pattern) => !worktreePaths.includes(pattern)) }
+        });
+        `,
+      );
+      const formatted = command(directory, ["fmt", "--write", "vite.config.ts", "package.json"]);
+      if (formatted.status !== 0)
+        throw new Error("Could not prepare the tooling isolation fixture.\n" + formatted.output);
+    };
+    const lint = () => {
+      const result = command(directory, ["lint", "--format", "json"]);
+      const marker = result.stdout.indexOf('{ "diagnostics"');
+      if (marker < 0)
+        throw new Error("Isolation fixture did not return lint diagnostics.\n" + result.output);
+      const report = JSON.parse(result.stdout.slice(marker)) as {
+        readonly diagnostics: readonly Diagnostic[];
+      };
+      return { ...result, diagnostics: report.diagnostics };
+    };
+    const format = () => command(directory, ["fmt", "--check"]);
+    const hasDiagnostic = (diagnostics: readonly Diagnostic[], filename: string) =>
+      diagnostics.some((diagnostic) =>
+        diagnostic.filename?.replaceAll("\\", "/").endsWith(filename),
+      );
+    for (const filename of [ownedFilename, ...foreignFilenames]) {
+      mkdirSync(path.dirname(path.join(directory, filename)), { recursive: true });
+      writeFileSync(path.join(directory, filename), "export const invalid = ;\n");
+    }
+    writeConfiguration(false);
+    const ownedLint = lint();
+    const ownedFormat = format();
+    if (
+      ownedLint.status === 0 ||
+      !hasDiagnostic(ownedLint.diagnostics, ownedFilename) ||
+      foreignFilenames.some((filename) => hasDiagnostic(ownedLint.diagnostics, filename)) ||
+      ownedFormat.status === 0 ||
+      !ownedFormat.output.includes(ownedFilename)
+    ) {
+      throw new Error(
+        "Root checks must reject owned syntax without checking nested worktrees.\n" +
+          ownedLint.output +
+          ownedFormat.output,
+      );
+    }
+    unlinkSync(path.join(directory, ownedFilename));
+    const isolatedLint = lint();
+    const isolatedFormat = format();
+    if (isolatedLint.status !== 0 || isolatedFormat.status !== 0) {
+      throw new Error(
+        "Nested worktree syntax escaped the root lint or format exclusions.\n" +
+          isolatedLint.output +
+          isolatedFormat.output,
+      );
+    }
+    // Removing only the worktree exclusions must expose both invalid nested sources.
+    writeConfiguration(true);
+    const exposedLint = lint();
+    const exposedFormat = format();
+    if (
+      exposedLint.status === 0 ||
+      foreignFilenames.some((filename) => !hasDiagnostic(exposedLint.diagnostics, filename)) ||
+      exposedFormat.status === 0 ||
+      foreignFilenames.some((filename) => !exposedFormat.output.includes(filename))
+    ) {
+      throw new Error(
+        "The isolation counterexample did not reach both nested worktrees.\n" +
+          exposedLint.output +
+          exposedFormat.output,
+      );
+    }
+  });
+}
+
 /** New upstream diagnostics must not silently escape the owning runtime's scope. */
 function verifyEffectConfiguration(): void {
   const packagePath = createRequire(import.meta.url).resolve("@effect/tsgo/package.json");
