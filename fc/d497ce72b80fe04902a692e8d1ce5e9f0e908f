@@ -1,0 +1,134 @@
+docs/ENGINEERING_LEARNINGS.md
+  s_e397f26d82f862::t_6fc5ff0a4598c8 298-300,358-374
+  s_e397f26d82f862::t_9b83df60dd2b28 375-382
+docs/ARCHITECTURE.md
+  s_e397f26d82f862::t_6fc5ff0a4598c8 1193
+  s_e397f26d82f862::t_22b67ea2af1fa7 1186-1192,1194-1197
+docs/product-specs/new-chat-home-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 30
+docs/FRONTEND.md
+  s_e397f26d82f862::t_b30e45639e7bf5 439
+  s_e397f26d82f862::t_6fc5ff0a4598c8 8,24-25,345-346,428,435-436,445-453
+  s_e397f26d82f862::t_98ad4fad2c241f 369
+scripts/ci/renderer-command-boundaries.ts
+  s_e397f26d82f862::t_6fc5ff0a4598c8 612
+src/renderer/components/block-documents/reference-block-surfaces.tsx
+  s_e397f26d82f862::t_6de55d4bf379a5 41
+src/renderer/lib/sentry-renderer.node.test.ts
+  s_e397f26d82f862::t_db084bfeb24088 38-50
+docs/product-specs/nfm-editor-slash-menu-behavior.md
+  s_e397f26d82f862::t_b30e45639e7bf5 57-58
+docs/product-specs/settings-route-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 92,184-187
+src/renderer/lib/use-document-theme.ts
+  s_e397f26d82f862::t_6de55d4bf379a5 39
+docs/product-specs/nfm-editor-agent-config-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 68
+src/renderer/lib/statsig-telemetry.node.test.ts
+  s_e397f26d82f862::t_db084bfeb24088 102-117
+src/renderer/components/block-documents/page-outliner-surface.tsx
+  s_e397f26d82f862::t_6de55d4bf379a5 33
+AGENTS.md
+  s_e397f26d82f862::t_6fc5ff0a4598c8 121,195-196
+src/renderer/bootstrap/renderer-document.ts
+  s_e397f26d82f862::t_04f60d966ee67a 48,58,60,62,74
+src/renderer/components/block-documents/page-outliner-surface.test.tsx
+  s_e397f26d82f862::t_6de55d4bf379a5 8-15,18-41,121
+docs/product-specs/codex-managed-worktree-lifecycle-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 530-531
+src/renderer/components/workbench/database-list/database-list-grid.browser.test.ts
+  s_e397f26d82f862::t_9ea09748a508ff 1-76
+docs/product-specs/nfm-editor-table-block-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 21-22
+src/renderer/components/workbench/local-environments-settings-page.test.tsx
+  s_e397f26d82f862::t_ac9514a5e81bbf 122,130,142,302-348
+  s_84bf5c78324d85::t_bd83d84cde4495 349-350
+src/renderer/features/browser-sidebar/browser-sidebar-theme-synchronizer.tsx
+  s_e397f26d82f862::t_04f60d966ee67a 9
+src/renderer/lib/query-client.tsx
+  s_e397f26d82f862::t_04f60d966ee67a 78
+src/renderer/test/composer-shell-fixture.ts
+  s_e397f26d82f862::t_bff672efaf7351 131,145,217,611,894,896-897,909,929,931-932,935-943,950,963-964,976-979
+  s_e397f26d82f862::t_fa6daf0d702d75 1-130,132-144,146-216,218-610,612-893,895,898-908,910-928,930,933-934,944-949,951-962,965-975,980-985
+src/renderer/components/block-documents/owned-document-reference-surface.tsx
+  s_e397f26d82f862::t_6de55d4bf379a5 29
+docs/development.md
+  s_e397f26d82f862::t_6fc5ff0a4598c8 319-327,329,337-343
+  s_e397f26d82f862::t_98ad4fad2c241f 328,330-336
+docs/product-specs/nfm-editor-code-block-behavior.md
+  s_e397f26d82f862::t_98ad4fad2c241f 90
+scripts/ci/verify-icon-boundaries.ts
+  s_e397f26d82f862::t_6fc5ff0a4598c8 524
+src/renderer/test/file-search-fixture.ts
+  s_e397f26d82f862::t_e3de9b66e81af4 4
+src/renderer/bootstrap/renderer-document.jsdom.test.ts
+  s_e397f26d82f862::t_db084bfeb24088 1-88
+docs/product-specs/card-stage-rich-editor-performance.md
+  s_e397f26d82f862::t_87124eab56499d 177
+pnpm-workspace.yaml
+  s_e397f26d82f862::t_4004c445afbda4 78
+src/renderer/components/workbench/relation-property-editor.test.tsx
+  s_e397f26d82f862::t_0af30c9b7caba2 484-489,492,550-552
+  s_e397f26d82f862::t_57922ba93973b1 9,491
+  s_e397f26d82f862::t_ac9514a5e81bbf 483,490,493-549,553-558
+docs/product-specs/codex-worktree-creation-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 19,293-296
+docs/product-specs/workbench-shell.md
+  s_e397f26d82f862::t_87124eab56499d 218,220-221
+docs/product-specs/nfm-block-side-menu-behavior.md
+  s_e397f26d82f862::t_87124eab56499d 10,56,121,157,159
+  s_e397f26d82f862::t_b30e45639e7bf5 160-162
+src/renderer/test/thread-tool-call-fixture.ts
+  s_e397f26d82f862::t_034df9fe170a54 1-146,148-160
+  s_e397f26d82f862::t_f881de28ff9a79 147
+pnpm-lock.yaml
+  s_e397f26d82f862::t_b438d9a94a7f74 3231-3232,3234,3236-3237,3239,3241-3242,3244,3246-3247,3249,3251-3253,3255-3256,3258-3262,3264-3268,10485-10495,10497,10506
+src/renderer/components/board/editor/page-mention-inline-content.test.tsx
+  s_e397f26d82f862::t_9b593afbeb0dc7 10-11,43
+src/renderer/components/board/page-stage.test.tsx
+  s_e397f26d82f862::t_9ab5813c11917a 26,141
+src/renderer/components/board/page-stage/inline-property-strip.test.tsx
+  s_e397f26d82f862::t_5a73ba2816eb2c 4-5,17
+src/renderer/components/board/page-stage/use-page-stage-controller.test.tsx
+  s_e397f26d82f862::t_c26924a36d43de 16,44
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_e397f26d82f862::t_01394370901d04 72,2501
+src/renderer/features/local-conversation/view/blocks/thread-agent-activity-performance.stress.browser.test.tsx
+  s_e397f26d82f862::t_a39ce0aefeac83 13,85-88
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.test.tsx
+  s_e397f26d82f862::t_e779aafad9f956 11,24,51,70,273,289,320-322,324,332,336,463,506-508,511-513,527-529,552-554
+src/renderer/lib/page-detail-projection-dependencies.node.test.ts
+  s_e397f26d82f862::t_4503fcbdd72161 3-4,11
+src/renderer/lib/page-detail-store.test.tsx
+  s_e397f26d82f862::t_55396046343a64 14-15,209-210
+src/renderer/lib/page-stage-properties.node.test.ts
+  s_e397f26d82f862::t_d480fe0262fbce 5-6,16
+src/renderer/test/page-detail-fixture.ts
+  s_e397f26d82f862::t_9c99921fe8832b 1-3,7,13-14,16-17,19-20,34,39-40,200
+src/renderer/test/page-stage-fixture.ts
+  s_e397f26d82f862::t_ac9ddc717d8e7b 1-2,4,6,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fcd497ce72b80fe04902a692e8d1ce5e9f0e908f",
+  "prompts": {},
+  "sessions": {
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e397f26d82f862": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d1-a5a1-7c31-a93b-3211d61dfcce",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
