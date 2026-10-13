@@ -16,7 +16,10 @@ import type {
   CodexComposerPredictionInput,
   CodexComposerPredictionResult,
 } from "../../shared/codex-composer-prediction";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
+import {
+  CodexAppServerCapabilities,
+  type CodexAppServerCapabilitySnapshot,
+} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
@@ -87,6 +90,7 @@ interface Entry {
   readonly authLease: AbortSignal;
   readonly parentThreadId: string;
   readonly latestTurnId: string | null;
+  readonly readCapability: () => CodexAppServerCapabilitySnapshot | null;
   readonly fiber: Fiber.Fiber<CodexComposerPredictionResult | null, CodexComposerPredictionError>;
 }
 const outputSchema = JSON.stringify({
@@ -221,14 +225,31 @@ export const make = (
       Effect.forkScoped,
     );
 
+    const assertCurrent = Effect.fn("CodexComposerPrediction.assertCurrent")(function* (
+      input: CodexComposerPredictionInput,
+      capability: CodexAppServerCapabilitySnapshot,
+    ) {
+      const current = yield* capabilities
+        .isCurrent(capability)
+        .pipe(Effect.mapError((cause) => fail("request-failed", input.threadId, cause)));
+      if (capability.hostId !== input.hostId || !current)
+        return yield* fail(
+          "request-failed",
+          input.threadId,
+          new Error("Prediction source retired"),
+        );
+    });
     const run = Effect.fn("CodexComposerPrediction.run")(function* (
       input: CodexComposerPredictionInput,
       configuration: CodexComposerPredictionConfiguration,
+      captureCapability: (capability: CodexAppServerCapabilitySnapshot) => void,
     ) {
       const startedAt = yield* Clock.currentTimeMillis;
       const capability = yield* capabilities
         .forHost(input.hostId)
         .pipe(Effect.mapError((cause) => fail("request-failed", input.threadId, cause)));
+      captureCapability(capability);
+      yield* assertCurrent(input, capability);
       generations.set(input.hostId, capability.generation);
       const fence = codexGatewayGenerationFence(capability);
       const parent = yield* gateway
@@ -239,6 +260,7 @@ export const make = (
           { ...fence, source: "composer_predictions" },
         )
         .pipe(Effect.mapError((cause) => fail("request-failed", input.threadId, cause)));
+      yield* assertCurrent(input, capability);
       if (
         parent.collaborationMode?.mode === "plan" ||
         parent.modelProvider !== "openai" ||
@@ -246,38 +268,54 @@ export const make = (
         !capability.flags.experimentalPredictionForkMode
       )
         return null;
-      const temporary = yield* creations.materialize(
-        input.hostId,
-        capability.generation,
-        gateway
-          .requestOnHost(
-            input.hostId,
-            "thread/fork",
-            {
-              threadId: input.threadId,
-              experimentalPredictionMode: true,
-              ephemeral: true,
-              excludeTurns: true,
-              threadSource: "composer_predictions",
-            },
-            { ...fence, source: "composer_predictions" },
-          )
-          .pipe(
-            Effect.map((response) => {
-              internalThreads.observeStarted(projectCodexGatewayThreadReadThread(response.thread));
-              return response;
-            }),
-            Effect.catch(() => Effect.succeed(null)),
-          ),
-        (response) => response?.thread.id ?? null,
+      // Acquisition and release registration are atomic even if cancellation wins the fork ACK.
+      const temporary = yield* Effect.acquireRelease(
+        creations.materialize(
+          input.hostId,
+          capability.generation,
+          gateway
+            .requestOnHost(
+              input.hostId,
+              "thread/fork",
+              {
+                threadId: input.threadId,
+                experimentalPredictionMode: true,
+                ephemeral: true,
+                excludeTurns: true,
+                threadSource: "composer_predictions",
+              },
+              { ...fence, source: "composer_predictions" },
+            )
+            .pipe(
+              Effect.map((response) => {
+                internalThreads.observeStarted(
+                  projectCodexGatewayThreadReadThread(response.thread),
+                );
+                return response;
+              }),
+              Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
+            ),
+          (response) => response.thread.id,
+        ),
+        (response) =>
+          gateway
+            .requestOnHost(
+              input.hostId,
+              "thread/unsubscribe",
+              { threadId: response.thread.id },
+              { ...fence, source: "composer_predictions" },
+            )
+            .pipe(
+              Effect.ignore,
+              Effect.ensuring(Effect.sync(() => internalThreads.clear(response.thread.id))),
+            ),
       );
-      if (!temporary)
-        return yield* Effect.fail(
-          fail("request-failed", input.threadId, new Error("Prediction fork failed")),
-        );
+      yield* assertCurrent(input, capability);
       const temporaryId = temporary.thread.id;
       let turnId: string | null = null;
       let completed = false;
+      let cancelled = false;
+      let interrupted = false;
       let text = "";
       let lastTokens:
         | ServerNotificationParamsByMethod["thread/tokenUsage/updated"]["tokenUsage"]["last"]
@@ -287,19 +325,25 @@ export const make = (
         CodexComposerPredictionResult,
         CodexComposerPredictionError
       >();
-      yield* Effect.addFinalizer(() =>
-        gateway
-          .requestOnHost(
-            input.hostId,
-            "thread/unsubscribe",
-            { threadId: temporaryId },
-            { ...fence, source: "composer_predictions" },
-          )
-          .pipe(
-            Effect.ignore,
-            Effect.ensuring(Effect.sync(() => internalThreads.clear(temporaryId))),
-          ),
+      const interruptKnownTurn = Effect.fn("CodexComposerPrediction.interruptKnownTurn")(
+        function* () {
+          if (completed || interrupted || turnId === null) return;
+          interrupted = true;
+          yield* gateway
+            .requestOnHost(
+              input.hostId,
+              "turn/interrupt",
+              { threadId: temporaryId, turnId },
+              { ...fence, source: "composer_predictions" },
+            )
+            .pipe(Effect.ignore);
+        },
       );
+      yield* Effect.addFinalizer(() => {
+        if (completed) return Effect.void;
+        cancelled = true;
+        return interruptKnownTurn();
+      });
       const observe = Effect.fn("CodexComposerPrediction.observe")(function* (
         event: CodexEndpointEvent,
       ) {
@@ -374,6 +418,11 @@ export const make = (
           yield* Deferred.fail(result, parsed.failure);
           return;
         }
+        const current = yield* assertCurrent(input, capability).pipe(Effect.result);
+        if (current._tag === "Failure") {
+          yield* Deferred.fail(result, current.failure);
+          return;
+        }
         const finishedAt = yield* Clock.currentTimeMillis;
         const configuredEffort = configuration.prediction_reasoning_effort || null;
         const value: CodexComposerPredictionResult = {
@@ -397,7 +446,8 @@ export const make = (
       });
       yield* gateway.events.pipe(Stream.runForEach(observe), Effect.forkScoped);
       yield* Effect.yieldNow;
-      const start = gateway
+      // A logical cancellation cannot retract a dispatched Turn. Its late ACK still owns cleanup.
+      const acknowledgement = yield* gateway
         .requestOnHost(
           input.hostId,
           "turn/start",
@@ -421,11 +471,23 @@ export const make = (
           Effect.tap((response) =>
             Effect.sync(() => {
               turnId = response.turn.id;
-            }),
+            }).pipe(
+              Effect.andThen(() =>
+                cancelled ? interruptKnownTurn() : assertCurrent(input, capability),
+              ),
+            ),
           ),
           Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
-          Effect.andThen(Deferred.await(result)),
+          Effect.result,
+          Effect.forkIn(ownerScope, { startImmediately: true }),
         );
+      const start = Fiber.join(acknowledgement).pipe(
+        Effect.flatMap((acknowledged) =>
+          acknowledged._tag === "Failure"
+            ? Effect.fail(acknowledged.failure)
+            : Deferred.await(result),
+        ),
+      );
       return yield* Effect.raceFirst(
         Effect.raceFirst(start, Deferred.await(result)),
         Effect.sleep(options.timeoutMs ?? 30_000).pipe(
@@ -433,20 +495,24 @@ export const make = (
             Effect.fail(fail("timeout", input.threadId, new Error("Prediction timed out"))),
           ),
         ),
-      ).pipe(
-        Effect.onExit((exit) => {
-          if (Exit.isSuccess(exit) || completed || turnId === null) return Effect.void;
-          return gateway
-            .requestOnHost(
-              input.hostId,
-              "turn/interrupt",
-              { threadId: temporaryId, turnId },
-              { ...fence, source: "composer_predictions" },
-            )
-            .pipe(Effect.ignore);
-        }),
       );
     }, Effect.scoped);
+
+    const reusableEntry = Effect.fn("CodexComposerPrediction.reusableEntry")(function* (
+      key: string,
+      authLease: AbortSignal,
+      threadId: string,
+    ): Effect.fn.Return<Entry | null, CodexComposerPredictionError> {
+      const entry = entries.get(key);
+      if (!entry || entry.authLease !== authLease || authLease.aborted) return null;
+      const capability = entry.readCapability();
+      if (capability === null) return entry;
+      const current = yield* capabilities
+        .isCurrent(capability)
+        .pipe(Effect.mapError((cause) => fail("request-failed", threadId, cause)));
+      if (entries.get(key) !== entry) return yield* reusableEntry(key, authLease, threadId);
+      return current ? entry : null;
+    });
 
     const request = Effect.fn("CodexComposerPrediction.request")(function* (
       input: CodexComposerPredictionInput,
@@ -472,9 +538,11 @@ export const make = (
         if (!admission.current || capturedLease !== authLease || authLease.aborted)
           return yield* Effect.interrupt;
         const existing = entries.get(key);
-        if (existing && existing.authLease === authLease && !authLease.aborted) {
+        const reusable = yield* reusableEntry(key, authLease, input.threadId);
+        if (!admission.current || authLease.aborted) return yield* Effect.interrupt;
+        if (reusable) {
           admissions.delete(admission);
-          return yield* Fiber.join(existing.fiber);
+          return yield* Fiber.join(reusable.fiber);
         }
         yield* clearEntries(
           { hostId: input.hostId, threadId: input.threadId },
@@ -482,8 +550,9 @@ export const make = (
           key,
         );
         if (!admission.current || authLease.aborted) return yield* Effect.interrupt;
-        const admitted = entries.get(key);
-        if (admitted?.authLease === authLease && !authLease.aborted) {
+        const admitted = yield* reusableEntry(key, authLease, input.threadId);
+        if (!admission.current || authLease.aborted) return yield* Effect.interrupt;
+        if (admitted) {
           admissions.delete(admission);
           return yield* Fiber.join(admitted.fiber);
         }
@@ -493,14 +562,16 @@ export const make = (
             : configuration.catch_up_sample_rate) ??
           configuration.sample_rate ??
           1;
+        let capability: CodexAppServerCapabilitySnapshot | null = null;
+        const infer = run(input, configuration, (captured) => {
+          capability = captured;
+        });
         const operation =
           sampleRate < 1
             ? Random.next.pipe(
-                Effect.flatMap((value) =>
-                  value >= sampleRate ? Effect.succeed(null) : run(input, configuration),
-                ),
+                Effect.flatMap((value) => (value >= sampleRate ? Effect.succeed(null) : infer)),
               )
-            : run(input, configuration);
+            : infer;
         const attempt = Symbol();
         const fiber = yield* operation.pipe(
           Effect.onExit((exit) =>
@@ -522,6 +593,7 @@ export const make = (
           authLease,
           parentThreadId: input.threadId,
           latestTurnId: input.latestTurnId,
+          readCapability: () => capability,
           fiber,
         });
         // The owned inference now carries cancellation and must finish native cleanup before join settles.

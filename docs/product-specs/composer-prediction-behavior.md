@@ -6,13 +6,15 @@ boundary and sampling fields are documented in [Configuration](../CONFIGURATION.
 
 ## Generation and lifetime
 
-A successful latest Turn completion can request a live prediction from the current root
+A latest Turn completion can request a live prediction from the current root
 Conversation owner. A ready, connected, idle Composer can request the same latest Turn
 through catch-up. Background generation does not require an empty editor. Side Chats,
 ephemeral Threads and unsupported conversation modes do not generate predictions.
 
 The Main owner caches one request per host, Thread and latest Turn. Shared callers reuse
-that request and its successful result; failures do not retry automatically, but a later
+that request and its successful result only while the same physical host source is current;
+replacing a source invalidates reuse even when its generation number is unchanged.
+Failures do not retry automatically, but a later
 explicit request can try again. Changing the latest Turn
 removes the old request. A new parent Turn, host generation retirement, account mutation,
 logout, authentication failure or explicit clear cancels pending work and invalidates
@@ -34,6 +36,11 @@ partial deltas, and the returned text is trimmed. Malformed output fails the pre
 without changing accepted Composer content. Completion can settle before the Turn-start
 acknowledgement. Timeout, cancellation or failure interrupts an active helper Turn; every
 terminal path unsubscribes the temporary Thread and releases its internal classification.
+Cancellation during fork creation keeps release ownership until the fork acknowledgement
+identifies its helper; that helper is released before the cancellation settles and never
+starts a prediction Turn. Cancellation after Turn dispatch releases the helper immediately
+and still interrupts an accepted Turn if its acknowledgement arrives later. The Profile
+Scope owns that acknowledgement wait and closes it with the application.
 
 ## Composer interaction
 

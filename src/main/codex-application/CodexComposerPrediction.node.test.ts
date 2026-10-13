@@ -7,6 +7,7 @@ import * as PubSub from "effect/PubSub";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import * as Stream from "effect/Stream";
+import * as Scope from "effect/Scope";
 import type {
   ClientRequestMethod,
   ClientRequestResponsesByMethod,
@@ -24,7 +25,7 @@ import {
   createCodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexInternalThreadRegistry, make as makeRegistry } from "./CodexInternalThreadRegistry";
-import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
+import { ThreadCreationRuntime, make as makeCreations } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
 import {
   make,
@@ -111,6 +112,13 @@ function fixture(
     readonly holdTurn?: Deferred.Deferred<void>;
     readonly turnStarted?: Deferred.Deferred<void>;
     readonly malformedResult?: boolean;
+    readonly holdFork?: Deferred.Deferred<void>;
+    readonly forkStarted?: Deferred.Deferred<void>;
+    readonly forkReturned?: Deferred.Deferred<void>;
+    readonly holdResume?: Deferred.Deferred<void>;
+    readonly resumeStarted?: Deferred.Deferred<void>;
+    readonly holdStartAck?: Deferred.Deferred<void>;
+    readonly startDispatched?: Deferred.Deferred<void>;
   } = {},
 ) {
   const calls: Request[] = [];
@@ -132,8 +140,14 @@ function fixture(
       const notify = (notificationMethod: ServerNotificationMethod, notificationParams: unknown) =>
         notification(notificationMethod, notificationParams, hostId);
       calls.push({ method, params });
-      if (method === "thread/resume") return parent;
+      if (method === "thread/resume") {
+        if (options.resumeStarted) yield* Deferred.succeed(options.resumeStarted, undefined);
+        if (options.holdResume) yield* Deferred.await(options.holdResume);
+        return parent;
+      }
       if (method === "thread/fork") {
+        if (options.forkStarted) yield* Deferred.succeed(options.forkStarted, undefined);
+        if (options.holdFork) yield* Deferred.await(options.holdFork);
         if (options.failFork)
           return yield* Effect.fail(
             new CodexRuntimeError({
@@ -143,6 +157,7 @@ function fixture(
               retryable: false,
             }),
           );
+        if (options.forkReturned) yield* Deferred.succeed(options.forkReturned, undefined);
         return {
           thread: {
             ...parent.thread,
@@ -154,6 +169,11 @@ function fixture(
       }
       if (method === "thread/unsubscribe" || method === "turn/interrupt") return {};
       if (method !== "turn/start") return yield* Effect.die(new Error(`Unexpected ${method}`));
+      if (options.startDispatched) yield* Deferred.succeed(options.startDispatched, undefined);
+      if (options.holdStartAck) {
+        yield* Deferred.await(options.holdStartAck);
+        return { turn: { ...completedTurn, status: "inProgress" } };
+      }
       yield* PubSub.publish(
         events,
         notify("turn/started", {
@@ -226,6 +246,10 @@ function provide(
   registry: CodexInternalThreadRegistry["Service"],
   authSignal: AbortSignal = new AbortController().signal,
   auth: Partial<CodexExecutionHostAuthState["Service"]> = {},
+  ports: {
+    readonly capabilities?: CodexAppServerCapabilities["Service"];
+    readonly creations?: ThreadCreationRuntime["Service"];
+  } = {},
 ) {
   return owner.pipe(
     Effect.provideService(CodexGateway, gateway),
@@ -244,13 +268,17 @@ function provide(
     ),
     Effect.provideService(
       CodexAppServerCapabilities,
-      CodexAppServerCapabilities.of({
-        forHost: () => Effect.succeed(capability),
-        forThread: () => Effect.succeed(capability),
-        isCurrent: () => Effect.succeed(true),
-      }),
+      ports.capabilities ??
+        CodexAppServerCapabilities.of({
+          forHost: (hostId) => Effect.succeed({ ...capability, hostId }),
+          forThread: () => Effect.succeed(capability),
+          isCurrent: () => Effect.succeed(true),
+        }),
     ),
-    Effect.provideService(ThreadCreationRuntime, transparentThreadCreationRuntime),
+    Effect.provideService(
+      ThreadCreationRuntime,
+      ports.creations ?? transparentThreadCreationRuntime,
+    ),
     Effect.provideService(CodexInternalThreadRegistry, registry),
   );
 }
@@ -540,6 +568,33 @@ it.effect.each([
   ),
 );
 
+it.effect("an unsampled result stays cached without acquiring a native host Session", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const f = fixture(events);
+      const registry = yield* makeRegistry;
+      const owner = yield* provide(
+        make({ configurationForHost: () => Effect.succeed({ ...configuration, sample_rate: 0 }) }),
+        f.gateway,
+        registry,
+        undefined,
+        {},
+        {
+          capabilities: CodexAppServerCapabilities.of({
+            forHost: () => Effect.die("Unsampled predictions must not acquire a host Session"),
+            forThread: () => Effect.die("Unsampled predictions must not acquire a host Session"),
+            isCurrent: () => Effect.die("Unsampled predictions have no native source to validate"),
+          }),
+        },
+      );
+      assert.isNull(yield* owner.request(input));
+      assert.isNull(yield* owner.request(input));
+      assert.deepStrictEqual(f.calls, []);
+    }),
+  ),
+);
+
 it.effect.each(["plan", "provider", "model"] as const)(
   "%s parent is ineligible without a fork or model Turn",
   (ineligible) =>
@@ -637,6 +692,265 @@ it.effect(
         assert.isFalse(registry.shouldSuppress("temporary"));
       }),
     ),
+);
+
+it.effect(
+  "a cancelled prediction retains cleanup ownership while its physical fork acknowledgement is pending",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const holdFork = yield* Deferred.make<void>();
+        const forkStarted = yield* Deferred.make<void>();
+        const forkReturned = yield* Deferred.make<void>();
+        const f = fixture(events, { holdFork, forkStarted, forkReturned });
+        const registry = yield* makeRegistry;
+        const creations = yield* makeCreations;
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          f.gateway,
+          registry,
+          undefined,
+          {},
+          { creations },
+        );
+        const pending = yield* owner.request(input).pipe(Effect.forkChild);
+        yield* Deferred.await(forkStarted);
+        const clearing = yield* owner
+          .clear({ hostId: input.hostId, threadId: input.threadId })
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(holdFork, undefined);
+        yield* Deferred.await(forkReturned);
+        yield* Fiber.join(clearing);
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+        yield* Effect.yieldNow;
+        assert.strictEqual(f.calls.filter(({ method }) => method === "turn/start").length, 0);
+        assert.strictEqual(f.calls.filter(({ method }) => method === "thread/fork").length, 1);
+        assert.strictEqual(
+          f.calls.filter(({ method }) => method === "thread/unsubscribe").length,
+          1,
+        );
+        assert.isFalse(registry.shouldSuppress("temporary"));
+      }),
+    ),
+);
+
+it.effect(
+  "a replaced physical source cannot reuse a completed prediction from the same generation",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const f = fixture(events);
+        const registry = yield* makeRegistry;
+        let current = { ...capability, sourceEpoch: "first-source" };
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          f.gateway,
+          registry,
+          undefined,
+          {},
+          {
+            capabilities: CodexAppServerCapabilities.of({
+              forHost: () => Effect.sync(() => current),
+              forThread: () => Effect.sync(() => current),
+              isCurrent: (snapshot) =>
+                Effect.sync(() => snapshot.sourceEpoch === current.sourceEpoch),
+            }),
+          },
+        );
+        const first = yield* owner.request(input);
+        current = { ...current, sourceEpoch: "replacement-source" };
+        const replacement = yield* owner.request(input);
+        assert.strictEqual(replacement?.text, "next action");
+        assert.notStrictEqual(replacement, first);
+        assert.strictEqual(f.calls.filter(({ method }) => method === "thread/fork").length, 2);
+      }),
+    ),
+);
+
+it.effect("source retirement during parent resume prevents a prediction fork", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const holdResume = yield* Deferred.make<void>();
+      const resumeStarted = yield* Deferred.make<void>();
+      const f = fixture(events, { holdResume, resumeStarted });
+      const registry = yield* makeRegistry;
+      let current = true;
+      const owner = yield* provide(
+        make({ configurationForHost: () => Effect.succeed(configuration) }),
+        f.gateway,
+        registry,
+        undefined,
+        {},
+        {
+          capabilities: CodexAppServerCapabilities.of({
+            forHost: () => Effect.succeed(capability),
+            forThread: () => Effect.succeed(capability),
+            isCurrent: () => Effect.sync(() => current),
+          }),
+        },
+      );
+      const pending = yield* owner.request(input).pipe(Effect.forkChild);
+      yield* Deferred.await(resumeStarted);
+      current = false;
+      yield* Deferred.succeed(holdResume, undefined);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+      assert.deepStrictEqual(
+        f.calls.map(({ method }) => method),
+        ["thread/resume"],
+      );
+    }),
+  ),
+);
+
+it.effect(
+  "cancellation before a Turn start acknowledgement interrupts the late accepted helper Turn",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const holdStartAck = yield* Deferred.make<void>();
+        const startDispatched = yield* Deferred.make<void>();
+        const f = fixture(events, { holdStartAck, startDispatched });
+        const registry = yield* makeRegistry;
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          f.gateway,
+          registry,
+        );
+        const pending = yield* owner.request(input).pipe(Effect.forkChild);
+        yield* Deferred.await(startDispatched);
+        yield* owner.clear({ hostId: input.hostId, threadId: input.threadId });
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+        assert.strictEqual(
+          f.calls.filter(({ method }) => method === "thread/unsubscribe").length,
+          1,
+        );
+        assert.isFalse(registry.shouldSuppress("temporary"));
+        yield* Deferred.succeed(holdStartAck, undefined);
+        yield* Effect.yieldNow;
+        yield* Effect.yieldNow;
+        assert.deepStrictEqual(
+          f.calls.filter(({ method }) => method === "turn/interrupt"),
+          [
+            {
+              method: "turn/interrupt",
+              params: { threadId: "temporary", turnId: "prediction-turn" },
+            },
+          ],
+        );
+        assert.strictEqual(
+          f.calls.filter(({ method }) => method === "thread/unsubscribe").length,
+          1,
+        );
+      }),
+    ),
+);
+
+it.effect(
+  "Profile scope closure interrupts an active helper and releases its internal identity",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const holdTurn = yield* Deferred.make<void>();
+        const turnStarted = yield* Deferred.make<void>();
+        const f = fixture(events, { holdTurn, turnStarted });
+        const registry = yield* makeRegistry;
+        const ownerScope = yield* Scope.fork(yield* Effect.scope);
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          f.gateway,
+          registry,
+        ).pipe(Scope.provide(ownerScope));
+        const pending = yield* owner.request(input).pipe(Effect.forkChild);
+        yield* Deferred.await(turnStarted);
+        yield* Scope.close(ownerScope, Exit.void);
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+        assert.strictEqual(f.calls.filter(({ method }) => method === "turn/interrupt").length, 1);
+        assert.strictEqual(
+          f.calls.filter(({ method }) => method === "thread/unsubscribe").length,
+          1,
+        );
+        assert.isFalse(registry.shouldSuppress("temporary"));
+      }),
+    ),
+);
+
+it.effect(
+  "source retirement during fork acquisition releases the helper without starting a Turn",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const holdFork = yield* Deferred.make<void>();
+        const forkStarted = yield* Deferred.make<void>();
+        const f = fixture(events, { holdFork, forkStarted });
+        const registry = yield* makeRegistry;
+        let current = true;
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          f.gateway,
+          registry,
+          undefined,
+          {},
+          {
+            capabilities: CodexAppServerCapabilities.of({
+              forHost: () => Effect.succeed(capability),
+              forThread: () => Effect.succeed(capability),
+              isCurrent: () => Effect.sync(() => current),
+            }),
+          },
+        );
+        const pending = yield* owner.request(input).pipe(Effect.forkChild);
+        yield* Deferred.await(forkStarted);
+        current = false;
+        yield* Deferred.succeed(holdFork, undefined);
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+        assert.deepStrictEqual(
+          f.calls.map(({ method }) => method),
+          ["thread/resume", "thread/fork", "thread/unsubscribe"],
+        );
+        assert.isFalse(registry.shouldSuppress("temporary"));
+      }),
+    ),
+);
+
+it.effect("a native without prediction fork support never starts a helper", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const f = fixture(events);
+      const registry = yield* makeRegistry;
+      const unsupported = createCodexAppServerCapabilitySnapshot({
+        hostId: "local",
+        generation: 1,
+        userAgent: "nodex/0.162.0-alpha.17.1",
+      });
+      const owner = yield* provide(
+        make({ configurationForHost: () => Effect.succeed(configuration) }),
+        f.gateway,
+        registry,
+        undefined,
+        {},
+        {
+          capabilities: CodexAppServerCapabilities.of({
+            forHost: () => Effect.succeed(unsupported),
+            forThread: () => Effect.succeed(unsupported),
+            isCurrent: () => Effect.succeed(true),
+          }),
+        },
+      );
+      assert.isNull(yield* owner.request(input));
+      assert.deepStrictEqual(
+        f.calls.map(({ method }) => method),
+        ["thread/resume"],
+      );
+    }),
+  ),
 );
 
 it.effect("concurrent callers share a failure and a later explicit request can retry", () =>
