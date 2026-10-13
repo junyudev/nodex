@@ -1,0 +1,56 @@
+src/renderer/components/workbench/keyboard-shortcut-help-dialog.tsx
+  s_84bf5c78324d85::t_ade20dd6de9f8b 11,59-60
+src/renderer/lib/codex-window-runtime.ts
+  s_84bf5c78324d85::t_ade20dd6de9f8b 25-32
+  s_84bf5c78324d85::t_29b9995dc0197e 1-2
+src/renderer/test/composer-shell-fixture.ts
+  s_84bf5c78324d85::t_3182823591e2a9 898
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.ts
+  s_84bf5c78324d85::t_3182823591e2a9 149,153,160,165,169,173,193,198,219,223-227,233,242,246-248
+  s_84bf5c78324d85::t_759580d7ecef0c 249-250,254,256,260,263,265,269
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_84bf5c78324d85::t_38b43642d9d864 117
+src/renderer/features/local-conversation/view/composer/use-composer-dictation.ts
+  s_84bf5c78324d85::t_ade20dd6de9f8b 2,93-96
+src/renderer/lib/renderer-command-keymap.browser.test.tsx
+  s_84bf5c78324d85::t_f94d91ad6368a7 1-5,7-34,37-85
+  s_84bf5c78324d85::t_ade20dd6de9f8b 6,35-36
+  s_84bf5c78324d85::t_bea208932e66ca 86-88
+src/renderer/lib/codex-window-runtime.node.test.ts
+  s_84bf5c78324d85::t_ade20dd6de9f8b 4,10-15,17-19
+  s_84bf5c78324d85::t_29b9995dc0197e 16
+config/renderer-react-compiler.test.ts
+  s_84bf5c78324d85::t_a1ceaf9012844b 46,65
+scripts/codex-schema-generator.test.ts
+  s_84bf5c78324d85::t_a1ceaf9012844b 55
+tests/e2e/codex-history-eviction.spec.ts
+  s_84bf5c78324d85::t_1057e0a4eb0949 312-313
+  s_84bf5c78324d85::t_39b8c6ffd63938 147
+src/renderer/lib/use-workbench-shortcuts.ts
+  s_84bf5c78324d85::t_ade20dd6de9f8b 2,349-350
+src/renderer/lib/inline-visualization/inline-visualization-runtime.ts
+  s_84bf5c78324d85::t_3182823591e2a9 261
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.jsdom.test.ts
+  s_84bf5c78324d85::t_4cb1b2db48c5b1 141-142,144,147,151-154,251,265-269
+  s_84bf5c78324d85::t_40e4f5ee2f2789 143,145-146,148-150,155-156,213-216,223-226,238-250,252-264,273-281
+  s_84bf5c78324d85::t_f3a4aaec4f6b3d 270-272
+  s_84bf5c78324d85::t_26fd8da6b0123b 282-284
+src/renderer/lib/file-markdown-media/file-markdown-media.jsdom.test.tsx
+  s_84bf5c78324d85::t_218782d0b2ad46 231-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1cd72c58fb03f80dace533de7f912e9bdcff7578",
+  "prompts": {},
+  "sessions": {
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
