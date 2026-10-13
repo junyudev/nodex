@@ -2,8 +2,8 @@ import { describe, expect, test } from "vite-plus/test";
 import { parseDataSourcePropertyId } from "../../shared/database-identities";
 import type { PageDetail } from "../../shared/page-detail";
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
-import { buildPageDetailStoryResult } from "../components/board/page-stage/page-stage-story-page-detail";
-import { buildPageStageStoryPage } from "../components/board/page-stage/page-stage-dev-story-data";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
+import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
 import { projectPageDetailToStageModel } from "./page-stage-page";
 import {
   hasPageStageScheduleCapability,
@@ -13,7 +13,7 @@ import {
 } from "./page-stage-properties";
 
 const detail = (): PageDetail => {
-  const result = buildPageDetailStoryResult("project-1", buildPageStageStoryPage());
+  const result = buildPageDetailFixtureResult("project-1", buildPageStageFixturePage());
   if (!result.ok) throw new Error("Expected Page Detail fixture");
   return result.value;
 };

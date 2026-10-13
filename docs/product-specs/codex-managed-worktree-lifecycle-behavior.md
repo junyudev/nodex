@@ -527,5 +527,5 @@ never operate on a user's real Project source.
 
 Renderer behavior tests cover roles, accessible names, keyboard and focus
 contracts, action visibility, and state transitions. Exact geometry, tokens,
-icons, portal placement, and motion live in focused Storybook/runtime visual
-evidence rather than source-string tests.
+icons, portal placement, and motion use seeded runtime visual evidence rather
+than source-string tests.

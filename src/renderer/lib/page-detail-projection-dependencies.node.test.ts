@@ -1,14 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { buildPageDetailStoryResult } from "@/components/board/page-stage/page-stage-story-page-detail";
-import { buildPageStageStoryPage } from "@/components/board/page-stage/page-stage-dev-story-data";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
+import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
 import {
   pageDetailDataDependencies,
   pageDetailDocumentDependencies,
 } from "./page-detail-projection-dependencies";
 
 const detail = () => {
-  const result = buildPageDetailStoryResult("project-1", buildPageStageStoryPage());
+  const result = buildPageDetailFixtureResult("project-1", buildPageStageFixturePage());
   if (!result.ok) throw new Error(result.error.message);
   return result.value;
 };

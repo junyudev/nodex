@@ -23,11 +23,11 @@ describe("static CI groups", () => {
     ]);
   });
 
-  test("executes source ownership for independently routed Landing and Storybook changes", () => {
+  test("executes source ownership across independent change routes", () => {
     for (const path of [
       "packages/landing/auxiliary.mts",
       "packages/landing/tsconfig.json",
-      "packages/storybook/.storybook/auxiliary.mts",
+      "packages/effect-codex-app-server/scripts/auxiliary.mts",
       "src/renderer/new.tsx",
       "scripts/ci/new.ts",
       "tests/fixtures/new.cts",

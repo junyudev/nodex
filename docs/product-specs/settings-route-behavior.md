@@ -89,7 +89,7 @@ content.
 Single-choice controls use the shared dropdown facade and boolean preferences
 use the shared switch. Settings-specific artwork comes from the app-owned icon
 set. Exact spacing, icon geometry, motion, and surface tokens remain executable
-in those shared primitives and focused Storybook stories.
+in those shared primitives and reviewed in the seeded Settings surface.
 
 The Settings rail preserves the same renderer-transparent native vibrancy as
 the normal sidebar. Section pages render only the main content surface and do
@@ -181,7 +181,7 @@ availability, and action state. Browser detail pages own Browser-specific
 subroutes and anchors. Dynamic section state does not expand the top-level rail
 catalog or become duplicated shell state.
 
-Storybook renders the production environment components with preloaded query
-caches or explicit editor callbacks. Stories cover summary, platform fallback,
-expanded Actions, validation, conflict, overlays, and narrow layouts without a
-second feature-specific service implementation or live desktop IPC.
+Focused renderer tests exercise the production environment components through
+injected query and editor boundaries. Review visual composition and narrow
+layouts in the seeded Settings surface; native persistence and authority use
+the Settings Electron scenarios.

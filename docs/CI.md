@@ -70,7 +70,7 @@ still fail closed to every deterministic source gate.
 
 Every TypeScript source or project configuration change selects the lightweight
 `source-ownership` static group. It compares the actual compiler graphs with the
-owned source inventory, so independently routed Landing and Storybook changes
+owned source inventory, so independently routed Landing changes
 cannot introduce files outside their checker projects. Landing source changes
 retain their own build and test owners alongside this check.
 

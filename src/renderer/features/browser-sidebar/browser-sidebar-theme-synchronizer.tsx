@@ -6,7 +6,7 @@ export function BrowserSidebarThemeSynchronizer() {
   const { resolved } = useTheme();
 
   useEffect(() => {
-    if (!window.api || window.__NODEX_STORYBOOK__) return;
+    if (!window.api) return;
     void invokeBrowserSidebarCommand({
       type: "sync-theme",
       themeVariant: resolved,

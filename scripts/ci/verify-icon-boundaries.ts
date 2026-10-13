@@ -521,7 +521,7 @@ function baselineReason(entry: InlineSvgBaselineEntry | undefined): string | nul
 }
 
 function isTestFixturePath(path: string): boolean {
-  return /\.(?:test|spec|stories)\.[cm]?[jt]sx?$/.test(path);
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path);
 }
 
 function verifyInlineSvgBoundary(

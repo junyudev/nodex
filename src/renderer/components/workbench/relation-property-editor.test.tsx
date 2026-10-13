@@ -6,6 +6,7 @@ import { RelationPropertyEditor } from "../database/relation-property-editor";
 import {
   readRelationValuePreview,
   type RelationCandidateWindow,
+  type RelationTargetWindow,
 } from "@/lib/data-source-relation-value";
 
 const relationValue = {
@@ -474,6 +475,82 @@ describe("RelationPropertyEditor", () => {
         ["", null],
         ["", null],
       ]);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test("retains selected pages after a failed window read and retries the same authority", async () => {
+    const expectedReadError = new Error("databaseModuleReadV2.read selected transport detail");
+    const originalConsoleError = console.error;
+    const consoleError = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      if (args[0] === "[relation-property:selected]" && args[1] === expectedReadError) return;
+      originalConsoleError(...args);
+    });
+    const onLoadMore = vi
+      .fn<(after: string | null) => Promise<RelationTargetWindow>>()
+      .mockRejectedValueOnce(expectedReadError)
+      .mockResolvedValueOnce({
+        valueRevision: 4,
+        totalCount: 2,
+        targets: [
+          {
+            kind: "visible",
+            edgeId: "a".repeat(64),
+            pageId: "page-visible",
+            title: "Visible task",
+            lifecycle: "active",
+            membershipState: "active_in_target_source",
+          },
+          {
+            kind: "visible",
+            edgeId: "b".repeat(64),
+            pageId: "page-recovered",
+            title: "Recovered selected page",
+            lifecycle: "active",
+            membershipState: "active_in_target_source",
+          },
+        ],
+        nextCursor: null,
+        projectionRevision: 2,
+      });
+    const view = render(
+      <RelationPropertyEditor
+        label="Blocked by"
+        value={relationValue}
+        candidates={[]}
+        disabled={false}
+        targetMatchesCurrentSource={true}
+        onPatch={vi.fn()}
+        onClear={vi.fn()}
+        onLoadMore={onLoadMore}
+      />,
+    );
+
+    try {
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Edit Blocked by relation" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Load more selected" }));
+        await Promise.resolve();
+      });
+      const retry = await view.findByRole("button", {
+        name: "Couldn’t load selected pages. Retry",
+      });
+      expect(view.getByRole("button", { name: "Remove Visible task" })).toBeTruthy();
+      expect(view.queryByText(/databaseModuleReadV2/)).toBeNull();
+
+      await act(async () => {
+        fireEvent.click(retry);
+        await Promise.resolve();
+      });
+      await view.findByRole("button", { name: "Remove Recovered selected page" });
+      expect(
+        view.queryByRole("button", { name: "Couldn’t load selected pages. Retry" }),
+      ).toBeNull();
+      expect(onLoadMore.mock.calls).toEqual([[null], [null]]);
     } finally {
       consoleError.mockRestore();
     }

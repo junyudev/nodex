@@ -27,4 +27,4 @@ The heading uses normal tracking and asks what to build in the selected Project.
 - A durable Session-to-Thread binding may arrive before the initiating renderer has committed the first optimistic turn. During that interval, the New Chat composition remains visible. It is replaced only when the first user turn can be shown, so the surface never passes through an empty attached-Thread frame.
 - Backend discovery and binding must preserve the active Codex Composer subtree while a New Chat Session becomes a Codex Thread. Draft cleanup follows the latest Composer identity after that binding, including the Project Agent Dock surface.
 
-Visual motion, edge quality, and repeated-click feel are accepted through manual review in the real New Chat surface. Storybook and browser automation are not release gates for this feature.
+Visual motion, edge quality, and repeated-click feel are accepted through manual review in the seeded New Chat surface. Browser automation is not a release gate for this feature.

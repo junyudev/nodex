@@ -23,7 +23,6 @@ import {
   Hash as LucideHash,
   ImagePlus as LucideImagePlus,
   KeyRound as LucideKeyRound,
-  Layers3 as LucideLayers3,
   LayoutGrid as LucideLayoutGrid,
   LayoutTemplate as LucideLayoutTemplate,
   Link2 as LucideLink2,
@@ -38,7 +37,6 @@ import {
   Monitor as LucideMonitor,
   MonitorCog as LucideMonitorCog,
   Moon as LucideMoon,
-  PanelTopOpen as LucidePanelTopOpen,
   PictureInPicture2 as LucidePictureInPicture2,
   Plug as LucidePlug,
   Printer as LucidePrinter,
@@ -49,7 +47,6 @@ import {
   Scissors as LucideScissors,
   SendHorizontal as LucideSendHorizontal,
   SendIcon as LucideSendIcon,
-  Shield as LucideShield,
   ShieldCheck as LucideShieldCheck,
   Slash as LucideSlash,
   SlidersHorizontal as LucideSlidersHorizontal,
@@ -195,7 +192,6 @@ export const KeyRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideKeyRound,
   "KeyRound",
 );
-export const Layers3: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideLayers3, "Layers3");
 export const LayoutGrid: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideLayoutGrid,
   "LayoutGrid",
@@ -240,10 +236,6 @@ export const MonitorCog: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "MonitorCog",
 );
 export const Moon: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMoon, "Moon");
-export const PanelTopOpen: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucidePanelTopOpen,
-  "PanelTopOpen",
-);
 export const PictureInPicture2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucidePictureInPicture2,
   "PictureInPicture2",
@@ -269,7 +261,6 @@ export const SendIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideSendIcon,
   "SendIcon",
 );
-export const Shield: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideShield, "Shield");
 export const ShieldCheck: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideShieldCheck,
   "ShieldCheck",

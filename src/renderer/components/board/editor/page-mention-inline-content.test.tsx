@@ -7,8 +7,8 @@ import { render, settleAsyncRender, textContent } from "@/test/dom";
 import { projectContentAccess } from "../../../../shared/content-access-context";
 import type { PageDetail } from "../../../../shared/page-detail";
 import type { PageTargetReadModel } from "../../../../shared/page-targets";
-import { buildPageStageStoryPage } from "../page-stage/page-stage-dev-story-data";
-import { buildPageDetailStoryResult } from "../page-stage/page-stage-story-page-detail";
+import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import {
   PageMentionInlineContentView,
   resolvePageMentionPresentation,
@@ -40,7 +40,7 @@ vi.mock("@/lib/content-page-detail", () => ({
 }));
 
 const pageDetail = (): PageDetail => {
-  const result = buildPageDetailStoryResult("project-1", buildPageStageStoryPage(), {
+  const result = buildPageDetailFixtureResult("project-1", buildPageStageFixturePage(), {
     libraryId: "library-1",
   });
   if (!result.ok) throw new Error("Expected Page Detail fixture");

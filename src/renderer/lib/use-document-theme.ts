@@ -36,7 +36,7 @@ function subscribe(listener: () => void): () => void {
 
 /**
  * Reads the effective theme from the DOM presentation boundary without requiring
- * app state. Use it for independently mountable previews, portals, and stories.
+ * app state. Use it for independently mountable previews and portals.
  */
 export function useDocumentTheme(): DocumentTheme {
   return useSyncExternalStore(subscribe, readDocumentTheme, () => "light");

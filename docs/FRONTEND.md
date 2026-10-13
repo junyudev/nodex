@@ -5,7 +5,7 @@ sandboxed React renderer. It answers three questions:
 
 1. Which frontend owner should hold a piece of state or behavior?
 2. Which boundary should a renderer feature use to read or mutate product data?
-3. Which shared composition, editor, UI, and Storybook conventions should new
+3. Which shared composition, editor, UI, and verification conventions should new
    frontend work follow?
 
 It is an engineering guide and routing layer, not a product specification,
@@ -21,8 +21,8 @@ A rule belongs here only when all of these are true:
 2. It is expected to survive ordinary product, dependency, and visual changes.
 3. It is not already authoritative in a product spec, ADR, reliability document,
    code contract, or test.
-4. A type, helper, lint rule, component API, local comment, focused test, or
-   Storybook story cannot make the rule sufficiently obvious by itself.
+4. A type, helper, lint rule, component API, local comment, or focused test
+   cannot make the rule sufficiently obvious by itself.
 
 Prefer the narrowest enforceable seam. Route information as follows:
 
@@ -342,7 +342,8 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
   state owner or delays authoritative text updates.
 - Treat rendered CSS and browser behavior as the evidence. Put reusable numeric
   or state rules in helpers with boundary tests, and preserve visual contracts
-  with focused stories instead of long class-string assertions.
+  through seeded real-app review or browser behavior tests rather than long
+  class-string assertions.
 
 ### Theme token ownership
 
@@ -365,7 +366,7 @@ that accurately describes the UI role:
 Do not mix layers to express one role inside a component—for example, a failure
 row must not combine a semantic error utility, a host variable, and a legacy
 token for its icon and label. Migrate by coherent surface, validate light/dark
-and lifecycle states in the seeded real app or an isolated story, and leave
+and lifecycle states in the seeded real app or focused browser tests, and leave
 feature-native Database, Board, Canvas, and editor semantics alone unless the
 roles are truly shared.
 
@@ -424,32 +425,32 @@ Load the narrow contract only for the branch being changed:
 These documents own feature behavior. Keep this file limited to conventions
 that remain useful when those features change.
 
-## Seeded runs, Storybook, and frontend tests
+## Seeded runs and frontend tests
 
 Testing commands, runtime selection, and handoff gates are authoritative in
 [AGENTS.md](../AGENTS.md) and [Development](development.md). Frontend work adds
 evidence at the seam that owns the behavior:
 
 - Follow [AGENTS.md](../AGENTS.md)'s seeded-first UI evidence boundary. Use or
-  extend an authoritative scenario before creating feature-level stories or
-  parallel fake view models.
+  extend an authoritative scenario for integrated product states; reuse the
+  existing test runtimes for isolated behavior and pressure evidence.
 - Use an authoritative isolated scenario when the behavior depends on an integrated Project, Database projection, Page lifecycle, document authority, preload/Main transport, or Window Session.
   The same domain recipe should serve Core integration and Electron/UI consumers through runtime-specific adapters; keep DOM navigation and observation in the optional UI projection.
-- Use `vp run dev --home <dir> --seed <scenario-id>` for a persistent,
+- Use `vp run dev --home <absolute-task-home> --seed <scenario-id>` for a persistent,
   mutable real-app environment with HMR. The catalog initializes a new home but
   does not constrain later manual edits. Deterministic UI facts and navigation
   belong in the scenario's dedicated Electron E2E spec.
   Scenario manifests map stable logical keys to canonical IDs, so UI tests must
   not find authority by title when an identity is available.
-- Reserve Storybook for reusable primitives, transient or intentionally
-  synthetic states, focused behavioral contracts, and pressure fixtures that
-  do not need the product runtime. A user-visible change alone does not require
-  a story.
-- Stories use production components with injected runtime boundaries. Keep them
-  canvas-first and focused; render menu-driven states open by default.
-- Remove an integrated story after a real scenario or behavior test provides
-  equivalent observable evidence, and delete its orphaned fake state in the
-  same change.
+- Put component interactions, transient states, input boundaries, and
+  accessibility contracts in focused renderer tests. Use Chromium for real
+  layout, selection, pointer, observer, and computed-style contracts. Inject
+  runtime boundaries into production components rather than maintaining a
+  parallel presentation model.
+- Keep large-data and pressure fixtures at their owning test or subsystem
+  boundary, named for the behavior they exercise. Pair scale or convergence
+  evidence with a smaller authoritative operation path. UI verification uses
+  these existing mechanisms without a separate component gallery.
 - Assert visible structure, accessibility, and behavior. Raw class checks,
   serialized markup, test IDs, and source inspection are fallback tools only
   when those representations are the real contract.

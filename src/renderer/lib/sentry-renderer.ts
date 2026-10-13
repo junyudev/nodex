@@ -80,7 +80,6 @@ export async function initializeRendererSentry(
 ): Promise<boolean> {
   if (initialized) return true;
   if (isTestRuntime() && !shouldForceTestInitialization()) return false;
-  if (typeof window !== "undefined" && window.__NODEX_STORYBOOK__ === true) return false;
 
   const settings = await (input.getSettings ?? loadDiagnosticsSettings)();
   if (!settings?.enabled) return false;

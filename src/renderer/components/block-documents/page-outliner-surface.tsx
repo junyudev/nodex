@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 export interface PageOutlinerStateDependencies {
   readonly disclosureStore?: BlockDisclosureStateStore;
   readonly activationBudget?: ReferenceSurfaceActivationBudget;
-  /** Deterministic test/story seam; production always uses IntersectionObserver. */
+  /** Deterministic visibility for focused tests; production uses IntersectionObserver. */
   readonly visibilityOverride?: boolean;
 }
 
@@ -241,39 +241,6 @@ export function PageOutlinerRowSlots({
         </div>
       ) : null}
     </>
-  );
-}
-
-export function PageOutlinerRowContent(props: PageOutlinerRowContentProps) {
-  return (
-    <PageOutlinerDisclosure {...props}>
-      <PageOutlinerRowSlots {...props} />
-    </PageOutlinerDisclosure>
-  );
-}
-
-export interface PageOutlinerRowProps extends PageOutlinerFrameProps, PageOutlinerRowContentProps {}
-
-/** Convenience composite for stories and simple consumers. */
-export function PageOutlinerRow({
-  targetBlockId,
-  accessKind,
-  active,
-  sectionRef,
-  onTouch,
-  ...content
-}: PageOutlinerRowProps) {
-  return (
-    <PageOutlinerFrame
-      targetBlockId={targetBlockId}
-      accessKind={accessKind}
-      expanded={content.expanded}
-      active={active}
-      sectionRef={sectionRef}
-      onTouch={onTouch}
-    >
-      <PageOutlinerRowContent {...content} />
-    </PageOutlinerFrame>
   );
 }
 

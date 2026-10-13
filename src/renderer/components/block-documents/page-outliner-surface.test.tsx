@@ -5,8 +5,39 @@ import { plainTextToPortableRichText } from "../../../shared/block-documents/por
 import { BlockDisclosureStateStore } from "@/lib/block-disclosure-state";
 import { ReferenceSurfaceActivationBudget } from "@/lib/reference-surface-state";
 import { render } from "@/test/dom";
-import { PageOutlinerRow, usePageOutlinerActivation } from "./page-outliner-surface";
+import {
+  PageOutlinerDisclosure,
+  PageOutlinerFrame,
+  PageOutlinerRowSlots,
+  usePageOutlinerActivation,
+  type PageOutlinerFrameProps,
+  type PageOutlinerRowContentProps,
+} from "./page-outliner-surface";
 import { PortableRichTitle } from "./portable-rich-title";
+
+function PageOutlinerRow({
+  targetBlockId,
+  accessKind,
+  active,
+  sectionRef,
+  onTouch,
+  ...content
+}: PageOutlinerFrameProps & PageOutlinerRowContentProps) {
+  return (
+    <PageOutlinerFrame
+      targetBlockId={targetBlockId}
+      accessKind={accessKind}
+      expanded={content.expanded}
+      active={active}
+      sectionRef={sectionRef}
+      onTouch={onTouch}
+    >
+      <PageOutlinerDisclosure {...content}>
+        <PageOutlinerRowSlots {...content} />
+      </PageOutlinerDisclosure>
+    </PageOutlinerFrame>
+  );
+}
 
 function ActivationHarness({
   disclosureKey = "page:block:target",
@@ -87,7 +118,7 @@ function NestedDisclosureShortcutHarness() {
   );
 }
 
-describe("PageOutlinerRow", () => {
+describe("Page outliner surface", () => {
   test("toggles disclosure from the Page header with either platform modifier", async () => {
     const disclosureStore = new BlockDisclosureStateStore();
     const activationBudget = new ReferenceSurfaceActivationBudget(1);

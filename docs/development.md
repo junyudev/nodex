@@ -316,6 +316,31 @@ vp run package
 
 ## Validation
 
+### UI development and verification
+
+Start integrated UI work in a seeded development home owned by the current
+worktree. Extend the nearest authoritative scenario when a new state depends on
+Project, Page, Database, Document, or Window Session authority; the recipe
+remains shared with Core and Electron consumers. The launcher provides the
+persistent HMR environment, while a dedicated Electron E2E spec owns repeatable
+navigation and assertions.
+
+Choose evidence by the behavior under test:
+
+| Behavior                                                                              | Verification boundary                                                                    |
+| ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Real pages, composition, and cross-runtime workflows                                  | Seeded app review; corresponding Electron scenario/E2E for automated assertions          |
+| Component interaction, transient state, input boundaries, and accessibility           | Focused renderer/jsdom tests using production components and injected runtime boundaries |
+| Real layout, selection, pointer, observer, computed-style, or native browser behavior | Chromium browser tests                                                                   |
+| Pure state transitions and domain rules                                               | Owning helper/domain tests                                                               |
+| Large-data, scale, and convergence behavior                                           | Owning pressure fixtures and tests, paired with a smaller authoritative operation path   |
+
+Reuse these mechanisms for UI verification. Keep fixture data with its test or
+subsystem owner instead of introducing a separate component gallery or parallel
+display state model. Fixture classes and runtime commands are detailed below.
+
+### Choosing checks
+
 Choose validation from the changed runtime and risk. For broad TypeScript work:
 
 ```bash

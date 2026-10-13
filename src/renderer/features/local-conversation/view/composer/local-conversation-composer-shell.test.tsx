@@ -8,11 +8,7 @@ import { openNodexMenu, render, settleAsyncRender, textContent } from "../../../
 import { installWindowApi } from "@/test/browser-globals";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
 import { useAutoReviewApprovalNudgeActions } from "../../auto-review-approval-nudge-state";
-import {
-  buildThreadStageStorySurfaceModels,
-  buildThreadStageStoryScenario,
-  type ThreadStageStoryControls,
-} from "../thread-stage-story-fixtures";
+import { buildComposerShellFixture } from "@/test/composer-shell-fixture";
 import {
   LocalConversationAboveComposerPortalHost,
   LocalConversationAboveComposerQueuePortalHost,
@@ -25,18 +21,7 @@ import { RendererStateProvider } from "@/app-providers";
 import { TestThreadRouteScopePath } from "@/test/maitai-scope-harness";
 import { TestQueryProvider } from "@/test/query";
 
-const STORY_CONTROLS: ThreadStageStoryControls = {
-  preset: "background-activity",
-  permissionMode: "auto",
-  authenticatedAccount: true,
-  isQueueingEnabled: false,
-  collapseAgentBody: false,
-};
-
-function buildComposerShellModel() {
-  const scenario = buildThreadStageStoryScenario(STORY_CONTROLS);
-  return buildThreadStageStorySurfaceModels(scenario, STORY_CONTROLS, scenario.runtime).footerModel;
-}
+const buildComposerShellModel = () => buildComposerShellFixture();
 
 function buildThreadGoal(
   threadId: string,
@@ -63,7 +48,7 @@ function buildComposerShellModelWithThreadGoal(
 ) {
   const model = buildComposerShellModel();
   if (!model.threadId || !model.conversation) {
-    throw new Error("Expected story composer shell model to include a thread conversation");
+    throw new Error("Expected composer fixture model to include a thread conversation");
   }
 
   const goal = buildThreadGoal(model.threadId, status, overrides);
@@ -82,7 +67,7 @@ function buildComposerShellModelWithGoalResumeConfirmation(status: ThreadGoal["s
   const model = buildComposerShellModelWithThreadGoal(status);
   const goal = model.conversation?.threadGoal ?? null;
   if (!goal || !model.conversation) {
-    throw new Error("Expected story composer shell model to include a thread goal");
+    throw new Error("Expected composer fixture model to include a thread goal");
   }
 
   return {
@@ -285,10 +270,7 @@ describe("LocalConversationComposerShell", () => {
       ["setup-context-lane", "setupCodexStep:context"],
     ] as const;
     const projected = cases.map(([preset, expected]) => {
-      const controls: ThreadStageStoryControls = { ...STORY_CONTROLS, preset };
-      const scenario = buildThreadStageStoryScenario(controls);
-      const request = buildThreadStageStorySurfaceModels(scenario, controls, scenario.runtime)
-        .footerModel.composerShell.activeRequest?.request;
+      const request = buildComposerShellFixture(preset).composerShell.activeRequest?.request;
       const actual =
         request?.type === "approval"
           ? `${request.type}:${request.kind}`
@@ -304,13 +286,7 @@ describe("LocalConversationComposerShell", () => {
       cases.map(([, expected]) => `${expected}=${expected}`).join(","),
     );
 
-    const controls: ThreadStageStoryControls = {
-      ...STORY_CONTROLS,
-      preset: "background-permission-option",
-    };
-    const scenario = buildThreadStageStoryScenario(controls);
-    const shell = buildThreadStageStorySurfaceModels(scenario, controls, scenario.runtime)
-      .footerModel.composerShell;
+    const shell = buildComposerShellFixture("background-permission-option").composerShell;
     expect(shell.backgroundRequest?.request.type).toBe("permissionRequest");
     expect(shell.activeRequest?.request.type).toBe("optionPicker");
   });
@@ -341,11 +317,11 @@ describe("LocalConversationComposerShell", () => {
     await settleAsyncRender();
 
     const renderedText = textContent(document.body);
+    expect(Boolean(renderedText.includes("Keep requests on the canonical projection path."))).toBe(
+      false,
+    );
     expect(
-      Boolean(renderedText.includes("Keep the stage stories on the real projection path.")),
-    ).toBe(false);
-    expect(
-      Boolean(renderedText.includes("Run final validation once the stories are in place.")),
+      Boolean(renderedText.includes("Run final validation once the request workflow is complete.")),
     ).toBe(true);
     expect(Boolean(renderedText.includes("Running 1 terminal"))).toBe(true);
     expect(Boolean(renderedText.includes("1 active requests"))).toBe(false);
@@ -353,15 +329,11 @@ describe("LocalConversationComposerShell", () => {
     const backgroundReason = view.getByText(
       "Background child wants to run the isolated request-card tests.",
     );
-    const activeReason = view.getByText(
-      "Foreground thread wants to run lint before Storybook build.",
-    );
+    const activeReason = view.getByText("Foreground thread wants to run the semantic checks.");
     expect(
       view.getAllByText("Background child wants to run the isolated request-card tests.").length,
     ).toBe(1);
-    expect(
-      view.getAllByText("Foreground thread wants to run lint before Storybook build.").length,
-    ).toBe(1);
+    expect(view.getAllByText("Foreground thread wants to run the semantic checks.").length).toBe(1);
     expect(
       Boolean(
         backgroundReason.compareDocumentPosition(activeReason) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -488,16 +460,7 @@ describe("LocalConversationComposerShell", () => {
 
   test("gives only the active implement-plan request one sibling intelligence footer", async () => {
     installComposerShellWindowApi();
-    const controls: ThreadStageStoryControls = {
-      ...STORY_CONTROLS,
-      preset: "implement-plan",
-    };
-    const scenario = buildThreadStageStoryScenario(controls);
-    const model = buildThreadStageStorySurfaceModels(
-      scenario,
-      controls,
-      scenario.runtime,
-    ).footerModel;
+    const model = buildComposerShellFixture("implement-plan");
     const view = renderComposerShell(
       model,
       buildActions({
@@ -540,12 +503,14 @@ describe("LocalConversationComposerShell", () => {
     expect(
       view.queryByText("Background child wants to run the isolated request-card tests.") === null,
     ).toBe(true);
-    expect(
-      view.queryByText("Foreground thread wants to run lint before Storybook build.") === null,
-    ).toBe(true);
+    expect(view.queryByText("Foreground thread wants to run the semantic checks.") === null).toBe(
+      true,
+    );
     expect(
       Boolean(
-        textContent(document.body).includes("Run final validation once the stories are in place."),
+        textContent(document.body).includes(
+          "Run final validation once the request workflow is complete.",
+        ),
       ),
     ).toBe(true);
 
@@ -559,9 +524,9 @@ describe("LocalConversationComposerShell", () => {
     expect(
       view.getByText("Background child wants to run the isolated request-card tests.") !== null,
     ).toBe(true);
-    expect(
-      view.getByText("Foreground thread wants to run lint before Storybook build.") !== null,
-    ).toBe(true);
+    expect(view.getByText("Foreground thread wants to run the semantic checks.") !== null).toBe(
+      true,
+    );
   });
 
   test("restores the normal composer after every request surface clears", async () => {
@@ -584,9 +549,9 @@ describe("LocalConversationComposerShell", () => {
     expect(view.getByLabelText("Add files and more") !== null).toBe(true);
     expect(view.getByLabelText("Change permissions") !== null).toBe(true);
     expect(view.getByLabelText("Select model") !== null).toBe(true);
-    expect(
-      view.queryByText("Foreground thread wants to run lint before Storybook build.") === null,
-    ).toBe(true);
+    expect(view.queryByText("Foreground thread wants to run the semantic checks.") === null).toBe(
+      true,
+    );
   });
 
   test("renders paused goal resume confirmation and dismisses it", async () => {

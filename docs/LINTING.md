@@ -68,12 +68,12 @@ remain in the Node project rather than becoming Web root files; imported
 transport-neutral dependencies may still legitimately appear in both graphs.
 Application projects inherit shared JSX and alias settings from
 `tsconfig.base.json`; settings on the solution root do not configure its children.
-Landing and Storybook own their source, tests, and configuration. Every BlockNote
+Landing owns its source, tests, and configuration. Every BlockNote
 workspace has an independent complete checker project and a `tsconfig.build.json`
 for declaration output, both executed by tsc-rs. `verify:source-type-ownership`
 compares the compiler's actual file graphs with tracked and untracked source files.
 CI selects this independent check for every TypeScript source or project configuration
-change, including Landing and Storybook. `tooling:verify` also exercises its negative
+change, including Landing. `tooling:verify` also exercises its negative
 fixtures for unowned files, extension shadowing, and runnable test fixtures.
 Only the raw fixtures
 under `scripts/fixtures/tooling`, `scripts/fixtures/effect-boundaries`, and

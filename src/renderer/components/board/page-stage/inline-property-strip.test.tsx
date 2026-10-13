@@ -1,8 +1,8 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { PageDetail } from "../../../../shared/page-detail";
 import { render } from "@/test/dom";
-import { buildPageStageStoryPage } from "./page-stage-dev-story-data";
-import { buildPageDetailStoryResult } from "./page-stage-story-page-detail";
+import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import { projectPageDetailToStageModel } from "@/lib/page-stage-page";
 import {
   hasPageStageScheduleCapability,
@@ -14,7 +14,7 @@ import { PageStageInlinePropertyStrip } from "./inline-property-strip";
 import type { PageStagePropertyControls } from "./use-page-stage-properties";
 
 const detail = (): PageDetail => {
-  const result = buildPageDetailStoryResult("project-1", buildPageStageStoryPage());
+  const result = buildPageDetailFixtureResult("project-1", buildPageStageFixturePage());
   if (!result.ok) throw new Error("Expected Page Detail fixture");
   return result.value;
 };

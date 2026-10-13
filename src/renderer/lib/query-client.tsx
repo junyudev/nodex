@@ -48,7 +48,6 @@ export function applyCodexHostCatalogEvent(queryClient: QueryClient, event: Code
 
 function CodexHostCatalogQuerySync({ queryClient }: { queryClient: QueryClient }) {
   useEffect(() => {
-    if (window.__NODEX_STORYBOOK__ === true) return;
     return subscribeCodexEvents((event) => {
       applyCodexHostCatalogEvent(queryClient, event);
     });
@@ -76,7 +75,7 @@ export function NodexQueryProvider({ children }: { children: ReactNode }) {
         {children}
       </ProjectionInvalidationProvider>
       <CodexHostCatalogQuerySync queryClient={queryClient} />
-      {import.meta.env.DEV && queryDevtoolsEnabled && window.__NODEX_STORYBOOK__ !== true ? (
+      {import.meta.env.DEV && queryDevtoolsEnabled ? (
         <Suspense fallback={null}>
           <ReactQueryDevtools initialIsOpen={false} />
         </Suspense>

@@ -91,13 +91,12 @@ packageExtensions:
       vite-plus: 1.1.0
 
 peerDependencyRules:
-  # Package metadata predates the coordinated Vite+/Vitest generation; verify both browser builds.
+  # Vite+ metadata predates the coordinated browser test runner.
   allowedVersions:
-    "storybook>vite-plus": 1.1.0
     "vite-plus>@vitest/browser-playwright": 5.0.4
   allowAny:
+    # Vite+ supplies the Vite API through its own package version.
     - vite
-    - vitest
 
 minimumReleaseAgeExclude:
   - "@oxc-parser/binding-android-arm-eabi@0.146.0"

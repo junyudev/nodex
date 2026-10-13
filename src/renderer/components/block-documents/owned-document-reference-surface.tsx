@@ -26,7 +26,7 @@ export type OwnedDocumentReferenceRenderer = (
 export interface OwnedDocumentReferenceStateDependencies {
   readonly disclosureStore?: BlockDisclosureStateStore;
   readonly activationBudget?: ReferenceSurfaceActivationBudget;
-  /** Deterministic test/story seam; production uses IntersectionObserver. */
+  /** Deterministic visibility for focused tests; production uses IntersectionObserver. */
   readonly visibilityOverride?: boolean;
 }
 

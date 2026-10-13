@@ -174,7 +174,7 @@ Meaningful regression coverage belongs at behavior boundaries:
   without weakening atomic packet admission or integrity checks.
 - reference surface tests: idle collapsed rows create no provider; explicit Page-title engagement or expanded visibility mounts only the target Document within the provider cap; cycles remain navigation-only.
 
-Use Storybook and manual multi-window review for sync/error chrome and retained editor UX. Do not add tests that merely assert styling strings.
+Use seeded development instances and manual multi-window review for sync/error chrome and retained editor UX. Keep isolated error and lifecycle contracts in focused renderer or browser tests. Do not add tests that merely assert styling strings.
 
 ## When Extending Page Stage
 

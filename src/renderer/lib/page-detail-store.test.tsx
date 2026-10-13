@@ -11,8 +11,8 @@ import type {
   ResourceRevocationDeliveryMessage,
   ResourceRevocationMessage,
 } from "../../shared/resource-revocation-stream";
-import { buildPageDetailStoryResult } from "../components/board/page-stage/page-stage-story-page-detail";
-import { buildPageStageStoryPage } from "../components/board/page-stage/page-stage-dev-story-data";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
+import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { ProjectionInvalidationRegistry } from "./projection-invalidation-registry";
 
@@ -206,8 +206,8 @@ const databaseViewEvent = (page: PageDetail, commitSeq: number): ProjectionStrea
 };
 
 const memberDetail = (pageId: string, title: string, commitSeq: number): PageDetail => {
-  const page = buildPageStageStoryPage();
-  const result = buildPageDetailStoryResult(
+  const page = buildPageStageFixturePage();
+  const result = buildPageDetailFixtureResult(
     "project-1",
     {
       ...page,

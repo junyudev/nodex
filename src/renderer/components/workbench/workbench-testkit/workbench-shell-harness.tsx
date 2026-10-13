@@ -69,7 +69,7 @@ import { resetPageDetailStoreForTests } from "@/lib/page-detail-store";
 import { resetDatabaseViewPersonalPreferencesForTests } from "@/lib/database-view-personal-preferences";
 import { resetDatabaseListWindowStoresForTests } from "../database-list/use-database-list-window";
 import { useRetainedScrollPosition } from "@/lib/retained-scroll-position";
-import { buildPageDetailStoryResult } from "../../board/page-stage/page-stage-story-page-detail";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import { authorizedReadStampFixture } from "../../../../shared/testing/authorized-read-stamp-fixture";
 import { terminalSessionStore } from "@/lib/terminal-session-store";
 import type {
@@ -2498,7 +2498,7 @@ export function renderWorkbench({
     }
     const row = value as Record<string, unknown>;
     const standalone = row.standalone === true;
-    const result = buildPageDetailStoryResult(
+    const result = buildPageDetailFixtureResult(
       projectId,
       {
         id: pageId,

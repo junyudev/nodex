@@ -146,10 +146,6 @@ mark.codex-thread-find-active {
   scrollbar-color: var(--color-token-scrollbar-slider-active-background) transparent;
 }
 
-.docs-story {
-  background-color: var(--color-token-side-bar-background);
-}
-
 .sidebar-foreground-muted {
   --color-token-foreground: var(--color-text);
 }

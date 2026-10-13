@@ -609,8 +609,7 @@ const listSourceFiles = (directory: string): readonly string[] =>
     return [path];
   });
 
-const isProductionSource = (path: string): boolean =>
-  !testSourcePattern.test(path) && !path.endsWith(".stories.ts") && !path.endsWith(".stories.tsx");
+const isProductionSource = (path: string): boolean => !testSourcePattern.test(path);
 
 export const collectRendererCommandInventory = (projectRoot: string): RendererCommandInventory => {
   const rendererRoot = resolve(projectRoot, "src/renderer");

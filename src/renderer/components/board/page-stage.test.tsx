@@ -23,7 +23,7 @@ import {
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import { populateBlockDocumentBodyFromNfm } from "../../../shared/block-documents/block-document-codec";
 import { projectContentAccess } from "../../../shared/content-access-context";
-import { buildPageDetailStoryResult } from "./page-stage/page-stage-story-page-detail";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import { consumePageBlockFocus, requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import type { NfmEditorBoundaryHandle } from "./editor/nfm-editor";
 import {
@@ -138,7 +138,7 @@ function buildPage(overrides: Partial<DatabasePage> = {}): DatabasePage {
 }
 
 function toStageModel(page: DatabasePage): PageStagePageModel {
-  const detail = buildPageDetailStoryResult("default", page);
+  const detail = buildPageDetailFixtureResult("default", page);
   if (!detail.ok) throw new Error(detail.error.message);
   const projected = projectPageDetailToStageModel(detail.value);
   if (projected.databaseContext.kind !== "member") return projected;

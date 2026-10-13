@@ -52,7 +52,6 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 
 - Install deps: `vp install`
 - Dev app: `vp run dev --home <absolute-task-home>`
-- Dev Storybook: `vp run dev:storybook` (defaults to port 6006; override an occupied port with `STORYBOOK_PORT=6007 vp run dev:storybook`)
 - Build: `vp run build`
 - Package installers: `vp run package`
 - Unified check: `vp run check`
@@ -119,7 +118,7 @@ Use these docs as the source of truth:
 
 - System ownership, dependency directions, critical cross-runtime flows, and system-wide invariants: `docs/ARCHITECTURE.md`
 - Plans: use the primary-checkout paths in [Worktrees and local artifacts](#worktrees-and-local-artifacts). Read `docs/PLANS.md` for execution-plan format and requirements; keep `docs/plans/` absent.
-- Cross-feature renderer construction, state-owner selection, shared UI/editor primitives, and Storybook conventions: `docs/FRONTEND.md`
+- Cross-feature renderer construction, state-owner selection, shared UI/editor primitives, and UI verification conventions: `docs/FRONTEND.md`
 - UI design guidance for agent-built surfaces: `.agents/skills/general-design-guidelines/SKILL.md`
 - Product principles and tradeoffs: `docs/PRODUCT_SENSE.md`
 - Reliability model (backups, SSE/IPC sync, ops): `docs/RELIABILITY.md`
@@ -193,8 +192,8 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 - Renderer React tests must be act-clean. Treat any `act(...)` warning as a failing test: fix the test before handoff instead of ignoring console output.
 - For renderer interactions that can schedule React updates, prefer Testing Library async patterns (`findBy*`, `waitFor`, awaited helpers) and make assertions only after the UI has settled.
 - When a renderer test uses low-level `fireEvent`, window/document events, timers, resize/drag gestures, or imperative callbacks instead of a higher-level awaited helper, wrap the interaction in `await act(async () => { ...; await Promise.resolve(); })`, then wait for the observable DOM/API outcome. Use `try/finally` to release drag/resize gestures so failed assertions do not leak body styles or global listeners into later tests.
-- Default to `vp run dev --home <dir> --seed <scenario-id>` for product UI iteration and manual visual review. Use or extend the nearest authoritative scenario before creating a feature-level story.
-- Reserve Storybook for reusable primitives, transient or intentionally synthetic states, and pressure fixtures that do not need the product runtime. A user-visible UI change does not by itself require a story.
+- Default to `vp run dev --home <absolute-task-home> --seed <scenario-id>` for product UI iteration and manual visual review. Use or extend the nearest authoritative scenario for integrated product states.
+- Put component interactions, transient states, input boundaries, and accessibility contracts in focused renderer tests; use Chromium when the contract depends on real layout, selection, pointer events, observers, or computed styles. Keep pressure fixtures in their owning tests with a smaller authoritative behavior path. Reuse these boundaries rather than creating a component gallery or a parallel display state model.
 - Choose the isolated-scenario consumer by the boundary under test:
   - Use `withCoreScenario` for current-schema Project/Page/Database correctness that does not need Electron.
   - Use `withElectronScenario` or `ElectronScenarioHarness` for production Electron/preload/Main/Core workflows, window lifecycle, restart, and native gestures.

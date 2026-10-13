@@ -119,6 +119,7 @@ describe("LocalEnvironmentsSettingsPage", () => {
   let saveInputs: UpdateWorktreeEnvironmentConfigInput[];
   let readCalls: number;
   let failReadsAfterSave: boolean;
+  let saveOperation: (() => Promise<WorktreeEnvironmentSaveResult>) | null;
 
   beforeEach(() => {
     snapshot = buildSnapshot();
@@ -126,6 +127,7 @@ describe("LocalEnvironmentsSettingsPage", () => {
     saveInputs = [];
     readCalls = 0;
     failReadsAfterSave = false;
+    saveOperation = null;
     installWindowApi({
       invoke: async (channel: string, ...args: unknown[]) => {
         if (channel === "worktrees:environments:config:read") {
@@ -137,6 +139,7 @@ describe("LocalEnvironmentsSettingsPage", () => {
         }
         if (channel === "worktrees:environments:config:save") {
           saveInputs.push(args[0] as UpdateWorktreeEnvironmentConfigInput);
+          if (saveOperation) return saveOperation();
           return saveResult;
         }
         if (channel === "worktrees:environments:configs:list") return snapshot.configs;
@@ -294,6 +297,55 @@ describe("LocalEnvironmentsSettingsPage", () => {
 
     expect(await view.findByRole("heading", { level: 1, name: "Saved environment" })).toBeTruthy();
     expect(saveInputs).toHaveLength(1);
+  });
+
+  test("retains a failed save draft and prevents duplicate submission during its retry", async () => {
+    saveOperation = async () => {
+      throw new Error("Environment file could not be written");
+    };
+    const view = renderPage();
+    await act(async () => {
+      fireEvent.click(await view.findByRole("button", { name: "Edit local environment" }));
+      await Promise.resolve();
+    });
+    const name = view.getAllByRole("textbox", { name: "Name" })[0] as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(name, { target: { value: "Retained environment" } });
+      fireEvent.click(view.getByRole("button", { name: "Save" }));
+      await Promise.resolve();
+    });
+    const retry = await view.findByRole("button", { name: "Retry save" });
+    expect(name.value).toBe("Retained environment");
+    expect(saveInputs).toHaveLength(1);
+
+    let finishSave: ((result: WorktreeEnvironmentSaveResult) => void) | undefined;
+    saveOperation = () =>
+      new Promise((resolve) => {
+        finishSave = resolve;
+      });
+    await act(async () => {
+      fireEvent.click(retry);
+      await Promise.resolve();
+    });
+    const save = await view.findByRole("button", { name: "Save" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect(save.closest("form")?.getAttribute("aria-busy")).toBe("true");
+    await act(async () => {
+      fireEvent.submit(save.closest("form")!);
+      await Promise.resolve();
+    });
+    expect(saveInputs).toHaveLength(2);
+    expect(saveInputs[1]).toEqual(saveInputs[0]);
+
+    snapshot = buildSnapshot({
+      environment: { ...snapshot.environment!, name: "Retained environment" },
+    });
+    await act(async () => {
+      finishSave?.({ type: "success" });
+      await Promise.resolve();
+    });
+    await view.findByRole("heading", { level: 1, name: "Retained environment" });
+    expect(saveInputs).toHaveLength(2);
   });
 
   test("keeps oversized files non-editable", async () => {

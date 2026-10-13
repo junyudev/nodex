@@ -35,6 +35,19 @@ describe("renderer Sentry diagnostics", () => {
     resetRendererSentryForTests();
   });
 
+  test("does not read diagnostic settings in tests without explicit initialization", async () => {
+    let settingsRead = false;
+    const initialized = await initializeRendererSentry({
+      getSettings: async () => {
+        settingsRead = true;
+        return buildSettings(true);
+      },
+    });
+
+    expect(initialized).toBe(false);
+    expect(settingsRead).toBe(false);
+  });
+
   test("does not initialize when diagnostics are disabled", async () => {
     process.env.NODEX_SENTRY_FORCE_TEST = "1";
     let initCount = 0;

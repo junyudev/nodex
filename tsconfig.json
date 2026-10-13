@@ -18,9 +18,6 @@
       "path": "./tsconfig.tooling.json"
     },
     {
-      "path": "./packages/storybook/tsconfig.json"
-    },
-    {
       "path": "./third_party/blocknote/packages/core/tsconfig.json"
     },
     {

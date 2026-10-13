@@ -16,7 +16,7 @@ in
 General transcript projection remains in
 [Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md). Exact
 host elements, token classes, icons, and visual fixtures are owned by the
-focused renderer components and Storybook stories named below.
+focused renderer components and seeded worktree surfaces.
 
 ## Composer contract
 
@@ -290,12 +290,10 @@ The implementation owners are:
 - `src/renderer/features/local-conversation/view/shared/tools/tool-primitives.tsx`
 - `src/renderer/features/local-conversation/view/shared/tools/thread-command-shell-block.tsx`
 
-Focused Storybook stories cover open Composer menus, every starting-state and
-Environment state, queued/creating/setup/failure/continue/conversation states,
-completed initialization, light and dark themes, narrow/default/wide layouts,
-and reduced motion. Behavioral tests own roles, keyboard/focus behavior, action
-visibility and order, state transitions, payloads, and Git effects; they do not
-duplicate token-class strings.
+Behavioral tests own roles, keyboard/focus behavior, action visibility and
+order, state transitions, payloads, and Git effects. Review theme, geometry,
+portal placement, and motion in the seeded worktree surfaces rather than
+duplicating token-class strings in tests.
 
 ## Non-goals and boundaries
 

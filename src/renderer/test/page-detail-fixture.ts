@@ -1,26 +1,23 @@
-import { plainTextToPortableRichText } from "../../../../shared/block-documents";
-import type { BlockPropertyJsonValue } from "../../../../shared/block-property-mutations";
-import type {
-  DatabaseJsonValue,
-  DatabasePropertyValueType,
-} from "../../../../shared/database-kernel";
+import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
+import type { BlockPropertyJsonValue } from "../../shared/block-property-mutations";
+import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
 import type {
   DataSourcePageValueV2,
   DataSourcePropertyRecordV2,
-} from "../../../../shared/database-module-v2";
+} from "../../shared/database-module-v2";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
   parseDataSourceId,
   parseDataSourcePropertyId,
-} from "../../../../shared/database-identities";
-import type { PageDetailResult, PageIntrinsicProperty } from "../../../../shared/page-detail";
+} from "../../shared/database-identities";
+import type { PageDetailResult, PageIntrinsicProperty } from "../../shared/page-detail";
 import type { DatabasePage } from "@/lib/types";
-import { testPropertySemantics } from "../../../../shared/testing/database-property-record";
-import { authorizedReadStampFixture } from "../../../../shared/testing/authorized-read-stamp-fixture";
+import { testPropertySemantics } from "../../shared/testing/database-property-record";
+import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 
-/** Storybook-only bridge from visual Board fixtures to canonical Page Detail. */
-export const buildPageDetailStoryResult = (
+/** Builds a typed Page Detail read for isolated renderer ownership tests. */
+export const buildPageDetailFixtureResult = (
   projectId: string,
   page: DatabasePage | null,
   authority: {
@@ -34,13 +31,13 @@ export const buildPageDetailStoryResult = (
       ok: false,
       error: {
         code: "page_not_found",
-        message: "Story Page was not found",
+        message: "Fixture Page was not found",
         retryable: false,
       },
     };
   }
-  const libraryId = authority.libraryId ?? "library:storybook";
-  const storeEpoch = authority.storeEpoch ?? "store-epoch:storybook";
+  const libraryId = authority.libraryId ?? "library:fixture";
+  const storeEpoch = authority.storeEpoch ?? "store-epoch:fixture";
   const commitSeq = authority.commitSeq ?? 1;
   const databaseId = parseDatabaseId("019f714b-0000-7000-8000-000000000011");
   const dataSourceId = parseDataSourceId("019f714b-0000-7000-8000-000000000012");
@@ -200,7 +197,7 @@ export const buildPageDetailStoryResult = (
         database: {
           databaseId,
           libraryId,
-          name: "Story Database",
+          name: "Fixture Database",
           lifecycle: "active",
           defaultViewId: viewId,
           accessRevision: 1,

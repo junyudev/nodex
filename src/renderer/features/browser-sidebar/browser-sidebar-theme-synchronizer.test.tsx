@@ -23,7 +23,6 @@ vi.mock("@/lib/use-theme", () => ({
 beforeEach(() => {
   invoke.mockClear();
   resolvedTheme = "light";
-  window.__NODEX_STORYBOOK__ = false;
   Object.defineProperty(window, "api", {
     configurable: true,
     value: { invoke: (...args: unknown[]) => invoke(...args) },

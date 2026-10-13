@@ -45,7 +45,6 @@ export function KeyboardLayoutProvider({ children }: { readonly children: ReactN
   const generationRef = useRef(0);
 
   useEffect(() => {
-    if (window.__NODEX_STORYBOOK__ === true) return;
     const keyboard = browserKeyboardApi();
     if (!keyboard) return;
     let cancelled = false;

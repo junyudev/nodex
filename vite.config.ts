@@ -21,7 +21,6 @@ const generatedOrExternalPaths = [
   "packages/core-protocol/runtime-schemas/**",
   "packages/core-protocol/src/compatibility.generated.ts",
   "packages/core-protocol/src/generated.ts",
-  "packages/storybook/storybook-static/**",
   "pnpm-lock.yaml",
   "playwright-report/**",
   "scripts/fixtures/tooling/**",

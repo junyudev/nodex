@@ -7,7 +7,7 @@ Last updated: 2026-10-01
 
 The NFM block side menu is the block-scoped action surface for Card Stage descriptions. It opens from the editor side handle and keyboard block-action path, advertises the current block scope, and runs only actions that are real in production.
 
-Development and Storybook may show disabled reference rows for future block links, collaboration, presentation, and AI actions. Production must not show unavailable actions.
+Development builds may show disabled reference rows for future block links, collaboration, presentation, and AI actions. Production must not show unavailable actions.
 
 ## Scope Title
 
@@ -53,7 +53,7 @@ Production row order for a normal editable block is:
 `Send to chat` belongs to the same action group as `Duplicate`, `Move to`, and
 `Delete`, immediately above `Move to`; it does not create a separate section.
 
-`Copy link to block` and `Copy links to all` are reference-only rows in development and Storybook. Production hides them because NFM does not yet persist stable block identities across parse/serialize round trips, so generated block anchors could become stale.
+`Copy link to block` and `Copy links to all` are reference-only rows in development builds. Production hides them because NFM does not yet persist stable block identities across parse/serialize round trips, so generated block anchors could become stale.
 
 `Duplicate`, `Move to`, and `Delete` operate on top-level selected roots. `Turn into` and `Color` operate on the expanded selection, including descendants. `Color` is enabled only when every selected target supports at least one color prop; text and background color submenu groups are hidden independently when unsupported.
 
@@ -118,7 +118,7 @@ covers the complete selected subtree, while media Blocks remain bounded to
 their own visual width. The menu never adds a second inline text-selection
 paint over that overlay.
 
-Footer metadata is optional. Production hides the footer when there is no real metadata. Storybook fixtures may provide footer text.
+Footer metadata is optional. Production hides the footer when there is no real metadata.
 
 ## Submenus
 
@@ -154,15 +154,9 @@ Divider is intentionally not part of the generic `Turn into` list because conver
 
 `Move to` reuses the NFM move-to popover contract: DB rows create destination cards, card rows append selected blocks into an existing card, and source roots are removed after a successful move.
 
-## Storybook Coverage
+## Verification
 
-The side menu stories cover:
-
-- `TextBlock`
-- `CodeBlock`
-- `HeadingBlock`
-- `ThreeBlocks`
-- `CardMentionBlock`
-- `ReferenceMocks`
-- `NoFooterMetadata`
-- Search, submenu, table, loading, empty, error, and narrow viewport states
+Focused model and renderer tests own selected-root scope, action availability,
+search, submenus, and operation dispatch. Browser tests own viewport collisions;
+the native Block drag gesture belongs to Electron smoke coverage. Review
+integrated editor composition and viewport fit in a seeded development instance.

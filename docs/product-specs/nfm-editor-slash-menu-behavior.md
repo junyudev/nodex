@@ -54,9 +54,7 @@ keyboard shortcut.
 
 ## Isolated coverage
 
-The slash-menu Storybook surface includes the complete ordered catalog, a
-Callout-focused state, and a focused Pages/Agent state. Behavioral coverage
-verifies canonical wording and group transitions, rejects Heading 4/5/6 and
-unknown commands, proves that dependency icons cannot leak into the rendered
+Behavioral coverage verifies canonical wording and group transitions, rejects
+Heading 4/5/6 and unknown commands, proves that dependency icons cannot leak into the rendered
 catalog, and exercises Callout insertion through the editor replacement
 boundary.

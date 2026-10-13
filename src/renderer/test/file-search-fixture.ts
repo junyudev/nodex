@@ -1,7 +1,7 @@
 import type { FileSearchEvent, FileSearchStartInput } from "../../shared/file-search";
 import type { WorkspaceFileDirectoryEntry } from "../../shared/types";
 
-/** Native-session transport fixture shared by Files workflow tests and pressure stories. */
+/** Native-session transport fixture shared by Files workflow tests. */
 export function createFileSearchFixture(entries: readonly WorkspaceFileDirectoryEntry[]) {
   const listeners = new Set<(event: FileSearchEvent) => void>();
   const sessions = new Map<string, FileSearchStartInput>();

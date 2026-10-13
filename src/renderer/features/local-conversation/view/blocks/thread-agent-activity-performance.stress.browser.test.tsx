@@ -10,7 +10,7 @@ import type {
   ThreadAgentActivityGroupBlockModel,
   ThreadAgentActivityGroupEntryModel,
 } from "../../thread-stage-types";
-import { THREAD_TOOL_CALL_STORY_ITEMS } from "../thread-stage-story-fixtures";
+import { THREAD_TOOL_CALL_FIXTURE_ITEMS } from "@/test/thread-tool-call-fixture";
 import { CodexShimmerText } from "../shared/codex-shimmer-text";
 import { ThreadAgentActivityGroupBlock } from "./local-conversation-block-leaves";
 import { buildV2AgentActivityGroupBlock } from "../../projection/agent-activity-group";
@@ -82,10 +82,10 @@ function buildActivityEntry(
 
 function buildLargeMixedGroup(): ThreadAgentActivityGroupBlockModel {
   const families = [
-    { base: THREAD_TOOL_CALL_STORY_ITEMS.fileChange, type: "fileChange" },
-    { base: THREAD_TOOL_CALL_STORY_ITEMS.webSearch, type: "webSearch" },
-    { base: THREAD_TOOL_CALL_STORY_ITEMS.mcp, type: "mcpToolCall" },
-    { base: THREAD_TOOL_CALL_STORY_ITEMS.command, type: "exec" },
+    { base: THREAD_TOOL_CALL_FIXTURE_ITEMS.fileChange, type: "fileChange" },
+    { base: THREAD_TOOL_CALL_FIXTURE_ITEMS.webSearch, type: "webSearch" },
+    { base: THREAD_TOOL_CALL_FIXTURE_ITEMS.mcp, type: "mcpToolCall" },
+    { base: THREAD_TOOL_CALL_FIXTURE_ITEMS.command, type: "exec" },
   ] as const;
   const entries = Array.from({ length: LARGE_MIXED_GROUP_CYCLES }, (_, cycle) =>
     families.map(({ base, type }) => buildActivityEntry(base, type, `${type}-${cycle}`)),

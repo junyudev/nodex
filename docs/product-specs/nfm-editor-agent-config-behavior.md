@@ -65,4 +65,4 @@ Selecting a permission in Agent config changes only the document atom; it does n
 
 Document content is never an authorization token. `permission="full-access"` is accepted only when the target Project already has verified Full access through the normal Composer or Permissions confirmation flow. Otherwise Main rejects the prompt before any task or Turn transport. Other permission modes must also be currently available; Approve for me requires Auto-review availability.
 
-Authentication remains runtime-owned. Credentials never enter NFM, prompt sidecars, pending-worktree payloads, logs, stories, or screenshots.
+Authentication remains runtime-owned. Credentials never enter NFM, prompt sidecars, pending-worktree payloads, logs, test fixtures, or screenshots.

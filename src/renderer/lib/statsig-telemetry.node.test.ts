@@ -99,6 +99,22 @@ describe("Statsig renderer telemetry", () => {
     resetRendererTelemetryForTests();
   });
 
+  test("does not create telemetry clients in tests without explicit initialization", async () => {
+    const { adapter, state } = buildAdapter();
+    let settingsRead = false;
+    const initialized = await initializeRendererTelemetry({
+      getSettings: async () => {
+        settingsRead = true;
+        return buildSettings(true);
+      },
+      adapter,
+    });
+
+    expect(initialized).toBe(false);
+    expect(settingsRead).toBe(false);
+    expect(state.createClientCalls).toHaveLength(0);
+  });
+
   test("does not initialize when telemetry is disabled", async () => {
     process.env.NODEX_TELEMETRY_FORCE_TEST = "1";
     const { adapter, state } = buildAdapter();

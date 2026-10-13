@@ -6,16 +6,6 @@ import {
 import { applyCodexThemeVariant } from "../lib/codex-theme-variant";
 import { readAccentColorPreferences, resolveAccentColorPreference } from "../lib/theme-preferences";
 
-export interface RendererDocumentOptions {
-  readonly storybook?: boolean;
-}
-
-declare global {
-  interface Window {
-    __NODEX_STORYBOOK__?: boolean;
-  }
-}
-
 let unsubscribeElectronOpaqueSurfaceChange: (() => void) | null = null;
 
 function applyElectronOpaqueSurface(root: HTMLElement, enabled: boolean): void {
@@ -55,7 +45,7 @@ function clearElectronRuntimeDocumentState(root: HTMLElement): void {
 }
 
 /** Reconciles parser-time appearance with the live Electron bridge before React loads. */
-export function initializeRendererDocument(options?: RendererDocumentOptions): void {
+export function initializeRendererDocument(): void {
   const root = document.documentElement;
   const variant = root.classList.contains("dark") ? "dark" : "light";
   applyCodexThemeVariant(
@@ -65,14 +55,11 @@ export function initializeRendererDocument(options?: RendererDocumentOptions): v
     resolveAccentColorPreference(readAccentColorPreferences(), variant),
   );
   const isElectronWindow = Boolean(window.api);
-  const shouldEmulateElectronWindow = isElectronWindow || options?.storybook === true;
-  const shouldEmulateOpaqueElectronWindow =
-    options?.storybook === true || root.classList.contains("electron-opaque");
+  const opaqueElectronWindow = root.classList.contains("electron-opaque");
 
-  root.dataset.codexWindowType = shouldEmulateElectronWindow ? "electron" : "browser";
-  window.__NODEX_STORYBOOK__ = options?.storybook === true;
+  root.dataset.codexWindowType = isElectronWindow ? "electron" : "browser";
 
-  if (!shouldEmulateElectronWindow) {
+  if (!isElectronWindow) {
     clearElectronRuntimeDocumentState(root);
     return;
   }
@@ -84,7 +71,7 @@ export function initializeRendererDocument(options?: RendererDocumentOptions): v
   root.dataset.codexWindowChrome = resolveCodexRendererWindowChrome("electron", os);
   root.classList.toggle("compact-window", isCompactWindow);
   root.classList.toggle("hide-startup-shell", isCompactWindow);
-  applyElectronOpaqueSurface(root, shouldEmulateOpaqueElectronWindow);
+  applyElectronOpaqueSurface(root, opaqueElectronWindow);
   subscribeElectronOpaqueSurfaceChanges(root);
 
   const isDark = root.classList.contains("dark");

@@ -13,7 +13,7 @@ import {
   type PageStageControllerDependencies,
 } from "./use-page-stage-controller";
 import type { PageStageProps, PageStageSessionSnapshot } from "./types";
-import { buildPageDetailStoryResult } from "./page-stage-story-page-detail";
+import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 
 type PageStageController = ReturnType<typeof usePageStageController>;
 
@@ -41,7 +41,7 @@ function updatedResult(page: DatabasePage, updates: Partial<PageInput>) {
 }
 
 function toStageModel(page: DatabasePage): PageStagePageModel {
-  const detail = buildPageDetailStoryResult("project-1", page);
+  const detail = buildPageDetailFixtureResult("project-1", page);
   if (!detail.ok) throw new Error(detail.error.message);
   return projectPageDetailToStageModel(detail.value);
 }

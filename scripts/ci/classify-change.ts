@@ -33,7 +33,6 @@ const isLandingPath = (path: string): boolean =>
 
 const isRendererPath = (path: string): boolean =>
   path.startsWith("src/renderer/") ||
-  path.startsWith("packages/storybook/") ||
   path.startsWith("src/shared/") ||
   path.startsWith("config/renderer-") ||
   path.startsWith("vitest.renderer") ||
