@@ -21,6 +21,7 @@ const generatedOrExternalPaths = [
   "packages/core-protocol/runtime-schemas/**",
   "packages/core-protocol/src/compatibility.generated.ts",
   "packages/core-protocol/src/generated.ts",
+  "packages/agent-runtime/vendor/**",
   "pnpm-lock.yaml",
   "playwright-report/**",
   "scripts/fixtures/tooling/**",
@@ -225,6 +226,13 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["packages/agent-runtime/src/**/*.test.ts"],
+        rules: {
+          // Native replay fixtures intentionally replace own Clock methods.
+          "typescript/no-misused-spread": "off",
+        },
+      },
+      {
         files: ["**/*.test.{ts,tsx}", "**/*.spec.{ts,tsx}"],
         rules: {
           // Test assertions deliberately probe nullable values and cleanup failures.
@@ -335,7 +343,8 @@ export default defineConfig({
     },
     tasks: {
       check: {
-        command: "vp fmt --check && tsc-rs --build --noEmit && vp lint",
+        command:
+          "vp fmt --check && tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -370,7 +379,8 @@ export default defineConfig({
         },
       },
       lint: {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command:
+          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -388,7 +398,8 @@ export default defineConfig({
         },
       },
       "check:semantic": {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command:
+          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -406,7 +417,8 @@ export default defineConfig({
         },
       },
       typecheck: {
-        command: "tsc-rs --build --noEmit && vp lint",
+        command:
+          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [

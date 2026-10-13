@@ -1,8 +1,12 @@
 packages:
   - "packages/*"
+  - "packages/agent-runtime/vendor/*"
   - "third_party/blocknote/packages/*"
 
 patchedDependencies:
+  "@opencode/client@2.0.23": patches/@opencode__client@2.0.23.patch
+  "@opencode/protocol@2.0.23": patches/@opencode__protocol@2.0.23.patch
+  "@opencode/schema@2.0.23": patches/@opencode__schema@2.0.23.patch
   "@y/prosemirror@2.0.0-6": patches/@y__prosemirror@2.0.0-6.patch
   "@effect/platform-node-shared@4.0.3": patches/@effect__platform-node-shared@4.0.3.patch
   "@effect/vitest@4.0.3": patches/@effect__vitest@4.0.3.patch
@@ -18,6 +22,9 @@ supportedArchitectures:
     - x64
 
 overrides:
+  "@opencode/protocol>effect": 4.0.3
+  "@opencode/schema>effect": 4.0.3
+  remark-breaks: 4.0.0
   "@types/node": 24.13.3
   "@babel/core": 7.29.7
   "@xmldom/xmldom": 0.8.15

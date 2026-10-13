@@ -1,0 +1,41 @@
+{
+  "name": "@t3tools/ssh",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./auth": {
+      "types": "./src/auth.ts",
+      "import": "./src/auth.ts"
+    },
+    "./command": {
+      "types": "./src/command.ts",
+      "import": "./src/command.ts"
+    },
+    "./config": {
+      "types": "./src/config.ts",
+      "import": "./src/config.ts"
+    },
+    "./errors": {
+      "types": "./src/errors.ts",
+      "import": "./src/errors.ts"
+    },
+    "./tunnel": {
+      "types": "./src/tunnel.ts",
+      "import": "./src/tunnel.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --noEmit"
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "4.0.3"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
+    "@types/node": "24.13.3",
+    "vite-plus": "1.1.0"
+  }
+}

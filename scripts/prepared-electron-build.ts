@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
+import { buildAgentRuntime } from "./build-agent-runtime";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
 
 const MANIFEST_SCHEMA_VERSION = 4;
@@ -44,6 +45,7 @@ const REQUIRED_INPUT_PATHS = [
   "packages/core-protocol",
   "packages/effect-codex-app-server",
   "packages/nodex-app-tools-mcp",
+  "packages/agent-runtime",
   "resources",
   "scripts",
   "src",
@@ -370,6 +372,15 @@ const outputInventory = (root: string): FileDigest[] => {
   if (files.length === 0) {
     throw new Error("Prepared Electron output is empty; run the normal build first.");
   }
+  const requiredExecutionOutputs = [
+    "out/main/agent-runtime/entry.mjs",
+    "out/main/agent-runtime/LICENSE.t3code",
+    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
+    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
+  ];
+  for (const required of requiredExecutionOutputs)
+    if (!files.some((file) => file.path === required && file.size > 0))
+      throw new Error(`Prepared execution output is missing: ${required}`);
   assertMainDependenciesAreBundled(root, files);
   return files;
 };
@@ -552,6 +563,7 @@ function runProductionBuild(): void {
     ],
     { cwd: repositoryRoot, stdio: "inherit" },
   );
+  buildAgentRuntime(repositoryRoot);
   recordPreparedElectronBuild(
     { repositoryRoot, manifestPath: defaultManifestPath },
     beforeBuild,
