@@ -67,6 +67,7 @@ docs/product-specs/card-stage-rich-editor-performance.md
   s_e397f26d82f862::t_87124eab56499d 177
 pnpm-workspace.yaml
   s_e397f26d82f862::t_4004c445afbda4 98
+  s_e397f26d82f862::t_b937b07eaef3b9 94
 src/renderer/components/workbench/relation-property-editor.test.tsx
   s_e397f26d82f862::t_0af30c9b7caba2 484-489,492,550-552
   s_e397f26d82f862::t_57922ba93973b1 9,491
@@ -107,6 +108,14 @@ src/renderer/test/page-detail-fixture.ts
   s_e397f26d82f862::t_9c99921fe8832b 1-3,7,13-14,16-17,19-20,34,39-40,200
 src/renderer/test/page-stage-fixture.ts
   s_e397f26d82f862::t_ac9ddc717d8e7b 1-2,4,6,12
+docs/LINTING.md
+  s_e397f26d82f862::t_e67c3d36f45474 71,76
+scripts/ci/verify-static.test.ts
+  s_e397f26d82f862::t_e67c3d36f45474 26,30
+scripts/ci/classify-change.test.ts
+  s_e397f26d82f862::t_e67c3d36f45474 41-42
+docs/CI.md
+  s_e397f26d82f862::t_e67c3d36f45474 73
 ---
 {
   "schema_version": "authorship/3.0.0",
