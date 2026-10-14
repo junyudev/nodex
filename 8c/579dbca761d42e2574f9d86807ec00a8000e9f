@@ -1,0 +1,37 @@
+docs/FRONTEND.md
+  s_0b88fd1fc800e4::t_5bb00b579689f0 486-488
+src/renderer/components/workbench/local-environments-settings-page.test.tsx
+  s_0b88fd1fc800e4::t_ac0a33fad6c203 307-308,310
+src/renderer/components/shared/icons/voice-icons.tsx
+  s_0b88fd1fc800e4::t_8e84833dab9426 1-46
+src/renderer/components/shared/icons/index.ts
+  s_0b88fd1fc800e4::t_8e84833dab9426 12
+src/renderer/features/realtime-voice/realtime-voice-controls.tsx
+  s_0b88fd1fc800e4::t_8e84833dab9426 1-7,58,80
+src/renderer/features/local-conversation/message-copy-text.node.test.ts
+  s_0b88fd1fc800e4::t_0e7b79f6b98822 186-188,199-201,219
+  s_0b88fd1fc800e4::t_7ef167e4f29959 189-198,202-209,211
+  s_0b88fd1fc800e4::t_1da82e211a9e7b 210,212-218
+src/renderer/features/local-conversation/message-copy-text.ts
+  s_0b88fd1fc800e4::t_8d08c8d0dad37d 83-85
+  s_0b88fd1fc800e4::t_0c4f2d6ea539d8 63-74
+  s_0b88fd1fc800e4::t_0e7b79f6b98822 7,47-52,55-62,75-82,86-91,95
+src/renderer/lib/markdown/conversation-directives.ts
+  s_0b88fd1fc800e4::t_0e7b79f6b98822 116-117,164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c579dbca761d42e2574f9d86807ec00a8000e9f",
+  "prompts": {},
+  "sessions": {
+    "s_0b88fd1fc800e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13874-eac5-7761-a82e-2a34d8a24f8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
