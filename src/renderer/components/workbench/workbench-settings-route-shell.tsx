@@ -62,6 +62,13 @@ import {
 } from "../../lib/paste-resource-settings";
 import { usePasteResourceSettings } from "../../lib/use-paste-resource-settings";
 import { useSansFontSize } from "../../lib/use-sans-font-size";
+import {
+  FONT_SIZE_LIMITS,
+  normalizeFontFamily,
+  type FontFamilyRole,
+} from "../../lib/typography-preferences";
+import { useTypographyPreferences } from "../../lib/use-typography-preferences";
+import type { ResolvedTheme } from "../../lib/theme-preferences";
 import { useReducedMotionPreference } from "../../lib/use-reduced-motion";
 import type { ComposerEnterBehavior } from "../../lib/composer-enter-behavior";
 import { useSpellcheck } from "../../lib/use-spellcheck";
@@ -970,19 +977,15 @@ function FontSizeSettingControl({
   const [draft, setDraft] = useState(String(value));
   const isDefault = value === defaultValue;
 
-  useEffect(() => {
-    setDraft(String(value));
-  }, [value]);
-
   const commit = useCallback(() => {
-    const parsed = Number.parseInt(draft, 10);
-    if (!Number.isFinite(parsed)) {
+    const parsed = Number(draft);
+    if (draft.trim() === "" || !Number.isFinite(parsed) || parsed < min || parsed > max) {
       setDraft(String(value));
       return;
     }
 
     onChangeValue(parsed);
-  }, [draft, onChangeValue, value]);
+  }, [draft, max, min, onChangeValue, value]);
 
   return (
     <div className="flex items-center gap-2.5">
@@ -1022,7 +1025,8 @@ export function SansFontSizeSettingControl() {
 
   return (
     <FontSizeSettingControl
-      ariaLabel="Sans font size"
+      key={sansFontSize}
+      ariaLabel="UI font size"
       defaultValue={DEFAULT_SANS_FONT_SIZE}
       max={MAX_SANS_FONT_SIZE}
       min={MIN_SANS_FONT_SIZE}
@@ -1037,6 +1041,7 @@ export function CodeFontSizeSettingControl() {
 
   return (
     <FontSizeSettingControl
+      key={codeFontSize}
       ariaLabel="Code font size"
       defaultValue={DEFAULT_CODE_FONT_SIZE}
       max={MAX_CODE_FONT_SIZE}
@@ -1044,6 +1049,86 @@ export function CodeFontSizeSettingControl() {
       onChangeValue={setCodeFontSize}
       value={codeFontSize}
     />
+  );
+}
+
+export function PageFontSizeSettingControl() {
+  const { preferences, setFontSize } = useTypographyPreferences();
+  return (
+    <FontSizeSettingControl
+      key={preferences.pageFontSize}
+      ariaLabel="Page font size"
+      defaultValue={FONT_SIZE_LIMITS.page.default}
+      max={FONT_SIZE_LIMITS.page.max}
+      min={FONT_SIZE_LIMITS.page.min}
+      onChangeValue={(value) => setFontSize("page", value)}
+      value={preferences.pageFontSize}
+    />
+  );
+}
+
+const FONT_FAMILY_LABELS: Record<FontFamilyRole, string> = {
+  ui: "UI font",
+  content: "Content font",
+  code: "Code font",
+};
+
+function FontFamilySettingControl({
+  role,
+  variant,
+}: {
+  role: FontFamilyRole;
+  variant: ResolvedTheme;
+}) {
+  const { preferences, setFontFamily } = useTypographyPreferences();
+  const family = preferences.fonts[variant][role];
+  const [draft, setDraft] = useState(family ?? "");
+  return (
+    <Input
+      aria-label={`${variant === "light" ? "Light" : "Dark"} ${FONT_FAMILY_LABELS[role]}`}
+      className="w-52 text-sm"
+      placeholder={role === "content" ? "Same as UI font" : "System"}
+      value={draft}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={() => {
+        setFontFamily(variant, role, draft);
+        setDraft(normalizeFontFamily(draft) ?? "");
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        event.currentTarget.blur();
+      }}
+    />
+  );
+}
+
+export function FontFamilySettingsControls() {
+  const { resolved } = useTheme();
+  const { preferences } = useTypographyPreferences();
+  const [variant, setVariant] = useState<ResolvedTheme>(resolved);
+  return (
+    <>
+      <SettingRow label="Font appearance">
+        <SegmentedControl
+          value={variant}
+          onChange={setVariant}
+          options={[
+            { value: "light", label: "Light" },
+            { value: "dark", label: "Dark" },
+          ]}
+        />
+      </SettingRow>
+      {(["ui", "content", "code"] as const).map((role) => (
+        <SettingRow key={role} label={FONT_FAMILY_LABELS[role]}>
+          <FontFamilySettingControl
+            key={`${variant}-${role}-${preferences.fonts[variant][role] ?? ""}`}
+            role={role}
+            variant={variant}
+          />
+        </SettingRow>
+      ))}
+    </>
   );
 }
 

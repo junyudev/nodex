@@ -970,7 +970,7 @@ export function UserMessageBubble({
             <textarea
               aria-label={footerText("Edit message")}
               autoFocus
-              className="w-full resize-none bg-transparent p-0 text-sm leading-relaxed text-token-foreground outline-none placeholder:text-token-description-foreground"
+              className="w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none placeholder:text-token-description-foreground"
               rows={EDIT_MESSAGE_MIN_ROWS}
               value={draftMessage}
               onChange={(event) => {
@@ -1596,7 +1596,7 @@ export function ThreadSystemBannerBlock({ block }: ThreadLeafBlockProps) {
   if (item.markdownText) {
     return (
       <div className="flex flex-col gap-1.5">
-        <div className="text-[11px] font-medium tracking-wide text-token-description-foreground uppercase">
+        <div className="font-sans text-xs font-medium tracking-wide text-token-description-foreground uppercase">
           {label}
         </div>
         <div className="text-size-chat-sm whitespace-pre-wrap text-token-text-secondary">
@@ -1608,7 +1608,7 @@ export function ThreadSystemBannerBlock({ block }: ThreadLeafBlockProps) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="text-[11px] font-medium tracking-wide text-token-description-foreground uppercase">
+      <div className="font-sans text-xs font-medium tracking-wide text-token-description-foreground uppercase">
         {label}
       </div>
       <div>

@@ -103,7 +103,7 @@ function ThreadStageHeaderComponent({
         "draggable grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
       )}
     >
-      <div className="flex min-w-0 items-center gap-2 truncate text-base electron:font-medium">
+      <div className="flex min-w-0 items-center gap-2 truncate font-sans text-base leading-6 electron:font-medium">
         <span
           data-testid="thread-stage-title"
           className="inline-flex max-w-[320px] min-w-[2ch] items-center overflow-hidden text-token-foreground"

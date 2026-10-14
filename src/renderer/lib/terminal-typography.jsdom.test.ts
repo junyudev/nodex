@@ -1,22 +1,24 @@
-import { describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test } from "vite-plus/test";
 import { resolveTerminalTypography, sameTerminalTypography } from "./terminal-typography";
+
+afterEach(() => document.body.replaceChildren());
 
 describe("terminal-typography", () => {
   test("normalizes configured font families for xterm canvas metrics", () => {
     const host = document.createElement("div");
-    host.style.setProperty("--vscode-editor-font-family", "Monaco");
-    host.style.setProperty("--vscode-editor-font-size", "15px");
+    host.style.setProperty("--font-mono", "Monaco");
+    host.style.setProperty("--font-code-size", "15.5px");
     document.body.appendChild(host);
 
     const typography = resolveTerminalTypography(host);
 
     expect(typography.fontFamily).toBe('Monaco, "Symbols Nerd Font Mono", monospace');
-    expect(typography.fontSize).toBe(15);
+    expect(typography.fontSize).toBe(15.5);
   });
 
   test("does not pass unresolved CSS variables to xterm", () => {
     const host = document.createElement("div");
-    host.style.setProperty("--vscode-editor-font-family", "var(--font-vscode-editor, monospace)");
+    host.style.setProperty("--font-mono", "var(--font-code-family, monospace)");
     document.body.appendChild(host);
 
     const typography = resolveTerminalTypography(host);
@@ -27,7 +29,7 @@ describe("terminal-typography", () => {
 
   test("does not confuse ui-monospace with the generic monospace fallback", () => {
     const host = document.createElement("div");
-    host.style.setProperty("--vscode-editor-font-family", "ui-monospace");
+    host.style.setProperty("--font-mono", "ui-monospace");
     document.body.appendChild(host);
 
     const typography = resolveTerminalTypography(host);
@@ -42,7 +44,7 @@ describe("terminal-typography", () => {
     const typography = resolveTerminalTypography(host);
 
     expect(typography.fontFamily.length > 0).toBe(true);
-    expect(typography.fontSize > 0).toBe(true);
+    expect(typography.fontSize).toBe(12);
   });
 
   test("compares terminal typography snapshots", () => {

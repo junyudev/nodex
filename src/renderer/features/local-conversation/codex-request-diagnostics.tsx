@@ -29,7 +29,7 @@ function isFailedRequest(request: CodexRecordedRequest): boolean {
 function PayloadPreview({ payload, title }: { payload: string; title: string }) {
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2 text-[11px] font-medium tracking-wide text-(--foreground-secondary) uppercase">
+      <div className="mb-1 flex items-center justify-between gap-2 text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
         <span>{title}</span>
         <button
           type="button"
@@ -41,7 +41,7 @@ function PayloadPreview({ payload, title }: { payload: string; title: string }) 
           Copy
         </button>
       </div>
-      <pre className="max-h-52 overflow-auto rounded-md border border-(--border-primary) bg-(--background-secondary) p-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-(--foreground-primary)">
+      <pre className="codex-tool-code max-h-52 overflow-auto rounded-md border border-(--border-primary) bg-(--background-secondary) p-2 font-mono text-size-code whitespace-pre-wrap break-words text-(--foreground-primary)">
         {payload}
       </pre>
     </div>
@@ -54,21 +54,21 @@ function RequestDetails({ request }: { request: CodexRecordedRequest }) {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 marker:content-none">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-xs text-(--foreground-primary)">
+            <span className="truncate font-mono text-size-code text-(--foreground-primary)">
               {request.method}
             </span>
-            <span className="rounded-full bg-(--background-tertiary) px-1.5 py-0.5 text-[10px] font-medium text-(--foreground-secondary) tabular-nums">
+            <span className="rounded-full bg-(--background-tertiary) px-1.5 py-0.5 text-xs font-medium text-(--foreground-secondary) tabular-nums">
               #{request.matchingRequestSequenceNumber}
             </span>
           </div>
         </div>
-        <div className="shrink-0 text-right text-[11px] text-(--foreground-secondary) tabular-nums">
+        <div className="shrink-0 text-right text-xs text-(--foreground-secondary) tabular-nums">
           <div>{REQUEST_TIME_FORMATTER.format(request.startedAtMs)}</div>
           <div>{requestDuration(request)}</div>
         </div>
       </summary>
       <div className="space-y-3 border-t border-(--border-primary) p-3">
-        <div className="grid gap-2 text-[11px] text-(--foreground-secondary) md:grid-cols-2">
+        <div className="grid gap-2 text-xs text-(--foreground-secondary) md:grid-cols-2">
           <div>Request ID: {request.id}</div>
           <div>Timeout: {request.timeoutMs > 0 ? request.timeoutMs : "none"}</div>
           <div>Priority: {request.priority}</div>
@@ -109,7 +109,7 @@ function HostRequests({
       <div className="flex items-center justify-between gap-3 border-b border-(--border-primary) px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-xs font-medium text-(--foreground-primary)">{hostId}</div>
-          <div className="text-[11px] text-(--foreground-secondary) tabular-nums">
+          <div className="text-xs text-(--foreground-secondary) tabular-nums">
             {requests.length} requests
           </div>
         </div>
@@ -188,7 +188,7 @@ export function CodexRequestDiagnostics({ enabled }: { enabled: boolean }) {
 
   return (
     <details
-      className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)"
+      className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary) font-sans"
       open={expanded}
       onToggle={(event) => {
         setExpanded(event.currentTarget.open);

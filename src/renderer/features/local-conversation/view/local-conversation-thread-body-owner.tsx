@@ -419,7 +419,7 @@ export function ThreadStartProgressPanel({
           </span>
         </div>
         {isFailed && outputText.trim().length > 0 ? (
-          <pre className="scrollbar-token mt-3 max-h-32 overflow-auto rounded-lg border-[0.5px] border-(--border) bg-(--background-secondary) p-3 text-left font-mono text-xs/relaxed wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
+          <pre className="codex-tool-code scrollbar-token mt-3 max-h-32 overflow-auto rounded-lg border-[0.5px] border-(--border) bg-(--background-secondary) p-3 text-left font-mono text-size-code wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
             {outputText}
           </pre>
         ) : null}
@@ -452,7 +452,7 @@ export function ThreadStartProgressPanel({
               <div className="flex items-center gap-1.5">
                 <div
                   className={cn(
-                    "flex size-4 items-center justify-center rounded-full text-[10px] font-medium transition-colors duration-200",
+                    "flex size-4 items-center justify-center rounded-full font-sans text-xs leading-none font-medium transition-colors duration-200",
                     isComplete && "bg-chart-blue text-(--app-color-text-on-accent)",
                     isActive &&
                       "bg-(--color-background-info-soft) text-info ring-1 ring-token-focus-border/40",
@@ -488,7 +488,7 @@ export function ThreadStartProgressPanel({
           ref={setupProgressLogRef}
           className="scrollbar-token max-h-80 min-h-28 overflow-auto p-3"
         >
-          <pre className="font-mono text-xs/relaxed wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
+          <pre className="codex-tool-code font-mono text-size-code wrap-break-word whitespace-pre-wrap text-(--foreground-tertiary)">
             {outputText || "Preparing…\n"}
           </pre>
         </div>

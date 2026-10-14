@@ -48,7 +48,7 @@ export function CardInfoHoverCard({
         "w-72 animate-in fade-in-0 zoom-in-[0.985] outline-none",
         "data-[side=bottom]:slide-in-from-top-1",
       )}
-      contentBodyClassName="block space-y-2.5 px-3.5 pt-3 pb-3"
+      contentBodyClassName="block space-y-2.5 px-3.5 pt-3 pb-3 font-sans"
       hoverCardContent={
         <>
           {/* Title */}
@@ -58,7 +58,7 @@ export function CardInfoHoverCard({
 
           {/* Description preview */}
           {descriptionPreview && (
-            <div className="line-clamp-3 text-xs/relaxed text-(--foreground-secondary)">
+            <div className="line-clamp-3 font-content text-xs/relaxed text-(--foreground-secondary)">
               {descriptionPreview}
             </div>
           )}
@@ -70,15 +70,15 @@ export function CardInfoHoverCard({
               <StatusLabel
                 statusId={columnId}
                 label={formatColumnName(columnId)}
-                className="gap-1 text-[11px]/5 text-(--foreground-secondary)"
-                labelClassName="text-[11px]"
+                className="gap-1 text-xs/5 text-(--foreground-secondary)"
+                labelClassName="text-xs"
                 iconClassName="size-3.5"
               />
             )}
 
             {/* Priority */}
             {priorityOption && priorityLabel ? (
-              <span className="inline-flex h-5 items-center gap-1 text-[11px]/5 text-(--foreground-secondary)">
+              <span className="inline-flex h-5 items-center gap-1 text-xs/5 text-(--foreground-secondary)">
                 <PriorityValueIcon priority={card.priority ?? null} className="size-3.5" />
                 <span>{priorityLabel}</span>
               </span>
@@ -86,7 +86,7 @@ export function CardInfoHoverCard({
 
             {/* Estimate */}
             {card.estimate && (
-              <span className="inline-flex h-5 items-center gap-1 text-[11px]/5 text-(--foreground-secondary)">
+              <span className="inline-flex h-5 items-center gap-1 text-xs/5 text-(--foreground-secondary)">
                 <EstimateIcon className="size-3.5" />
                 <span>{ESTIMATE_LABEL[card.estimate] ?? card.estimate.toUpperCase()}</span>
               </span>
@@ -99,13 +99,13 @@ export function CardInfoHoverCard({
               {card.tags.slice(0, 5).map((tag) => (
                 <span
                   key={tag}
-                  className="h-4.5 rounded-sm bg-(--background-tertiary) px-1.5 text-[10px] font-medium text-(--foreground-tertiary)"
+                  className="h-4.5 rounded-sm bg-(--background-tertiary) px-1.5 text-xs font-medium text-(--foreground-tertiary)"
                 >
                   {tag}
                 </span>
               ))}
               {card.tags.length > 5 && (
-                <span className="text-[10px] text-(--foreground-tertiary)">
+                <span className="text-xs text-(--foreground-tertiary)">
                   +{card.tags.length - 5}
                 </span>
               )}

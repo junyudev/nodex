@@ -291,7 +291,7 @@ function NfmCreateLinkPopover({
               data-test="createLink"
               aria-label={triggerProps.ariaLabel}
               className={cn(
-                "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-[9px] px-2 text-[12px] leading-4 text-token-text-secondary outline-hidden transition-colors",
+                "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-[9px] px-2 text-xs leading-4 text-token-text-secondary outline-hidden transition-colors",
                 "hover:bg-token-foreground/6 hover:text-token-foreground focus-visible:ring-1 focus-visible:ring-token-focus-border",
               )}
               onMouseDown={triggerProps.onMouseDown}

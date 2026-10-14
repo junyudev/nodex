@@ -92,7 +92,7 @@ interface AbsoluteTitleSelection {
 
 const TITLE_CLASS_NAME = cn(
   "w-full min-w-0 whitespace-pre-wrap wrap-break-word",
-  "text-xl/snug-plus font-bold",
+  "font-content text-(length:--text-heading-app) leading-[1.2]",
   "text-(--foreground)",
   "border-none bg-transparent px-0.5 pt-0.75",
   "focus-visible:ring-0 focus-visible:outline-none",

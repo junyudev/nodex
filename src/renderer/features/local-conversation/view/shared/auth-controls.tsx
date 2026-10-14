@@ -139,7 +139,7 @@ export function AuthPopover({
             <div className="relative">
               <div className="absolute inset-x-0 top-1/2 border-t border-(--border)" />
               <div className="relative flex justify-center">
-                <span className="bg-(--popover) px-2 text-[10px] text-(--foreground-tertiary)">
+                <span className="bg-(--popover) px-2 font-sans text-xs text-(--foreground-tertiary)">
                   or
                 </span>
               </div>

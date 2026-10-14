@@ -10,10 +10,12 @@ import {
 import { useEffect, useMemo, useRef } from "react";
 import {
   NODEX_SOURCE_HOST_CLASS,
-  getNodexDiffHostStyle,
+  getNodexSourceEditorHostStyle,
+  getNodexSourceEditorLineHeight,
   getNodexSourceOptions,
 } from "@/lib/diff-presentation";
 import { useTheme } from "@/lib/use-theme";
+import { useCodeFontSize } from "@/lib/use-code-font-size";
 import { cn } from "@/lib/utils";
 import {
   buildWorkspaceFileEditorSelection,
@@ -57,6 +59,7 @@ export function WorkspacePierreEditor({
 }: WorkspacePierreEditorProps) {
   const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
   const { resolved } = useTheme();
+  const { codeFontSize } = useCodeFontSize();
   const items = useMemo<CodeViewItem[]>(
     () => [
       {
@@ -75,14 +78,22 @@ export function WorkspacePierreEditor({
     [documentVersion, filename, language, sourceIdentity, value],
   );
   const options = useMemo(
-    () =>
-      getNodexSourceOptions(resolved, true, {
+    () => ({
+      ...getNodexSourceOptions(resolved, true, {
         disableLineNumbers: false,
         wrap,
       }),
-    [resolved, wrap],
+      itemMetrics: {
+        lineHeight: getNodexSourceEditorLineHeight(codeFontSize),
+        spacing: 0,
+      },
+    }),
+    [codeFontSize, resolved, wrap],
   );
-  const style = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
+  const style = useMemo(
+    () => getNodexSourceEditorHostStyle(resolved, codeFontSize),
+    [codeFontSize, resolved],
+  );
   const handleEditChange = (_item: CodeViewItem, file: FileContents) => {
     onChange(file.contents);
   };

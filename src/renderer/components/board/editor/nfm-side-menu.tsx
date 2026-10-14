@@ -748,7 +748,7 @@ function NfmSideMenuRow({
       data-focused={focused ? "true" : undefined}
       data-disabled={!row.enabled ? "true" : undefined}
       className={cn(
-        "group flex h-7 select-none items-center gap-2 rounded-[7px] px-2 text-[14px] leading-7 outline-hidden",
+        "group flex h-7 select-none items-center gap-2 rounded-[7px] px-2 text-sm leading-7 outline-hidden",
         "text-token-foreground",
         row.enabled ? "cursor-interaction" : "cursor-default opacity-45",
         focused && "bg-token-list-hover-background",
@@ -788,7 +788,7 @@ function NfmSideMenuRow({
         </span>
       ) : null}
       {row.shortcut ? (
-        <span className="shrink-0 text-[12px] leading-4 text-token-description-foreground">
+        <span className="shrink-0 text-xs leading-4 text-token-description-foreground">
           {row.shortcut}
         </span>
       ) : null}
@@ -826,7 +826,7 @@ function NfmSideMenuRow({
         aria-label={row.label}
         data-nfm-side-menu-submenu="true"
         className={cn(
-          "text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl",
+          "text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl",
           isDestinationSubmenu
             ? "w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
             : row.submenu === "language"
@@ -878,7 +878,7 @@ function NfmSideMenuSectionView({
 }) {
   return (
     <div className="py-1">
-      <div className="flex h-6 items-center px-2 text-[12px] leading-6 text-token-description-foreground">
+      <div className="flex h-6 items-center px-2 text-xs leading-6 text-token-description-foreground">
         <span className="min-w-0 flex-1 truncate">{section.label}</span>
       </div>
       <div className="flex flex-col gap-px">
@@ -956,7 +956,7 @@ const NfmSideMenuSubmenuRow = forwardRef<HTMLDivElement, NfmSideMenuSubmenuRowPr
         aria-haspopup={ariaHaspopup}
         aria-expanded={ariaExpanded}
         className={cn(
-          "flex h-7 select-none items-center gap-2 rounded-[7px] px-2 text-[14px] leading-7 outline-hidden",
+          "flex h-7 select-none items-center gap-2 rounded-[7px] px-2 text-sm leading-7 outline-hidden",
           disabled
             ? "cursor-default text-token-text-secondary opacity-45"
             : "cursor-interaction text-token-foreground hover:bg-token-list-hover-background",
@@ -1087,7 +1087,7 @@ function NfmSideMenuSubmenu({
       ) : null}
       {submenu === "turn-into" ? (
         <div role="menu" aria-label="Turn into">
-          <div className="flex h-6 items-center px-2 text-[12px] text-token-description-foreground">
+          <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
             Turn into
           </div>
           {turnIntoItems.map((item) => (
@@ -1139,7 +1139,7 @@ function NfmSideMenuSubmenu({
               alignOffset={-4}
               aria-label="Page in"
               data-nfm-side-menu-submenu="true"
-              className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl"
+              className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
               style={{ width: 330 }}
             >
               {renderMoveToMenu?.(cardInMenuProps) ?? <NfmMoveToMenu {...cardInMenuProps} />}
@@ -1151,7 +1151,7 @@ function NfmSideMenuSubmenu({
         <div role="menu" aria-label="Color">
           {canUseTextColor ? (
             <>
-              <div className="flex h-6 items-center px-2 text-[12px] text-token-description-foreground">
+              <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
                 Text color
               </div>
               {colorOptions.map((option) => (
@@ -1175,7 +1175,7 @@ function NfmSideMenuSubmenu({
           {canUseBackgroundColor ? (
             <>
               <div className="mx-2 my-1 h-px bg-token-menu-border" />
-              <div className="flex h-6 items-center px-2 text-[12px] text-token-description-foreground">
+              <div className="flex h-6 items-center px-2 text-xs text-token-description-foreground">
                 Background color
               </div>
               {colorOptions.map((option) => (
@@ -1337,7 +1337,7 @@ export function NfmSideMenuSurface({
       role="dialog"
       aria-modal="true"
       aria-label="Block actions"
-      className="relative min-h-0 w-[265px] min-w-0 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-token-dropdown-background/90 p-0 text-[14px] leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
+      className="relative min-h-0 w-[265px] min-w-0 max-w-[calc(100vw-24px)] overflow-hidden rounded-xl bg-token-dropdown-background/90 p-0 text-sm leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
       style={{ maxHeight: "var(--nfm-side-menu-max-height, 70vh)" }}
     >
       <div className="flex max-h-[inherit] flex-col overflow-hidden">
@@ -1352,7 +1352,7 @@ export function NfmSideMenuSurface({
             aria-activedescendant={activeDescendantId}
             value={query}
             placeholder="Search actions…"
-            className="h-7 w-full rounded-[7px] bg-token-foreground/5 px-2 text-[14px] text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/10"
+            className="h-7 w-full rounded-[7px] bg-token-foreground/5 px-2 text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/10"
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={handleInputKeyDown}
             onCopy={(event) => handleInputClipboardCommand("copy", event)}
@@ -1393,7 +1393,7 @@ export function NfmSideMenuSurface({
           </div>
         </div>
         {footerPrimary || footerSecondary ? (
-          <div className="px-1 pb-1 text-[12px] leading-4 text-token-description-foreground">
+          <div className="px-1 pb-1 text-xs leading-4 text-token-description-foreground">
             <NfmSideMenuSeparator kind="footer" />
             <div className="px-2 py-1.5">
               {footerPrimary ? <div className="truncate">{footerPrimary}</div> : null}

@@ -48,7 +48,7 @@ function fieldValueAsString(value: CodexMcpElicitationFieldValue | undefined): s
 function ErrorMessage({ visible }: { visible: boolean }) {
   if (!visible) return null;
   return (
-    <div className="text-size-chat-sm px-2 pt-1 text-token-editor-error-foreground">
+    <div className="text-size-chat-sm leading-5 px-2 pt-1 text-token-editor-error-foreground">
       Complete this field to continue
     </div>
   );
@@ -63,7 +63,12 @@ function FieldDescription({
 }) {
   if (!description) return null;
   return (
-    <div className={cn("text-size-chat-sm text-token-description-foreground", inset && "px-2")}>
+    <div
+      className={cn(
+        "text-size-chat-sm leading-5 text-token-description-foreground",
+        inset && "px-2",
+      )}
+    >
       {description}
     </div>
   );
@@ -84,7 +89,9 @@ function TextField({
 }) {
   return (
     <label className="flex flex-col gap-1 px-2 text-sm">
-      <div className="text-size-chat-sm font-medium text-token-foreground">{field.label}</div>
+      <div className="text-size-chat-sm leading-5 font-medium text-token-foreground">
+        {field.label}
+      </div>
       <FieldDescription description={field.description} inset={false} />
       <input
         autoFocus={autoFocus}
@@ -118,7 +125,9 @@ function NumberField({
 }) {
   return (
     <label className="flex flex-col gap-1 px-2 text-sm">
-      <div className="text-size-chat-sm font-medium text-token-foreground">{field.label}</div>
+      <div className="text-size-chat-sm leading-5 font-medium text-token-foreground">
+        {field.label}
+      </div>
       <FieldDescription description={field.description} inset={false} />
       <input
         autoFocus={autoFocus}
@@ -577,12 +586,12 @@ function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationReques
           />
           <span>{serverName}</span>
         </div>
-        <div className="text-base leading-tight font-medium">{request.message}</div>
+        <div className="font-sans text-base leading-5 font-medium">{request.message}</div>
         {hasDetails ? (
           <div className="flex flex-col gap-2">
             <button
               type="button"
-              className="flex w-fit items-center gap-1 rounded-full px-1 text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground"
+              className="font-sans text-size-chat-sm leading-5 flex w-fit items-center gap-1 rounded-full px-1 text-token-description-foreground hover:bg-token-list-hover-background hover:text-token-foreground"
               onClick={() => {
                 setDetailsExpanded((current) => !current);
               }}
@@ -598,7 +607,7 @@ function CompactMcpRequestCard({ request, onRespond }: CodexMcpElicitationReques
                 preview={buildTextPreview(detailsText, INLINE_TEXT_PREVIEW_MAX_CHARS)}
                 getCopyText={() => detailsText}
                 getFullText={() => detailsText}
-                preClassName="font-mono text-xs text-token-description-foreground"
+                preClassName="codex-tool-code font-mono text-size-code text-token-description-foreground"
               />
             ) : null}
           </div>

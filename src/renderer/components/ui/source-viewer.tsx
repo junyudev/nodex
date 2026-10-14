@@ -5,8 +5,10 @@ import {
   NODEX_SOURCE_HOST_CLASS,
   getNodexDiffHostStyle,
   getNodexSourceOptions,
+  getNodexSourceLineHeight,
 } from "@/lib/diff-presentation";
 import { useTheme } from "@/lib/use-theme";
+import { useCodeFontSize } from "@/lib/use-code-font-size";
 import { cn } from "@/lib/utils";
 import { getSourceContentVersion } from "@/lib/source-content-version";
 import {
@@ -44,6 +46,7 @@ export function SourceViewer({
 }: SourceViewerProps) {
   const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
   const { resolved } = useTheme();
+  const { codeFontSize } = useCodeFontSize();
   const contentVersion = useMemo(() => getSourceContentVersion(value), [value]);
   const file = useMemo(
     () => ({
@@ -66,12 +69,14 @@ export function SourceViewer({
     [contentVersion, file, filename, sourceIdentity],
   );
   const options = useMemo(
-    () =>
-      getNodexSourceOptions(resolved, true, {
+    () => ({
+      ...getNodexSourceOptions(resolved, true, {
         disableLineNumbers: !lineNumbers,
         wrap,
       }),
-    [lineNumbers, resolved, wrap],
+      itemMetrics: { lineHeight: getNodexSourceLineHeight(codeFontSize), spacing: 0 },
+    }),
+    [codeFontSize, lineNumbers, resolved, wrap],
   );
   const style = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
 

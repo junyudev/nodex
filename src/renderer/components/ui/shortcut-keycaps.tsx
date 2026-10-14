@@ -8,9 +8,9 @@ export interface ShortcutKeycapsProps extends Omit<ComponentPropsWithoutRef<"kbd
 }
 
 const densityClassNames = {
-  compact: "h-[18px] min-w-[18px] px-1 text-[10.5px]",
-  default: "h-5 min-w-5 px-1.5 text-[11px]",
-  settings: "h-7 min-w-7 px-2 text-[13px]",
+  compact: "h-[18px] min-w-[18px] px-1 text-xs",
+  default: "h-5 min-w-5 px-1.5 text-xs",
+  settings: "h-7 min-w-7 px-2 text-sm",
 } as const;
 
 export function ShortcutKeycaps({
@@ -53,7 +53,7 @@ export function ShortcutKeycapSequence({
       {chords.map((chord, index) => (
         <span key={`${chord}-${index}`} className="inline-flex items-center gap-1">
           {index > 0 ? (
-            <span className="text-[10px] font-medium text-token-description-foreground">then</span>
+            <span className="text-xs font-medium text-token-description-foreground">then</span>
           ) : null}
           <ShortcutKeycaps keys={[chord]} density={density} tone={tone} />
         </span>

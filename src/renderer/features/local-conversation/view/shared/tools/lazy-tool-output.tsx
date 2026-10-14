@@ -51,7 +51,7 @@ export function LazyToolOutput({ reference }: { reference: AgentToolOutputRefere
           </button>
         ) : query.data ? (
           <>
-            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words font-mono text-token-text-primary">
+            <pre className="codex-tool-code max-h-96 overflow-auto whitespace-pre-wrap break-words font-mono text-token-text-primary">
               {query.data.text}
             </pre>
             {query.data.truncated ? (

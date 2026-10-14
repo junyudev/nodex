@@ -36,6 +36,8 @@ import {
 import {
   BackupSettingsControl,
   CodeFontSizeSettingControl,
+  PageFontSizeSettingControl,
+  FontFamilySettingsControls,
   ComposerEnterBehaviorControl,
   ConfigValueDropdown,
   CopyFileReferencesAsLocalPathsSettingControl,
@@ -329,12 +331,16 @@ export function AppearanceSettingsPage() {
         >
           <ReducedMotionSettingControl />
         </SettingRow>
-        <SettingRow label="Sans font size">
+        <SettingRow label="UI font size">
           <SansFontSizeSettingControl />
         </SettingRow>
         <SettingRow label="Code font size">
           <CodeFontSizeSettingControl />
         </SettingRow>
+        <SettingRow label="Page font size">
+          <PageFontSizeSettingControl />
+        </SettingRow>
+        <FontFamilySettingsControls />
       </SectionBlock>
     </SettingsPageSurface>
   );

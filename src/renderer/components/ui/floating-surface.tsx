@@ -105,7 +105,7 @@ export function makeNodexFloatingSurfaceBoundaryStyle(
 }
 
 export const nodexFloatingSurfaceClassName = cn(
-  "no-drag m-px flex w-fit select-none flex-col rounded-xl bg-token-dropdown-background/90 text-sm text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-sm whitespace-normal break-words",
+  "no-drag m-px flex w-fit select-none flex-col rounded-xl bg-token-dropdown-background/90 font-sans text-sm text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-sm whitespace-normal break-words",
   APP_SHELL_FLOATING_UI_LAYER_CLASS,
 );
 

@@ -3,8 +3,6 @@ import {
   resolveCodexRendererOs,
   resolveCodexRendererWindowChrome,
 } from "../lib/codex-window-runtime";
-import { applyCodexThemeVariant } from "../lib/codex-theme-variant";
-import { readAccentColorPreferences, resolveAccentColorPreference } from "../lib/theme-preferences";
 
 let unsubscribeElectronOpaqueSurfaceChange: (() => void) | null = null;
 
@@ -44,16 +42,9 @@ function clearElectronRuntimeDocumentState(root: HTMLElement): void {
   delete root.dataset.codexWindowChrome;
 }
 
-/** Reconciles parser-time appearance with the live Electron bridge before React loads. */
+/** Reconciles parser-time window classes with the live Electron bridge before React loads. */
 export function initializeRendererDocument(): void {
   const root = document.documentElement;
-  const variant = root.classList.contains("dark") ? "dark" : "light";
-  applyCodexThemeVariant(
-    root,
-    variant,
-    document.body,
-    resolveAccentColorPreference(readAccentColorPreferences(), variant),
-  );
   const isElectronWindow = Boolean(window.api);
   const opaqueElectronWindow = root.classList.contains("electron-opaque");
 

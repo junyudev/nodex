@@ -1,7 +1,11 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { applyCodexThemeVariant } from "../codex-theme-variant";
-import { applySansFontSizeRootVariables } from "../sans-font-size";
+import {
+  DEFAULT_TYPOGRAPHY_PREFERENCES,
+  applyTypographyPreferences,
+  type TypographyPreferences,
+} from "../typography-preferences";
 import {
   createInlineVisualizationRuntime,
   type InlineVisualizationRuntime,
@@ -157,9 +161,20 @@ function hostColor(variable: `--${string}`): string {
 test("actual host typography preferences reach the authored document on first execution and update the retained guest", async () => {
   document.documentElement.className = "";
   applyCodexThemeVariant(document.documentElement, "light", document.body);
-  applySansFontSizeRootVariables(document.documentElement, 18);
-  document.documentElement.style.setProperty("--font-sans", "Preferred Sans, serif");
-  document.documentElement.style.setProperty("--font-mono", "Preferred Mono, monospace");
+  applyTypographyPreferences(
+    document.documentElement,
+    document.body,
+    DEFAULT_TYPOGRAPHY_PREFERENCES,
+    "light",
+  );
+  const preferences: TypographyPreferences = {
+    ...DEFAULT_TYPOGRAPHY_PREFERENCES,
+    fonts: {
+      ...DEFAULT_TYPOGRAPHY_PREFERENCES.fonts,
+      light: { ui: '"Preferred Sans", serif', content: null, code: '"Preferred Mono", monospace' },
+    },
+  };
+  applyTypographyPreferences(document.documentElement, document.body, preferences, "light");
   document.documentElement.style.setProperty("--radius-lg", "14px");
   document.documentElement.style.setProperty("--spacing-button-toolbar-inline", "16px");
   mount();
@@ -167,13 +182,13 @@ test("actual host typography preferences reach the authored document on first ex
   const frame = guests[0]!;
   const guest = frame.contentWindow as GuestWindow;
   expect(guest.initialStyles).toEqual({
-    size: "18px",
-    font: "Preferred Sans, serif",
+    size: "14px",
+    font: document.documentElement.style.getPropertyValue("--font-sans"),
     persistence: "none",
   });
   const sent = guest.openai.visualizationStyleVariables;
   expect(sent).toMatchObject({
-    "--font-mono": "Preferred Mono, monospace",
+    "--font-mono": document.documentElement.style.getPropertyValue("--font-mono"),
     "--radius": "14px",
     "--control-spacing": "16px",
     "--cursor-interaction": "pointer",
@@ -181,12 +196,17 @@ test("actual host typography preferences reach the authored document on first ex
   });
   expect(document.body.querySelectorAll('[aria-hidden="true"]')).toHaveLength(0);
   await act(async () => {
-    applySansFontSizeRootVariables(document.documentElement, 20);
+    applyTypographyPreferences(
+      document.documentElement,
+      document.body,
+      { ...preferences, uiFontSize: 16 },
+      "light",
+    );
     document.documentElement.style.setProperty("--radius-lg", "18px");
     await Promise.resolve();
   });
   await waitFor(() =>
-    expect(guest.document.documentElement.style.getPropertyValue("--font-size-base")).toBe("20px"),
+    expect(guest.document.documentElement.style.getPropertyValue("--font-size-base")).toBe("16px"),
   );
   expect(guest.document.documentElement.style.getPropertyValue("--radius")).toBe("18px");
   await act(async () => {
@@ -285,7 +305,12 @@ test.each(["light", "dark"] as const)(
 test("drag and layout presentation changes send no widget context while fractional typography and cursor preferences update the same guest", async () => {
   document.documentElement.className = "";
   applyCodexThemeVariant(document.documentElement, "light", document.body);
-  applySansFontSizeRootVariables(document.documentElement, 18);
+  applyTypographyPreferences(
+    document.documentElement,
+    document.body,
+    DEFAULT_TYPOGRAPHY_PREFERENCES,
+    "light",
+  );
   const runtime = mount();
   await waitFor(() => expect(runtime.getSnapshot().status).toBe("ready"));
   const frame = guests[0]!;
@@ -318,12 +343,17 @@ test("drag and layout presentation changes send no widget context while fraction
     expect(hostContextsSent).not.toHaveBeenCalled();
     expect(themesSent).not.toHaveBeenCalled();
     await act(async () => {
-      document.documentElement.style.setProperty("--sans-font-size", "18.5px");
+      applyTypographyPreferences(
+        document.documentElement,
+        document.body,
+        { ...DEFAULT_TYPOGRAPHY_PREFERENCES, uiFontSize: 15.5 },
+        "light",
+      );
       await Promise.resolve();
     });
     await waitFor(() =>
       expect(guest.document.documentElement.style.getPropertyValue("--font-size-base")).toBe(
-        "18.5px",
+        "15.5px",
       ),
     );
     expect(globalsSent).toHaveBeenCalledOnce();

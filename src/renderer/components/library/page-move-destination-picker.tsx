@@ -148,7 +148,7 @@ function DestinationRowView({
     >
       <span className="min-w-0 flex-1 truncate">{title || "Untitled"}</span>
       {metadata ? (
-        <span className="ml-1 max-w-[132px] shrink truncate text-[12px] leading-4 text-token-description-foreground">
+        <span className="ml-1 max-w-[132px] shrink truncate text-xs leading-4 text-token-description-foreground">
           {metadata}
         </span>
       ) : null}
@@ -474,7 +474,7 @@ export function PageMoveDestinationPicker({
           <span>Could not load destinations</span>
           <button
             type="button"
-            className="ml-auto cursor-interaction rounded-md px-2 py-1 text-[12px] font-medium text-token-foreground hover:bg-token-foreground/5"
+            className="ml-auto cursor-interaction rounded-md px-2 py-1 text-xs font-medium text-token-foreground hover:bg-token-foreground/5"
             onClick={refetchDestinations}
           >
             Retry

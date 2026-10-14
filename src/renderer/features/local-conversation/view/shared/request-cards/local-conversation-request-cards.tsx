@@ -1065,8 +1065,8 @@ function RequestComposerViewInstance({
           disabled={isBusy}
         >
           <span className="text-sm text-token-description-foreground">Dismiss</span>
-          <span className="inline-flex items-center rounded-sm bg-token-foreground/10 px-2 py-1 text-[10px] leading-none text-token-foreground group-hover:bg-token-foreground/15">
-            <span className="font-mono">ESC</span>
+          <span className="inline-flex items-center rounded-sm bg-token-foreground/10 px-2 py-1 font-sans text-xs leading-none text-token-foreground group-hover:bg-token-foreground/15">
+            <span>ESC</span>
           </span>
         </button>
       ) : null}

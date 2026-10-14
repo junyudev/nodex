@@ -407,11 +407,11 @@ function PageCreateDialogContent({
                 descriptionNavigationRef.current?.focus();
               }}
               placeholder="Page title"
-              className="w-full shrink-0 bg-transparent px-1 py-0 text-[18px]/[28.8px] font-semibold tracking-[-0.1px] text-token-foreground outline-none placeholder:text-token-description-foreground/65 disabled:opacity-60"
+              className="w-full shrink-0 bg-transparent px-1 py-0 font-content text-(length:--text-heading-sm) leading-[1.6] font-semibold tracking-[-0.1px] text-token-foreground outline-none placeholder:text-token-description-foreground/65 disabled:opacity-60"
             />
             <div
               className={cn(
-                "min-h-[79px] overflow-y-auto px-1 pb-3 pt-1.5 text-[15px]/6 font-normal",
+                "min-h-[79px] overflow-y-auto px-1 pb-3 pt-1.5 font-content text-(length:--text-document) leading-relaxed font-normal",
                 expanded ? "flex-1" : "max-h-[min(360px,38vh)]",
               )}
               style={{ minHeight: layout.minimumWritingHeight }}

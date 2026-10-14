@@ -56,7 +56,7 @@ loading.
 - The startup JavaScript graph does not eagerly load React, Workbench, editor, diagnostics, or
   telemetry code.
 - The production build enforces a 24 KiB inline-document budget and a 20 KiB gzip budget for eager
-  renderer bootstrap JavaScript.
+  renderer bootstrap JavaScript, including parser-time classic scripts.
 
 Runtime ownership is documented in [Architecture](../ARCHITECTURE.md), shutdown and failure
 semantics in [Reliability](../RELIABILITY.md), and the early authority boundary in

@@ -205,7 +205,7 @@ const DatabaseListDragOverlay = ({
         {columns.identifier && row.row.pageKey ? (
           <span
             data-list-drag-overlay-column="identifier"
-            className="shrink-0 whitespace-nowrap text-[13px] font-[450] leading-[normal] tracking-[-0.02em] tabular-nums text-[var(--database-list-text-muted)]"
+            className="shrink-0 whitespace-nowrap text-sm font-[450] leading-[normal] tracking-[-0.02em] tabular-nums text-[var(--database-list-text-muted)]"
           >
             {row.row.pageKey}
           </span>

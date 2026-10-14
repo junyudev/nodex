@@ -401,7 +401,7 @@ function CreateViewRoute({
           autoFocus
           value={name}
           onChange={(event) => setName(event.target.value)}
-          className="mt-1.5 h-8 text-[13px]"
+          className="mt-1.5 h-8 text-sm"
         />
       </label>
       <div className="mt-4 text-xs font-medium text-token-description-foreground">Layout</div>
@@ -415,7 +415,7 @@ function CreateViewRoute({
               aria-pressed={layout === candidate}
               onClick={() => setLayout(candidate)}
               className={cn(
-                "flex h-9 items-center gap-2 rounded-md px-2 text-[13px] outline-none ring-[0.5px] ring-inset",
+                "flex h-9 items-center gap-2 rounded-md px-2 text-sm outline-none ring-[0.5px] ring-inset",
                 layout === candidate
                   ? "bg-token-foreground/7 text-token-text-primary ring-token-border-heavy"
                   : "text-token-text-secondary ring-token-border hover:bg-token-foreground/5",
@@ -990,7 +990,7 @@ function ViewPropertiesRoute({
                   className="mx-2 flex h-7 items-center rounded-md px-1 text-sm leading-[16.8px] hover:bg-token-foreground/5"
                 >
                   <span className="w-[18px] shrink-0" />
-                  <span className="ml-1 flex size-4 shrink-0 items-center justify-center text-[13px] font-medium tracking-[-0.03em] text-token-text-primary">
+                  <span className="ml-1 flex size-4 shrink-0 items-center justify-center text-sm font-medium tracking-[-0.03em] text-token-text-primary">
                     Aa
                   </span>
                   <span className="ml-2 min-w-0 flex-1 truncate text-token-text-primary">Name</span>
@@ -3057,7 +3057,7 @@ function DeletedPropertiesRoute({ runtime }: { readonly runtime: DatabaseSetting
           <div key={property.propertyId} className="px-3">
             <div className="flex min-h-9 items-center gap-2">
               <Icon className="size-4 text-token-text-primary" />
-              <span className="min-w-0 flex-1 truncate text-left text-[13px] text-token-text-primary">
+              <span className="min-w-0 flex-1 truncate text-left text-sm text-token-text-primary">
                 {property.name}
               </span>
               <NodexButton

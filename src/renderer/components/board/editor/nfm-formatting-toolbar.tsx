@@ -144,7 +144,7 @@ const ToolbarButton = forwardRef<HTMLButtonElement, ToolbarButtonProps>(function
       aria-label={label}
       disabled={isDisabled}
       className={cn(
-        "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-[9px] px-2 text-[12px] leading-4 text-token-text-secondary outline-hidden transition-colors",
+        "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1 rounded-[9px] px-2 text-xs leading-4 text-token-text-secondary outline-hidden transition-colors",
         "focus-visible:ring-1 focus-visible:ring-token-focus-border",
         !isDisabled && "hover:bg-token-foreground/6 hover:text-token-foreground",
         isSelected && "bg-token-foreground/10 text-token-foreground",
@@ -208,7 +208,7 @@ function ToolbarSelect({
           contentEditable={false}
           aria-label={selectedItem.text}
           className={cn(
-            "inline-flex h-7 min-w-[7.5rem] items-center gap-1 rounded-[9px] px-2 text-[12px] leading-4 outline-hidden transition-colors",
+            "inline-flex h-7 min-w-[7.5rem] items-center gap-1 rounded-[9px] px-2 text-xs leading-4 outline-hidden transition-colors",
             "text-token-foreground hover:bg-token-foreground/6 focus-visible:ring-1 focus-visible:ring-token-focus-border",
             isDisabled && "cursor-default opacity-40",
             className,

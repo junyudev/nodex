@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { waitFor } from "@testing-library/react";
-import { render } from "../../../test/dom";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 
 vi.mock("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "dark" }),

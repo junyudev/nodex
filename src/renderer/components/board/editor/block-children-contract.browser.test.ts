@@ -133,10 +133,10 @@ describe("Block children contract in Chromium", () => {
     expect(quoteContentStyle.paddingBlockStart).toBe("0px");
     expect(quoteContentStyle.paddingInlineStart).toBe("0px");
     expect(blockquoteStyle.color).toBe(quoteStyle.color);
-    expect(blockquoteStyle.fontSize).toBe("16px");
-    expect(blockquoteStyle.lineHeight).toBe("24px");
-    expect(quote.getBoundingClientRect().height).toBe(64);
-    expect(blockquote.getBoundingClientRect().height).toBe(48);
+    expect(blockquoteStyle.fontSize).toBe("14px");
+    expect(blockquoteStyle.lineHeight).toBe("22.75px");
+    expect(quote.getBoundingClientRect().height).toBe(61.5);
+    expect(blockquote.getBoundingClientRect().height).toBe(45.5);
   });
 
   test("keeps an empty focused quote on one line with a local placeholder", () => {
@@ -161,7 +161,7 @@ describe("Block children contract in Chromium", () => {
     expect(placeholderStyle.fontStyle).toBe("normal");
     expect(placeholderStyle.whiteSpace).toBe("nowrap");
     expect(quoteContent.scrollWidth).toBe(quoteContent.clientWidth);
-    expect(quote.getBoundingClientRect().height).toBe(40);
-    expect(blockquote.getBoundingClientRect().height).toBe(24);
+    expect(quote.getBoundingClientRect().height).toBe(38.75);
+    expect(blockquote.getBoundingClientRect().height).toBe(22.75);
   });
 });

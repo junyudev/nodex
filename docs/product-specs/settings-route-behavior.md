@@ -127,9 +127,13 @@ and synchronize between windows sharing that storage. Renderer initialization
 applies the saved accent before application content mounts; switching appearance
 or accent updates all coordinated roles before the next paint.
 
-Sans font size defaults to 15px and scales the renderer's shared sans typography
-tokens. Code font size defaults to 14px and scales the shared code/editor token.
-Both are Profile preferences, not Window Session layout.
+Typography settings independently control UI size (14px, 11–16px), code size
+(12px, 8–24px), and Page content size (14px, 12–24px). UI, content, and code font
+families are selected separately for light and dark appearances. Content follows
+the UI font by default. These Profile presentation preferences persist and
+synchronize between windows sharing browser storage; startup restores them
+before application content paints. See [Typography behavior](typography-behavior.md)
+for role ownership and size/line-height rules.
 
 Appearance also owns the renderer-local `Reduced motion` preference. `System`
 tracks the operating-system media query, `On` reduces hook-driven interface

@@ -9,9 +9,15 @@ const codeViewHandle = vi.hoisted(() => ({
   scrollTo: vi.fn(),
   setSelectedLines: vi.fn(),
 }));
+const typography = vi.hoisted(() => ({ codeFontSize: 12 }));
+const captureCodeViewOptions = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "dark" }),
+}));
+
+vi.mock("@/lib/use-code-font-size", () => ({
+  useCodeFontSize: () => typography,
 }));
 
 vi.mock("@pierre/diffs/react", () => ({
@@ -30,6 +36,7 @@ vi.mock("@pierre/diffs/react", () => ({
       ref,
     ) => {
       useImperativeHandle(ref, () => codeViewHandle);
+      captureCodeViewOptions(options);
       const file = items[0]?.file;
       return (
         <pre
@@ -50,9 +57,17 @@ beforeEach(() => {
   installAsyncRequestAnimationFrame();
   codeViewHandle.scrollTo.mockClear();
   codeViewHandle.setSelectedLines.mockClear();
+  captureCodeViewOptions.mockClear();
+  typography.codeFontSize = 12;
 });
 
 describe("SourceViewer", () => {
+  test("keeps virtual line measurements aligned with the independent code preference", () => {
+    render(<SourceViewer value="source" ariaLabel="Source" />);
+    expect(captureCodeViewOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ itemMetrics: { lineHeight: 21.6, spacing: 0 } }),
+    );
+  });
   test("renders exact read-only source through the shared Pierre surface", () => {
     const view = render(
       <div style={{ height: 300 }}>

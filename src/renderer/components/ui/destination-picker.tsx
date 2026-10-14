@@ -45,7 +45,7 @@ export function NodexDestinationPicker({
       role={dialogRole}
       aria-label={dialogRole === "dialog" ? ariaLabel : undefined}
       className={cn(
-        "flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-[14px] leading-[1.2]",
+        "flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden font-sans text-base leading-[1.2]",
         className,
       )}
       contentEditable={false}
@@ -67,7 +67,7 @@ export function NodexDestinationPicker({
           aria-activedescendant={activeDescendantId}
           value={query}
           placeholder={placeholder}
-          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-[14px] text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
+          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-base text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
             event.stopPropagation();
@@ -93,7 +93,7 @@ export function NodexDestinationPickerSection({
 }) {
   return (
     <div className="pb-1">
-      <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-[12px] leading-4 font-medium text-token-description-foreground">
+      <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-xs leading-4 font-medium text-token-description-foreground">
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </div>
       <div className="flex flex-col gap-px px-1">{children}</div>
@@ -137,7 +137,7 @@ export function NodexDestinationPickerOption({
       aria-expanded={expandable ? expanded : undefined}
       data-focused={focused ? "true" : undefined}
       className={cn(
-        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-[14px] leading-7 outline-hidden",
+        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-base leading-7 outline-hidden",
         disabled
           ? "cursor-default opacity-55"
           : "cursor-interaction hover:bg-token-list-hover-background",
@@ -211,7 +211,7 @@ export function NodexDestinationPickerPageRowContent({
       </NodexTooltip>
       <span className="min-w-0 flex-1 truncate">{title}</span>
       {projectName ? (
-        <span className="ml-1 max-w-[112px] shrink truncate text-[12px] leading-4 text-token-description-foreground">
+        <span className="ml-1 max-w-[112px] shrink truncate text-xs leading-4 text-token-description-foreground">
           {projectName}
         </span>
       ) : null}
@@ -232,7 +232,7 @@ export function NodexDestinationPickerStatus({
   return (
     <div
       role={role}
-      className="flex min-h-9 items-center px-3 py-2 text-[13px] leading-5 text-token-description-foreground"
+      className="flex min-h-9 items-center px-3 py-2 text-sm leading-5 text-token-description-foreground"
     >
       {children}
     </div>

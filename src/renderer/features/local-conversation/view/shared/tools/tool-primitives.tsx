@@ -54,7 +54,9 @@ function ThreadActivityHeaderContent({
   className?: string;
 }) {
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)}>{children}</span>
+    <span className={cn("font-sans inline-flex min-w-0 items-center gap-1.5", className)}>
+      {children}
+    </span>
   );
 }
 
@@ -595,7 +597,7 @@ export function CodeBlock({ children, className }: { children: ReactNode; classN
   return (
     <pre
       className={cn(
-        "codex-tool-code scrollbar-token max-h-80 overflow-auto rounded-md border border-(--border) bg-(--background) px-2.5 py-2 font-mono text-xs/normal wrap-break-word whitespace-pre-wrap",
+        "codex-tool-code scrollbar-token max-h-80 overflow-auto rounded-md border border-(--border) bg-(--background) px-2.5 py-2 font-mono text-size-code wrap-break-word whitespace-pre-wrap",
         className,
       )}
     >
@@ -619,7 +621,7 @@ export function JsonBlock({ value }: { value: unknown }) {
       preview={buildTextPreview(text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
       getCopyText={() => text}
       getFullText={() => text}
-      preClassName="font-mono text-xs/normal"
+      preClassName="codex-tool-code font-mono text-size-code"
     />
   );
 }

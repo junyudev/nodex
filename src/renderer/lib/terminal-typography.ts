@@ -1,11 +1,11 @@
+import { DEFAULT_CODE_FONT_SIZE } from "./code-font-size";
+import { MONO_FONT_FAMILY } from "./typography-preferences";
+
 export interface TerminalTypography {
   fontFamily: string;
   fontSize: number;
 }
 
-const TERMINAL_FALLBACK_FONT_FAMILY =
-  'ui-monospace, "SFMono-Regular", Menlo, Consolas, "Symbols Nerd Font Mono", monospace';
-const TERMINAL_FALLBACK_FONT_SIZE = 14;
 const TERMINAL_SYMBOL_FONT_FAMILY = '"Symbols Nerd Font Mono"';
 const TERMINAL_SYMBOL_FONT_NAME = "Symbols Nerd Font Mono";
 const GENERIC_MONOSPACE_ENTRY_PATTERN = /(^|,\s*)monospace(\s*,|$)/i;
@@ -17,17 +17,17 @@ function parsePositivePixelValue(value: string): number | null {
 
 function normalizeTerminalFontFamily(value: string): string {
   const trimmed = value.trim();
-  if (!trimmed || trimmed.includes("var(")) return TERMINAL_FALLBACK_FONT_FAMILY;
-  if (trimmed.includes(TERMINAL_SYMBOL_FONT_NAME)) {
-    return GENERIC_MONOSPACE_ENTRY_PATTERN.test(trimmed) ? trimmed : `${trimmed}, monospace`;
+  const family = !trimmed || trimmed.includes("var(") ? MONO_FONT_FAMILY : trimmed;
+  if (family.includes(TERMINAL_SYMBOL_FONT_NAME)) {
+    return GENERIC_MONOSPACE_ENTRY_PATTERN.test(family) ? family : `${family}, monospace`;
   }
-  if (GENERIC_MONOSPACE_ENTRY_PATTERN.test(trimmed)) {
-    return trimmed.replace(
+  if (GENERIC_MONOSPACE_ENTRY_PATTERN.test(family)) {
+    return family.replace(
       GENERIC_MONOSPACE_ENTRY_PATTERN,
       `$1${TERMINAL_SYMBOL_FONT_FAMILY}, monospace$2`,
     );
   }
-  return `${trimmed}, ${TERMINAL_SYMBOL_FONT_FAMILY}, monospace`;
+  return `${family}, ${TERMINAL_SYMBOL_FONT_FAMILY}, monospace`;
 }
 
 export function sameTerminalTypography(
@@ -39,16 +39,16 @@ export function sameTerminalTypography(
 
 export function resolveTerminalTypography(element: HTMLElement): TerminalTypography {
   const elementStyles = getComputedStyle(element);
-  const tokenFontFamily = elementStyles.getPropertyValue("--vscode-editor-font-family").trim();
-  const tokenFontSize = elementStyles.getPropertyValue("--vscode-editor-font-size").trim();
+  const tokenFontFamily = elementStyles.getPropertyValue("--font-mono").trim();
+  const tokenFontSize = elementStyles.getPropertyValue("--font-code-size").trim();
   const probe = document.createElement("span");
   probe.textContent = "W";
   probe.setAttribute("aria-hidden", "true");
   probe.style.position = "absolute";
   probe.style.visibility = "hidden";
   probe.style.whiteSpace = "pre";
-  probe.style.fontFamily = `var(--vscode-editor-font-family, ${TERMINAL_FALLBACK_FONT_FAMILY})`;
-  probe.style.fontSize = `var(--vscode-editor-font-size, ${TERMINAL_FALLBACK_FONT_SIZE}px)`;
+  probe.style.fontFamily = `var(--font-mono, ${MONO_FONT_FAMILY})`;
+  probe.style.fontSize = `var(--font-code-size, ${DEFAULT_CODE_FONT_SIZE}px)`;
   element.appendChild(probe);
 
   try {
@@ -60,7 +60,7 @@ export function resolveTerminalTypography(element: HTMLElement): TerminalTypogra
       fontSize:
         parsePositivePixelValue(tokenFontSize) ??
         parsePositivePixelValue(styles.fontSize) ??
-        TERMINAL_FALLBACK_FONT_SIZE,
+        DEFAULT_CODE_FONT_SIZE,
     };
   } finally {
     probe.remove();

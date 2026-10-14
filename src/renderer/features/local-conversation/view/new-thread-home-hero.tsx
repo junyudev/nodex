@@ -14,7 +14,7 @@ export function NewThreadHomeHero({
   return (
     <div className="flex min-h-29 w-full flex-col items-center justify-end gap-6 select-none">
       <NodexHomeMark />
-      <div className="flex max-w-full min-w-0 items-end justify-center text-center text-[30px] leading-9 font-normal tracking-normal whitespace-pre-wrap text-token-foreground">
+      <div className="heading-xl flex max-w-full min-w-0 items-end justify-center text-center font-sans leading-9 font-normal tracking-normal whitespace-pre-wrap text-token-foreground">
         <span className="inline-block max-w-full">
           {"What should we build in "}
           {projectSelector ? (

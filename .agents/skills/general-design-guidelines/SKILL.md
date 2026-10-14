@@ -158,7 +158,7 @@ Default spacing is **tighter than most frameworks**. Whitespace is earned, not d
 - **Section gaps:** `gap-[var(--padding-panel)]` between card sections
 - **Internal gap:** `gap-1` to `gap-1.5` (4–6px) between label and description
 - **Icon-to-text:** `gap-1.5` to `gap-2` (6–8px)
-- **Menu items:** `min-height: 28px`, `font-size: 14px`, `padding-inline: 8px`
+- **Menu items:** `min-height: 28px`, `text-sm`, `padding-inline: 8px`
 
 ### Spacing DO NOTs
 
@@ -262,7 +262,7 @@ Dropdowns are **frosted glass** with a subtle shadow — they float above conten
 .dropdown-item {
   border-radius: 8px; /* rounded-lg */
   padding: var(--row-x) var(--row-y);
-  font-size: 14px; /* text-sm */
+  font-size: var(--text-sm);
 }
 .dropdown-item:hover {
   background: var(--list-hover-bg);
@@ -435,10 +435,21 @@ border-top: 0.5px solid var(--border-token);
 
 ## Typography
 
-- Use the system sans stack — no custom display fonts by default
-- `text-sm` (14px) for body, menu items, settings labels
-- `text-base` (15–16px) for sidebar nav, headings in lists
-- `text-xs` (12px) for shortcuts, metadata, badge labels
+- Use the semantic font role: `font-sans` for UI, `font-content` for chat and
+  Page prose, and `font-mono`/`font-code` for code. Defaults use the system
+  sans and mono stacks; content follows UI unless selected independently.
+- At the default UI size, `text-xs` is 12px, `text-sm` 13px, and `text-base` 14px.
+  Menus and settings labels use `text-sm`; primary sidebar labels and titles
+  use `text-base`. Do not infer these values from Tailwind's default scale.
+- Conversation prose uses `text-size-chat` and relaxed 1.625 line height;
+  composer and sidebar rows retain their 20px line height. Pages use the
+  independent content size; code uses the independent code size.
+- Typography preferences and parser-time startup share one variable projector.
+  Update both root and body before paint; inherited variables do not recompute
+  when a descendant supplies a previously missing input. Verify computed styles
+  with active preferences, including changed sizes and per-appearance families.
+- See [Typography behavior](../../../docs/product-specs/typography-behavior.md)
+  for the full role, hierarchy, and setting contract.
 - `tabular-nums` for model names or version numbers
 - `truncate` (ellipsis) on all text that could overflow — never wrap in menus
 

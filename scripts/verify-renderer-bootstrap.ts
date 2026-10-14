@@ -40,7 +40,12 @@ invariant(
 );
 invariant(!existsSync(obsoleteStartupPreloadPath), "obsolete startup preload was emitted");
 
-const eagerJavaScriptPaths = [entryMatch[1], ...modulePreloads].map(resolveAsset);
+const classicScripts = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+\.js)"[^>]*>/gu)]
+  .filter(([tag]) => !/\btype="module"/u.test(tag))
+  .map(([, assetPath]) => assetPath);
+const eagerJavaScriptPaths = [entryMatch[1], ...modulePreloads, ...classicScripts].map(
+  resolveAsset,
+);
 const eagerJavaScript = eagerJavaScriptPaths.map((assetPath) => readFileSync(assetPath));
 const eagerJavaScriptGzipBytes = eagerJavaScript.reduce(
   (total, source) => total + gzipSync(source).byteLength,
@@ -71,6 +76,7 @@ process.stdout.write(
       ),
       eagerJavaScriptGzipBytes,
       inlineHtmlBytes: Buffer.byteLength(html),
+      classicScripts,
       modulePreloads,
     },
     null,

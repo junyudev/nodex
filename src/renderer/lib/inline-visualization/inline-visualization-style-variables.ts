@@ -1,4 +1,10 @@
 import { readDocumentTheme } from "../use-document-theme";
+import {
+  DEFAULT_UI_FONT_WEIGHT,
+  FONT_SIZE_LIMITS,
+  MONO_FONT_FAMILY,
+  SYSTEM_FONT_FAMILY,
+} from "../typography-preferences";
 
 const chartCandidates = {
   light: ["#e879b0", "#4f8df7", "#62c87a", "#f08a42", "#f2c94c", "#43b8b0", "#9a7be8", "#4fbad9"],
@@ -189,25 +195,21 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
         ["--color-text-warning", "--destructive"],
         dark ? "#ff8549" : "#e25507",
       ),
-      "--font-mono": resolve(
-        ["--font-mono"],
-        "font-family",
-        'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-      ),
+      "--font-mono": resolve(["--font-mono"], "font-family", MONO_FONT_FAMILY),
       "--font-sans": resolve(
         ["--font-sans", "--font-sans-default"],
         "font-family",
-        '-apple-system, system-ui, "Segoe UI", sans-serif',
+        SYSTEM_FONT_FAMILY,
       ),
       "--font-size-base": resolve(
         ["--codex-chat-font-size", "--sans-font-size", "--text-base"],
         "font-size",
-        "15px",
+        `${FONT_SIZE_LIMITS.ui.default}px`,
       ),
       "--font-weight-normal": resolve(
         ["--font-ui-weight", "--font-weight-normal"],
         "font-weight",
-        "400",
+        String(DEFAULT_UI_FONT_WEIGHT),
       ),
       "--foreground": foreground,
       "--input": color(

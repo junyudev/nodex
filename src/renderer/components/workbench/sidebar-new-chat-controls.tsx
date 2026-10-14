@@ -125,7 +125,7 @@ export function SidebarExpandedHeader({
       )}
     >
       <div className="ml-2 flex items-center">
-        <div className="-ml-2 flex h-8 min-w-0 items-center gap-1.5 rounded-xl border border-transparent px-2 text-[17px] leading-6 font-medium select-none">
+        <div className="-ml-2 flex h-8 min-w-0 items-center gap-1.5 rounded-xl border border-transparent px-2 text-base leading-6 font-medium select-none">
           <span className="min-w-0 truncate font-semibold text-token-foreground">
             {productName}
           </span>

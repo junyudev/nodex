@@ -54,7 +54,7 @@ Search matches label, canonical ID, aliases, extensions, and search terms. The p
 
 ## Editable surface and Action Bar
 
-The surface has a 10px radius, 22px horizontal code inset, 24px outer vertical padding, 12px scroller vertical padding, 13.6px/20.4px monospace text, and `tab-size: 2`. Unwrapped code uses `white-space: pre` and block-local horizontal scrolling. Wrapped code uses `break-spaces`, break-all, and no horizontal scroller.
+The surface has a 10px radius, 22px horizontal code inset, 24px outer vertical padding, 12px scroller vertical padding, and `tab-size: 2`. Source follows the active appearance's Code font family and the independent Code font size, defaulting to 12px with a 20px line height. Page content size does not resize fenced source. Unwrapped code uses `white-space: pre` and block-local horizontal scrolling. Wrapped code uses `break-spaces`, break-all, and no horizontal scroller.
 
 The product surface is the sole Code Block backdrop; the surrounding BlockNote content host remains transparent. Its translucent background token and Shiki token theme must resolve from the same light or dark color scheme. Ordinary code and syntax punctuation maintain at least a 4.5:1 contrast ratio against the fully composited surface in both schemes.
 

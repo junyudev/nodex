@@ -2918,7 +2918,7 @@ function NfmEditorInstance({
               sideOffset={6}
               aria-label="Send thread section to chat"
               finalFocus={false}
-              className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl"
+              className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
               style={{ width: 330 }}
             >
               <NfmSendToThreadMenuSurface

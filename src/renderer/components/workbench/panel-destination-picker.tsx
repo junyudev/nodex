@@ -69,7 +69,7 @@ function PanelDestinationStatusRow({
   return (
     <div
       role={role}
-      className="flex h-9 items-center px-3 text-[13px] leading-5 text-token-description-foreground"
+      className="flex h-9 items-center px-3 text-sm leading-5 text-token-description-foreground"
     >
       {children}
     </div>
@@ -191,7 +191,7 @@ function PanelDestinationResultRow({
       data-focused={focused ? "true" : undefined}
       data-panel-destination-row-kind={row.kind}
       className={cn(
-        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 pl-1.5 text-left text-[14px] leading-7 outline-hidden",
+        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 pl-1.5 text-left text-base leading-7 outline-hidden",
         "text-token-foreground",
         disabled
           ? "cursor-default opacity-55"
@@ -219,7 +219,7 @@ function PanelDestinationResultRow({
             <PanelDestinationRowIcon row={row} />
           </span>
           <span className="min-w-0 flex-1 truncate">{getPanelDestinationRowLabel(row)}</span>
-          <span className="ml-1 max-w-[128px] shrink truncate text-[12px] leading-4 text-token-description-foreground">
+          <span className="ml-1 max-w-[128px] shrink truncate text-xs leading-4 text-token-description-foreground">
             {getPanelDestinationRowMeta(row)}
           </span>
           {accepting ? (
@@ -254,7 +254,7 @@ function PanelDestinationSectionView({
 
   return (
     <div className="pb-1">
-      <div className="flex h-7 items-end px-[14px] pt-3 pb-1 text-[12px] leading-4 font-medium text-token-description-foreground">
+      <div className="flex h-7 items-end px-[14px] pt-3 pb-1 text-xs leading-4 font-medium text-token-description-foreground">
         <span className="min-w-0 flex-1 truncate">{section.label}</span>
       </div>
       <div className="flex flex-col gap-px px-1">
@@ -515,7 +515,7 @@ export function PanelDestinationPickerSurface({
     <div
       role="dialog"
       aria-label={ariaLabel}
-      className="flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-[14px] leading-[1.2]"
+      className="flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-base leading-[1.2]"
       contentEditable={false}
     >
       <div className="flex h-[38px] shrink-0 items-center gap-1.5 px-2 py-[5px]">
@@ -534,7 +534,7 @@ export function PanelDestinationPickerSurface({
           aria-activedescendant={activeDescendantId}
           value={query}
           placeholder={placeholder}
-          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-[14px] text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
+          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-base text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => {
             setAcceptError(null);
             setFocusedRowId(null);

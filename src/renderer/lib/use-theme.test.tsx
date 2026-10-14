@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createMaitaiStore, disposeMaitaiStore, MaitaiProvider } from "./maitai";
 import { getCodexThemeVariantStyle } from "./codex-theme-variant";
 import { ACCENT_COLOR_STORAGE_KEY, THEME_STORAGE_KEY } from "./theme-preferences";
-import { initializeRendererDocument } from "../bootstrap/renderer-document";
+import { initializeApplicationAppearance } from "../bootstrap/application-appearance";
 import { ThemeProvider, useTheme } from "./use-theme";
 
 const stores: ReturnType<typeof createMaitaiStore>[] = [];
@@ -59,7 +59,7 @@ afterEach(() => {
 describe("appearance preference application", () => {
   test("restores and reapplies Default as Blue while preserving the authored Default choice", async () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
-    initializeRendererDocument();
+    initializeApplicationAppearance();
     const expected = getCodexThemeVariantStyle("light", { kind: "preset", name: "blue" });
     expect(
       document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
@@ -81,12 +81,12 @@ describe("appearance preference application", () => {
     );
   });
 
-  test("restores the saved accent before the application renderer initializes", () => {
+  test("restores the saved accent before React mounts", () => {
     localStorage.setItem(
       ACCENT_COLOR_STORAGE_KEY,
       JSON.stringify({ preset: "green", light: null, dark: null }),
     );
-    initializeRendererDocument();
+    initializeApplicationAppearance();
     expect(
       document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
     ).toBe(

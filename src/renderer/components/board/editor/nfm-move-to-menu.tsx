@@ -144,7 +144,7 @@ function NfmMoveToResultRow({
       data-nfm-move-to-row-kind={row.kind}
       data-nfm-move-to-project-id={row.projectId}
       className={cn(
-        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-[14px] leading-7 outline-hidden",
+        "group flex h-7 w-full select-none items-center gap-1.5 rounded-[7px] pr-2 text-left text-sm leading-7 outline-hidden",
         "text-token-foreground",
         disabled
           ? "cursor-default opacity-55"

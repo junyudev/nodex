@@ -20,7 +20,7 @@ export function PageCreateDescriptionEditor({
       contentAccessContext={libraryContentAccess}
       isActivePanelTab={false}
       placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
-      className="min-h-[inherit] text-[15px]/6 [&_.bn-block-content]:!px-0 [&_.bn-editor]:!text-[15px] [&_.bn-editor]:!leading-6"
+      className="min-h-[inherit] [&_.bn-block-content]:!px-0"
       source={{
         kind: "collaborative-document",
         documentId: draft.documentId,

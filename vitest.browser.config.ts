@@ -8,11 +8,12 @@ import {
   rendererViteResolve,
 } from "./config/renderer-vite-shared";
 import { filesForSuite } from "./config/test-suites";
+import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
 
 const testFiles = filesForSuite("browser", resolveVitestTestTier());
 
 export default defineConfig({
-  plugins: createRendererVitePlugins(),
+  plugins: [...createRendererVitePlugins(), createTypographyBootstrapHtmlPlugin()],
   resolve: rendererViteResolve,
   css: rendererViteCss,
   optimizeDeps: {

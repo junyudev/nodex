@@ -345,7 +345,7 @@ export function CodexSidebarSection({
     >
       <div className="flex flex-col">
         <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
-          <div className="min-w-0 flex-1 text-base text-token-input-placeholder-foreground opacity-75">
+          <div className="min-w-0 flex-1 text-base font-medium text-token-input-placeholder-foreground opacity-75">
             <div className="group/projects-section-header flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-1">
                 <button

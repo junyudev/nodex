@@ -4,6 +4,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import type { Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
+import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
 import { resolveRendererManualChunk } from "./config/renderer-manual-chunks";
 import {
@@ -193,6 +194,7 @@ export default defineConfig({
     resolve: rendererViteResolve,
     plugins: [
       createStartupShellHtmlPlugin(),
+      createTypographyBootstrapHtmlPlugin(),
       createRendererDevelopmentCspPlugin(),
       createRendererProductionCspPlugin(),
       ...createExcalidrawFontAssetPlugins(),

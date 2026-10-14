@@ -1,5 +1,6 @@
-import { render, waitFor } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import "../../globals.css";
 import { SourceViewer } from "./source-viewer";
 

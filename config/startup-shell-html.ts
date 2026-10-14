@@ -62,7 +62,7 @@ body { overflow: hidden; }
   justify-content: center;
   gap: 16px;
   color: var(--startup-logo-base);
-  font-family: "SF Pro Text", "Avenir Next", ui-sans-serif, sans-serif;
+  font-family: var(--font-ui-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   -webkit-app-region: drag;
 }
 .nodex-startup-brand { position: relative; width: 68px; height: 68px; }
@@ -91,7 +91,7 @@ body { overflow: hidden; }
   will-change: transform;
 }
 .nodex-startup-status { min-height: 20px; color: var(--startup-text); }
-.nodex-startup-status p { margin: 0; font-size: 13px; line-height: 20px; letter-spacing: .005em; }
+.nodex-startup-status p { margin: 0; font-size: var(--text-sm, 13px); line-height: 20px; letter-spacing: .005em; }
 .nodex-startup-sr-only {
   position: absolute;
   width: 1px;
@@ -104,8 +104,8 @@ body { overflow: hidden; }
   border: 0;
 }
 .nodex-startup-failure { max-width: 340px; text-align: center; color: var(--startup-text); }
-.nodex-startup-failure h1 { margin: 0; color: var(--startup-logo-base); font-size: 16px; font-weight: 580; }
-.nodex-startup-failure p { margin: 8px 0 0; font-size: 13px; line-height: 20px; }
+.nodex-startup-failure h1 { margin: 0; color: var(--startup-logo-base); font-size: var(--text-lg, 16px); font-weight: 500; }
+.nodex-startup-failure p { margin: 8px 0 0; font-size: var(--text-sm, 13px); line-height: 20px; }
 .nodex-startup-failure button {
   margin-top: 18px;
   border: 0;

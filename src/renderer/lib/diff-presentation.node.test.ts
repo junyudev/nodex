@@ -3,9 +3,19 @@ import {
   NODEX_REVIEW_DIFF_EXPANSION_LINE_COUNT,
   getNodexDiffOptions,
   getNodexReviewDiffOptions,
+  getNodexSourceEditorLineHeight,
 } from "./diff-presentation";
 
 describe("getNodexDiffOptions", () => {
+  test.each([
+    [8, 14],
+    [12, 22],
+    [12.5, 23],
+    [16, 29],
+    [24, 43],
+  ])("keeps %ipx editable code rows on a %ipx caret grid", (fontSize, lineHeight) => {
+    expect(getNodexSourceEditorLineHeight(fontSize)).toBe(lineHeight);
+  });
   test("uses wrap overflow when word wrap is enabled", () => {
     const options = getNodexDiffOptions("light", true, { wrap: true });
     expect(options.overflow).toBe("wrap");

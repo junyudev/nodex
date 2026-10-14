@@ -259,9 +259,11 @@ function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) 
       draggable={false}
     >
       <NfmImageBlockIcon className="size-5 text-token-foreground" />
-      <span className="min-w-0 truncate text-[15px] leading-5 text-token-foreground">{name}</span>
+      <span className="min-w-0 truncate font-sans text-base leading-5 text-token-foreground">
+        {name}
+      </span>
       {fileSize !== null ? (
-        <span className="shrink-0 text-[15px] leading-5 text-token-text-secondary">
+        <span className="shrink-0 font-sans text-base leading-5 text-token-text-secondary">
           {formatImageFileSize(fileSize)}
         </span>
       ) : null}

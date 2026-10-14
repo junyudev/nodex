@@ -209,7 +209,7 @@ export function AttachmentPopoverView({
 
           {previewState.status === "ready" && previewState.preview.type === "text" ? (
             <div className="px-3 py-2">
-              <pre className="scrollbar-token max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-token-text-primary">
+              <pre className="scrollbar-token max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-size-code leading-5 text-token-text-primary">
                 {previewState.preview.content}
               </pre>
               {previewState.preview.truncated ? (
@@ -222,7 +222,7 @@ export function AttachmentPopoverView({
 
           {previewState.status === "ready" && previewState.preview.type === "folder" ? (
             <div className="px-3 py-2">
-              <div className="max-h-64 space-y-1 overflow-auto font-mono text-[12px] leading-5 text-token-text-secondary">
+              <div className="max-h-64 space-y-1 overflow-auto font-mono text-size-code leading-5 text-token-text-secondary">
                 {previewState.preview.manifest.entries.map((entry) => (
                   <div key={`${entry.kind}:${entry.path}`} className="truncate">
                     {entry.kind === "folder" ? "📁" : "·"} {entry.path}

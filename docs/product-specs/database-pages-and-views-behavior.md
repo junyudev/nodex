@@ -902,6 +902,18 @@ attachments, tables, toggles, and thread sections. Exact syntax is owned by
 [Nested Markdown](../references/nested-markdown-spec.md); focused interaction
 contracts are indexed in [Product Specifications](index.md).
 
+Page title and prose use the active appearance's Content font family, falling
+back to its UI font. Page content size is a personal preference independent of
+UI and Code font sizes. It defaults to 14px with a 1.625 line height and applies
+to prose, lists, and table cells. Body headings scale from that size: levels
+1–4 use 1.5, 1.25, 1.125, and 1 times the content size, with line heights of 2,
+1.75, 1.75, and 1.5 times the content size. The Page title uses the UI heading
+scale, whose default is 28px with a 1.2 line height. Changing Page content size
+does not resize the title or fenced source. Inline code uses the Code font
+family at 0.92 times its surrounding text; fenced source follows the independent
+Code font size with a 20px line height. Embedded document controls retain the UI
+font family.
+
 Owning Page, Canvas, and Database shells cannot be removed, duplicated,
 reclassified, or replaced through generic editor commands. Their lifecycle and
 movement use the shared

@@ -555,7 +555,7 @@ function TextActionMenuContent({
         collisionPadding={8}
         finalFocus={false}
         className={cn(
-          "w-[192px] bg-token-dropdown-background px-1 py-1 text-[14px] backdrop-blur-xl",
+          "w-[192px] bg-token-dropdown-background px-1 py-1 text-sm backdrop-blur-xl",
           className,
         )}
       >
@@ -667,7 +667,7 @@ function TextActionColorSection({
 }) {
   return (
     <div className="block">
-      <div className="flex h-7 items-center px-2 text-[12px] text-token-text-secondary">
+      <div className="flex h-7 items-center px-2 text-xs text-token-text-secondary">
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </div>
       <div className={cn("grid grid-cols-5 gap-1 px-2", padBottom && "pb-2")}>{children}</div>
@@ -813,7 +813,7 @@ function TextActionColorMenu({
             maxHeight: "70vh",
             transformOrigin: "0% bottom",
           }}
-          className="!overflow-hidden !rounded-[14px] !bg-token-dropdown-background !p-0 text-[14px] !shadow-xl-spread !backdrop-blur-xl"
+          className="!overflow-hidden !rounded-[14px] !bg-token-dropdown-background !p-0 text-sm !shadow-xl-spread !backdrop-blur-xl"
         >
           <div className="notion-scroller vertical max-h-[70vh] overflow-y-auto">
             <div role="menu" tabIndex={0} aria-label="Color options">
@@ -1219,7 +1219,7 @@ function TextActionMoveToRow({
         sideOffset={6}
         alignOffset={-4}
         aria-label="Move to"
-        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl"
+        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
         style={{ width: 330 }}
       >
         {renderMoveToMenu?.(menuProps) ?? <NfmMoveToMenu {...menuProps} />}
@@ -1300,7 +1300,7 @@ function TextActionSendToThreadRow({
         sideOffset={6}
         alignOffset={-4}
         aria-label="Send to chat"
-        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl"
+        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0 text-sm leading-[1.2] shadow-xl-spread backdrop-blur-xl"
         style={{ width: 330 }}
       >
         {renderSendToThreadMenu?.(menuProps) ?? <NfmSendToThreadMenu {...menuProps} />}
@@ -1399,7 +1399,7 @@ function TextActionAiPane({
       >
         {nodexRows.length > 0 ? (
           <>
-            <div className="flex h-7 items-center px-2 text-[12px] text-token-text-secondary">
+            <div className="flex h-7 items-center px-2 text-xs text-token-text-secondary">
               Actions
             </div>
             {nodexRows.map((row) => {
@@ -1447,7 +1447,7 @@ function TextActionAiPane({
         ) : null}
         {showReferenceMocks ? (
           <>
-            <div className="flex h-7 items-center px-2 text-[12px] text-token-text-secondary">
+            <div className="flex h-7 items-center px-2 text-xs text-token-text-secondary">
               <span className="min-w-0 flex-1 truncate">Skills</span>
               <TextActionDisabledButton
                 label="Skills"
@@ -1481,7 +1481,7 @@ function TextActionAiPane({
 function TextActionAiFooter() {
   return (
     <div
-      className="flex min-h-8 items-center gap-1.5 rounded-[6px] border border-token-border px-2 py-1.5 text-[14px] leading-[1.4] text-token-text-secondary"
+      className="flex min-h-8 items-center gap-1.5 rounded-[6px] border border-token-border px-2 py-1.5 text-sm leading-[1.4] text-token-text-secondary"
       contentEditable={false}
     >
       <div
@@ -1496,7 +1496,7 @@ function TextActionAiFooter() {
         Edit with AI
       </div>
       <TextActionMockBadge reason="Mock UI only. Not available in Nodex yet." />
-      <span className="shrink-0 text-[12px] leading-4 text-token-description-foreground">⌘⌃E</span>
+      <span className="shrink-0 text-xs leading-4 text-token-description-foreground">⌘⌃E</span>
     </div>
   );
 }
@@ -1621,7 +1621,7 @@ export function NfmTextActionMenuSurface({
   return (
     <div className="pointer-events-none p-4" contentEditable={false}>
       <div
-        className="pointer-events-auto flex w-[192px] flex-col items-stretch overflow-hidden rounded-[14px] bg-token-dropdown-background p-2 text-[14px] leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
+        className="pointer-events-auto flex w-[192px] flex-col items-stretch overflow-hidden rounded-[14px] bg-token-dropdown-background p-2 text-sm leading-[1.2] text-token-foreground shadow-xl-spread ring-[0.5px] ring-token-border backdrop-blur-xl"
         role="toolbar"
         aria-label="Text actions"
         onFocusCapture={handleToolbarFocusCapture}

@@ -4,6 +4,10 @@ import { describe, expect, test } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import { FileTree, type FileTreeState } from "./file-tree";
 import { applyCodexThemeVariant } from "@/lib/codex-theme-variant";
+import {
+  applyTypographyPreferences,
+  DEFAULT_TYPOGRAPHY_PREFERENCES,
+} from "@/lib/typography-preferences";
 import "../../globals.css";
 
 const settle = async () => {
@@ -25,6 +29,49 @@ function getRow(container: HTMLElement, path: string): HTMLElement {
 }
 
 describe("shared file tree navigation", () => {
+  test("updates shadow-root filename typography with UI preferences without remounting rows", async () => {
+    const preferences = {
+      ...DEFAULT_TYPOGRAPHY_PREFERENCES,
+      fonts: {
+        ...DEFAULT_TYPOGRAPHY_PREFERENCES.fonts,
+        light: { ui: "Arial", content: "Georgia", code: "monospace" },
+      },
+    };
+    applyTypographyPreferences(document.documentElement, document.body, preferences, "light");
+    const view = render(
+      <div style={{ height: 200, width: 280 }}>
+        <FileTree
+          ariaLabel="Files"
+          appearance="workspace"
+          paths={["one.ts"]}
+          expandedPaths={[]}
+          selectedPath={null}
+        />
+      </div>,
+    );
+    try {
+      await act(settle);
+      const row = getRow(view.container, "one.ts");
+      expect(getComputedStyle(row).fontSize).toBe("13px");
+      expect(getComputedStyle(row).fontFamily).toContain("Arial");
+      await act(async () => {
+        applyTypographyPreferences(
+          document.documentElement,
+          document.body,
+          { ...preferences, uiFontSize: 16 },
+          "light",
+        );
+        await settle();
+      });
+      expect(getComputedStyle(row).fontSize).toBe("15px");
+      expect(getRow(view.container, "one.ts")).toBe(row);
+    } finally {
+      view.unmount();
+      document.documentElement.removeAttribute("style");
+      document.body.removeAttribute("style");
+    }
+  });
+
   test("preserves folder focus through controlled expansion and opens files from the keyboard", async () => {
     const selections: string[][] = [];
     function Harness() {

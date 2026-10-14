@@ -5,12 +5,14 @@ import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { WorkspacePierreEditor } from "./workspace-pierre-editor";
 
-const { editor, codeViewHandle } = vi.hoisted(() => {
+const { editor, codeViewHandle, typography, captureCodeViewOptions } = vi.hoisted(() => {
   const editor = {
     setSelections: vi.fn(),
   };
   return {
     editor,
+    typography: { codeFontSize: 12 },
+    captureCodeViewOptions: vi.fn(),
     codeViewHandle: {
       getEditor: vi.fn(() => editor),
       scrollTo: vi.fn(),
@@ -23,20 +25,27 @@ vi.mock("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "dark" }),
 }));
 
+vi.mock("@/lib/use-code-font-size", () => ({
+  useCodeFontSize: () => typography,
+}));
+
 vi.mock("@pierre/diffs/react", () => ({
   EditProvider: ({ children }: { children: React.ReactNode }) => children,
   CodeView: forwardRef(
     (
       {
         items,
+        options,
         onItemEditChange,
       }: {
         items: Array<{ file: { contents: string; name: string }; edit: boolean }>;
+        options: { itemMetrics: { lineHeight: number } };
         onItemEditChange: (item: unknown, file: { contents: string; name: string }) => void;
       },
       ref,
     ) => {
       useImperativeHandle(ref, () => codeViewHandle);
+      captureCodeViewOptions(options);
       return (
         <button
           type="button"
@@ -62,9 +71,33 @@ beforeEach(() => {
   codeViewHandle.getEditor.mockClear();
   codeViewHandle.scrollTo.mockClear();
   codeViewHandle.setSelectedLines.mockClear();
+  captureCodeViewOptions.mockClear();
+  typography.codeFontSize = 12;
 });
 
 describe("WorkspacePierreEditor", () => {
+  test("updates the virtual row and caret grid when the code preference changes", () => {
+    const component = () => (
+      <WorkspacePierreEditor
+        value="original"
+        filename="index.ts"
+        language="typescript"
+        sourceIdentity="/repo/index.ts"
+        documentVersion={0}
+        ariaLabel="Editor"
+        onChange={() => undefined}
+      />
+    );
+    const view = render(component());
+    expect(captureCodeViewOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ itemMetrics: { lineHeight: 22, spacing: 0 } }),
+    );
+    typography.codeFontSize = 15;
+    view.rerender(component());
+    expect(captureCodeViewOptions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ itemMetrics: { lineHeight: 27, spacing: 0 } }),
+    );
+  });
   test("renders an editable Pierre item and delivers exact document changes", () => {
     const onChange = vi.fn();
     const view = render(

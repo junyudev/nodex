@@ -5,6 +5,7 @@ import type { WindowSessionBootstrap } from "./lib/types";
 import type { AppRuntimeCapabilities } from "../shared/runtime-capabilities";
 import App from "./app";
 import { AppProviders } from "./app-providers";
+import { initializeApplicationAppearance } from "./bootstrap/application-appearance";
 import "./globals.css";
 
 export async function mountApplicationRenderer({
@@ -16,6 +17,8 @@ export async function mountApplicationRenderer({
 }): Promise<void> {
   const rootElement = document.getElementById("root");
   if (!rootElement) throw new Error("Nodex renderer root is missing");
+
+  initializeApplicationAppearance();
 
   const Agentation =
     import.meta.env.DEV && runtimeCapabilities.enabledDevelopmentFeatures.includes("agentation")

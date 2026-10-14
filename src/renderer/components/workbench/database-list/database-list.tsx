@@ -2193,7 +2193,7 @@ export function DatabaseList({
                           {!coreColumnVisibility.priority
                             ? databaseListGroupMarker(presentation.group?.propertyId, item.groupKey)
                             : null}
-                          <span className="truncate text-[13px] font-medium leading-[normal] text-[var(--database-list-group-text)]">
+                          <span className="truncate text-sm font-medium leading-[normal] text-[var(--database-list-group-text)]">
                             {resolvedGroupLabel}
                           </span>
                           <span className="shrink-0 text-xs tabular-nums text-[var(--database-list-group-count)]">

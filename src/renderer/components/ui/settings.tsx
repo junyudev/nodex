@@ -2,17 +2,6 @@ import { useId, type ComponentProps, type CSSProperties, type ReactNode } from "
 import { cn } from "@/lib/utils";
 
 export const CODEX_SETTINGS_SHELL_STYLE = {
-  "--vscode-font-size": "15px",
-  "--text-4xl": "83px",
-  "--text-3xl": "55px",
-  "--text-2xl": "42px",
-  "--text-xl": "32px",
-  "--text-lg": "18px",
-  "--text-base": "15px",
-  "--text-sm": "14px",
-  "--text-xs": "12px",
-  "--text-heading-lg": "28px",
-  "--text-heading-md": "23px",
   "--cursor-interaction": "pointer",
 } as CSSProperties;
 
@@ -201,7 +190,10 @@ export function NodexSettingsPageSurface({
         >
           <div className="flex items-center justify-between gap-3 pb-panel">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5 pb-panel">
-              <h1 id={titleId} className="electron:heading-lg heading-base break-words">
+              <h1
+                id={titleId}
+                className="heading-base break-words electron:text-[length:var(--text-heading-lg)] electron:leading-[1.2]"
+              >
                 {title}
               </h1>
               {subtitle ? (

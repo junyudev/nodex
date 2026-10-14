@@ -314,7 +314,7 @@ function WorkspaceFilePreview({
       <div className="h-full overflow-auto px-6 py-4">
         <MarkdownRenderer
           content={markdownContent}
-          className="max-w-3xl text-sm leading-6"
+          className="max-w-3xl"
           projectWorkspacePath={workspaceRoot}
           fileMediaScope={
             state.path

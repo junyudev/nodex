@@ -129,7 +129,7 @@ function SendToThreadModeSelector({
             aria-pressed={mode === value}
             disabled={disabled}
             className={cn(
-              "flex min-w-0 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] leading-6 text-token-description-foreground",
+              "flex min-w-0 items-center justify-center gap-1 rounded-[7px] px-2 text-xs leading-6 text-token-description-foreground",
               "disabled:cursor-default disabled:opacity-50",
               mode === value && "bg-token-dropdown-background text-token-foreground shadow-sm",
             )}
@@ -146,7 +146,7 @@ function SendToThreadModeSelector({
                 tooltipContent={SEND_TO_THREAD_WRAP_TOOLTIP}
                 side="top"
                 sideOffset={4}
-                tooltipBodyClassName="max-w-[220px] text-[12px] leading-4"
+                tooltipBodyClassName="max-w-[220px] text-xs leading-4"
               >
                 <span
                   data-testid="send-to-thread-wrap-mode-info"
@@ -195,7 +195,7 @@ function SendToThreadRow({
       data-focused={focused ? "true" : undefined}
       data-nfm-send-to-thread-row-kind={row.kind}
       className={cn(
-        "group flex w-full select-none gap-1.5 rounded-[7px] px-1.5 text-left text-[14px] outline-hidden",
+        "group flex w-full select-none gap-1.5 rounded-[7px] px-1.5 text-left text-sm outline-hidden",
         hasPreview ? "min-h-9 items-start py-1" : "h-7 items-center leading-7",
         "text-token-foreground",
         disabled
@@ -226,12 +226,12 @@ function SendToThreadRow({
       <span className="min-w-0 flex-1">
         <span className={cn("flex min-w-0 items-center", hasPreview ? "h-5" : "h-7")}>
           <span className="min-w-0 flex-1 truncate">{row.label}</span>
-          <span className="ml-1 max-w-[118px] shrink truncate text-[12px] leading-4 text-token-description-foreground">
+          <span className="ml-1 max-w-[118px] shrink truncate text-xs leading-4 text-token-description-foreground">
             {row.meta}
           </span>
         </span>
         {preview ? (
-          <span className="line-clamp-1 text-[12px] leading-4 wrap-break-word text-token-description-foreground/90">
+          <span className="line-clamp-1 text-xs leading-4 wrap-break-word text-token-description-foreground/90">
             {renderSendToThreadPreviewSegments(preview.segments, `${row.id}:preview`)}
           </span>
         ) : null}
@@ -526,7 +526,7 @@ export function NfmSendToThreadMenuSurface({
 
   return (
     <div
-      className="flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-[14px] leading-[1.2]"
+      className="flex max-h-[70vh] w-[330px] max-w-[calc(100vw-24px)] flex-col overflow-hidden text-sm leading-[1.2]"
       contentEditable={false}
     >
       <div className="flex h-[38px] shrink-0 items-center gap-1.5 px-2 py-[5px]">
@@ -545,7 +545,7 @@ export function NfmSendToThreadMenuSurface({
           aria-activedescendant={activeDescendantId}
           value={query}
           placeholder="Search threads..."
-          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-[14px] text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
+          className="h-7 min-w-0 flex-1 rounded-[7px] bg-transparent px-1.5 py-[3px] text-sm text-token-foreground outline-hidden placeholder:text-token-description-foreground focus:bg-token-foreground/5"
           onChange={(event) => {
             setAcceptError(null);
             setFocusedRowId(null);
@@ -572,7 +572,7 @@ export function NfmSendToThreadMenuSurface({
       >
         <div className="notion-scroller vertical min-h-0 flex-1 overflow-y-auto pb-1">
           <div className="pb-1">
-            <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-[12px] leading-4 font-medium text-token-description-foreground">
+            <div className="flex h-7 items-end px-[14px] pb-1 pt-3 text-xs leading-4 font-medium text-token-description-foreground">
               <span className="min-w-0 flex-1 truncate">Destination</span>
             </div>
             <div className="flex flex-col gap-px px-1">

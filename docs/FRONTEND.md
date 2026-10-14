@@ -376,6 +376,13 @@ work follows [Page Stage rich-editor performance](product-specs/card-stage-rich-
 
 ### Theme token ownership
 
+Typography follows the [Typography behavior](product-specs/typography-behavior.md)
+contract. Components choose UI, content, or code family and the owning size
+token. The shared typography preference projector supplies root and body at
+startup and on changes; feature components must not reconstruct its scale or
+consume host font variables. Computed-style tests cover the effective cascade
+after preferences apply, not static fallbacks alone.
+
 Renderer color and motion vocabulary has three layers. Choose the highest layer
 that accurately describes the UI role:
 
@@ -410,9 +417,10 @@ foundation values such as radius scale remain product-owned. Never hand-edit a
 generated theme artifact.
 
 The resolved default palette is owned by
-`src/renderer/lib/codex-theme-variant.ts`. The startup HTML and renderer
-initialization consume that same pure generator before React mounts; the theme
-provider reapplies it on appearance changes. Static palette fallbacks do not
+`src/renderer/lib/codex-theme-variant.ts`. The startup HTML and application mount
+consume that same pure generator before React mounts; early window setup does
+not load the full application palette. The theme provider reapplies it on
+appearance changes. Static palette fallbacks do not
 determine the effective preset. Review computed styles with the runtime theme
 applied, including shared legacy content aliases and conversation accent roles.
 Browser product-surface tests use `src/renderer/test/renderer-theme.ts` to initialize

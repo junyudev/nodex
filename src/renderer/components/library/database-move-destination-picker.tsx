@@ -124,7 +124,7 @@ function DestinationRow({
         {row.kind === "root" ? row.label : row.entry.title || "Untitled"}
       </span>
       {metadata ? (
-        <span className="ml-1 max-w-[132px] shrink truncate text-[12px] leading-4 text-token-description-foreground">
+        <span className="ml-1 max-w-[132px] shrink truncate text-xs leading-4 text-token-description-foreground">
           {metadata}
         </span>
       ) : null}

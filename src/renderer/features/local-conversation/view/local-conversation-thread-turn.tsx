@@ -415,7 +415,7 @@ function ThreadTurnBody({
 export function ThreadLiveActivityFallback({ message }: { message?: ReactNode }) {
   return (
     <div className="min-w-0 py-0">
-      <CodexShimmerText className="text-size-chat truncate text-token-foreground/30">
+      <CodexShimmerText className="font-sans text-size-chat leading-[calc(var(--codex-chat-font-size)_+_8px)] truncate text-token-foreground/30">
         {message ?? "Thinking"}
       </CodexShimmerText>
     </div>

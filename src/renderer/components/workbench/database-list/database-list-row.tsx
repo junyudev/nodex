@@ -294,7 +294,7 @@ export function DatabaseListRow({
           <div
             role="gridcell"
             data-list-grid-column="identifier"
-            className="relative z-[1] min-w-0 truncate text-[13px] font-[450] leading-[normal] tracking-[-0.02em] tabular-nums text-[var(--database-list-text-muted)]"
+            className="relative z-[1] min-w-0 truncate text-sm font-[450] leading-[normal] tracking-[-0.02em] tabular-nums text-[var(--database-list-text-muted)]"
             style={{
               gridColumn: "identifier",
               transform: `translateX(${depthOffset}px)`,

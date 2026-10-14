@@ -10,6 +10,8 @@ type SharedCodeOptions = Pick<
 >;
 type DiffHostStyle = Record<string, string>;
 
+const CODE_ROW_LINE_HEIGHT = 1.8;
+
 const NODEX_DIFF_THEME: ThemesType = {
   dark: "pierre-dark",
   light: "pierre-light",
@@ -26,8 +28,9 @@ ${NODEX_DIFF_ROOT_SELECTOR}`;
 const NODEX_DIFF_HOST_STYLE_BASE: DiffHostStyle = {
   "--codex-diffs-surface":
     "var(--codex-diffs-surface-override, var(--color-token-main-surface-primary))",
-  "--diffs-font-size": "var(--vscode-editor-font-size, 14px)",
-  "--diffs-line-height": "calc(var(--diffs-font-size, var(--vscode-editor-font-size, 14px)) * 1.8)",
+  "--diffs-font-family": "var(--font-mono)",
+  "--diffs-font-size": "var(--font-code-size, 12px)",
+  "--diffs-line-height": `calc(var(--diffs-font-size, 12px) * ${CODE_ROW_LINE_HEIGHT})`,
   "--diffs-gap-inline": "6px",
   "--diffs-gap-block": "0",
   "--diffs-min-number-column-width": "4ch",
@@ -233,6 +236,25 @@ export function getNodexDiffHostStyle(themeType: DiffThemeType): CSSProperties {
   return {
     ...NODEX_DIFF_HOST_STYLE_BASE,
     ...NODEX_DIFF_HOST_STYLE_BY_THEME[themeType],
+  } as CSSProperties;
+}
+
+export function getNodexSourceLineHeight(codeFontSize: number): number {
+  return codeFontSize * CODE_ROW_LINE_HEIGHT;
+}
+
+/** Editable rows and their caret overlays share an integer pixel grid. */
+export function getNodexSourceEditorLineHeight(codeFontSize: number): number {
+  return Math.round(getNodexSourceLineHeight(codeFontSize));
+}
+
+export function getNodexSourceEditorHostStyle(
+  themeType: DiffThemeType,
+  codeFontSize: number,
+): CSSProperties {
+  return {
+    ...getNodexDiffHostStyle(themeType),
+    "--diffs-line-height": `${getNodexSourceEditorLineHeight(codeFontSize)}px`,
   } as CSSProperties;
 }
 

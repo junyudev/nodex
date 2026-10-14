@@ -664,7 +664,7 @@ function BackgroundTerminalRow({
 }) {
   const visibleRow = (
     <div className="min-w-0">
-      <div className="truncate font-mono text-sm">
+      <div className="truncate font-mono text-size-code">
         <span>{terminal.command}</span>
         {terminal.previewLine ? (
           <span className="ml-1 text-token-description-foreground">{terminal.previewLine}</span>
@@ -680,7 +680,7 @@ function BackgroundTerminalRow({
   return (
     <NodexTooltip
       tooltipContent={
-        <div className="max-h-40 max-w-[36rem] overflow-auto font-mono text-sm leading-5">
+        <div className="codex-tool-code max-h-40 max-w-[36rem] overflow-auto font-mono text-size-code">
           <div className="break-all whitespace-pre-wrap">{terminal.command}</div>
           {terminal.previewLine ? (
             <div className="mt-1 break-all whitespace-pre-wrap text-token-description-foreground">

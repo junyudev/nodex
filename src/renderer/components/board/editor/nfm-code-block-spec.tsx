@@ -76,7 +76,7 @@ function NfmCodeBlockSurface({
             ref={contentRef}
             data-language={language}
             className={cn(
-              "block min-w-0 font-mono text-[13.6px] leading-[20.4px] [tab-size:2]",
+              "block min-w-0 font-mono text-size-code leading-5 [tab-size:2]",
               wrapped ? "break-all whitespace-break-spaces" : "whitespace-pre",
             )}
           />

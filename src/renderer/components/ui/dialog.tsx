@@ -218,7 +218,7 @@ export function NodexDialogContent({
 }
 
 const NODEX_DIALOG_FRAME_CLASS =
-  "flex flex-col gap-0 px-5 py-5 text-base leading-normal tracking-normal [--text-heading-md:21px] [font-weight:445]";
+  "flex flex-col gap-0 px-5 py-5 text-base leading-normal tracking-normal";
 
 export function NodexDialogFrame({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -323,7 +323,7 @@ export function NodexDialogAction({
         "no-drag flex cursor-interaction items-center gap-1 whitespace-nowrap border border-transparent select-none",
         size === "compact"
           ? "h-7 rounded-full px-2.5 py-0 text-xs font-medium leading-3"
-          : "rounded-lg px-4 py-1.5 text-base leading-[18px]",
+          : "rounded-lg px-4 py-1.5 text-sm font-medium leading-[18px]",
         "focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
         NODEX_DIALOG_ACTION_STYLES[tone],
         className,

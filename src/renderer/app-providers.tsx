@@ -4,9 +4,8 @@ import { NodexHoverCardProvider } from "./components/ui/hover-card";
 import { NodexTooltipProvider } from "./components/ui/tooltip";
 import { BrowserSidebarThemeSynchronizer } from "./features/browser-sidebar/browser-sidebar-theme-synchronizer";
 import { BrowserSidebarRuntimeSynchronizer } from "./features/browser-sidebar/browser-sidebar-runtime-synchronizer";
-import { CodeFontSizeProvider } from "./lib/use-code-font-size";
 import { FileLinkOpenerProvider } from "./lib/use-file-link-opener";
-import { SansFontSizeProvider } from "./lib/use-sans-font-size";
+import { TypographyProvider } from "./lib/use-typography-preferences";
 import { ReducedMotionProvider } from "./lib/use-reduced-motion";
 import { CodexServiceTierSettingsProvider } from "./lib/use-codex-service-tier-settings";
 import { CodexThreadSettingsProvider } from "./lib/use-codex-thread-settings";
@@ -105,19 +104,17 @@ export function AppProviders({
                   <InAppDictationRouter>
                     <BrowserSidebarRuntimeSynchronizer />
                     <BrowserSidebarThemeSynchronizer />
-                    <SansFontSizeProvider>
-                      <CodeFontSizeProvider>
-                        <FileLinkOpenerProvider>
-                          <CodexServiceTierSettingsProvider>
-                            <CodexThreadSettingsProvider>
-                              <NodexHoverCardProvider>
-                                <NodexTooltipProvider>{children}</NodexTooltipProvider>
-                              </NodexHoverCardProvider>
-                            </CodexThreadSettingsProvider>
-                          </CodexServiceTierSettingsProvider>
-                        </FileLinkOpenerProvider>
-                      </CodeFontSizeProvider>
-                    </SansFontSizeProvider>
+                    <TypographyProvider>
+                      <FileLinkOpenerProvider>
+                        <CodexServiceTierSettingsProvider>
+                          <CodexThreadSettingsProvider>
+                            <NodexHoverCardProvider>
+                              <NodexTooltipProvider>{children}</NodexTooltipProvider>
+                            </NodexHoverCardProvider>
+                          </CodexThreadSettingsProvider>
+                        </CodexServiceTierSettingsProvider>
+                      </FileLinkOpenerProvider>
+                    </TypographyProvider>
                   </InAppDictationRouter>
                 </KeyboardLayoutProvider>
               </AppUpdateStatusProvider>

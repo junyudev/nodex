@@ -11,7 +11,8 @@ export const FILE_TREE_CSS = `
   --trees-bg-muted-override: var(--color-background-primary-ghost-hover);
   --trees-border-color-override: var(--color-border);
   --trees-fg-override: var(--color-text);
-  --trees-font-size-override: 13px;
+  --trees-font-family-override: var(--font-sans);
+  --trees-font-size-override: var(--text-sm);
   --trees-focus-ring-color-override: var(--color-ring);
   --trees-git-added-color-override: var(--color-codex-git-added);
   --trees-git-deleted-color-override: var(--color-codex-git-deleted);
