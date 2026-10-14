@@ -446,7 +446,7 @@ describe("workbench session shell / sidebar-core", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const nav = screen.getByRole("navigation", { name: "Automation folders" });
+    const nav = screen.getByRole("navigation", { name: "Home" });
     const scrollChrome = nav.parentElement;
     if (!(scrollChrome instanceof HTMLElement)) {
       throw new Error("Expected sidebar scroll chrome owner");
@@ -515,7 +515,7 @@ describe("workbench session shell / sidebar-core", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const nav = screen.getByRole("navigation", { name: "Automation folders" });
+    const nav = screen.getByRole("navigation", { name: "Home" });
     expect(nav.closest('[data-testid="project-session-sidebar"]') !== null).toBe(true);
   });
 

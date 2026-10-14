@@ -209,7 +209,7 @@ export function PagesTabPicker({
               setActiveIndex(0);
             }}
             onKeyDown={handleInputKeyDown}
-            placeholder="Open a Page…"
+            placeholder="Search content…"
             className="min-w-0 flex-1 bg-transparent text-sm text-token-text-primary outline-none placeholder:text-token-text-tertiary"
           />
         </div>
@@ -310,14 +310,7 @@ export function EmptyPagesScene({
 }) {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="flex max-w-sm flex-col items-center gap-3 text-center">
-        <PageIcon className="size-7 text-token-text-tertiary" />
-        <div>
-          <div className="text-sm font-medium text-token-text-primary">Open a Page</div>
-          <div className="mt-1 text-sm text-token-text-tertiary">
-            Pages, Databases, and Canvases share this tab bar.
-          </div>
-        </div>
+      <div className="flex max-w-sm flex-col items-center text-center">
         <PagesTabPicker
           onOpenTarget={onOpenTarget}
           dataSource={dataSource}
@@ -326,7 +319,7 @@ export function EmptyPagesScene({
               type="button"
               className="h-8 rounded-lg bg-token-foreground px-3 text-sm font-medium text-token-background"
             >
-              Browse Pages
+              Browse Space
             </button>
           }
         />

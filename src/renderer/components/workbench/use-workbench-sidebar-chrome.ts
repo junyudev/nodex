@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { WORKBENCH_NAVIGATION_RAIL_WIDTH_PX } from "@/lib/workbench-shell-geometry";
 import {
   CODEX_SIDEBAR_POINTER_DEFAULT,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
@@ -185,10 +186,14 @@ export function useWorkbenchSidebarChrome({
   const recomputeFloatingSidebarVisibility = useCallback(
     (pointerX: number | null) => {
       const inputs = sidebarVisibilityInputsRef.current;
+      const sidebarPointerX =
+        pointerX === null || pointerX < WORKBENCH_NAVIGATION_RAIL_WIDTH_PX
+          ? null
+          : pointerX - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX;
       if (inputs.sidebarHoverSuppressed) {
         if (
           !shouldClearCodexSidebarHoverSuppression({
-            pointerX,
+            pointerX: sidebarPointerX,
             triggerHovered: inputs.sidebarTriggerHovered,
           })
         ) {
@@ -201,7 +206,7 @@ export function useWorkbenchSidebarChrome({
 
       setFloatingSidebarVisible(
         deriveCodexSidebarFloatingVisibility({
-          pointerX,
+          pointerX: sidebarPointerX,
           leftPanelWidthPx: inputs.sidebarWidth,
           sidebarOpen: !inputs.sidebarCollapsed,
           sidebarAnimating: inputs.sidebarAnimating,

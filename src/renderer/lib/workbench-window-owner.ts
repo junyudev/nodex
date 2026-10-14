@@ -32,6 +32,7 @@ import {
   reconcileMissingWorkbenchSession,
   removeWorkbenchScene,
   replaceWorkbenchWindowSnapshot,
+  selectWorkbenchHome,
   selectWorkbenchPages,
   selectWorkbenchProject,
   selectWorkbenchSession,
@@ -260,6 +261,7 @@ function createWorkbenchWindowOwner(scope: ScopeHandle, initialSnapshot?: Workbe
     selectProject: (projectId: string | null) =>
       updateWindow((state) => selectWorkbenchProject(state, projectId)),
     selectPages: () => updateWindow(selectWorkbenchPages),
+    selectHome: () => updateWindow(selectWorkbenchHome),
     openRoute: (route: Parameters<typeof openWorkbenchRoute>[1]) =>
       updateWindow((state) => openWorkbenchRoute(state, route)),
     closeRoute: () => updateWindow(closeWorkbenchRoute),

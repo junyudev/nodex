@@ -5,6 +5,8 @@ import {
   type ProjectSessionSidebarProps,
 } from "./workbench-session-sidebar";
 import { cn } from "@/lib/utils";
+import { WorkbenchSpaceSidebar } from "./workbench-space-sidebar";
+import type { SidebarPagesSectionProps } from "./sidebar-pages-section";
 
 type WorkbenchSidebarPlacementProp =
   | "animatedWidth"
@@ -18,7 +20,13 @@ type WorkbenchSidebarPlacementProp =
 export type WorkbenchSidebarBodyProps = Omit<
   ProjectSessionSidebarProps,
   WorkbenchSidebarPlacementProp
->;
+> & {
+  readonly pagesSectionCollapsed: SidebarPagesSectionProps["collapsed"];
+  readonly onTogglePagesSectionCollapsed: SidebarPagesSectionProps["onToggle"];
+  readonly onOpenResourceTarget: SidebarPagesSectionProps["onOpenRoot"];
+  readonly onOpenResourceTargetInProject?: SidebarPagesSectionProps["onOpenInProject"];
+  readonly activeResourceTarget: SidebarPagesSectionProps["activeRoot"];
+};
 
 interface WorkbenchInlineSidebarPlacement {
   readonly visible: boolean;
@@ -40,6 +48,7 @@ interface WorkbenchFloatingSidebarPlacement {
 }
 
 interface WorkbenchSidebarProps {
+  readonly destination: "home" | "space";
   readonly body: WorkbenchSidebarBodyProps;
   readonly inline: WorkbenchInlineSidebarPlacement;
   readonly floating: WorkbenchFloatingSidebarPlacement;
@@ -49,17 +58,25 @@ interface WorkbenchSidebarProps {
  * Owns the two chrome placements for one logical sidebar body. Placement can
  * change without duplicating the catalog/selection/command Interface.
  */
-export function WorkbenchSidebar({ body, inline, floating }: WorkbenchSidebarProps) {
+export function WorkbenchSidebar({ destination, body, inline, floating }: WorkbenchSidebarProps) {
+  const renderSidebar = (
+    placement: Pick<ProjectSessionSidebarProps, WorkbenchSidebarPlacementProp>,
+  ) =>
+    destination === "space" ? (
+      <WorkbenchSpaceSidebar body={body} {...placement} />
+    ) : (
+      <ProjectSessionSidebar {...body} {...placement} />
+    );
+
   return (
     <>
-      {inline.visible ? (
-        <ProjectSessionSidebar
-          {...body}
-          animatedWidth={inline.animatedWidth}
-          contentOpacity={inline.contentOpacity}
-          resizeDisabled={inline.resizeDisabled}
-        />
-      ) : null}
+      {inline.visible
+        ? renderSidebar({
+            animatedWidth: inline.animatedWidth,
+            contentOpacity: inline.contentOpacity,
+            resizeDisabled: inline.resizeDisabled,
+          })
+        : null}
 
       <AnimatePresence initial={false}>
         {floating.visible ? (
@@ -74,13 +91,12 @@ export function WorkbenchSidebar({ body, inline, floating }: WorkbenchSidebarPro
             exit={{ opacity: 0, x: floating.exitX }}
             transition={floating.transition}
           >
-            <ProjectSessionSidebar
-              {...body}
-              floating
-              header={floating.header}
-              onResizeActiveChange={floating.onResizeActiveChange}
-              onHoverSurfaceOpenChange={floating.onHoverSurfaceOpenChange}
-            />
+            {renderSidebar({
+              floating: true,
+              header: floating.header,
+              onResizeActiveChange: floating.onResizeActiveChange,
+              onHoverSurfaceOpenChange: floating.onHoverSurfaceOpenChange,
+            })}
           </motion.div>
         ) : null}
       </AnimatePresence>

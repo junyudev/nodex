@@ -718,7 +718,7 @@ export const CODEX_COMMAND_REGISTRY = [
       commandMenuGroupKey: "general",
     },
   ),
-  command("goToPages", "Go to Pages", "Open the Pages workspace", 241, "app", ["G P"], {
+  command("goToPages", "Go to Space", "Open Space", 241, "app", ["G P"], {
     allowsSequences: true,
     commandMenuGroupKey: "navigation",
   }),

@@ -3,8 +3,9 @@
 ## Intent and ownership
 
 Settings is a Workbench route, not a modal or overlay. It replaces the main
-Workbench body while keeping window-level chrome and return context intact. The
-rail owns navigation and search only; every section page owns its data,
+Workbench body while keeping window-level chrome, the Home/Space navigation
+rail, and return context intact. The Settings section rail owns section
+navigation and search only; every section page owns its data,
 loading/empty/error state, validation, and mutations.
 
 The Settings surface reuses Workbench sidebar material and shared UI primitives
@@ -24,7 +25,10 @@ Unknown paths present the default section without rewriting the URL or accepting
 legacy aliases. Settings links use in-app navigation and remain distinct from
 file references; file-opening behavior never intercepts a Settings route.
 
-`Back to app` restores the owning Workbench return location. Settings itself is
+`Back to app` restores the actual Workbench return route, including Inbox,
+Scheduled, and Space's tabs and selection. Changing Settings sections and
+reopening the window retain that same origin. The Home/Space rail keeps that return destination selected;
+its buttons leave Settings through normal Workbench navigation. Settings itself is
 outside app-window Back/Forward Scene checkpoints, so it does not create a
 second Scene layout owner.
 Resizing Settings preserves the hidden Workbench panel layout. Workbench
@@ -93,8 +97,8 @@ use the shared switch. Settings-specific artwork comes from the app-owned icon
 set. Exact spacing, icon geometry, motion, and surface tokens remain executable
 in those shared primitives and reviewed in the seeded Settings surface.
 
-The Settings rail preserves the same renderer-transparent native vibrancy as
-the normal sidebar. Section pages render only the main content surface and do
+The Settings section rail uses the normal sidebar's shared material and palette.
+Section pages render only the main content surface and do
 not add another sidebar-like card or nested full-page scroll container.
 
 General includes an App server diagnostics disclosure within one shared Settings

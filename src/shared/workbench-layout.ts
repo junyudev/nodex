@@ -232,8 +232,34 @@ export interface WorkbenchLayoutSnapshotV7 {
   readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshot>;
 }
 
-export type WorkbenchLocation = WorkbenchLocationV7;
-export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV7;
+export type WorkbenchStableLocation = Exclude<
+  WorkbenchLocationV7,
+  { readonly kind: "settings" | "pending-worktree" }
+>;
+
+export type WorkbenchHomeLocation = Exclude<WorkbenchStableLocation, { readonly kind: "pages" }>;
+
+export type WorkbenchLocationV8 =
+  | WorkbenchStableLocation
+  | {
+      readonly kind: "settings";
+      readonly path: string;
+      readonly returnTo: WorkbenchStableLocation;
+    }
+  | Extract<WorkbenchLocationV7, { readonly kind: "pending-worktree" }>;
+
+export type WorkbenchPrimaryDestination = "home" | "space";
+
+export interface WorkbenchLayoutSnapshotV8 {
+  readonly version: 8;
+  readonly location: Exclude<WorkbenchLocationV8, { readonly kind: "pending-worktree" }>;
+  readonly homeLocation: WorkbenchHomeLocation;
+  readonly databaseSearchByProject: Record<string, string>;
+  readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshot>;
+}
+
+export type WorkbenchLocation = WorkbenchLocationV8;
+export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV8;
 
 function createDefaultDockTree(): WorkbenchLayoutSnapshotV3["dock"]["tree"] {
   return {
@@ -329,7 +355,28 @@ export function createDefaultWorkbenchLayoutSnapshotV7(): WorkbenchLayoutSnapsho
 }
 
 export function createDefaultWorkbenchLayoutSnapshot(): WorkbenchLayoutSnapshot {
-  return createDefaultWorkbenchLayoutSnapshotV7();
+  return {
+    ...createDefaultWorkbenchLayoutSnapshotV7(),
+    version: 8,
+    homeLocation: { kind: "empty" },
+  };
+}
+
+/** The rail reflects the canonical route; Settings retains its originating destination. */
+export function getWorkbenchPrimaryDestination(
+  location: WorkbenchLocation,
+): WorkbenchPrimaryDestination {
+  if (location.kind === "settings") return getWorkbenchPrimaryDestination(location.returnTo);
+  return location.kind === "pages" ? "space" : "home";
+}
+
+/** Resolves the stable Home route, including the actual Settings origin. */
+export function getWorkbenchHomeLocation(
+  location: WorkbenchLocation,
+): WorkbenchHomeLocation | null {
+  if (location.kind === "settings") return getWorkbenchHomeLocation(location.returnTo);
+  if (location.kind === "pages" || location.kind === "pending-worktree") return null;
+  return location;
 }
 
 export function getWorkbenchSessionReturnLocationV4(
@@ -342,22 +389,15 @@ export function getWorkbenchSessionReturnLocationV4(
 }
 
 export function getWorkbenchSceneReturnLocation(
-  location: WorkbenchLocationV7,
+  location: WorkbenchLocation,
 ): WorkbenchSceneLocation {
-  if (
-    location.kind === "project" ||
-    location.kind === "session" ||
-    location.kind === "pages" ||
-    location.kind === "empty"
-  ) {
-    return location;
-  }
-  return location.returnTo;
+  if ("returnTo" in location) return getWorkbenchSceneReturnLocation(location.returnTo);
+  return location;
 }
 
 /** Resolves the active Agent Session from the canonical Window Session location projection. */
 export function getWorkbenchActiveSessionId(
-  layout: Pick<WorkbenchLayoutSnapshotV7, "location">,
+  layout: Pick<WorkbenchLayoutSnapshot, "location">,
 ): string | null {
   const location = getWorkbenchSceneReturnLocation(layout.location);
   return location.kind === "session" ? location.sessionId : null;
@@ -391,4 +431,11 @@ export function getRestorableWorkbenchLocationV7(
   return location.returnTo;
 }
 
-export const getRestorableWorkbenchLocation = getRestorableWorkbenchLocationV7;
+export function getRestorableWorkbenchLocationV8(
+  location: WorkbenchLocationV8,
+): WorkbenchLayoutSnapshotV8["location"] {
+  if (location.kind !== "pending-worktree") return location;
+  return location.returnTo;
+}
+
+export const getRestorableWorkbenchLocation = getRestorableWorkbenchLocationV8;

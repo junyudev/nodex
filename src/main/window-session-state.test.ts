@@ -89,7 +89,7 @@ describe("WindowSessionState", () => {
 
       expect(session.lifecycle).toEqual({ state: "open" });
       expect(session.layoutRevision).toBe(0);
-      expect(session.layout.version).toBe(7);
+      expect(session.layout.version).toBe(8);
       expect(getActiveProjectId(session.layout)).toBeNull();
       expect(catalog?.version).toBe(3);
       expect(catalog?.sessions).toHaveLength(1);
@@ -575,7 +575,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 7,
         layout: {
-          version: 7,
+          version: 8,
           location: {
             kind: "project",
             projectId: "legacy",
@@ -623,7 +623,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 0,
         layout: {
-          version: 7,
+          version: 8,
           location: {
             kind: "project",
             projectId: "legacy",

@@ -26,6 +26,12 @@ use super::{cursor, page_search};
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
+// Inbox has its own navigation entry; ordinary Library roots include Project content.
+const NON_INBOX_LIBRARY_ROOT: &str = "NOT EXISTS( \
+    SELECT 1 FROM inbox_registry inbox \
+    WHERE inbox.database_block_id = block.id \
+      AND inbox.library_id = placement.library_id \
+  )";
 
 fn page_mention_destination(
     connection: &Connection,
@@ -1591,7 +1597,7 @@ fn root_node_window(
     let query_limit =
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
     let nodes = connection
-        .prepare(
+        .prepare(&format!(
             "SELECT block.type, block.id, placement.rank_key, \
                materialization.title, block.placement_revision, block.metadata_revision, \
                document.generation, document.head_seq, page.updated_at, \
@@ -1625,24 +1631,28 @@ fn root_node_window(
              WHERE placement.library_id = ?1 AND block.type IN ('page', 'database', 'canvas') \
                AND block.lifecycle = 'active' \
                AND COALESCE(container.lifecycle, block.lifecycle) = 'active' \
+               AND {NON_INBOX_LIBRARY_ROOT} \
                AND (?2 IS NULL OR placement.rank_key > ?2 \
                  OR (placement.rank_key = ?2 AND block.id > ?3)) \
              ORDER BY placement.rank_key, block.id LIMIT ?4",
-        )?
+        ))?
         .query_map(
             params![library_id, after_sort_key, after_id, query_limit],
             navigation_row,
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let total = connection.query_row(
-        "SELECT COUNT(*) FROM library_block_placements placement \
+        &format!(
+            "SELECT COUNT(*) FROM library_block_placements placement \
          INNER JOIN blocks block ON block.id = placement.block_id \
          LEFT JOIN pages page ON page.block_id = block.id \
          LEFT JOIN database_containers container ON container.block_id = block.id \
          LEFT JOIN canvas_owners canvas ON canvas.block_id = block.id \
          WHERE placement.library_id = ?1 AND block.type IN ('page', 'database', 'canvas') \
            AND block.lifecycle = 'active' \
-           AND COALESCE(container.lifecycle, block.lifecycle) = 'active'",
+           AND COALESCE(container.lifecycle, block.lifecycle) = 'active' \
+           AND {NON_INBOX_LIBRARY_ROOT}"
+        ),
         [library_id],
         |row| row.get::<_, i64>(0),
     )?;
@@ -2286,11 +2296,15 @@ fn forced_child_node(
         }
         (LibraryNavigationParent::Library, LibraryRouteTarget::Database { database_id }) => {
             let exists = connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM library_block_placements placement \
+                &format!(
+                    "SELECT EXISTS(SELECT 1 FROM library_block_placements placement \
+                 INNER JOIN blocks block ON block.id = placement.block_id \
                  INNER JOIN database_containers container \
                    ON container.block_id = placement.block_id \
                  WHERE placement.library_id = ?1 AND placement.block_id = ?2 \
-                   AND container.lifecycle = 'active')",
+                   AND block.lifecycle = 'active' AND container.lifecycle = 'active' \
+                   AND {NON_INBOX_LIBRARY_ROOT})"
+                ),
                 params![library_id, database_id],
                 |row| row.get::<_, bool>(0),
             )?;
@@ -3707,7 +3721,25 @@ fn corrupt(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    use nodex_core_contracts::library::{
+        LibraryNavigationNode, LibraryNavigationParent, LibraryRead, LibraryReadValue,
+        LibraryRouteTarget,
+    };
+    use nodex_core_contracts::workspace::{
+        ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        ProjectWorkspaceStarterPage,
+    };
+    use nodex_core_contracts::{
+        AdapterKind, BoundModuleContext, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
+        ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, StoreEpoch,
+    };
     use serde_json::json;
+    use tempfile::tempdir;
+
+    use crate::infrastructure::sqlite::with_immediate_transaction;
+    use crate::infrastructure::store::SqliteStoreKernel;
+    use crate::library::LibraryModule;
+    use crate::workspace::ProjectWorkspaceModule;
 
     use super::valid_intrinsic_value;
 
@@ -3719,5 +3751,189 @@ mod tests {
         assert!(valid_intrinsic_value("json", &json!({ "key": "value" })));
         assert!(!valid_intrinsic_value("string", &json!(42)));
         assert!(!valid_intrinsic_value("json", &json!("value")));
+    }
+
+    #[test]
+    fn library_roots_include_project_content_and_exclude_inbox_before_windowing() {
+        const NOW: &str = "2026-10-15T00:00:00.000Z";
+        const PROJECT: &str = "project:library-roots";
+        const CANVAS: &str = "canvas:primary:project:library-roots";
+        let directory = tempdir().expect("Profile");
+        let home = directory.path().canonicalize().expect("absolute Profile");
+        std::fs::create_dir(home.join("assets")).expect("assets root");
+        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+        kernel
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "INSERT INTO profiles(id, created_at, updated_at) \
+                         VALUES ('profile-1', ?1, ?1)",
+                        [NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO libraries(id, profile_id, created_at, updated_at) \
+                         VALUES ('library-1', 'profile-1', ?1, ?1)",
+                        [NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) \
+                         VALUES (1, 'epoch-1', ?1, ?1)",
+                        [NOW],
+                    )?;
+                    Ok(())
+                })
+            })
+            .expect("seed Profile identity");
+        let context = BoundModuleContext {
+            editor_history_owner: None,
+            profile_id: ProfileId("profile-1".to_owned()),
+            library_id: LibraryId("library-1".to_owned()),
+            project_id: None,
+            connection_id: "connection:library-roots".to_owned(),
+            adapter: AdapterKind::ElectronHost,
+        };
+        let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &kernel)
+            .expect("Workspace module");
+        for (operation_id, intent) in [
+            (
+                "create-project",
+                ProjectWorkspaceIntent::CreateInitialProject {
+                    project_id: PROJECT.to_owned(),
+                    name: "Research".to_owned(),
+                    description: String::new(),
+                    appearance: None,
+                    source_roots: vec!["/workspace/research".to_owned()],
+                    page_key_prefix: None,
+                    starter_page: ProjectWorkspaceStarterPage {
+                        page_id: "page:starter".to_owned(),
+                        document_id: "document:starter".to_owned(),
+                        title_markdown: "Welcome".to_owned(),
+                        nfm: "Start here.".to_owned(),
+                    },
+                },
+            ),
+            (
+                "send-inbox",
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    page_id: "page:inbox".to_owned(),
+                    document_id: "document:inbox".to_owned(),
+                    text: "Review the proposal".to_owned(),
+                    title: None,
+                },
+            ),
+        ] {
+            workspace
+                .apply(
+                    &context,
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: operation_id.to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent,
+                    },
+                )
+                .expect(operation_id);
+        }
+        let read_workspace = |read| {
+            workspace
+                .read(
+                    &context,
+                    ModuleReadRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        read,
+                    },
+                )
+                .expect("Workspace read")
+                .value
+        };
+        let ProjectWorkspaceReadValue::Project { project } =
+            read_workspace(ProjectWorkspaceRead::Project {
+                project_id: PROJECT.to_owned(),
+            })
+        else {
+            panic!("Project binding");
+        };
+        let ProjectWorkspaceReadValue::InboxSummary { summary } =
+            read_workspace(ProjectWorkspaceRead::InboxSummary)
+        else {
+            panic!("Inbox summary");
+        };
+        let inbox_id = summary.database_id.expect("system Inbox Database");
+        let library = LibraryModule::new("profile-1", "library-1", &kernel);
+        let roots = |cursor, force_include_target| {
+            let LibraryReadValue::Children {
+                items,
+                next_cursor,
+                has_more,
+                total,
+                ..
+            } = library
+                .read(
+                    &context,
+                    ModuleReadRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        read: LibraryRead::Children {
+                            parent: LibraryNavigationParent::Library,
+                            cursor,
+                            limit: Some(1),
+                            force_include_target,
+                        },
+                    },
+                )
+                .expect("Library roots")
+                .value
+            else {
+                panic!("Library children");
+            };
+            (items, next_cursor, has_more, total)
+        };
+
+        let first = roots(None, None);
+        assert_eq!(first.3, 2);
+        assert!(first.2);
+        assert!(
+            matches!(first.0.as_slice(), [LibraryNavigationNode::Database { database_id, .. }]
+            if database_id == &project.database_id)
+        );
+        let cursor = first.1.clone().expect("continuation");
+        let second = roots(Some(cursor.clone()), None);
+        assert_eq!(second.3, 2);
+        assert!(!second.2);
+        assert_eq!(second.1, None);
+        assert!(
+            matches!(second.0.as_slice(), [LibraryNavigationNode::Canvas { canvas_id, is_primary: true, .. }]
+            if canvas_id == CANVAS)
+        );
+
+        // Selected Project resources outside the window remain visible without changing pagination.
+        let forced_database = roots(
+            Some(cursor),
+            Some(LibraryRouteTarget::Database {
+                database_id: project.database_id,
+            }),
+        );
+        assert_eq!(forced_database.0, [second.0[0].clone(), first.0[0].clone()]);
+        assert_eq!(forced_database.1, second.1);
+        assert_eq!(forced_database.2, second.2);
+        assert_eq!(forced_database.3, second.3);
+        let forced_canvas = roots(
+            None,
+            Some(LibraryRouteTarget::Canvas {
+                canvas_id: CANVAS.to_owned(),
+            }),
+        );
+        assert_eq!(forced_canvas.0, [first.0[0].clone(), second.0[0].clone()]);
+        assert_eq!(forced_canvas.1, first.1);
+        assert_eq!(forced_canvas.2, first.2);
+        assert_eq!(forced_canvas.3, first.3);
+
+        let forced_inbox = roots(
+            None,
+            Some(LibraryRouteTarget::Database {
+                database_id: inbox_id,
+            }),
+        );
+        assert_eq!(forced_inbox, first);
     }
 }

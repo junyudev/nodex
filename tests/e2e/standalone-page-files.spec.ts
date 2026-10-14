@@ -41,11 +41,22 @@ test("persists a pasted image in a standalone Sidebar Page across reload", async
     { label: "standalone-page-files", scenarioId: PAGE_RELOCATION_SCENARIO_ID },
     async ({ application, page, facts }) => {
       const { standalonePageId } = requirePageRelocationScenarioFacts(facts);
-      const sidebarPage = page
-        .getByRole("list", { name: "Pages" })
-        .getByRole("listitem")
-        .filter({ hasText: "Sidebar Page to move" });
-      await sidebarPage.click();
+      const space = page
+        .getByRole("navigation", { name: "App navigation", exact: true })
+        .getByRole("button", { name: "Space", exact: true });
+      const content = page
+        .getByRole("navigation", { name: "Space", exact: true })
+        .getByRole("list", { name: "Content", exact: true });
+      const sidebarPage = content.getByRole("listitem").filter({ hasText: "Sidebar Page to move" });
+      const openSidebarPage = async () => {
+        await space.click();
+        await expect(content).toBeVisible();
+        if (!(await sidebarPage.isVisible())) {
+          await content.getByRole("button", { name: "Show more", exact: true }).click();
+        }
+        await sidebarPage.click();
+      };
+      await openSidebarPage();
       const stage = page.locator(`[data-page-stage-page-id="${standalonePageId}"]:visible`);
       const editor = stage.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
       await expect(editor).toBeVisible();
@@ -64,7 +75,7 @@ test("persists a pasted image in a standalone Sidebar Page across reload", async
       expect(inventory.total).toBe(1);
 
       await page.reload();
-      await sidebarPage.click();
+      await openSidebarPage();
       await expect(imageBlock).toHaveAttribute("data-url", source!);
       await expect(imageBlock.locator("img")).toBeVisible();
       await expect

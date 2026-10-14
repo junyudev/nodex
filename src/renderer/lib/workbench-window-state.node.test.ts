@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
+import {
+  createDefaultWorkbenchLayoutSnapshot,
+  getWorkbenchPrimaryDestination,
+  getWorkbenchSceneReturnLocation,
+  type WorkbenchHomeLocation,
+} from "../../shared/workbench-layout";
 import {
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
@@ -16,13 +21,195 @@ import {
   reconcileMissingWorkbenchSession,
   selectWorkbenchProject,
   selectWorkbenchPages,
+  selectWorkbenchHome,
   selectWorkbenchSession,
   snapshotWorkbenchWindowState,
   updateWorkbenchScene,
   updateWorkbenchSceneAndNavigate,
+  removeWorkbenchScene,
 } from "./workbench-window-state";
 
 describe("WorkbenchWindowState", () => {
+  test.each([
+    { kind: "inbox" as const },
+    { kind: "automations" as const, path: "/automations/edit/a" },
+  ])("Settings retains its stable $kind origin after leaving Space", (route) => {
+    const pages = selectWorkbenchPages(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+    );
+    const home = openWorkbenchRoute(pages, route);
+    const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
+
+    expect(settings.location).toEqual({
+      kind: "settings",
+      path: "/settings/general",
+      returnTo: home.location,
+    });
+    expect(getWorkbenchPrimaryDestination(settings.location)).toBe("home");
+    expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual(pages.location);
+    expect(settings.homeLocation).toEqual(home.location);
+    expect(closeWorkbenchRoute(settings).location).toEqual(home.location);
+    const back = navigateBackInWorkbenchWindow(settings);
+    expect(back.location).toEqual(home.location);
+    expect(navigateForwardInWorkbenchWindow(back).location).toEqual(settings.location);
+    const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
+    expect(closeWorkbenchRoute(reopened).location).toEqual(home.location);
+    expect(selectWorkbenchHome(selectWorkbenchPages(reopened)).location).toEqual(home.location);
+    expect(
+      openWorkbenchRoute(settings, { kind: "settings", path: "/settings/appearance" }).location,
+    ).toEqual({
+      kind: "settings",
+      path: "/settings/appearance",
+      returnTo: home.location,
+    });
+  });
+
+  test.each([
+    { kind: "inbox" as const },
+    { kind: "automations" as const, path: "/automations/edit/a" },
+  ])("missing-owner repair retains Settings and its $kind return route", (route) => {
+    const session = selectWorkbenchSession(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      {
+        id: "session-a",
+        projectId: "alpha",
+      },
+    );
+    const home = openWorkbenchRoute(session, route);
+    const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
+    const withoutSession = reconcileMissingWorkbenchSession(settings, "session-a");
+    const repairedHome = { ...home.location, returnTo: { kind: "project", projectId: "alpha" } };
+    expect(withoutSession.location).toEqual({ ...settings.location, returnTo: repairedHome });
+    expect(withoutSession.homeLocation).toEqual(repairedHome);
+    expect(getWorkbenchPrimaryDestination(withoutSession.location)).toBe("home");
+    const withoutProject = removeWorkbenchScene(withoutSession, {
+      kind: "project",
+      projectId: "alpha",
+    });
+    expect(closeWorkbenchRoute(withoutProject).location).toEqual({
+      ...home.location,
+      returnTo: { kind: "empty" },
+    });
+    expect(navigateBackInWorkbenchWindow(withoutProject).location).toEqual({
+      ...home.location,
+      returnTo: { kind: "empty" },
+    });
+  });
+
+  test.each<WorkbenchHomeLocation>([
+    { kind: "project", projectId: "alpha" },
+    { kind: "session", sessionId: "session-a", projectContextId: "alpha" },
+    { kind: "inbox", returnTo: { kind: "project", projectId: "alpha" } },
+    { kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } },
+  ])("restores the previous Home route after reopening Space: $kind", (location) => {
+    const initial = createWorkbenchWindowState({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location,
+    });
+    const pages = selectWorkbenchPages(initial);
+    const home = selectWorkbenchHome(pages);
+
+    expect(pages.homeLocation).toEqual(location);
+    expect(pages.history.backStack).toHaveLength(1);
+    expect(home.location).toEqual(location);
+    expect(home.history.backStack).toHaveLength(2);
+    expect(selectWorkbenchHome(home)).toBe(home);
+    expect(selectWorkbenchPages(pages)).toBe(pages);
+    const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(pages));
+    expect(reopened.history.backStack).toHaveLength(0);
+    expect(selectWorkbenchHome(reopened).location).toEqual(location);
+  });
+
+  test("Settings and pending worktree presentation preserve the stable Home checkpoint", () => {
+    const initial = selectWorkbenchSession(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      { id: "session-a", projectId: "alpha" },
+    );
+    const inbox = openWorkbenchRoute(initial, { kind: "inbox" });
+    const settings = openWorkbenchRoute(inbox, { kind: "settings", path: "/settings/general" });
+    const pending = openWorkbenchRoute(inbox, {
+      kind: "pending-worktree",
+      clientThreadId: "pending-a",
+    });
+
+    expect(settings.homeLocation).toEqual(inbox.location);
+    expect(pending.homeLocation).toEqual(inbox.location);
+    expect(selectWorkbenchHome(selectWorkbenchPages(settings)).location).toEqual(inbox.location);
+    expect(selectWorkbenchHome(pending).location).toEqual(inbox.location);
+  });
+
+  test("Back and Forward restore the matching Home checkpoint and Scene tree", () => {
+    const initial = selectWorkbenchProject(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      "alpha",
+    );
+    const firstSpace = selectWorkbenchPages(initial);
+    const secondHome = selectWorkbenchSession(firstSpace, { id: "session-b", projectId: "beta" });
+    const secondSpace = selectWorkbenchPages(secondHome);
+    const backHome = navigateBackInWorkbenchWindow(secondSpace);
+    const backSpace = navigateBackInWorkbenchWindow(backHome);
+
+    expect(backHome.homeLocation).toEqual(secondHome.location);
+    expect(backSpace.location).toEqual(firstSpace.location);
+    expect(backSpace.homeLocation).toEqual(initial.location);
+    expect(navigateForwardInWorkbenchWindow(backSpace).homeLocation).toEqual(secondHome.location);
+    const divergentHome = selectWorkbenchHome(backSpace);
+    expect(divergentHome.location).toEqual(initial.location);
+    expect(divergentHome.history.forwardStack).toHaveLength(0);
+  });
+
+  test("authoritative Session removal repairs dormant Home and both navigation stacks", () => {
+    const owner = { kind: "session", sessionId: "session:deleted" } as const;
+    const scene = materializeInitialWorkbenchScene(owner);
+    const home = createWorkbenchWindowState({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: { kind: "session", sessionId: owner.sessionId, projectContextId: "alpha" },
+      scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
+    });
+    const pages = selectWorkbenchPages(home);
+    const restored = selectWorkbenchHome(pages);
+    const withForward = navigateBackInWorkbenchWindow(restored);
+    const pruned = reconcileMissingWorkbenchSession(withForward, owner.sessionId);
+
+    expect(pruned.location).toEqual({ kind: "pages" });
+    expect(pruned.homeLocation).toEqual({ kind: "project", projectId: "alpha" });
+    expect(selectWorkbenchHome(pruned).location).toEqual(pruned.homeLocation);
+    expect(navigateBackInWorkbenchWindow(pruned).location).toEqual(pruned.homeLocation);
+    expect(navigateForwardInWorkbenchWindow(pruned).location).toEqual(pruned.homeLocation);
+    for (const snapshot of [pruned, ...pruned.history.backStack, ...pruned.history.forwardStack]) {
+      expect(snapshot.scenesByOwnerKey[makeWorkbenchSceneKey(owner)]).toBeUndefined();
+    }
+    expect(reconcileMissingWorkbenchSession(pruned, owner.sessionId)).toBe(pruned);
+  });
+
+  test("authoritative Project removal repairs Home routes without discarding projectless Sessions", () => {
+    const home = createWorkbenchWindowState({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: { kind: "inbox", returnTo: { kind: "project", projectId: "alpha" } },
+    });
+    const pruned = removeWorkbenchScene(selectWorkbenchPages(home), {
+      kind: "project",
+      projectId: "alpha",
+    });
+    expect(selectWorkbenchHome(pruned).location).toEqual({
+      kind: "inbox",
+      returnTo: { kind: "empty" },
+    });
+    const projectless = selectWorkbenchSession(selectWorkbenchProject(home, "alpha"), {
+      id: "session-projectless",
+      projectId: null,
+    });
+    const withoutProject = removeWorkbenchScene(projectless, {
+      kind: "project",
+      projectId: "alpha",
+    });
+    expect(withoutProject.location).toEqual({
+      kind: "session",
+      sessionId: "session-projectless",
+      projectContextId: null,
+    });
+  });
+
   test("selecting a projectless Session preserves Project context", () => {
     const state = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),

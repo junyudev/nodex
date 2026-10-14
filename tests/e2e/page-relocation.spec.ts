@@ -7,10 +7,18 @@ import {
 } from "../../scripts/scenarios/scenarios/page-relocation";
 
 const openSourcePageMenu = async (page: Page, pageId: string): Promise<void> => {
+  await page
+    .getByRole("navigation", { name: "App navigation", exact: true })
+    .getByRole("button", { name: "Space", exact: true })
+    .click();
   const target = page.locator(`[data-database-view-page-menu-target="${pageId}"]`);
   if (!(await target.isVisible().catch(() => false))) {
-    await page.getByRole("button", { name: "Open Relocation Alpha", exact: true }).click();
-    await page.getByRole("tab", { name: "Project Home", exact: true }).waitFor();
+    await page
+      .getByRole("navigation", { name: "Space", exact: true })
+      .getByRole("list", { name: "Content", exact: true })
+      .getByRole("listitem")
+      .filter({ has: page.getByText("Relocation Alpha DB", { exact: true }) })
+      .click();
   }
   await target.waitFor();
   await target.click({ button: "right" });
@@ -85,12 +93,20 @@ test("moves a Sidebar Page into a Database and restores its Library position", a
     async ({ page, facts }) => {
       if (!facts) throw new Error("Page relocation scenario did not materialize");
       const relocation = requirePageRelocationScenarioFacts(facts);
-      const sidebarPage = page.getByText("Sidebar Page to move", { exact: true });
+      await page
+        .getByRole("navigation", { name: "App navigation", exact: true })
+        .getByRole("button", { name: "Space", exact: true })
+        .click();
+      const content = page
+        .getByRole("navigation", { name: "Space", exact: true })
+        .getByRole("list", { name: "Content", exact: true });
+      await expect(content).toBeVisible();
+      const sidebarRow = content.getByRole("listitem").filter({ hasText: "Sidebar Page to move" });
+      if (!(await sidebarRow.isVisible())) {
+        await content.getByRole("button", { name: "Show more", exact: true }).click();
+      }
+      const sidebarPage = content.getByText("Sidebar Page to move", { exact: true });
       await expect(sidebarPage).toBeVisible();
-      const sidebarRow = page
-        .getByRole("list", { name: "Pages" })
-        .getByRole("listitem")
-        .filter({ hasText: "Sidebar Page to move" });
       await sidebarRow.click({ button: "right" });
       const moveTo = page.getByRole("menuitem", { name: "Move to", exact: true });
       await moveTo.hover();

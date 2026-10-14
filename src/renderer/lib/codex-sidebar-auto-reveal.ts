@@ -21,7 +21,7 @@ export const CODEX_SIDEBAR_FLOATING_PANEL_REDUCED_MOTION_TRANSITION = {
   duration: 0,
 } as const;
 
-export const CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS = `pointer-events-auto fixed bottom-0 left-0 ${APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS} min-h-0`;
+export const CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS = `pointer-events-auto fixed bottom-1 left-13 ${APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS} min-h-0`;
 
 export const CODEX_SIDEBAR_FLOATING_OUTER_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-0`;
 

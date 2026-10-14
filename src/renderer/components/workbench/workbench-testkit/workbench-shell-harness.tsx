@@ -2847,13 +2847,22 @@ export function renderWorkbench({
                 target,
                 nodes: pathNode ? [pathNode] : [],
               }
-            : {
-                kind: "standalone_roots" as const,
-                items: libraryRoots.filter((node) => node.kind !== "view"),
-                nextCursor: null,
-                hasMore: false,
-                total: libraryRoots.length,
-              };
+            : request.read?.mode === "children"
+              ? {
+                  kind: "children" as const,
+                  parent: { kind: "library" as const },
+                  items: libraryRoots.filter((node) => node.kind !== "view"),
+                  nextCursor: null,
+                  hasMore: false,
+                  total: libraryRoots.length,
+                }
+              : {
+                  kind: "standalone_roots" as const,
+                  items: libraryRoots.filter((node) => node.kind !== "view"),
+                  nextCursor: null,
+                  hasMore: false,
+                  total: libraryRoots.length,
+                };
       return {
         ok: true,
         value: {

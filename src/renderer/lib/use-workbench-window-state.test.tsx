@@ -1,7 +1,10 @@
 import type { PropsWithChildren } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
-import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
+import {
+  createDefaultWorkbenchLayoutSnapshot,
+  getWorkbenchPrimaryDestination,
+} from "../../shared/workbench-layout";
 import {
   materializeInitialWorkbenchScene,
   type WorkbenchSceneOwner,
@@ -50,6 +53,55 @@ afterEach(() => {
 });
 
 describe("Workbench synchronous Window owner", () => {
+  test("persists and returns to Inbox when Settings opens from Home over Space", async () => {
+    const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
+    const owner = view.result.current.owner;
+    await act(async () => {
+      owner.selectPages();
+      owner.openRoute({ kind: "inbox" });
+      owner.openRoute({ kind: "settings", path: "/settings/inbox" });
+      await Promise.resolve();
+    });
+    const origin = { kind: "inbox", returnTo: { kind: "pages" } };
+    expect(getWorkbenchPrimaryDestination(view.result.current.location)).toBe("home");
+    expect(owner.snapshotForPersistence().location).toEqual({
+      kind: "settings",
+      path: "/settings/inbox",
+      returnTo: origin,
+    });
+    expect(owner.read().presentationRevision).toBe(3);
+    await act(async () => {
+      owner.closeRoute();
+      await Promise.resolve();
+    });
+    expect(view.result.current.location).toEqual(origin);
+    expect(owner.read().presentationRevision).toBe(4);
+  });
+
+  test("restores Home through the same owner and publishes one transition per destination switch", async () => {
+    const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
+    const owner = view.result.current.owner;
+    const seen: number[] = [];
+    const unsubscribe = owner.subscribe(() => seen.push(owner.read().presentationRevision));
+
+    await act(async () => {
+      owner.openRoute({ kind: "inbox" });
+      owner.selectPages();
+      expect(owner.snapshotForPersistence().homeLocation).toEqual({
+        kind: "inbox",
+        returnTo: { kind: "empty" },
+      });
+      owner.selectHome();
+      owner.selectHome();
+      await Promise.resolve();
+    });
+
+    expect(view.result.current.location).toEqual({ kind: "inbox", returnTo: { kind: "empty" } });
+    expect(view.result.current.state.history.backStack).toHaveLength(3);
+    expect(seen).toEqual([1, 2, 3]);
+    unsubscribe();
+  });
+
   test("a submit reader mounted before the shell does not replace its bootstrap layout", () => {
     const sharedWrapper = wrapper();
     const earlyReader = renderHook(() => useWorkbenchWindowOwner(), { wrapper: sharedWrapper });

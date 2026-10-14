@@ -56,8 +56,12 @@ const openStandaloneDatabase = async (
   screen: ReturnType<typeof renderWorkbench>,
   title = "Tasks",
 ) => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Space" }));
+    await Promise.resolve();
+  });
   const currentRow = () => {
-    const list = screen.getByRole("list", { name: "Pages" });
+    const list = screen.getByRole("list", { name: "Content" });
     const row = within(list).getByText(title).closest('[role="listitem"]');
     if (!(row instanceof HTMLElement)) throw new Error(`Expected the standalone ${title} row`);
     return row;
@@ -235,7 +239,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(routeShell.contains(headerContextSurface)).toBe(false);
     expect(routeShell.querySelector("main > header") === null).toBe(true);
     expect(
-      within(screen.getByRole("navigation", { name: "Automation folders" }))
+      within(screen.getByRole("navigation", { name: "Home" }))
         .getByRole("button", { name: "Scheduled" })
         .getAttribute("aria-current"),
     ).toBe("page");
@@ -258,7 +262,7 @@ describe("workbench session shell / routes-threads", () => {
     );
   });
 
-  test("routes a Pages Database through global Back and Forward", async () => {
+  test("restores Home and Space Database navigation through global Back and Forward", async () => {
     const screen = renderWorkbench({ libraryRoots: [standaloneTasksDatabase] });
     await settleAsyncRender();
     await settleAsyncRender();
@@ -268,7 +272,7 @@ describe("workbench session shell / routes-threads", () => {
 
     expect(screen.getByTestId("workbench-database-view-surface") !== null).toBe(true);
     const breadcrumb = screen.getByTestId("app-shell-header-context-menu-surface");
-    expect(within(breadcrumb).getByText("Pages") !== null).toBe(true);
+    expect(within(breadcrumb).getByText("Space") !== null).toBe(true);
     expect(within(breadcrumb).getByText("Tasks") !== null).toBe(true);
 
     const back = within(globalHeader).getByRole("button", { name: "Back" });
@@ -280,8 +284,29 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
 
     expect(screen.queryByTestId("workbench-database-view-surface")).toBeNull();
+    expect(screen.getByRole("button", { name: "Space" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("space-sidebar")).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(back);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    expect(screen.getByRole("button", { name: "Home" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("project-session-sidebar")).not.toBeNull();
+    expect(screen.queryByTestId("space-sidebar")).toBeNull();
+
     const forward = within(globalHeader).getByRole("button", { name: "Forward" });
     expect((forward as HTMLButtonElement).disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(forward);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(screen.getByRole("button", { name: "Space" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByTestId("workbench-database-view-surface")).toBeNull();
+
     await act(async () => {
       fireEvent.click(forward);
       await Promise.resolve();
@@ -308,6 +333,9 @@ describe("workbench session shell / routes-threads", () => {
       databaseId: "database:test:standalone",
     });
     expect(screen.getByRole("tab", { name: "Tasks", selected: true }) !== null).toBe(true);
+    expect(screen.queryByRole("button", { name: "Toggle side panel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restore panel width" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Expand panel" })).toBeNull();
     expect(screen.queryByText("Library")).toBeNull();
   });
 

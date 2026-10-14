@@ -11,7 +11,10 @@ import {
   type WorkbenchSceneSnapshot,
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
-import type { WorkbenchLayoutSnapshot } from "../../../shared/workbench-layout";
+import {
+  createDefaultWorkbenchLayoutSnapshot,
+  type WorkbenchLayoutSnapshot,
+} from "../../../shared/workbench-layout";
 import { makeProject } from "./workbench-testkit/workbench-shell-fixtures";
 import { getPanelTabById, renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
 import { settleAsyncRender } from "../../test/dom";
@@ -77,7 +80,7 @@ function makeScene(owner: WorkbenchSceneOwner): WorkbenchSceneSnapshot {
 function makeLayout(owner: WorkbenchSceneOwner): WorkbenchLayoutSnapshot {
   const scene = makeScene(owner);
   return {
-    version: 7,
+    ...createDefaultWorkbenchLayoutSnapshot(),
     location:
       owner.kind === "project"
         ? { kind: "project", projectId: owner.projectId }
@@ -101,7 +104,7 @@ describe("owner-scoped workbench panel commands", () => {
       projects: [makeProject("alpha")],
       sessionsByProject: { alpha: [] },
       initialWindowLayoutSnapshot: {
-        version: 7,
+        ...createDefaultWorkbenchLayoutSnapshot(),
         location: { kind: "project", projectId: "alpha" },
         databaseSearchByProject: {},
         scenesByOwnerKey: {

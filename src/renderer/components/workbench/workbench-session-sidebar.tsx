@@ -6,15 +6,11 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, type MotionValue } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
-import type { LibraryPlacedResourceTarget } from "../../../shared/library-module";
-import type { LibraryResourceTarget as ActionableLibraryResourceTarget } from "../library/library-resource-actions";
 import {
   CodexProjectRow,
   CodexProjectSessionList,
@@ -30,7 +26,6 @@ import {
 import { LeftSidebarFooter } from "./left-sidebar-footer";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
 import type { SidebarLibraryDragResource } from "./sidebar-library-dnd";
-import { SidebarPagesSection } from "./sidebar-pages-section";
 import {
   SIDEBAR_SCROLL_AREA_CLASS,
   SidebarExpandedHeader,
@@ -64,10 +59,6 @@ import { AutomationsIcon, NewChatIcon, ThreadIcon, PluginsIcon } from "@/compone
 import { toast } from "@/components/ui/toast";
 import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
 import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
-import {
-  CODEX_SIDEBAR_FLOATING_ASIDE_CLASS,
-  CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
-} from "@/lib/codex-sidebar-auto-reveal";
 import {
   CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS,
   CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS,
@@ -129,6 +120,7 @@ import {
   readSidebarSectionContainerId,
   sidebarSectionContainerId,
 } from "../../../shared/sidebar-sections";
+import { WorkbenchSidebarFrame, type WorkbenchSidebarFrameProps } from "./workbench-sidebar-frame";
 type ProjectSession = ProjectSessionDomain;
 const IDLE_SESSION_COLLECTION_STATE = { kind: "idle" } as const;
 
@@ -185,8 +177,7 @@ function SidebarSessionCollectionFallback({
   );
 }
 
-export type SidebarResizePhase = "live" | "end" | "reset";
-export type SidebarResizeSurface = "inline" | "floating";
+export type { SidebarResizePhase, SidebarResizeSurface } from "./workbench-sidebar-frame";
 
 function reportSidebarThreadReorderError(): void {
   toast.danger("Couldn’t reorder task");
@@ -702,7 +693,6 @@ function SidebarThreadOrganizerSections({
   projectlessSessionCollection,
   expandedProjectIds,
   pinnedThreadsSectionCollapsed,
-  pagesSectionCollapsed,
   projectsSectionCollapsed,
   chatsSectionCollapsed,
   sidebarCollapsibleSections,
@@ -711,7 +701,6 @@ function SidebarThreadOrganizerSections({
   model,
   onHoverSurfaceOpenChange,
   onTogglePinnedThreadsSectionCollapsed,
-  onTogglePagesSectionCollapsed,
   onToggleProjectsSectionCollapsed,
   onToggleChatsSectionCollapsed,
   onSetSidebarSectionCollapsed,
@@ -743,9 +732,6 @@ function SidebarThreadOrganizerSections({
   onReorderSessions,
   onReorderPinnedThreads,
   sidebarArchivePendingKeys,
-  onOpenResourceTarget,
-  onOpenResourceTargetInProject,
-  activeResourceTarget,
   hasMoreProjects,
   loadingMoreProjects,
   onLoadMoreProjects,
@@ -758,7 +744,6 @@ function SidebarThreadOrganizerSections({
   projectlessSessionCollection: WorkbenchSessionCollection;
   expandedProjectIds: Set<string>;
   pinnedThreadsSectionCollapsed: boolean;
-  pagesSectionCollapsed: boolean;
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
   sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
@@ -767,7 +752,6 @@ function SidebarThreadOrganizerSections({
   model: CodexSidebarThreadSyncModel;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
   onTogglePinnedThreadsSectionCollapsed: () => void;
-  onTogglePagesSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
   onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
@@ -811,13 +795,6 @@ function SidebarThreadOrganizerSections({
   ) => Promise<void>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
-  onOpenResourceTarget: (target: LibraryPlacedResourceTarget) => void;
-  onOpenResourceTargetInProject?: (
-    projectId: string,
-    target: ActionableLibraryResourceTarget,
-    title: string,
-  ) => void | Promise<void>;
-  activeResourceTarget: LibraryPlacedResourceTarget | null;
   hasMoreProjects: boolean;
   loadingMoreProjects: boolean;
   onLoadMoreProjects?: () => Promise<void>;
@@ -1649,17 +1626,6 @@ function SidebarThreadOrganizerSections({
   const renderProjectGroups = () => (
     <>
       {renderPinnedSection()}
-      <SidebarPagesSection
-        collapsed={pagesSectionCollapsed}
-        activeRoot={activeResourceTarget}
-        onToggle={onTogglePagesSectionCollapsed}
-        onOpenRoot={onOpenResourceTarget}
-        projects={allProjectGroups.map(({ project }) => ({
-          id: project.id,
-          name: project.name,
-        }))}
-        onOpenInProject={onOpenResourceTargetInProject}
-      />
       <SidebarCustomSections
         catalog={sectionCatalog}
         sessionsByProject={sectionSessionsByProject}
@@ -1755,9 +1721,10 @@ function SidebarThreadOrganizerSections({
   return renderProjectGroups();
 }
 
-export interface ProjectSessionSidebarProps {
-  floating?: boolean;
-  header?: ReactNode;
+export interface ProjectSessionSidebarProps extends Omit<
+  WorkbenchSidebarFrameProps,
+  "children" | "testId"
+> {
   activeProjectId: string | null;
   activeSessionId: string | null;
   activePendingClientThreadId?: string | null;
@@ -1768,26 +1735,13 @@ export interface ProjectSessionSidebarProps {
   pendingStableWorktrees: readonly StableWorktreeEntry[];
   expandedProjectIds: Set<string>;
   pinnedProjectsSectionCollapsed: boolean;
-  pagesSectionCollapsed: boolean;
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
   sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
   onLoadMoreTaskWindow: (projectId: string | null) => Promise<void>;
   onRetryTaskWindow: (projectId: string | null) => Promise<void>;
-  width: number;
-  animatedWidth?: MotionValue<number>;
-  contentOpacity?: MotionValue<number>;
-  resizeDisabled?: boolean;
-  getWindowZoom?: () => number;
-  onResizeWidth: (
-    width: number,
-    phase?: SidebarResizePhase,
-    surface?: SidebarResizeSurface,
-  ) => void;
-  onResizeActiveChange?: (active: boolean) => void;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
   onTogglePinnedProjectsSectionCollapsed: () => void;
-  onTogglePagesSectionCollapsed: () => void;
   onToggleProjectsSectionCollapsed: () => void;
   onToggleChatsSectionCollapsed: () => void;
   onSetSidebarSectionCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
@@ -1821,13 +1775,6 @@ export interface ProjectSessionSidebarProps {
   onShowUnavailableProduct: (label: string) => void;
   onOpenAutomations: () => void;
   onOpenInbox: () => void;
-  onOpenResourceTarget: (target: LibraryPlacedResourceTarget) => void;
-  onOpenResourceTargetInProject?: (
-    projectId: string,
-    target: ActionableLibraryResourceTarget,
-    title: string,
-  ) => void | Promise<void>;
-  activeResourceTarget: LibraryPlacedResourceTarget | null;
   automationsActive: boolean;
   inboxActive: boolean;
   /** Suggestions waiting for the user's decision. */
@@ -1874,7 +1821,6 @@ export function ProjectSessionSidebar({
   pendingStableWorktrees,
   expandedProjectIds,
   pinnedProjectsSectionCollapsed,
-  pagesSectionCollapsed,
   projectsSectionCollapsed,
   chatsSectionCollapsed,
   sidebarCollapsibleSections,
@@ -1889,7 +1835,6 @@ export function ProjectSessionSidebar({
   onResizeActiveChange,
   onHoverSurfaceOpenChange,
   onTogglePinnedProjectsSectionCollapsed,
-  onTogglePagesSectionCollapsed,
   onToggleProjectsSectionCollapsed,
   onToggleChatsSectionCollapsed,
   onSetSidebarSectionCollapsed,
@@ -1916,9 +1861,6 @@ export function ProjectSessionSidebar({
   onOpenInbox,
   inboxActive,
   inboxCount,
-  onOpenResourceTarget,
-  onOpenResourceTargetInProject,
-  activeResourceTarget,
   automationsActive,
   projectPickerOpenTick = 0,
   onCreateProject,
@@ -1969,15 +1911,8 @@ export function ProjectSessionSidebar({
     sectionCatalog.itemsBySectionId,
     sessionCollectionsByProject,
   ]);
-  const [sidebarResizing, setSidebarResizing] = useState(false);
   const { mutation: libraryMutation } = useApplyLibraryOperation();
   const sidebarScrollChrome = useSidebarScrollChrome();
-  const sidebarResizeDisabled = resizeDisabled;
-  const sidebarResizeSurface: SidebarResizeSurface = floating ? "floating" : "inline";
-  const setSidebarResizeActive = (active: boolean) => {
-    setSidebarResizing(active);
-    onResizeActiveChange?.(active);
-  };
   useEffect(
     () => () => {
       onHoverSurfaceOpenChange?.(false);
@@ -2158,253 +2093,150 @@ export function ProjectSessionSidebar({
     ],
   );
 
-  const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (sidebarResizeDisabled) return;
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-
-    const resolveZoom = getWindowZoom ?? (() => 1);
-    const startX = event.clientX / resolveZoom();
-    const startWidth = width;
-    let didMove = false;
-
-    setSidebarResizeActive(true);
-
-    const resolveNextWidth = (nextEvent: PointerEvent) =>
-      startWidth + (nextEvent.clientX / resolveZoom() - startX);
-
-    function stopResize() {
-      setSidebarResizeActive(false);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-      window.removeEventListener("pointercancel", onPointerUp);
-    }
-
-    function onPointerMove(nextEvent: PointerEvent) {
-      nextEvent.preventDefault();
-      didMove = didMove || nextEvent.clientX / resolveZoom() !== startX;
-      onResizeWidth(resolveNextWidth(nextEvent), "live", sidebarResizeSurface);
-    }
-
-    function onPointerUp(nextEvent: PointerEvent) {
-      nextEvent.preventDefault();
-      if (didMove) {
-        onResizeWidth(resolveNextWidth(nextEvent), "end", sidebarResizeSurface);
-      }
-      stopResize();
-    }
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
-  };
-
-  const handleResizeClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (sidebarResizeDisabled) return;
-    if (event.detail !== 2) return;
-    event.preventDefault();
-    setSidebarResizeActive(false);
-    onResizeWidth(CODEX_SIDEBAR_WIDTH_DEFAULT_PX, "reset", sidebarResizeSurface);
-  };
-
-  const resizeHandle = (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-disabled={sidebarResizeDisabled || undefined}
-      onClick={handleResizeClick}
-      onPointerDown={handleResizePointerDown}
-      data-testid="sidebar-resize-strip"
-      className={cn(
-        "group absolute flex touch-none select-none z-20 -top-toolbar right-0 bottom-0 w-4 translate-x-2",
-        sidebarResizeDisabled
-          ? "pointer-events-none"
-          : "cursor-col-resize active:cursor-col-resize",
-      )}
+  return (
+    <WorkbenchSidebarFrame
+      floating={floating}
+      header={header}
+      width={width}
+      animatedWidth={animatedWidth}
+      contentOpacity={contentOpacity}
+      resizeDisabled={resizeDisabled}
+      getWindowZoom={getWindowZoom}
+      onResizeWidth={onResizeWidth}
+      onResizeActiveChange={onResizeActiveChange}
+      testId="project-session-sidebar"
     >
       <div
-        aria-hidden
-        className={cn(
-          "sidebar-resize-handle-line pointer-events-none m-auto opacity-0",
-          "h-full w-px bg-gradient-to-b from-transparent via-token-foreground/25 to-transparent",
-          sidebarResizing ? "opacity-100" : "group-hover:opacity-100 group-active:opacity-100",
-        )}
-      />
-    </div>
-  );
-
-  const sidebarShell = (
-    <motion.aside
-      className={cn(
-        floating
-          ? CODEX_SIDEBAR_FLOATING_ASIDE_CLASS
-          : "app-shell-left-panel pointer-events-auto relative flex h-full min-h-0 shrink-0 flex-col overflow-visible browser:bg-token-main-surface-primary",
-        sidebarResizing && "cursor-col-resize",
-        "font-sans text-sm",
-      )}
-      style={{
-        width: floating ? width : (animatedWidth ?? width),
-        ...(!floating ? { paddingTop: "var(--height-toolbar)" } : {}),
-      }}
-      data-testid={floating ? "app-shell-floating-left-panel" : "project-session-sidebar"}
-    >
-      {header}
-      <motion.div
-        className="max-w-full min-h-0 flex-1 overflow-hidden"
-        style={{ minWidth: width, width, opacity: floating ? undefined : contentOpacity }}
+        className="flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
+        style={sidebarScrollChrome.scrollChromeStyle}
       >
-        <div
-          className="flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
-          style={sidebarScrollChrome.scrollChromeStyle}
+        <nav
+          className="sidebar-foreground-muted flex min-h-0 flex-1 flex-col"
+          role="navigation"
+          aria-label="Home"
         >
-          <nav
-            className="sidebar-foreground-muted flex min-h-0 flex-1 flex-col"
-            role="navigation"
-            aria-label="Automation folders"
-          >
-            <SidebarExpandedHeader
-              productName="Nodex"
-              productStatusLabel="Beta"
-              searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
-              newChatShortcutLabel={resolveCodexNewChatShortcutLabel()}
-              scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
-              onSearch={onOpenCommandPalette}
-              onNewChat={() => void onStartNewChatInProject(activeProjectId)}
-              inbox={{
-                active: inboxActive,
-                count: inboxCount,
-                shortcutLabel: resolveCodexInboxShortcutLabel(),
-                onOpen: onOpenInbox,
-              }}
-            />
+          <SidebarExpandedHeader
+            productName="Nodex"
+            searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
+            newChatShortcutLabel={resolveCodexNewChatShortcutLabel()}
+            scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
+            onSearch={onOpenCommandPalette}
+            onNewChat={() => void onStartNewChatInProject(activeProjectId)}
+            inbox={{
+              active: inboxActive,
+              count: inboxCount,
+              shortcutLabel: resolveCodexInboxShortcutLabel(),
+              onOpen: onOpenInbox,
+            }}
+          />
 
+          <div
+            ref={sidebarScrollChrome.scrollAreaRef}
+            data-app-action-sidebar-scroll=""
+            data-content-below={sidebarScrollChrome.hasContentBelow ? "true" : "false"}
+            className={SIDEBAR_SCROLL_AREA_CLASS}
+            onScroll={sidebarScrollChrome.syncScrollChrome}
+          >
             <div
-              ref={sidebarScrollChrome.scrollAreaRef}
-              data-app-action-sidebar-scroll=""
-              data-content-below={sidebarScrollChrome.hasContentBelow ? "true" : "false"}
-              className={SIDEBAR_SCROLL_AREA_CLASS}
-              onScroll={sidebarScrollChrome.syncScrollChrome}
+              className="flex shrink-0 flex-col gap-2"
+              data-app-action-sidebar-scroll-top-actions=""
             >
-              <div
-                className="flex shrink-0 flex-col gap-2"
-                data-app-action-sidebar-scroll-top-actions=""
-              >
-                <div className="shrink-0 px-row-x">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex flex-col gap-px">
-                      <CodexSidebarTopActionButton
-                        label="Scheduled"
-                        icon={<AutomationsIcon />}
-                        active={automationsActive}
-                        onClick={() => onOpenAutomations()}
-                      />
-                      <CodexSidebarTopActionButton
-                        label="Plugins"
-                        icon={<PluginsIcon className="icon-xs" />}
-                        onClick={() => onShowUnavailableProduct("Plugins")}
-                      />
-                    </div>
+              <div className="shrink-0 px-row-x">
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-px">
+                    <CodexSidebarTopActionButton
+                      label="Scheduled"
+                      icon={<AutomationsIcon />}
+                      active={automationsActive}
+                      onClick={() => onOpenAutomations()}
+                    />
+                    <CodexSidebarTopActionButton
+                      label="Plugins"
+                      icon={<PluginsIcon className="icon-xs" />}
+                      onClick={() => onShowUnavailableProduct("Plugins")}
+                    />
                   </div>
                 </div>
               </div>
-              <SidebarReorderDndProvider
-                getThreadIdByThreadKey={getSidebarThreadIdByKey}
-                homeContainerIdByThreadId={homeContainerIdByThreadId}
-                onProjectError={reportSidebarProjectReorderError}
-                onProjectDrop={handleProjectDrop}
-                onThreadError={reportSidebarThreadReorderError}
-                onThreadDrop={handleSidebarThreadDrop}
-                onLibraryMove={handleLibraryMove}
-              >
-                <SidebarThreadOrganizerSections
-                  activeProjectId={activeProjectId}
-                  activeSessionId={activeSessionId}
-                  activePendingClientThreadId={activePendingClientThreadId}
-                  contextMenuSessionId={contextMenuSessionId}
-                  sessionCollectionsByProject={sessionCollectionsByProject}
-                  projectlessSessionCollection={projectlessSessionCollection}
-                  expandedProjectIds={expandedProjectIds}
-                  pinnedThreadsSectionCollapsed={pinnedProjectsSectionCollapsed}
-                  pagesSectionCollapsed={pagesSectionCollapsed}
-                  projectsSectionCollapsed={projectsSectionCollapsed}
-                  chatsSectionCollapsed={chatsSectionCollapsed}
-                  sidebarCollapsibleSections={sidebarCollapsibleSections}
-                  onLoadMoreTaskWindow={onLoadMoreTaskWindow}
-                  onRetryTaskWindow={onRetryTaskWindow}
-                  model={sidebarThreadModel}
-                  onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
-                  onTogglePinnedThreadsSectionCollapsed={onTogglePinnedProjectsSectionCollapsed}
-                  onTogglePagesSectionCollapsed={onTogglePagesSectionCollapsed}
-                  onToggleProjectsSectionCollapsed={onToggleProjectsSectionCollapsed}
-                  onToggleChatsSectionCollapsed={onToggleChatsSectionCollapsed}
-                  onSetSidebarSectionCollapsed={onSetSidebarSectionCollapsed}
-                  onToggleProjectExpanded={onToggleProjectExpanded}
-                  onSelectProject={onSelectProject}
-                  onSelectSession={onSelectSession}
-                  onSelectSidebarThread={onSelectSidebarThread}
-                  onPreviewSidebarThread={onPreviewSidebarThread}
-                  onOpenSessionContextMenu={onOpenSessionContextMenu}
-                  onSessionTitleDoubleClick={onSessionTitleDoubleClick}
-                  onPendingWorktreeTitleDoubleClick={onPendingWorktreeTitleDoubleClick}
-                  onArchiveSidebarThread={onArchiveSidebarThread}
-                  onArchiveThreadItem={onArchiveThreadItem}
-                  onMarkThreadItemRead={onMarkThreadItemRead}
-                  onThreadsChanged={onThreadsChanged}
-                  onToggleSessionPinned={onToggleSessionPinned}
-                  onToggleSidebarThreadPinned={onToggleSidebarThreadPinned}
-                  onStartNewChatInProject={onStartNewChatInProject}
-                  pendingStableWorktrees={pendingStableWorktrees}
-                  onOpenStableWorktree={onOpenStableWorktree}
-                  onCreateStableWorktree={onCreateStableWorktree}
-                  projectPickerOpenTick={projectPickerOpenTick}
-                  onCreateProject={onCreateProject}
-                  onUpdateProject={onUpdateProject}
-                  onArchiveProject={onArchiveProject}
-                  onReorderProjects={onReorderProjects}
-                  onSetProjectPinned={onSetProjectPinned}
-                  onSetPinnedProjectOrder={onSetPinnedProjectOrder}
-                  onReorderSessions={onReorderSessions}
-                  onReorderPinnedThreads={onReorderPinnedThreads}
-                  sidebarArchivePendingKeys={sidebarArchivePendingKeys}
-                  onOpenResourceTarget={onOpenResourceTarget}
-                  onOpenResourceTargetInProject={onOpenResourceTargetInProject}
-                  activeResourceTarget={activeResourceTarget}
-                  hasMoreProjects={hasMoreProjects}
-                  loadingMoreProjects={loadingMoreProjects}
-                  onLoadMoreProjects={onLoadMoreProjects}
-                />
-              </SidebarReorderDndProvider>
             </div>
+            <SidebarReorderDndProvider
+              getThreadIdByThreadKey={getSidebarThreadIdByKey}
+              homeContainerIdByThreadId={homeContainerIdByThreadId}
+              onProjectError={reportSidebarProjectReorderError}
+              onProjectDrop={handleProjectDrop}
+              onThreadError={reportSidebarThreadReorderError}
+              onThreadDrop={handleSidebarThreadDrop}
+              onLibraryMove={handleLibraryMove}
+            >
+              <SidebarThreadOrganizerSections
+                activeProjectId={activeProjectId}
+                activeSessionId={activeSessionId}
+                activePendingClientThreadId={activePendingClientThreadId}
+                contextMenuSessionId={contextMenuSessionId}
+                sessionCollectionsByProject={sessionCollectionsByProject}
+                projectlessSessionCollection={projectlessSessionCollection}
+                expandedProjectIds={expandedProjectIds}
+                pinnedThreadsSectionCollapsed={pinnedProjectsSectionCollapsed}
+                projectsSectionCollapsed={projectsSectionCollapsed}
+                chatsSectionCollapsed={chatsSectionCollapsed}
+                sidebarCollapsibleSections={sidebarCollapsibleSections}
+                onLoadMoreTaskWindow={onLoadMoreTaskWindow}
+                onRetryTaskWindow={onRetryTaskWindow}
+                model={sidebarThreadModel}
+                onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
+                onTogglePinnedThreadsSectionCollapsed={onTogglePinnedProjectsSectionCollapsed}
+                onToggleProjectsSectionCollapsed={onToggleProjectsSectionCollapsed}
+                onToggleChatsSectionCollapsed={onToggleChatsSectionCollapsed}
+                onSetSidebarSectionCollapsed={onSetSidebarSectionCollapsed}
+                onToggleProjectExpanded={onToggleProjectExpanded}
+                onSelectProject={onSelectProject}
+                onSelectSession={onSelectSession}
+                onSelectSidebarThread={onSelectSidebarThread}
+                onPreviewSidebarThread={onPreviewSidebarThread}
+                onOpenSessionContextMenu={onOpenSessionContextMenu}
+                onSessionTitleDoubleClick={onSessionTitleDoubleClick}
+                onPendingWorktreeTitleDoubleClick={onPendingWorktreeTitleDoubleClick}
+                onArchiveSidebarThread={onArchiveSidebarThread}
+                onArchiveThreadItem={onArchiveThreadItem}
+                onMarkThreadItemRead={onMarkThreadItemRead}
+                onThreadsChanged={onThreadsChanged}
+                onToggleSessionPinned={onToggleSessionPinned}
+                onToggleSidebarThreadPinned={onToggleSidebarThreadPinned}
+                onStartNewChatInProject={onStartNewChatInProject}
+                pendingStableWorktrees={pendingStableWorktrees}
+                onOpenStableWorktree={onOpenStableWorktree}
+                onCreateStableWorktree={onCreateStableWorktree}
+                projectPickerOpenTick={projectPickerOpenTick}
+                onCreateProject={onCreateProject}
+                onUpdateProject={onUpdateProject}
+                onArchiveProject={onArchiveProject}
+                onReorderProjects={onReorderProjects}
+                onSetProjectPinned={onSetProjectPinned}
+                onSetPinnedProjectOrder={onSetPinnedProjectOrder}
+                onReorderSessions={onReorderSessions}
+                onReorderPinnedThreads={onReorderPinnedThreads}
+                sidebarArchivePendingKeys={sidebarArchivePendingKeys}
+                hasMoreProjects={hasMoreProjects}
+                loadingMoreProjects={loadingMoreProjects}
+                onLoadMoreProjects={onLoadMoreProjects}
+              />
+            </SidebarReorderDndProvider>
+          </div>
 
-            <LeftSidebarFooter
-              onOpenSettings={onOpenSettings}
-              account={account}
-              connection={connection}
-              onRefreshAccount={onRefreshAccount}
-              onConsumeRateLimitReset={onConsumeRateLimitReset}
-              onStartChatGptLogin={onStartChatGptLogin}
-              onStartApiKeyLogin={onStartApiKeyLogin}
-              onCancelLogin={onCancelLogin}
-              onLogout={onLogout}
-              onErrorMessage={onAccountErrorMessage}
-            />
-          </nav>
-        </div>
-      </motion.div>
-
-      {!floating ? resizeHandle : null}
-    </motion.aside>
+          <LeftSidebarFooter
+            onOpenSettings={onOpenSettings}
+            account={account}
+            connection={connection}
+            onRefreshAccount={onRefreshAccount}
+            onConsumeRateLimitReset={onConsumeRateLimitReset}
+            onStartChatGptLogin={onStartChatGptLogin}
+            onStartApiKeyLogin={onStartApiKeyLogin}
+            onCancelLogin={onCancelLogin}
+            onLogout={onLogout}
+            onErrorMessage={onAccountErrorMessage}
+          />
+        </nav>
+      </div>
+    </WorkbenchSidebarFrame>
   );
-
-  if (floating) {
-    return (
-      <>
-        {sidebarShell}
-        {resizeHandle}
-      </>
-    );
-  }
-
-  return sidebarShell;
 }

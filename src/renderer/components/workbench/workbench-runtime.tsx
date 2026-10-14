@@ -16,6 +16,12 @@ import { BackIcon } from "@/components/shared/icons";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-sidebar";
+import { WorkbenchAppRail } from "./workbench-app-rail";
+import {
+  WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  WORKBENCH_TITLEBAR_HEIGHT_PX,
+} from "@/lib/workbench-shell-geometry";
+import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
 import { parseDatabaseId } from "../../../shared/database-identities";
@@ -2622,8 +2628,9 @@ export function WorkbenchRuntime({
     if (!activePanelOwnerKey || !rightPanel) return;
 
     const shouldClearRightPanel =
-      (crossedMediumWidth && atMediumWidth && sidebarOpen && sidePanelOpen) ||
-      (crossedNarrowWidth && atNarrowWidth && sidePanelOpen);
+      !activeOwnedSceneOwner &&
+      ((crossedMediumWidth && atMediumWidth && sidebarOpen && sidePanelOpen) ||
+        (crossedNarrowWidth && atNarrowWidth && sidePanelOpen));
     if (shouldClearRightPanel) {
       setFloatingSidebarFocusActive(false);
       const overrideKey = makeWorkbenchPanelSlotKey(activePanelOwnerKey, "right");
@@ -2659,6 +2666,7 @@ export function WorkbenchRuntime({
     }
   }, [
     activePanelOwnerKey,
+    activeOwnedSceneOwner,
     rightPanel,
     setFloatingSidebarFocusActive,
     setSidebarCollapsedWithCodexState,
@@ -2736,7 +2744,7 @@ export function WorkbenchRuntime({
   );
 
   const toggleActiveSidePanel = useCallback(() => {
-    if (!activePanelOwnerKey || projectSceneOwner) return;
+    if (!activePanelOwnerKey || activeOwnedSceneOwner) return;
     if (!sidePanelOpen) {
       void showActiveRightPanel();
       return;
@@ -2745,7 +2753,7 @@ export function WorkbenchRuntime({
   }, [
     activePanelOwnerKey,
     hideActiveRightPanel,
-    projectSceneOwner,
+    activeOwnedSceneOwner,
     showActiveRightPanel,
     sidePanelOpen,
   ]);
@@ -3066,7 +3074,7 @@ export function WorkbenchRuntime({
           )}
         </ToolbarIconButton>
       </HeaderAction>
-      {!projectSceneOwner ? (
+      {!activeOwnedSceneOwner ? (
         <HeaderAction
           actionId="workbench-side-panel-toggle"
           slotPosition="right"
@@ -3108,14 +3116,14 @@ export function WorkbenchRuntime({
 
   const rightPanelHeaderStartInsetWidth =
     activePanelOwnerKey && rightPanelFullWidth && sidebarLogicalCollapsed
-      ? effectiveHeaderLeftWidth
+      ? Math.max(0, effectiveHeaderLeftWidth - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX)
       : 0;
   const panelTabScrollEndPaddingPx = activePanelOwnerKey ? 28 : 0;
   const bottomPanelGlobalHeaderInsetWidth = activePanelOwnerKey ? 40 : 0;
 
   const rightPanelHeaderAfterList = activePanelOwnerKey ? (
     <>
-      {!projectSceneOwner ? (
+      {!activeOwnedSceneOwner ? (
         <div className="no-drag pointer-events-auto flex h-full shrink-0 items-center">
           <ToolbarIconButton
             label={rightPanelFullWidth ? "Restore panel width" : "Expand panel"}
@@ -4631,9 +4639,13 @@ export function WorkbenchRuntime({
                   activeProject?.id ?? activeProjectId ?? undefined
                 }
                 tabIndex={-1}
-                className="relative flex flex-col text-token-text-primary"
+                data-workbench-shell
+                className="window-fx-sidebar-surface relative flex flex-col bg-token-side-bar-background text-token-text-primary"
                 style={
                   {
+                    "--height-toolbar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
+                    "--height-titlebar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
+                    "--app-shell-navigation-rail-width": `${WORKBENCH_NAVIGATION_RAIL_WIDTH_PX}px`,
                     "--spacing-token-safe-header-left": `${safeHeaderLeftWidth}px`,
                     "--spacing-token-safe-header-right": "12px",
                     "--app-shell-bottom-panel-height": bottomPanelAnimatedHeightCss,
@@ -4719,137 +4731,149 @@ export function WorkbenchRuntime({
                   />
                 </header>
 
-                <div
-                  ref={shellBodySize.ref}
-                  data-app-shell-summary-layout={threadSummaryPanelLayoutMode}
-                  data-app-shell-width-class={shellWidthClass}
-                  className="relative flex max-h-full min-h-0 w-full flex-1"
-                >
-                  <WorkbenchRouteHost
-                    location={workbenchWindow.location}
-                    sidebarMounted={realSidebarMounted}
-                    settings={settingsRouteShell}
-                    sidebar={
-                      <WorkbenchSidebar
-                        body={sidebarBody}
-                        inline={{
-                          visible: showInlineSidebar,
-                          animatedWidth: realSidebarMotion.animatedWidth,
-                          contentOpacity: realSidebarMotion.opacity,
-                          resizeDisabled: sidebarAnimating,
-                        }}
-                        floating={{
-                          visible: showFloatingSidebar,
-                          header: floatingSidebarHeader,
-                          outerClassName: floatingSidebarOuterClassName,
-                          resizing: floatingSidebarResizing,
-                          reducedMotion: Boolean(reducedMotion),
-                          exitX: floatingSidebarExitX,
-                          transition: floatingSidebarTransition,
-                          onResizeActiveChange: setFloatingSidebarResizing,
-                          onHoverSurfaceOpenChange: setFloatingSidebarHoverSurfaceActive,
-                        }}
-                      />
-                    }
-                    pendingWorktree={{
-                      content: () => (
-                        <WorkbenchSessionScopePath
-                          thread={resolvePendingThreadScopeDescriptor(
-                            threadScopeIdentityRegistry,
-                            pendingWorktreeClientThreadId!,
-                            resolvePendingProjectSessionId(
-                              pendingWorktrees,
-                              pendingWorktreeClientThreadId,
-                            ),
-                          )}
-                          route={{
-                            routeKey: `/pending-worktree?clientThreadId=${encodeURIComponent(pendingWorktreeClientThreadId!)}`,
-                            kind: "pending-worktree",
-                          }}
-                          selected
-                        >
-                          {pendingWorktreeRouteShell}
-                        </WorkbenchSessionScopePath>
-                      ),
-                    }}
-                    inbox={{
-                      content: () => (
-                        <WorkbenchSessionScopePath
-                          thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                          route={{ routeKey: "/inbox", kind: "inbox" }}
-                          selected
-                        >
-                          <InboxRoute
-                            projects={projects}
-                            focusComposerToken={inboxFocusToken}
-                            onOpenSession={(sessionId) =>
-                              void sessionCommands.openProjectSessionById(sessionId)
-                            }
-                            onOpenPage={(pageId) =>
-                              void openResourceTarget({ kind: "page", pageId })
-                            }
-                            onOpenDatabase={(databaseId) =>
-                              void openResourceTarget({
-                                kind: "database",
-                                databaseId: parseDatabaseId(databaseId),
-                              })
-                            }
-                            onOpenSettings={() => openSettingsAt("inbox-settings")}
-                          />
-                        </WorkbenchSessionScopePath>
-                      ),
-                    }}
-                    automations={{
-                      content: () => (
-                        <WorkbenchSessionScopePath
-                          thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                          route={{ routeKey: automationsPath!, kind: "automations" }}
-                          selected
-                        >
-                          {automationsRouteShell}
-                        </WorkbenchSessionScopePath>
-                      ),
-                      afterMain: (
-                        <WorkbenchAutomationDetailRail
-                          mounted={automationsDetailRailMounted}
-                          width={automationsDetailRailResolvedWidth}
-                          onResizePointerDown={resizeAutomationDetailRail}
-                          onPortalElementChange={setAutomationsDetailRailPortalElement}
-                        />
-                      ),
-                    }}
-                    session={{
-                      content: () =>
-                        projectSceneRoute ??
-                        pagesSceneRoute ??
-                        activeSessionRoute ?? (
-                          <WorkbenchEmptyRoute
-                            activeProjectId={activeProjectId}
-                            projectCatalogError={projectCatalogError}
-                            onRetryProjects={onRetryProjects}
-                            onStartProjectlessChat={() => {
-                              void startNewChatInProject(null);
+                <div className="relative flex min-h-0 min-w-0 flex-1">
+                  <div className="shrink-0 pt-(--height-toolbar)">
+                    <WorkbenchAppRail
+                      destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
+                      onHome={workbenchWindow.selectHome}
+                      onSpace={workbenchWindow.selectPages}
+                    />
+                  </div>
+                  <div className="relative flex min-h-0 min-w-0 flex-1 pr-1 pb-1">
+                    <div
+                      ref={shellBodySize.ref}
+                      data-app-shell-summary-layout={threadSummaryPanelLayoutMode}
+                      data-app-shell-width-class={shellWidthClass}
+                      className="relative flex max-h-full min-h-0 min-w-0 flex-1"
+                    >
+                      <WorkbenchRouteHost
+                        location={workbenchWindow.location}
+                        sidebarMounted={realSidebarMounted}
+                        settings={settingsRouteShell}
+                        sidebar={
+                          <WorkbenchSidebar
+                            destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
+                            body={sidebarBody}
+                            inline={{
+                              visible: showInlineSidebar,
+                              animatedWidth: realSidebarMotion.animatedWidth,
+                              contentOpacity: realSidebarMotion.opacity,
+                              resizeDisabled: sidebarAnimating,
+                            }}
+                            floating={{
+                              visible: showFloatingSidebar,
+                              header: floatingSidebarHeader,
+                              outerClassName: floatingSidebarOuterClassName,
+                              resizing: floatingSidebarResizing,
+                              reducedMotion: Boolean(reducedMotion),
+                              exitX: floatingSidebarExitX,
+                              transition: floatingSidebarTransition,
+                              onResizeActiveChange: setFloatingSidebarResizing,
+                              onHoverSurfaceOpenChange: setFloatingSidebarHoverSurfaceActive,
                             }}
                           />
-                        ),
-                      afterMain: pageStageHistoryPanelProjectId ? (
-                        <HistoryPanel
-                          projectId={pageStageHistoryPanelProjectId}
-                          pageId={pageStageHistoryModal?.pageId ?? null}
-                          pageTitle={pageStageHistoryModal?.pageTitle}
-                          pageNfm={pageStageHistoryModal?.pageNfm}
-                          projectWorkspacePath={projectWorkspaceRootOrNull(
-                            pageStageHistoryModalProject,
-                          )}
-                          open={pageStageHistoryModal !== null}
-                          onClose={closePageStageHistoryModal}
-                          onPageMutated={() => {
-                            void activeProjectBoard.refresh();
-                          }}
-                        />
-                      ) : null,
-                    }}
-                  />
+                        }
+                        pendingWorktree={{
+                          content: () => (
+                            <WorkbenchSessionScopePath
+                              thread={resolvePendingThreadScopeDescriptor(
+                                threadScopeIdentityRegistry,
+                                pendingWorktreeClientThreadId!,
+                                resolvePendingProjectSessionId(
+                                  pendingWorktrees,
+                                  pendingWorktreeClientThreadId,
+                                ),
+                              )}
+                              route={{
+                                routeKey: `/pending-worktree?clientThreadId=${encodeURIComponent(pendingWorktreeClientThreadId!)}`,
+                                kind: "pending-worktree",
+                              }}
+                              selected
+                            >
+                              {pendingWorktreeRouteShell}
+                            </WorkbenchSessionScopePath>
+                          ),
+                        }}
+                        inbox={{
+                          content: () => (
+                            <WorkbenchSessionScopePath
+                              thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                              route={{ routeKey: "/inbox", kind: "inbox" }}
+                              selected
+                            >
+                              <InboxRoute
+                                projects={projects}
+                                focusComposerToken={inboxFocusToken}
+                                onOpenSession={(sessionId) =>
+                                  void sessionCommands.openProjectSessionById(sessionId)
+                                }
+                                onOpenPage={(pageId) =>
+                                  void openResourceTarget({ kind: "page", pageId })
+                                }
+                                onOpenDatabase={(databaseId) =>
+                                  void openResourceTarget({
+                                    kind: "database",
+                                    databaseId: parseDatabaseId(databaseId),
+                                  })
+                                }
+                                onOpenSettings={() => openSettingsAt("inbox-settings")}
+                              />
+                            </WorkbenchSessionScopePath>
+                          ),
+                        }}
+                        automations={{
+                          content: () => (
+                            <WorkbenchSessionScopePath
+                              thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                              route={{ routeKey: automationsPath!, kind: "automations" }}
+                              selected
+                            >
+                              {automationsRouteShell}
+                            </WorkbenchSessionScopePath>
+                          ),
+                          afterMain: (
+                            <WorkbenchAutomationDetailRail
+                              mounted={automationsDetailRailMounted}
+                              width={automationsDetailRailResolvedWidth}
+                              onResizePointerDown={resizeAutomationDetailRail}
+                              onPortalElementChange={setAutomationsDetailRailPortalElement}
+                            />
+                          ),
+                        }}
+                        session={{
+                          content: () =>
+                            projectSceneRoute ??
+                            pagesSceneRoute ??
+                            activeSessionRoute ?? (
+                              <WorkbenchEmptyRoute
+                                activeProjectId={activeProjectId}
+                                projectCatalogError={projectCatalogError}
+                                onRetryProjects={onRetryProjects}
+                                onStartProjectlessChat={() => {
+                                  void startNewChatInProject(null);
+                                }}
+                              />
+                            ),
+                          afterMain: pageStageHistoryPanelProjectId ? (
+                            <HistoryPanel
+                              projectId={pageStageHistoryPanelProjectId}
+                              pageId={pageStageHistoryModal?.pageId ?? null}
+                              pageTitle={pageStageHistoryModal?.pageTitle}
+                              pageNfm={pageStageHistoryModal?.pageNfm}
+                              projectWorkspacePath={projectWorkspaceRootOrNull(
+                                pageStageHistoryModalProject,
+                              )}
+                              open={pageStageHistoryModal !== null}
+                              onClose={closePageStageHistoryModal}
+                              onPageMutated={() => {
+                                void activeProjectBoard.refresh();
+                              }}
+                            />
+                          ) : null,
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             </ContentSearchProvider>

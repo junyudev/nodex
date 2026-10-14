@@ -4,6 +4,7 @@ import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { isUuidV7 } from "../../../shared/uuid-v7";
+import { WORKBENCH_NAVIGATION_RAIL_WIDTH_PX } from "@/lib/workbench-shell-geometry";
 import {
   makeAttachedSession,
   makeBlankSession,
@@ -1046,7 +1047,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-update")).toBe(false);
   });
 
-  test("projects one live Page title across every matching tab and the Pages sidebar", async () => {
+  test("retains one live Page title across every matching Home tab and Space content", async () => {
     const session = makeSession({
       tabs: [
         {
@@ -1097,6 +1098,21 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Space" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("list", { name: "Content" })).getByText("Card One"),
+      ).not.toBeNull();
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Home" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
     const pageStageProps = (
       globalThis as {
         __mockPageStagePropsByPageId?: Record<string, Record<string, unknown>>;
@@ -1119,9 +1135,16 @@ describe("workbench session shell / pages-shell-navigation", () => {
     expect(
       screen.container.querySelector('[data-app-shell-tab-title="page-tab:second"]')?.textContent,
     ).toBe("Renamed everywhere");
-    expect(
-      within(screen.getByRole("list", { name: "Pages" })).getByText("Renamed everywhere"),
-    ).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Space" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("list", { name: "Content" })).getByText("Renamed everywhere"),
+      ).not.toBeNull();
+    });
   });
 
   test("keeps the observed Page title when tab switching unmounts the editor body", async () => {
@@ -1270,11 +1293,10 @@ describe("workbench session shell / pages-shell-navigation", () => {
       ],
       sessionsByProject: { alpha: [session] },
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
+    const terminalButton = await screen.findByRole("button", { name: "Terminal" });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Terminal" }));
+      fireEvent.click(terminalButton);
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -2233,7 +2255,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       expect(
         screen.container.querySelector('[data-testid="project-session-sidebar"]') !== null,
       ).toBe(true);
-      await moveSidebarPointer(12);
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
 
       expect(screen.getByRole("button", { name: "Show sidebar" }) !== null).toBe(true);
       expect(screen.container.querySelector('[data-sidebar-hover-trigger="true"]')).toBe(null);
@@ -2444,6 +2466,13 @@ describe("workbench session shell / pages-shell-navigation", () => {
       expect(collapseButton.className.includes("no-drag")).toBe(true);
 
       await moveSidebarPointer(12);
+      expect(screen.container.querySelector('[data-testid="app-shell-floating-left-panel"]')).toBe(
+        null,
+      );
+      expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Space" })).toBeTruthy();
+
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
 
       const floatingShell = screen.container.querySelector(
         '[data-testid="floating-project-session-sidebar-shell"]',
@@ -2469,7 +2498,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       });
       await settleAsyncRender();
 
-      await moveSidebarPointer(301);
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301);
       expect(
         screen.container.querySelector('[data-testid="floating-project-session-sidebar-shell"]') !==
           null,
@@ -2480,7 +2509,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         await Promise.resolve();
       });
       await settleAsyncRender();
-      await moveSidebarPointer(301);
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301);
       await act(async () => {
         await Promise.resolve();
       });
@@ -2508,7 +2537,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const screen = renderWorkbench({ sidebar: { collapsed: true, width: 300 } });
     await settleAsyncRender();
     await settleAsyncRender();
-    await moveSidebarPointer(12);
+    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
 
     const expandStrip = screen.getByTestId("sidebar-resize-strip");
 
@@ -2564,6 +2593,43 @@ describe("workbench session shell / pages-shell-navigation", () => {
     ) as HTMLElement | null;
     expect(persistedFloatingShell?.getAttribute("style")?.includes("width: 240px")).toBe(true);
     expect(screen.container.querySelector('[data-testid="project-session-sidebar"]')).toBe(null);
+  });
+
+  test("collapsed Space reveals at the zoomed content edge and preserves keyboard focus", async () => {
+    const screen = renderWorkbench({ sidebar: { collapsed: true, width: 300 } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    const workbenchRoot = screen.getByTestId("workbench-global-header")
+      .parentElement as HTMLElement;
+    workbenchRoot.style.setProperty("--codex-window-zoom", "2");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Space" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX * 2 - 1);
+    expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
+    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12) * 2);
+
+    const navigation = screen.getByRole("navigation", { name: "Space" });
+    const search = within(navigation).getByRole("button", { name: "Search" });
+    await act(async () => {
+      search.focus();
+      await Promise.resolve();
+    });
+    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301) * 2);
+    expect(screen.getByRole("navigation", { name: "Space" })).toBe(navigation);
+
+    await act(async () => {
+      search.blur();
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Space" })).toBeTruthy();
   });
 
   test("window navigation chrome restores prior and next active sessions", async () => {

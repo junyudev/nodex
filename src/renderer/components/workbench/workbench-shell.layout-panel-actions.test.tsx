@@ -13,6 +13,12 @@ import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
 import {
+  WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  WORKBENCH_SURFACE_GUTTER_PX,
+} from "@/lib/workbench-shell-geometry";
+import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
+import type { LibraryDatabaseNavigationNode } from "../../../shared/library-module";
+import {
   makeAttachedSession,
   makeBottomPanelTerminalSession,
   makePanelLayout,
@@ -61,6 +67,12 @@ import {
   waitForLastThreadStageActions,
   waitForThreadRow,
 } from "./workbench-testkit/workbench-shell-harness";
+
+// Layout fixtures control the body budget independently of fixed window chrome.
+const setShellBodyWidthForTest = (width: number) =>
+  setWindowInnerWidthForTest(
+    width + WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + WORKBENCH_SURFACE_GUTTER_PX,
+  );
 
 describe("workbench session shell / layout-panel-actions", () => {
   test("settles a failed side chat open into a closable retry surface", async () => {
@@ -322,7 +334,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("thread summary toggle defaults to pinned open and persists collapsed state", async () => {
-    setWindowInnerWidthForTest(1400);
+    setShellBodyWidthForTest(1400);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -374,7 +386,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("large thread widths use edge-scroll header and gutter summary mode", async () => {
-    setWindowInnerWidthForTest(1902);
+    setShellBodyWidthForTest(1902);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -404,7 +416,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("medium thread widths keep guarded header chrome and shift pinned summary", async () => {
-    setWindowInnerWidthForTest(1801);
+    setShellBodyWidthForTest(1801);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -434,7 +446,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("narrow effective thread widths switch summary to overlay popover", async () => {
-    setWindowInnerWidthForTest(1350);
+    setShellBodyWidthForTest(1350);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -460,7 +472,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("resize-driven overlay mode keeps the summary mounted so it can animate out", async () => {
-    setWindowInnerWidthForTest(1801);
+    setShellBodyWidthForTest(1801);
     localStorage.setItem("nodex:thread-summary-panel:pinned-open", "true");
     const screen = renderWorkbench({
       sessionsByProject: {
@@ -482,7 +494,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelOpen).toBe(true);
     expect(stageProps?.summaryPanelContentShift).toBe(-158);
 
-    setWindowInnerWidthForTest(1350);
+    setShellBodyWidthForTest(1350);
     await act(async () => {
       window.dispatchEvent(new Event("resize"));
       await Promise.resolve();
@@ -511,7 +523,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("responsive shell guards close competing right panel and sidebar at Codex thresholds", async () => {
-    setWindowInnerWidthForTest(1000);
+    setShellBodyWidthForTest(1000);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -526,7 +538,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    setWindowInnerWidthForTest(959);
+    setShellBodyWidthForTest(959);
     await act(async () => {
       window.dispatchEvent(new Event("resize"));
       await Promise.resolve();
@@ -554,7 +566,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       ).toBe(true);
     });
 
-    setWindowInnerWidthForTest(719);
+    setShellBodyWidthForTest(719);
     await act(async () => {
       window.dispatchEvent(new Event("resize"));
       await Promise.resolve();
@@ -566,8 +578,104 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
   });
 
+  test.each(["project", "space"] as const)(
+    "%s keeps its root content when crossing medium and narrow shell widths",
+    async (destination) => {
+      const database: LibraryDatabaseNavigationNode = {
+        kind: "database",
+        databaseId: parseDatabaseId("database:test:responsive"),
+        title: "Tasks",
+        defaultViewId: parseDatabaseViewId("database-view:test:responsive"),
+        hasMultipleViews: false,
+        metadataRevision: 1,
+        locationRevision: 1,
+        updatedAt: "2026-10-15T00:00:00.000Z",
+      };
+      setShellBodyWidthForTest(1000);
+      const screen = renderWorkbench({
+        libraryRoots: [database],
+        sidebar: { collapsed: false, width: 300 },
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+
+      if (destination === "project") {
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "Open Alpha" }));
+          await Promise.resolve();
+        });
+      } else {
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: "Space" }));
+          await Promise.resolve();
+        });
+        const content = await screen.findByRole("list", { name: "Content" });
+        const row = within(content).getByText("Tasks").closest('[role="listitem"]');
+        if (!(row instanceof HTMLElement)) throw new Error("Expected the Tasks content row");
+        await act(async () => {
+          fireEvent.click(row);
+          await Promise.resolve();
+        });
+      }
+      await settleAsyncRender();
+      await settleAsyncRender();
+
+      const assertRootContent = () => {
+        const panel = screen.getByTestId(
+          destination === "project" ? "project-right-panel" : "pages-right-panel",
+        );
+        expect(panel.getAttribute("data-right-panel-width-mode")).toBe("full");
+        if (destination === "project") {
+          expect(within(panel).getByText("DB:alpha:board")).toBeTruthy();
+        } else {
+          expect(within(panel).getByRole("tab", { name: "Tasks", selected: true })).toBeTruthy();
+          expect(within(panel).getByTestId("workbench-database-view-surface")).toBeTruthy();
+        }
+        expect(__getNodexToastSnapshotForTests().filter((item) => item.level === "danger")).toEqual(
+          [],
+        );
+        expect(
+          invokeCalls.filter((call) => {
+            const patch = call[3] as { collapsed?: boolean } | undefined;
+            return (
+              call[0] === "window-session-view:panel-patch" &&
+              call[2] === "right" &&
+              patch?.collapsed === true
+            );
+          }),
+        ).toEqual([]);
+      };
+      assertRootContent();
+      setInvokeCalls([]);
+
+      for (const [width, shellClass] of [
+        [959, "medium"],
+        [719, "narrow"],
+      ] as const) {
+        setShellBodyWidthForTest(width);
+        await act(async () => {
+          window.dispatchEvent(new Event("resize"));
+          await Promise.resolve();
+        });
+        await settleAsyncRender();
+        await waitFor(() => {
+          expect(
+            screen.container
+              .querySelector("[data-app-shell-width-class]")
+              ?.getAttribute("data-app-shell-width-class"),
+          ).toBe(shellClass);
+          assertRootContent();
+        });
+      }
+      expect(
+        screen.queryByRole("navigation", { name: destination === "project" ? "Home" : "Space" }),
+      ).toBeNull();
+      expect(screen.getByRole("button", { name: "Show sidebar" })).toBeTruthy();
+    },
+  );
+
   test("thread summary toggle stays visible while the right panel is open and keeps the pinned overlay hidden", async () => {
-    setWindowInnerWidthForTest(1400);
+    setShellBodyWidthForTest(1400);
     localStorage.setItem("nodex:thread-summary-panel:pinned-open", "true");
     const screen = renderWorkbench({
       sessionsByProject: {
@@ -685,7 +793,10 @@ describe("workbench session shell / layout-panel-actions", () => {
       expect(rightSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
       expect(rightSlot.getAttribute("style")?.includes("min-width: 70px")).toBe(true);
       expect(rightSlot.className.includes("no-drag")).toBe(true);
-      expect(leadingSpacer?.getAttribute("style")?.includes("width: 208px")).toBe(true);
+      expect(
+        Number.parseFloat((leadingSpacer as HTMLElement | null)?.style.width ?? "0") +
+          WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+      ).toBe(Number.parseFloat(leftSlot.style.minWidth));
       expect(leadingSpacer?.className.includes("pointer-events-none")).toBe(true);
       expect(leadingSpacer?.className.includes("no-drag")).toBe(true);
       expect(tabRow?.querySelector('[role="tablist"]') !== null).toBe(true);
@@ -711,7 +822,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         screen.container.querySelector('[data-testid="floating-project-session-sidebar-shell"]'),
       ).toBe(null);
 
-      await moveSidebarPointer(12);
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
       const floatingShell = screen.container.querySelector(
         '[data-testid="floating-project-session-sidebar-shell"]',
       ) as HTMLElement | null;
@@ -720,7 +831,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         true,
       );
 
-      await moveSidebarPointer(301);
+      await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301);
       await act(async () => {
         await Promise.resolve();
       });
@@ -1153,6 +1264,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("open session right panel keeps side toggle global and expands from the tab header", async () => {
+    setShellBodyWidthForTest(1024);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -1249,6 +1361,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("right panel resize previews the dragged width before persistence", async () => {
+    setShellBodyWidthForTest(1024);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -1309,6 +1422,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("right panel content canvas shrinks with the sash after collapse and reopen", async () => {
+    setShellBodyWidthForTest(1024);
     const restoreMatchMedia = installReducedMotionMatchMediaForTest();
     try {
       const screen = renderWorkbench({
@@ -1374,7 +1488,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("right panel resize can grow well beyond the default width on wide shells", async () => {
-    setWindowInnerWidthForTest(1800);
+    setShellBodyWidthForTest(1800);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [
@@ -1453,6 +1567,7 @@ describe("workbench session shell / layout-panel-actions", () => {
   });
 
   test("right panel resize normalizes drag deltas by the Codex window zoom", async () => {
+    setShellBodyWidthForTest(1024);
     const screen = renderWorkbench({
       sessionsByProject: {
         alpha: [

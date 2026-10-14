@@ -1,12 +1,16 @@
 import type {
   WorkbenchLayoutSnapshot,
   WorkbenchLayoutSnapshotV6,
+  WorkbenchLayoutSnapshotV7,
+  WorkbenchHomeLocation,
   WorkbenchLocation,
   WorkbenchSceneLocation,
+  WorkbenchStableLocation,
 } from "../../shared/workbench-layout";
 import { WorkbenchLayoutSnapshotSchema } from "../../shared/schemas/workbench-layout";
 import {
   getRestorableWorkbenchLocation,
+  getWorkbenchHomeLocation,
   getWorkbenchSceneReturnLocation,
 } from "../../shared/workbench-layout";
 import {
@@ -19,6 +23,7 @@ const MAX_WORKBENCH_LOCATION_HISTORY = 50;
 
 export interface WorkbenchWindowNavigationSnapshot {
   readonly location: WorkbenchLocation;
+  readonly homeLocation: WorkbenchHomeLocation;
   readonly scenesByOwnerKey: Readonly<Record<string, WorkbenchSceneSnapshot>>;
 }
 
@@ -29,6 +34,7 @@ export interface WorkbenchLocationHistory {
 
 export interface WorkbenchWindowState {
   readonly location: WorkbenchLocation;
+  readonly homeLocation: WorkbenchHomeLocation;
   readonly databaseSearchByProject: Readonly<Record<string, string>>;
   readonly scenesByOwnerKey: Readonly<Record<string, WorkbenchSceneSnapshot>>;
   readonly history: WorkbenchLocationHistory;
@@ -40,11 +46,12 @@ export interface WorkbenchSessionCatalogEntry {
 }
 
 export function createWorkbenchWindowState(
-  input: WorkbenchLayoutSnapshot | WorkbenchLayoutSnapshotV6,
+  input: WorkbenchLayoutSnapshot | WorkbenchLayoutSnapshotV7 | WorkbenchLayoutSnapshotV6,
 ): WorkbenchWindowState {
   const snapshot = WorkbenchLayoutSnapshotSchema.parse(input);
   return {
     location: snapshot.location,
+    homeLocation: snapshot.homeLocation,
     databaseSearchByProject: snapshot.databaseSearchByProject,
     scenesByOwnerKey: snapshot.scenesByOwnerKey,
     history: {
@@ -66,6 +73,7 @@ function snapshotWorkbenchNavigation(
 ): WorkbenchWindowNavigationSnapshot {
   return {
     location: state.location,
+    homeLocation: state.homeLocation,
     scenesByOwnerKey: state.scenesByOwnerKey,
   };
 }
@@ -76,6 +84,7 @@ function areWorkbenchNavigationSnapshotsEqual(
 ): boolean {
   return (
     areWorkbenchLocationsEqual(left.location, right.location) &&
+    areWorkbenchLocationsEqual(left.homeLocation, right.homeLocation) &&
     left.scenesByOwnerKey === right.scenesByOwnerKey
   );
 }
@@ -106,17 +115,16 @@ export function navigateWorkbenchWindow(
   options: { readonly record?: boolean } = {},
 ): WorkbenchWindowState {
   if (areWorkbenchLocationsEqual(state.location, location)) return state;
-  if (options.record === false) {
-    return {
-      ...state,
-      location,
-    };
-  }
-
-  return recordWorkbenchNavigationTransition(state, {
+  const next = {
     ...state,
     location,
-  });
+    homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
+  };
+  if (options.record === false) {
+    return next;
+  }
+
+  return recordWorkbenchNavigationTransition(state, next);
 }
 
 export function navigateBackInWorkbenchWindow(state: WorkbenchWindowState): WorkbenchWindowState {
@@ -126,6 +134,7 @@ export function navigateBackInWorkbenchWindow(state: WorkbenchWindowState): Work
   return {
     ...state,
     location: snapshot.location,
+    homeLocation: snapshot.homeLocation,
     scenesByOwnerKey: snapshot.scenesByOwnerKey,
     history: {
       backStack: state.history.backStack.slice(0, -1),
@@ -146,6 +155,7 @@ export function navigateForwardInWorkbenchWindow(
   return {
     ...state,
     location: snapshot.location,
+    homeLocation: snapshot.homeLocation,
     scenesByOwnerKey: snapshot.scenesByOwnerKey,
     history: {
       backStack: [...state.history.backStack, snapshotWorkbenchNavigation(state)].slice(
@@ -191,6 +201,10 @@ export function selectWorkbenchPages(state: WorkbenchWindowState): WorkbenchWind
   return navigateWorkbenchWindow(state, { kind: "pages" });
 }
 
+export function selectWorkbenchHome(state: WorkbenchWindowState): WorkbenchWindowState {
+  return navigateWorkbenchWindow(state, state.homeLocation);
+}
+
 export function openWorkbenchRoute(
   state: WorkbenchWindowState,
   route:
@@ -203,11 +217,18 @@ export function openWorkbenchRoute(
         readonly expectedHostId?: string;
       },
 ): WorkbenchWindowState {
+  if (route.kind === "settings") {
+    const returnTo =
+      state.location.kind === "settings" || state.location.kind === "pending-worktree"
+        ? state.location.returnTo
+        : state.location;
+    return navigateWorkbenchWindow(state, { ...route, returnTo });
+  }
   const returnTo = getWorkbenchSceneReturnLocation(state.location);
   return navigateWorkbenchWindow(state, {
     ...route,
     returnTo,
-  } as WorkbenchLocation);
+  });
 }
 
 export function closeWorkbenchRoute(state: WorkbenchWindowState): WorkbenchWindowState {
@@ -276,6 +297,7 @@ export function updateWorkbenchSceneAndNavigate(
   const next = {
     ...state,
     location,
+    homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
     scenesByOwnerKey: {
       ...state.scenesByOwnerKey,
       [sceneKey]: nextScene,
@@ -289,56 +311,117 @@ export function updateWorkbenchSceneAndNavigate(
   return recordWorkbenchNavigationTransition(state, next);
 }
 
+function repairLocationForMissingOwner(
+  location: WorkbenchSceneLocation,
+  owner: WorkbenchSceneOwner,
+): WorkbenchSceneLocation;
+function repairLocationForMissingOwner(
+  location: WorkbenchStableLocation,
+  owner: WorkbenchSceneOwner,
+): WorkbenchStableLocation;
+function repairLocationForMissingOwner(
+  location: WorkbenchLocation,
+  owner: WorkbenchSceneOwner,
+): WorkbenchLocation;
+function repairLocationForMissingOwner(
+  location: WorkbenchLocation,
+  owner: WorkbenchSceneOwner,
+): WorkbenchLocation {
+  if (location.kind === "settings") {
+    const returnTo = repairLocationForMissingOwner(location.returnTo, owner);
+    return returnTo === location.returnTo ? location : { ...location, returnTo };
+  }
+  if ("returnTo" in location) {
+    const returnTo = repairLocationForMissingOwner(location.returnTo, owner);
+    return returnTo === location.returnTo ? location : { ...location, returnTo };
+  }
+  const current = location;
+  let next: WorkbenchSceneLocation = current;
+  if (
+    owner.kind === "session" &&
+    current.kind === "session" &&
+    current.sessionId === owner.sessionId
+  ) {
+    next = current.projectContextId
+      ? { kind: "project", projectId: current.projectContextId }
+      : { kind: "empty" };
+  }
+  if (
+    owner.kind === "project" &&
+    current.kind === "project" &&
+    current.projectId === owner.projectId
+  ) {
+    next = { kind: "empty" };
+  }
+  if (
+    owner.kind === "project" &&
+    current.kind === "session" &&
+    current.projectContextId === owner.projectId
+  ) {
+    next = { ...current, projectContextId: null };
+  }
+  if (next === current) return location;
+  return next;
+}
+
+function pruneWorkbenchNavigationSnapshot(
+  snapshot: WorkbenchWindowNavigationSnapshot,
+  owner: WorkbenchSceneOwner,
+): WorkbenchWindowNavigationSnapshot {
+  const location = repairLocationForMissingOwner(snapshot.location, owner);
+  const homeLocation = getWorkbenchHomeLocation(
+    repairLocationForMissingOwner(snapshot.homeLocation, owner),
+  ) ?? { kind: "empty" };
+  const sceneKey = makeWorkbenchSceneKey(owner);
+  const hasScene = snapshot.scenesByOwnerKey[sceneKey] !== undefined;
+  if (location === snapshot.location && homeLocation === snapshot.homeLocation && !hasScene) {
+    return snapshot;
+  }
+  const scenesByOwnerKey = hasScene
+    ? Object.fromEntries(
+        Object.entries(snapshot.scenesByOwnerKey).filter(([key]) => key !== sceneKey),
+      )
+    : snapshot.scenesByOwnerKey;
+  return { location, homeLocation, scenesByOwnerKey };
+}
+
+function pruneWorkbenchNavigationStack(
+  stack: readonly WorkbenchWindowNavigationSnapshot[],
+  owner: WorkbenchSceneOwner,
+): readonly WorkbenchWindowNavigationSnapshot[] {
+  const next = stack.map((snapshot) => pruneWorkbenchNavigationSnapshot(snapshot, owner));
+  return next.every((snapshot, index) => snapshot === stack[index]) ? stack : next;
+}
+
+/** Authoritative owner removal repairs retained destinations and history before they can reopen it. */
 export function removeWorkbenchScene(
   state: WorkbenchWindowState,
   owner: WorkbenchSceneOwner,
 ): WorkbenchWindowState {
-  const sceneKey = makeWorkbenchSceneKey(owner);
-  if (!state.scenesByOwnerKey[sceneKey]) return state;
-  const scenesByOwnerKey = { ...state.scenesByOwnerKey };
-  delete scenesByOwnerKey[sceneKey];
-  return {
-    ...state,
-    scenesByOwnerKey,
-  };
+  const snapshot = snapshotWorkbenchNavigation(state);
+  const next = pruneWorkbenchNavigationSnapshot(snapshot, owner);
+  const backStack = pruneWorkbenchNavigationStack(state.history.backStack, owner);
+  const forwardStack = pruneWorkbenchNavigationStack(state.history.forwardStack, owner);
+  if (
+    next === snapshot &&
+    backStack === state.history.backStack &&
+    forwardStack === state.history.forwardStack
+  ) {
+    return state;
+  }
+  return { ...state, ...next, history: { backStack, forwardStack } };
 }
 
 export function reconcileMissingWorkbenchSession(
   state: WorkbenchWindowState,
   sessionId: string,
 ): WorkbenchWindowState {
-  const current = getWorkbenchSceneReturnLocation(state.location);
-  if (current.kind !== "session" || current.sessionId !== sessionId) {
-    return state;
-  }
-  const fallback: WorkbenchSceneLocation = current.projectContextId
-    ? { kind: "project", projectId: current.projectContextId }
-    : { kind: "empty" };
-
-  const withoutScene = removeWorkbenchScene(state, {
-    kind: "session",
-    sessionId,
-  });
-  if (
-    withoutScene.location.kind !== "project" &&
-    withoutScene.location.kind !== "session" &&
-    withoutScene.location.kind !== "pages" &&
-    withoutScene.location.kind !== "empty"
-  ) {
-    return {
-      ...withoutScene,
-      location: {
-        ...withoutScene.location,
-        returnTo: fallback,
-      },
-    };
-  }
-  return navigateWorkbenchWindow(withoutScene, fallback, { record: false });
+  return removeWorkbenchScene(state, { kind: "session", sessionId });
 }
 
 export function replaceWorkbenchWindowSnapshot(
   state: WorkbenchWindowState,
-  snapshot: WorkbenchLayoutSnapshot | WorkbenchLayoutSnapshotV6,
+  snapshot: WorkbenchLayoutSnapshot | WorkbenchLayoutSnapshotV7 | WorkbenchLayoutSnapshotV6,
 ): WorkbenchWindowState {
   return {
     ...createWorkbenchWindowState(snapshot),
@@ -347,9 +430,11 @@ export function replaceWorkbenchWindowSnapshot(
 }
 
 export function snapshotWorkbenchWindowState(state: WorkbenchWindowState): WorkbenchLayoutSnapshot {
+  const location = getRestorableWorkbenchLocation(state.location);
   return {
-    version: 7,
-    location: getRestorableWorkbenchLocation(state.location),
+    version: 8,
+    location,
+    homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
     databaseSearchByProject: {
       ...state.databaseSearchByProject,
     },

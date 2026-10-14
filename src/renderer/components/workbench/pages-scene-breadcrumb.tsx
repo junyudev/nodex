@@ -142,7 +142,7 @@ export function PagesSceneBreadcrumb({ scene }: { readonly scene: WorkbenchScene
               surface ? "shrink-0 text-token-text-secondary" : "shrink-0 text-token-text-primary"
             }
           >
-            Pages
+            Space
           </span>
           {surface ? (
             <>

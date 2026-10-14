@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, type RefObject } from "react";
+import {
+  WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  WORKBENCH_SURFACE_GUTTER_PX,
+} from "@/lib/workbench-shell-geometry";
 import { useMotionValue, useTransform, type MotionValue } from "motion/react";
 import {
   CODEX_SHELL_MEDIUM_WIDTH_PX,
@@ -97,8 +101,13 @@ export function useWorkbenchChromeLayout({
     }
     const windowZoom = readWindowZoom(rootRef.current);
     return {
-      height: window.innerHeight / windowZoom,
-      width: window.innerWidth / windowZoom,
+      height: Math.max(0, window.innerHeight / windowZoom - WORKBENCH_SURFACE_GUTTER_PX),
+      width: Math.max(
+        0,
+        window.innerWidth / windowZoom -
+          WORKBENCH_NAVIGATION_RAIL_WIDTH_PX -
+          WORKBENCH_SURFACE_GUTTER_PX,
+      ),
     };
   }, [rootRef]);
   const initialShellBodySize = readShellBodyFallbackSize();
@@ -254,11 +263,15 @@ export function useWorkbenchChromeLayout({
   const effectiveHeaderLeftWidth = sidebarLogicalCollapsed
     ? Math.max(headerLeftWidth, collapsedHeaderLeftFallbackWidth)
     : Math.max(headerLeftWidth, safeHeaderLeftWidth + 24);
+  const sidebarHeaderWidth = useTransform(
+    sidebarMotion.animatedWidth,
+    (width) => width + WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  );
   const headerLeftShellSlotWidth =
     sidebarLogicalCollapsed && rightPanelFullWidth
       ? 0
       : sidebarMotion.mounted
-        ? sidebarMotion.animatedWidth
+        ? sidebarHeaderWidth
         : effectiveHeaderLeftWidth;
   const headerLeftShellSlotMinWidth = sidebarMotion.mounted
     ? sidebarLogicalCollapsed

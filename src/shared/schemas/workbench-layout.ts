@@ -5,6 +5,9 @@ import type {
   WorkbenchLayoutSnapshotV5,
   WorkbenchLayoutSnapshotV6,
   WorkbenchLayoutSnapshotV7,
+  WorkbenchLayoutSnapshotV8,
+  WorkbenchHomeLocation,
+  WorkbenchStableLocation,
   WorkbenchLayoutSnapshotV4,
   WorkbenchLayoutSnapshotV3,
   WorkbenchLayoutSidebarSnapshot,
@@ -20,6 +23,7 @@ import type {
   WorkbenchSceneLocationV5,
   WorkbenchSessionLocationV4,
 } from "../workbench-layout";
+import { getWorkbenchHomeLocation, getWorkbenchSceneReturnLocation } from "../workbench-layout";
 import {
   WorkbenchLayoutPageStageStateSchema,
   WorkbenchRecentPageSessionSchema,
@@ -746,28 +750,32 @@ export const WorkbenchSceneLocationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("pages") }).strict(),
 ]) satisfies z.ZodType<WorkbenchSceneLocation>;
 
+const WorkbenchSettingsLocationV7Schema = z
+  .object({
+    kind: z.literal("settings"),
+    path: z.string().min(1),
+    returnTo: WorkbenchSceneLocationSchema,
+  })
+  .strict();
+const WorkbenchAutomationsLocationSchema = z
+  .object({
+    kind: z.literal("automations"),
+    path: z.string().min(1),
+    returnTo: WorkbenchSceneLocationSchema,
+  })
+  .strict();
+const WorkbenchInboxLocationSchema = z
+  .object({
+    kind: z.literal("inbox"),
+    returnTo: WorkbenchSceneLocationSchema,
+  })
+  .strict();
+
 export const WorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationSchema.options,
-  z
-    .object({
-      kind: z.literal("settings"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("automations"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("inbox"),
-      returnTo: WorkbenchSceneLocationSchema,
-    })
-    .strict(),
+  WorkbenchSettingsLocationV7Schema,
+  WorkbenchAutomationsLocationSchema,
+  WorkbenchInboxLocationSchema,
   z
     .object({
       kind: z.literal("pending-worktree"),
@@ -780,24 +788,30 @@ export const WorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
 
 const PersistedWorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationSchema.options,
+  WorkbenchSettingsLocationV7Schema,
+  WorkbenchAutomationsLocationSchema,
+  WorkbenchInboxLocationSchema,
+]);
+
+const WorkbenchHomeLocationSchema = z.discriminatedUnion("kind", [
+  ...WorkbenchSceneLocationV5Schema.options,
+  WorkbenchAutomationsLocationSchema,
+  WorkbenchInboxLocationSchema,
+]) satisfies z.ZodType<WorkbenchHomeLocation>;
+
+const WorkbenchStableLocationSchema = z.discriminatedUnion("kind", [
+  ...WorkbenchSceneLocationSchema.options,
+  WorkbenchAutomationsLocationSchema,
+  WorkbenchInboxLocationSchema,
+]) satisfies z.ZodType<WorkbenchStableLocation>;
+
+const PersistedWorkbenchLocationV8Schema = z.discriminatedUnion("kind", [
+  ...WorkbenchStableLocationSchema.options,
   z
     .object({
       kind: z.literal("settings"),
       path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("automations"),
-      path: z.string().min(1),
-      returnTo: WorkbenchSceneLocationSchema,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("inbox"),
-      returnTo: WorkbenchSceneLocationSchema,
+      returnTo: WorkbenchStableLocationSchema,
     })
     .strict(),
 ]);
@@ -975,5 +989,61 @@ export const WorkbenchLayoutSnapshotV7Schema = z.preprocess(
     }),
 ) satisfies z.ZodType<WorkbenchLayoutSnapshotV7>;
 
+const migrateWorkbenchLayoutSnapshotToV8 = (value: unknown): unknown => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (record.version === 8) {
+    const location = record.location;
+    if (
+      typeof location === "object" &&
+      location !== null &&
+      !Array.isArray(location) &&
+      (location as Record<string, unknown>).kind === "pending-worktree"
+    ) {
+      return { ...record, location: (location as Record<string, unknown>).returnTo };
+    }
+    return value;
+  }
+
+  const parsed = WorkbenchLayoutSnapshotV7Schema.safeParse(value);
+  if (!parsed.success) return value;
+  const layout = parsed.data;
+  return {
+    ...layout,
+    version: 8,
+    homeLocation: getWorkbenchHomeLocation(layout.location) ??
+      getWorkbenchHomeLocation(getWorkbenchSceneReturnLocation(layout.location)) ?? {
+        kind: "empty",
+      },
+  };
+};
+
+export const WorkbenchLayoutSnapshotV8Schema = z.preprocess(
+  migrateWorkbenchLayoutSnapshotToV8,
+  z
+    .object({
+      version: z.literal(8),
+      location: PersistedWorkbenchLocationV8Schema,
+      homeLocation: WorkbenchHomeLocationSchema,
+      databaseSearchByProject: StringRecordSchema.catch({}),
+      scenesByOwnerKey: z.record(z.string().min(1), WorkbenchSceneSnapshotSchema),
+    })
+    .strict()
+    .superRefine((layout, context) => {
+      for (const [sceneKey, scene] of Object.entries(layout.scenesByOwnerKey)) {
+        if (validateWorkbenchSceneMapKey(sceneKey, scene)) continue;
+        context.addIssue({
+          code: "custom",
+          path: ["scenesByOwnerKey", sceneKey, "owner"],
+          message: "Scene map key must match the canonical owner key",
+        });
+      }
+    })
+    .transform((layout) => ({
+      ...layout,
+      homeLocation: getWorkbenchHomeLocation(layout.location) ?? layout.homeLocation,
+    })),
+) satisfies z.ZodType<WorkbenchLayoutSnapshotV8>;
+
 export const WorkbenchLayoutSnapshotSchema: z.ZodType<WorkbenchLayoutSnapshot> =
-  WorkbenchLayoutSnapshotV7Schema;
+  WorkbenchLayoutSnapshotV8Schema;

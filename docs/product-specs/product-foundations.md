@@ -62,16 +62,16 @@ Project binding organizes execution and navigation. It never limits Library
 content access. Parent Agents, children and background work share the same
 Profile access; Plan mode changes planning behavior while permitting writes.
 
-## Library and Pages navigation
+## Library and Space navigation
 
-`Pages` is a bounded navigation projection of top-level Page, Database, and
-Canvas roots that need an entry outside active Projects. It is not a second
-Library, a complete ownership tree, or a Library Home route. Primary Project
-roots are omitted while the Project represents them and become eligible if the
-Project is archived.
+Space is a bounded navigation projection of active top-level Page, Database,
+and Canvas roots in the Library, including primary Project Databases and
+Canvases. The Profile's system Inbox Database has its own Home entry and stays
+outside ordinary Library root navigation. Root eligibility, counts,
+continuations, and selected-root inclusion are evaluated by Core.
 
-Selecting a Pages row opens or focuses that resource in the window's singleton
-Pages Scene. It never chooses a Project or creates a Chat. The Pages Scene may
+Selecting a Space content row opens or focuses that resource in the window's
+singleton Pages Scene. It never chooses a Project or creates a Chat. The Scene may
 hold ordinary Page, Database, View, and Canvas surfaces; it
 cannot own execution-only Terminal, Browser, Review, or Files-tree surfaces.
 Opening a resource in a Project changes its presentation route without changing

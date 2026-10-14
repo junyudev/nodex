@@ -21,7 +21,15 @@ import {
   type SyntheticEvent,
 } from "react";
 import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
-import { CloseIcon } from "@/components/shared/icons";
+import { CheckmarkIcon, CloseIcon } from "@/components/shared/icons";
+import { OpenTabsIcon } from "@/components/shared/icons/open-tabs-icon";
+import {
+  NodexDropdownContent,
+  NodexDropdownItem,
+  NodexDropdownPortal,
+  NodexDropdownRoot,
+  NodexDropdownTrigger,
+} from "@/components/ui/dropdown";
 import {
   NodexContextMenuContent,
   NodexContextMenuItem,
@@ -32,6 +40,10 @@ import {
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type { PanelId } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import {
+  TOOLBAR_BUTTON_BASE_CLASS,
+  TOOLBAR_BUTTON_GHOST_CLASS,
+} from "@/lib/workbench-toolbar-control-styles";
 import {
   buildPanelGroupBodyDropData,
   buildPanelTabDragData,
@@ -120,6 +132,11 @@ function makeAppShellTabTooltip(tab: AppShellTabItem, title: string): ReactNode 
   if (tab.tooltip !== undefined) return tab.tooltip;
   if (tab.contextLabel) return `${tab.contextLabel} · ${title}`;
   return title;
+}
+
+function makeAppShellTabIcon(tab: AppShellTabItem): ReactNode {
+  const Icon = tab.icon;
+  return tab.iconElement ?? (Icon ? <Icon className="icon-xs shrink-0" /> : null);
 }
 
 const subscribeToStaticAppShellTabTitle = (): (() => void) => () => undefined;
@@ -499,7 +516,7 @@ export function AppShellTabs({
       >
         <div
           className={cn(
-            "isolate flex min-w-0 shrink-0 select-none items-center bg-token-main-surface-primary px-2 [contain:layout_paint]",
+            "isolate flex min-w-0 shrink-0 select-none items-center bg-(--color-background-panel) px-2 [contain:layout_paint]",
             headerHeight === "toolbar" ? "h-toolbar" : "h-toolbar-pane",
           )}
         >
@@ -525,7 +542,7 @@ export function AppShellTabs({
               data-app-shell-tab-edge-fade="start"
               data-clipped={leftEdgeClipped ? "true" : "false"}
               className={cn(
-                "pointer-events-none sticky start-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:start-0 after:inset-y-0 after:w-10 after:bg-linear-to-l after:from-transparent after:to-token-main-surface-primary after:content-['']",
+                "pointer-events-none sticky start-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:start-0 after:inset-y-0 after:w-10 after:bg-linear-to-l after:from-transparent after:to-(--color-background-panel) after:content-['']",
                 leftEdgeClipped ? "opacity-100" : "opacity-0",
               )}
             />
@@ -535,7 +552,7 @@ export function AppShellTabs({
             {afterTabsInline ? (
               <div
                 ref={afterTabsInlineRef}
-                className="no-drag sticky right-0 z-10 flex h-full shrink-0 items-center bg-token-main-surface-primary"
+                className="no-drag sticky right-0 z-10 flex h-full shrink-0 items-center bg-(--color-background-panel)"
               >
                 {afterTabsInline}
               </div>
@@ -546,12 +563,18 @@ export function AppShellTabs({
               data-app-shell-tab-edge-fade="end"
               data-clipped={rightEdgeClipped ? "true" : "false"}
               className={cn(
-                "pointer-events-none sticky end-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:end-0 after:inset-y-0 after:w-10 after:bg-linear-to-r after:from-transparent after:to-token-main-surface-primary after:content-['']",
+                "pointer-events-none sticky end-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:end-0 after:inset-y-0 after:w-10 after:bg-linear-to-r after:from-transparent after:to-(--color-background-panel) after:content-['']",
                 rightEdgeClipped ? "opacity-100" : "opacity-0",
               )}
               style={{ right: tabScrollEndPaddingPx }}
             />
           </div>
+          <AppShellOpenTabsMenu
+            tabs={tabs}
+            activeTabId={resolvedActiveTabId}
+            onSelect={onSelect}
+            onOpen={exitTabCloseMode}
+          />
           {afterListSticky ? (
             <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
               {afterListSticky}
@@ -578,6 +601,91 @@ export function AppShellTabs({
         ) : null}
       </div>
     </NodexTooltipProvider>
+  );
+}
+
+function AppShellOpenTabsMenu({
+  tabs,
+  activeTabId,
+  onSelect,
+  onOpen,
+}: {
+  tabs: readonly AppShellTabItem[];
+  activeTabId: string | null;
+  onSelect: (tabId: string) => void;
+  onOpen: () => void;
+}) {
+  if (tabs.length === 0) return null;
+
+  const count = tabs.length;
+
+  return (
+    <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+      <NodexDropdownRoot
+        onOpenChange={(open) => {
+          if (open) onOpen();
+        }}
+      >
+        <NodexDropdownTrigger openOnHover delay={0} closeDelay={100}>
+          <button
+            type="button"
+            className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
+            aria-label="Open tabs"
+            aria-description={`${count} open ${count === 1 ? "tab" : "tabs"}`}
+          >
+            <OpenTabsIcon count={count} />
+          </button>
+        </NodexDropdownTrigger>
+        <NodexDropdownPortal>
+          <NodexDropdownContent
+            aria-label="Open tabs"
+            align="end"
+            sideOffset={8}
+            className="w-65 select-none"
+          >
+            <div className="px-2 py-1.5 text-[length:calc(var(--text-xs)*11/12)] leading-normal text-token-text-tertiary">
+              Open tabs
+            </div>
+            {tabs.map((tab) => (
+              <AppShellOpenTabMenuItem
+                key={tab.id}
+                tab={tab}
+                active={tab.id === activeTabId}
+                onSelect={onSelect}
+              />
+            ))}
+          </NodexDropdownContent>
+        </NodexDropdownPortal>
+      </NodexDropdownRoot>
+    </div>
+  );
+}
+
+function AppShellOpenTabMenuItem({
+  tab,
+  active,
+  onSelect,
+}: {
+  tab: AppShellTabItem;
+  active: boolean;
+  onSelect: (tabId: string) => void;
+}) {
+  const title = useAppShellTabTitle(tab);
+  return (
+    <NodexDropdownItem
+      aria-label={makeAppShellTabAccessibleLabel(tab, title)}
+      aria-current={active ? "true" : undefined}
+      className="h-8 text-[length:calc(var(--text-xs)*11/12)] leading-normal"
+      disabled={tab.disabled}
+      leftSlot={makeAppShellTabIcon(tab)}
+      rightSlot={active ? <CheckmarkIcon className="icon-xs" /> : undefined}
+      onSelect={() => onSelect(tab.id)}
+    >
+      {tab.contextLabel ? (
+        <span className="text-token-text-tertiary">{tab.contextLabel} · </span>
+      ) : null}
+      <span className={tab.preview ? "italic" : undefined}>{title}</span>
+    </NodexDropdownItem>
   );
 }
 
@@ -765,8 +873,7 @@ function AppShellTab({
     [onTabNodeChange, tab.id],
   );
   const resolvedTitle = useAppShellTabTitle(tab);
-  const Icon = tab.icon;
-  const iconElement = tab.iconElement ?? (Icon ? <Icon className="icon-xs shrink-0" /> : null);
+  const iconElement = makeAppShellTabIcon(tab);
   const dataTabId = tab.domTabId ?? tab.id;
   const tabId = makeTabId(controllerId, tab.id);
   const accessibleLabel = makeAppShellTabAccessibleLabel(tab, resolvedTitle);
@@ -822,7 +929,7 @@ function AppShellTab({
             "pointer-events-none absolute inset-y-0 end-0 z-20 w-7 bg-linear-to-r from-transparent to-[85%]",
             isActive
               ? "to-[var(--app-shell-tab-background)]"
-              : "to-token-main-surface-primary group-hover/tab:to-[var(--app-shell-tab-background)]",
+              : "to-(--color-background-panel) group-hover/tab:to-[var(--app-shell-tab-background)]",
           )}
         />
       ) : null}
@@ -960,11 +1067,11 @@ function AppShellTab({
       <div
         data-tab-id={dataTabId}
         data-app-shell-tab-surface="true"
-        className="group group/tab relative flex h-7 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg bg-token-main-surface-primary px-2 py-1"
+        className="group group/tab relative flex h-8 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg"
         style={
           {
             "--app-shell-tab-background":
-              "color-mix(in srgb, var(--color-token-foreground) 5%, var(--color-token-main-surface-primary))",
+              "color-mix(in srgb, var(--color-token-foreground) 8%, var(--color-background-panel))",
           } as CSSProperties
         }
         onMouseDown={(event) => {
@@ -976,8 +1083,9 @@ function AppShellTab({
       >
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-0 rounded-lg group-hover/tab:bg-[var(--app-shell-tab-background)]",
-            (isActive || isDragging) && "bg-[var(--app-shell-tab-background)]",
+            "pointer-events-none absolute inset-0 z-0 rounded-md border-[0.5px] border-transparent group-hover/tab:bg-[var(--app-shell-tab-background)]",
+            (isActive || isDragging) &&
+              "border-token-border bg-[var(--app-shell-tab-background)] shadow-sm",
           )}
         />
         <button
@@ -989,10 +1097,9 @@ function AppShellTab({
           aria-label={accessibleLabel}
           disabled={tab.disabled}
           className={cn(
-            "no-drag relative z-10 flex min-w-0 flex-1 items-center gap-2 text-sm",
-            onClose &&
-              (isActive ? "pe-3.5" : "group-focus-within/tab:pe-3.5 group-hover/tab:pe-3.5"),
-            isActive ? "text-token-text-primary" : "text-token-text-secondary",
+            "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 py-1 text-xs",
+            onClose && (isActive ? "pe-8" : "group-focus-within/tab:pe-8 group-hover/tab:pe-8"),
+            isActive ? "text-token-text-primary" : "text-token-text-tertiary",
           )}
           onMouseDown={(event) => {
             if (event.button !== 0) return;

@@ -44,6 +44,7 @@ describe("Window Session layout commits", () => {
     const project = {
       ...initialLayout,
       location: { kind: "project" as const, projectId: "project-b" },
+      homeLocation: { kind: "project" as const, projectId: "project-b" },
     };
 
     const first = writer.commit({ layout: pages, presentationRevision: 11 });

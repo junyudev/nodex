@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DatabaseIcon,
   PageIcon,
@@ -6,8 +6,13 @@ import {
   PlusIcon,
   CanvasIcon,
 } from "@/components/shared/icons";
-import type { LibraryPlacedResourceTarget, LibraryReadValue } from "../../../shared/library-module";
-import { useInfiniteLibraryStandaloneRoots } from "@/lib/use-library-navigation";
+import type {
+  LibraryNavigationNode,
+  LibraryPlacedResourceTarget,
+  LibraryReadValue,
+  LibraryViewNavigationNode,
+} from "../../../shared/library-module";
+import { useInfiniteLibraryChildren } from "@/lib/use-library-navigation";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
   CODEX_SIDEBAR_ROW_LABEL_CLASS,
@@ -30,11 +35,11 @@ import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import { cn } from "@/lib/utils";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 
-type StandaloneRootsValue = Extract<LibraryReadValue, { readonly kind: "standalone_roots" }>;
-type StandaloneRoot = StandaloneRootsValue["items"][number];
+type LibraryRootsValue = Extract<LibraryReadValue, { readonly kind: "children" }>;
+type LibraryRoot = Exclude<LibraryNavigationNode, LibraryViewNavigationNode>;
 
-interface StandaloneRootsQueryState {
-  readonly data?: { readonly pages: readonly StandaloneRootsValue[] };
+interface LibraryRootsQueryState {
+  readonly data?: { readonly pages: readonly LibraryRootsValue[] };
   readonly isPending: boolean;
   readonly isError: boolean;
   readonly hasNextPage: boolean;
@@ -43,16 +48,16 @@ interface StandaloneRootsQueryState {
 }
 
 export interface SidebarPagesDataSource {
-  readonly useStandaloneRoots: (
+  readonly useRoots: (
     input: Readonly<{
       limit?: number;
       forceIncludeTarget?: LibraryPlacedResourceTarget;
     }>,
-  ) => StandaloneRootsQueryState;
+  ) => LibraryRootsQueryState;
 }
 
 const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
-  useStandaloneRoots: (input) => useInfiniteLibraryStandaloneRoots(input),
+  useRoots: (input) => useInfiniteLibraryChildren({ kind: "library" }, input),
 };
 
 const rootKey = (root: LibraryPlacedResourceTarget): string => {
@@ -61,7 +66,7 @@ const rootKey = (root: LibraryPlacedResourceTarget): string => {
   return `canvas:${root.canvasId}`;
 };
 
-const nodeTarget = (node: StandaloneRoot): LibraryPlacedResourceTarget => {
+const nodeTarget = (node: LibraryRoot): LibraryPlacedResourceTarget => {
   if (node.kind === "page") return { kind: "page", pageId: node.pageId };
   if (node.kind === "database") {
     return { kind: "database", databaseId: node.databaseId };
@@ -69,9 +74,9 @@ const nodeTarget = (node: StandaloneRoot): LibraryPlacedResourceTarget => {
   return { kind: "canvas", canvasId: node.canvasId };
 };
 
-const nodeKey = (node: StandaloneRoot): string => rootKey(nodeTarget(node));
+const nodeKey = (node: LibraryRoot): string => rootKey(nodeTarget(node));
 
-const nodeIcon = (node: StandaloneRoot) => {
+const nodeIcon = (node: LibraryRoot) => {
   if (node.kind === "page") return <PageIcon />;
   if (node.kind === "database") return <DatabaseIcon />;
   return <CanvasIcon className="icon-xs" />;
@@ -84,8 +89,9 @@ function SidebarPageRootRow({
   mutationsEnabled,
   onOpen,
   onOpenInProject,
+  onHoverSurfaceOpenChange,
 }: {
-  readonly node: StandaloneRoot;
+  readonly node: LibraryRoot;
   readonly active: boolean;
   readonly projects: readonly LibraryProjectOption[];
   readonly mutationsEnabled: boolean;
@@ -95,6 +101,7 @@ function SidebarPageRootRow({
     target: ActionableLibraryResourceTarget,
     title: string,
   ) => void | Promise<void>;
+  readonly onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
   const target = nodeTarget(node);
   const key = nodeKey(node);
@@ -114,6 +121,15 @@ function SidebarPageRootRow({
   const expectedLocationRevision =
     node.kind === "page" ? node.parentRevision : node.locationRevision;
   const [actionsOpen, setActionsOpen] = useState(false);
+  const changeActionsOpen = (open: boolean) => {
+    onHoverSurfaceOpenChange?.(open);
+    setActionsOpen(open);
+  };
+  useEffect(() => {
+    if (!actionsOpen) return;
+    onHoverSurfaceOpenChange?.(true);
+    return () => onHoverSurfaceOpenChange?.(false);
+  }, [actionsOpen, onHoverSurfaceOpenChange]);
   const dnd = useSidebarLibraryResourceDnd({
     resource: actionableTarget
       ? {
@@ -158,7 +174,7 @@ function SidebarPageRootRow({
           ? (event) => {
               event.preventDefault();
               event.stopPropagation();
-              setActionsOpen(true);
+              changeActionsOpen(true);
             }
           : undefined
       }
@@ -180,7 +196,7 @@ function SidebarPageRootRow({
                 projects={projects}
                 onOpenInProject={onOpenInProject}
                 open={actionsOpen}
-                onOpenChange={setActionsOpen}
+                onOpenChange={changeActionsOpen}
                 triggerButton={
                   <button
                     type="button"
@@ -207,16 +223,7 @@ function SidebarPageRootRow({
 
 const EMPTY_LIBRARY_PROJECT_OPTIONS: readonly LibraryProjectOption[] = [];
 
-export function SidebarPagesSection({
-  collapsed,
-  activeRoot,
-  onToggle,
-  onOpenRoot,
-  projects = EMPTY_LIBRARY_PROJECT_OPTIONS,
-  onOpenInProject,
-  dataSource = DEFAULT_PAGES_DATA_SOURCE,
-  mutationsEnabled = dataSource === DEFAULT_PAGES_DATA_SOURCE,
-}: {
+export interface SidebarPagesSectionProps {
   readonly collapsed: boolean;
   readonly activeRoot: LibraryPlacedResourceTarget | null;
   readonly onToggle: () => void;
@@ -229,8 +236,21 @@ export function SidebarPagesSection({
   ) => void | Promise<void>;
   readonly dataSource?: SidebarPagesDataSource;
   readonly mutationsEnabled?: boolean;
-}) {
-  const query = dataSource.useStandaloneRoots({
+  readonly onHoverSurfaceOpenChange?: (open: boolean) => void;
+}
+
+export function SidebarPagesSection({
+  collapsed,
+  activeRoot,
+  onToggle,
+  onOpenRoot,
+  projects = EMPTY_LIBRARY_PROJECT_OPTIONS,
+  onOpenInProject,
+  dataSource = DEFAULT_PAGES_DATA_SOURCE,
+  mutationsEnabled = dataSource === DEFAULT_PAGES_DATA_SOURCE,
+  onHoverSurfaceOpenChange,
+}: SidebarPagesSectionProps) {
+  const query = dataSource.useRoots({
     limit: 10,
     ...(activeRoot ? { forceIncludeTarget: activeRoot } : {}),
   });
@@ -240,6 +260,7 @@ export function SidebarPagesSection({
       ...new Map(
         (query.data?.pages ?? [])
           .flatMap((page) => page.items)
+          .filter((node): node is LibraryRoot => node.kind !== "view")
           .map((node) => [nodeKey(node), node] as const),
       ).values(),
     ],
@@ -249,7 +270,7 @@ export function SidebarPagesSection({
 
   return (
     <CodexSidebarSection
-      heading="Pages"
+      heading="Content"
       collapsed={collapsed}
       onToggle={onToggle}
       actions={
@@ -277,7 +298,7 @@ export function SidebarPagesSection({
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
               ·
             </span>
-            <span className="min-w-0 truncate px-1">Loading Pages…</span>
+            <span className="min-w-0 truncate px-1">Loading…</span>
           </div>
         ) : query.isError ? (
           <button
@@ -288,11 +309,11 @@ export function SidebarPagesSection({
             <span className="flex size-6 shrink-0 items-center justify-center" aria-hidden>
               !
             </span>
-            <span className="min-w-0 truncate px-1">Retry Pages</span>
+            <span className="min-w-0 truncate px-1">Retry</span>
           </button>
         ) : roots.length === 0 ? (
           <div className="px-row-x py-row-y text-sm text-token-description-foreground">
-            No standalone pages
+            No content yet
           </div>
         ) : (
           <SidebarPaginatedItems
@@ -308,7 +329,7 @@ export function SidebarPagesSection({
             }}
           >
             {(pagination, pager) => (
-              <div role="list" aria-label="Pages">
+              <div role="list" aria-label="Content">
                 {pagination.visibleItems.map((node) => (
                   <SidebarPageRootRow
                     key={nodeKey(node)}
@@ -318,6 +339,7 @@ export function SidebarPagesSection({
                     mutationsEnabled={mutationsEnabled}
                     onOpen={onOpenRoot}
                     onOpenInProject={onOpenInProject}
+                    onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
                   />
                 ))}
                 {pager}

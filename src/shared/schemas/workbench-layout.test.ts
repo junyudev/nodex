@@ -5,6 +5,9 @@ import {
   createDefaultWorkbenchLayoutSnapshotV3,
   createDefaultWorkbenchLayoutSnapshotV4,
   createDefaultWorkbenchLayoutSnapshotV6,
+  createDefaultWorkbenchLayoutSnapshotV7,
+  createDefaultWorkbenchLayoutSnapshot,
+  type WorkbenchLayoutSnapshot,
 } from "../workbench-layout";
 import {
   createEmptyWorkbenchSessionView,
@@ -16,6 +19,7 @@ import {
   WorkbenchLayoutSnapshotV3Schema,
   WorkbenchLayoutSnapshotV4Schema,
   WorkbenchLayoutSnapshotV5Schema,
+  WorkbenchLayoutSnapshotV7Schema,
 } from "./workbench-layout";
 
 describe("WorkbenchLayoutSnapshotSchema", () => {
@@ -394,7 +398,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     });
 
     expect(migrated).toMatchObject({
-      version: 7,
+      version: 8,
       location: { kind: "project", projectId: "alpha" },
       databaseSearchByProject: { alpha: "owner:me" },
     });
@@ -545,5 +549,117 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
         pageId: root.pageId,
       },
     });
+  });
+});
+
+describe("WorkbenchLayoutSnapshotV8Schema", () => {
+  test.each([
+    { kind: "inbox" as const, returnTo: { kind: "pages" as const } },
+    {
+      kind: "automations" as const,
+      path: "/automations/edit/a",
+      returnTo: { kind: "pages" as const },
+    },
+  ])("round trips Settings with its stable $kind origin and normalizes Home", (returnTo) => {
+    const parsed = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: { kind: "settings", path: "/settings/general", returnTo },
+    });
+    expect(parsed.location).toEqual({ kind: "settings", path: "/settings/general", returnTo });
+    expect(parsed.homeLocation).toEqual(returnTo);
+    expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+    expect(
+      WorkbenchLayoutSnapshotV7Schema.safeParse({
+        ...createDefaultWorkbenchLayoutSnapshotV7(),
+        location: parsed.location,
+      }).success,
+    ).toBe(false);
+  });
+
+  test.each([
+    { kind: "settings", path: "/settings/appearance", returnTo: { kind: "empty" } },
+    { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "empty" } },
+  ])("rejects a transient or nested Settings origin: $kind", (returnTo) => {
+    expect(
+      WorkbenchLayoutSnapshotSchema.safeParse({
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "settings", path: "/settings/general", returnTo },
+      }).success,
+    ).toBe(false);
+  });
+
+  test.each<WorkbenchLayoutSnapshot["location"]>([
+    { kind: "project", projectId: "alpha" },
+    { kind: "session", sessionId: "session-a", projectContextId: "alpha" },
+    { kind: "inbox", returnTo: { kind: "pages" } },
+    { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "empty" } },
+  ])("derives the Home checkpoint from an active legacy Home route: $kind", (location) => {
+    const parsed = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshotV7(),
+      location,
+    });
+    expect(parsed.version).toBe(8);
+    expect(parsed.homeLocation).toEqual(location);
+    expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
+  });
+
+  test("legacy Space starts with an empty Home checkpoint and Settings retains its Scene", () => {
+    const legacy = createDefaultWorkbenchLayoutSnapshotV7();
+    expect(
+      WorkbenchLayoutSnapshotSchema.parse({ ...legacy, location: { kind: "pages" } }).homeLocation,
+    ).toEqual({ kind: "empty" });
+    expect(
+      WorkbenchLayoutSnapshotSchema.parse({
+        ...legacy,
+        location: {
+          kind: "settings",
+          path: "/settings/general",
+          returnTo: { kind: "project", projectId: "alpha" },
+        },
+      }).homeLocation,
+    ).toEqual({ kind: "project", projectId: "alpha" });
+  });
+
+  test("retains the saved Home route through Space and Settings restoration", () => {
+    const homeLocation = {
+      kind: "automations",
+      path: "/automations/edit/a",
+      returnTo: { kind: "project", projectId: "alpha" },
+    } as const;
+    const space = {
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: { kind: "pages" as const },
+      homeLocation,
+    };
+    expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(space)))).toEqual(space);
+    const settings = {
+      ...space,
+      location: { kind: "settings" as const, path: "/settings/general", returnTo: space.location },
+    };
+    expect(WorkbenchLayoutSnapshotSchema.parse(settings).homeLocation).toEqual(homeLocation);
+  });
+
+  test("normalizes the checkpoint when a targeted window opens a different Home route", () => {
+    const location = { kind: "session", sessionId: "session-a", projectContextId: null } as const;
+    const parsed = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location,
+      homeLocation: { kind: "project", projectId: "alpha" },
+    });
+    expect(parsed.homeLocation).toEqual(location);
+  });
+
+  test.each([
+    { kind: "pages" },
+    { kind: "settings", path: "/settings/general", returnTo: { kind: "empty" } },
+    { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "empty" } },
+  ])("rejects a non-Home checkpoint: $kind", (homeLocation) => {
+    expect(
+      WorkbenchLayoutSnapshotSchema.safeParse({
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "pages" },
+        homeLocation,
+      }).success,
+    ).toBe(false);
   });
 });

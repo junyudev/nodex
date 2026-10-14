@@ -2,6 +2,8 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   createDefaultWorkbenchLayoutSnapshot,
   getWorkbenchActiveSessionId,
+  getWorkbenchPrimaryDestination,
+  type WorkbenchLocation,
   type WorkbenchLayoutSnapshot,
 } from "./workbench-layout";
 
@@ -43,4 +45,39 @@ describe("getWorkbenchActiveSessionId", () => {
       ).toBe(`session-behind-${kind}`);
     },
   );
+});
+
+describe("getWorkbenchPrimaryDestination", () => {
+  test.each<readonly [WorkbenchLocation, "home" | "space"]>([
+    [{ kind: "pages" }, "space"],
+    [{ kind: "empty" }, "home"],
+    [{ kind: "project", projectId: "alpha" }, "home"],
+    [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
+    [{ kind: "inbox", returnTo: { kind: "pages" } }, "home"],
+    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "home"],
+    [
+      { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "pages" } },
+      "home",
+    ],
+    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "pages" } }, "space"],
+    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "empty" } }, "home"],
+    [
+      {
+        kind: "settings",
+        path: "/settings/inbox",
+        returnTo: { kind: "inbox", returnTo: { kind: "pages" } },
+      },
+      "home",
+    ],
+    [
+      {
+        kind: "settings",
+        path: "/settings/general",
+        returnTo: { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "pages" } },
+      },
+      "home",
+    ],
+  ])("derives %s from the current route", (location, destination) => {
+    expect(getWorkbenchPrimaryDestination(location)).toBe(destination);
+  });
 });
