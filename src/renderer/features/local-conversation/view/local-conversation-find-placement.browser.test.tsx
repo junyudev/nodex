@@ -51,7 +51,7 @@ vi.mock("../local-conversation-store", async (importOriginal) => ({
         occurrences: [
           {
             turnId: "history-turn-0005",
-            itemId: "history-user-5",
+            itemId: query === disclosureTerm ? "history-answer-5" : "history-user-5",
             turnCursor: "history-turn-0005",
             snippet: query,
             snippetMatchRange: { start: 0, end: query.length },
@@ -83,6 +83,7 @@ afterEach(() => {
 enablePatches();
 const key = { hostId: "local", threadId: "find-placement" };
 const term = "Synthetic history 0005";
+const disclosureTerm = "A hidden disclosure target";
 function history(index: number): Turn {
   return {
     id: `history-turn-${String(index).padStart(4, "0")}`,
@@ -169,14 +170,14 @@ const actions: ThreadStageActions = {
   onOpenThread: () => {},
   onCleanBackgroundTerminals: async () => {},
 };
-function FindControls() {
+function FindControls({ query = term }: { readonly query?: string }) {
   const find = useContentSearch();
   return (
     <>
       <button
         onClick={() => {
           find.requestOpen({ preferredDomain: "conversation" });
-          find.setQuery(term);
+          find.setQuery(query);
         }}
       >
         Find history five
@@ -187,6 +188,126 @@ function FindControls() {
 }
 
 describe("actual transcript Find placement", () => {
+  test("opens the same collapsed directive through actual transcript Find before marking and centering", async () => {
+    const turn = history(5);
+    const answer = turn.items.find((item) => item.type === "agentMessage")!;
+    if (answer.type !== "agentMessage") throw new Error("Missing authored answer");
+    answer.text = [
+      ':::github-details{summary="More" open="false"}',
+      "Hidden introduction.\n\n".repeat(14),
+      disclosureTerm,
+      "\n\nHidden ending.\n\n".repeat(14),
+      ":::",
+    ].join("\n");
+    const state = hydrateHistory([turn]);
+    const owner = new CodexTranscriptReadOwner(key);
+    const release = owner.subscribeStructure(() => {});
+    owner.applyEvent({ type: "reset", value: projectCodexTranscript(state) });
+    function CloseFind() {
+      const find = useContentSearch();
+      return <button onClick={find.close}>Close Find</button>;
+    }
+    const view = render(
+      <LocalConversationTestQueryProvider>
+        <NodexTooltipProvider>
+          <ContentSearchProvider>
+            <FindControls query={disclosureTerm} />
+            <CloseFind />
+            <CodexTranscriptReadOwnerContext.Provider value={owner}>
+              <EnsureLocalConversationThreadScrollController>
+                <div style={{ width: 900, height: 500 }}>
+                  <LocalConversationThreadScrollLayout footer={<div style={{ height: 100 }} />}>
+                    <LocalConversationThreadBodyOwner
+                      projectId={null}
+                      hostId="local"
+                      threadId={key.threadId}
+                      isSideChat={false}
+                      cwd="/workspace"
+                      turns={[]}
+                      requests={[]}
+                      canonicalRequests={[]}
+                      resumeState="resumed"
+                      turnPagination={null}
+                      capabilityFlags={{
+                        canEditLastUserTurn: false,
+                        canForkFromTurn: false,
+                        canSearch: true,
+                        canCollapseTurns: true,
+                      }}
+                      body={{
+                        threadId: key.threadId,
+                        turnCount: 1,
+                        isThreadRunning: false,
+                        activeTurnId: null,
+                        latestTurnId: turn.id,
+                        emptyState: { type: "none" },
+                        showThreadStartProgressPanel: false,
+                      }}
+                      parentTurns={[]}
+                      childMemberships={[]}
+                      backgroundAgentRows={[]}
+                      searchOpenTick={0}
+                      threadStartProgress={null}
+                      actions={actions}
+                      onErrorMessage={() => {}}
+                      initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                      onRestoreSnapshotChange={() => {}}
+                    />
+                  </LocalConversationThreadScrollLayout>
+                </div>
+              </EnsureLocalConversationThreadScrollController>
+            </CodexTranscriptReadOwnerContext.Provider>
+          </ContentSearchProvider>
+        </NodexTooltipProvider>
+      </LocalConversationTestQueryProvider>,
+    );
+    try {
+      const summary = await view.findByText("More", { selector: "summary" });
+      const details = summary.closest("details")!;
+      expect(details.open).toBe(false);
+      const unit = details.closest("[data-content-search-unit-key]");
+      await act(async () => {
+        summary.click();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(details.open).toBe(true));
+      await act(async () => {
+        summary.click();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(details.open).toBe(false));
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Find history five" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(view.getByLabelText("Find result").textContent).toBe("1 / 1 results"),
+      );
+      await waitFor(() => expect(details.open).toBe(true));
+      await waitFor(() => {
+        const mark = details.querySelector<HTMLElement>("mark.codex-thread-find-active");
+        expect(mark?.textContent).toBe(disclosureTerm);
+        const viewport = view.container.querySelector<HTMLElement>(
+          "[data-local-conversation-thread-body=true]",
+        )!;
+        const bounds = mark!.getBoundingClientRect();
+        const clip = viewport.getBoundingClientRect();
+        expect(bounds.top).toBeGreaterThanOrEqual(clip.top);
+        expect(bounds.bottom).toBeLessThanOrEqual(clip.bottom);
+      });
+      expect(summary.closest("details")).toBe(details);
+      expect(details.closest("[data-content-search-unit-key]")).toBe(unit);
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Close Find" }));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(details.querySelector("mark")).toBeNull());
+      expect(details.open).toBe(true);
+    } finally {
+      view.unmount();
+      release();
+    }
+  });
   test.for([
     {
       name: "centers an already mounted native history match after streaming completion and user wheel",

@@ -1,6 +1,9 @@
 import { type Components } from "streamdown";
 import MarkdownDocumentSurface from "./markdown-document-surface";
-import { ConversationTokenRenderer } from "@/lib/markdown/conversation-token-renderer";
+import {
+  ConversationTokenRenderer,
+  type ConversationDirectiveRenderer,
+} from "@/lib/markdown/conversation-token-renderer";
 import type { ConversationDirectiveToken } from "@/lib/markdown/conversation-directives";
 import { ConversationVisualizationContext } from "../../inline-visualization-context";
 import { LocalConversationInlineVisualization } from "../../local-conversation-inline-visualization";
@@ -26,6 +29,7 @@ import {
   type ConversationMarkdownNativeSource,
 } from "../../conversation-markdown-source";
 import { renderConversationInline } from "../../conversation-markdown-inline";
+import { ConversationDirectiveDetails } from "./conversation-directive-details";
 
 interface MarkdownCoreProps {
   dialect?: MarkdownDisplayDialect;
@@ -76,6 +80,22 @@ function renderVisualization(token: ConversationDirectiveToken) {
     />
   );
 }
+const renderConversationDirective: ConversationDirectiveRenderer = (_token, context) => {
+  const { registration } = context;
+  if (registration.kind !== "github-details") return undefined;
+  return (
+    <ConversationDirectiveDetails
+      summary={registration.summary}
+      initiallyOpen={registration.initiallyOpen}
+    >
+      {context.renderChildren()}
+    </ConversationDirectiveDetails>
+  );
+};
+const renderVisualizedConversationDirective: ConversationDirectiveRenderer = (token, context) => {
+  const registered = renderConversationDirective(token, context);
+  return registered !== undefined ? registered : renderVisualization(token);
+};
 export function MarkdownCore({
   content,
   dialect = "document",
@@ -106,7 +126,11 @@ export function MarkdownCore({
                   animate={animateStreamingText}
                   adaptive={adaptiveStreaming}
                   components={conversationComponents}
-                  renderDirective={visualizationContext ? renderVisualization : undefined}
+                  renderDirective={
+                    visualizationContext
+                      ? renderVisualizedConversationDirective
+                      : renderConversationDirective
+                  }
                   renderInline={renderConversationInline}
                   className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
                 />

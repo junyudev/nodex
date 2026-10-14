@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import type { Components } from "streamdown";
-import { CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES } from "../../../shared/conversation-markdown-display";
 import {
   createConversationDocumentOwner,
   type ConversationRenderNode,
@@ -17,6 +16,10 @@ import {
 import { decodeConversationText } from "./conversation-tokens";
 import { ConversationCode, ConversationMath } from "./conversation-token-leaves";
 import type { ConversationDirectiveToken } from "./conversation-directives";
+import {
+  readConversationDirectiveRegistration,
+  type ConversationDirectiveRegistration,
+} from "./conversation-directive-registry";
 import { markdownPublicLeafComponents } from "./markdown-public-leaves";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 import { findMarkdownOpenCodeFence } from "./markdown-prefix";
@@ -28,7 +31,7 @@ interface RenderOptions {
   readonly streaming: boolean;
   readonly animate: boolean;
   readonly adaptive: boolean;
-  readonly renderDirective?: (token: ConversationDirectiveToken) => ReactNode | undefined;
+  readonly renderDirective?: ConversationDirectiveRenderer;
   readonly renderInline?: ConversationInlineRenderer;
   readonly decorate: boolean;
   readonly precedingText?: string;
@@ -38,9 +41,13 @@ export type ConversationInlineRenderer = (
   renderPlain: (start?: number, end?: number) => ReactNode,
   context: { readonly precedingText: string },
 ) => ReactNode | undefined;
-const hidden = new Set<string>(
-  CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES.filter((name) => name !== "code-comment"),
-);
+export type ConversationDirectiveRenderer = (
+  token: ConversationDirectiveToken,
+  context: {
+    readonly registration: ConversationDirectiveRegistration;
+    readonly renderChildren: () => ReactNode;
+  },
+) => ReactNode | undefined;
 
 function primitive(
   tag: string,
@@ -317,16 +324,10 @@ function TokenNode({
       );
     }
     case "codexDirective": {
-      if (hidden.has(token.name)) return null;
-      const owned = options.renderDirective?.(token);
+      const registration = readConversationDirectiveRegistration(token);
+      if (registration.kind === "null") return null;
+      const owned = options.renderDirective?.(token, { registration, renderChildren: children });
       if (owned !== undefined) return owned;
-      if (token.name === "github-details" && token.block)
-        return (
-          <details open={token.attributes.open === "true" || undefined}>
-            <summary>{String(token.attributes.summary ?? "Details")}</summary>
-            {children()}
-          </details>
-        );
       return token.raw;
     }
   }
