@@ -32,6 +32,7 @@ import * as CoreDocumentIpc from "../ipc/handlers/CoreDocumentIpc";
 import * as DocumentRecoveryIpc from "../ipc/handlers/DocumentRecoveryIpc";
 import * as CoreMutationIpc from "../ipc/handlers/CoreMutationIpc";
 import * as DatabaseProjectionIpc from "../ipc/handlers/DatabaseProjectionIpc";
+import * as CodexRealtimeVoiceIpc from "../ipc/handlers/CodexRealtimeVoiceIpc";
 import * as DictationIpc from "../ipc/handlers/DictationIpc";
 import * as DictationStreamingIpc from "../ipc/handlers/DictationStreamingIpc";
 import * as ExecutionHostIpc from "../ipc/handlers/ExecutionHostIpc";
@@ -68,6 +69,7 @@ export const live = Layer.mergeAll(
   ComputerUseSettingsIpc.live,
   GitWorkerIpc.live,
   DictationIpc.live(),
+  CodexRealtimeVoiceIpc.live,
   DictationStreamingIpc.live(),
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),

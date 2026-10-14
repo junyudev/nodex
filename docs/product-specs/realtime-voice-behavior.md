@@ -1,0 +1,28 @@
+# Realtime Voice Behavior
+
+Realtime voice is an audio conversation attached to a restored native Codex Thread. The ordinary Thread Composer presents its controls when the current account, workspace policy, execution host, and native runtime admit WebRTC voice.
+
+## Availability and ownership
+
+- Main validates the current ChatGPT account, workspace access, service policy, native features, runtime version, and the Thread's execution host. Unknown admission leaves the start control unavailable. A transport that the application does not support remains unavailable.
+- A Profile has one microphone authority and one active voice claim across its windows. Starting voice cancels active dictation and waits for its real capture resources to release. Dictation cannot acquire the microphone while voice owns it.
+- Main binds a claim to the registered renderer, source host, native generation, canonical Thread lifecycle, and execution epoch. Each operation validates that ownership again after asynchronous preparation. Credentials and account preference requests stay in Main.
+- The renderer window owns one media attempt. Changing Thread views preserves the current call and its controls; closing the window releases its resources. A retired attempt cannot capture new media or release a replacement claim.
+- Acquiring and releasing a voice claim updates every registered window's availability cache. This remains effective while its Composer is detached, so returning to a Thread cannot retain an already released busy claim.
+- The read-only availability result evaluates admission for its requested Thread and reports the Profile's current claim, including a call owned by another Thread or window.
+
+## Startup and controls
+
+- `Start voice` prepares the claim, checks microphone permission, creates the media graph and WebRTC offer, and starts the native conversation. Preparation and startup expose `Cancel voice`; repeated activation shares the current attempt.
+- Active controls require four independent confirmations: native start request acceptance, a matching native session-start event, WebRTC connection, and data-channel session initialization. Events from another host, native generation, Thread, or claim cannot satisfy those confirmations. Realtime notifications are admitted only after this attempt has issued its native start request.
+- Active calls expose microphone mute, output mute, and `End voice`. Mute changes apply immediately to the same media graph; serialized Main confirmations preserve the latest full mute intent.
+- `End voice` keeps the current media until native stop is accepted, then stops every media resource and releases the microphone claim. A rejected stop retains the same starting or active call for retry while its Thread and authority remain current. An exact native response confirming that the owning Thread no longer exists retires the call even when a resident snapshot remains. A failed existence read does not itself discard a usable call.
+- Startup cancellation, window disposal, and authority retirement abort pending work and stop media even when native stop fails. They release only their own claim after cleanup; the next attempt waits for that cleanup. Irreversible account or host retirement cannot be undone by a late stop rejection.
+- Live microphone settings apply to the current call. A preference received during preparation is retained for the matching claim and applied after the media graph exists. A failed input refresh keeps the previous stream and call usable.
+
+## Context and recovery
+
+- Session model, version, prompt, and handoff settings come from validated account policy. Invalid settings fall back as a complete configuration rather than mixing unvalidated fields into a native request. Native voice preference is restricted to the actual host's supported catalog.
+- When explicitly enabled for the supported session version, startup includes a bounded suffix of resident user and assistant text from the owning Thread. This read does not restore extra history or materialize rendered Turn projections. The item and UTF-8 budgets retain the most recent context.
+- Permission rejection, failed media creation, native startup rejection, account revocation, host replacement, canonical lifecycle retirement, and window disposal settle the attempt and release its own resources. Late events and preparation replies cannot revive it.
+- A transport-only close notification does not end an otherwise active call. Other native close or error notifications retire the current attempt, including a close with no reason. A close during a requested stop does not report an unexpected-close error.

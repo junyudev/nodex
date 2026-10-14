@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DictationMicrophoneLease } from "./dictation-microphone-lease";
 
 const owner = (webContentsId: number, sessionId: string) => ({
+  kind: "dictation" as const,
   webContentsId,
   sessionId,
   surface: "composer" as const,

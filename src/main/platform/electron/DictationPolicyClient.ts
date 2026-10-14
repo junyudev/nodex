@@ -18,6 +18,8 @@ import * as SubscriptionRef from "effect/SubscriptionRef";
 import { ElectronNet, type readDesktopBootstrapMetadata } from "./ElectronNet";
 import { makeDictationLiveValues } from "../../dictation/DictationLiveValues";
 import type { DictationGateValues } from "../../dictation/DictationPolicyState";
+import type { RealtimeVoiceGateValues } from "../../dictation/RealtimeVoicePolicyState";
+import { isDeepStrictEqual } from "node:util";
 
 const SDK_KEY = "client-sYWqzCYMRkUg4DqqiZcR5DGTNl2iD7zNJY0HoeDLzxR";
 const API = "https://ab.chatgpt.com/v1";
@@ -210,6 +212,37 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
     };
   };
   const values = yield* SubscriptionRef.make(evaluate());
+  const evaluateRealtime = (): RealtimeVoiceGateValues => {
+    const config = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))(
+      overlay.config(
+        "1193530394",
+        client.getDynamicConfig("1193530394", { disableExposureLog: true }).value,
+      ),
+    );
+    const sessionConfig = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))(
+      overlay.config(
+        "3566525122",
+        client.getDynamicConfig("3566525122", { disableExposureLog: true }).value,
+      ),
+    );
+    return {
+      entryPoint: overlay.gate(
+        "2380644311",
+        client.getFeatureGate("2380644311", { disableExposureLog: true }).value,
+      ),
+      blocked: overlay.gate(
+        "1697652030",
+        client.getFeatureGate("1697652030", { disableExposureLog: true }).value,
+      ),
+      clientOwnedCall: overlay.gate(
+        "206132468",
+        client.getFeatureGate("206132468", { disableExposureLog: true }).value,
+      ),
+      config: config._tag === "Some" ? config.value : {},
+      sessionConfig: sessionConfig._tag === "Some" ? sessionConfig.value : {},
+    };
+  };
+  const realtimeValues = yield* SubscriptionRef.make(evaluateRealtime());
   let liveHeader: string | null = null;
   const network = new NetworkCore({
     ...options,
@@ -254,7 +287,12 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
       try: () => overlay.apply(payload),
       catch: () => new DictationPolicyClientError({ message: "Invalid live policy" }),
     });
-    if (changed) yield* SubscriptionRef.set(values, evaluate());
+    if (changed) {
+      const realtime = evaluateRealtime();
+      if (!isDeepStrictEqual(yield* SubscriptionRef.get(realtimeValues), realtime))
+        yield* SubscriptionRef.set(realtimeValues, realtime);
+      yield* SubscriptionRef.set(values, evaluate());
+    }
   }).pipe(Effect.ignore);
   // The SDK's live overlay does not replace non-live session evaluations.
   yield* Effect.gen(function* () {
@@ -269,5 +307,10 @@ export const makeDictationPolicyClient = Effect.fn("DictationPolicyClient.make")
         overlay.intervalMs;
     }
   }).pipe(Effect.forkScoped);
-  return { read: SubscriptionRef.get(values), changes: SubscriptionRef.changes(values) };
+  return {
+    read: SubscriptionRef.get(values),
+    changes: SubscriptionRef.changes(values),
+    readRealtime: SubscriptionRef.get(realtimeValues),
+    realtimeChanges: SubscriptionRef.changes(realtimeValues),
+  };
 });

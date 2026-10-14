@@ -1,3 +1,4 @@
+import { EMPTY_REALTIME_VOICE_PRODUCT_POLICY } from "../../dictation/RealtimeVoicePolicyState";
 import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -93,6 +94,9 @@ it.effect("registers application channels directly against their owning modules"
       changes: Stream.succeed({ status: "connected", retries: 0 }),
     });
     const media = CodexMedia.of({
+      readRealtimeVoicePreference: () => Effect.succeed(null),
+      realtimeVoiceProductPolicy: Effect.succeed(EMPTY_REALTIME_VOICE_PRODUCT_POLICY),
+      realtimeVoicePolicyChanges: Stream.empty,
       dictationState: Effect.succeed({
         isEnabled: true,
         authMethod: "chatgpt",

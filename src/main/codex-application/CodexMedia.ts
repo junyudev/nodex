@@ -20,7 +20,7 @@ import type {
 import { makeDictationPolicy, type DictationPolicySnapshot } from "../dictation/DictationPolicy";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { resolveChatGptBaseUrl } from "../codex/chatgpt-base-url";
-import { ElectronNet } from "../platform/electron/ElectronNet";
+import { ElectronNet, readDesktopBootstrapMetadata } from "../platform/electron/ElectronNet";
 import { DictationRuntime } from "../host-runtime/DictationRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAccount } from "./CodexAccount";
@@ -38,6 +38,7 @@ import {
 } from "../platform/node/DictationWebSocket";
 import { DICTATION_VOICE_LANGUAGES } from "../../shared/dictation";
 import { CodexMediaError } from "./CodexMediaError";
+import type { RealtimeVoiceProductPolicy } from "../dictation/RealtimeVoicePolicyState";
 
 export { CodexMediaError } from "./CodexMediaError";
 
@@ -86,6 +87,12 @@ export class CodexMedia extends Context.Service<
   {
     readonly dictationState: Effect.Effect<CodexDictationStateSnapshot>;
     readonly dictationPolicySnapshot: Effect.Effect<DictationPolicySnapshot>;
+    readonly realtimeVoiceProductPolicy: Effect.Effect<RealtimeVoiceProductPolicy>;
+    readonly realtimeVoicePolicyChanges: Stream.Stream<RealtimeVoiceProductPolicy>;
+    readonly readRealtimeVoicePreference: (expectedAccount: {
+      readonly accountId: string;
+      readonly userId: string;
+    }) => Effect.Effect<string | null>;
     readonly readVoiceLanguage: Effect.Effect<string, CodexMediaError>;
     readonly updateVoiceLanguage: (language: string) => Effect.Effect<string, CodexMediaError>;
     readonly transcribe: (input: {
@@ -740,9 +747,39 @@ export const live: Layer.Layer<
       );
     };
 
+    const readRealtimeVoicePreference = (expectedAccount: {
+      readonly accountId: string;
+      readonly userId: string;
+    }) =>
+      Effect.gen(function* () {
+        const baseUrl = yield* readBaseUrl;
+        const metadata = yield* readDesktopBootstrapMetadata;
+        const query = new URLSearchParams({
+          spoken_language: metadata.locale,
+          voice_mode: "advanced",
+        });
+        const response = yield* chatgpt.request({
+          baseUrl,
+          path: `/settings/voices?${query}`,
+          method: "GET",
+          action: "read voice preference",
+          expectedAccount,
+        });
+        if (!response.ok) return null;
+        const decoded = yield* Schema.decodeUnknownEffect(
+          Schema.fromJsonString(
+            Schema.Struct({ selected: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
+          ),
+        )(yield* responseText(response));
+        return decoded.selected ?? null;
+      }).pipe(Effect.orElseSucceed(() => null));
+
     return CodexMedia.of({
       dictationState: SubscriptionRef.get(dictationState),
       dictationPolicySnapshot: policy.read,
+      realtimeVoiceProductPolicy: policy.readRealtime,
+      realtimeVoicePolicyChanges: policy.realtimeChanges,
+      readRealtimeVoicePreference,
       readVoiceLanguage,
       updateVoiceLanguage,
       transcribe,

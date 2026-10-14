@@ -20,6 +20,15 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexConnection } from "../codex-application/CodexConnection";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
+import {
+  CodexRealtimeVoice,
+  live as realtimeVoiceLive,
+} from "../codex-application/CodexRealtimeVoice";
+import {
+  CodexRealtimeVoicePolicy,
+  live as realtimeVoicePolicyLive,
+} from "../codex-application/CodexRealtimeVoicePolicy";
+import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
 import { live as dictationNetworkLive } from "../platform/electron/DictationNetwork";
 import {
@@ -248,6 +257,10 @@ const codexMedia = codexMediaLive.pipe(
   Layer.provide(dictationNetworkLive),
   Layer.provideMerge(dictation),
 );
+const realtimeVoice = realtimeVoiceLive.pipe(
+  Layer.provideMerge(realtimeVoicePolicyLive.pipe(Layer.provideMerge(codexMedia))),
+  Layer.provideMerge(rendererClients),
+);
 const dictationDictionary = dictationDictionaryLive.pipe(Layer.provideMerge(codexMedia));
 
 const applicationMenu = Layer.unwrap(
@@ -298,6 +311,8 @@ export const live: Layer.Layer<
   | ComposerAppshotRuntime
   | ComputerUseSettingsRuntime
   | CodexMedia
+  | CodexRealtimeVoice
+  | CodexRealtimeVoicePolicy
   | DictationDictionary
   | DatabaseNotifierRuntime.DatabaseNotifierRuntime
   | DesktopNotificationRuntime
@@ -334,6 +349,8 @@ export const live: Layer.Layer<
   | CodexRendererPresentationRegistry
   | CodexUserInputAutoResolution
   | CoreAuthority
+  | CoreModules
+  | Layer.Services<typeof realtimeVoice>
   | DatabaseModule
   | DesktopDocumentSessionRuntime
   | DesktopToolRuntime
@@ -360,6 +377,7 @@ export const live: Layer.Layer<
   computerUseSettings,
   remoteHostedPipIntegration,
   codexMedia,
+  realtimeVoice,
   dictationDictionary,
   databaseNotifier,
   deepLinks,

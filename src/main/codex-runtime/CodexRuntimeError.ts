@@ -95,7 +95,11 @@ export const isCodexThreadStopAlreadySettledRequestError = (
   );
 };
 
-export type CodexThreadLifecycleRequestMethod = "thread/archive" | "thread/delete" | "thread/read";
+export type CodexThreadLifecycleRequestMethod =
+  | "thread/archive"
+  | "thread/delete"
+  | "thread/read"
+  | "thread/realtime/stop";
 
 /**
  * Recognizes the exact app-server response proving that a lifecycle mutation is already applied.
@@ -127,6 +131,7 @@ export const isCodexThreadLifecycleAlreadyAppliedRequestError = (
           message: `failed to archive session: thread ${input.threadId} not found`,
         } as const;
       case "thread/delete":
+      case "thread/realtime/stop":
         return { code: -32_600, message: `thread not found: ${input.threadId}` } as const;
       case "thread/read":
         return { code: -32_600, message: `thread not loaded: ${input.threadId}` } as const;

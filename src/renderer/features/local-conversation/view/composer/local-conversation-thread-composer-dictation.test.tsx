@@ -1,3 +1,18 @@
+import type { ReactNode } from "react";
+import type {
+  CodexRealtimeVoiceEvent,
+  CodexRealtimeVoiceGrant,
+} from "../../../../../shared/codex-realtime-voice";
+import type {
+  RealtimeVoiceMedia,
+  RealtimeVoiceMediaInput,
+} from "@/lib/realtime-voice/realtime-voice-media";
+import type { RealtimeVoiceClient } from "@/features/realtime-voice/realtime-voice-client";
+import { RealtimeVoiceWindowProvider } from "@/features/realtime-voice/realtime-voice-window";
+import {
+  createRealtimeVoiceWindowOwner,
+  type RealtimeVoiceWindowOwner,
+} from "@/features/realtime-voice/realtime-voice-window-owner";
 import { dictationTextResult } from "../../../../../../tests/fixtures/dictation-diagnostics";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
@@ -276,21 +291,110 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
   };
 }
 
+function OptionalVoiceProvider({
+  owner,
+  children,
+}: {
+  owner?: RealtimeVoiceWindowOwner;
+  children: ReactNode;
+}) {
+  return owner ? (
+    <RealtimeVoiceWindowProvider owner={owner}>{children}</RealtimeVoiceWindowProvider>
+  ) : (
+    children
+  );
+}
+const makeVoice = () => {
+  const grant: CodexRealtimeVoiceGrant = {
+    hostId: "local",
+    threadId: "thread_1",
+    claimId: "019a1240-1000-7000-8000-000000000001",
+    realtimeSessionId: "019a1240-1000-7000-8000-000000000002",
+    microphoneInputDeviceId: null,
+    builtInMicrophoneLabelHint: null,
+    bufferInputWhileConnecting: true,
+  };
+  let receive: ((event: CodexRealtimeVoiceEvent) => void) | null = null;
+  const media: RealtimeVoiceMedia = {
+    acceptAnswer: vi.fn(async () => {}),
+    setMicrophoneMuted: vi.fn(),
+    setOutputMuted: vi.fn(),
+    releaseInput: vi.fn(),
+    refreshInput: vi.fn(async () => {}),
+    readInputStream: () => null,
+    readOutputStream: () => null,
+    stop: vi.fn(async () => {}),
+  };
+  const client: RealtimeVoiceClient = {
+    read: vi.fn(async () => ({ available: true, session: null })),
+    prepare: vi.fn(async () => grant),
+    start: vi.fn(async () => {}),
+    reportMedia: vi.fn(async () => {}),
+    setMuted: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    release: vi.fn(async () => true),
+    appendText: vi.fn(async () => {}),
+    subscribe: (listener) => {
+      receive = listener;
+      return () => {
+        receive = null;
+      };
+    },
+  };
+  const inputs: RealtimeVoiceMediaInput[] = [];
+  const owner = createRealtimeVoiceWindowOwner({
+    client,
+    createMedia: async (input) => {
+      inputs.push(input);
+      return { offerSdp: "offer", media };
+    },
+  });
+  const emit = (event: CodexRealtimeVoiceEvent) => receive?.(event);
+  const original = window.api!.invoke;
+  const reads: unknown[][] = [];
+  let available = true;
+  installWindowApi({
+    ...window.api!,
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "codex:realtime-voice:read") {
+        reads.push(args);
+        return { available, session: null };
+      }
+      return original(channel, ...args);
+    },
+  });
+  return {
+    owner,
+    grant,
+    media,
+    client,
+    inputs,
+    reads,
+    emit,
+    setAvailable: (next: boolean) => {
+      available = next;
+    },
+  };
+};
+
 async function renderThreadComposer(input?: {
   model?: Partial<ThreadFooterModel>;
   actions?: Partial<ThreadStageActions>;
+  voiceOwner?: RealtimeVoiceWindowOwner;
 }) {
   const rendered = render(
     <TestQueryProvider>
       <RendererStateProvider>
         <TestComposerScopePath>
           <TooltipProvider>
-            <ThreadComposer
-              model={buildModel(input?.model)}
-              actions={buildActions(input?.actions)}
-              errorMessage={null}
-              onErrorMessage={() => {}}
-            />
+            <OptionalVoiceProvider owner={input?.voiceOwner}>
+              <ThreadComposer
+                model={buildModel(input?.model)}
+                actions={buildActions(input?.actions)}
+                errorMessage={null}
+                onErrorMessage={() => {}}
+              />
+            </OptionalVoiceProvider>
           </TooltipProvider>
         </TestComposerScopePath>
       </RendererStateProvider>
@@ -804,5 +908,73 @@ describe("ThreadComposer dictation", () => {
       expect(editor.textContent).toBe("Partial words edited All recovered speech"),
     );
     expect(onSendPrompt).not.toHaveBeenCalled();
+  });
+  test("ordinary Voice controls enter the real native target, mute the same media and release it before ending the claim", async () => {
+    const f = makeVoice();
+    const view = await renderThreadComposer({ voiceOwner: f.owner });
+    const start = await view.findByRole("button", { name: "Start voice" });
+    expect(f.reads[0]).toEqual([{ hostId: "local", threadId: "thread_1" }]);
+    await act(async () => {
+      fireEvent.click(start);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(f.client.start).toHaveBeenCalledExactlyOnceWith(f.grant.claimId, "offer"),
+    );
+    expect(f.owner.read().phase).toBe("starting");
+    await act(async () => {
+      f.inputs[0]!.onConnected();
+      f.inputs[0]!.onInitialized("remote-RTC-session");
+      f.emit({
+        type: "snapshot",
+        snapshot: {
+          ...f.grant,
+          phase: "active",
+          microphoneMuted: false,
+          outputMuted: false,
+          revision: 1,
+        },
+      });
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: "End voice" });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Mute microphone" }));
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: "Unmute microphone" });
+    expect(f.media.setMicrophoneMuted).toHaveBeenCalledExactlyOnceWith(true);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Mute voice" }));
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: "Unmute voice" });
+    expect(f.media.setOutputMuted).toHaveBeenCalledExactlyOnceWith(true);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "End voice" }));
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: "Start voice" });
+    expect(f.media.stop).toHaveBeenCalledTimes(1);
+    expect(f.client.release).toHaveBeenCalledExactlyOnceWith(f.grant.claimId);
+    expect(vi.mocked(f.media.stop).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(f.client.release).mock.invocationCallOrder[0]!,
+    );
+  });
+  test("unknown admission stays hidden and a live policy revision enables the real control without acquiring media", async () => {
+    const f = makeVoice();
+    f.setAvailable(false);
+    const view = await renderThreadComposer({ voiceOwner: f.owner });
+    await waitFor(() => expect(f.reads.length).toBe(1));
+    expect(view.queryByRole("button", { name: "Start voice" })).toBeNull();
+    expect(f.client.prepare).not.toHaveBeenCalled();
+    await act(async () => {
+      f.setAvailable(true);
+      f.emit({ type: "availabilityChanged" });
+      await Promise.resolve();
+    });
+    await view.findByRole("button", { name: "Start voice" });
+    expect(f.client.prepare).not.toHaveBeenCalled();
+    expect(f.inputs).toEqual([]);
   });
 });

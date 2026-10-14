@@ -24,6 +24,10 @@ import {
   releaseDictationMicrophoneLease,
 } from "@/lib/api";
 import { acquireMicrophone } from "@/features/dictation/microphone-acquirer";
+import {
+  createDictationMicrophoneLeaseClient,
+  subscribeDictationMicrophoneRelinquish,
+} from "@/features/dictation/dictation-microphone-lease-client";
 import { browserDictationRecorderFactory } from "@/features/dictation/dictation-recorder";
 import { mainDictationHistoryPort } from "@/features/dictation/dictation-history-client";
 import { createBrowserDictationStreamingPort } from "@/features/dictation/dictation-streaming-client";
@@ -144,10 +148,11 @@ export function useComposerDictation(
     () =>
       new DictationSessionController({
         recordingDurationLimitMs: MAXIMUM_DICTATION_DURATION_MS,
-        lease: {
+        lease: createDictationMicrophoneLeaseClient({
           acquire: acquireDictationMicrophoneLease,
           release: async (sessionId) => void (await releaseDictationMicrophoneLease(sessionId)),
-        },
+          subscribeRelinquish: subscribeDictationMicrophoneRelinquish,
+        }),
         permissions: {
           request: async () => {
             const soundsEnabled = callbacksRef.current.soundsEnabled === true;

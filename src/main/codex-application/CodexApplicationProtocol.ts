@@ -1,4 +1,5 @@
 import type { RequestId, ServerRequest } from "@nodex/codex-app-server-protocol";
+import { CodexRealtimeVoice } from "./CodexRealtimeVoice";
 import { CodexResumeIngress } from "./CodexResumeIngress";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
@@ -339,6 +340,7 @@ type Lifecycle = CodexServerRequestLifecycleResult | CodexServerRequestRawLifecy
 export const make: Effect.Effect<
   CodexApplicationProtocol["Service"],
   never,
+  | CodexRealtimeVoice
   | CodexApplicationEventHub
   | CodexAppProtocolTools
   | CodexApplicationRequestInbox
@@ -354,6 +356,7 @@ export const make: Effect.Effect<
   | ConversationEntityMap
   | NodexAgentProtocolTools
 > = Effect.gen(function* () {
+  const realtimeVoice = yield* CodexRealtimeVoice;
   const applicationEvents = yield* CodexApplicationEventHub;
   const codexAppTools = yield* CodexAppProtocolTools;
   const inbox = yield* CodexApplicationRequestInbox;
@@ -673,6 +676,14 @@ export const make: Effect.Effect<
       Effect.flatMap((decision) =>
         decision._tag === "Admit"
           ? inbox.observeAppCallNotification(occurrence, notification).pipe(
+              Effect.andThen(
+                notification.method === "thread/realtime/started" ||
+                  notification.method === "thread/realtime/sdp" ||
+                  notification.method === "thread/realtime/closed" ||
+                  notification.method === "thread/realtime/error"
+                  ? realtimeVoice.observeNative(occurrence, notification)
+                  : Effect.void,
+              ),
               Effect.andThen(
                 notificationEffects
                   .apply({
@@ -1133,6 +1144,7 @@ export const make: Effect.Effect<
 export const live: Layer.Layer<
   CodexApplicationProtocol,
   never,
+  | CodexRealtimeVoice
   | CodexApplicationEventHub
   | CodexAppProtocolTools
   | CodexApplicationRequestInbox

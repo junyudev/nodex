@@ -100,7 +100,7 @@ export interface DictationControllerPorts {
   /** Capture ownership selects the deadline; a global gesture can still belong to Composer. */
   readonly recordingDurationLimitMs: typeof MAXIMUM_DICTATION_DURATION_MS | null;
   readonly lease: {
-    acquire(sessionId: string, surface: DictationSurface): Promise<boolean>;
+    acquire(sessionId: string, surface: DictationSurface, relinquish: () => void): Promise<boolean>;
     release(sessionId: string): Promise<void>;
   };
   readonly permissions: {
@@ -353,7 +353,9 @@ export class DictationSessionController {
 
     let leaseAcquired = false;
     try {
-      leaseAcquired = await this.#ports.lease.acquire(session.id, session.surface);
+      leaseAcquired = await this.#ports.lease.acquire(session.id, session.surface, () => {
+        if (this.#isCurrent(session)) this.cancel();
+      });
     } catch {
       if (this.#isCurrent(session)) {
         this.#failWithoutAudio(session, {
@@ -586,7 +588,9 @@ export class DictationSessionController {
       action: session.stopAction,
     });
     const acquired = await this.#ports.lease
-      .acquire(session.id, session.surface)
+      .acquire(session.id, session.surface, () => {
+        if (this.#isCurrent(session)) this.cancel();
+      })
       .catch(() => false);
     if (!this.#isCurrent(session)) {
       if (acquired) void this.#ports.lease.release(session.id).catch(() => undefined);

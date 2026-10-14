@@ -338,6 +338,12 @@ export const live = (
                 webContentsId: event.sender.id,
                 sessionId: lease.sessionId,
                 surface: lease.surface as DictationSurface,
+                relinquish: Effect.sync(() => {
+                  if (!event.sender.isDestroyed())
+                    event.sender.send("dictation:microphone-relinquish", {
+                      sessionId: lease.sessionId,
+                    });
+                }),
               }),
             ),
           ),

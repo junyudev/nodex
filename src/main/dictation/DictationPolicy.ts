@@ -31,6 +31,12 @@ import {
   makePolicyFallbackUser,
   makeDictationPolicyClient,
 } from "../platform/electron/DictationPolicyClient";
+import {
+  EMPTY_REALTIME_VOICE_PRODUCT_POLICY,
+  resolveRealtimeVoiceProductPolicy,
+  realtimeVoiceNeedsWorkspace,
+} from "./RealtimeVoicePolicyState";
+import { isDeepStrictEqual } from "node:util";
 
 export type { DictationPolicySnapshot } from "./DictationPolicyState";
 
@@ -43,7 +49,12 @@ class DictationPolicyError extends Schema.TaggedError<DictationPolicyError>()(
   },
 ) {}
 
-const Permissions = Schema.Struct({ permissions: Schema.Array(Schema.String) });
+const Permissions = Schema.Struct({
+  permissions: Schema.optionalKey(Schema.Array(Schema.String)),
+  beta_settings: Schema.optionalKey(
+    Schema.Struct({ wham_local_access: Schema.optionalKey(Schema.Boolean) }),
+  ),
+});
 type Refresh = Effect.Effect<DictationPolicySnapshot>;
 const authMethod = (value: unknown): string | null =>
   typeof value === "string" ? (value === "chatgptAuthTokens" ? "chatgpt" : value) : null;
@@ -57,6 +68,7 @@ export const makeDictationPolicy = Effect.gen(function* () {
   const authState = yield* CodexExecutionHostAuthState;
   const electron = yield* ElectronNet;
   const snapshot = yield* SubscriptionRef.make(EMPTY_DICTATION_POLICY);
+  const realtimeSnapshot = yield* SubscriptionRef.make(EMPTY_REALTIME_VOICE_PRODUCT_POLICY);
   const generation = yield* Ref.make(0);
   const inFlight = yield* Ref.make<Refresh | null>(null);
   const active = yield* Ref.make<Scope.Closeable | null>(null);
@@ -69,6 +81,8 @@ export const makeDictationPolicy = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => closeActive);
 
   const publish = Effect.fn("DictationPolicy.publish")(function* (value: DictationPolicySnapshot) {
+    if (value === EMPTY_DICTATION_POLICY)
+      yield* SubscriptionRef.set(realtimeSnapshot, EMPTY_REALTIME_VOICE_PRODUCT_POLICY);
     const previous = yield* SubscriptionRef.get(snapshot);
     if (
       Object.keys(value).every(
@@ -228,8 +242,14 @@ export const makeDictationPolicy = Effect.gen(function* () {
     }).pipe(Effect.provideService(ElectronNet, electron));
     const evaluate = Effect.fn("DictationPolicy.evaluate")(function* (gates: DictationGateValues) {
       const enabled = yield* featureEnabled;
+      const realtimeGates = yield* client.readRealtime;
       let permissions: readonly string[] | null = null;
-      if (identity && gates.workspacePermissions && requiresDictationWorkspacePermission(plan)) {
+      let workspace: typeof Permissions.Type | null = null;
+      if (
+        identity &&
+        ((gates.workspacePermissions && requiresDictationWorkspacePermission(plan)) ||
+          (realtimeGates.entryPoint && !realtimeGates.blocked && realtimeVoiceNeedsWorkspace(plan)))
+      ) {
         const response = yield* chatgpt
           .request({
             baseUrl: "https://chatgpt.com/backend-api",
@@ -241,7 +261,8 @@ export const makeDictationPolicy = Effect.gen(function* () {
             signal: auth.signal,
           })
           .pipe(Effect.flatMap(readJson));
-        permissions = (yield* Schema.decodeUnknownEffect(Permissions)(response)).permissions;
+        workspace = yield* Schema.decodeUnknownEffect(Permissions)(response);
+        permissions = workspace.permissions ?? null;
       }
       const current = yield* chatgpt.authStatus(true, false);
       const currentIdentity = current.authToken
@@ -256,6 +277,23 @@ export const makeDictationPolicy = Effect.gen(function* () {
         currentIdentity?.userId !== identity?.userId
       )
         return yield* new DictationPolicyError({ message: "Authenticated workspace changed" });
+      const realtime = resolveRealtimeVoiceProductPolicy({
+        identity,
+        authMethod: method,
+        plan,
+        gates: realtimeGates,
+        workspace: workspace
+          ? {
+              localAccess: workspace.beta_settings?.wham_local_access,
+              permissions: workspace.permissions,
+            }
+          : null,
+      });
+      if (
+        (yield* Ref.get(generation)) === capturedGeneration &&
+        !isDeepStrictEqual(yield* SubscriptionRef.get(realtimeSnapshot), realtime)
+      )
+        yield* SubscriptionRef.set(realtimeSnapshot, realtime);
       return resolveDictationPolicy({
         identity,
         auth: {
@@ -347,5 +385,7 @@ export const makeDictationPolicy = Effect.gen(function* () {
     read: SubscriptionRef.get(snapshot),
     refresh,
     changes: SubscriptionRef.changes(snapshot),
+    readRealtime: SubscriptionRef.get(realtimeSnapshot),
+    realtimeChanges: SubscriptionRef.changes(realtimeSnapshot),
   };
 });

@@ -1,3 +1,5 @@
+import * as Stream from "effect/Stream";
+import { EMPTY_REALTIME_VOICE_PRODUCT_POLICY } from "../../dictation/RealtimeVoicePolicyState";
 import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -168,6 +170,9 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
       on: () => Effect.void,
     });
     const media = CodexMedia.of({
+      readRealtimeVoicePreference: () => Effect.succeed(null),
+      realtimeVoiceProductPolicy: Effect.succeed(EMPTY_REALTIME_VOICE_PRODUCT_POLICY),
+      realtimeVoicePolicyChanges: Stream.empty,
       dictationState: Effect.die("unused"),
       dictationPolicySnapshot: Effect.die("unused"),
       readVoiceLanguage: Effect.succeed("auto"),

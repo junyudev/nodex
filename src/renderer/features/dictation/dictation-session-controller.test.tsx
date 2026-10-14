@@ -99,7 +99,7 @@ const createFixture = (
   };
   const acquire = vi.fn(options.acquire ?? (async () => stream));
   const lease = {
-    acquire: vi.fn(async () => true),
+    acquire: vi.fn<DictationControllerPorts["lease"]["acquire"]>(async () => true),
     release: vi.fn(async () => undefined),
   };
   const onRecordingStopped = vi.fn();
@@ -204,6 +204,40 @@ const createFixture = (
 };
 
 describe("DictationSessionController", () => {
+  it("relinquishes the actual captured tracks before releasing its Main microphone lease", async () => {
+    const fixture = createFixture();
+    await fixture.controller.start({ surface: "composer", gesture: "click" });
+    const relinquish = fixture.lease.acquire.mock.calls[0]?.[2];
+    expect(relinquish).toBeTypeOf("function");
+    fixture.lease.release.mockImplementation(async () => {
+      expect(fixture.track.stop).toHaveBeenCalledOnce();
+      expect(fixture.recorder.dispose).toHaveBeenCalledOnce();
+    });
+    relinquish?.();
+    await flush();
+    expect(fixture.controller.getSnapshot().kind).toBe("idle");
+    expect(fixture.lease.release).toHaveBeenCalledOnce();
+    expect(fixture.completion.apply).not.toHaveBeenCalled();
+  });
+
+  it("relinquishes permission-stage capture and stops a later microphone without reviving it", async () => {
+    let resolveStream: (stream: MediaStream) => void = () => undefined;
+    const stream = new Promise<MediaStream>((resolve) => {
+      resolveStream = resolve;
+    });
+    const fixture = createFixture({ acquire: () => stream });
+    const starting = fixture.controller.start({ surface: "composer", gesture: "click" });
+    await flush();
+    fixture.lease.acquire.mock.calls[0]?.[2]();
+    await flush();
+    expect(fixture.controller.getSnapshot().kind).toBe("idle");
+    resolveStream(fixture.stream);
+    await starting;
+    expect(fixture.track.stop).toHaveBeenCalledOnce();
+    expect(fixture.recorder.start).not.toHaveBeenCalled();
+    expect(fixture.lease.release).toHaveBeenCalledOnce();
+  });
+
   it("stops a late microphone stream after release during acquisition", async () => {
     let resolveStream: (stream: MediaStream) => void = () => undefined;
     const acquisition = new Promise<MediaStream>((resolve) => {

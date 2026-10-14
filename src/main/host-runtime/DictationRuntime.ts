@@ -36,7 +36,7 @@ import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
 import { MainConfig } from "../app/MainConfig";
 import { CodexPlatform } from "../app/CodexApplicationLive";
 import { ClipboardSafePasteService } from "../dictation/clipboard-safe-paste-service";
-import { DictationMicrophoneLease } from "../dictation/dictation-microphone-lease";
+import { makeSharedMicrophoneAuthority } from "../dictation/SharedMicrophoneAuthority";
 import { makeDictationHotkeyCapture } from "../dictation/DictationHotkeyCapture";
 import { FileDictationRecordingStore } from "../dictation/dictation-recording-store";
 import { DictationSettingsStore } from "../dictation/dictation-settings-store";
@@ -102,6 +102,11 @@ export class DictationRuntime extends Context.Service<
       readonly webContentsId: number;
       readonly sessionId: string;
       readonly surface: DictationSurface;
+      readonly relinquish: Effect.Effect<void>;
+    }) => Effect.Effect<boolean>;
+    readonly acquireVoiceMicrophone: (input: {
+      readonly webContentsId: number;
+      readonly sessionId: string;
     }) => Effect.Effect<boolean>;
     readonly releaseMicrophone: (
       webContentsId: number,
@@ -194,7 +199,7 @@ export const live = (options: {
       const events = yield* PubSub.sliding<void>(MAIN_OBSERVATION_EVENT_CAPACITY);
       const settings = new DictationSettingsStore(config.nodexHome);
       const recordings = new FileDictationRecordingStore({ profileRoot: config.nodexHome });
-      const microphone = new DictationMicrophoneLease();
+      const microphone = yield* makeSharedMicrophoneAuthority;
       const permission = createSystemMicrophonePermissionService({
         platform: config.platform as NodeJS.Platform,
         systemPreferences: privacy.systemPreferences,
@@ -357,7 +362,7 @@ export const live = (options: {
       return DictationRuntime.of({
         changes: Stream.fromPubSub(events),
         globalAvailable: () => globalManager?.isAvailable() ?? false,
-        microphoneOwner: () => (microphone.getOwner() ? "dictation" : "none"),
+        microphoneOwner: () => microphone.readOwner()?.kind ?? "none",
         setEnabled: (enabled) =>
           globalManager
             ? attemptPromise("set-global-dictation-enabled", () =>
@@ -396,7 +401,20 @@ export const live = (options: {
         requestMicrophoneAccess: attemptPromise("request-microphone-access", () =>
           permission.requestAccess(),
         ),
-        acquireMicrophone: (input) => Effect.sync(() => microphone.acquire(input)),
+        acquireMicrophone: (input) =>
+          Effect.sync(() =>
+            microphone.acquireDictation(
+              {
+                kind: "dictation",
+                webContentsId: input.webContentsId,
+                sessionId: input.sessionId,
+                surface: input.surface,
+              },
+              input.relinquish,
+            ),
+          ),
+        acquireVoiceMicrophone: (input) =>
+          microphone.acquireVoice({ ...input, kind: "realtime-voice" }),
         releaseMicrophone: (webContentsId, sessionId) =>
           Effect.sync(() => microphone.release(webContentsId, sessionId)),
         readMicrophoneRouteHint: globalManager

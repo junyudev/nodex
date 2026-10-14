@@ -204,6 +204,7 @@ describe("GlobalDictationRoot", () => {
         value: {
           invoke,
           sendEvent,
+          onMicrophoneRelinquish: () => () => undefined,
           onCommand: (handler: (command: GlobalDictationRendererCommand) => void) => {
             handlers.add(handler);
             return () => handlers.delete(handler);
@@ -335,6 +336,7 @@ describe("GlobalDictationRoot", () => {
         value: {
           invoke,
           sendEvent,
+          onMicrophoneRelinquish: () => () => undefined,
           onCommand: (callback: (command: GlobalDictationRendererCommand) => void) => {
             commandHandlers.add(callback);
             return () => commandHandlers.delete(callback);
@@ -410,6 +412,7 @@ describe("GlobalDictationRoot", () => {
                   dictionary: [],
                 }
               : null,
+        onMicrophoneRelinquish: () => () => undefined,
         onCommand: (callback: (typeof commandHandlers)[number]) => {
           commandHandlers.push(callback);
           return () => {

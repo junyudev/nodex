@@ -21,6 +21,10 @@ import { transcribeDictationBlob } from "./dictation-buffered-client";
 import { createDictationHistoryPort } from "./dictation-history-client";
 import { browserDictationRecorderFactory } from "./dictation-recorder";
 import {
+  createDictationMicrophoneLeaseClient,
+  subscribeDictationMicrophoneRelinquish,
+} from "./dictation-microphone-lease-client";
+import {
   DictationSessionController,
   type DictationControllerPorts,
   type DictationRecovery,
@@ -375,13 +379,14 @@ export function GlobalDictationRoot() {
     () =>
       new DictationSessionController({
         recordingDurationLimitMs: null,
-        lease: {
+        lease: createDictationMicrophoneLeaseClient({
           acquire: async (sessionId, surface) =>
             await globalDictationTransport.acquireMicrophoneLease({ sessionId, surface }),
           release: async (sessionId) => {
             await globalDictationTransport.releaseMicrophoneLease(sessionId);
           },
-        },
+          subscribeRelinquish: subscribeDictationMicrophoneRelinquish,
+        }),
         permissions: {
           request: globalDictationTransport.requestMicrophoneAccess,
         },

@@ -1898,6 +1898,38 @@ export interface IpcApi {
   };
 
   // Codex
+  "codex:realtime-voice:read": {
+    args: [target: import("./codex-realtime-voice").CodexRealtimeVoiceTarget];
+    result: import("./codex-realtime-voice").CodexRealtimeVoiceReadResult;
+  };
+  "codex:realtime-voice:prepare": {
+    args: [target: import("./codex-realtime-voice").CodexRealtimeVoiceTarget];
+    result: import("./codex-realtime-voice").CodexRealtimeVoiceGrant;
+  };
+  "codex:realtime-voice:start": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceStartInput];
+    result: void;
+  };
+  "codex:realtime-voice:report-media": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceMediaInput];
+    result: void;
+  };
+  "codex:realtime-voice:set-muted": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceMuteInput];
+    result: void;
+  };
+  "codex:realtime-voice:stop": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceClaimInput];
+    result: void;
+  };
+  "codex:realtime-voice:release": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceClaimInput];
+    result: boolean;
+  };
+  "codex:realtime-voice:append-text": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceAppendTextInput];
+    result: void;
+  };
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
   "codex:visualization:capture-image": {
@@ -2942,6 +2974,8 @@ export interface IpcApi {
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
+  "dictation:microphone-relinquish": { readonly sessionId: string };
   "workbench-agent:request": WorkbenchAgentRequest;
   "workbench-agent:cancel": WorkbenchAgentCancel;
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;

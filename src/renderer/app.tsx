@@ -1,3 +1,4 @@
+import { RealtimeVoiceWindowProvider } from "@/features/realtime-voice/realtime-voice-window";
 import { useEffect, useState } from "react";
 import { CoreAuthorityStatusNotice } from "@/components/core-authority-status";
 import { NodexToastProvider } from "@/components/ui/toast";
@@ -82,40 +83,42 @@ export default function App({ windowSessionBootstrap }: AppProps) {
   return (
     <NodexToastProvider>
       <LocalConversationProvider>
-        <InlineVisualizationWindowProvider>
-          <InlineVisualizationWindowLifecycle />
-          <DesktopNotificationPermissionBootstrap />
-          <LocalConversationViewStateCleanupController />
-          <HeartbeatAutomationController />
-          <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
-          <CoreAuthorityStatusNotice
-            status={
-              coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
-                ? READY_CORE_AUTHORITY_STATUS
-                : coreAuthorityStatus
-            }
-            onRetry={retryCoreAuthority}
-            onRelaunch={relaunchForCoreAuthority}
-          />
-          {appUpdateStatus?.status === "downloaded" &&
-          dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
-            <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
-              <div className="pointer-events-auto">
-                <AppUpdateRestartNotice
-                  status={appUpdateStatus}
-                  onDismiss={() => {
-                    setDismissedUpdateVersion(appUpdateStatus.availableVersion);
-                  }}
-                  onRestart={() => {
-                    void installAppUpdate();
-                  }}
-                />
+        <RealtimeVoiceWindowProvider>
+          <InlineVisualizationWindowProvider>
+            <InlineVisualizationWindowLifecycle />
+            <DesktopNotificationPermissionBootstrap />
+            <LocalConversationViewStateCleanupController />
+            <HeartbeatAutomationController />
+            <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />
+            <CoreAuthorityStatusNotice
+              status={
+                coreAuthorityStatus.kind === "recovering" && !showRecoveringCoreAuthority
+                  ? READY_CORE_AUTHORITY_STATUS
+                  : coreAuthorityStatus
+              }
+              onRetry={retryCoreAuthority}
+              onRelaunch={relaunchForCoreAuthority}
+            />
+            {appUpdateStatus?.status === "downloaded" &&
+            dismissedUpdateVersion !== appUpdateStatus.availableVersion ? (
+              <div className="pointer-events-none fixed inset-x-3 bottom-14 z-[61] flex justify-center">
+                <div className="pointer-events-auto">
+                  <AppUpdateRestartNotice
+                    status={appUpdateStatus}
+                    onDismiss={() => {
+                      setDismissedUpdateVersion(appUpdateStatus.availableVersion);
+                    }}
+                    onRestart={() => {
+                      void installAppUpdate();
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          ) : null}
-          <MermaidDiagramModalController />
-          <NodexModalHost />
-        </InlineVisualizationWindowProvider>
+            ) : null}
+            <MermaidDiagramModalController />
+            <NodexModalHost />
+          </InlineVisualizationWindowProvider>
+        </RealtimeVoiceWindowProvider>
       </LocalConversationProvider>
     </NodexToastProvider>
   );

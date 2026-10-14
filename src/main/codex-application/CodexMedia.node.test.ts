@@ -80,6 +80,23 @@ vi.mock("../dictation/DictationPolicy", async () => {
   );
   return { makeDictationPolicy: Effect.succeed({ read, refresh: read, changes: Stream.empty }) };
 });
+vi.mock("../platform/electron/ElectronNet", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../platform/electron/ElectronNet")>();
+  const Effect = await import("effect/Effect");
+  return {
+    ...original,
+    readDesktopBootstrapMetadata: Effect.succeed({
+      app_session_id: "00000000-0000-0000-0000-000000000000",
+      app_version: "test",
+      brand_name: "chatgpt",
+      build_flavor: "dev",
+      locale: "zh-SG",
+      system_name: "macOS",
+      system_version: null,
+      window_type: "electron",
+    }),
+  };
+});
 beforeEach(() => {
   policyFlags.composer = true;
   policyFlags.global = true;
@@ -680,6 +697,45 @@ it.effect(
         ),
       );
       assert.strictEqual(policyFlags.authReads, 0);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "reads the Voice preference through Main's expected account and falls back on invalid responses",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const requests: Parameters<ChatGptDesktop["Service"]["request"]>[0][] = [];
+      let response: Effect.Effect<Response, ChatGptDesktopAuthError> = Effect.succeed(
+        new Response(JSON.stringify({ selected: "fathom" })),
+      );
+      const context = yield* build(
+        desktop({
+          request: (input) => {
+            requests.push(input);
+            return response;
+          },
+        }),
+        scope,
+      );
+      const media = Context.get(context, CodexMedia);
+      const expected = { accountId: "account", userId: "user" };
+      assert.strictEqual(yield* media.readRealtimeVoicePreference(expected), "fathom");
+      assert.deepEqual(requests[0]?.expectedAccount, expected);
+      assert.strictEqual(requests[0]?.baseUrl, "https://chatgpt.test");
+      const url = new URL(requests[0]!.path, "https://chatgpt.test");
+      assert.strictEqual(url.pathname, "/settings/voices");
+      assert.strictEqual(url.searchParams.get("spoken_language"), "zh-SG");
+      assert.strictEqual(url.searchParams.get("voice_mode"), "advanced");
+      for (const payload of [{ selected: null }, { selected: 42 }, {}]) {
+        response = Effect.succeed(new Response(JSON.stringify(payload)));
+        assert.isNull(yield* media.readRealtimeVoicePreference(expected));
+      }
+      response = Effect.succeed(new Response("denied", { status: 401 }));
+      assert.isNull(yield* media.readRealtimeVoicePreference(expected));
+      response = Effect.fail(new ChatGptDesktopAuthError({ message: "Account retired" }));
+      assert.isNull(yield* media.readRealtimeVoicePreference(expected));
       yield* Scope.close(scope, Exit.void);
     }),
 );

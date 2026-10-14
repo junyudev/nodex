@@ -134,6 +134,75 @@ it.effect("publishes live overlays without replacing non-live session values", (
   }).pipe(Effect.scoped),
 );
 
+it.effect("uses the same account SDK for Voice policy and publishes live Voice changes", () =>
+  Effect.gen(function* () {
+    const payload = encodeJson({
+      has_updates: true,
+      user,
+      time: 1,
+      hash_used: "none",
+      sdk_configs: { live_values_auto_refresh_interval_seconds: 1 },
+      feature_gates: {
+        "4100906017": { value: true },
+        "2380644311": { value: true },
+        "1697652030": { value: false },
+        "206132468": { value: false },
+      },
+      dynamic_configs: {
+        "1193530394": { value: { existing_thread_voice_enabled: true } },
+        "3566525122": { value: { model: "configured-model", version: "v3" } },
+      },
+      layer_configs: {},
+    });
+    let refreshes = 0;
+    const client = yield* makeDictationPolicyClient({
+      user,
+      bootstrap: payload,
+      metadata,
+      signal: yield* Effect.abortSignal,
+    }).pipe(
+      provide((_url, init) =>
+        Effect.sync(() => {
+          const request = decodeRequest(init.body);
+          assert.deepEqual(request.user, user);
+          assert.isFalse(new Headers(init.headers).has("Authorization"));
+          if (request.responseMode !== "live_overlay")
+            return new Response(encodeJson({ has_updates: false }));
+          refreshes++;
+          return new Response(
+            encodeJson({
+              response_mode: "live_overlay",
+              time: 2,
+              live_entity_names: { feature_gates: ["2380644311"], dynamic_configs: [] },
+              feature_gates: { "2380644311": { value: false } },
+            }),
+          );
+        }),
+      ),
+    );
+    assert.deepEqual(yield* client.readRealtime, {
+      entryPoint: true,
+      blocked: false,
+      clientOwnedCall: false,
+      config: { existing_thread_voice_enabled: true },
+      sessionConfig: { model: "configured-model", version: "v3" },
+    });
+    assert.isTrue((yield* client.read).composer);
+    yield* TestClock.adjust("1 second");
+    const revised = yield* client.realtimeChanges.pipe(
+      Stream.filter((value) => !value.entryPoint),
+      Stream.runHead,
+    );
+    assert.strictEqual(revised._tag, "Some");
+    assert.strictEqual(refreshes, 1);
+    assert.isTrue((yield* client.read).composer);
+    assert.deepEqual((yield* client.readRealtime).sessionConfig, {
+      model: "configured-model",
+      version: "v3",
+    });
+  }).pipe(Effect.scoped),
+);
+
 it.effect(
   "initializes the SDK fallback with authenticated identity independently of analytics",
   () =>

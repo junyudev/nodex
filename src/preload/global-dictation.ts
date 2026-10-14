@@ -55,6 +55,19 @@ contextBridge.exposeInMainWorld("globalDictation", {
   },
   sendEvent: (event: GlobalDictationRendererEvent) =>
     ipcRenderer.invoke("global-dictation:event", event) as Promise<boolean>,
+  onMicrophoneRelinquish: (callback: (sessionId: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        "sessionId" in value &&
+        typeof value.sessionId === "string"
+      )
+        callback(value.sessionId);
+    };
+    ipcRenderer.on("dictation:microphone-relinquish", listener);
+    return () => ipcRenderer.removeListener("dictation:microphone-relinquish", listener);
+  },
   showContextMenu: () =>
     ipcRenderer.invoke(
       "global-dictation:context-menu",

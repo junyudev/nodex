@@ -1,3 +1,4 @@
+import { CodexRealtimeVoice } from "./CodexRealtimeVoice";
 import { CodexResumeIngress, make as makeResumeIngress } from "./CodexResumeIngress";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
@@ -160,6 +161,7 @@ const withProtocol = <A, E>(
     readonly publishedEvents: CodexApplicationEvent[];
     readonly appliedNotifications: string[];
     readonly observedNotifications: string[];
+    readonly realtimeControls: { source: unknown; notification: unknown }[];
     readonly appliedThreadStartedTurns: (readonly unknown[])[];
     readonly appliedTurnStartedItems: (readonly unknown[])[];
     readonly protocol: CodexApplicationProtocol["Service"];
@@ -196,6 +198,7 @@ const withProtocol = <A, E>(
     const conversationContext = yield* Layer.buildWithScope(conversationRuntimeMapLive, rootScope);
     const conversations = Context.get(conversationContext, ConversationEntityMap);
     const deletedThreads: string[] = [];
+    const realtimeControls: { source: unknown; notification: unknown }[] = [];
     const commandContext = yield* Layer.buildWithScope(
       commandsLive.pipe(
         Layer.provide(
@@ -335,6 +338,12 @@ const withProtocol = <A, E>(
       Effect.provideService(Scope.Scope, rootScope),
     );
     const protocol = yield* makeProtocol.pipe(
+      Effect.provideService(CodexRealtimeVoice, {
+        observeNative: (source: unknown, notification: unknown) =>
+          Effect.sync(() => {
+            realtimeControls.push({ source, notification });
+          }),
+      } as CodexRealtimeVoice["Service"]),
       Effect.provideService(CodexResumeIngress, resumeIngress),
       Effect.provideService(CodexApplicationEventHub, observedApplicationEvents),
       Effect.provideService(CodexAppProtocolTools, codexAppTools),
@@ -388,6 +397,7 @@ const withProtocol = <A, E>(
       autoResolution,
       appliedNotifications,
       observedNotifications,
+      realtimeControls,
       appliedThreadStartedTurns,
       appliedTurnStartedItems,
       inbox,
@@ -1270,4 +1280,52 @@ it.effect("clears an earlier optional request countdown when a blocking question
       yield* Scope.close(generationScope, Exit.void);
     }),
   ),
+);
+
+it.effect(
+  "delivers reliable realtime startup controls through the existing occurrence interpreter",
+  () =>
+    withProtocol(({ inbox, realtimeControls, observedNotifications }) =>
+      Effect.gen(function* () {
+        const generationScope = yield* Scope.make();
+        yield* inbox
+          .openGeneration("local", 8)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const messages = [
+          {
+            method: "thread/realtime/started",
+            params: { threadId: "voice", realtimeSessionId: "session", version: "v1" },
+          },
+          { method: "thread/realtime/sdp", params: { threadId: "voice", sdp: "native-answer" } },
+          {
+            method: "thread/realtime/error",
+            params: { threadId: "voice", message: "native-failure" },
+          },
+          {
+            method: "thread/realtime/closed",
+            params: { threadId: "voice", reason: "transport_closed" },
+          },
+        ] as const;
+        for (const message of messages)
+          yield* inbox.publishNotification({
+            hostId: "local",
+            generation: 8,
+            protocol: "generated",
+            ...message,
+          });
+        for (let index = 0; index < 100 && realtimeControls.length < 4; index++)
+          yield* Effect.yieldNow;
+        assert.strictEqual(realtimeControls.length, 4);
+        assert.deepStrictEqual(
+          realtimeControls.map(({ notification }) => notification),
+          [...messages],
+        );
+        assert.deepStrictEqual(
+          observedNotifications,
+          messages.map(({ method }) => method),
+        );
+        for (const { source } of realtimeControls) assert.propertyVal(source, "generation", 8);
+        yield* Scope.close(generationScope, Exit.void);
+      }),
+    ),
 );

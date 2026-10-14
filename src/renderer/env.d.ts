@@ -110,6 +110,7 @@ declare global {
     globalDictation?: {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       onCommand: (callback: (command: GlobalDictationRendererCommand) => void) => () => void;
+      onMicrophoneRelinquish: (callback: (sessionId: string) => void) => () => void;
       sendEvent: (event: GlobalDictationRendererEvent) => Promise<boolean>;
       showContextMenu: () => Promise<GlobalDictationContextMenuAction>;
     };

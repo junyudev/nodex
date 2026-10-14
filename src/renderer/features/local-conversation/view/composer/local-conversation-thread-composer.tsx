@@ -1,3 +1,5 @@
+import { useComposerRealtimeVoice } from "@/features/realtime-voice/realtime-voice-window";
+import { RealtimeVoiceControls } from "@/features/realtime-voice/realtime-voice-controls";
 import { supportsConversationProviderControl } from "../../conversation-provider-controls";
 import { useComposerPrediction } from "./use-composer-prediction";
 import {
@@ -2321,7 +2323,16 @@ function HydratedThreadComposer({
       typeof MediaRecorder !== "undefined",
     [model.dictation.capabilities.composer, model.dictation.isEnabled],
   );
-  const isRealtimeVoiceActive = model.dictation.capabilities.microphoneOwner === "realtime-voice";
+  const realtimeVoice = useComposerRealtimeVoice(
+    model.conversation &&
+      !model.isCloudNewThreadTarget &&
+      (model.provider === null || model.provider === undefined || model.provider.kind === "codex")
+      ? { hostId: model.hostId, threadId: model.conversation.threadId }
+      : null,
+  );
+  const isRealtimeVoiceActive =
+    model.dictation.capabilities.microphoneOwner === "realtime-voice" ||
+    realtimeVoice.phase !== "inactive";
 
   const insertDictationTranscript = async (transcript: string): Promise<string | null> => {
     const editor = dictationEditorRef.current ?? promptEditorRef.current;
@@ -3763,6 +3774,7 @@ function HydratedThreadComposer({
           onSelect={actions.onPermissionModeChange}
         />
       ) : null}
+      <RealtimeVoiceControls voice={realtimeVoice} />
       {dictationControl}
       {primaryActionControl}
     </div>
@@ -3798,6 +3810,7 @@ function HydratedThreadComposer({
         <div className="flex min-w-0 items-center gap-1">{intelligenceControls}</div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        <RealtimeVoiceControls voice={realtimeVoice} />
         {dictationControl}
         {primaryActionControl}
       </div>
