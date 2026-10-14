@@ -108,6 +108,7 @@ test("decodes captured file media, preserves grouped image identity through term
   });
   const content =
     "![One](/media/one.png)\n\n![Two](/media/two.png)\n\n## Playback\n\n![Silent](/media/silent.wav)\n\n![Synthetic video](/media/clip.webm)";
+  const revokeSource = vi.spyOn(URL, "revokeObjectURL");
   const client = createTestQueryClient();
   const tree = (streaming: boolean, value = content) => (
     <TestQueryProvider client={client}>
@@ -137,7 +138,8 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(image.getBoundingClientRect().height).toBeLessThanOrEqual(160.5);
     expect(view.container.querySelectorAll('[data-markdown-image-grid="true"]')).toHaveLength(1);
     const streamingAudio = await view.findByLabelText("Silent");
-    const streamingVideo = await view.findByLabelText("Synthetic video");
+    await waitFor(() => expect(view.getByLabelText("Synthetic video").tagName).toBe("VIDEO"));
+    const streamingVideo = view.getByLabelText("Synthetic video");
     const button = view.getByRole("button", { name: "One" });
     await act(async () => {
       button.focus();
@@ -176,6 +178,9 @@ test("decodes captured file media, preserves grouped image identity through term
     await waitFor(() => expect(video.videoWidth).toBe(640));
     expect(video.videoHeight).toBe(400);
     expect(video.controls).toBe(false);
+    const decodedVideoUrl = video.getAttribute("src");
+    expect(decodedVideoUrl?.startsWith("blob:")).toBe(true);
+    expect(video.currentSrc).toBe(decodedVideoUrl);
     await click(view.getByRole("button", { name: "Play video" }));
     await waitFor(() => expect(video.paused).toBe(false));
     await click(view.getByRole("button", { name: "Pause video" }));
@@ -202,6 +207,7 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(audio.getAttribute("src")).toBeNull();
     expect(video.getAttribute("src")).toBeNull();
     expect(video.paused).toBe(true);
+    expect(revokeSource.mock.calls.filter(([url]) => url === decodedVideoUrl)).toHaveLength(1);
   } finally {
     view.unmount();
     vi.restoreAllMocks();

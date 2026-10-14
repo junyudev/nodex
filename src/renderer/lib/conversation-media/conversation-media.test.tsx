@@ -222,6 +222,7 @@ describe("ordinary conversation media", () => {
       );
     const view = render(tree(1));
     const audio = view.getByLabelText("Song");
+    await waitFor(() => expect(view.getByLabelText("Clip").tagName).toBe("VIDEO"));
     const video = view.getByLabelText("Clip");
     const audioUrl = audio.getAttribute("src");
     const videoUrl = video.getAttribute("src");
@@ -273,6 +274,7 @@ describe("ordinary conversation media", () => {
         <ConversationMedia src="/local/clip.mp4" alt="Clip" />,
       ),
     );
+    await waitFor(() => expect(view.getByLabelText("Clip").tagName).toBe("VIDEO"));
     const video = view.getByLabelText("Clip") as HTMLVideoElement;
     Object.defineProperty(video, "duration", { configurable: true, value: 125 });
     await act(async () => {

@@ -1,7 +1,7 @@
 import {
+  Suspense,
   createContext,
   useContext,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -15,19 +15,15 @@ import type { Components } from "streamdown";
 import {
   DownloadIcon,
   ImageIcon,
+  LoadingIcon,
   MoreActionsIcon,
   PauseIcon,
   PlayIcon,
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
-import {
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownRadioGroup,
-  NodexDropdownRadioItem,
-  NodexDropdownSectionLabel,
-} from "@/components/ui/dropdown";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import { LazyConversationVideoPlayer } from "./conversation-video-lazy";
+import { displayTime, safeDuration, seekMedia } from "./conversation-media-playback";
 import { writeTextToClipboard } from "../clipboard";
 import { openExternalUrl } from "../file-system-operations";
 import { workspaceFileBinaryQueryOptions } from "../query-options";
@@ -186,6 +182,7 @@ interface MediaResource {
   readonly url: string | null;
   readonly path: string | null;
   readonly isCurrent: () => boolean;
+  readonly canMount: () => boolean;
 }
 function useMediaLifetime(raw: string) {
   const source = useContext(MediaContext)?.source ?? null;
@@ -209,7 +206,8 @@ function useMediaLifetime(raw: string) {
   }, [identity]);
   const isCurrent = () => lifetime.current === identity && (!source || source.isCurrent());
   const isResourceCurrent = () => Boolean(source?.isResourceCurrent());
-  return { target, identity, isCurrent, isResourceCurrent };
+  const canMount = () => !source || source.isResourceCurrent();
+  return { target, identity, isCurrent, isResourceCurrent, canMount };
 }
 
 async function readFileMedia(
@@ -271,6 +269,7 @@ function ConversationFileMedia({
         : null,
     path: target.path,
     isCurrent,
+    canMount: isResourceCurrent,
   };
   return (
     <ConversationMediaContent resource={resource} raw={raw} kind={kind} alt={alt} title={title} />
@@ -335,7 +334,7 @@ export function ConversationMedia({
 }) {
   const raw = src ?? "";
   const kind = classifyConversationMedia(raw);
-  const { target, identity, isCurrent, isResourceCurrent } = useMediaLifetime(raw);
+  const { target, identity, isCurrent, isResourceCurrent, canMount } = useMediaLifetime(raw);
   const badge = conversationMediaBadge(raw);
   if (!raw) return null;
   if (badge)
@@ -359,13 +358,14 @@ export function ConversationMedia({
     );
   const resource: MediaResource =
     target.kind === "blocked"
-      ? { identity, status: "error", url: null, path: null, isCurrent }
+      ? { identity, status: "error", url: null, path: null, isCurrent, canMount }
       : {
           identity,
           status: "ready",
           url: target.url,
           path: target.kind === "stream" ? target.path : null,
           isCurrent,
+          canMount,
         };
   return (
     <ConversationMediaContent resource={resource} raw={raw} kind={kind} alt={alt} title={title} />
@@ -406,7 +406,7 @@ function ConversationMediaContent({
   return kind === "image" ? (
     <ConversationImage resource={resource} raw={raw} alt={alt} title={title} />
   ) : (
-    <ConversationPlayableMedia
+    <ConversationVideo
       key={`${resource.identity}:${resource.url}`}
       resource={resource}
       raw={raw}
@@ -419,14 +419,20 @@ function MediaUnavailable({
   resource,
   label,
   title,
+  loading = false,
 }: {
   resource: MediaResource;
   label: string;
   title?: string;
+  loading?: boolean;
 }) {
   const wide = useContext(WideMediaContext);
   const className = `my-3 inline-flex min-h-24 min-w-24 max-w-full items-center justify-center rounded-md bg-token-foreground/5 p-0 text-token-description-foreground ${wide && resource.path ? "max-h-40" : "max-h-[min(48vh,32rem)]"}`;
-  const image = <ImageIcon className="icon-md" aria-hidden="true" />;
+  const image = loading ? (
+    <LoadingIcon className="icon-md animate-spin" aria-hidden="true" />
+  ) : (
+    <ImageIcon className="icon-md" aria-hidden="true" />
+  );
   return (
     <NodexTooltip tooltipContent={title}>
       <span role="status" data-content-search-skip="true">
@@ -622,27 +628,6 @@ function MediaDownload({
   );
 }
 
-const safeDuration = (value: number) => (Number.isFinite(value) && value > 0 ? value : 0);
-const displayTime = (value: number) => {
-  const seconds = Math.floor(safeDuration(value));
-  return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, "0")}`;
-};
-
-// Native media handles are mutable platform resources, separate from playback snapshots.
-function seekMedia(element: HTMLMediaElement, time: number) {
-  element.currentTime = time;
-  return element.currentTime;
-}
-function toggleMediaMuted(element: HTMLMediaElement) {
-  element.muted = !element.muted;
-}
-function setMediaVolume(element: HTMLMediaElement, volume: number) {
-  element.volume = volume;
-  element.muted = false;
-}
-function setMediaPlaybackRate(element: HTMLMediaElement, rate: number) {
-  element.playbackRate = rate;
-}
 function ConversationAudio({
   resource,
   raw,
@@ -810,269 +795,37 @@ function ConversationAudio({
   );
 }
 
-function ConversationPlayableMedia({
+function ConversationVideo({
   resource,
   raw,
   alt,
   title,
 }: {
-  resource: MediaResource;
-  raw: string;
-  alt: string;
-  title?: string;
+  readonly resource: MediaResource;
+  readonly raw: string;
+  readonly alt: string;
+  readonly title?: string;
 }) {
-  const [failed, setFailed] = useState<string | null>(null);
-  const [element, setElement] = useState<HTMLVideoElement | null>(null);
-  const [container, setContainer] = useState<HTMLSpanElement | null>(null);
-  const [playback, setPlayback] = useState({
-    playing: false,
-    time: 0,
-    duration: 0,
-    volume: 1,
-    muted: false,
-    rate: 1,
-  });
-  const [fullscreen, setFullscreen] = useState(false);
-  const [actionFailed, setActionFailed] = useState(false);
-  const seeking = useRef<{ readonly pointerId: number; readonly wasPlaying: boolean } | null>(null);
   const { save, current: download } = useMediaDownload(resource, raw);
-  useLayoutEffect(
-    () => () => {
-      // Consumer retirement stops playback and releases a decoder's reference to the old source.
-      if (!element) return;
-      element.pause();
-      element.removeAttribute("src");
-      element.load();
-      seeking.current = null;
-    },
-    [element],
+  const fallback = (
+    <MediaUnavailable resource={resource} label={alt || "Video unavailable"} title={title} />
   );
-  useEffect(() => {
-    if (!container) return;
-    const changed = () => setFullscreen(container.ownerDocument.fullscreenElement === container);
-    container.ownerDocument.addEventListener("fullscreenchange", changed);
-    return () => container.ownerDocument.removeEventListener("fullscreenchange", changed);
-  }, [container]);
-  const update = (patch: Partial<typeof playback>) =>
-    setPlayback((current) => ({ ...current, ...patch }));
-  const action = async (perform: () => Promise<unknown>) => {
-    if (!resource.isCurrent()) return;
-    setActionFailed(false);
-    try {
-      await perform();
-    } catch {
-      if (resource.isCurrent()) setActionFailed(true);
-    }
-  };
-  const toggle = () => {
-    if (!element || !resource.isCurrent()) return;
-    if (element.paused) void action(() => element.play());
-    else element.pause();
-  };
-  const finishSeek = (pointerId: number) => {
-    const current = seeking.current;
-    if (!current || current.pointerId !== pointerId) return;
-    seeking.current = null;
-    if (current.wasPlaying && element && resource.isCurrent()) void action(() => element.play());
-  };
-  if (failed === resource.identity)
-    return (
-      <MediaUnavailable resource={resource} label={alt || "Video unavailable"} title={title} />
-    );
-  const props = {
-    ref: setElement,
-    src: resource.url ?? undefined,
-    preload: "metadata",
-    "aria-label": alt || "Video",
-    onError: () => setFailed(resource.identity),
-  } as const;
   return (
-    <NodexTooltip tooltipContent={title}>
-      <span
-        ref={setContainer}
-        className="my-3 inline-flex max-h-[min(48vh,32rem)] max-w-[min(100%,44rem)] flex-col overflow-hidden rounded-md border border-token-border shadow-md [&:fullscreen]:m-0 [&:fullscreen]:h-full [&:fullscreen]:max-h-none [&:fullscreen]:w-full [&:fullscreen]:max-w-none [&:fullscreen]:rounded-none"
-        data-content-search-skip="true"
-      >
-        <video
-          {...props}
-          className="block min-h-0 w-full flex-1 object-contain"
-          playsInline
-          tabIndex={0}
-          onClick={toggle}
-          onKeyDown={(event) => {
-            if (event.key !== " " && event.key !== "Enter") return;
-            event.preventDefault();
-            if (!event.repeat) toggle();
-          }}
-          onDurationChange={(event) =>
-            update({ duration: safeDuration(event.currentTarget.duration) })
-          }
-          onTimeUpdate={(event) => update({ time: event.currentTarget.currentTime })}
-          onPlay={() => update({ playing: true })}
-          onPause={() => update({ playing: false })}
-          onEnded={() => update({ playing: false })}
-          onVolumeChange={(event) =>
-            update({ volume: event.currentTarget.volume, muted: event.currentTarget.muted })
-          }
-          onRateChange={(event) => update({ rate: event.currentTarget.playbackRate })}
-        />
-        <span className="flex flex-wrap items-center gap-2 border-t border-token-border px-2 py-1">
-          <button
-            type="button"
-            aria-label={playback.playing ? "Pause video" : "Play video"}
-            onClick={toggle}
-            className="rounded-md p-1.5"
-          >
-            {playback.playing ? (
-              <PauseIcon className="icon-sm" />
-            ) : (
-              <PlayIcon className="icon-sm" />
-            )}
-          </button>
-          <input
-            type="range"
-            aria-label="Seek in video"
-            aria-valuetext={`${displayTime(playback.time)} / ${displayTime(playback.duration)}`}
-            min={0}
-            max={playback.duration || 1}
-            step={0.1}
-            value={Math.min(playback.time, playback.duration || 1)}
-            disabled={playback.duration <= 0}
-            className="min-w-16 flex-1"
-            onPointerDown={(event) => {
-              if (
-                event.button !== 0 ||
-                !element ||
-                playback.duration <= 0 ||
-                seeking.current ||
-                !resource.isCurrent()
-              )
-                return;
-              seeking.current = { pointerId: event.pointerId, wasPlaying: !element.paused };
-              element.pause();
-            }}
-            onPointerUp={(event) => finishSeek(event.pointerId)}
-            onPointerCancel={(event) => finishSeek(event.pointerId)}
-            onLostPointerCapture={(event) => finishSeek(event.pointerId)}
-            onChange={(event) => {
-              if (element && resource.isCurrent()) {
-                update({ time: seekMedia(element, event.currentTarget.valueAsNumber) });
-              }
-            }}
-          />
-          <span className="text-xs tabular-nums">
-            {displayTime(playback.time)} / {displayTime(playback.duration)}
-          </span>
-          <NodexPopover>
-            <NodexPopoverTrigger>
-              <button type="button" aria-label="Video volume" className="rounded-md px-1.5 text-xs">
-                Volume
-              </button>
-            </NodexPopoverTrigger>
-            <NodexPopoverContent
-              side="top"
-              align="end"
-              portalContainer={fullscreen ? container : undefined}
-              aria-label="Video volume"
-              className="w-44 flex-row items-center gap-2 p-2"
-            >
-              <button
-                type="button"
-                aria-label={playback.muted ? "Unmute video" : "Mute video"}
-                aria-pressed={playback.muted}
-                onClick={() => {
-                  if (element && resource.isCurrent()) toggleMediaMuted(element);
-                }}
-                className="rounded-md px-1.5 text-xs"
-              >
-                {playback.muted ? "Unmute" : "Mute"}
-              </button>
-              <input
-                type="range"
-                aria-label="Volume"
-                aria-valuetext={`${Math.round((playback.muted ? 0 : playback.volume) * 100)}%`}
-                min={0}
-                max={1}
-                step={0.01}
-                value={playback.muted ? 0 : playback.volume}
-                className="min-w-0 flex-1"
-                onChange={(event) => {
-                  if (element && resource.isCurrent()) {
-                    setMediaVolume(element, event.currentTarget.valueAsNumber);
-                  }
-                }}
-              />
-            </NodexPopoverContent>
-          </NodexPopover>
-          <NodexDropdownMenu
-            align="end"
-            portalContainer={fullscreen ? container : undefined}
-            triggerButton={
-              <button type="button" aria-label="Video options" className="rounded-md p-1.5">
-                <MoreActionsIcon className="icon-sm" />
-              </button>
-            }
-          >
-            <NodexDropdownItem
-              disabled={download?.pending}
-              onSelect={() => {
-                void save();
-              }}
-            >
-              Save video as…
-            </NodexDropdownItem>
-            <NodexDropdownSectionLabel>Playback speed</NodexDropdownSectionLabel>
-            <NodexDropdownRadioGroup
-              value={String(playback.rate)}
-              onValueChange={(rate) => {
-                if (element && resource.isCurrent()) setMediaPlaybackRate(element, Number(rate));
-              }}
-            >
-              {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
-                <NodexDropdownRadioItem key={rate} value={String(rate)}>
-                  {rate}×
-                </NodexDropdownRadioItem>
-              ))}
-            </NodexDropdownRadioGroup>
-            {element?.ownerDocument.pictureInPictureEnabled ? (
-              <NodexDropdownItem
-                onSelect={() => {
-                  if (element)
-                    void action(() =>
-                      element.ownerDocument.pictureInPictureElement === element
-                        ? element.ownerDocument.exitPictureInPicture()
-                        : element.requestPictureInPicture(),
-                    );
-                }}
-              >
-                Picture in picture
-              </NodexDropdownItem>
-            ) : null}
-          </NodexDropdownMenu>
-          {container?.ownerDocument.fullscreenEnabled ? (
-            <button
-              type="button"
-              aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-              onClick={() => {
-                void action(() =>
-                  container.ownerDocument.fullscreenElement === container
-                    ? container.ownerDocument.exitFullscreen()
-                    : container.requestFullscreen(),
-                );
-              }}
-              className="rounded-md px-1.5 text-xs"
-            >
-              {fullscreen ? "Exit fullscreen" : "Fullscreen"}
-            </button>
-          ) : null}
-        </span>
-        {actionFailed || download?.failed ? (
-          <span role="status" className="px-2 pb-2 text-xs">
-            Video action failed
-          </span>
-        ) : null}
-      </span>
-    </NodexTooltip>
+    <Suspense
+      fallback={
+        <MediaUnavailable resource={resource} label={alt || "Video"} title={title} loading />
+      }
+    >
+      <LazyConversationVideoPlayer
+        resource={resource}
+        alt={alt}
+        title={title}
+        onSaveCopy={save}
+        downloadPending={download?.pending ?? false}
+        downloadFailed={download?.failed ?? false}
+        loadErrorFallback={fallback}
+      />
+    </Suspense>
   );
 }
 
