@@ -1,0 +1,36 @@
+src/renderer/lib/agent-model-selection.ts
+  s_85aa1fac1fed1a::t_417e94dd4e5c40 18-35
+src/renderer/components/ui/dropdown.tsx
+  s_85aa1fac1fed1a::t_0e360354ba63b2 746-747,936,1062
+src/renderer/lib/agent-model-selection.node.test.ts
+  s_85aa1fac1fed1a::t_d3d87d26837233 2-7,82-97
+  s_85aa1fac1fed1a::t_cd8ed567a77fec 98
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_85aa1fac1fed1a::t_ea336c24030f69 137
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_85aa1fac1fed1a::t_4e372c972c47d0 200,214-218,221-234,246,393-395,397,403-408,411-413
+  s_85aa1fac1fed1a::t_37caf38735ab56 219-220
+  s_85aa1fac1fed1a::t_b05741b59003b1 11-15,21-28,36,105-107,109,112-113,116-117,175-194
+src/renderer/components/shared/icons/provider-icons.tsx
+  s_85aa1fac1fed1a::t_1ed2c22dec66ab 1-47
+tests/e2e/opencode-backend-lifecycle.spec.ts
+  s_85aa1fac1fed1a::t_b7d341267d3ffc 112
+src/renderer/components/shared/icons/index.ts
+  s_85aa1fac1fed1a::t_1ed2c22dec66ab 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0e88439cbaa7ecd3c7bdbe879c37680aa73cca84",
+  "prompts": {},
+  "sessions": {
+    "s_85aa1fac1fed1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92727e07-b8ba-40f7-aac5-42473d56f479",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
