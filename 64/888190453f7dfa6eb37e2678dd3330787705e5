@@ -1,0 +1,39 @@
+scripts/audit-rust-core-boundaries.ts
+  s_0b88fd1fc800e4::t_b18ca1fdf4ae3d 170-171
+  s_0b88fd1fc800e4::t_5424481161551e 169
+src/renderer/components/shared/icons/guest-document-icons.ts
+  s_0b88fd1fc800e4::t_b18ca1fdf4ae3d 1-6
+  s_0b88fd1fc800e4::t_6a8879e98a9c8e 7
+src/renderer/lib/inline-visualization/inline-visualization-document.jsdom.test.ts
+  s_0b88fd1fc800e4::t_a6d1928807c185 355-366
+  s_0b88fd1fc800e4::t_550d1b003f053f 367-368
+scripts/audit-version-surfaces.ts
+  s_0b88fd1fc800e4::t_5424481161551e 534-538
+  s_0b88fd1fc800e4::t_513dce294368a5 533
+scripts/ci/icon-inline-svg-baseline.json
+  s_0b88fd1fc800e4::t_b18ca1fdf4ae3d 25-28
+src/renderer/components/shared/icons/app-icons.tsx
+  s_0b88fd1fc800e4::t_73a2c145ac594c 16
+src/renderer/lib/inline-visualization/inline-visualization-calendar.ts
+  s_0b88fd1fc800e4::t_93f40994ec34ec 1,5,216,236
+src/renderer/lib/inline-visualization/inline-visualization-document-helpers.ts
+  s_0b88fd1fc800e4::t_5f7f800e1b5453 1-2,400,427,597
+src/shared/icon-geometry.ts
+  s_0b88fd1fc800e4::t_08ac1f8cc1eb20 45-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64888190453f7dfa6eb37e2678dd3330787705e5",
+  "prompts": {},
+  "sessions": {
+    "s_0b88fd1fc800e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13874-eac5-7761-a82e-2a34d8a24f8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

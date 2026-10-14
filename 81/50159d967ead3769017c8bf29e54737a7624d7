@@ -1,0 +1,19 @@
+scripts/ci/verify-source-type-ownership.ts
+  s_0b88fd1fc800e4::t_e998e60d740156 110-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8150159d967ead3769017c8bf29e54737a7624d7",
+  "prompts": {},
+  "sessions": {
+    "s_0b88fd1fc800e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13874-eac5-7761-a82e-2a34d8a24f8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
