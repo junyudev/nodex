@@ -304,8 +304,10 @@ describe("LocalEnvironmentsSettingsPage", () => {
       throw new Error("Environment file could not be written");
     };
     const view = renderPage();
+    // Async queries manage their own act environment; resolve before entering the interaction.
+    const edit = await view.findByRole("button", { name: "Edit local environment" });
     await act(async () => {
-      fireEvent.click(await view.findByRole("button", { name: "Edit local environment" }));
+      fireEvent.click(edit);
       await Promise.resolve();
     });
     const name = view.getAllByRole("textbox", { name: "Name" })[0] as HTMLInputElement;

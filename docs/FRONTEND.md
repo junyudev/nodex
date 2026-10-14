@@ -483,6 +483,9 @@ evidence at the seam that owns the behavior:
 - Assert visible structure, accessibility, and behavior. Raw class checks,
   serialized markup, test IDs, and source inspection are fallback tools only
   when those representations are the real contract.
+- Resolve Testing Library `findBy*` and `waitFor` queries before entering a
+  manual async `act` interaction. Their async wrapper manages the React act
+  environment; nesting it inside `act` can invalidate that boundary.
 - Keep pure renderer logic in ordinary `.test.ts` files so it runs in Node.
   Name non-TSX tests that require browser globals `.jsdom.test.ts`; ordinary
   `.test.tsx` remains the React/jsdom path, while pure TSX uses
