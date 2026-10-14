@@ -4,7 +4,9 @@ import { directiveFromMarkdown } from "mdast-util-directive";
 import { gfm } from "micromark-extension-gfm";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import type { Nodes } from "mdast";
+import { readConversationDirectiveHeader } from "../../lib/markdown/conversation-directives";
 import {
+  CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES,
   prepareConversationVisualizationMarkers,
   readConversationMarkdownFence,
   type ConversationMarkdownFence,
@@ -24,6 +26,7 @@ interface CopyRootToken {
 }
 const visualizationName = /^::(codex-inline-vis|codex-live-vis)(?![\w-])/;
 const blockDeclaration = /^::((?:[a-zA-Z][\w-]*|[\{\[].*?[\}\]])+)/;
+const hiddenDirectiveNames = new Set<string>(CONVERSATION_MARKDOWN_HIDDEN_DIRECTIVES);
 
 function parseSource(source: string) {
   return fromMarkdown(source, {
@@ -35,6 +38,75 @@ function sourceRange(node: Nodes): SourceRange | null {
   const start = node.position?.start.offset;
   const end = node.position?.end.offset;
   return start === undefined || end === undefined ? null : { start, end };
+}
+
+/** Action metadata never enters whole-response Copy; authored examples stay literal. */
+function omitHiddenDirectiveLines(source: string): string {
+  if (!source.includes("::")) return source;
+  const root = parseSource(source);
+  const declarations = [...source.matchAll(/^ {0,3}::(?!:)[^\r\n]*/gm)].flatMap((line) => {
+    const content = line[0].trimStart().slice(2);
+    const header = readConversationDirectiveHeader(content);
+    if (!header || !hiddenDirectiveNames.has(header.name) || content.slice(header.cursor).trim())
+      return [];
+    return [{ start: line.index, end: line.index + line[0].length }];
+  });
+  if (declarations.length === 0) return source;
+  const protectedRanges = [
+    ...mathSourceRanges(source, root),
+    ...root.children.flatMap((node) => {
+      if (node.type === "paragraph" || node.type === "leafDirective") return [];
+      const range = sourceRange(node);
+      return range ? [range] : [];
+    }),
+  ];
+  const protectInlineCode = (node: Nodes): void => {
+    if (node.type === "code") return;
+    if (node.type === "inlineCode") {
+      const range = sourceRange(node);
+      if (range) protectedRanges.push(range);
+      return;
+    }
+    if ("children" in node) node.children.forEach(protectInlineCode);
+  };
+  // Action block syntax can interrupt multiline code spans. Copy protects the
+  // authored code before admitting that syntax, independently of body rendering.
+  if (source.includes("`")) protectInlineCode(fromMarkdown(source));
+  const isProtected = (offset: number) =>
+    protectedRanges.some((range) => range.start <= offset && offset < range.end);
+  // Raw conversation headers can admit escaped attributes that the document
+  // parser does not recognize. Their container bodies remain authored examples.
+  for (const opening of source.matchAll(/^ {0,3}:::[A-Za-z][^\r\n]*/gm)) {
+    if (isProtected(opening.index)) continue;
+    if (!readConversationDirectiveHeader(opening[0].trimStart().slice(3))) continue;
+    const bodyStart = opening.index + opening[0].length;
+    const closing = [
+      ...source.slice(bodyStart).matchAll(/(?:\r\n?|\n)[ \t]*:::[ \t]*(?=\r\n?|\n|$)/g),
+    ].find((candidate) => !isProtected(bodyStart + candidate.index));
+    if (!closing) continue;
+    protectedRanges.push({
+      start: opening.index,
+      end: bodyStart + closing.index + closing[0].length,
+    });
+  }
+  let cursor = 0;
+  const retained: string[] = [];
+  for (const declaration of declarations) {
+    if (isProtected(declaration.start)) continue;
+    const start =
+      Math.max(
+        source.lastIndexOf("\n", declaration.start - 1),
+        source.lastIndexOf("\r", declaration.start - 1),
+      ) + 1;
+    let end = declaration.end;
+    while (end < source.length && source[end] !== "\n" && source[end] !== "\r") end += 1;
+    if (source[end] === "\r" && source[end + 1] === "\n") end += 2;
+    else if (end < source.length) end += 1;
+    retained.push(source.slice(cursor, start));
+    cursor = end;
+  }
+  retained.push(source.slice(cursor));
+  return retained.join("").trim();
 }
 
 /** Math tokens have no recursively parsed directive labels. */
@@ -287,7 +359,9 @@ export function normalizeMessageCopyText(
   markdown: string,
   scope: ProjectlessOutputScope = {},
 ): string {
-  const source = omitRootVisualizations(prepareConversationVisualizationMarkers(markdown.trim()));
+  const source = omitRootVisualizations(
+    omitHiddenDirectiveLines(prepareConversationVisualizationMarkers(markdown.trim())),
+  );
   const citations = source.replace(/\uE200[^\uE201]*\uE201/g, "");
   return unwrapWritingBlocks(prepareFollowUpLabels(prepareFileCitations(citations, scope)));
 }

@@ -165,6 +165,90 @@ const visualizationCases = [
 ];
 
 describe("whole assistant Markdown Copy", () => {
+  test.each([
+    "::inbox-item.example prose",
+    "::inbox-item@literal",
+    "::inbox-item{} suffix",
+    '::inbox-item{title="unfinished',
+  ])("retains authored paragraphs beginning with a metadata name: %s", (source) => {
+    expect(normalizeMessageCopyText(source)).toBe(source);
+  });
+  test.each(["\n", "\r\n", "\r"])(
+    "omits complete indented metadata while retaining %j prose boundaries",
+    (newline) => {
+      expect(
+        normalizeMessageCopyText(
+          ["Done.", '   ::inbox-item[Ready]{title="Closing } literal"}', "", "Next."].join(newline),
+        ),
+      ).toBe(["Done.", "", "Next."].join(newline));
+    },
+  );
+  test("uses conversation attribute syntax while retaining literal contexts", () => {
+    const metadata = '::inbox-item{title="escaped \\"quote\\" and \\slash"}';
+    const container = `:::unknown{title="escaped \\"quote\\""}\n${metadata}\n:::`;
+    const source = [
+      "Done.",
+      metadata,
+      "",
+      `\`\`\`text\n${metadata}\n\`\`\``,
+      "",
+      container,
+      "",
+      "Next.",
+    ];
+    expect(normalizeMessageCopyText(source.join("\n"))).toBe(
+      [source[0], ...source.slice(2)].join("\n"),
+    );
+  });
+  test("keeps a code example's closing marker inside an unknown container", () => {
+    const container = [
+      ':::unknown{title="escaped \\"quote\\""}',
+      "```text",
+      ":::",
+      "```",
+      '::inbox-item{title="Container example"}',
+      ":::",
+    ].join("\n");
+    expect(normalizeMessageCopyText(`${container}\n\n::inbox-item{title="Hidden"}`)).toBe(
+      container,
+    );
+  });
+  test("keeps metadata-looking lines inside multiline inline code", () => {
+    const source = "Before `code\n::inbox-item{}\ncode` after";
+    expect(normalizeMessageCopyText(`${source}\n\n::archive-thread{}`)).toBe(source);
+  });
+  test("omits standalone action metadata while retaining authored examples and unknown declarations", () => {
+    const source = [
+      "Done.",
+      '::inbox-item{title="Hidden" summary="Hidden"}',
+      "",
+      'Inline ::inbox-item{title="Keep"}',
+      "",
+      "",
+      "::unknown{value=keep}",
+      "",
+      "```text",
+      '::inbox-item{title="Code"}',
+      "```",
+      "",
+      '`::inbox-item{title="Code span"}`',
+      "",
+      "$$",
+      '::inbox-item{title="Math"}',
+      "$$",
+      "",
+      ':::unknown\n::inbox-item{title="Container example"}\n:::',
+      "",
+      '::inbox-item-unknown{title="Keep"}',
+      "",
+      "::archive-thread{}",
+    ].join("\n");
+    expect(normalizeMessageCopyText(source)).toBe(
+      source
+        .replace('::inbox-item{title="Hidden" summary="Hidden"}\n', "")
+        .replace(/\n+::archive-thread\{\}$/u, ""),
+    );
+  });
   test.each(visualizationCases)(
     "preserves authored root tokens around $source",
     ({ source, expected }) => {

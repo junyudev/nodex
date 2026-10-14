@@ -113,7 +113,8 @@ function attributes(source: string): Record<string, string | boolean> | null {
   return result;
 }
 
-function readHeader(content: string) {
+/** Raw header recognition is shared by rendering and source-preserving projections. */
+export function readConversationDirectiveHeader(content: string) {
   const name = /^[A-Za-z][\w-]*/u.exec(content)?.[0];
   if (!name) return null;
   let cursor = name.length;
@@ -160,7 +161,7 @@ function directive(this: TokenizerThis, source: string, marker: ":" | "::" | "::
   const closing = marker === ":::" ? source.indexOf("\n:::") : -1;
   if (marker === ":::" && closing < 0) return undefined;
   const content = source.slice(marker.length, closing < 0 ? undefined : closing);
-  const header = readHeader(content);
+  const header = readConversationDirectiveHeader(content);
   if (!header) return undefined;
   const container = marker === ":::";
   const text = container ? content.slice(header.cursor) : header.text;
