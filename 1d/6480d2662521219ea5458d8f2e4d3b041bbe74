@@ -1,0 +1,39 @@
+docs/ARCHITECTURE.md
+  s_bd811abbf24a41::t_2a0685eca48bdd 156,203
+CHANGELOG.md
+  s_bd811abbf24a41::t_1576e1bc97c8eb 9-10
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_bd811abbf24a41::t_f39636ab5beca6 1-60
+docs/product-specs/index.md
+  s_bd811abbf24a41::t_f085ac740fff31 32
+docs/KEYBOARD_SHORTCUTS.md
+  s_bd811abbf24a41::t_f085ac740fff31 32
+docs/product-specs/settings-route-behavior.md
+  s_bd811abbf24a41::t_2eb7262c48d662 39
+docs/product-specs/inbox-behavior.md
+  s_bd811abbf24a41::t_df42fbe2aec764 1-166
+CONTEXT.md
+  s_bd811abbf24a41::t_202fcacaf35968 465-494,699,751-753
+docs/CLI.md
+  s_bd811abbf24a41::t_b32ba9f2f53724 133-139
+docs/product-specs/agent-interface-behavior.md
+  s_bd811abbf24a41::t_d53cfa543b0795 256-263
+docs/product-specs/workbench-shell.md
+  s_bd811abbf24a41::t_7fe740754f68d9 8,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d6480d2662521219ea5458d8f2e4d3b041bbe74",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
