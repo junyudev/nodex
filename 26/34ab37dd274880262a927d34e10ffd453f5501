@@ -1,0 +1,119 @@
+src/renderer/components/workbench/appearance-settings-page.test.tsx
+  s_4a9675942dcb26::t_1297366b63492c 1,3,11-13,15,17-38,43-47,51-60,62,79-89,92,95-96,101-110,113,190-191
+  s_4a9675942dcb26::t_ab3a21c84aab1d 63-66,70-78
+  s_4a9675942dcb26::t_454ee6fb1e8a32 2,4-10,14,16,39-42,48-50,61,90-91,93-94,100,111-112,114-148,154-158,162-164,166-168,171-176,185-187,189
+  s_4a9675942dcb26::t_cdd4d43b8963ab 67-69,149-153,159-161,165,169-170,177-184,188
+  s_4a9675942dcb26::t_7a965fc2b5f978 97-99
+src/renderer/lib/use-theme.tsx
+  s_4a9675942dcb26::t_ebdddd04556cb0 75-90,94
+src/renderer/components/workbench/accent-color-setting-control.tsx
+  s_4a9675942dcb26::t_415c5421cf571c 143
+  s_4a9675942dcb26::t_3ac9ab30310bf6 17-18,77,82,88,108-111,117,119,122,133,142,145-147,153,168
+  s_4a9675942dcb26::t_d1f6c459b61d38 113-116,160
+  s_4a9675942dcb26::t_192a29649b33cd 4-8,148-149,151-152
+  s_4a9675942dcb26::t_9b65ef23ca90f2 150
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_4a9675942dcb26::t_e520ef366b4472 229,254
+  s_4a9675942dcb26::t_8606c1cb124ca4 1,18,84-86,253,257,720-722,738
+  s_4a9675942dcb26::t_dd758460fef51e 258-268,270-272,727
+  s_4a9675942dcb26::t_3b1b0f9f46500e 723-726,728-737
+  s_4a9675942dcb26::t_0de3e6ebba425b 227-228,230-231,248-252,255-256,273
+  s_4a9675942dcb26::t_13d17d5444cf68 739
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_4a9675942dcb26::t_31b1e26cf3dc53 45,123,127-130
+  s_4a9675942dcb26::t_51bb617750abe8 24,27,320-322,991,996,1088-1089,1155
+  s_4a9675942dcb26::t_00c97cf1616781 13
+  s_4a9675942dcb26::t_de778241e6f407 19,21,326,334,989,1090-1092,1097-1118,1120-1138,1153,1156
+  s_4a9675942dcb26::t_c405e3f51c8abb 184,191,983-986,1007-1009
+  s_4a9675942dcb26::t_f52b0abac4ff36 1152
+  s_4a9675942dcb26::t_e02fe8c32bf67f 46,197-201,213,313,323,325,327,333,335-337,436,455,945,987-988,990,997-998,1001,1010-1016,1063,1078,1139-1151,1154,1157-1158,1172,1231,2126,2128-2132,2170-2171
+src/renderer/lib/use-theme.test.tsx
+  s_4a9675942dcb26::t_00c97cf1616781 8,14,25,77-80,104,111,115,164-165,199-206
+  s_4a9675942dcb26::t_e84d0d960b0d96 207-212
+src/renderer/components/ui/option-picker.browser.test.tsx
+  s_4a9675942dcb26::t_57279fb6444bd6 5,14-15,111,122-128
+  s_4a9675942dcb26::t_1bbc32b880a748 1-4,6-13,16-110,112-121,129-145
+src/renderer/components/workbench/workbench-settings-search-catalog.node.test.ts
+  s_4a9675942dcb26::t_ab3a21c84aab1d 8,64-72,74-77
+  s_4a9675942dcb26::t_1297366b63492c 73,78-80
+src/renderer/components/workbench/workbench-settings-page-registry.ts
+  s_4a9675942dcb26::t_8606c1cb124ca4 35,52
+src/renderer/features/browser-sidebar/browser-settings-pages.tsx
+  s_4a9675942dcb26::t_f52b0abac4ff36 775
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_4a9675942dcb26::t_de778241e6f407 103-105,172-173
+  s_4a9675942dcb26::t_3b93c5d9d08049 2-3,15-17,73-74,83-94,134-160
+  s_4a9675942dcb26::t_c0880672fa3af8 4-14,18-23,25-29,35-43,46-47,49-56,59-60,62-67,72,81-82,107-109,119,128,161-164,168-171,174-190
+  s_4a9675942dcb26::t_ab3a21c84aab1d 1,24,30-34,68-71,75-80,95-102,106,110-114,116-118,120-127,129-133,165-167
+  s_4a9675942dcb26::t_30bc06806b4268 44-45,48,57-58,61
+  s_4a9675942dcb26::t_3f6b5e9e43c6a9 115
+src/renderer/components/ui/theme-mode-selector.tsx
+  s_4a9675942dcb26::t_51bb617750abe8 1-66
+  s_4a9675942dcb26::t_109261efb18bfd 67-74
+tests/e2e/typography-settings.spec.ts
+  s_4a9675942dcb26::t_f995eb51842a7f 314-316
+  s_4a9675942dcb26::t_3d535a2aeac18f 340-341,343-345
+  s_4a9675942dcb26::t_7475bc830f911d 662
+  s_4a9675942dcb26::t_1b18f191967469 70-75,305-308,333-337,347,355-356,358,370-372,380-386,391-396,406-427,432
+  s_4a9675942dcb26::t_9025e345af05a0 90,484
+  s_4a9675942dcb26::t_8503ff73c532ff 32,35-38,46-49,54-69,76-88,299-300,302-304,309-313,317-327,329-332,338-339,346,348-354,359-366,368-369,373-379,387-390,397-405,428-431,473-474,479-480
+  s_4a9675942dcb26::t_6697a0674192e3 342,357,367
+  s_4a9675942dcb26::t_4515640190186e 485-489
+src/renderer/components/ui/settings.tsx
+  s_4a9675942dcb26::t_7f6c55bd38de40 21-23
+  s_4a9675942dcb26::t_cdd4d43b8963ab 10,25,103,107-113,116-118,120-127,135-137,145,151,159,173,179
+  s_4a9675942dcb26::t_31b1e26cf3dc53 114
+  s_4a9675942dcb26::t_cd4c5b32e6da27 180-182
+  s_4a9675942dcb26::t_11fdefc51044eb 11-14,20,26-27,93-94,102,115,183-186,233
+src/renderer/components/workbench/accent-color-setting-control.test.tsx
+  s_4a9675942dcb26::t_00c97cf1616781 15-18
+src/renderer/components/ui/dropdown.tsx
+  s_4a9675942dcb26::t_9e1fce7be807b8 243,458,461-472,486,514,521-526,607,723,830,904
+src/renderer/lib/theme-preferences.ts
+  s_4a9675942dcb26::t_ebdddd04556cb0 14-15,19-20,48-53,55-56,77,80,86
+src/renderer/components/workbench/workbench-settings-sidebar.tsx
+  s_4a9675942dcb26::t_31b1e26cf3dc53 34,261,290
+src/renderer/components/workbench/workbench-settings-sidebar.test.tsx
+  s_4a9675942dcb26::t_f5d5d685d1ff17 11,23,25,206-229
+  s_5cd527886c6c64::t_57cca6ee2e2ff6 230-231
+docs/product-specs/typography-behavior.md
+  s_4a9675942dcb26::t_0de3e6ebba425b 29-31
+  s_4a9675942dcb26::t_ab3a21c84aab1d 26-28
+docs/product-specs/settings-route-behavior.md
+  s_4a9675942dcb26::t_3b93c5d9d08049 116-118
+  s_4a9675942dcb26::t_8606c1cb124ca4 108-109,115,132-134,152-153
+  s_4a9675942dcb26::t_0839b9897478d6 30-31
+  s_4a9675942dcb26::t_0de3e6ebba425b 110-114,119,155
+  s_5cd527886c6c64::t_c5933d4e8a87c8 154
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_4a9675942dcb26::t_0839b9897478d6 2600,2653
+src/renderer/lib/theme-preferences.node.test.ts
+  s_4a9675942dcb26::t_999ebfa1e6db47 13-14,19-20,23-24,48,64-71
+  s_4a9675942dcb26::t_b1c2f08ca9069a 72-74
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_4a9675942dcb26::t_441f2ea6845d9b 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2634ab37dd274880262a927d34e10ffd453f5501",
+  "prompts": {},
+  "sessions": {
+    "s_4a9675942dcb26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1388c-5afc-72c1-a375-07d3e0c90a58",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
