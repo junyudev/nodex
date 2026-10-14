@@ -40,6 +40,7 @@ src/renderer/features/inbox/inbox-presentation.node.test.ts
 src/renderer/features/inbox/inbox-triage.tsx
   s_bd811abbf24a41::t_fd91ed0c185645 39-45,135-137,275
   s_bd811abbf24a41::t_c43a96e15f8a52 2-37,46-133,138-274,276-308
+  s_bd811abbf24a41::t_f814cc53519276 1,38,134
 src/renderer/features/inbox/inbox-triage.test.tsx
   s_bd811abbf24a41::t_fd91ed0c185645 172-175
   s_bd811abbf24a41::t_342597a0b28ca2 1-171,176-198
