@@ -221,10 +221,12 @@ reported context before saving it; an unresolved model or refused context fails
 explicitly. Default clears the override, reopening the same idle native session
 without a model flag when necessary to restore inheritance. Draft choices remain
 unsent preferences, while live Context reflects applied native state.
-Changing a model or effort retains independent settings and drops an incompatible thinking-disable
-override. Changing models also clears a Context override that the destination
-model does not advertise; compatible Context choices remain intact. Native defaults
-and policy limits determine the effective values. Requested preferences
+Effort, Off, Speed and Context are preferences that survive model changes in drafts and live
+conversations. A model that does not support a preference receives the nearest supported value:
+the next lower advertised effort (or its lowest), thinking left on, Standard speed, or its default
+Context. The preference itself is kept, so switching back to a model that supports it restores
+it. Only an explicit choice changes a preference. Native defaults and policy limits determine the
+effective values. Requested preferences
 and Code/Plan mode are saved with the task without changing Claude's global settings. Changes that
 require rebuilding a Query wait for no foreground turn, pending decision, queued steering or live
 background work.

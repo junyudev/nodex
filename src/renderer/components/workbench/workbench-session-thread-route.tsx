@@ -35,7 +35,6 @@ import { useAgentInstances } from "@/features/local-conversation/use-agent-insta
 import { useAgentModelCatalogs } from "@/features/local-conversation/use-agent-model-catalog";
 import { agentBindingKey, selectAgentCatalogModel } from "@/lib/agent-model-selection";
 import { nativeAgentDraftKey, nativeAgentDraftOwner } from "@/lib/native-agent-draft-owner";
-import { selectNativeModel } from "@/lib/native-intelligence-selection";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { buildSettingsPath } from "./workbench-settings-routes";
 import { resolveReasoningEffortForModelChange } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
@@ -888,13 +887,9 @@ function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
     const draft = nativeAgentDraftOwner.read(draftKey);
     nativeAgentDraftOwner.write(draftKey, {
       selection:
+        // Claude preferences are durable intent; the adapter fits them to each model.
         chosen.binding.kind === "claude"
-          ? selectNativeModel(
-              draft.selection,
-              chosen.model,
-              "default",
-              target.catalog.claudeDiscovery?.models ?? [],
-            )
+          ? { ...draft.selection, model: chosen.model }
           : { model: chosen.model, effort: "default" },
       options: chosen.options,
       modeId: chosen.modeId,

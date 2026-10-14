@@ -3,6 +3,7 @@ import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import type { AgentBackendSessionPresentation } from "../../../shared/agent-conversation";
 import type { CodexThreadSummary } from "../../../shared/types";
+import type { ClaudeModelSelection } from "../../../shared/claude-models";
 import type {
   AgentConversationOwnerPort,
   AgentConversationOwnerSnapshot,
@@ -227,9 +228,10 @@ const modelOptions = [
     value: "opus",
     name: "Opus",
     description: null,
-    reasoningEfforts: ["medium", "high"],
+    reasoningEfforts: ["medium", "high", "max"],
     fastMode: true,
     disableThinking: true,
+    contextWindows: ["200k", "1m"],
   },
   { value: "sonnet", name: "Sonnet", description: null, reasoningEfforts: ["medium", "high"] },
 ];
@@ -351,40 +353,136 @@ test("draft permissions stay unavailable until the actual Core preference is kno
   expect(result.current.permissionMode).toBe("full-access");
 });
 
-test("native drafts preserve independent settings while changing model or effort", async () => {
+test("native drafts keep preferences a model cannot honor and restore them on switching back", async () => {
   configureCatalog();
   const input = hookInput("intelligence-draft");
   const key = JSON.stringify([input.sessionId, "project", "claude", "work"]);
-  nativeAgentDraftOwner.write(key, {
-    selection: { model: "opus", effort: "high", fast: true, thinking: false, context: "1m" },
-  });
+  const intent: ClaudeModelSelection = {
+    model: "opus",
+    effort: "max",
+    fast: true,
+    thinking: false,
+    context: "1m",
+  };
+  nativeAgentDraftOwner.write(key, { selection: intent });
   const { result } = renderHook(() => useAgentConversationAdapter(input));
   await waitFor(() => expect(mocks.readPermission).toHaveBeenCalled());
-  await act(async () => {
-    await result.current.actions.onIntelligenceSelectionChange?.({
-      kind: "claude",
-      model: "sonnet",
-      reasoningEffort: "medium",
-      serviceTier: null,
+  const chooseModel = (model: string) =>
+    act(async () => {
+      await result.current.actions.onIntelligenceSelectionChange?.({
+        kind: "claude",
+        model,
+        reasoningEffort: result.current.selectedEffort,
+        serviceTier: null,
+      });
     });
-  });
-  expect(nativeAgentDraftOwner.read(key).selection).toEqual({
-    model: "sonnet",
-    effort: "medium",
+  await chooseModel("sonnet");
+  expect(nativeAgentDraftOwner.read(key).selection).toEqual({ ...intent, model: "sonnet" });
+  expect(result.current.selectedEffort).toBe("high");
+  expect(result.current.nativeIntelligence?.selected).toMatchObject({ fast: false });
+  await chooseModel("opus");
+  expect(result.current.selectedEffort).toBe("max");
+  expect(result.current.nativeIntelligence?.selected).toMatchObject({
     fast: true,
+    thinking: false,
+    context: "1m",
   });
   await act(async () => {
     await result.current.nativeIntelligence?.change({ effort: "high", thinking: true });
   });
   expect(nativeAgentDraftOwner.read(key).selection).toEqual({
-    model: "sonnet",
+    ...intent,
     effort: "high",
-    fast: true,
     thinking: true,
   });
   await act(async () => {
     nativeAgentDraftOwner.clear(key);
   });
+});
+
+test("live model changes send fitted selections and restore unfitted preferences", async () => {
+  configureCatalog();
+  const listeners = new Set<() => void>();
+  let state: AgentConversationOwnerSnapshot = {
+    connection: "ready",
+    promptPending: false,
+    controlPending: null,
+    error: null,
+    presentation: {
+      ...presentation,
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          description: null,
+          category: "model",
+          type: "select",
+          currentValue: "opus",
+          options: modelOptions,
+        },
+      ],
+      snapshot: {
+        ...presentation.snapshot,
+        threadId: "round-trip",
+        metadata: {
+          revision: 1,
+          configOptions: [],
+          modes: null,
+          capabilities: presentation.capabilities,
+          requestedSelection: { model: "opus", effort: "max", fast: true },
+          effectiveSelection: { model: "opus", effort: "max", fast: true, thinking: true },
+          permissionMode: "auto",
+        },
+      },
+    },
+  };
+  const setIntelligence = vi.fn(async (selection: ClaudeModelSelection) => {
+    const current = state.presentation!;
+    state = {
+      ...state,
+      presentation: {
+        ...current,
+        snapshot: {
+          ...current.snapshot,
+          metadata: {
+            ...current.snapshot.metadata!,
+            requestedSelection: selection,
+            effectiveSelection: { ...selection, thinking: true },
+          },
+        },
+      },
+    };
+    for (const listener of listeners) listener();
+    return true;
+  });
+  mocks.acquire.mockReturnValue({
+    retain: () => () => {},
+    owner: {
+      threadId: "round-trip",
+      getSnapshot: () => state,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      setIntelligence,
+    },
+  });
+  const { result } = renderHook(() =>
+    useAgentConversationAdapter(hookInput("round-trip", { ...summary, threadId: "round-trip" })),
+  );
+  await waitFor(() => expect(result.current.selectedEffort).toBe("max"));
+  await act(async () => {
+    await result.current.actions.onModelChange?.("sonnet");
+  });
+  expect(setIntelligence).toHaveBeenLastCalledWith({
+    model: "sonnet",
+    effort: "high",
+    fast: false,
+  });
+  await act(async () => {
+    await result.current.actions.onModelChange?.("opus");
+  });
+  expect(setIntelligence).toHaveBeenLastCalledWith({ model: "opus", effort: "max", fast: true });
 });
 
 test("live native presentation shows applied choices while preserving requested inheritance on edits", async () => {

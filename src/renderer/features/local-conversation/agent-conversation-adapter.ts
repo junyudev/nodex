@@ -21,7 +21,11 @@ import {
   filterAgentConversationForTask,
   projectAgentConversation,
 } from "../../../shared/agent-conversation-presentation";
-import { nativeAgentDraftKey, nativeAgentDraftOwner } from "../../lib/native-agent-draft-owner";
+import {
+  nativeAgentDraftKey,
+  nativeAgentDraftOwner,
+  nativeIntelligenceIntentOwner,
+} from "../../lib/native-agent-draft-owner";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { isAgentConversationTaskLiveInSnapshot } from "../../../shared/agent-conversation";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
@@ -42,16 +46,13 @@ import { agentBackendRuntime } from "../../lib/agent-backend-runtime";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 import { useClaudeModelCatalog } from "./use-claude-model-catalog";
 import { projectNativeModelOption } from "../../lib/native-model-option";
-import {
-  isClaudeEffortLevel,
-  type ClaudeEffortSelection,
-  type ClaudeModelSelection,
-} from "../../../shared/claude-models";
+import { isClaudeEffortLevel, type ClaudeModelSelection } from "../../../shared/claude-models";
 import type { AgentNativeIntelligencePresentation } from "../../components/shared/agent-runtime/agent-intelligence-dropdown";
 import type { NativePermissionMode } from "../../../shared/agent-backend-api";
 import {
+  fitNativeSelection,
+  nativeSelectionsMatch,
   resolveNativeIntelligenceSelection,
-  selectNativeModel,
 } from "../../lib/native-intelligence-selection";
 
 export type ExternalAgentBinding = Exclude<AgentBackendBinding, { kind: "codex" }>;
@@ -288,10 +289,13 @@ export function useAgentConversationAdapter(input: {
   const draftModel = draft.selection.model;
   const draftMode = draft.mode;
   const draftEffort = draft.selection.effort;
-  const setDraftModel = (model: string, effort: ClaudeEffortSelection = "default") => {
-    const selection = { ...selectNativeModel(draft.selection, model, effort, options) };
+  const storedIntent = useSyncExternalStore(
+    (listener) => nativeIntelligenceIntentOwner.subscribe(threadId ?? "", listener),
+    () => (threadId ? nativeIntelligenceIntentOwner.read(threadId) : undefined),
+  );
+  const setDraftModel = (model: string) => {
     nativeAgentDraftOwner.write(draftKey, {
-      selection,
+      selection: { ...draft.selection, model },
       ...(binding?.kind !== "claude" && input.catalog
         ? {
             options: resolveAgentConfigSelections(
@@ -318,12 +322,26 @@ export function useAgentConversationAdapter(input: {
             description: model.description,
           })) ?? []);
   const selected = state.presentation?.snapshot.metadata?.requestedSelection;
-  const requested: ClaudeModelSelection = selected
+  const applied: ClaudeModelSelection | null = selected
     ? { ...selected, effort: isClaudeEffortLevel(selected.effort) ? selected.effort : "default" }
-    : draft.selection;
+    : null;
   const effective = owner
     ? state.presentation?.snapshot.metadata?.effectiveSelection
     : claudeCatalog.discovery?.intelligence;
+  const modelOption = (model: string) =>
+    options.find((option) => option.value === (model === "default" ? effective?.model : model));
+  // Intent is what the user chose; the requested selection is that intent fitted to one model.
+  // A live runtime change made elsewhere supersedes intent that no longer explains it.
+  const intent: ClaudeModelSelection = !applied
+    ? draft.selection
+    : storedIntent &&
+        nativeSelectionsMatch(
+          fitNativeSelection(storedIntent, modelOption(storedIntent.model)),
+          applied,
+        )
+      ? storedIntent
+      : applied;
+  const requested = applied ?? fitNativeSelection(intent, modelOption(intent.model));
   const intelligence = resolveNativeIntelligenceSelection(requested, effective, !owner);
   const selectedModel =
     binding?.kind === "claude"
@@ -415,18 +433,21 @@ export function useAgentConversationAdapter(input: {
     if (await operation) return;
     throw new Error(owner?.getSnapshot().error ?? "Agent operation was not accepted");
   };
+  const applyIntent = async (next: ClaudeModelSelection) => {
+    if (!owner) {
+      nativeAgentDraftOwner.write(draftKey, { selection: next });
+      return;
+    }
+    if (threadId) nativeIntelligenceIntentOwner.write(threadId, next);
+    await requireSuccess(owner.setIntelligence(fitNativeSelection(next, modelOption(next.model))));
+  };
   const changeModel = async (model: string) => {
     if (!owner) {
       setDraftModel(model);
       return;
     }
     if (!modelConfig) throw new Error("This Agent does not expose model selection");
-    if (binding?.kind === "claude") {
-      await requireSuccess(
-        owner.setIntelligence(selectNativeModel(requested, model, "default", options)),
-      );
-      return;
-    }
+    if (binding?.kind === "claude") return applyIntent({ ...intent, model });
     await requireSuccess(owner.setConfigOption(modelConfig.id, model));
   };
   const modeState = state.presentation?.modes ?? input.catalog?.modes ?? null;
@@ -472,23 +493,11 @@ export function useAgentConversationAdapter(input: {
     }
     if (binding?.kind !== "claude" || (value !== "default" && !isClaudeEffortLevel(value)))
       throw new Error("This Agent does not expose this effort level");
-    if (!owner) {
-      nativeAgentDraftOwner.write(draftKey, {
-        selection: {
-          ...draft.selection,
-          effort: value,
-          ...(value !== "default" ? { thinking: true } : {}),
-        },
-      });
-      return;
-    }
-    await requireSuccess(
-      owner.setIntelligence({
-        ...requested,
-        effort: value,
-        ...(value !== "default" ? { thinking: true } : {}),
-      }),
-    );
+    await applyIntent({
+      ...intent,
+      effort: value,
+      ...(value !== "default" ? { thinking: true } : {}),
+    });
   };
   const unsupported = async () => {
     throw new Error("This operation is unavailable for this Agent connection");
@@ -506,16 +515,18 @@ export function useAgentConversationAdapter(input: {
           }),
         onIntelligenceSelectionChange: async (selection) => {
           if (binding.kind !== "claude") return changeModel(selection.model);
+          // A model change keeps every preference; the effort shown for the previous model is
+          // only a fitted value, so it becomes intent only when the model stays the same.
+          if (selection.model !== requested.model)
+            return applyIntent({ ...intent, model: selection.model });
           const effort = isClaudeEffortLevel(selection.reasoningEffort)
             ? selection.reasoningEffort
             : "default";
-          if (!owner) {
-            setDraftModel(selection.model, effort);
-            return;
-          }
-          await requireSuccess(
-            owner.setIntelligence(selectNativeModel(requested, selection.model, effort, options)),
-          );
+          await applyIntent({
+            ...intent,
+            effort,
+            ...(effort !== "default" ? { thinking: true } : {}),
+          });
         },
         onStartThreadForSession: async (request) => {
           if (input.draftUnavailableReason) throw new Error(input.draftUnavailableReason);
@@ -566,7 +577,7 @@ export function useAgentConversationAdapter(input: {
               worktreeStartingState: request.worktreeStartingState,
               prompt,
               ...(supportsImageInput ? { images: agentPromptImages(request.promptInput) } : {}),
-              ...(binding.kind === "claude" ? { selection: draft.selection, mode: draftMode } : {}),
+              ...(binding.kind === "claude" ? { selection: requested, mode: draftMode } : {}),
               ...(binding.kind !== "claude"
                 ? {
                     ...(selectedModel ? { model: selectedModel } : {}),
@@ -803,30 +814,17 @@ export function useAgentConversationAdapter(input: {
             contextWindows: selectedOption?.contextWindows,
           },
           change: async (patch) => {
-            const next = { ...requested };
+            const next = { ...intent };
             for (const key of ["fast", "thinking", "context"] as const) {
               if (patch[key] === null) delete next[key];
             }
-            const selection = {
+            await applyIntent({
               ...next,
               ...(patch.effort ? { effort: patch.effort } : {}),
               ...(typeof patch.fast === "boolean" ? { fast: patch.fast } : {}),
               ...(typeof patch.thinking === "boolean" ? { thinking: patch.thinking } : {}),
               ...(typeof patch.context === "string" ? { context: patch.context } : {}),
-            };
-            if (
-              patch.thinking === false &&
-              selectedOption?.disabledThinkingEfforts?.length &&
-              !selectedOption.disabledThinkingEfforts.includes(selectedEffort)
-            ) {
-              const effort = selectedOption.disabledThinkingEfforts.at(-1);
-              if (isClaudeEffortLevel(effort)) selection.effort = effort;
-            }
-            if (!owner) {
-              nativeAgentDraftOwner.write(draftKey, { selection });
-              return;
-            }
-            await requireSuccess(owner.setIntelligence(selection));
+            });
           },
         }
       : undefined;
