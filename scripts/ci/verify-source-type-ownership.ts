@@ -107,13 +107,16 @@ export function verifySourceTypeOwnershipFixtures(): void {
         "export const invalid: number = 'wrong';\n",
       );
     }
-    const verify = () =>
-      verifySourceTypeOwnership(
-        directory,
-        readdirSync(directory, { recursive: true, encoding: "utf8" })
-          .filter((filename) => !filename.startsWith("node_modules"))
-          .map((filename) => filename.replaceAll("\\", "/")),
-      );
+    // Prune linked dependencies before descent; recursive readdir follows the
+    // node_modules junction and otherwise scans the dependency tree on every pass.
+    const fixtureSourceFiles = (path: string): string[] =>
+      readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
+        if (entry.isSymbolicLink()) return [];
+        const filename = join(path, entry.name);
+        if (entry.isDirectory()) return fixtureSourceFiles(filename);
+        return [relative(directory, filename).replaceAll("\\", "/")];
+      });
+    const verify = () => verifySourceTypeOwnership(directory, fixtureSourceFiles(directory));
     const expectUnowned = (filename: string) => {
       try {
         verify();
