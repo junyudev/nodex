@@ -12,6 +12,7 @@ import { writeTextToClipboard } from "@/lib/clipboard";
 import {
   getFileReferenceOpenWithMenuItems,
   parseFileReferenceOpenWithMenuId,
+  resolveFileReferenceTarget,
   useFileReferenceRouter,
 } from "@/lib/file-reference-router";
 import { showNativeContextMenu } from "@/lib/native-context-menu";
@@ -77,7 +78,10 @@ export interface FileReferenceContextMenuRequest {
   open: ReturnType<typeof useFileReferenceRouter>["open"];
   x: number;
   y: number;
+  isCurrent?: () => boolean;
 }
+
+const isCurrentReference = () => true;
 
 export async function openFileReferenceContextMenu({
   hostId = "local",
@@ -86,7 +90,9 @@ export async function openFileReferenceContextMenu({
   open,
   x,
   y,
+  isCurrent = isCurrentReference,
 }: FileReferenceContextMenuRequest): Promise<void> {
+  if (!isCurrent()) return;
   const selected = await showNativeContextMenu(
     [
       {
@@ -124,7 +130,7 @@ export async function openFileReferenceContextMenu({
     { x, y },
   );
 
-  if (!selected) return;
+  if (!selected || !isCurrent()) return;
   if (selected === "file-reference:open") {
     await open(target, { title: label, mode: "preview" });
     return;
@@ -140,6 +146,7 @@ export async function openFileReferenceContextMenu({
         path: target.path,
         maxBytes: 2 * 1024 * 1024,
       });
+      if (!isCurrent()) return;
       await writeTextToClipboard(result.contents);
     } catch {
       // A native menu action should not turn a transient read failure into a
@@ -237,21 +244,73 @@ export function FileLinkAnchor({
     );
   }
 
-  const target = action.target;
+  return (
+    <FileReferenceButton
+      target={action.target}
+      href={action.href}
+      className={className}
+      label={label}
+      cwd={cwd}
+      projectWorkspacePath={workspacePath}
+      tooltipLabel={tooltipLabel}
+    >
+      {children}
+    </FileReferenceButton>
+  );
+}
+
+/** A resolved native reference bypasses href decoding and retains the Files interaction owner. */
+export function FileReferenceButton({
+  target,
+  href,
+  label,
+  children,
+  className,
+  cwd: explicitCwd,
+  projectWorkspacePath,
+  hostId: explicitHostId,
+  tooltipLabel,
+  isCurrent: sourceIsCurrent,
+}: {
+  readonly target: Readonly<FileLinkTarget>;
+  readonly href?: string;
+  readonly label: string;
+  readonly children: ReactNode;
+  readonly className?: string;
+  readonly cwd?: string | null;
+  readonly projectWorkspacePath?: string | null;
+  readonly hostId?: string;
+  readonly tooltipLabel?: string | null;
+  readonly isCurrent?: () => boolean;
+}) {
+  const isCurrent = sourceIsCurrent ?? isCurrentReference;
+  const inheritedWorkspace = useContext(FileLinkWorkspaceContext);
+  const router = useFileReferenceRouter();
+  const hostId = explicitHostId ?? router.hostId;
+  const workspacePath =
+    projectWorkspacePath !== undefined
+      ? projectWorkspacePath
+      : (inheritedWorkspace?.workspacePath ?? router.workspaceRoot);
+  const cwd = explicitCwd !== undefined ? explicitCwd : (inheritedWorkspace?.cwd ?? workspacePath);
+  const resolvedTarget = resolveFileReferenceTarget(target, cwd ?? workspacePath);
   const open = (options?: Parameters<typeof router.open>[1]) => {
-    void router.open(target, {
+    if (!resolvedTarget || !isCurrent()) return;
+    void router.open(resolvedTarget, {
+      hostId,
       cwd,
       workspaceRoot: workspacePath,
       title: label,
+      ...(sourceIsCurrent ? { isCurrent } : {}),
       ...options,
     });
   };
+  if (!resolvedTarget) return <>{children}</>;
   const fileReference = (
     <button
       type="button"
       data-file-reference="true"
       data-agent-activity-file-link
-      data-prompt-link-href={action.href}
+      data-prompt-link-href={href}
       data-prompt-link-label={label}
       className={cn(
         "cursor-interaction inline-block max-w-full appearance-none border-0 bg-transparent p-0 text-left align-baseline whitespace-normal text-token-text-link-foreground hover:underline focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none",
@@ -282,14 +341,18 @@ export function FileLinkAnchor({
           event.stopPropagation();
           const bounds = event.currentTarget.getBoundingClientRect();
           void openFileReferenceContextMenu({
-            hostId: router.hostId,
-            target,
+            hostId,
+            target: resolvedTarget,
             label,
-            open: (nextTarget, options) =>
+            isCurrent,
+            open: async (nextTarget, options) =>
+              isCurrent() &&
               router.open(nextTarget, {
-                cwd: workspacePath,
+                hostId,
+                cwd,
                 workspaceRoot: workspacePath,
                 title: label,
+                ...(sourceIsCurrent ? { isCurrent } : {}),
                 ...options,
               }),
             x: bounds.left,
@@ -304,14 +367,18 @@ export function FileLinkAnchor({
       }}
       onContextMenu={(event) => {
         void handleFileReferenceContextMenu(event, {
-          hostId: router.hostId,
-          target,
+          hostId,
+          target: resolvedTarget,
           label,
-          open: (nextTarget, options) =>
+          isCurrent,
+          open: async (nextTarget, options) =>
+            isCurrent() &&
             router.open(nextTarget, {
-              cwd: workspacePath,
+              hostId,
+              cwd,
               workspaceRoot: workspacePath,
               title: label,
+              ...(sourceIsCurrent ? { isCurrent } : {}),
               ...options,
             }),
         }).catch(() => undefined);

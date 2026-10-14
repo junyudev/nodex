@@ -32,6 +32,7 @@ import {
 } from "./local-conversation-thread-view-state";
 import { resolveImageEditComposerTarget } from "../image-edit-composer-target";
 import { CodexTranscriptReadOwnerProvider } from "../normalized-transcript-hooks";
+import { ConversationMarkdownSourceProvider } from "./conversation-markdown-source";
 import {
   InlineVisualizationFollowUpProvider,
   type InlineVisualizationFollowUpMessage,
@@ -219,39 +220,47 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
   });
   return (
     <CodexTranscriptReadOwnerProvider conversationId={model.threadId} hostId={model.hostId}>
-      <HookFeedbackSettingsNavigationProvider
+      <ConversationMarkdownSourceProvider
         hostId={model.hostId}
-        onOpenHooksSettings={props.actions.onOpenHooksSettings}
+        threadId={model.threadId}
+        cwd={model.cwd}
+        workspaceRoot={model.projectWorkspacePath ?? null}
+        onOpenThread={props.actions.onOpenThread}
       >
-        <ConversationImageAssetProvider
-          composerTarget={composerTarget}
+        <HookFeedbackSettingsNavigationProvider
           hostId={model.hostId}
-          conversationId={model.threadId}
-          resolveHistoryImage={props.resolveHistoryImage}
+          onOpenHooksSettings={props.actions.onOpenHooksSettings}
         >
-          <ConversationToolOutputProvider
-            readToolOutput={props.readToolOutput}
+          <ConversationImageAssetProvider
+            composerTarget={composerTarget}
+            hostId={model.hostId}
             conversationId={model.threadId}
+            resolveHistoryImage={props.resolveHistoryImage}
           >
-            <EnsureLocalConversationThreadScrollController>
-              {model.threadId ? (
-                <AttachedLocalConversationThreadBody
-                  key={model.threadId}
-                  {...props}
-                  conversationId={model.threadId}
-                  resolveHistoryImage={props.resolveHistoryImage}
-                />
-              ) : (
-                <LocalConversationThreadBodyLayout
-                  {...props}
-                  initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
-                  onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
-                />
-              )}
-            </EnsureLocalConversationThreadScrollController>
-          </ConversationToolOutputProvider>
-        </ConversationImageAssetProvider>
-      </HookFeedbackSettingsNavigationProvider>
+            <ConversationToolOutputProvider
+              readToolOutput={props.readToolOutput}
+              conversationId={model.threadId}
+            >
+              <EnsureLocalConversationThreadScrollController>
+                {model.threadId ? (
+                  <AttachedLocalConversationThreadBody
+                    key={model.threadId}
+                    {...props}
+                    conversationId={model.threadId}
+                    resolveHistoryImage={props.resolveHistoryImage}
+                  />
+                ) : (
+                  <LocalConversationThreadBodyLayout
+                    {...props}
+                    initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                    onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
+                  />
+                )}
+              </EnsureLocalConversationThreadScrollController>
+            </ConversationToolOutputProvider>
+          </ConversationImageAssetProvider>
+        </HookFeedbackSettingsNavigationProvider>
+      </ConversationMarkdownSourceProvider>
     </CodexTranscriptReadOwnerProvider>
   );
 }

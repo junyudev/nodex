@@ -515,7 +515,10 @@ describe("LocalConversationThreadBody", () => {
       try {
         await settleAsyncRender();
         if (literal) {
-          await view.findByText("before <kbd>needle</kbd> after");
+          await view.findByText(
+            (_, element) =>
+              element?.tagName === "P" && element.textContent === "before <kbd>needle</kbd> after",
+          );
           await view.findByText('::unknown{file="raw &amp; declaration"}');
         } else await view.findByRole("link", { name: "nee" });
         expect(view.container.querySelector("kbd")).toBeNull();

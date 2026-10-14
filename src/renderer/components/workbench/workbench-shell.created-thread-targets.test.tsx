@@ -4,6 +4,11 @@ import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { render, settleAsyncRender } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { LocalConversationCreatedThreadCards } from "../../features/local-conversation/view/local-conversation-created-thread-cards";
+import {
+  deferred,
+  fixture as messageTargetFixture,
+  key as messageTargetKey,
+} from "../../features/local-conversation/view/conversation-markdown-targets.test-fixtures";
 import type { ThreadStageActions } from "../../features/local-conversation/thread-stage-types";
 import { makeAttachedSession } from "./workbench-testkit/workbench-shell-fixtures";
 import {
@@ -17,7 +22,10 @@ import {
   sideChatConversations,
 } from "./workbench-testkit/workbench-shell-harness";
 
-vi.mock("../../features/local-conversation/created-thread-host-hooks", () => ({
+vi.mock("../../features/local-conversation/created-thread-host-hooks", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../features/local-conversation/created-thread-host-hooks")
+  >()),
   useExistingCreatedThreadHost: () => ({ manager: null, connected: false }),
 }));
 
@@ -134,6 +142,75 @@ describe("created chat host-qualified Workbench navigation", () => {
     ]);
     expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(false);
   });
+  test("a retired message cannot select a Session whose strict open was already admitted", async () => {
+    const source = namedSession("source", "Source", "source-thread");
+    const target = namedSession("target", "Created", "created-thread");
+    const remoteSource = { ...source, thread: { ...source.thread!, executionHostId: "remote" } };
+    const remoteTarget = { ...target, thread: { ...target.thread!, executionHostId: "remote" } };
+    const view = renderWorkbench({
+      sessionsByProject: { alpha: [remoteSource] },
+      initialSelectedSessionId: source.id,
+    });
+    await settleAsyncRender();
+    const actions = await waitForLastThreadStageActions();
+    const admitted = deferred<typeof remoteTarget>();
+    const open = actions.onOpenThread as ThreadStageActions["onOpenThread"];
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) => {
+      if (channel === "codex:created-thread:resolve")
+        return { hostId: "remote", threadId: "created-thread", ready: true, parentThreadId: null };
+      if (channel === "codex:thread:ensure-open") return admitted.promise;
+      return (await base?.(channel, ...args)) ?? null;
+    });
+    const message = messageTargetFixture(
+      "[Created](thread://created-thread)",
+      "remote",
+      "ordinary",
+      {
+        threadId: "source-thread",
+        onOpenThread: open,
+      },
+    );
+    const body = message.mount([]);
+    try {
+      await act(async () => {
+        message.connect();
+        await Promise.resolve();
+      });
+      const button = await body.findByRole("button", { name: "Created" });
+      await act(async () => {
+        fireEvent.click(button);
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-open")).toBe(true),
+      );
+      await act(async () => {
+        message.owner.applyEvent({
+          type: "changes",
+          changes: [
+            { type: "item", key: { ...messageTargetKey, ...message.owner.key }, value: null },
+          ],
+        });
+        admitted.resolve(remoteTarget);
+        await message.onOpenThread.mock.results[0]!.value;
+      });
+      expect(
+        within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
+          .textContent,
+      ).toBe("Source");
+      expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(
+        false,
+      );
+    } finally {
+      admitted.resolve(remoteTarget);
+      await act(async () => {
+        body.unmount();
+        message.dispose();
+        await Promise.resolve();
+      });
+    }
+  });
   test("a child click keeps its captured root and host instead of the currently selected Session", async () => {
     const active = namedSession("active", "Current", "current-thread");
     const root = namedSession("root", "Actual root", "root-thread");
@@ -188,82 +265,112 @@ describe("created chat host-qualified Workbench navigation", () => {
       view.container.querySelector('[data-subagents-side-panel-tab="subagents:root-thread"]'),
     ).not.toBeNull();
   });
-  test("a real card in selected child detail hydrates its grandchild against the panel's owning root", async () => {
-    const root = namedSession("root", "Actual root", "root-thread");
-    const remoteRoot = { ...root, thread: { ...root.thread!, executionHostId: "remote" } };
-    sideChatConversations["child"] = {
-      threadId: "child",
-      projectId: "alpha",
-      threadName: "Child",
-      statusType: "idle",
-      source: { parentThreadId: "root-thread" },
-      turns: [],
-      requests: [],
-    };
-    sideChatConversations["grandchild"] = {
-      ...sideChatConversations["child"],
-      threadId: "grandchild",
-      threadName: "Grandchild",
-      source: { parentThreadId: "child" },
-    };
-    const view = renderWorkbench({
-      sessionsByProject: { alpha: [remoteRoot] },
-      initialSelectedSessionId: remoteRoot.id,
-    });
-    await settleAsyncRender();
-    const base = mockInvokeImpl;
-    setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:created-thread:resolve") {
-        const input = args[0] as { threadId: string };
-        return {
-          hostId: "remote",
-          threadId: input.threadId,
-          ready: true,
-          parentThreadId:
-            input.threadId === "root-thread"
-              ? null
-              : input.threadId === "child"
-                ? "root-thread"
-                : "child",
-        };
-      }
-      if (channel === "codex:thread:ensure-open") return remoteRoot;
-      return (await base?.(channel, ...args)) ?? null;
-    });
-    const open = (await waitForLastThreadStageActions())
-      .onOpenThread as ThreadStageActions["onOpenThread"];
-    await act(async () => {
-      await open("child", {
-        createdTarget: { hostId: "remote", threadId: "child" },
-        sourceRoot: { hostId: "remote", threadId: "root-thread" },
+  test.each(["card", "message link"] as const)(
+    "a real %s in selected child detail hydrates its grandchild against the panel's owning root",
+    async (consumer) => {
+      const root = namedSession("root", "Actual root", "root-thread");
+      const remoteRoot = { ...root, thread: { ...root.thread!, executionHostId: "remote" } };
+      sideChatConversations["child"] = {
+        threadId: "child",
+        projectId: "alpha",
+        threadName: "Child",
+        statusType: "idle",
+        source: { parentThreadId: "root-thread" },
+        turns: [],
+        requests: [],
+      };
+      sideChatConversations["grandchild"] = {
+        ...sideChatConversations["child"],
+        threadId: "grandchild",
+        threadName: "Grandchild",
+        source: { parentThreadId: "child" },
+      };
+      const view = renderWorkbench({
+        sessionsByProject: { alpha: [remoteRoot] },
+        initialSelectedSessionId: remoteRoot.id,
       });
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("child")).toBeDefined());
-    const actions = getConnectedThreadStagePropsByThreadId("child")!.actions as ThreadStageActions;
-    const card = render(
-      <TestQueryProvider>
-        <LocalConversationCreatedThreadCards
-          results={[{ hostId: "remote", threadId: "grandchild" }]}
-          sourceRoot={{ hostId: "remote", threadId: "child" }}
-          onOpenThread={actions.onOpenThread}
-        />
-      </TestQueryProvider>,
-    );
-    await act(async () => {
-      fireEvent.click(card.getByRole("button", { name: "Open chat: Created chat" }));
-      await Promise.resolve();
-    });
-    await waitFor(() =>
-      expect(hydrateSelectedSubagentCalls).toEqual([
-        { rootThreadId: "root-thread", threadId: "child", expectedHostId: "remote" },
-        { rootThreadId: "root-thread", threadId: "grandchild", expectedHostId: "remote" },
-      ]),
-    );
-    expect(
-      within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
-        .textContent,
-    ).toBe("Actual root");
-    expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(false);
-  });
+      await settleAsyncRender();
+      const base = mockInvokeImpl;
+      setMockInvokeImpl(async (channel, ...args) => {
+        if (channel === "codex:created-thread:resolve") {
+          const input = args[0] as { threadId: string };
+          return {
+            hostId: "remote",
+            threadId: input.threadId,
+            ready: true,
+            parentThreadId:
+              input.threadId === "root-thread"
+                ? null
+                : input.threadId === "child"
+                  ? "root-thread"
+                  : "child",
+          };
+        }
+        if (channel === "codex:thread:ensure-open") return remoteRoot;
+        return (await base?.(channel, ...args)) ?? null;
+      });
+      const open = (await waitForLastThreadStageActions())
+        .onOpenThread as ThreadStageActions["onOpenThread"];
+      await act(async () => {
+        await open("child", {
+          createdTarget: { hostId: "remote", threadId: "child" },
+          sourceRoot: { hostId: "remote", threadId: "root-thread" },
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("child")).toBeDefined());
+      const actions = getConnectedThreadStagePropsByThreadId("child")!
+        .actions as ThreadStageActions;
+      const message =
+        consumer === "message link"
+          ? messageTargetFixture("[Grandchild](thread://grandchild)", "remote", "ordinary", {
+              threadId: "child",
+              onOpenThread: actions.onOpenThread,
+            })
+          : null;
+      const card = message
+        ? message.mount([])
+        : render(
+            <TestQueryProvider>
+              <LocalConversationCreatedThreadCards
+                results={[{ hostId: "remote", threadId: "grandchild" }]}
+                sourceRoot={{ hostId: "remote", threadId: "child" }}
+                onOpenThread={actions.onOpenThread}
+              />
+            </TestQueryProvider>,
+          );
+      try {
+        await act(async () => {
+          message?.connect();
+          await Promise.resolve();
+        });
+        const button = await card.findByRole("button", {
+          name: consumer === "card" ? "Open chat: Created chat" : "Grandchild",
+        });
+        await act(async () => {
+          fireEvent.click(button);
+          await Promise.resolve();
+        });
+        await waitFor(() =>
+          expect(hydrateSelectedSubagentCalls).toEqual([
+            { rootThreadId: "root-thread", threadId: "child", expectedHostId: "remote" },
+            { rootThreadId: "root-thread", threadId: "grandchild", expectedHostId: "remote" },
+          ]),
+        );
+        expect(
+          within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
+            .textContent,
+        ).toBe("Actual root");
+        expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(
+          false,
+        );
+      } finally {
+        await act(async () => {
+          card.unmount();
+          message?.dispose();
+          await Promise.resolve();
+        });
+      }
+    },
+  );
 });

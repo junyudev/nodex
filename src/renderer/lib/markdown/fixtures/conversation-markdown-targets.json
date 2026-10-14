@@ -1,0 +1,435 @@
+[
+  {
+    "name": "absolute-double-encoded",
+    "source": "[x](/tmp/a%2520b.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%2520b.ts",
+        "reference": {
+          "path": "/tmp/a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-triple-encoded",
+    "source": "[x](/tmp/a%252520b.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%252520b.ts",
+        "reference": {
+          "path": "/tmp/a%20b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-triple-encoded-with-space",
+    "source": "[x](/tmp/a%252520b file.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%2520b file.ts",
+        "reference": {
+          "path": "/tmp/a b file.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-triple-encoded-with-space",
+    "source": "[x](file:///tmp/a%252520b file.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%2520b file.ts",
+        "reference": {
+          "path": "/tmp/a b file.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-double-encoded-with-space",
+    "source": "[x](/tmp/a%2520b file.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%20b file.ts",
+        "reference": {
+          "path": "/tmp/a b file.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-double-encoded",
+    "source": "[x](file:///tmp/a%2520b.ts)",
+    "links": [
+      {
+        "href": "file:///tmp/a%2520b.ts",
+        "reference": {
+          "path": "/tmp/a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-double-encoded-with-space",
+    "source": "[x](file:///tmp/a%2520b file.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%20b file.ts",
+        "reference": {
+          "path": "/tmp/a b file.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-unc-double-encoded",
+    "source": "[x](file://server/share/a%2520b.ts)",
+    "links": [
+      {
+        "href": "file://server/share/a%2520b.ts",
+        "reference": {
+          "path": "\\\\server\\share\\a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-localhost",
+    "source": "[x](file://localhost/tmp/a%20b.ts)",
+    "links": [
+      {
+        "href": "file://localhost/tmp/a%20b.ts",
+        "reference": {
+          "path": "/tmp/a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-local-location",
+    "source": "[x](file:///tmp/a.ts#L2C3-L4C5)",
+    "links": [
+      {
+        "href": "file:///tmp/a.ts#L2C3-L4C5",
+        "reference": {
+          "path": "/tmp/a.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-hash-location",
+    "source": "[x](/tmp/a.ts#L2C3-L4C5)",
+    "links": [
+      {
+        "href": "/tmp/a.ts#L2C3-L4C5",
+        "reference": {
+          "path": "/tmp/a.ts",
+          "line": 2,
+          "column": 3,
+          "endLine": 4,
+          "endColumn": 5
+        },
+        "label": "x (lines 2-4, columns 3-5)"
+      }
+    ]
+  },
+  {
+    "name": "file-credentials",
+    "source": "[x](file://user:password@server/share/a.ts)",
+    "links": [
+      {
+        "href": "file://user:password@server/share/a.ts",
+        "reference": null,
+        "label": null
+      }
+    ]
+  },
+  {
+    "name": "file-port",
+    "source": "[x](file://server:80/share/a.ts)",
+    "links": [
+      {
+        "href": "file://server:80/share/a.ts",
+        "reference": null,
+        "label": null
+      }
+    ]
+  },
+  {
+    "name": "file-unc",
+    "source": "[x](file://server/share/a%20b.ts)",
+    "links": [
+      {
+        "href": "file://server/share/a%20b.ts",
+        "reference": {
+          "path": "\\\\server\\share\\a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-unc-location",
+    "source": "[x](file://server/share/a%2523b.ts#L2C3-L4C5)",
+    "links": [
+      {
+        "href": "file://server/share/a%2523b.ts#L2C3-L4C5",
+        "reference": {
+          "path": "\\\\server\\share\\a#b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "windows",
+    "source": "[x](C:\\repo\\a file.ts:2:3-4:5)",
+    "links": [
+      {
+        "href": "C:/repo/a file.ts:2:3-4:5",
+        "reference": {
+          "path": "C:\\repo\\a file.ts",
+          "line": 2,
+          "column": 3,
+          "endLine": 4,
+          "endColumn": 5
+        },
+        "label": "x (lines 2-4, columns 3-5)"
+      }
+    ]
+  },
+  {
+    "name": "slash-windows",
+    "source": "[x](/C:/repo/a%2520b.ts)",
+    "links": [
+      {
+        "href": "/C:/repo/a%2520b.ts",
+        "reference": {
+          "path": "C:\\repo\\a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "backslash-unc",
+    "source": "[x](\\\\server\\share\\a file.ts)",
+    "links": []
+  },
+  {
+    "name": "slash-unc",
+    "source": "[x](//server/share/a%2520b.ts)",
+    "links": [
+      {
+        "href": "//server/share/a%2520b.ts",
+        "reference": {
+          "path": "\\\\server\\share\\a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "backslash-unc-no-space",
+    "source": "[x](\\\\server\\share\\a.ts)",
+    "links": [
+      {
+        "href": "//server/share/a.ts",
+        "reference": {
+          "path": "\\\\server\\share\\a.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-hash",
+    "source": "[x](/tmp/a%2523b%253Fc.ts:2:3-4:5)",
+    "links": [
+      {
+        "href": "/tmp/a%2523b%253Fc.ts:2:3-4:5",
+        "reference": {
+          "path": "/tmp/a#b?c.ts",
+          "line": 2,
+          "column": 3,
+          "endLine": 4,
+          "endColumn": 5
+        },
+        "label": "x (lines 2-4, columns 3-5)"
+      }
+    ]
+  },
+  {
+    "name": "absolute-percent",
+    "source": "[x](/tmp/a%2525b.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%2525b.ts",
+        "reference": {
+          "path": "/tmp/a%b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-slash",
+    "source": "[x](/tmp/a%252Fb.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%252Fb.ts",
+        "reference": {
+          "path": "/tmp/a%2Fb.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-backslash",
+    "source": "[x](/tmp/a%255Cb.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%255Cb.ts",
+        "reference": {
+          "path": "/tmp/a\\b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-encoded-tail-space",
+    "source": "[x](file:///tmp/a.ts%20)",
+    "links": [
+      {
+        "href": "file:///tmp/a.ts%20",
+        "reference": {
+          "path": "/tmp/a.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "absolute-encoded-tail-space",
+    "source": "[x](/tmp/a.ts%20)",
+    "links": [
+      {
+        "href": "/tmp/a.ts%20",
+        "reference": {
+          "path": "/tmp/a.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "recovered-tail-space",
+    "source": "[x](/tmp/a file.ts%20)",
+    "links": [
+      {
+        "href": "/tmp/a file.ts ",
+        "reference": {
+          "path": "/tmp/a file.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "file-malformed-escape",
+    "source": "[x](file:///tmp/a%ZZ.ts)",
+    "links": [
+      {
+        "href": "file:///tmp/a%ZZ.ts",
+        "reference": null,
+        "label": null
+      }
+    ]
+  },
+  {
+    "name": "absolute-malformed-escape",
+    "source": "[x](/tmp/a%ZZ.ts)",
+    "links": [
+      {
+        "href": "/tmp/a%ZZ.ts",
+        "reference": {
+          "path": "/tmp/a%ZZ.ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "balanced-parentheses",
+    "source": "[x](/tmp/a(b).ts)",
+    "links": [
+      {
+        "href": "/tmp/a(b).ts",
+        "reference": {
+          "path": "/tmp/a(b).ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "escaped-parentheses",
+    "source": "[x](/tmp/a\\(b\\).ts)",
+    "links": [
+      {
+        "href": "/tmp/a(b).ts",
+        "reference": {
+          "path": "/tmp/a(b).ts"
+        },
+        "label": "x"
+      }
+    ]
+  },
+  {
+    "name": "relative-with-space",
+    "source": "[x](src/a file.ts)",
+    "links": []
+  },
+  {
+    "name": "relative-with-location",
+    "source": "[x](src/a.ts:2)",
+    "links": [
+      {
+        "href": "src/a.ts:2",
+        "reference": {
+          "path": "src/a.ts",
+          "line": 2
+        },
+        "label": "x (line 2)"
+      }
+    ]
+  },
+  {
+    "name": "sandbox-double-encoded",
+    "source": "[x](sandbox:/tmp/a%2520b.ts)",
+    "links": [
+      {
+        "href": "sandbox:/tmp/a%2520b.ts",
+        "reference": {
+          "path": "/tmp/a b.ts"
+        },
+        "label": "x"
+      }
+    ]
+  }
+]

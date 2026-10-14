@@ -24,15 +24,19 @@ export async function prepareCreatedThreadNavigation(
       readonly hostId: string;
       readonly threadId: string;
     }) => Promise<ProjectSession | null>;
+    readonly isCurrent?: () => boolean;
   },
 ): Promise<CreatedThreadNavigation | null> {
+  if (ports.isCurrent?.() === false) return null;
   const resolution = await ports.resolve(input);
+  if (ports.isCurrent?.() === false) return null;
   if (!resolution) {
     if (!("threadId" in input) || input.expectedHostId === undefined) return null;
     const session = await ports.ensureOpen({
       hostId: input.expectedHostId,
       threadId: input.threadId,
     });
+    if (ports.isCurrent?.() === false) return null;
     if (!isConfirmedRoot(session, input.expectedHostId, input.threadId)) return null;
     // Only the guarded Main command can establish a missing root; no query receipt is invented.
     return { type: "session", resolution: null, session };
@@ -50,6 +54,7 @@ export async function prepareCreatedThreadNavigation(
     hostId: resolution.hostId,
     threadId: resolution.threadId,
   });
+  if (ports.isCurrent?.() === false) return null;
   if (!isConfirmedRoot(session, resolution.hostId, resolution.threadId)) return null;
   return { type: "session", resolution, session };
 }

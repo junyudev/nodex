@@ -283,11 +283,12 @@ export function SubagentsPanelSessionTab({
   );
   const openFromDetail = useCallback<ThreadStageActions["onOpenThread"]>(
     async (threadId, context) => {
+      if (context?.isSourceCurrent?.() === false) return;
       if (context?.subagent?.showInlineActivity === true) {
         await onRouteSubagent(context.subagent);
         return;
       }
-      if (context?.createdTarget) {
+      if (context?.createdTarget || context?.sourceRoot) {
         const root = sourceSession.thread;
         if (
           sourceSession.id !== tab.sessionId ||

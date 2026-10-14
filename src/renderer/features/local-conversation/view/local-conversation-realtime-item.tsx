@@ -58,6 +58,7 @@ export function LocalConversationRealtimeItem({
         <MarkdownRenderer
           content={item.text}
           dialect="conversation"
+          nativeSource={{ kind: "realtime", itemId }}
           visualizationContext={visualizationContext}
           preserveLineBreaks
           cwd={cwd}

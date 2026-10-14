@@ -3,6 +3,10 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import {
+  applyContentSearchDomMarks,
+  clearContentSearchMarks,
+} from "@/features/content-search/content-search-dom";
 
 const leaf = vi.hoisted(() => ({ renders: [] as string[] }));
 vi.mock("@/features/local-conversation/view/local-conversation-inline-visualization", () => ({
@@ -34,6 +38,38 @@ const message = (content: string, streaming = true) => (
 );
 
 describe("the mounted conversation token document", () => {
+  test.each([
+    ["needle and needle", "needle and needle"],
+    ["needle [link](https://example.test) and needle", "needle link and needle"],
+    ["needle #112233 and needle", "needle #112233 and needle"],
+    ["\\*needle\\* and needle", "*needle* and needle"],
+  ])(
+    "updates highlighted text without retaining split-node tails: %s",
+    async (source, displayed) => {
+      const view = render(message(source, false));
+      try {
+        const paragraph = view.container.querySelector("p")!;
+        expect(
+          applyContentSearchDomMarks({ root: paragraph, query: "needle", idPrefix: "text" })
+            .totalMatches,
+        ).toBe(2);
+        view.rerender(message(`${source} new ending`, false));
+        expect(view.container.querySelector("p")).toBe(paragraph);
+        clearContentSearchMarks(paragraph);
+        expect(paragraph.textContent).toBe(`${displayed} new ending`);
+        expect(
+          applyContentSearchDomMarks({ root: paragraph, query: "needle", idPrefix: "text" })
+            .totalMatches,
+        ).toBe(2);
+        view.rerender(message("needle and needle final", false));
+        const current = view.container.querySelector("p")!;
+        clearContentSearchMarks(current);
+        expect(current.textContent).toBe("needle and needle final");
+      } finally {
+        view.unmount();
+      }
+    },
+  );
   test("keeps both code controls with their authored sources when a new block precedes them", async () => {
     const code = (value: string) => `\`\`\`text\n${value}\n\`\`\``;
     const source = `${code("first")}\n\n${code("second")}`;

@@ -759,7 +759,9 @@ export function useWorkbenchPanelOpeners({
       mode?: "preview" | "durable";
       workspaceRoot?: string | null;
       location?: WorkspaceFileRevealLocation;
+      isCurrent?: () => boolean;
     }) => {
+      if (input.isCurrent?.() === false) return false;
       if (!activeSession) return false;
       const hostId = input.hostId ?? "local";
       const sessionProjectId = activeSession.projectId;
@@ -770,11 +772,11 @@ export function useWorkbenchPanelOpeners({
           ? null
           : (projects.find((candidate) => candidate.id === sessionProjectId) ?? null);
       const cwd =
-        normalizeOptionalPath(input.cwd) ??
-        (activeSession.thread?.executionHostId === hostId
-          ? normalizeOptionalPath(activeSession.thread.cwd)
-          : null) ??
-        null;
+        input.cwd !== undefined
+          ? input.cwd
+          : activeSession.thread?.executionHostId === hostId
+            ? (normalizeOptionalPath(activeSession.thread.cwd) ?? null)
+            : null;
       const explicitWorkspaceRoot = normalizeOptionalPath(input.workspaceRoot);
       const matchingThreadRoot =
         cwd && isWorkspacePathInsideRoot(cwd, input.path) ? cwd : undefined;
@@ -897,6 +899,7 @@ export function useWorkbenchPanelOpeners({
         const existing = activeSession.tabs.find((tab) => tab.id === decision.tabId);
         if (!existing) return false;
         await setActivePanelTab(existing.panelId, decision.tabId, { openPanel: true });
+        if (input.isCurrent?.() === false) return false;
         applyRevealToDurableTab(decision.tabId);
         return true;
       }
@@ -917,11 +920,13 @@ export function useWorkbenchPanelOpeners({
           config: fileConfig,
         });
         if (!created) return false;
+        if (input.isCurrent?.() === false) return false;
         applyRevealToDurableTab(created.id);
         await closeTab(decision.emptyTabId, {
           preferredActiveLeafId: leafId,
           preferredActiveTabId: created.id,
         });
+        if (input.isCurrent?.() === false) return false;
         await ensureActivePanelOpenWithoutRefresh(input.panelId);
         return true;
       }
@@ -935,6 +940,7 @@ export function useWorkbenchPanelOpeners({
 
       if (decision.kind === "create-preview" && decision.replacingPreviewTabId) {
         const saved = await workspaceTextDocumentRegistry.flush(decision.replacingPreviewTabId);
+        if (input.isCurrent?.() === false) return false;
         if (!saved) {
           toast.danger("Resolve the file conflict before opening another file");
           return false;
@@ -951,6 +957,7 @@ export function useWorkbenchPanelOpeners({
           config: fileConfig,
         });
         if (!created) return false;
+        if (input.isCurrent?.() === false) return false;
         applyRevealToDurableTab(created.id);
         await ensureActivePanelOpenWithoutRefresh(input.panelId);
         return true;

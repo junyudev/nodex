@@ -76,6 +76,9 @@ export function LocalConversationTimelinePromotion({
       <MarkdownRenderer
         content={content}
         dialect="conversation"
+        nativeSource={
+          itemId ? { kind: "item", entityKey: entry.historyEntityKey, itemId } : undefined
+        }
         preserveLineBreaks
         cwd={cwd}
         parseIncompleteMarkdown={markdownStreaming}

@@ -216,6 +216,9 @@ importers:
       micromark-extension-gfm:
         specifier: 3.0.0
         version: 3.0.0
+      mime-db:
+        specifier: 1.52.0
+        version: 1.52.0
       mime-types:
         specifier: ^2.1.35
         version: 2.1.35

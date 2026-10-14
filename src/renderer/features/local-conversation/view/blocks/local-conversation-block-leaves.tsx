@@ -6,6 +6,7 @@ import { footerText } from "../shared/thread-footer-i18n";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import {
   useCallback,
+  useContext,
   useEffect,
   useState,
   type CSSProperties,
@@ -22,6 +23,7 @@ import {
   QueuePendingInfoIcon,
 } from "@/components/shared/icons";
 import { MarkdownRenderer } from "../shared/markdown/markdown-renderer";
+import { CodexTranscriptTurnEntityContext } from "../../normalized-transcript-hooks";
 import { useConversationVisualizationContext } from "../inline-visualization-context";
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
@@ -1216,6 +1218,7 @@ export function ThreadAssistantBodyBlock({
   alwaysShowAssistantMessageActions = false,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
+  const entityKey = useContext(CodexTranscriptTurnEntityContext);
   const markdownText = block.entry.markdownText ?? "";
   const isAssistantItemStreaming = isStreamingTurn && block.entry.status === "inProgress";
   const aeon = useCreatedThreadSourceAeon(hostId ?? null, block.entry.threadId);
@@ -1276,6 +1279,15 @@ export function ThreadAssistantBodyBlock({
           <MarkdownRenderer
             content={markdownText}
             dialect="conversation"
+            nativeSource={
+              entityKey
+                ? {
+                    kind: "item",
+                    entityKey,
+                    itemId: block.entry.rawItemId ?? block.entry.itemId,
+                  }
+                : undefined
+            }
             preserveLineBreaks
             parseIncompleteMarkdown={isAssistantItemStreaming}
             animateStreamingText={isAssistantItemStreaming}

@@ -82,6 +82,44 @@ function NativeRows({
 }
 
 describe("native voice Find highlights in Chromium", () => {
+  test("updates a highlighted native transcript without duplicated text or replacing its link", async () => {
+    const original = "needle [label](https://example.test) and needle";
+    const native = fixture(original, "unrelated");
+    const view = render(<NativeRows native={native} entry={native.entry} identity={0} />);
+    const root = view.getByTestId("root");
+    const highlights = createLocalConversationSearchHighlightOwner({
+      readRoot: () => root,
+      resolveTarget: (match) => match.meta as LocalConversationSearchTarget,
+    });
+    try {
+      const link = await view.findByRole("link", { name: "label" });
+      const unit = root.querySelector('[data-native-realtime-item-id="voice-0"]')!;
+      await act(async () => {
+        highlights.publishResult(native.result, native.result.matches[0]!.id);
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(unit.querySelectorAll("mark")).toHaveLength(2));
+      await act(async () => {
+        native.owner.applyEvent({
+          type: "changes",
+          changes: [{ type: "realtime-text", itemId: "voice-0", delta: " new ending" }],
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(unit.textContent).toBe("needle label and needle new ending");
+        expect(unit.querySelectorAll("mark")).toHaveLength(2);
+        expect(view.getByRole("link", { name: "label" })).toBe(link);
+        expect(highlights.readActiveMatch(native.result.matches[0]!.id)?.textContent).toBe(
+          "needle",
+        );
+      });
+    } finally {
+      highlights.clear();
+      view.unmount();
+      native.retain();
+    }
+  });
   test("retains exact marks after a native leaf remount without changing viewport position", async () => {
     const native = fixture("paragraph\n\n".repeat(40) + "needle", "second needle");
     const view = render(<NativeRows native={native} entry={native.entry} identity={0} />);

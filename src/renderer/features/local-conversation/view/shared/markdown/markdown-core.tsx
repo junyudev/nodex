@@ -12,9 +12,20 @@ import {
   fileMarkdownMediaComponents,
 } from "@/lib/file-markdown-media/file-markdown-media";
 import type { FileMarkdownMediaScope } from "@/lib/file-markdown-media/file-markdown-media-model";
+import {
+  ConversationMediaProvider,
+  conversationMediaComponents,
+} from "@/lib/conversation-media/conversation-media";
+import type { ReactNode } from "react";
 import { streamdownComponents } from "../../../../../lib/streamdown";
 
 import type { MarkdownDisplayDialect } from "../../../../../../shared/conversation-markdown-display";
+import {
+  ConversationMarkdownItemSourceProvider,
+  useConversationMarkdownSource,
+  type ConversationMarkdownNativeSource,
+} from "../../conversation-markdown-source";
+import { renderConversationInline } from "../../conversation-markdown-inline";
 
 interface MarkdownCoreProps {
   dialect?: MarkdownDisplayDialect;
@@ -28,6 +39,7 @@ interface MarkdownCoreProps {
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
   fileMediaScope?: FileMarkdownMediaScope;
+  nativeSource?: ConversationMarkdownNativeSource;
 }
 
 const visualizationComponents: Components = {
@@ -41,6 +53,14 @@ const visualizationComponents: Components = {
       />
     ) : null,
 };
+const conversationComponents: Components = {
+  ...streamdownComponents,
+  ...conversationMediaComponents,
+};
+function ConversationResources({ children }: { readonly children: ReactNode }) {
+  const source = useConversationMarkdownSource();
+  return <ConversationMediaProvider source={source}>{children}</ConversationMediaProvider>;
+}
 function renderVisualization(token: ConversationDirectiveToken) {
   if (token.name === "codex-live-vis") return null;
   if (token.name !== "codex-inline-vis" || !token.block) return undefined;
@@ -68,6 +88,7 @@ export function MarkdownCore({
   projectWorkspacePath,
   visualizationContext,
   fileMediaScope,
+  nativeSource,
 }: MarkdownCoreProps) {
   const components = visualizationContext ? visualizationComponents : streamdownComponents;
 
@@ -76,16 +97,21 @@ export function MarkdownCore({
       <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
         <FileMarkdownMediaProvider scope={fileMediaScope}>
           {dialect === "conversation" ? (
-            <ConversationTokenRenderer
-              source={content}
-              sourceIdentity={sourceIdentity}
-              streaming={parseIncompleteMarkdown}
-              animate={animateStreamingText}
-              adaptive={adaptiveStreaming}
-              components={streamdownComponents}
-              renderDirective={visualizationContext ? renderVisualization : undefined}
-              className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
-            />
+            <ConversationMarkdownItemSourceProvider source={nativeSource}>
+              <ConversationResources>
+                <ConversationTokenRenderer
+                  source={content}
+                  sourceIdentity={sourceIdentity}
+                  streaming={parseIncompleteMarkdown}
+                  animate={animateStreamingText}
+                  adaptive={adaptiveStreaming}
+                  components={conversationComponents}
+                  renderDirective={visualizationContext ? renderVisualization : undefined}
+                  renderInline={renderConversationInline}
+                  className={`[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 ${MARKDOWN_CONTENT_CLASS_NAME}`}
+                />
+              </ConversationResources>
+            </ConversationMarkdownItemSourceProvider>
           ) : content ? (
             <MarkdownDocumentSurface
               source={content}

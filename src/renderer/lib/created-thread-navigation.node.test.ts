@@ -38,6 +38,37 @@ const session: ProjectSession = {
   },
 };
 describe("host-qualified created chat navigation", () => {
+  test("a source retired during its read cannot create or publish a Session", async () => {
+    let current = true;
+    const ensureOpen = vi.fn(async () => session);
+    const navigation = await prepareCreatedThreadNavigation(
+      { threadId: "same", expectedHostId: "remote" },
+      {
+        resolve: async () => {
+          current = false;
+          return ready;
+        },
+        ensureOpen,
+        isCurrent: () => current,
+      },
+    );
+    expect(navigation).toBeNull();
+    expect(ensureOpen).not.toHaveBeenCalled();
+    current = true;
+    expect(
+      await prepareCreatedThreadNavigation(
+        { threadId: "same", expectedHostId: "remote" },
+        {
+          resolve: async () => ready,
+          ensureOpen: async () => {
+            current = false;
+            return session;
+          },
+          isCurrent: () => current,
+        },
+      ),
+    ).toBeNull();
+  });
   test("foreign resolution performs no Session write", async () => {
     const ensureOpen = vi.fn(async () => session);
     expect(

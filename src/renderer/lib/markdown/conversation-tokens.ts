@@ -15,6 +15,10 @@ import {
   MARKDOWN_SYNTAX_CACHE_MAX_SOURCE_UNITS,
 } from "./markdown-cache";
 import { findMarkdownStablePrefix } from "./markdown-prefix";
+import {
+  normalizeConversationTargetTokens,
+  tokenizeConversationFileCitation,
+} from "./conversation-target-grammar";
 
 export type ConversationToken = ImmutableMarkdown<
   MarkedToken | ConversationMathToken | ConversationDirectiveToken
@@ -172,6 +176,21 @@ function createLexer() {
     },
     extensions: [
       {
+        name: "codexDirective",
+        level: "inline",
+        start(source) {
+          let index = source.indexOf("【");
+          while (index >= 0) {
+            if (tokenizeConversationFileCitation(source.slice(index))) return index;
+            index = source.indexOf("【", index + 1);
+          }
+          return undefined;
+        },
+        tokenizer(source) {
+          return tokenizeConversationFileCitation(source);
+        },
+      },
+      {
         name: "skillMention",
         level: "inline",
         start(source) {
@@ -242,6 +261,7 @@ export function createConversationTokenEngine() {
       )
         Object.assign(token, { type: "text", tokens: undefined });
     });
+    if (source.includes("](")) normalizeConversationTargetTokens(tokens);
     normalizeLists(tokens);
     mergeImages(tokens);
     const value = freeze({

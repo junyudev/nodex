@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { ImagePreviewDialog } from "./image-preview-dialog";
+import * as resolvedImageAsset from "../adapters/resolved-image-asset";
 
 const IMAGE_DATA_URL = "data:image/png;base64,AQID";
 
@@ -47,6 +48,20 @@ afterEach(() => {
 });
 
 describe("ImagePreviewDialog", () => {
+  test("does not download an image whose source retires while materializing it", async () => {
+    let current = true;
+    const download = vi
+      .spyOn(resolvedImageAsset, "downloadImageDataUrl")
+      .mockImplementation(() => undefined);
+    const view = renderPreview({ isCurrent: () => current });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Download image" }));
+      current = false;
+      await Promise.resolve();
+    });
+    expect(download).not.toHaveBeenCalled();
+  });
+
   test("offers the optional edit action and closes after accepting it", async () => {
     const onEditImage = vi.fn();
     const onOpenChange = vi.fn();

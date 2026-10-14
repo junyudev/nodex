@@ -217,6 +217,8 @@ export interface ThreadOpenThreadContext {
   readonly hostId?: string;
   readonly createdTarget?: import("../../../shared/codex-created-thread-result").CodexCreatedThreadResult;
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
+  /** A mounted source may withdraw navigation while a read is in flight. */
+  readonly isSourceCurrent?: () => boolean;
   subagent?: ThreadOpenSubagentPayload;
 }
 

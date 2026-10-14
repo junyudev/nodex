@@ -923,6 +923,7 @@ export function useWorkbenchSessionCommands({
       threadId: string,
       context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
     ): Promise<boolean> => {
+      if (context?.isSourceCurrent?.() === false) return false;
       const createdInput = context?.createdTarget
         ? createdThreadResolveInput(context.createdTarget)
         : context?.hostId
@@ -934,7 +935,9 @@ export function useWorkbenchSessionCommands({
           const navigation = await prepareCreatedThreadNavigation(createdInput, {
             resolve: resolveCreatedThreadTarget,
             ensureOpen: ensureCreatedThreadSession,
+            isCurrent: context.isSourceCurrent,
           });
+          if (context.isSourceCurrent?.() === false) return false;
           if (!navigation) return false;
           if (navigation.type === "pending") {
             setSettingsPath(null);
@@ -951,8 +954,10 @@ export function useWorkbenchSessionCommands({
               {
                 resolve: resolveCreatedThreadTarget,
                 ensureOpen: ensureCreatedThreadSession,
+                isCurrent: context.isSourceCurrent,
               },
             );
+            if (context.isSourceCurrent?.() === false) return false;
             if (root?.type !== "session") return false;
             seedProjectSessionDetail(queryClient, root.session);
             const projected = presentWorkbenchSession({
@@ -996,6 +1001,7 @@ export function useWorkbenchSessionCommands({
           );
           return true;
         } catch {
+          if (context.isSourceCurrent?.() === false) return false;
           toast.danger("Failed to open chat");
           return false;
         }

@@ -61,8 +61,11 @@ export function normalizeUserAttachmentImageEditorOptions(
   const imageSource = resolveImageSource(options);
   const fallbackImage = createFallbackImage(options, imageSource);
   const generatedImages = options.generatedImages ?? null;
-  const images =
-    generatedImages !== null && generatedImages.length > 0 ? generatedImages : [fallbackImage];
+  const images = generatedImages?.length
+    ? generatedImages
+    : options.images?.length
+      ? options.images
+      : [fallbackImage];
   const initialImageId = options.initialImageId ?? images[0]?.id ?? fallbackImage.id;
   const initialView = generatedImages !== null ? (options.initialView ?? "single") : "single";
   const title =

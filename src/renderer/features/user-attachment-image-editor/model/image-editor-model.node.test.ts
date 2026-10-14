@@ -159,6 +159,24 @@ describe("image preview policy", () => {
     expect(options.title).toBe("Generated concept");
   });
 
+  test("preserves the mounted ordinary-image collection and its selected image without creating generated state", () => {
+    const images = [makeImage("one"), makeImage("two")];
+    const options = normalizeUserAttachmentImageEditorOptions({
+      alt: "Two",
+      attachmentSrc: images[1]!.attachmentSrc,
+      src: images[1]!.src,
+      images,
+      initialImageId: "two",
+      availableImageCount: 2,
+    });
+    expect(options.images).toBe(images);
+    expect(options.initialImageId).toBe("two");
+    expect(options.availableImageCount).toBe(2);
+    expect(options.generatedImages).toBeNull();
+    expect(options.imageSource).toBe("uploaded");
+    expect(options.initialView).toBe("single");
+  });
+
   test("routes feature gates and local preview-dialog policy", () => {
     expect(
       resolveImagePreviewOpenDisposition(

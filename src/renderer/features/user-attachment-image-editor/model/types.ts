@@ -88,6 +88,8 @@ export interface OpenUserAttachmentImagePreviewOptions {
   downloadSrc?: string;
   entrypoint?: ImagePreviewEntrypoint;
   generatedImages?: readonly GeneratedImageDescriptor[];
+  /** Mounted ordinary image collection; it does not imply a generated-image result. */
+  images?: readonly EditableImageDescriptor[];
   imageSource?: ImageSourceClassification;
   initialImageId?: string;
   initialPlaygroundTool?: PlaygroundTool;

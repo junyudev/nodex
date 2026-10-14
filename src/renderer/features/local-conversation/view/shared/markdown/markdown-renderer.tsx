@@ -9,6 +9,7 @@ import {
 } from "../../../../../lib/markdown/use-adaptive-markdown";
 
 import type { MarkdownDisplayDialect } from "../../../../../../shared/conversation-markdown-display";
+import type { ConversationMarkdownNativeSource } from "../../conversation-markdown-source";
 
 export interface MarkdownRendererProps {
   dialect?: MarkdownDisplayDialect;
@@ -23,6 +24,7 @@ export interface MarkdownRendererProps {
   projectWorkspacePath?: string | null;
   visualizationContext?: ConversationVisualizationContext;
   fileMediaScope?: FileMarkdownMediaScope;
+  nativeSource?: ConversationMarkdownNativeSource;
 }
 
 export function MarkdownRenderer({
@@ -38,6 +40,7 @@ export function MarkdownRenderer({
   projectWorkspacePath,
   visualizationContext,
   fileMediaScope,
+  nativeSource,
 }: MarkdownRendererProps) {
   return (
     <div className={cn("codex-markdown", className)} style={style}>
@@ -52,6 +55,7 @@ export function MarkdownRenderer({
           projectWorkspacePath={projectWorkspacePath}
           visualizationContext={visualizationContext}
           fileMediaScope={fileMediaScope}
+          nativeSource={nativeSource}
           buffering={adaptiveBuffering}
         />
       ) : (
@@ -65,6 +69,7 @@ export function MarkdownRenderer({
           projectWorkspacePath={projectWorkspacePath}
           visualizationContext={visualizationContext}
           fileMediaScope={fileMediaScope}
+          nativeSource={nativeSource}
         />
       )}
     </div>

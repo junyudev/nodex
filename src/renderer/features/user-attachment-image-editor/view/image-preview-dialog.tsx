@@ -44,6 +44,8 @@ export interface ImagePreviewDialogProps {
   showZoomControls?: boolean;
   closeOnSpace?: boolean;
   finalFocus?: React.ComponentProps<typeof NodexDialogContent>["finalFocus"];
+  /** Retired conversation sources must not publish a late download. */
+  isCurrent?: () => boolean;
 }
 
 function nextZoom(currentZoom: number, direction: "in" | "out"): number {
@@ -59,6 +61,32 @@ function isEditableTarget(target: EventTarget | null): boolean {
     target.isContentEditable ||
     target.closest("input, textarea, select, [contenteditable='true']") !== null
   );
+}
+
+async function downloadPreviewImage(
+  materialize: () => Promise<string>,
+  source: string,
+  filename: string | undefined,
+  isCurrent: (() => boolean) | undefined,
+  publishPending: (pending: boolean) => void,
+) {
+  if (isCurrent?.() === false) return;
+  publishPending(true);
+  try {
+    const dataUrl = await materialize();
+    if (isCurrent?.() === false) return;
+    downloadImageDataUrl(dataUrl, createImageDownloadFilename(source, filename));
+  } catch {
+    if (isCurrent?.() !== false) toast.danger("Could not download image");
+  } finally {
+    if (isCurrent?.() !== false) publishPending(false);
+  }
+}
+
+/** Scroll positions belong to the native viewport, separate from React's element snapshot. */
+function setPreviewScroll(viewport: HTMLDivElement, left: number, top: number) {
+  viewport.scrollLeft = left;
+  viewport.scrollTop = top;
 }
 
 export function ImagePreviewDialog({
@@ -77,6 +105,7 @@ export function ImagePreviewDialog({
   showZoomControls = true,
   closeOnSpace = false,
   finalFocus,
+  isCurrent,
 }: ImagePreviewDialogProps) {
   const previewAsset = useResolvedImageAsset(src, { allowLocalPath });
   const downloadAsset = useResolvedImageAsset(downloadSrc, { allowLocalPath });
@@ -141,8 +170,7 @@ export function ImagePreviewDialog({
   useEffect(() => {
     if (!open) return;
     if (viewportNode) {
-      viewportNode.scrollLeft = 0;
-      viewportNode.scrollTop = 0;
+      setPreviewScroll(viewportNode, 0, 0);
     }
   }, [open, src, viewportNode]);
 
@@ -221,17 +249,15 @@ export function ImagePreviewDialog({
     zoomPercent,
   ]);
 
-  const handleDownload = async () => {
-    if (isDownloading) return;
-    setIsDownloading(true);
-    try {
-      const dataUrl = await downloadAsset.materialize();
-      downloadImageDataUrl(dataUrl, createImageDownloadFilename(downloadSrc, downloadFileName));
-    } catch {
-      toast.danger("Could not download image");
-    } finally {
-      setIsDownloading(false);
-    }
+  const handleDownload = () => {
+    if (isDownloading || isCurrent?.() === false) return;
+    return downloadPreviewImage(
+      downloadAsset.materialize,
+      downloadSrc,
+      downloadFileName,
+      isCurrent,
+      setIsDownloading,
+    );
   };
 
   const handlePanStart = (event: PointerEvent<HTMLImageElement>) => {
@@ -251,8 +277,11 @@ export function ImagePreviewDialog({
     const pan = panStateRef.current;
     if (!pan || !viewportNode || pan.pointerId !== event.pointerId) return;
     event.preventDefault();
-    viewportNode.scrollLeft = pan.scrollLeft - (event.clientX - pan.clientX);
-    viewportNode.scrollTop = pan.scrollTop - (event.clientY - pan.clientY);
+    setPreviewScroll(
+      viewportNode,
+      pan.scrollLeft - (event.clientX - pan.clientX),
+      pan.scrollTop - (event.clientY - pan.clientY),
+    );
   };
 
   const handlePanEnd = (event: PointerEvent<HTMLImageElement>) => {
