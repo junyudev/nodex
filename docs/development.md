@@ -147,6 +147,14 @@ DevTools port so different homes can run concurrently. Pass
 `0` through `65535` when a stable endpoint is needed. The command-line option
 overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
 
+Both launch modes first run the installed `install-electron` command to prepare
+the pinned Electron binary. Electron downloads its binary lazily, while
+electron-vite reads the installation path directly. Explicit preparation keeps
+a fresh dependency install launchable; an already installed binary is reused.
+For a standalone repair after `Error: Electron uninstall`, run
+`vp exec install-electron` from the worktree root. See
+[Electron's binary download documentation](https://www.electronjs.org/docs/latest/tutorial/installation#binary-download-step).
+
 The production build remains fail-closed. It hashes the Electron input closure,
 build context, generated resources, and exact `out/` inventory. Packaging and
 installation verify the prepared build through the same internal module;

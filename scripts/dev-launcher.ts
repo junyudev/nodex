@@ -239,6 +239,12 @@ const pnpmScript = (script: string): SupervisedCommandPlan => ({
   args: ["--silent", "run", script],
 });
 
+// electron-vite reads path.txt directly, bypassing Electron's lazy runtime download.
+const prepareElectronRuntime: SupervisedCommandPlan = {
+  command: "pnpm",
+  args: ["exec", "install-electron"],
+};
+
 export const createDevLaunchPlan = (input: {
   readonly arguments: DevLauncherArguments;
   readonly environment: NodeJS.ProcessEnv;
@@ -291,6 +297,7 @@ export const createDevLaunchPlan = (input: {
   if (input.arguments.build) {
     return {
       preparation: [
+        prepareElectronRuntime,
         pnpmScript("core:binaries:build:release"),
         pnpmScript("build"),
         pnpmScript("stage:codex-runtime:mac:cached"),
@@ -306,6 +313,7 @@ export const createDevLaunchPlan = (input: {
   }
   return {
     preparation: [
+      prepareElectronRuntime,
       pnpmScript("build-resources:prepare"),
       pnpmScript("core:build:dev"),
       pnpmScript("stage:codex-runtime:mac:cached"),
