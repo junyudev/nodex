@@ -166,6 +166,9 @@ for (const file of ["src/shared/ipc-api.ts"]) {
 
 const retainedLocalStoreFiles = new Set([
   "ProfileAssets.ts",
+  // Profile-local host state shares one explicit owner; this is not Core data authority.
+  "ProfilePersistedAtoms.node.test.ts",
+  "ProfilePersistedAtoms.ts",
   "assets.test.ts",
   "assets.ts",
   "codex-scheduled-automation-schedule.test.ts",

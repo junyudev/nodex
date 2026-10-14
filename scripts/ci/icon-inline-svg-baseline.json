@@ -22,6 +22,10 @@
     "src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx": 2,
     "src/renderer/features/local-conversation/view/shared/account-rate-limit-ring.tsx": 1,
     "src/renderer/features/local-conversation/view/shared/context-window.tsx": 1,
+    "src/renderer/features/local-conversation/view/shared/markdown/markdown-document-renderer.test.tsx": {
+      "count": 1,
+      "reason": "Renderer test fixture supplies inert Mermaid diagram SVG to verify rich Markdown segment continuity; it is not reusable product artwork."
+    },
     "src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx": 3,
     "src/renderer/features/local-conversation/view/shared/subagent-avatar.tsx": 1,
     "src/renderer/features/local-conversation/view/shared/todo-list-surface.tsx": 3,

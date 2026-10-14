@@ -1,3 +1,5 @@
+import { guestDocumentChevronDownIcon } from "@/components/shared/icons/guest-document-icons";
+
 /** Self-contained installers execute inside the guest document after its authored fragment. */
 function installTooltip() {
   const widgetWindow = window as Window & {
@@ -395,7 +397,7 @@ function installTabs() {
   );
 }
 
-function installCarousel() {
+function installCarousel(chevronDownIcon: string) {
   for (const root of document.querySelectorAll<HTMLElement>(".viz-carousel")) {
     const panels = Array.from(root.querySelectorAll<HTMLElement>(":scope > [data-variant]"));
     if (panels.length === 0) {
@@ -422,9 +424,7 @@ function installCarousel() {
         <summary class="cursor-interaction">
           <span class="viz-carousel-count tabular-nums"></span>
           <span class="viz-carousel-name"></span>
-          <svg class="viz-carousel-caret" width="14" height="14" viewBox="0 0 20 21" fill="none" aria-hidden="true" focusable="false">
-            <path d="M15.2793 7.71101C15.539 7.45131 15.961 7.45131 16.2207 7.71101C16.4804 7.97071 16.4804 8.39272 16.2207 8.65242L10.4707 14.4024C10.211 14.6621 9.78902 14.6621 9.52932 14.4024L3.77932 8.65242L3.69436 8.54792C3.52385 8.28979 3.55205 7.93828 3.77932 7.71101C4.00659 7.48374 4.3581 7.45554 4.61623 7.62605L4.72073 7.71101L10 12.9903L15.2793 7.71101Z" fill="currentColor" stroke="currentColor" stroke-width="0.6" />
-          </svg>
+          ${chevronDownIcon}
         </summary>
         <div class="viz-carousel-options"></div>
       </details>
@@ -594,7 +594,7 @@ function installLucide() {
 export function buildInlineVisualizationHelpers(): string {
   return `<script src="https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js"></script>
 <script src="https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js"></script>
-<script>(${installTooltip.toString()})();(${installTabs.toString()})();(${installCarousel.toString()})();</script>
+<script>(${installTooltip.toString()})();(${installTabs.toString()})();(${installCarousel.toString()})(${JSON.stringify(guestDocumentChevronDownIcon).replaceAll("<", "\\u003c")});</script>
 <script id="nodex-visualization-lucide" async src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js"></script>
 <script>(${installLucide.toString()})();</script>`;
 }

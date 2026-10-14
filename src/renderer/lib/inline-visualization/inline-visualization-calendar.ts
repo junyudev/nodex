@@ -1,7 +1,8 @@
+import { guestDocumentVideoIcon } from "@/components/shared/icons/guest-document-icons";
 import calendarStyles from "./inline-visualization-calendar.css?inline";
 
 /** Register synchronously before parsing a calendar fragment. */
-function installCalendar(style: string) {
+function installCalendar(style: string, videoIcon: string) {
   if (customElements.get("viz-calendar")) return;
 
   const escape = (value: unknown) =>
@@ -212,7 +213,7 @@ function installCalendar(style: string) {
               `${event.title}, ${event.start}-${event.end}${event.detail ? `, ${event.detail}` : ""}`,
             );
             const body = `button type="button"${interactive ? ` data-event-index="${event.index}"` : ""} aria-label="${label}" data-tooltip="${label}"`;
-            return `<li class="event${now != null && event.to <= now ? " past" : ""}" style="--at:${(event.from - start) / 60};--duration:${(event.to - event.from) / 60};--lane:${event.lane};--lanes:${event.lanes};--tone:var(--${event.tone})"><${body} class="event-body cursor-interaction"><span class="event-content"><span class="title">${escape(event.title)}</span>${event.detail ? `<span class="detail">${escape(event.detail)}</span>` : ""}</span>${event.video ? '<svg class="video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>' : ""}</button></li>`;
+            return `<li class="event${now != null && event.to <= now ? " past" : ""}" style="--at:${(event.from - start) / 60};--duration:${(event.to - event.from) / 60};--lane:${event.lane};--lanes:${event.lanes};--tone:var(--${event.tone})"><${body} class="event-body cursor-interaction"><span class="event-content"><span class="title">${escape(event.title)}</span>${event.detail ? `<span class="detail">${escape(event.detail)}</span>` : ""}</span>${event.video ? videoIcon : ""}</button></li>`;
           })
           .join("");
         const nowMarkup =
@@ -232,5 +233,5 @@ function installCalendar(style: string) {
 
 export function buildInlineVisualizationCalendar(fragment: string): string {
   if (!/\bviz-calendar\b/i.test(fragment)) return "";
-  return `<script>(${installCalendar.toString()})(${JSON.stringify(calendarStyles).replaceAll("<", "\\u003c")});</script>`;
+  return `<script>(${installCalendar.toString()})(${JSON.stringify(calendarStyles).replaceAll("<", "\\u003c")},${JSON.stringify(guestDocumentVideoIcon).replaceAll("<", "\\u003c")});</script>`;
 }

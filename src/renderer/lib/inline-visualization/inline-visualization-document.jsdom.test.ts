@@ -352,6 +352,20 @@ describe("guest tooltip lifetime", () => {
 });
 
 describe("conditional calendar", () => {
+  test("calendar and carousel controls render local icons without a guest React or Lucide runtime", () => {
+    const guest = mountDocument(
+      `${carousel}<viz-calendar date="2026-10-12" events='[{"title":"Call","start":"09:00","end":"10:00","video":true}]'></viz-calendar>`,
+    );
+    const caret = guest.document.querySelector("summary svg")!;
+    const video = guest.document
+      .querySelector("viz-calendar")!
+      .shadowRoot!.querySelector("button svg")!;
+    for (const icon of [caret, video]) {
+      expect(icon).toBeInstanceOf(guest.window.SVGElement);
+      expect(icon.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+
   test("registration happens only for calendar fragments and first parse builds valid escaped events", () => {
     const empty = mountDocument("<p>Ordinary content</p>");
     expect(empty.window.customElements.get("viz-calendar")).toBeUndefined();

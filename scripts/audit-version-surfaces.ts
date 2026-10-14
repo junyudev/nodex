@@ -531,6 +531,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "normalize immutable trusted-RPC runtime manifests",
   ],
   [
+    "src/shared/codex-app-server-version.ts:CODEX_THREAD_TIMELINE_MINIMUM_VERSION",
+    "runtimeCompatibility",
+    "Codex native Thread timeline support",
+    "require a proven native version before timeline requests and canonical history adoption",
+  ],
+  [
     "src/shared/codex-peer-protocol.ts:CODEX_PEER_METHOD_VERSIONS",
     "runtimeCompatibility",
     "Codex peer method contracts",

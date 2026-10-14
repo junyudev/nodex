@@ -9,3 +9,4 @@ export * from "./image-editor-icons";
 export * from "./priority-value-icon";
 export * from "./rating-icons";
 export * from "./response-copy-icon";
+export * from "./voice-icons";

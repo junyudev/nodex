@@ -1,4 +1,10 @@
-import { ActivitySpinnerIcon, MicIcon, StopIcon } from "../../components/shared/icons";
+import {
+  ActivitySpinnerIcon,
+  MicIcon,
+  StopIcon,
+  VoiceCallIcon,
+  VoiceOutputIcon,
+} from "../../components/shared/icons";
 import { NodexTooltip } from "../../components/ui/tooltip";
 import type { useComposerRealtimeVoice } from "./realtime-voice-window";
 
@@ -49,16 +55,7 @@ export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls
               void voice.setOutputMuted(!voice.outputMuted).catch(() => undefined);
             }}
           >
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              className="icon-xs"
-              aria-hidden="true"
-            >
-              <path d="m4 8 3 0 4-4v12l-4-4H4V8Z" />
-              {voice.outputMuted ? <path d="m14 7 4 6m0-6-4 6" /> : <path d="M14 6c3 2 3 6 0 8" />}
-            </svg>
+            <VoiceOutputIcon muted={voice.outputMuted} className="icon-xs" />
           </button>
         </NodexTooltip>
       ) : null}
@@ -80,16 +77,7 @@ export function RealtimeVoiceControls({ voice }: { readonly voice: VoiceControls
           ) : active ? (
             <StopIcon className="icon-xs" />
           ) : (
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              className="icon-xs"
-              aria-hidden="true"
-            >
-              <path d="M3 8v4m3-7v10m4-13v16m4-13v10m3-7v4" />
-            </svg>
+            <VoiceCallIcon className="icon-xs" />
           )}
         </button>
       </NodexTooltip>
