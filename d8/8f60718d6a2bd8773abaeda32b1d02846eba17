@@ -1,0 +1,23 @@
+scripts/dev-launcher.ts
+  s_4de0b6ddc5349c::t_ccfdd269fd02a8 242-247,300,316
+docs/development.md
+  s_4de0b6ddc5349c::t_ccfdd269fd02a8 150-157
+scripts/dev-launcher.test.ts
+  s_4de0b6ddc5349c::t_ccfdd269fd02a8 114-117,182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d88f60718d6a2bd8773abaeda32b1d02846eba17",
+  "prompts": {},
+  "sessions": {
+    "s_4de0b6ddc5349c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13866-7146-7f03-9521-958bca702586",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
