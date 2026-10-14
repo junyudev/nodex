@@ -1,0 +1,280 @@
+src/renderer/lib/use-theme.test.tsx
+  s_4a9675942dcb26::t_1efe5e9999452d 7,62,84,89
+src/renderer/components/board/page-create-description-editor.tsx
+  s_4a9675942dcb26::t_61036106513117 23
+src/renderer/features/local-conversation/view/new-thread-home-hero.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 17
+scripts/verify-renderer-bootstrap.ts
+  s_4a9675942dcb26::t_64f1be76eeaba1 43-46
+  s_4a9675942dcb26::t_36e8d1f9c8655c 47-48,79
+src/renderer/bootstrap/application-appearance.ts
+  s_4a9675942dcb26::t_1efe5e9999452d 1-14
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.jsdom.test.ts
+  s_4a9675942dcb26::t_1305aab9ce7edf 164-174
+  s_4a9675942dcb26::t_5c394fa0fece74 4-8,175-177,185-186,191,199-204,209,308-313,346-351,356
+electron.vite.config.ts
+  s_4a9675942dcb26::t_11f3b83b2244d3 7,197
+src/renderer/lib/diff-presentation.node.test.ts
+  s_4a9675942dcb26::t_444780a81ddf2b 6,10-18
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_4a9675942dcb26::t_eea073756d95b3 106
+src/renderer/components/board/editor/image-block.tsx
+  s_4a9675942dcb26::t_61036106513117 262-264
+  s_4a9675942dcb26::t_ae7ecc5272ccc1 266
+src/renderer/components/ui/source-viewer.stress.browser.test.tsx
+  s_4a9675942dcb26::t_5b7a1d387275b2 1,3
+src/renderer/components/board/page-stage/raw-content.tsx
+  s_4a9675942dcb26::t_61036106513117 24,30
+docs/product-specs/desktop-startup-behavior.md
+  s_4a9675942dcb26::t_64f1be76eeaba1 59
+src/renderer/components/block-documents/collaborative-page-title.tsx
+  s_4a9675942dcb26::t_988833a2338aa2 95
+src/renderer/features/local-conversation/view/shared/tools/nodex-dynamic-tool-change-preview.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 30,34
+  s_4a9675942dcb26::t_be41eba38c01f4 35-37
+src/renderer/features/local-conversation/view/shared/card-info-hover-card.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 51,61,73-74,81,89,102,108
+src/renderer/components/ui/file-tree-theme.ts
+  s_4a9675942dcb26::t_f3f20df8ad1cca 14-15
+src/renderer/application-renderer.tsx
+  s_4a9675942dcb26::t_1efe5e9999452d 8,21
+  s_5cd527886c6c64::t_1af8e765677498 22
+src/renderer/components/ui/floating-surface.tsx
+  s_4a9675942dcb26::t_eea073756d95b3 108
+src/renderer/components/board/page-stage/raw-content.test.tsx
+  s_4a9675942dcb26::t_5e734f0f20e304 3
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 667,683
+docs/product-specs/review-right-panel-behavior.md
+  s_4a9675942dcb26::t_f3f20df8ad1cca 93
+  s_4a9675942dcb26::t_fc22b541d8412b 76-82
+.agents/skills/general-design-guidelines/SKILL.md
+  s_4a9675942dcb26::t_d7d65e8aa4fdcb 161,265,438-452
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_4a9675942dcb26::t_f9474086547ed5 80,91,96
+  s_4a9675942dcb26::t_e113ef520e18f7 8,14-15,28-31,38,42,48,74-75,79,81-90,92-95,97-100
+src/renderer/components/ui/source-viewer.test.tsx
+  s_4a9675942dcb26::t_e113ef520e18f7 12-13,19-22,39,60-61,65-70
+tests/e2e/typography-settings.spec.ts
+  s_4a9675942dcb26::t_3b31ca6d315bc0 52-57,82,89-93,98,412-414,459-461,465
+  s_4a9675942dcb26::t_5ba77c3b7dd33f 197-199,406-411,415,452-458,462
+  s_4a9675942dcb26::t_dce916a4a16450 47-51,233,243,322,399,437
+  s_4a9675942dcb26::t_91ad33e1d28f20 1-46,58-81,83-88,94-97,99-192,194,202-204,209-232,235-242,244-309,324-379,397-398,404-405,416-436,438-450,481-494,496-499
+  s_4a9675942dcb26::t_f2883e4a5b55aa 193,205-208,234,310-321,323,380-383,385-396,400,402-403,451,463-464,466-480,495
+  s_4a9675942dcb26::t_f54ea52a8d9b24 384,401
+  s_4a9675942dcb26::t_554a4c94a89bc9 195-196,200-201
+src/renderer/components/ui/source-typography.browser.test.tsx
+  s_4a9675942dcb26::t_8a40da28975141 1-74
+src/renderer/components/ui/destination-picker.tsx
+  s_4a9675942dcb26::t_1722614ba68a4f 48,70,96,140,214,235
+docs/FRONTEND.md
+  s_4a9675942dcb26::t_d7d65e8aa4fdcb 379-385
+  s_4a9675942dcb26::t_64f1be76eeaba1 420-423
+src/renderer/lib/typography-preferences.node.test.ts
+  s_4a9675942dcb26::t_d3b5a3149d36fa 1,8,11-12,15-16,18-25,36-39,51-54,63-83
+  s_4a9675942dcb26::t_38e1cb3796436a 2-7,9-10,13-14,17,26-35,40-50,55-62,84-85
+  s_4a9675942dcb26::t_11312dd7f0d883 86-102
+config/startup-shell-html.ts
+  s_4a9675942dcb26::t_bd117518b85498 65,94,107-108
+src/renderer/globals.css
+  s_4a9675942dcb26::t_4b063d240b2be4 300-303,307-322,335,337-338,341-342,345-346,349-354,358,361,364,367-370,377,453-456,460-465,814,841-842,1642
+  s_4a9675942dcb26::t_444780a81ddf2b 375,395,399,403,407
+  s_4a9675942dcb26::t_3f7c5bf3dfaa83 156-158,1640-1641
+  s_4a9675942dcb26::t_988833a2338aa2 296
+  s_4a9675942dcb26::t_61036106513117 1091,1125,1203,1211,1409
+  s_4a9675942dcb26::t_718b702a735e61 1512-1518,1520-1521,1525-1576,1643-1656,1778-1779
+src/renderer/lib/use-typography-preferences.test.tsx
+  s_4a9675942dcb26::t_38e1cb3796436a 1-4,6-11,13-24,26-28,30-42,44-65
+  s_4a9675942dcb26::t_debc5c0baecfe6 29
+  s_4a9675942dcb26::t_1d8c2723cfe5d6 66-67,70-90
+src/renderer/lib/terminal-typography.jsdom.test.ts
+  s_4a9675942dcb26::t_444780a81ddf2b 1,4-5,9-10,16,21,32,47
+src/renderer/components/ui/dialog.tsx
+  s_4a9675942dcb26::t_cc63dcfed1cc77 221,326
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_4a9675942dcb26::t_3bb141dee8e1e0 248,254-255,257-260
+  s_4a9675942dcb26::t_a2b8a9a46effb2 261-264
+src/renderer/lib/terminal-typography.ts
+  s_4a9675942dcb26::t_444780a81ddf2b 1,3
+  s_4a9675942dcb26::t_4cb639e7a718dd 2,20-22,24-25,30,50
+  s_4a9675942dcb26::t_5f4cc14d14bd7f 42-43,51,63
+src/renderer/components/ui/tooltip.tsx
+  s_4a9675942dcb26::t_eea073756d95b3 189
+src/renderer/components/block-documents/page-typography.browser.test.tsx
+  s_4a9675942dcb26::t_3e9b7d9bb49b97 1-56,63-93,97-121,125-128,132-139
+  s_4a9675942dcb26::t_312c31e46100d4 57-62,94-96,122-124,129-131
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_4a9675942dcb26::t_3bb141dee8e1e0 39-40,334,340-343
+src/renderer/components/board/editor/block-children-contract.browser.test.ts
+  s_4a9675942dcb26::t_fc22b541d8412b 136-137
+  s_4a9675942dcb26::t_988833a2338aa2 138-139
+  s_4a9675942dcb26::t_b38c5357df42cc 164-165
+src/renderer/components/board/editor/nfm-code-block-spec.tsx
+  s_4a9675942dcb26::t_5b7a1d387275b2 79
+src/renderer/components/ui/source-viewer.tsx
+  s_4a9675942dcb26::t_e113ef520e18f7 8,11,49,72-73,77
+  s_4a9675942dcb26::t_42ef1306747137 78-79
+docs/product-specs/index.md
+  s_4a9675942dcb26::t_0817baf178b00f 34
+src/renderer/lib/diff-presentation.ts
+  s_4a9675942dcb26::t_e113ef520e18f7 242-245,248
+  s_4a9675942dcb26::t_5f4cc14d14bd7f 13-14,31-33,246-247,249-257,259
+  s_5cd527886c6c64::t_a54153ec27094c 258,260
+config/typography-bootstrap.ts
+  s_4a9675942dcb26::t_debc5c0baecfe6 44
+  s_4a9675942dcb26::t_11f3b83b2244d3 1-43,45-53
+src/renderer/components/board/page-create-dialog.tsx
+  s_4a9675942dcb26::t_61036106513117 410,414
+docs/product-specs/database-pages-and-views-behavior.md
+  s_4a9675942dcb26::t_fc22b541d8412b 905-916
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_4a9675942dcb26::t_56bfd2cd073445 65,1055,1072-1078,1091,1104,1112-1115,1120
+  s_4a9675942dcb26::t_3bb141dee8e1e0 66-67,1056-1071,1079-1090,1092-1103,1105-1111,1116-1119,1121-1125,1132
+  s_4a9675942dcb26::t_11b0badd138884 68-71,981-982,988,1028-1029,1044,1126-1131,1133-1134
+src/renderer/bootstrap/typography-bootstrap.ts
+  s_4a9675942dcb26::t_11f3b83b2244d3 1-14
+  s_4a9675942dcb26::t_21439e57c0fefd 15-17
+src/renderer/index.html
+  s_4a9675942dcb26::t_11f3b83b2244d3 9
+src/renderer/lib/typography-preferences.ts
+  s_4a9675942dcb26::t_44f6d7125532a5 64-71,88-100,113-118
+  s_4a9675942dcb26::t_184af6a9973de5 145-147,150,152
+  s_4a9675942dcb26::t_793a6644bfbfb0 35,72-87,101-107,112,206
+  s_4a9675942dcb26::t_5374ae8aa99248 1-23,27-34,36-63,108-111,119-144,148-149,151,153-165,170-184,189-205,207-221
+  s_4a9675942dcb26::t_a146c58ee45c7a 24-26,166-169,185-188
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_4a9675942dcb26::t_bd117518b85498 348
+src/renderer/features/local-conversation/view/shared/markdown/conversation-typography.browser.test.tsx
+  s_4a9675942dcb26::t_5992e5ab8b6e65 1-174
+src/renderer/components/board/editor/attachment-chip.tsx
+  s_4a9675942dcb26::t_5f4cc14d14bd7f 212,225
+docs/product-specs/nfm-editor-code-block-behavior.md
+  s_4a9675942dcb26::t_fc22b541d8412b 57
+src/renderer/components/ui/file-tree.browser.test.tsx
+  s_4a9675942dcb26::t_f3f20df8ad1cca 7-10,32-74
+CHANGELOG.md
+  s_4a9675942dcb26::t_d7d65e8aa4fdcb 9-10
+docs/product-specs/typography-behavior.md
+  s_4a9675942dcb26::t_920c0ebab79a77 10-12,45-46,52-59,62-63,69,71,76,78,84-85,88,90-93
+  s_4a9675942dcb26::t_d7d65e8aa4fdcb 1-9,13-44,47-51,60-61,64-68,70,72-75,77,79-83,86-87,89,94-103
+src/renderer/styles/theme-source.css
+  s_4a9675942dcb26::t_ed2d3e8d2e6ea7 65,67,69,71,73,75-83,135-138,163
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_4a9675942dcb26::t_5f4cc14d14bd7f 13-14,18,62,81-82,86-93
+  s_4a9675942dcb26::t_364dfec174d30a 94-95
+vitest.browser.config.ts
+  s_4a9675942dcb26::t_38e1cb3796436a 11,16
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 422,455,491
+src/renderer/features/local-conversation/codex-request-diagnostics.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 32,44,57,60,65,71,112,191
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_4a9675942dcb26::t_5f4cc14d14bd7f 317
+src/renderer/lib/sans-font-size.ts
+  s_4a9675942dcb26::t_a146c58ee45c7a 1,3-5
+docs/product-specs/settings-route-behavior.md
+  s_4a9675942dcb26::t_d7d65e8aa4fdcb 130-136
+src/renderer/features/local-conversation/view/blocks/local-conversation-visual-tokens.ts
+  s_4a9675942dcb26::t_355b4014fa93e4 6
+  s_4a9675942dcb26::t_804d64682c440d 7
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 973,1599,1611
+src/renderer/features/local-conversation/view/shared/auth-controls.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 142
+src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.tsx
+  s_4a9675942dcb26::t_355b4014fa93e4 1068-1069
+src/renderer/bootstrap/typography-bootstrap.browser.test.ts
+  s_4a9675942dcb26::t_38e1cb3796436a 1,7-8,16,19,50,54-73
+  s_4a9675942dcb26::t_d3b5a3149d36fa 2-6,9-15,17-18,20-49,51-53
+  s_4a9675942dcb26::t_e9d83aa9075c5b 74-84
+src/renderer/styles/typography.browser.test.tsx
+  s_4a9675942dcb26::t_27cde41fc254aa 1-75,77-104,106-113
+  s_4a9675942dcb26::t_eeb9cac490f9e4 76,105
+  s_4a9675942dcb26::t_e601733a4657a5 114
+src/renderer/lib/inline-visualization/inline-visualization-style-variables.ts
+  s_4a9675942dcb26::t_793a6644bfbfb0 2
+  s_4a9675942dcb26::t_7876c727f75341 3-7,198,202,207,212
+src/renderer/components/ui/settings.tsx
+  s_4a9675942dcb26::t_920c0ebab79a77 193-194,196
+  s_4a9675942dcb26::t_eeb9cac490f9e4 195
+src/renderer/bootstrap/renderer-document.ts
+  s_4a9675942dcb26::t_64f1be76eeaba1 45
+src/renderer/lib/use-typography-preferences.tsx
+  s_4a9675942dcb26::t_5374ae8aa99248 1-3,5-18,20-23,25-29,31-37,39-43,45-59
+  s_4a9675942dcb26::t_184af6a9973de5 24,30
+  s_4a9675942dcb26::t_4a2bbce5d661d9 60-61
+src/renderer/app-providers.tsx
+  s_4a9675942dcb26::t_b4f9030d2f11e4 8,107-117
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_4a9675942dcb26::t_f7640514461a9f 2921
+src/renderer/components/board/editor/nfm-formatting-toolbar.tsx
+  s_4a9675942dcb26::t_62eecab17d0e47 147,211
+src/renderer/components/board/editor/nfm-link-toolbar.tsx
+  s_4a9675942dcb26::t_8819a9a25d7479 294
+src/renderer/components/board/editor/nfm-move-to-menu.tsx
+  s_4a9675942dcb26::t_bdd929cb256fc7 147
+src/renderer/components/board/editor/nfm-send-to-thread-menu.tsx
+  s_4a9675942dcb26::t_acfc0f05851a34 132,149,198,229,234,529,548,575
+src/renderer/components/board/editor/nfm-side-menu.tsx
+  s_4a9675942dcb26::t_fc2681fd6ab675 751,791,829,881,959,1090,1142,1154,1178,1340,1355,1396
+src/renderer/components/board/editor/nfm-text-action-menu.tsx
+  s_4a9675942dcb26::t_21ea85c5ecde3b 558,670,816,1222,1303,1402,1450,1484,1499,1624
+src/renderer/components/library/database-move-destination-picker.tsx
+  s_4a9675942dcb26::t_ab6d563378da7c 127
+src/renderer/components/library/page-move-destination-picker.tsx
+  s_4a9675942dcb26::t_b0b9bfac7c904e 151,477
+src/renderer/components/ui/shortcut-keycaps.tsx
+  s_4a9675942dcb26::t_39fcc9a4d91649 11-13,56
+src/renderer/components/workbench/database-list/database-list-dnd.tsx
+  s_4a9675942dcb26::t_22e1bac9d5ca9d 208
+src/renderer/components/workbench/database-list/database-list-row.tsx
+  s_4a9675942dcb26::t_0cced2306e2e09 297
+src/renderer/components/workbench/database-list/database-list.tsx
+  s_4a9675942dcb26::t_1b342f4a975e7d 2196
+src/renderer/components/workbench/database-settings/database-settings-rail.tsx
+  s_4a9675942dcb26::t_1fa7f341bf3da4 404,418,993,3060
+src/renderer/components/workbench/panel-destination-picker.tsx
+  s_4a9675942dcb26::t_176a90d76873c0 72,194,222,257,518,537
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_4a9675942dcb26::t_f8474f9c2d94d4 128
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_4a9675942dcb26::t_fcd6658dddab5a 1604
+src/renderer/features/local-conversation/view/composer/request-cards/codex-mcp-elicitation-request-card.tsx
+  s_4a9675942dcb26::t_3277afd781719c 51,66-71,92-94,128-130,589,594,610
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_4a9675942dcb26::t_0b43d617e2c023 418
+src/renderer/features/local-conversation/view/shared/tools/lazy-tool-output.tsx
+  s_4a9675942dcb26::t_8f10055feeea45 54
+src/renderer/features/local-conversation/view/shared/tools/tool-primitives.tsx
+  s_4a9675942dcb26::t_087d78b1b9385f 57-59,600,624
+src/renderer/lib/code-font-size.ts
+  s_4a9675942dcb26::t_f8a09eccb529e0 1,3-5
+src/renderer/lib/use-code-font-size.tsx
+  s_4a9675942dcb26::t_e0acdb68cd8cd1 1-8
+src/renderer/lib/use-sans-font-size.tsx
+  s_4a9675942dcb26::t_61175566357248 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "467f6cd338112678c04ec16d4ec5fc84476d6393",
+  "prompts": {},
+  "sessions": {
+    "s_4a9675942dcb26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1388c-5afc-72c1-a375-07d3e0c90a58",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
