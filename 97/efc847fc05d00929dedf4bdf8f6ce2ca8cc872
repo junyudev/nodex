@@ -1,0 +1,229 @@
+src/main/codex-application/CodexRealtimeVoice.ts
+  s_84bf5c78324d85::t_5fa7158c1519d7 30-33,218,223,428,485,603-612,614-617
+  s_84bf5c78324d85::t_4555c3bc92184e 74,85-86,163-166,180,219-222,322-331,399,596,601,618-622
+  s_84bf5c78324d85::t_6b782d1d8ecb62 153-154
+  s_84bf5c78324d85::t_409e8c33fcedbe 315,537,585
+  s_84bf5c78324d85::t_d1312b64ee0075 1,3-8,11-21,28-29,34-63,66,73,76,80-84,87-124,127,133-140,142-147,152,155-162,168,175-177,198,201,206-209,226-227,269,275,290-291,296-299,313-314,321,359-361,367-368,372-375,478-484,486-488,536,538,558-564,573-584,630,656-659
+  s_84bf5c78324d85::t_36f5464b473fbe 24-27,67-72,75,77,125-126,128-132,148-151,167,169-174,179,186-197,199-200,202-205,212-214,216-217,224,229-243,247-267,270-274,278-283,285-289,292-295,300-312,317-320,332-358,362-366,369-371,376-398,400-427,429-477,492-520,525-534,539-557,565-572,586-595,597-600,602,613,623-629,631-655
+  s_84bf5c78324d85::t_669fb533c3b433 2,22-23,78-79,141,210-211,215,225,228,244-246,268,316
+  s_84bf5c78324d85::t_7fd45e32519598 10,64-65,178,181-185,276-277,284,489-491,521-524,535
+  s_84bf5c78324d85::t_b61ee2d4994195 9
+src/main/ipc/handlers/CodexRealtimeVoiceIpc.node.test.ts
+  s_84bf5c78324d85::t_4555c3bc92184e 1-6,8-47,49-72,74-75,80-118,137-168
+  s_84bf5c78324d85::t_87ed3aba5c6e66 7,48,73,76-79,119-136
+  s_84bf5c78324d85::t_76a4bec4976c3e 169-175
+src/renderer/features/realtime-voice/realtime-voice-window.test.tsx
+  s_84bf5c78324d85::t_efe4883264e10f 1-2,9,14-16,21,26-27,60,63,165-166,197,212,237,253,278,285,293,314-315
+  s_84bf5c78324d85::t_87ed3aba5c6e66 3-8,10-13,17-20,22-25,28-59,61-62,64-164,167-196,198-211,213-236,238-252,254-277,279-284,286-292,294-313
+  s_84bf5c78324d85::t_39b1cdb7b9bc2d 316-320
+src/renderer/features/dictation/dictation-session-controller.ts
+  s_84bf5c78324d85::t_ebe82777affe88 103,356-358,591-593
+src/main/codex-application/CodexRealtimeVoicePolicy.ts
+  s_84bf5c78324d85::t_0cb0743d125820 4,9-18,28-29,42,45-81,85-86,90-97,99-104,106-117
+  s_84bf5c78324d85::t_d1312b64ee0075 1-3,5-8,19-27,30-41,43-44
+  s_84bf5c78324d85::t_2ae44870614f54 105
+  s_84bf5c78324d85::t_1e9f253bba1bef 82-84,87-89,98
+  s_84bf5c78324d85::t_1a03c23f8bd90d 118-199
+src/renderer/features/realtime-voice/realtime-voice-window.tsx
+  s_84bf5c78324d85::t_e5e52355fa202b 1-94
+  s_84bf5c78324d85::t_62469c2b30654b 95-97
+src/renderer/features/dictation/global-dictation-page.tsx
+  s_84bf5c78324d85::t_ebe82777affe88 24-26,382,388-389
+  s_5cd527886c6c64::t_1055627ebae250 23
+src/main/dictation/SharedMicrophoneAuthority.node.test.ts
+  s_84bf5c78324d85::t_0e52b8285790d6 21,34,37,46,49,61,64,76,79,92-106
+  s_84bf5c78324d85::t_03719dc49158b1 1-20,22-33,35-36,38-45,47-48,50-60,62-63,65-75,77-78,80-91,107
+  s_84bf5c78324d85::t_f19fed9583eb3f 108-130
+src/renderer/env.d.ts
+  s_84bf5c78324d85::t_ebe82777affe88 113
+src/main/dictation/RealtimeVoicePolicyState.node.test.ts
+  s_84bf5c78324d85::t_1e9f253bba1bef 6
+  s_84bf5c78324d85::t_a988fefd9c082a 1-5,7-32
+  s_84bf5c78324d85::t_650e58991cde23 33-71
+src/renderer/lib/realtime-voice/realtime-voice-audio-worklet.ts
+  s_84bf5c78324d85::t_9e64a4cdae9906 2-12,14-50
+  s_84bf5c78324d85::t_1b39937e79fa18 1,13
+  s_84bf5c78324d85::t_c0ecf3a0dcf718 51-71
+src/renderer/features/dictation/dictation-session-controller.test.tsx
+  s_84bf5c78324d85::t_e1e6e8ee5e48eb 102,207-238,240
+  s_84bf5c78324d85::t_3203f58127254c 239
+src/main/codex-runtime/CodexRuntimeError.node.test.ts
+  s_84bf5c78324d85::t_1b98b8287b8c9c 5,14,27,125-142
+  s_84bf5c78324d85::t_45acf6f71bcb46 143-182
+docs/product-specs/realtime-voice-behavior.md
+  s_84bf5c78324d85::t_87ed3aba5c6e66 12,19
+  s_84bf5c78324d85::t_3e22b76400abdb 1-10,13-18,21-27
+  s_84bf5c78324d85::t_26f34640b70aad 11,20,28
+src/renderer/features/realtime-voice/realtime-voice-controls.tsx
+  s_84bf5c78324d85::t_e5e52355fa202b 1-96
+  s_84bf5c78324d85::t_e06a3861490e44 97-98
+src/preload/global-dictation.ts
+  s_84bf5c78324d85::t_ebe82777affe88 58-70
+src/main/codex-runtime/CodexRuntimeError.ts
+  s_84bf5c78324d85::t_4555c3bc92184e 98
+  s_84bf5c78324d85::t_91b6bafed54dc3 99-102,134
+src/main/ipc/handlers/DictationIpc.ts
+  s_84bf5c78324d85::t_03719dc49158b1 341-346
+src/main/dictation/RealtimeVoicePolicyState.ts
+  s_84bf5c78324d85::t_1e9f253bba1bef 4,15,22,52
+  s_84bf5c78324d85::t_6b782d1d8ecb62 6,17,54
+  s_84bf5c78324d85::t_7d54ea4fccf832 1-3,5,7-14,16,18-21,23-26,30-51,53,55-56
+  s_84bf5c78324d85::t_ee86c2a531f66e 27-29
+  s_84bf5c78324d85::t_72833376436828 57-66
+src/main/app/WindowApplicationLive.ts
+  s_84bf5c78324d85::t_5fa7158c1519d7 23-31,260-263,314-315,352-353,380
+src/main/ipc/handlers/CodexRealtimeVoiceIpc.ts
+  s_84bf5c78324d85::t_4555c3bc92184e 1-111
+CHANGELOG.md
+  s_84bf5c78324d85::t_725c7fe5e35e27 14
+src/renderer/features/dictation/dictation-microphone-lease-client.ts
+  s_84bf5c78324d85::t_ebe82777affe88 1-56
+  s_84bf5c78324d85::t_34a1095f2330f2 57-59
+docs/product-specs/dictation-behavior.md
+  s_84bf5c78324d85::t_3e22b76400abdb 11
+src/renderer/features/realtime-voice/realtime-voice-client.ts
+  s_84bf5c78324d85::t_36f5464b473fbe 1-18,20-24,27-31,34-38,40-112,114-116,118,120-145
+  s_84bf5c78324d85::t_84334d6788e4f9 19,25-26,32-33,39,113,117,119
+  s_84bf5c78324d85::t_3a2c414b4a0ba9 146
+src/main/codex-application/CodexRealtimeVoiceConfiguration.node.test.ts
+  s_84bf5c78324d85::t_a988fefd9c082a 1-30
+  s_84bf5c78324d85::t_3080d460b5db23 31-181
+src/main/codex-application/CodexRealtimeVoice.node.test.ts
+  s_84bf5c78324d85::t_c26e29753fece7 248,292,313,342,346,391,417,442,453,477-483,488-489,544,546,590,628,652,665-703,706,708-716
+  s_84bf5c78324d85::t_d7ca5e7bca9f54 14,80,315-316,461-462,495-501,509,514,517
+  s_84bf5c78324d85::t_0932462eea1acd 664,717-718
+  s_84bf5c78324d85::t_e331a07797f437 12,30,520-522,557,578-580,582
+  s_84bf5c78324d85::t_402caeb3eca06f 16-19,25-28,36-67,72-75,77-79,83-89,96-101,104-201,203-238,260-291,293-312,314,322-324,331-341,349-356,359-365,376-390,392-395,397-400,405-416,418-425,432-435,446-452,454-460,463-476,484-487,490-494,502-508,510-513,515-516,518-519,523-543,545,547-556,558-577,593,636-637,639,647
+  s_84bf5c78324d85::t_97faaac2098231 651
+  s_84bf5c78324d85::t_1b98b8287b8c9c 31-32,581,583-589,591-592,594-627,629-635,638,640-646,648-650,653-661,704-705,707
+  s_84bf5c78324d85::t_1746f981658403 1-11,13,15,20-24,29,33-35,68-71,76,81-82,90-95,102-103,202,239-247,249-259,317-321,325-330,343-345,347-348,357-358,366-375,396,401-404,426-431,436-441,443-445,662-663
+src/main/dictation/dictation-microphone-lease.test.ts
+  s_84bf5c78324d85::t_afe940e9d1f8dd 5
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_84bf5c78324d85::t_d7ca5e7bca9f54 1-15,294-379,383,390-397,912-930
+  s_84bf5c78324d85::t_822b6c87fb02e6 931-979
+src/shared/ipc-api.ts
+  s_84bf5c78324d85::t_ebe82777affe88 2978
+  s_84bf5c78324d85::t_a988fefd9c082a 2977
+  s_84bf5c78324d85::t_435b0b0ecd9dd8 1901-1932
+src/main/platform/electron/DictationPolicyClient.ts
+  s_84bf5c78324d85::t_1e9f253bba1bef 225
+  s_84bf5c78324d85::t_7d54ea4fccf832 21,223-224,230-245,290-295
+  s_84bf5c78324d85::t_6b782d1d8ecb62 219-221,227
+  s_84bf5c78324d85::t_c93ec085b069d4 22,215-218,222,226,228-229
+  s_84bf5c78324d85::t_9aa2118eb57a76 310-315
+src/renderer/lib/realtime-voice/realtime-voice-audio-buffer.node.test.ts
+  s_84bf5c78324d85::t_0d31c03f095a3f 1-92
+  s_84bf5c78324d85::t_73075bdb7ebe4b 93-107
+src/main/codex-application/CodexMedia.node.test.ts
+  s_84bf5c78324d85::t_e331a07797f437 86-88
+  s_84bf5c78324d85::t_19970d61c06675 83-85,89
+  s_84bf5c78324d85::t_91eb87683928e8 90-99,703-741
+src/renderer/lib/realtime-voice/realtime-voice-media.browser.test.ts
+  s_84bf5c78324d85::t_f608a8b05f05c7 45,164-174,233
+  s_84bf5c78324d85::t_b048784a8bef4a 3,12
+  s_84bf5c78324d85::t_6dd0c9ea789816 1,4-11,20-32,34-41,43,46-50,57-71,76-89,93-152,154-155,157-163,175-192,223-227,229-232,234-239,242-243
+  s_84bf5c78324d85::t_b18627881e2fe2 51-56,90-92,240
+  s_84bf5c78324d85::t_817b2e97e08a81 15-19,153,156,195-197
+  s_84bf5c78324d85::t_d6dd6ae93e3e2c 2,13-14,42,194,219,228,241
+  s_84bf5c78324d85::t_a8ff20fc5e2532 193,222
+  s_84bf5c78324d85::t_f763eb6d1010c1 33,44,72-75,198-218,220-221
+src/main/dictation/dictation-microphone-lease.ts
+  s_84bf5c78324d85::t_afe940e9d1f8dd 3,6-9,13-20,24,26,33,36-40
+src/main/dictation/SharedMicrophoneAuthority.ts
+  s_84bf5c78324d85::t_0e52b8285790d6 105-106,108
+  s_84bf5c78324d85::t_409e8c33fcedbe 53-55
+  s_84bf5c78324d85::t_afe940e9d1f8dd 1-52,56-104,107
+src/main/codex-application/CodexMedia.ts
+  s_84bf5c78324d85::t_2877e8501acd86 41,90-95,750-776
+  s_84bf5c78324d85::t_65afd9905d168e 23,780-782
+src/main/dictation/DictationPolicy.ts
+  s_84bf5c78324d85::t_2877e8501acd86 34-36,38,52-57,71,84-85,245
+  s_84bf5c78324d85::t_ee86c2a531f66e 37,39,247-248
+  s_84bf5c78324d85::t_e5a3a0a57045e0 249-252,264-265,280-296,388-389
+src/renderer/lib/realtime-voice/realtime-voice-media.ts
+  s_84bf5c78324d85::t_5b868697dc36cf 1,280-282
+  s_84bf5c78324d85::t_c2241b92f02f2e 2-33,38-54,57-97,99-108,112,121-139,164,169-192,198-211,214-217,223,233-234,236-271,274-279,283-297,302,304-310,312-317,319,321-325,341-346,348,350-353,355-359,377-382,388-389,394-397,402-404,406,409-417,419-421
+  s_84bf5c78324d85::t_d19a31c0535eae 34-37,55-56,109-111,113-120,152-154,158-162,166-168,193,195-197,212-213,218-222,224-232,235,272-273,298-301,326-340,360-376,383-387,390-393,398-401
+  s_84bf5c78324d85::t_cd50b10ef2efc0 98,194,418
+  s_84bf5c78324d85::t_1b39937e79fa18 140-151,155-157,163,165,303,311,318,320,347,349,354,405,407-408
+src/renderer/features/realtime-voice/realtime-voice-window-owner.node.test.ts
+  s_84bf5c78324d85::t_ed91b25bc51dcc 352,357,360,372,389
+  s_84bf5c78324d85::t_0932462eea1acd 248-272
+  s_84bf5c78324d85::t_d7ca5e7bca9f54 1,11-12,21,86,94,98,104,112,131,135-138,168,197,218-219,222,228-229,276,285,289,293,303,307,314,320,326-327,343,373
+  s_84bf5c78324d85::t_402caeb3eca06f 2-10,13-20,22-85,87-93,95-97,99-103,105-111,113-130,132-134,139-167,169-196,198-217,220-221,223-227,230-247,273-275,277-284,286-288,290-292,294-302,304-306,308-313,315-319,321-325,328-342,344-351,353-356,358-359,361-371,374,376-377,382-384,386-388,390-392
+  s_84bf5c78324d85::t_173356405b758b 375,378-381,385,393-468
+src/shared/codex-realtime-voice.ts
+  s_84bf5c78324d85::t_d1312b64ee0075 2-35,43-44,49-61,69-80
+  s_84bf5c78324d85::t_4555c3bc92184e 1,36-42,45-48,62-68,81-103
+src/main/host-runtime/DictationRuntime.ts
+  s_84bf5c78324d85::t_03719dc49158b1 39,105-109,202,365,404-417
+src/renderer/features/local-conversation/view/composer/use-composer-dictation.ts
+  s_84bf5c78324d85::t_ebe82777affe88 27-30,151,154-155
+src/renderer/lib/realtime-voice/realtime-voice-audio-buffer.ts
+  s_84bf5c78324d85::t_5b868697dc36cf 9-12,17-19,65-66,89-93
+  s_84bf5c78324d85::t_9e64a4cdae9906 1-8,13-16,20-64,67-88,94-123
+docs/ARCHITECTURE.md
+  s_84bf5c78324d85::t_3e22b76400abdb 1007,1013
+src/renderer/features/realtime-voice/realtime-voice-window-owner.ts
+  s_84bf5c78324d85::t_36f5464b473fbe 3-5,9-12,17-21,24-37,40-48,51-56,58-59,62-91,93-99,102-121,123,125-128,131-143,145-159,161,163-167,169-184,187-220,223-228,231-233,235-240,243-247,250-274,277-315,317-324,327,330-345,347-353,356-363,365-374,378-385
+  s_84bf5c78324d85::t_3e22b76400abdb 6,377
+  s_84bf5c78324d85::t_669fb533c3b433 1-2,7-8,13-16,22-23,38-39,49-50,57,60-61,92,100-101,122,124,129-130,160,162,168,185-186,221-222,229-230,234,241-242,248-249,275-276,316,325-326,328-329,346,354-355,364,375-376,386-388
+  s_84bf5c78324d85::t_3479ffb30bde30 144
+  s_84bf5c78324d85::t_def3a831f4dd1c 389-415
+src/main/platform/electron/DictationPolicyClient.node.test.ts
+  s_84bf5c78324d85::t_19970d61c06675 137-163,203
+  s_84bf5c78324d85::t_71c9a26374a084 164-202,204-205
+src/main/app/RendererIngressLive.ts
+  s_84bf5c78324d85::t_828ff7ee8983ea 35,72
+src/main/codex-application/CodexApplicationProtocol.node.test.ts
+  s_84bf5c78324d85::t_de8ed2691a188f 1,164,201,341-346,400,1284-1331
+src/main/codex-application/CodexApplicationProtocol.ts
+  s_84bf5c78324d85::t_d2a154dc6220b6 2,343,359,679-686,1147
+src/main/codex-application/CodexRealtimeVoiceConfiguration.ts
+  s_84bf5c78324d85::t_bb12f31a4c22e6 1-226
+src/main/codex-application/CodexRealtimeVoicePolicy.node.test.ts
+  s_84bf5c78324d85::t_bb1601e9c429bc 1-278
+src/main/ipc/handlers/CodexApplicationIpc.node.test.ts
+  s_84bf5c78324d85::t_48a950587dc440 1,97-99
+src/main/ipc/handlers/DictationIpc.test.ts
+  s_84bf5c78324d85::t_628330477792d3 1-2,173-175
+src/renderer/app.tsx
+  s_84bf5c78324d85::t_9002d3a3848d73 1,86-115,117-121
+src/renderer/features/dictation/dictation-microphone-lease-client.node.test.ts
+  s_84bf5c78324d85::t_0980a36930e49e 1-58
+src/renderer/features/dictation/global-dictation-page.test.tsx
+  s_84bf5c78324d85::t_bcb24e3f7fc4e5 207,339,415
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_84bf5c78324d85::t_ee01ea2e9aa907 1-2,2326-2335,3777,3813
+src/renderer/lib/realtime-voice/realtime-voice-audio-worklet.jsdom.test.ts
+  s_84bf5c78324d85::t_44dea81d7ce191 1-52
+src/renderer/lib/realtime-voice/realtime-voice-media.jsdom.test.ts
+  s_84bf5c78324d85::t_0a43c045510a39 1-390
+src/shared/ipc-endpoint-policy.ts
+  s_84bf5c78324d85::t_5989ab6cbacd34 141,278-281,511-513
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97efc847fc05d00929dedf4bdf8f6ce2ca8cc872",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

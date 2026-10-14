@@ -1,0 +1,63 @@
+src/renderer/features/realtime-voice/realtime-voice-client.ts
+  s_84bf5c78324d85::t_5efce07dca8778 40-46,115,129
+src/renderer/features/realtime-voice/realtime-voice-window.test.tsx
+  s_84bf5c78324d85::t_10e60c9d7b2722 10,29-33,177-233,237,249-250,259,264
+  s_84bf5c78324d85::t_90308f660ff180 138
+  s_84bf5c78324d85::t_5eb9202c3a81aa 234-236,238-248,251-258,260-263
+src/shared/codex-realtime-voice.ts
+  s_84bf5c78324d85::t_5efce07dca8778 8,105-106
+src/renderer/features/realtime-voice/realtime-voice-window-owner.node.test.ts
+  s_84bf5c78324d85::t_53ba3921c3932f 119-172,174
+  s_84bf5c78324d85::t_bc900e6a86839c 55,69-75,91,95-118,186
+  s_84bf5c78324d85::t_e5817a69b5dfe5 173,175-185,187-188
+src/renderer/features/realtime-voice/realtime-voice-window.tsx
+  s_84bf5c78324d85::t_5efce07dca8778 44
+  s_84bf5c78324d85::t_7ce7812220b07e 45-46
+src/main/ipc/handlers/CodexRealtimeVoiceIpc.node.test.ts
+  s_84bf5c78324d85::t_73b4912f82777e 93-94,156-157,173-176,180
+src/main/ipc/handlers/CodexRealtimeVoiceIpc.ts
+  s_84bf5c78324d85::t_73b4912f82777e 31,111-113
+  s_84bf5c78324d85::t_43fc75ef314429 114-115
+src/shared/ipc-api.ts
+  s_84bf5c78324d85::t_5efce07dca8778 1933-1936
+src/main/codex-application/CodexRealtimeVoice.node.test.ts
+  s_84bf5c78324d85::t_160fe8864e1d7b 226,245-247,254-256,295
+  s_84bf5c78324d85::t_a6c82b4a243ea9 2,35-42,296-298,300-302,309-312,314-317,319-321,378-379
+  s_84bf5c78324d85::t_49e6fca46b0c2f 299,303-308,313,318,380,414
+  s_84bf5c78324d85::t_f12c45b04537d0 322-341,346-347,404,407-409,416
+  s_84bf5c78324d85::t_535a4d3eb17dcc 43-55,115,118,135-140,342-345,348-377,381-403,405-406,410-413,415,417-419
+src/main/codex-application/CodexApplicationProtocol.ts
+  s_84bf5c78324d85::t_90308f660ff180 683-684
+src/main/codex-application/CodexRealtimeVoice.ts
+  s_84bf5c78324d85::t_ade5df39b1e3b5 22,82-87,105,129-133,553,570-572
+  s_84bf5c78324d85::t_73b4912f82777e 673-679,683
+  s_84bf5c78324d85::t_0354f486b3ad4f 573-574,680-682,684-687
+docs/product-specs/realtime-voice-behavior.md
+  s_84bf5c78324d85::t_3bc75cdd39c589 22,30
+src/renderer/features/realtime-voice/realtime-voice-window-owner.ts
+  s_84bf5c78324d85::t_5efce07dca8778 15-21,45,65,94-113
+  s_84bf5c78324d85::t_b68d04d05edfdf 114-117,320,363
+src/main/codex-application/CodexApplicationProtocol.node.test.ts
+  s_84bf5c78324d85::t_e14859aa86f366 1286,1308-1318
+  s_84bf5c78324d85::t_235778c5d2ab2c 1319-1323,1332,1334
+src/shared/ipc-endpoint-policy.ts
+  s_84bf5c78324d85::t_5efce07dca8778 514
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_84bf5c78324d85::t_90308f660ff180 337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4664d1751f74fd2e4b97c006617ac6f70d4958b0",
+  "prompts": {},
+  "sessions": {
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
