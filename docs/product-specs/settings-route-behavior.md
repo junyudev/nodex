@@ -97,6 +97,12 @@ The Settings rail preserves the same renderer-transparent native vibrancy as
 the normal sidebar. Section pages render only the main content surface and do
 not add another sidebar-like card or nested full-page scroll container.
 
+General includes an App server diagnostics disclosure within one shared Settings
+surface. Expanding it starts request capture while General is active; collapsing
+it or leaving Settings stops capture. The expanded view shows recorded requests
+by host, with request details, payload copying, failure filtering and host-local
+clearing. Dividers separate these groups without additional framed cards.
+
 The default appearance uses a `#111111` main surface with `#fcfcfc` primary
 text in dark mode, and `#ffffff` with `#0d0d0d` text in light mode. Controls,
 menus, borders, and secondary text derive from the same resolved palette.

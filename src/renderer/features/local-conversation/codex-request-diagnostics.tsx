@@ -1,4 +1,13 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useId, useState, useSyncExternalStore } from "react";
+import { ChevronDownIcon, ChevronRightIcon } from "@/components/shared/icons";
+import { NodexButton } from "@/components/ui/button";
+import {
+  NodexCollapsiblePanel,
+  NodexCollapsibleRoot,
+  NodexCollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { NodexCheckbox } from "@/components/ui/settings";
+import { cn } from "@/lib/utils";
 import {
   clearCodexRequestRecords,
   type CodexRecordedRequest,
@@ -16,10 +25,16 @@ const REQUEST_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
 const EMPTY_REQUESTS: readonly CodexRecordedRequest[] = [];
 
 function requestDuration(request: CodexRecordedRequest): string {
-  if (request.status === "pending") return "pending";
+  if (request.status === "pending") return "Pending";
   const durationMs = request.durationMs ?? 0;
   const duration = durationMs < 1_000 ? `${durationMs} ms` : `${(durationMs / 1_000).toFixed(2)} s`;
-  return request.status === "completed" ? `✅ ${duration}` : `❌ ${duration}`;
+  const status =
+    request.status === "completed"
+      ? "Completed"
+      : request.status === "timed-out"
+        ? "Timed out"
+        : "Failed";
+  return `${status} · ${duration}`;
 }
 
 function isFailedRequest(request: CodexRecordedRequest): boolean {
@@ -29,19 +44,20 @@ function isFailedRequest(request: CodexRecordedRequest): boolean {
 function PayloadPreview({ payload, title }: { payload: string; title: string }) {
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2 text-xs font-medium tracking-wide text-(--foreground-secondary) uppercase">
+      <div className="mb-1 flex items-center justify-between gap-2 text-xs semantic-text-secondary">
         <span>{title}</span>
-        <button
-          type="button"
-          className="cursor-pointer rounded px-1.5 py-0.5 text-(--foreground-primary) hover:bg-(--background-tertiary)"
+        <NodexButton
+          variant="ghost"
+          size="xs"
+          aria-label={`Copy ${title.toLowerCase()}`}
           onClick={() => {
             void navigator.clipboard?.writeText(payload).catch(() => undefined);
           }}
         >
           Copy
-        </button>
+        </NodexButton>
       </div>
-      <pre className="codex-tool-code max-h-52 overflow-auto rounded-md border border-(--border-primary) bg-(--background-secondary) p-2 font-mono text-size-code whitespace-pre-wrap break-words text-(--foreground-primary)">
+      <pre className="codex-tool-code max-h-52 overflow-auto rounded-md bg-(--color-background-primary-soft) p-2 font-mono text-size-code whitespace-pre-wrap break-words text-default">
         {payload}
       </pre>
     </div>
@@ -50,25 +66,26 @@ function PayloadPreview({ payload, title }: { payload: string; title: string }) 
 
 function RequestDetails({ request }: { request: CodexRecordedRequest }) {
   return (
-    <details className="group/request rounded-lg border border-(--border-primary)">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 marker:content-none">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate font-mono text-size-code text-(--foreground-primary)">
-              {request.method}
-            </span>
-            <span className="rounded-full bg-(--background-tertiary) px-1.5 py-0.5 text-xs font-medium text-(--foreground-secondary) tabular-nums">
+    <details className="group/request min-w-0">
+      <summary className="flex cursor-interaction list-none items-center justify-between gap-3 py-2 outline-none marker:content-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-token-focus-border">
+        <div className="flex min-w-0 items-center gap-2">
+          <ChevronRightIcon className="icon-2xs shrink-0 semantic-text-secondary group-open/request:rotate-90" />
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-size-code text-default">{request.method}</span>
+            <span className="shrink-0 text-xs text-tertiary tabular-nums">
               #{request.matchingRequestSequenceNumber}
             </span>
           </div>
         </div>
-        <div className="shrink-0 text-right text-xs text-(--foreground-secondary) tabular-nums">
+        <div className="shrink-0 text-right text-xs semantic-text-secondary tabular-nums">
           <div>{REQUEST_TIME_FORMATTER.format(request.startedAtMs)}</div>
-          <div>{requestDuration(request)}</div>
+          <div className={isFailedRequest(request) ? "text-danger" : undefined}>
+            {requestDuration(request)}
+          </div>
         </div>
       </summary>
-      <div className="space-y-3 border-t border-(--border-primary) p-3">
-        <div className="grid gap-2 text-xs text-(--foreground-secondary) md:grid-cols-2">
+      <div className="min-w-0 space-y-3 border-t-[0.5px] border-default pt-3 pb-2">
+        <div className="grid gap-2 text-xs break-words semantic-text-secondary md:grid-cols-2">
           <div>Request ID: {request.id}</div>
           <div>Timeout: {request.timeoutMs > 0 ? request.timeoutMs : "none"}</div>
           <div>Priority: {request.priority}</div>
@@ -101,56 +118,53 @@ function HostRequests({
   requests: readonly CodexRecordedRequest[];
 }) {
   const [failedOnly, setFailedOnly] = useState(false);
+  const filterId = useId();
   const failed = requests.filter(isFailedRequest);
   const visible = failedOnly ? failed : requests;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary)">
-      <div className="flex items-center justify-between gap-3 border-b border-(--border-primary) px-3 py-2">
-        <div className="min-w-0">
-          <div className="truncate text-xs font-medium text-(--foreground-primary)">{hostId}</div>
-          <div className="text-xs text-(--foreground-secondary) tabular-nums">
-            {requests.length} requests
-          </div>
+    <section aria-label={`Requests for ${hostId}`} className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-xs font-medium text-default">{hostId}</div>
         </div>
-        <button
-          type="button"
-          className="cursor-pointer rounded px-1.5 py-0.5 text-xs text-(--foreground-secondary) hover:bg-(--background-tertiary) hover:text-(--foreground-primary) disabled:cursor-default disabled:opacity-50"
-          disabled={requests.length === 0}
-          onClick={() => {
-            clearCodexRequestRecords(hostId);
-          }}
-        >
-          Clear
-        </button>
-      </div>
-      <div className="py-3">
-        {failed.length > 0 || failedOnly ? (
-          <div className="mb-2 flex justify-end px-3">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-(--foreground-secondary)">
-              <input
+        <div className="ml-auto flex items-center gap-3 text-xs semantic-text-secondary">
+          <span className="tabular-nums">{requests.length} requests</span>
+          {failed.length > 0 || failedOnly ? (
+            <div className="flex items-center gap-1.5">
+              <NodexCheckbox
+                id={filterId}
+                ariaLabel="Failed requests"
                 checked={failedOnly}
-                className="cursor-pointer"
-                type="checkbox"
-                onChange={(event) => {
-                  setFailedOnly(event.currentTarget.checked);
-                }}
+                onCheckedChange={setFailedOnly}
               />
-              Failed <span className="tabular-nums">({failed.length})</span>
-            </label>
-          </div>
-        ) : null}
+              <label htmlFor={filterId} className="cursor-interaction tabular-nums">
+                Failed ({failed.length})
+              </label>
+            </div>
+          ) : null}
+          <NodexButton
+            variant="ghost"
+            size="xs"
+            disabled={requests.length === 0}
+            onClick={() => {
+              clearCodexRequestRecords(hostId);
+            }}
+          >
+            Clear
+          </NodexButton>
+        </div>
+      </div>
+      <div>
         {visible.length > 0 ? (
-          <div className="flex max-h-[360px] flex-col gap-2 overflow-y-auto px-3">
+          <div className="flex max-h-[360px] flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-default overflow-y-auto">
             {visible.map((request) => (
               <RequestDetails key={String(request.id)} request={request} />
             ))}
           </div>
         ) : (
-          <div className="mx-3 rounded border border-dashed border-(--border-primary) px-3 py-6 text-center text-xs text-(--foreground-secondary)">
-            {failedOnly
-              ? "No failed requests recorded for this manager yet"
-              : "No requests recorded for this manager yet"}
+          <div className="py-3 text-xs semantic-text-secondary">
+            {failedOnly ? "No failed requests" : "No requests recorded yet"}
           </div>
         )}
       </div>
@@ -170,6 +184,7 @@ function groupRequestsByHost(
   return grouped;
 }
 
+/** The enclosing Settings section owns the surface; this disclosure owns capture lifetime. */
 export function CodexRequestDiagnostics({ enabled }: { enabled: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const subscribe = useCallback(
@@ -187,35 +202,33 @@ export function CodexRequestDiagnostics({ enabled }: { enabled: boolean }) {
   const grouped = groupRequestsByHost(requests);
 
   return (
-    <details
-      className="overflow-hidden rounded-lg border border-(--border-primary) bg-(--background-secondary) font-sans"
-      open={expanded}
-      onToggle={(event) => {
-        setExpanded(event.currentTarget.open);
-      }}
-    >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:content-none">
-        <div>
-          <div className="text-sm font-medium text-(--foreground-primary)">App server requests</div>
-          <div className="mt-0.5 text-xs text-(--foreground-secondary)">
-            Capture the most recent request lifecycle while this panel is open.
-          </div>
-        </div>
-        <span className="shrink-0 text-xs text-(--foreground-secondary) tabular-nums">
-          {requests.length} recent
+    <NodexCollapsibleRoot className="min-w-0" open={expanded} onOpenChange={setExpanded}>
+      <NodexCollapsibleTrigger
+        aria-label="App server requests"
+        className="flex w-full cursor-interaction items-center justify-between gap-3 px-4 py-3 text-left outline-none hover:bg-(--color-background-primary-soft) focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-token-focus-border"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm font-medium text-default">App server requests</span>
+          <span className="text-xs leading-4 semantic-text-secondary">
+            Record requests while expanded.
+          </span>
         </span>
-      </summary>
-      <div className="flex flex-col gap-3 border-t border-(--border-primary) p-3">
+        <span className="flex shrink-0 items-center gap-2 text-xs semantic-text-secondary">
+          {expanded ? <span className="tabular-nums">{requests.length} requests</span> : null}
+          <ChevronDownIcon className={cn("icon-2xs shrink-0", !expanded && "-rotate-90")} />
+        </span>
+      </NodexCollapsibleTrigger>
+      <NodexCollapsiblePanel className="mx-4 min-w-0 border-t-[0.5px] border-default py-2 data-[closed]:hidden">
         {grouped.size === 0 ? (
-          <div className="rounded border border-dashed border-(--border-primary) px-3 py-6 text-center text-xs text-(--foreground-secondary)">
-            No requests recorded while this panel is open
-          </div>
+          <div className="py-2 text-xs semantic-text-secondary">No requests recorded yet</div>
         ) : (
-          [...grouped].map(([hostId, hostRequests]) => (
-            <HostRequests key={hostId} hostId={hostId} requests={hostRequests} />
-          ))
+          <div className="flex min-w-0 flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-default">
+            {[...grouped].map(([hostId, hostRequests]) => (
+              <HostRequests key={hostId} hostId={hostId} requests={hostRequests} />
+            ))}
+          </div>
         )}
-      </div>
-    </details>
+      </NodexCollapsiblePanel>
+    </NodexCollapsibleRoot>
   );
 }
