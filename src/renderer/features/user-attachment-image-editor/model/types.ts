@@ -95,6 +95,7 @@ export interface OpenUserAttachmentImagePreviewOptions {
   initialPlaygroundTool?: PlaygroundTool;
   initialView?: ImageEditorView;
   openInEditor?: boolean;
+  readOnly?: boolean;
   policy?: ImageEditorFeaturePolicy;
   hostId?: string;
   localPath?: string;
@@ -119,6 +120,7 @@ export interface NormalizedUserAttachmentImageEditorOptions {
   initialPlaygroundTool: PlaygroundTool;
   initialView: ImageEditorView;
   openInEditor: boolean;
+  readOnly?: boolean;
   policy: ImageEditorFeaturePolicy;
   projectId: string | null;
   referrerPolicy?: ImageReferrerPolicy;

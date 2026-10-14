@@ -26,6 +26,7 @@ import {
   type ScopeHandle,
 } from "@/lib/maitai";
 import type { ComposerImageAttachment } from "./image-attachments/composer-image-attachment-model";
+import type { CodexAppModelContextAttachment } from "../../../../../shared/codex-untrusted-app-input";
 
 export type { ComposerImageAttachment } from "./image-attachments/composer-image-attachment-model";
 
@@ -63,6 +64,7 @@ export interface ComposerCompletedDraftSnapshot {
   readonly appshotContexts: readonly CodexComposerAppshotContext[];
   readonly pastedTextAttachments: readonly ComposerPastedTextAttachment[];
   readonly commentAttachments: readonly CodexReviewDiffCommentAttachment[];
+  readonly appModelContextAttachments?: readonly CodexAppModelContextAttachment[];
   readonly goalModeActive: boolean;
 }
 

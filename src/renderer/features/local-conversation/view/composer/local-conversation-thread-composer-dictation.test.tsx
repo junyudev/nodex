@@ -276,6 +276,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},
     onEnqueueQueuedFollowUp: async () => {},
+    onSendCapturedFollowUp: async () => {},
     onRemoveQueuedFollowUp: async () => {},
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
@@ -335,6 +336,7 @@ const makeVoice = () => {
     release: vi.fn(async () => true),
     appendText: vi.fn(async () => {}),
     appendSpeech: vi.fn(async () => {}),
+    injectContext: vi.fn(async () => {}),
     subscribe: (listener) => {
       receive = listener;
       return () => {

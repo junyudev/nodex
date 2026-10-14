@@ -179,6 +179,33 @@ it("prepared external send respects requires-idle while a turn is active", async
   f.coordinator[Symbol.dispose]();
 });
 
+it("captured submission returns a requires-idle deferral without inventing a queue row", async () => {
+  const f = fixture();
+  const message = { id: "captured-input" };
+  const before = f.coordinator.readMessages("thread");
+  const prepare = vi.fn(async () => ({
+    status: "ready" as const,
+    submission: {
+      conversationId: "thread",
+      resume: { conversationId: "thread" },
+      steer: "steer",
+      requiresIdle: true,
+    } satisfies Submission,
+  }));
+  try {
+    expect(await f.execution.submitCapturedNow("thread", message, { prepare })).toEqual({
+      status: "deferred",
+    });
+    expect(prepare).toHaveBeenCalledExactlyOnceWith("thread", message, "steer");
+    expect(f.coordinator.readMessages("thread")).toBe(before);
+    expect(f.steer).not.toHaveBeenCalled();
+    expect(f.start).not.toHaveBeenCalled();
+  } finally {
+    f.execution[Symbol.dispose]();
+    f.coordinator[Symbol.dispose]();
+  }
+});
+
 it("manual send loads storage and reserves execution before automatic wake captures the head", async () => {
   let finish!: (state: QueuedMessageState<Message>) => void;
   const loading = new Promise<QueuedMessageState<Message>>((resolve) => {

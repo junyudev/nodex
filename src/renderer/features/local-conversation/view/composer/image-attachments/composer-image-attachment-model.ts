@@ -9,6 +9,7 @@ export type ComposerImageAttachmentOrigin =
   | "paste"
   | "drop"
   | "browser"
+  | "conversation"
   | "image-editor"
   | "restored";
 
@@ -50,7 +51,7 @@ export interface ResolvedComposerImageInput {
   readonly src: string;
   readonly origin: Extract<
     ComposerImageAttachmentOrigin,
-    "browser" | "image-editor" | "picker" | "restored"
+    "browser" | "conversation" | "image-editor" | "picker" | "restored"
   >;
   readonly localPath?: string | null;
   readonly managedSource?: string | null;

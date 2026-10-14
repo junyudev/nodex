@@ -43,6 +43,7 @@ function requiresSandboxRestart(previous: McpAppRuntimeConfig, next: McpAppRunti
     JSON.stringify({
       csp: config.resource.metadata.csp,
       currentToolName: config.currentToolName,
+      modelContextIdentity: config.modelContext?.identity ?? null,
       html: config.resource.html,
       originScope: resolveMcpAppSandboxOriginScope({
         currentToolName: config.currentToolName,

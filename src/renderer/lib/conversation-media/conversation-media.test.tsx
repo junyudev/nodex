@@ -58,6 +58,7 @@ describe("ordinary conversation media", () => {
     installWindowApi({
       invoke: async (channel: string, ...args: unknown[]) => {
         if (channel === "read-file-binary") return reads(...args);
+        if (channel === "asset:image:save") return { source: "nodex://assets/context-image" };
         throw new Error(`Unexpected media operation ${channel}`);
       },
     });
@@ -68,6 +69,42 @@ describe("ordinary conversation media", () => {
     cleanup();
     await settleAsyncRender();
     vi.restoreAllMocks();
+  });
+
+  test("opens the loaded image's context menu without opening its preview", async () => {
+    const open = vi.fn(async () => true);
+    const release = registerUserAttachmentImagePreviewOpener(open);
+    try {
+      const view = render(
+        mediaTree(scope, <ConversationMedia src="/remote/chart.png" alt="Chart menu" />),
+      );
+      const image = await view.findByAltText("Chart menu");
+      await loaded(image);
+      await act(async () => {
+        fireEvent.contextMenu(image, { clientX: 40, clientY: 40 });
+        await Promise.resolve();
+      });
+      expect(await view.findByRole("menuitem", { name: "Open image in new tab" })).toBeTruthy();
+      expect(view.getByRole("menuitem", { name: "Download a copy" })).toBeTruthy();
+      expect(view.queryByRole("menuitem", { name: "Open in file manager" })).toBeNull();
+      expect(open).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(view.getByRole("menuitem", { name: "Open image in new tab" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(open).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            readOnly: true,
+            openInEditor: true,
+            attachmentSrc: "nodex://assets/context-image",
+            src: "nodex://assets/context-image",
+          }),
+        ),
+      );
+    } finally {
+      release();
+    }
   });
 
   test("uses local Range playback without binary reading and does not reclassify an HTTP extension", async () => {

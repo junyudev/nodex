@@ -551,6 +551,14 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         untrustedAppMessage: opts?.untrustedAppMessage,
       });
     },
+    onSendCapturedFollowUp: async (threadId, prompt, opts) => {
+      await input.codexControl.sendCapturedFollowUp(threadId, prompt, {
+        projectId: input.projectId,
+        collaborationMode: opts?.collaborationMode,
+        promptInput: opts?.promptInput,
+        untrustedAppMessage: opts?.untrustedAppMessage,
+      });
+    },
     onRemoveQueuedFollowUp: async (threadId, followUpId) => {
       await input.codexControl.removeQueuedFollowUp(threadId, followUpId);
     },

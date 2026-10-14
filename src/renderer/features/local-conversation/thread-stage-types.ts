@@ -369,7 +369,11 @@ export interface ThreadStageActions {
   onOpenVoiceSettings?: (recordingId?: string) => void;
   onNewThreadProjectChange?: (projectId: string | null) => void;
   onRequestNewChatProjectCreate?: () => void;
-  onStartNewChatWithPrompt?: (input: { projectId: string | null; prompt: string }) => Promise<void>;
+  onStartNewChatWithPrompt?: (input: {
+    projectId: string | null;
+    prompt: string;
+    isSourceCurrent?: () => boolean;
+  }) => Promise<void>;
   onComposerCapabilitiesChanged?: () => Promise<void>;
   onSendPrompt: (
     prompt: string,
@@ -454,6 +458,7 @@ export interface ThreadStageActions {
       promptInput?: CodexPromptInput;
     },
   ) => Promise<void>;
+  onSendCapturedFollowUp: ThreadStageActions["onEnqueueQueuedFollowUp"];
   onRemoveQueuedFollowUp: (threadId: string, followUpId: string) => Promise<void>;
   onReplaceQueuedFollowUp?: (
     threadId: string,
@@ -513,6 +518,7 @@ export type ThreadStageHostActions = Pick<
   | "onQueueingEnabledChange"
   | "onNewThreadProjectChange"
   | "onRequestNewChatProjectCreate"
+  | "onStartNewChatWithPrompt"
   | "onNewThreadStartInTargetChange"
   | "onNewThreadStartInEnvironmentChange"
   | "onRefreshNewThreadStartInEnvironments"

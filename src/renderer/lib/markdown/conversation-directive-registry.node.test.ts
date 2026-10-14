@@ -61,7 +61,24 @@ describe("conversation directive registration", () => {
     },
   );
 
-  test.each(["unknown-next", "code-comment", "task-stub", "writing", "automation-citation"])(
+  test.each([
+    [':task-stub[raw **inline**]{title="Review"}', "raw **inline**"],
+    ['::task-stub[raw **leaf**]{title="Review"}', "raw **leaf**"],
+    [
+      ':::task-stub{title="Review"}\nraw **body**\n\nkeep `code`\n:::',
+      "\nraw **body**\n\nkeep `code`",
+    ],
+  ])("keeps a task's authored prompt separate from its title: %s", (source, prompt) => {
+    expect(read(source).registration).toEqual({ kind: "task-stub", title: "Review", prompt });
+  });
+  test("preserves empty task fields without inventing a submission gate", () => {
+    expect(read("::task-stub{title}").registration).toEqual({
+      kind: "task-stub",
+      title: "",
+      prompt: "",
+    });
+  });
+  test.each(["unknown-next", "code-comment", "writing", "automation-citation"])(
     "does not grant a renderer to an unowned family: %s",
     (name) => {
       const source = `:::${name}{title="Keep"}\nAuthored body\n:::`;

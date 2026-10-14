@@ -15,6 +15,15 @@ function scope(toolName: string): McpAppScopeSnapshot {
 }
 
 describe("MCP App host dispatcher", () => {
+  test("does not accept model context without a real Composer recipient", async () => {
+    const dispatcher = new McpAppHostDispatcher({ scope: scope("calendar") });
+    await expect(
+      dispatcher.handlers().callMcp({
+        method: "ui/update-model-context",
+        params: { structuredContent: { selected: 1 } },
+      }),
+    ).rejects.toMatchObject({ code: -32_601 });
+  });
   test("resolves the latest trusted tool scope for every list request", async () => {
     let current = scope("list-events");
     const dispatcher = new McpAppHostDispatcher({

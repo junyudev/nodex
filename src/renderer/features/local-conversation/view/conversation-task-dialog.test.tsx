@@ -14,6 +14,7 @@ import {
 } from "@/lib/maitai";
 import {
   ThreadScope,
+  RouteScope,
   WorkbenchSessionScopePath,
   type ThreadScopeDescriptor,
 } from "@/lib/workbench-ui-scopes";
@@ -34,6 +35,7 @@ const parentThreadScope: ThreadScopeDescriptor = {
   threadId: "parent",
 };
 const ownerState = scopedAtom(ThreadScope, "", { debugLabel: "task-dialog-test-owner" });
+const routeState = scopedAtom(RouteScope, "", { debugLabel: "task-dialog-test-route" });
 
 const summary: CodexThreadSummary = {
   threadId: "parent",
@@ -163,7 +165,7 @@ test("native task details select read-only observations and stop the exact live 
   const source = fixture();
   const stopTask = vi.fn(async () => {});
   function Dialog() {
-    const parentHandle = useScopeHandle(ThreadScope);
+    const parentHandle = useScopeHandle(RouteScope);
     const [open, setOpen] = useState(false);
     if (!open)
       return (
@@ -175,7 +177,7 @@ test("native task details select read-only observations and stop the exact live 
       <ConversationTaskDialog
         runtime={source.runtime}
         parentThreadId="parent"
-        parentThreadScope={parentHandle}
+        parentContext={parentHandle}
         renderDetail={(child) => <output aria-label="Task detail">{child.threadId}</output>}
         stopTask={stopTask}
         onClose={() => {}}
@@ -211,7 +213,7 @@ test("native task details select read-only observations and stop the exact live 
 test("selected task details observe a changed child without replacing its membership", async () => {
   const source = fixture();
   function Dialog() {
-    const parentHandle = useScopeHandle(ThreadScope);
+    const parentHandle = useScopeHandle(RouteScope);
     const [open, setOpen] = useState(false);
     if (!open)
       return (
@@ -223,7 +225,7 @@ test("selected task details observe a changed child without replacing its member
       <ConversationTaskDialog
         runtime={source.runtime}
         parentThreadId="parent"
-        parentThreadScope={parentHandle}
+        parentContext={parentHandle}
         renderDetail={(child) => <output aria-label="Task detail">{child.threadPreview}</output>}
         onClose={() => {}}
       />
@@ -249,7 +251,7 @@ test("selected task details observe a changed child without replacing its member
 test("opening a specific task selects its observation and retargets an already open dialog", async () => {
   const source = fixture();
   function Dialog({ taskId }: { readonly taskId: string }) {
-    const parentHandle = useScopeHandle(ThreadScope);
+    const parentHandle = useScopeHandle(RouteScope);
     const [open, setOpen] = useState(false);
     if (!open)
       return (
@@ -261,7 +263,7 @@ test("opening a specific task selects its observation and retargets an already o
       <ConversationTaskDialog
         runtime={source.runtime}
         parentThreadId="parent"
-        parentThreadScope={parentHandle}
+        parentContext={parentHandle}
         initialTaskId={taskId}
         renderDetail={(child) => <output aria-label="Task detail">{child.threadId}</output>}
         onClose={() => {}}
@@ -288,14 +290,19 @@ test("opening a specific task selects its observation and retargets an already o
 test("the registered task dialog survives its trigger unmount and Escape dismisses it", async () => {
   const source = fixture();
   let ownerPath: string | null = null;
+  let routePath: string | null = null;
   let ownerStore: MaitaiStore | null = null;
   function ScopedDetail({ threadId }: { readonly threadId: string }) {
     const scope = useScopeHandle(ThreadScope);
     const value = useScopedAtomValue(ownerState);
+    const route = useScopeHandle(RouteScope);
+    const routeValue = useScopedAtomValue(routeState);
     return (
       <>
         <output aria-label="Task owner">{value}</output>
         <output aria-label="Task owner path">{scope.path}</output>
+        <output aria-label="Task route">{routeValue}</output>
+        <output aria-label="Task route path">{route.path}</output>
         <output aria-label="Task detail">{threadId}</output>
       </>
     );
@@ -303,17 +310,20 @@ test("the registered task dialog survives its trigger unmount and Escape dismiss
   function Trigger({ onOpen }: { readonly onOpen: () => void }) {
     const handle = useScopeHandle(appScope);
     const threadHandle = useScopeHandle(ThreadScope);
+    const routeHandle = useScopeHandle(RouteScope);
     ownerStore = useMaitaiStore();
     return (
       <button
         type="button"
         onClick={() => {
           ownerPath = threadHandle.path;
+          routePath = routeHandle.path;
           threadHandle.set(ownerState, "parent ownership");
+          routeHandle.set(routeState, "parent route ownership");
           openModal(handle, ConversationTaskDialog, {
             runtime: source.runtime,
             parentThreadId: "parent",
-            parentThreadScope: threadHandle,
+            parentContext: routeHandle,
             renderDetail: (child) => <ScopedDetail threadId={child.threadId} />,
           });
           onOpen();
@@ -349,6 +359,8 @@ test("the registered task dialog survives its trigger unmount and Escape dismiss
   const dialog = await view.findByRole("dialog", { name: "Tasks" });
   expect(view.getByLabelText("Task owner").textContent).toBe("parent ownership");
   expect(view.getByLabelText("Task owner path").textContent).toBe(ownerPath);
+  expect(view.getByLabelText("Task route").textContent).toBe("parent route ownership");
+  expect(view.getByLabelText("Task route path").textContent).toBe(routePath);
   expect(view.getByLabelText("Task detail").textContent).toBe("agent-task:parent:watch");
   await act(async () => {
     fireEvent.click(view.getByRole("button", { name: "Review, Completed" }));
@@ -356,6 +368,8 @@ test("the registered task dialog survives its trigger unmount and Escape dismiss
   });
   expect(view.getByLabelText("Task detail").textContent).toBe("agent-task:parent:review");
   expect(view.getByLabelText("Task owner path").textContent).toBe(ownerPath);
+  expect(view.getByLabelText("Task route").textContent).toBe("parent route ownership");
+  expect(view.getByLabelText("Task route path").textContent).toBe(routePath);
   expect(source.resume).not.toHaveBeenCalled();
   await act(async () => {
     source.clear();

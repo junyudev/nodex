@@ -20,7 +20,8 @@ const selectConversation = (conversation: CodexConversationSnapshot | null) => c
 export interface ConversationTaskDialogProps {
   readonly runtime: ConversationRuntime;
   readonly parentThreadId: string;
-  readonly parentThreadScope: ScopeHandle;
+  /** The opening Route retains its Thread ancestry when details outlive the trigger. */
+  readonly parentContext: ScopeHandle;
   readonly initialTaskId?: string;
   readonly renderDetail: (conversation: CodexConversationSnapshot) => ReactNode;
   readonly stopTask?: (taskId: string) => Promise<void>;
@@ -40,7 +41,7 @@ export function ConversationTaskDialog(props: ConversationTaskDialogProps) {
 function ConversationTaskDialogContent({
   runtime,
   parentThreadId,
-  parentThreadScope,
+  parentContext,
   initialTaskId,
   renderDetail,
   stopTask,
@@ -57,7 +58,7 @@ function ConversationTaskDialogContent({
     selectConversation,
   );
   return (
-    <ScopeContextBridge handle={parentThreadScope}>
+    <ScopeContextBridge handle={parentContext}>
       <NodexDialog
         open
         onOpenChange={(open) => {

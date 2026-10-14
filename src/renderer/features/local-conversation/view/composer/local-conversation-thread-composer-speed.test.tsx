@@ -1,5 +1,6 @@
+import { buildComposerActions as buildActions } from "@/test/composer-actions-fixture";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
 import {
@@ -15,6 +16,7 @@ import {
   replaceImageEditComposerDraft,
   requestImageEditComposerSubmit,
 } from "@/lib/image-edit-composer-channel";
+import { captureComposerImageAttachmentTarget } from "@/lib/composer-image-attachment-channel";
 import {
   clearOptimisticGeneratedImageEdits,
   getGeneratedImageLiveCollectionSnapshot,
@@ -37,6 +39,28 @@ import {
   __composerAddContextTestUtils,
 } from "./local-conversation-thread-composer";
 import { TestComposerScopePath } from "@/test/maitai-scope-harness";
+import type { CodexAppModelContextAttachment } from "../../../../../shared/codex-untrusted-app-input";
+import { appScope, useScopeHandle } from "@/lib/maitai";
+import {
+  createComposerDraftTransfer,
+  publishComposerDraftTransfer,
+  useComposerPromptDraft,
+} from "./composer-draft-state";
+import {
+  ComposerAppModelContextProvider,
+  useComposerAppModelContextRecipient,
+  type ComposerAppModelContextRecipient,
+} from "./composer-app-model-context";
+import { McpAppHostDispatcher } from "@/lib/mcp-app/mcp-app-host-dispatcher";
+
+const RESTORED_APP_CONTEXT = {
+  id: "queued-context-original",
+  kind: "context",
+  sourceName: "Fixture app",
+  title: "Queued context",
+  untrusted: true,
+  content: [{ type: "text", text: "Exact queued app content" }],
+} satisfies CodexAppModelContextAttachment;
 
 const FAST_MODE_ICON_PATH =
   "M11.9125 21.4125C11.5292 21.8625 11.0292 22.0958 10.4125 22.1125C9.79586 22.1291 9.29586 21.9208 8.91252 21.4875C8.53752 21.0541 8.45836 20.4541 8.67503 19.6875L9.68752 16H4.57502C4.00836 16 3.56669 15.8375 3.25002 15.5125C2.93336 15.1791 2.77502 14.7791 2.77502 14.3125C2.77502 13.8375 2.92919 13.4125 3.23752 13.0375L12.1375 2.47497C12.5209 2.02497 13.0209 1.79164 13.6375 1.77497C14.2542 1.75831 14.75 1.96664 15.125 2.39997C15.5084 2.83331 15.5917 3.43331 15.375 4.19997L14.3125 7.99998H19.425C19.9917 7.99998 20.4334 8.16664 20.75 8.49997C21.075 8.83331 21.2375 9.23748 21.2375 9.71247C21.2375 10.1791 21.0792 10.5958 20.7625 10.9625L11.9125 21.4125Z";
@@ -330,43 +354,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   };
 }
 
-function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActions {
-  return {
-    onCollaborationModeChange: () => {},
-    onModelChange: () => {},
-    onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
-    onQueueingEnabledChange: () => {},
-    onSendPrompt: async () => {},
-    onSteerPrompt: async () => {},
-    onInterruptTurn: async () => {},
-    onRespondApproval: async () => {},
-    onRespondUserInput: async () => {},
-    onRespondMcpElicitation: async () => {},
-    onResolvePlanImplementationRequest: async () => {},
-    onEnqueueQueuedFollowUp: async () => {},
-    onRemoveQueuedFollowUp: async () => {},
-    onReplaceQueuedFollowUp: async () => true,
-    onReorderQueuedFollowUps: async () => {},
-    onSendQueuedFollowUpNow: async () => {},
-    onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
-    onForkFromTurn: async () => {},
-    onCompactThread: async () => {},
-    onGetThreadGoal: async () => null,
-    onSetThreadGoal: async () => null,
-    onClearThreadGoal: async () => {},
-    onSetThreadMemoryMode: async () => {},
-    onUploadFeedback: async () => {},
-    onUnarchiveThread: async () => {},
-    onOpenTurnDiffReview: () => {},
-    onConsumeComposerIntent: () => {},
-    onOpenThread: () => {},
-    onCleanBackgroundTerminals: async () => {},
-    ...overrides,
-  };
-}
-
 async function settleComposerFrame(): Promise<void> {
   await settleAsyncRender();
   await settleAsyncRender();
@@ -404,6 +391,387 @@ async function renderComposer(
 
   return view;
 }
+
+test("a captured image target appends an attachment without submitting or replacing the draft", async () => {
+  const send = vi.fn(async () => undefined);
+  const queue = vi.fn(async () => undefined);
+  const view = await renderComposer(
+    { composerIntent: { prompt: "Keep this draft", focusNonce: 712 } },
+    { onSendPrompt: send, onEnqueueQueuedFollowUp: queue },
+  );
+  const target = captureComposerImageAttachmentTarget({
+    channelId: IMAGE_EDIT_COMPOSER_CHANNEL_ID,
+    placement: "root",
+  });
+  expect(target).not.toBeNull();
+  await act(async () => {
+    expect(
+      target!.append(
+        [
+          {
+            src: "data:image/png;base64,aW1hZ2U=",
+            filename: "from-message.png",
+            origin: "conversation",
+          },
+        ],
+        () => true,
+      ),
+    ).toBe(true);
+    await Promise.resolve();
+  });
+  expect(await view.findByRole("button", { name: "Remove from-message.png" })).toBeTruthy();
+  expect(view.container.querySelector('[data-codex-composer="true"]')?.textContent).toBe(
+    "Keep this draft",
+  );
+  expect(send).not.toHaveBeenCalled();
+  expect(queue).not.toHaveBeenCalled();
+  view.unmount();
+  expect(target!.append([], () => true)).toBe(false);
+});
+
+test("restored app context sends through the active queue instead of a steer request", async () => {
+  resetStorage();
+  const enqueue = vi.fn<ThreadStageActions["onEnqueueQueuedFollowUp"]>(async () => {});
+  const steer = vi.fn<ThreadStageActions["onSteerPrompt"]>(async () => {});
+  const view = await renderComposer(
+    buildRunningComposerModel({
+      isQueueingEnabled: true,
+      composerIntent: {
+        prompt: "Keep this input",
+        focusNonce: 813,
+        promptInput: {
+          text: "Keep this input",
+          mcpAppModelContextAttachments: [RESTORED_APP_CONTEXT],
+        },
+      },
+    }),
+    { onEnqueueQueuedFollowUp: enqueue, onSteerPrompt: steer },
+  );
+  expect(await view.findByRole("button", { name: "Remove Fixture app context" })).toBeTruthy();
+  await keyDownComposer(view, { key: "Enter", metaKey: true });
+  await waitFor(() => expect(enqueue).toHaveBeenCalledTimes(1));
+  expect(steer).not.toHaveBeenCalled();
+  const captured = enqueue.mock.calls[0]![2]?.promptInput?.mcpAppModelContextAttachments;
+  expect(captured).toEqual([
+    expect.objectContaining({
+      kind: "message",
+      sourceName: "Fixture app",
+      content: RESTORED_APP_CONTEXT.content,
+    }),
+  ]);
+  expect(captured?.[0]?.id).not.toBe(RESTORED_APP_CONTEXT.id);
+  await waitFor(() =>
+    expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull(),
+  );
+});
+
+test.each(["queue", "replace"] as const)(
+  "%s rejection preserves restored context and the draft for an accepted retry",
+  async (kind) => {
+    resetStorage();
+    const enqueue = vi
+      .fn<ThreadStageActions["onEnqueueQueuedFollowUp"]>()
+      .mockRejectedValueOnce(new Error("Not accepted"))
+      .mockResolvedValue(undefined);
+    const replace = vi
+      .fn<NonNullable<ThreadStageActions["onReplaceQueuedFollowUp"]>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    const error = vi.fn();
+    const view = await renderComposer(
+      buildRunningComposerModel({
+        isQueueingEnabled: true,
+        composerIntent: {
+          prompt: "Keep this input",
+          focusNonce: kind === "queue" ? 814 : 815,
+          ...(kind === "replace"
+            ? { queuedFollowUpEdit: { followUpId: "editing-row", ledgerRevision: 3 } }
+            : {}),
+          promptInput: {
+            text: "Keep this input",
+            mcpAppModelContextAttachments: [RESTORED_APP_CONTEXT],
+          },
+        },
+      }),
+      { onEnqueueQueuedFollowUp: enqueue, onReplaceQueuedFollowUp: replace },
+      undefined,
+      error,
+    );
+    await view.findByRole("button", { name: "Remove Fixture app context" });
+    await keyDownComposer(view, { key: "Enter" });
+    await waitFor(() =>
+      expect(error.mock.calls.some(([value]) => typeof value === "string")).toBe(true),
+    );
+    expect(view.getByRole("button", { name: "Remove Fixture app context" })).toBeTruthy();
+    expect(view.container.querySelector('[data-codex-composer="true"]')?.textContent).toBe(
+      "Keep this input",
+    );
+    await keyDownComposer(view, { key: "Enter" });
+    await waitFor(() => expect(kind === "queue" ? enqueue : replace).toHaveBeenCalledTimes(2));
+    const captured =
+      kind === "queue"
+        ? enqueue.mock.calls.map((call) => call[2]?.promptInput?.mcpAppModelContextAttachments)
+        : replace.mock.calls.map((call) => call[4]?.promptInput?.mcpAppModelContextAttachments);
+    expect(captured[0]).toEqual(captured[1]);
+    await waitFor(() =>
+      expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull(),
+    );
+  },
+);
+
+test("a new chat admits restored app context and restores the same capture after a failed start", async () => {
+  resetStorage();
+  let rejectStart!: (error: Error) => void;
+  let completeStart!: () => void;
+  const firstStart = new Promise<void>((resolve, reject) => {
+    completeStart = resolve;
+    rejectStart = reject;
+  });
+  const starts = vi
+    .fn<NonNullable<ThreadStageActions["onStartThreadForSession"]>>()
+    .mockImplementationOnce(() => firstStart)
+    .mockResolvedValue(undefined);
+  const errors = vi.fn();
+  const view = await renderComposer(
+    {
+      threadId: null,
+      conversation: null,
+      isNewThreadTab: true,
+      newThreadTarget: {
+        projectId: "project_1",
+        projectName: "Nodex",
+        sessionId: "session_1",
+        threadTitle: "New thread",
+        runInTarget: "localProject",
+      },
+      composerIntent: {
+        prompt: "Start with this app context",
+        focusNonce: 816,
+        promptInput: {
+          text: "Start with this app context",
+          mcpAppModelContextAttachments: [RESTORED_APP_CONTEXT],
+        },
+      },
+    },
+    { onStartThreadForSession: starts },
+    undefined,
+    errors,
+  );
+  await view.findByRole("button", { name: "Remove Fixture app context" });
+  try {
+    await keyDownComposer(view, { key: "Enter" });
+    await waitFor(() => expect(starts).toHaveBeenCalledTimes(1));
+    const captured = starts.mock.calls[0]![0].promptInput?.mcpAppModelContextAttachments;
+    expect(captured).toEqual([
+      expect.objectContaining({ kind: "message", content: RESTORED_APP_CONTEXT.content }),
+    ]);
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
+    expect(view.getByRole("button", { name: "Remove Fixture app context" })).toBeTruthy();
+
+    await act(async () => {
+      rejectStart(new Error("Thread start failed"));
+      await firstStart.catch(() => undefined);
+    });
+    await waitFor(() => expect(readComposerText(view)).toBe("Start with this app context"));
+    await view.findByRole("button", { name: "Remove Fixture app context" });
+    await submitCurrentComposerDraft(view);
+    await waitFor(() => expect(starts).toHaveBeenCalledTimes(2));
+    expect(starts.mock.calls[1]![0].promptInput?.mcpAppModelContextAttachments).toEqual(captured);
+    await waitFor(() => expect(readComposerText(view)).toBe(""));
+    expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull();
+  } finally {
+    await act(async () => {
+      completeStart();
+      await firstStart.catch(() => undefined);
+    });
+  }
+});
+
+test("a side chat carries captured app context and retains it after rejection", async () => {
+  resetStorage();
+  const open = vi
+    .fn<NonNullable<ThreadStageActions["onOpenSideChat"]>>()
+    .mockRejectedValueOnce(new Error("Not accepted"))
+    .mockResolvedValue(undefined);
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const view = await renderComposer(
+    {
+      composerIntent: {
+        prompt: "/side inspect this context",
+        focusNonce: 817,
+        promptInput: {
+          text: "/side inspect this context",
+          mcpAppModelContextAttachments: [RESTORED_APP_CONTEXT],
+        },
+      },
+    },
+    { onOpenSideChat: open, onSendPrompt: send },
+  );
+  await view.findByRole("button", { name: "Remove Fixture app context" });
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+  const first = open.mock.calls[0]![0];
+  if (!first || !("promptInput" in first)) throw new Error("Expected an immediate side chat input");
+  const captured = first.promptInput?.mcpAppModelContextAttachments;
+  expect(captured).toEqual([
+    expect.objectContaining({ kind: "message", content: RESTORED_APP_CONTEXT.content }),
+  ]);
+  expect(readComposerText(view)).toBe("/side inspect this context");
+  expect(view.getByRole("button", { name: "Remove Fixture app context" })).toBeTruthy();
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+  const second = open.mock.calls[1]![0];
+  if (!second || !("promptInput" in second))
+    throw new Error("Expected an immediate side chat input");
+  expect(second.promptInput?.mcpAppModelContextAttachments).toEqual(captured);
+  expect(second.promptInput?.text).toBe("inspect this context");
+  await waitFor(() => expect(readComposerText(view)).toBe(""));
+  expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull();
+  expect(send).not.toHaveBeenCalled();
+});
+
+test("a completed draft transfer preserves the captured app context identity", async () => {
+  resetStorage();
+  installAsyncRequestAnimationFrame();
+  document.documentElement.dataset.codexWindowType = "electron";
+  installComposerWindowApi();
+  const transfer = createComposerDraftTransfer("thread_1", {
+    prompt: "Continue with captured context",
+    fileAttachments: [],
+    addedFiles: [],
+    imageAttachments: [],
+    appshotContexts: [],
+    pastedTextAttachments: [],
+    commentAttachments: [],
+    goalModeActive: false,
+    appModelContextAttachments: [RESTORED_APP_CONTEXT],
+  });
+  function PublishTransfer() {
+    const scope = useScopeHandle(appScope);
+    useLayoutEffect(() => publishComposerDraftTransfer(scope, transfer), [scope]);
+    return null;
+  }
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const view = render(
+    <AppProviders>
+      <TestComposerScopePath>
+        <PublishTransfer />
+        <ThreadComposer
+          model={buildModel({ composerIntent: null })}
+          actions={buildActions({ onSendPrompt: send })}
+          errorMessage={null}
+          onErrorMessage={() => {}}
+        />
+      </TestComposerScopePath>
+    </AppProviders>,
+  );
+  await view.findByRole("button", { name: "Remove Fixture app context" });
+  expect(readComposerText(view)).toBe("Continue with captured context");
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  expect(send.mock.calls[0]![1]?.promptInput?.mcpAppModelContextAttachments).toEqual([
+    RESTORED_APP_CONTEXT,
+  ]);
+  await waitFor(() =>
+    expect(view.queryByRole("button", { name: "Remove Fixture app context" })).toBeNull(),
+  );
+});
+
+test("hidden app context alone cannot send a blank prompt but accompanies actual prose", async () => {
+  resetStorage();
+  installAsyncRequestAnimationFrame();
+  document.documentElement.dataset.codexWindowType = "electron";
+  installComposerWindowApi();
+  let readRecipient: (() => ComposerAppModelContextRecipient | null) | undefined;
+  let writePrompt: ((text: string) => Promise<void>) | undefined;
+  function Producer() {
+    const current = useComposerAppModelContextRecipient({
+      hostId: "local",
+      threadId: "thread_1",
+    });
+    const draft = useComposerPromptDraft("thread_1");
+    useLayoutEffect(() => {
+      readRecipient = current;
+      writePrompt = draft.setPrompt;
+    }, [current, draft.setPrompt]);
+    return null;
+  }
+  const currentRecipient = () => {
+    const recipient = readRecipient?.();
+    if (!recipient) throw new Error("Expected the actual Composer recipient");
+    return recipient;
+  };
+  const setDraft = (text: string) => {
+    if (!writePrompt) throw new Error("Expected the actual Composer draft");
+    return writePrompt(text);
+  };
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const view = render(
+    <AppProviders>
+      <TestComposerScopePath>
+        <ComposerAppModelContextProvider>
+          <Producer />
+          <ThreadComposer
+            model={buildModel({ composerIntent: null })}
+            actions={buildActions({ onSendPrompt: send })}
+            errorMessage={null}
+            onErrorMessage={() => {}}
+          />
+        </ComposerAppModelContextProvider>
+      </TestComposerScopePath>
+    </AppProviders>,
+  );
+  await waitFor(() => expect(currentRecipient().isCurrent()).toBe(true));
+  const dispatcher = new McpAppHostDispatcher({
+    scope: {
+      allowedTools: new Map(),
+      codexAppsToolScope: null,
+      originResourceUri: "ui://hidden-context",
+      resourceTemplates: [],
+      resources: [],
+      server: "fixture-app",
+      threadId: "thread_1",
+    },
+    updateModelContext: (update) =>
+      currentRecipient().publish(
+        { id: "hidden-context", server: "fixture-app", sourceName: "Hidden app" },
+        update,
+      ),
+  });
+  await act(async () => {
+    await dispatcher.handlers().callMcp({
+      method: "ui/update-model-context",
+      params: {
+        content: [
+          {
+            type: "text",
+            text: "Keep this hidden payload",
+            annotations: { audience: ["assistant"] },
+          },
+        ],
+      },
+    });
+  });
+  const button = view.getByRole("button", { name: "Send prompt" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  await keyDownComposer(view, { key: "Enter" }, { waitForContent: false });
+  expect(send).not.toHaveBeenCalled();
+  expect(view.queryByRole("button", { name: "Remove Hidden app context" })).toBeNull();
+  await act(async () => {
+    await setDraft("Use this context");
+  });
+  await waitFor(() => expect(readComposerText(view)).toBe("Use this context"));
+  expect(button.disabled).toBe(false);
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  expect(send.mock.calls[0]![1]?.promptInput?.mcpAppModelContextAttachments).toMatchObject([
+    {
+      kind: "context",
+      id: "hidden-context",
+      content: [{ text: "Keep this hidden payload", annotations: { audience: ["assistant"] } }],
+    },
+  ]);
+});
 
 async function renderControlledThreadIntelligenceComposer() {
   installAsyncRequestAnimationFrame();

@@ -112,6 +112,7 @@ type SessionCommands = Pick<
   | "sendPageToChat"
   | "openSubagentsPanelTab"
   | "openTurnDiffFileInSidePanel"
+  | "startNewChatWithPrompt"
 >;
 type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
@@ -290,6 +291,7 @@ export function useWorkbenchPanelProjection({
     sendPageToChat,
     openSubagentsPanelTab,
     openTurnDiffFileInSidePanel,
+    startNewChatWithPrompt,
   } = sessionCommands;
   const { createBrowserTabToRight, reloadBrowserTab } = panelCommands;
   const {
@@ -451,6 +453,7 @@ export function useWorkbenchPanelProjection({
                       onRecreateSideChat={() => void recreateSideChatPanelTab(tab.id)}
                       onOpenMcpAppSidePanel={openMcpAppSidePanel}
                       onOpenHooksSettings={onOpenHooksSettings}
+                      onStartNewChatWithPrompt={startNewChatWithPrompt}
                       threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
                       composerEnterBehavior={composerEnterBehavior}
                       onQueueingEnabledChange={onQueueingEnabledChange}
@@ -650,6 +653,7 @@ export function useWorkbenchPanelProjection({
                       onRefreshSessions={onRefreshSessions}
                       onOpenMcpAppSidePanel={openMcpAppSidePanel}
                       onOpenHooksSettings={onOpenHooksSettings}
+                      onStartNewChatWithPrompt={startNewChatWithPrompt}
                       threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
                       composerEnterBehavior={composerEnterBehavior}
                       onQueueingEnabledChange={onQueueingEnabledChange}
@@ -677,6 +681,7 @@ export function useWorkbenchPanelProjection({
                       onRefreshSessions={onRefreshSessions}
                       onOpenMcpAppSidePanel={openMcpAppSidePanel}
                       onOpenHooksSettings={onOpenHooksSettings}
+                      onStartNewChatWithPrompt={startNewChatWithPrompt}
                       threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
                       composerEnterBehavior={composerEnterBehavior}
                       onQueueingEnabledChange={onQueueingEnabledChange}
@@ -797,6 +802,7 @@ export function useWorkbenchPanelProjection({
       sendPageToChat,
       openSubagentsPanelTab,
       openTurnDiffFileInSidePanel,
+      startNewChatWithPrompt,
       openWorkspaceFileTab,
       pageStageRelatedChatCandidates,
       pageTitleStore,

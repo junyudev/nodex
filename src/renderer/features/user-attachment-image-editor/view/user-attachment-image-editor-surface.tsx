@@ -61,6 +61,7 @@ import {
 } from "./generated-image-playground";
 import { GeneratedImageRail } from "./generated-image-rail";
 import { SingleImageEditor } from "./single-image-editor";
+import { ReadOnlyImageSurface } from "./read-only-image-surface";
 
 const CANVAS_COACHMARK_STORAGE_KEY = "has-dismissed-image-canvas-view-coachmark-v1";
 
@@ -300,6 +301,14 @@ function ImageViewToggle({
 }
 
 export function UserAttachmentImageEditorSurface({
+  options,
+  ...props
+}: UserAttachmentImageEditorSurfaceProps) {
+  if (options.readOnly) return <ReadOnlyImageSurface options={options} />;
+  return <EditableImageSurface options={options} {...props} />;
+}
+
+function EditableImageSurface({
   fullWidth = false,
   options,
   onStateChange,

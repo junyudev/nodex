@@ -87,6 +87,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onPermissionModeChange: () => {},
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
+    onSendCapturedFollowUp: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
     onRespondApproval: async () => {},

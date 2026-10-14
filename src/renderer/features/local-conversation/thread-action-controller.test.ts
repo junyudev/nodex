@@ -106,6 +106,39 @@ function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadAct
 }
 
 describe("createThreadStageActions settings routing", () => {
+  test.each(["project_1", null])(
+    "captured follow-ups retain their originating project %s",
+    async (projectId) => {
+      const sendCapturedFollowUp = vi.fn(async () => undefined);
+      const actions = createThreadStageActions(
+        buildInput({
+          projectId,
+          codexControl: {
+            sendCapturedFollowUp,
+          } as unknown as ThreadActionControllerInput["codexControl"],
+        }),
+      );
+      const untrustedAppMessage = {
+        source: "visualization" as const,
+        sourceId: "widget-a",
+        text: "Apply selection",
+        structuredContent: { selected: 7 },
+      };
+      await actions.onSendCapturedFollowUp("thread-origin", untrustedAppMessage.text, {
+        untrustedAppMessage,
+      });
+      expect(sendCapturedFollowUp).toHaveBeenCalledExactlyOnceWith(
+        "thread-origin",
+        "Apply selection",
+        {
+          projectId,
+          collaborationMode: undefined,
+          promptInput: undefined,
+          untrustedAppMessage,
+        },
+      );
+    },
+  );
   test("keeps visualization input separate while dispatching idle and queued submissions", async () => {
     const submissions: unknown[] = [];
     const actions = createThreadStageActions(

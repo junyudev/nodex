@@ -109,6 +109,20 @@ function renderSurface() {
   );
 }
 
+test("read-only image tabs display the image without mounting an editing or Composer owner", async () => {
+  seedCommentDraft();
+  const draft = getImageEditComposerDraftSnapshot(THREAD_ID);
+  const view = renderWithMaitai(
+    <TestQueryProvider>
+      <UserAttachmentImageEditorSurface options={{ ...OPTIONS, readOnly: true }} />
+    </TestQueryProvider>,
+  );
+  expect(await view.findByAltText("Uploaded image")).toBeTruthy();
+  expect(view.queryByRole("button", { name: /comment|remove|resize|edit|canvas/i })).toBeNull();
+  expect(getImageEditComposerDraftSnapshot(THREAD_ID)).toBe(draft);
+  expect(submissionState.submit).not.toHaveBeenCalled();
+});
+
 const GENERATED_THREAD_ID = "thread-surface-generated";
 const GENERATED_OPTIONS: NormalizedUserAttachmentImageEditorOptions = {
   ...OPTIONS,

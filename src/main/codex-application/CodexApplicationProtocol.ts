@@ -679,6 +679,7 @@ export const make: Effect.Effect<
               Effect.andThen(
                 notification.method === "thread/realtime/started" ||
                   notification.method === "thread/realtime/sdp" ||
+                  notification.method === "thread/realtime/itemAdded" ||
                   notification.method === "thread/realtime/closed" ||
                   notification.method === "thread/realtime/error" ||
                   notification.method === "turn/completed"

@@ -520,6 +520,7 @@ function buildActions(): ThreadStageActions {
     onRespondMcpElicitation: noopAsync,
     onResolvePlanImplementationRequest: noopAsync,
     onEnqueueQueuedFollowUp: noopAsync,
+    onSendCapturedFollowUp: noopAsync,
     onRemoveQueuedFollowUp: noopAsync,
     onReorderQueuedFollowUps: noopAsync,
     onSendQueuedFollowUpNow: noopAsync,

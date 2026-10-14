@@ -7,14 +7,18 @@ import {
   EmbeddedResourceSchema,
   ResourceLinkSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
 type Json = ClientRequestParamsByMethod["thread/inject_items"]["items"][number];
+export type CodexAppModelContextContent = Extract<
+  ContentBlock,
+  { type: "text" | "image" | "resource" | "resource_link" }
+>;
 /** App-owned context is still untrusted model input; its identity is fixed by the host surface. */
 export type CodexAppModelContextAttachment = {
   readonly id: string;
-  readonly text: string | null;
   readonly structuredContent?: { readonly [key: string]: Json };
-  readonly imageAttachments: readonly { readonly src: string }[];
   readonly untrusted: true;
+  readonly server?: string;
   readonly composerAttachmentLayout?: "card" | "pill";
   readonly composerLabel?: string;
   readonly composerTitle?: string;
@@ -25,9 +29,80 @@ export type CodexAppModelContextAttachment = {
     readonly logoUrl?: string | null;
   };
 } & (
-  | { readonly title: string; readonly kind?: "context"; readonly sourceName?: string }
-  | { readonly title?: string; readonly kind: "context"; readonly sourceName: string }
-);
+  | { readonly content: readonly CodexAppModelContextContent[] }
+  | { readonly text: string | null; readonly imageAttachments: readonly { readonly src: string }[] }
+) &
+  (
+    | {
+        readonly title: string;
+        readonly kind?: "context" | "message";
+        readonly sourceName?: string;
+      }
+    | { readonly title?: string; readonly kind: "context" | "message"; readonly sourceName: string }
+  );
+
+/** Raw MCP model context supports only the content kinds the untrusted history compiler accepts. */
+export function parseCodexAppModelContextContent(
+  value: unknown,
+): readonly CodexAppModelContextContent[] {
+  if (!Array.isArray(value)) throw new Error("Invalid app attachment content");
+  return value.map((value) => {
+    const part = object(value);
+    const schema =
+      part.type === "text"
+        ? TextContentSchema
+        : part.type === "image"
+          ? ImageContentSchema
+          : part.type === "resource"
+            ? EmbeddedResourceSchema
+            : part.type === "resource_link"
+              ? ResourceLinkSchema
+              : null;
+    if (!schema) throw new Error("Invalid app attachment content");
+    const parsed = schema.parse(part);
+    if (parsed.type === "image") image(`data:${parsed.mimeType};base64,${parsed.data}`);
+    if (!isAppContextJson(parsed)) throw new Error("Invalid app attachment content");
+    return parsed;
+  });
+}
+
+export function isCodexAppModelContextVisible(attachment: CodexAppModelContextAttachment): boolean {
+  if (!("content" in attachment)) return true;
+  return attachment.content.some((part) => {
+    const audience = part.annotations?.audience;
+    return !audience?.includes("assistant") || audience.includes("user");
+  });
+}
+
+export function readCodexAppModelContextText(
+  attachment: CodexAppModelContextAttachment,
+): string | null {
+  if (!("content" in attachment)) return attachment.text;
+  const text = attachment.content
+    .flatMap((part) => {
+      if (part.type === "text") return [part.text];
+      if (part.type === "image") return [];
+      if (part.type === "resource_link") return [JSON.stringify({ ...part, _meta: undefined })];
+      return [
+        JSON.stringify({
+          ...part,
+          _meta: undefined,
+          resource: { ...part.resource, _meta: undefined },
+        }),
+      ];
+    })
+    .join("\n\n")
+    .trim();
+  return text || null;
+}
+
+function readAppModelContextImages(attachment: CodexAppModelContextAttachment): readonly string[] {
+  return "content" in attachment
+    ? attachment.content.flatMap((part) =>
+        part.type === "image" ? [`data:${part.mimeType};base64,${part.data}`] : [],
+      )
+    : attachment.imageAttachments.map((entry) => entry.src);
+}
 /** Local app provenance is captured separately from the native UserInput protocol. */
 export interface CodexUntrustedAppMessage {
   readonly source: "mcp_app" | "visualization";
@@ -181,22 +256,7 @@ function validatePlaceholderAttachment(value: unknown, reviewed: boolean): void 
     entry.imageAttachments.forEach((imageEntry: unknown) => image(object(imageEntry).src));
     return;
   }
-  if (!Array.isArray(entry.content)) throw new Error("Invalid app attachment content");
-  for (const value of entry.content) {
-    const part = object(value);
-    const schema =
-      part.type === "text"
-        ? TextContentSchema
-        : part.type === "image"
-          ? ImageContentSchema
-          : part.type === "resource"
-            ? EmbeddedResourceSchema
-            : part.type === "resource_link"
-              ? ResourceLinkSchema
-              : null;
-    if (!schema?.safeParse(part).success) throw new Error("Invalid app attachment content");
-    if (part.type === "image") image(`data:${part.mimeType};base64,${part.data}`);
-  }
+  parseCodexAppModelContextContent(entry.content);
 }
 
 /** Only a complete, validated native placeholder can substitute app text for transcript display. */
@@ -250,15 +310,22 @@ export function parseCodexAppModelContextAttachments(
   return value.map((value): CodexAppModelContextAttachment & { readonly title: string } => {
     const entry = object(value);
     const title = entry.title ?? entry.sourceName;
+    if (typeof entry.id !== "string" || !entry.id || typeof title !== "string")
+      throw new Error("Invalid app model context attachment");
+    if (entry.server !== undefined && typeof entry.server !== "string")
+      throw new Error("Invalid app context server");
+    const content =
+      entry.content === undefined ? undefined : parseCodexAppModelContextContent(entry.content);
     if (
-      typeof entry.id !== "string" ||
-      !entry.id ||
-      typeof title !== "string" ||
-      (entry.text !== null && typeof entry.text !== "string") ||
-      !Array.isArray(entry.imageAttachments)
+      content === undefined &&
+      ((entry.text !== null && typeof entry.text !== "string") ||
+        !Array.isArray(entry.imageAttachments))
     )
       throw new Error("Invalid app model context attachment");
-    const images = entry.imageAttachments.map((entry) => ({ src: image(object(entry).src) }));
+    const images =
+      content === undefined && Array.isArray(entry.imageAttachments)
+        ? entry.imageAttachments.map((entry) => ({ src: image(object(entry).src) }))
+        : [];
     if (entry.structuredContent !== undefined && !isAppContextJsonObject(entry.structuredContent))
       throw new Error("Invalid structured app context");
     if (
@@ -300,11 +367,15 @@ export function parseCodexAppModelContextAttachments(
       structuredContent: entry.structuredContent,
       id: entry.id,
       title,
-      ...(entry.kind === "context" && typeof entry.sourceName === "string"
-        ? { kind: "context", sourceName: entry.sourceName }
+      ...(typeof entry.server === "string" ? { server: entry.server } : {}),
+      ...((entry.kind === "context" || entry.kind === "message") &&
+      typeof entry.sourceName === "string"
+        ? { kind: entry.kind, sourceName: entry.sourceName }
         : {}),
-      text: entry.text,
-      imageAttachments: images,
+      ...(entry.kind === "message" ? { kind: "message" as const } : {}),
+      ...(content === undefined
+        ? { text: entry.text as string | null, imageAttachments: images }
+        : { content }),
       untrusted: true,
     };
   });
@@ -344,13 +415,14 @@ export function prepareUntrustedAppInput(
   if (!isAppContextJson(payload)) throw new Error("App context must be JSON serializable");
   const contents: Record<string, unknown>[] = [
     ...(modelContextAttachments?.map((entry) => ({
-      kind: "model_context",
+      kind: entry.kind === "message" ? "message" : "model_context",
       source: "mcp_app",
       sourceId: entry.id,
+      server: entry.server,
       title: entry.title,
-      text: entry.text,
+      text: readCodexAppModelContextText(entry),
       structuredContent: entry.structuredContent,
-      imageUrls: entry.imageAttachments.map((entry) => entry.src),
+      imageUrls: readAppModelContextImages(entry),
     })) ?? []),
     ...(message ? [{ kind: "message", ...message }] : []),
   ];

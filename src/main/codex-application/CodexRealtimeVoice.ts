@@ -18,6 +18,10 @@ import type {
 } from "../../shared/codex-realtime-voice";
 import { isCodexRealtimeVoiceStartupComplete } from "../../shared/codex-realtime-voice";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import {
+  prepareUntrustedAppInput,
+  type CodexAppModelContextAttachment,
+} from "../../shared/codex-untrusted-app-input";
 import type { ConversationTextRole } from "@nodex/codex-app-server-protocol";
 import type { TurnCompletedNotification } from "@nodex/codex-app-server-protocol/v2";
 import { CodexMedia } from "./CodexMedia";
@@ -130,6 +134,11 @@ export class CodexRealtimeVoice extends Context.Service<
       webContentsId: number,
       claimId: string,
       text: string,
+    ) => Effect.Effect<void, CodexRealtimeVoiceError>;
+    readonly injectContext: (
+      webContentsId: number,
+      claimId: string,
+      attachments: readonly CodexAppModelContextAttachment[],
     ) => Effect.Effect<void, CodexRealtimeVoiceError>;
   }
 >()("nodex/main/codex-application/CodexRealtimeVoice") {}
@@ -679,6 +688,34 @@ export const make = Effect.gen(function* () {
             attempt.grant.hostId,
             "thread/realtime/appendSpeech",
             { threadId: attempt.grant.threadId, text },
+            codexGatewayGenerationFence(attempt.capabilities),
+          )
+          .pipe(Effect.mapError(failure));
+        yield* assertCurrent(attempt);
+      },
+    ),
+    injectContext: Effect.fn("CodexRealtimeVoice.injectContext")(
+      function* (webContentsId, claimId, attachments) {
+        const attempt = yield* resolve(webContentsId, claimId);
+        yield* assertCurrent(attempt);
+        const items = yield* Effect.try({
+          try: () =>
+            prepareUntrustedAppInput(
+              "",
+              { mcpAppModelContextAttachments: attachments },
+              `untrusted_input_${createUuidV7()}`,
+            ).responseItems,
+          catch: failure,
+        });
+        if (items.length === 0) return;
+        yield* gateway
+          .requestOnHost(
+            attempt.grant.hostId,
+            "thread/inject_items",
+            {
+              threadId: attempt.grant.threadId,
+              items,
+            },
             codexGatewayGenerationFence(attempt.capabilities),
           )
           .pipe(Effect.mapError(failure));

@@ -92,6 +92,8 @@ const withIpc = <A, E>(
           operation("text", sender, claim, role, text),
         appendSpeech: (sender: number, claim: string, text: string) =>
           operation("speech", sender, claim, text),
+        injectContext: (sender: number, claim: string, attachments: unknown) =>
+          operation("context", sender, claim, attachments),
       } as unknown as CodexRealtimeVoice["Service"]),
     );
     yield* Layer.buildWithScope(live.pipe(Layer.provide(deps)), yield* Scope.Scope);

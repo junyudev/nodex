@@ -164,6 +164,16 @@ export class QueuedMessageExecution<
     message: Message,
     operation: QueueOperation<Message, QueueSubmission<Resume, Start, Steer>>,
   ): Promise<{ status: "sent"; turnId: string }> {
+    const result = await this.submitCapturedNow(id, message, operation);
+    if (result.status !== "sent") throw new Error("Explicit message submission was not sent");
+    return { status: "sent", turnId: result.turnId };
+  }
+  /** The caller owns capture and admission, and may enqueue this same input when idle is required. */
+  async submitCapturedNow(
+    id: string,
+    message: Message,
+    operation: QueueOperation<Message, QueueSubmission<Resume, Start, Steer>>,
+  ): Promise<QueueSendResult> {
     using _deferral = this.deferAutomaticTurns(id);
     const current = () => !this.disposed && operation.isCurrent?.() !== false;
     let prepared = await operation.prepare(id, message, "steer");
@@ -180,8 +190,9 @@ export class QueuedMessageExecution<
         throw new Error("Start preparation did not produce a matching turn request");
       result = await this.submit({ ...prepared.submission, afterInactiveTurnId }, false, current);
     }
-    if (result.status !== "sent") throw new Error("Explicit message submission was not sent");
-    return { status: "sent", turnId: result.turnId };
+    if (result.status === "needs-start-preparation")
+      throw new Error("Start preparation did not produce a turn request");
+    return result;
   }
   /** A native queue row uses the same cross-window send admission as captured local rows. */
   async sendExternalNow<Result extends { readonly status: "queued" | "sent" } | null>(

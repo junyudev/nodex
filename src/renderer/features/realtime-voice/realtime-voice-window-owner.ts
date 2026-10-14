@@ -13,12 +13,53 @@ import type {
 import { mainRealtimeVoiceClient, type RealtimeVoiceClient } from "./realtime-voice-client";
 import { requestMicrophoneAccess } from "../../lib/api";
 import { z } from "zod";
+import type { ComposerAppModelContextRecipient } from "../local-conversation/view/composer/composer-app-model-context";
+import { parseCodexRealtimeDelegationText } from "../../../shared/codex-delegation";
 
 const usageEventSchema = z.object({
   type: z.literal("session.usage.updated"),
   usage_limit: z.object({ status: z.literal("approaching").nullable() }),
 });
 const usageWarning = "You’re approaching your Codex usage limit, so this voice chat may end soon";
+const userTurnEvent = z.object({
+  type: z.literal("turn.created"),
+  turn: z.object({
+    id: z.string().min(1),
+    role: z.literal("user"),
+    transcript: z.string().trim().min(1),
+  }),
+});
+const handoffEvent = z.object({
+  type: z.literal("conversation.handoff.requested"),
+  handoff_id: z.string().min(1),
+  item_id: z.string().min(1),
+  user_bidi_turn_id: z.string().min(1),
+  input_transcript: z.string().optional(),
+});
+const delegationEvent = z.object({
+  type: z.literal("delegation.created"),
+  item: z.object({
+    id: z.string().min(1),
+    type: z.literal("delegation"),
+    target: z.literal("client"),
+    handoff_id: z.string().min(1),
+    user_bidi_turn_id: z.string().min(1),
+    content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
+  }),
+});
+const nativeHandoff = z.object({
+  type: z.literal("handoff_request"),
+  handoff_id: z.string(),
+  item_id: z.string().optional(),
+  input_transcript: z.string(),
+  active_transcript: z.array(z.object({ role: z.string(), text: z.string() })),
+});
+
+export interface RealtimeVoiceContextOrigin {
+  readonly recipient: ComposerAppModelContextRecipient;
+  /** The actual retained scope bridge acknowledges its committed lease before startup continues. */
+  readonly commit: () => void;
+}
 
 export interface RealtimeVoiceWindowSnapshot {
   readonly target: CodexRealtimeVoiceTarget | null;
@@ -26,6 +67,7 @@ export interface RealtimeVoiceWindowSnapshot {
   readonly microphoneMuted: boolean;
   readonly outputMuted: boolean;
   readonly availabilityRevision: number;
+  readonly contextOrigin?: RealtimeVoiceContextOrigin | null;
 }
 interface Attempt {
   readonly target: CodexRealtimeVoiceTarget;
@@ -43,12 +85,19 @@ interface Attempt {
   retiredClaimId: string | null;
   pendingMicrophone: { readonly claimId: string; readonly deviceId: string | null } | null;
   usageLimitApproaching: boolean;
+  readonly contextOrigin: RealtimeVoiceContextOrigin | null;
+  readonly contextReady: Promise<void>;
+  readonly contextDeliveries: Map<string, "pending" | "retry" | "delivered">;
+  mediaSessionId: string | null;
 }
 export interface RealtimeVoiceWindowOwner {
   readonly subscribe: (listener: () => void) => () => void;
   readonly read: () => RealtimeVoiceWindowSnapshot;
   readonly acquireWindow: () => () => void;
-  readonly start: (target: CodexRealtimeVoiceTarget) => Promise<void>;
+  readonly start: (
+    target: CodexRealtimeVoiceTarget,
+    recipient?: ComposerAppModelContextRecipient | null,
+  ) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly cancelStart: () => Promise<void>;
   readonly setMicrophoneMuted: (muted: boolean) => Promise<void>;
@@ -91,6 +140,39 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
   const reportError = (error: unknown) => {
     if (leases > 0) ports.onError?.(error);
   };
+  const injectContext = async (attempt: Attempt): Promise<void> => {
+    const recipient = attempt.contextOrigin?.recipient;
+    if (!recipient) return;
+    if (!active(attempt) || !attempt.grant || !recipient.isCurrent())
+      throw new Error("The voice context source changed");
+    const claimId = attempt.grant.claimId;
+    await recipient.injectHidden(async (attachments) => {
+      if (!active(attempt)) throw new Error("The voice session changed");
+      await client.injectContext(claimId, attachments);
+      if (!active(attempt)) throw new Error("The voice session changed");
+    });
+  };
+  const requestContext = (attempt: Attempt, key: string): void => {
+    if (!active(attempt) || !attempt.contextOrigin) return;
+    const status = attempt.contextDeliveries.get(key);
+    if (status) {
+      if (status === "pending") attempt.contextDeliveries.set(key, "retry");
+      return;
+    }
+    attempt.contextDeliveries.set(key, "pending");
+    void injectContext(attempt).then(
+      () => {
+        attempt.contextDeliveries.set(key, "delivered");
+      },
+      () => {
+        const retry = attempt.contextDeliveries.get(key) === "retry";
+        attempt.contextDeliveries.delete(key);
+        if (!active(attempt)) return;
+        console.warn("Could not inject app context for voice");
+        if (retry) requestContext(attempt, key);
+      },
+    );
+  };
   const receiveMediaEvent = (attempt: Attempt, message: string): void => {
     if (!active(attempt) || !attempt.grant) return;
     let value: unknown;
@@ -100,7 +182,28 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       return;
     }
     const event = usageEventSchema.safeParse(value);
-    if (!event.success) return;
+    if (!event.success) {
+      const userTurn = userTurnEvent.safeParse(value);
+      if (userTurn.success) {
+        requestContext(attempt, `user-turn:${userTurn.data.turn.id}`);
+        return;
+      }
+      if (attempt.mediaSessionId === null) return;
+      const handoff = handoffEvent.safeParse(value);
+      if (handoff.success) {
+        if (handoff.data.input_transcript?.trim()) requestContext(attempt, handoff.data.handoff_id);
+        return;
+      }
+      const delegation = delegationEvent.safeParse(value);
+      if (
+        delegation.success &&
+        delegation.data.item.content?.some(
+          (part) => part.type === "input_text" && part.text?.trim(),
+        )
+      )
+        requestContext(attempt, delegation.data.item.id);
+      return;
+    }
     const approaching = event.data.usage_limit.status === "approaching";
     if (approaching === attempt.usageLimitApproaching) return;
     attempt.usageLimitApproaching = approaching;
@@ -147,6 +250,7 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
           phase: "inactive",
           microphoneMuted: false,
           outputMuted: false,
+          contextOrigin: null,
         });
       }
       const failure = outcomes.find((outcome) => outcome.status === "rejected");
@@ -277,6 +381,21 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
     }
     if (event.notification.params.threadId !== attempt.target.threadId) return;
     const notification = event.notification;
+    if (notification.method === "thread/realtime/itemAdded") {
+      const handoff = nativeHandoff.safeParse(notification.params.item);
+      if (!handoff.success) return;
+      const input = handoff.data.input_transcript;
+      if (
+        parseCodexRealtimeDelegationText(input) !== null ||
+        input.trim() ||
+        handoff.data.active_transcript
+          .map((part) => `${part.role}: ${part.text}`)
+          .join("\n")
+          .trim()
+      )
+        requestContext(attempt, handoff.data.handoff_id);
+      return;
+    }
     if (notification.method === "thread/realtime/sdp") {
       void attempt.media
         ?.acceptAnswer(notification.params.sdp)
@@ -295,16 +414,34 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       else fail(attempt, new Error("Voice session closed"));
     }
   };
-  const start = (target: CodexRealtimeVoiceTarget): Promise<void> => {
+  const start = (
+    target: CodexRealtimeVoiceTarget,
+    recipient?: ComposerAppModelContextRecipient | null,
+  ): Promise<void> => {
     if (leases === 0) return Promise.reject(new Error("The voice window is closed"));
     if (current) {
       if (sameTarget(current.target, target) && !current.controller.signal.aborted)
         return current.starting ?? Promise.resolve();
       return Promise.reject(new Error("Voice is already active"));
     }
+    if (recipient && (!sameTarget(recipient.target, target) || !recipient.isCurrent()))
+      return Promise.reject(new Error("Voice context belongs to another composer"));
+    const controller = new AbortController();
+    let commit: () => void = () => undefined;
+    const contextReady = recipient
+      ? new Promise<void>((resolve) => {
+          const completed = () => {
+            controller.signal.removeEventListener("abort", completed);
+            resolve();
+          };
+          controller.signal.addEventListener("abort", completed, { once: true });
+          commit = completed;
+        })
+      : Promise.resolve();
+    const contextOrigin = recipient ? { recipient, commit } : null;
     const attempt: Attempt = {
       target: { ...target },
-      controller: new AbortController(),
+      controller,
       grant: null,
       preparing: null,
       media: null,
@@ -318,6 +455,10 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       retiredClaimId: null,
       pendingMicrophone: null,
       usageLimitApproaching: false,
+      contextOrigin,
+      contextReady,
+      contextDeliveries: new Map(),
+      mediaSessionId: null,
     };
     current = attempt;
     publish({
@@ -326,10 +467,12 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       phase: "preparing",
       microphoneMuted: false,
       outputMuted: false,
+      contextOrigin,
     });
     const pending = (async () => {
       try {
         await Promise.allSettled([...cleanups]);
+        await attempt.contextReady;
         if (!active(attempt)) return;
         attempt.preparing = client.prepare(attempt.target);
         const grant = await attempt.preparing;
@@ -359,7 +502,11 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
             assertCanCapture: () => active(attempt),
             requestMicrophoneAccess: ports.requestMicrophoneAccess ?? requestMicrophoneAccess,
             onConnected: () => report(attempt, "connected"),
-            onInitialized: () => report(attempt, "initialized"),
+            onInitialized: (sessionId) => {
+              if (!active(attempt) || attempt.mediaSessionId !== null) return;
+              attempt.mediaSessionId = sessionId;
+              report(attempt, "initialized");
+            },
             onEvent: (message) => receiveMediaEvent(attempt, message),
             onFailure: (error) => fail(attempt, error),
           }),
@@ -371,6 +518,8 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
           return;
         }
         await applyMicrophonePreference(attempt);
+        if (!active(attempt)) return;
+        await injectContext(attempt);
         if (!active(attempt)) return;
         await client.start(grant.claimId, prepared.offerSdp);
         if (!active(attempt)) return;

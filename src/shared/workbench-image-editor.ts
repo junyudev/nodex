@@ -63,6 +63,7 @@ export interface WorkbenchImageEditorImageConfig {
 
 /** Durable Scene payload. Transient drafts, bitmap masks, and object URLs are excluded. */
 export interface WorkbenchImageEditorSurfaceConfig {
+  readonly readOnly?: boolean;
   readonly availableImageCount: number;
   readonly composerTarget: WorkbenchImageEditorComposerTargetConfig | null;
   readonly entrypoint: WorkbenchImageEditorEntrypoint;

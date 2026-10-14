@@ -1,5 +1,124 @@
 import { expect, test } from "vitest";
-import { decodeUntrustedAppMessage, prepareUntrustedAppInput } from "./codex-untrusted-app-input";
+import {
+  decodeUntrustedAppMessage,
+  prepareUntrustedAppInput,
+  isCodexAppModelContextVisible,
+  parseCodexAppModelContextAttachments,
+} from "./codex-untrusted-app-input";
+
+test("compiles raw app context as untrusted history without reading or decoding resource URIs", () => {
+  const compiled = prepareUntrustedAppInput(
+    "",
+    {
+      mcpAppModelContextAttachments: [
+        {
+          id: "chart-widget",
+          kind: "context",
+          sourceName: "Chart",
+          server: "charts",
+          untrusted: true,
+          content: [
+            { type: "text", text: "  Revenue 42  ", annotations: { audience: ["assistant"] } },
+            {
+              type: "resource",
+              _meta: { outer: "private" },
+              resource: {
+                uri: "file://server/share/report%2520.csv",
+                text: "report",
+                _meta: { inner: "private" },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    "context-call",
+  );
+  expect(compiled.responseItems).toEqual([
+    { type: "function_call", call_id: "context-call", name: "untrusted_input", arguments: "{}" },
+    {
+      type: "function_call_output",
+      call_id: "context-call",
+      output: [
+        {
+          type: "input_text",
+          text: JSON.stringify({
+            kind: "model_context",
+            source: "mcp_app",
+            sourceId: "chart-widget",
+            server: "charts",
+            title: "Chart",
+            text: 'Revenue 42  \n\n{"type":"resource","resource":{"uri":"file://server/share/report%2520.csv","text":"report"}}',
+          }),
+        },
+      ],
+    },
+  ]);
+});
+
+test("keeps raw audience visibility separate from compiled text and validates its closed content kinds", () => {
+  const raw = (content: unknown[]) => ({
+    id: "widget",
+    sourceName: "Chart",
+    kind: "context",
+    untrusted: true,
+    content,
+  });
+  const attachments = parseCodexAppModelContextAttachments([
+    {
+      id: "derived",
+      title: "Legacy context",
+      text: null,
+      imageAttachments: [],
+      structuredContent: { selected: 1 },
+      untrusted: true,
+    },
+    { ...raw([]), structuredContent: { selected: 1 } },
+    raw([{ type: "text", text: "assistant", annotations: { audience: ["assistant"] } }]),
+    raw([{ type: "text", text: "user", annotations: { audience: ["assistant", "user"] } }]),
+    raw([{ type: "text", text: "default" }]),
+  ])!;
+  expect(attachments.map(isCodexAppModelContextVisible)).toEqual([true, false, false, true, true]);
+  expect(() =>
+    parseCodexAppModelContextAttachments([
+      raw([{ type: "audio", mimeType: "audio/wav", data: "AA==" }]),
+    ]),
+  ).toThrow("Invalid app attachment content");
+  expect(() =>
+    parseCodexAppModelContextAttachments([
+      raw([{ type: "image", mimeType: "image/svg+xml", data: "AA==" }]),
+    ]),
+  ).toThrow("supported base64 data URLs");
+});
+
+test("compiles image context separately from text without exposing resource metadata", () => {
+  const compiled = prepareUntrustedAppInput(
+    "",
+    {
+      mcpAppModelContextAttachments: [
+        {
+          id: "image",
+          sourceName: "Images",
+          kind: "context",
+          untrusted: true,
+          content: [{ type: "image", mimeType: "image/png", data: "AA==" }],
+        },
+      ],
+    },
+    "images",
+  );
+  expect(compiled.responseItems[1]).toEqual({
+    type: "function_call_output",
+    call_id: "images",
+    output: [
+      {
+        type: "input_text",
+        text: '{"kind":"model_context","source":"mcp_app","sourceId":"image","title":"Images","text":null}',
+      },
+      { type: "input_image", image_url: "data:image/png;base64,AA==" },
+    ],
+  });
+});
 
 test("decodes a complete native visualization envelope for display without changing native input", () => {
   const message = {

@@ -2,6 +2,7 @@ import { realtimeVoiceAvailabilityQueryOptions } from "./realtime-voice-client";
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useState,
   useSyncExternalStore,
@@ -14,7 +15,10 @@ import {
   createRealtimeVoiceWindowOwner,
   type RealtimeVoiceWindowOwner,
   type RealtimeVoiceWindowSnapshot,
+  type RealtimeVoiceContextOrigin,
 } from "./realtime-voice-window-owner";
+import { ScopeContextBridge } from "../../lib/maitai";
+import type { ComposerAppModelContextRecipient } from "../local-conversation/view/composer/composer-app-model-context";
 
 const OwnerContext = createContext<RealtimeVoiceWindowOwner | null>(null);
 const idle: RealtimeVoiceWindowSnapshot = {
@@ -26,6 +30,11 @@ const idle: RealtimeVoiceWindowSnapshot = {
 };
 const readIdle = () => idle;
 const subscribeIdle = () => () => undefined;
+
+function CommittedContextOrigin({ origin }: { readonly origin: RealtimeVoiceContextOrigin }) {
+  useEffect(() => origin.commit(), [origin]);
+  return null;
+}
 
 /** Voice resources belong to the renderer window, independently of its visible Thread subtree. */
 export function RealtimeVoiceWindowProvider({
@@ -47,6 +56,7 @@ export function RealtimeVoiceWindowProvider({
       }),
   );
   const queryClient = useQueryClient();
+  const snapshot = useSyncExternalStore(owner.subscribe, owner.read, owner.read);
   useLayoutEffect(() => {
     let revision = owner.read().availabilityRevision;
     const invalidate = () => {
@@ -63,11 +73,23 @@ export function RealtimeVoiceWindowProvider({
       release();
     };
   }, [owner, queryClient]);
-  return <OwnerContext.Provider value={owner}>{children}</OwnerContext.Provider>;
+  return (
+    <OwnerContext.Provider value={owner}>
+      {children}
+      {snapshot.contextOrigin ? (
+        <ScopeContextBridge handle={snapshot.contextOrigin.recipient.scope}>
+          <CommittedContextOrigin origin={snapshot.contextOrigin} />
+        </ScopeContextBridge>
+      ) : null}
+    </OwnerContext.Provider>
+  );
 }
 
 /** The Composer only presents an explicitly bound, policy-admitted native Codex target. */
-export function useComposerRealtimeVoice(target: CodexRealtimeVoiceTarget | null) {
+export function useComposerRealtimeVoice(
+  target: CodexRealtimeVoiceTarget | null,
+  recipient?: ComposerAppModelContextRecipient | null,
+) {
   const owner = useContext(OwnerContext);
   const snapshot = useSyncExternalStore(
     owner?.subscribe ?? subscribeIdle,
@@ -91,7 +113,7 @@ export function useComposerRealtimeVoice(target: CodexRealtimeVoiceTarget | null
     phase: snapshot.phase,
     microphoneMuted: snapshot.microphoneMuted,
     outputMuted: snapshot.outputMuted,
-    start: () => (owner && target ? owner.start(target) : Promise.resolve()),
+    start: () => (owner && target ? owner.start(target, recipient) : Promise.resolve()),
     stop: () => owner?.stop() ?? Promise.resolve(),
     cancelStart: () => owner?.cancelStart() ?? Promise.resolve(),
     setMicrophoneMuted: (muted: boolean) => owner?.setMicrophoneMuted(muted) ?? Promise.resolve(),

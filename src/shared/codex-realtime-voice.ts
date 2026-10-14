@@ -6,6 +6,7 @@ import type {
   ThreadRealtimeErrorNotification,
   ThreadRealtimeSdpNotification,
   ThreadRealtimeAppendSpeechParams,
+  ThreadRealtimeItemAddedNotification,
 } from "@nodex/codex-app-server-protocol/v2";
 
 export interface CodexRealtimeVoiceTarget {
@@ -49,7 +50,11 @@ export type CodexRealtimeVoiceNativeNotification =
     }
   | { readonly method: "thread/realtime/sdp"; readonly params: ThreadRealtimeSdpNotification }
   | { readonly method: "thread/realtime/closed"; readonly params: ThreadRealtimeClosedNotification }
-  | { readonly method: "thread/realtime/error"; readonly params: ThreadRealtimeErrorNotification };
+  | { readonly method: "thread/realtime/error"; readonly params: ThreadRealtimeErrorNotification }
+  | {
+      readonly method: "thread/realtime/itemAdded";
+      readonly params: ThreadRealtimeItemAddedNotification;
+    };
 
 export type CodexRealtimeVoiceMediaEvidence = "connected" | "initialized";
 
@@ -104,3 +109,6 @@ export interface CodexRealtimeVoiceAppendTextInput extends CodexRealtimeVoiceCla
 }
 export interface CodexRealtimeVoiceAppendSpeechInput
   extends CodexRealtimeVoiceClaimInput, Readonly<Pick<ThreadRealtimeAppendSpeechParams, "text">> {}
+export interface CodexRealtimeVoiceInjectContextInput extends CodexRealtimeVoiceClaimInput {
+  readonly attachments: readonly import("./codex-untrusted-app-input").CodexAppModelContextAttachment[];
+}

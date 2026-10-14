@@ -151,6 +151,7 @@ const actions: ThreadStageActions = {
   onPermissionModeChange: () => {},
   onQueueingEnabledChange: () => {},
   onSendPrompt: async () => {},
+  onSendCapturedFollowUp: async () => {},
   onSteerPrompt: async () => {},
   onInterruptTurn: async () => {},
   onRespondApproval: async () => {},

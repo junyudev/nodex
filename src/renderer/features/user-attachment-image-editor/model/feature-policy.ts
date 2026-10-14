@@ -82,6 +82,7 @@ export function normalizeUserAttachmentImageEditorOptions(
     initialPlaygroundTool: options.initialPlaygroundTool ?? "navigate",
     initialView,
     openInEditor: options.openInEditor ?? false,
+    readOnly: options.readOnly ?? false,
     policy: options.policy ?? "edit_button",
     projectId: options.projectId ?? null,
     referrerPolicy:

@@ -9,6 +9,7 @@ import { CodexRealtimeVoicePolicy } from "../../codex-application/CodexRealtimeV
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
+import { parseCodexAppModelContextAttachments } from "../../../shared/codex-untrusted-app-input";
 
 const identity = z
   .string()
@@ -29,6 +30,13 @@ const textSchema = claimSchema
   })
   .strict();
 const speechSchema = claimSchema.extend({ text: z.string().min(1).max(1_048_576) }).strict();
+const contextSchema = claimSchema
+  .extend({
+    attachments: z
+      .array(z.unknown())
+      .transform((value) => parseCodexAppModelContextAttachments(value) ?? []),
+  })
+  .strict();
 export class CodexRealtimeVoiceIpcError extends Schema.TaggedError<CodexRealtimeVoiceIpcError>()(
   "CodexRealtimeVoiceIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -111,6 +119,13 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("codex:realtime-voice:append-speech", (event, input) =>
       decode(event, input, speechSchema).pipe(
         Effect.flatMap((value) => voice.appendSpeech(event.sender.id, value.claimId, value.text)),
+      ),
+    );
+    yield* ipc.handlePlainCommand("codex:realtime-voice:inject-context", (event, input) =>
+      decode(event, input, contextSchema).pipe(
+        Effect.flatMap((value) =>
+          voice.injectContext(event.sender.id, value.claimId, value.attachments),
+        ),
       ),
     );
   }),

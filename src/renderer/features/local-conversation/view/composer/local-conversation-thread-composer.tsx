@@ -31,7 +31,11 @@ import { codexImageFileIdFromSource } from "../../../../../shared/codex-image-in
 import { dedupeCodexLiveFileAttachments } from "../../../../../shared/codex-live-file-attachments";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
-import { resolveCommandShortcutPresentation } from "../../../../../shared/command-keybindings";
+import {
+  createCommandKeymapState,
+  resolveCommandShortcutPresentation,
+} from "../../../../../shared/command-keybindings";
+import { resolveCodexRendererCommandPlatform } from "@/lib/codex-window-runtime";
 import { consumeGlobalDictationShortcutNudge, openMicrophoneSettings } from "@/lib/api";
 import { dictationErrorMessage } from "@/features/dictation/dictation-errors";
 import {
@@ -208,7 +212,13 @@ import {
   type ResolvedComposerImageInput,
 } from "./image-attachments";
 import { buildComposerImageEditAttachments } from "./image-attachments/image-edit-intent-attachments";
-import { useScopedAtom, useScopedAtomValue, useScopeHandle, useSetScopedAtom } from "@/lib/maitai";
+import {
+  useScopedAtom,
+  useScopedAtomValue,
+  useScopeHandle,
+  useSetScopedAtom,
+  type ScopeHandle,
+} from "@/lib/maitai";
 import { ComposerScope, ThreadScope } from "@/lib/workbench-ui-scopes";
 import {
   useComposerIntelligenceController,
@@ -255,6 +265,14 @@ import {
   type ImageEditComposerSubmitRequest,
   type ImageEditComposerSubmitResult,
 } from "@/lib/image-edit-composer-channel";
+import { registerComposerImageAttachmentTarget } from "@/lib/composer-image-attachment-channel";
+import {
+  restoreComposerAppModelContext,
+  restoreComposerAppModelContextSnapshot,
+  useComposerAppModelContext,
+} from "./composer-app-model-context";
+import { ComposerAppModelContextAttachments } from "./composer-app-model-context-attachments";
+import { isCodexAppModelContextVisible } from "../../../../../shared/codex-untrusted-app-input";
 import {
   beginOptimisticGeneratedImageEdit,
   resolveImageInputSupport,
@@ -642,6 +660,22 @@ function hasSubmittableComposerAttachmentState(attachments: ComposerAttachmentSt
   );
 }
 
+function withComposerModelContext(
+  promptInput: CodexPromptInput | undefined,
+  prompt: string,
+  attachments: NonNullable<CodexPromptInput["mcpAppModelContextAttachments"]>,
+): CodexPromptInput | undefined {
+  if (attachments.length === 0) return promptInput;
+  return {
+    ...promptInput,
+    text: promptInput?.text ?? prompt,
+    mcpAppModelContextAttachments: [
+      ...(promptInput?.mcpAppModelContextAttachments ?? []),
+      ...attachments,
+    ],
+  };
+}
+
 function summarizeComposerPastedText(text: string): string {
   const normalized = text.trim().replace(/\s+/gu, " ");
   if (normalized.length === 0) return "Pasted text";
@@ -950,6 +984,7 @@ function appendUniqueBy<Value>(
 
 function applyCompletedDraftSnapshot(input: {
   snapshot: ComposerCompletedDraftSnapshot;
+  composerHandle: ScopeHandle;
   setFileAttachments: (value: readonly ComposerFileAttachment[]) => void;
   setAddedFiles: (value: readonly ComposerFileAttachment[]) => void;
   setImageAttachments: (value: readonly ComposerImageAttachment[]) => void;
@@ -964,10 +999,16 @@ function applyCompletedDraftSnapshot(input: {
   input.setAppshotContexts(input.snapshot.appshotContexts);
   input.setPastedTextAttachments(input.snapshot.pastedTextAttachments);
   input.setGoalModeActive(input.snapshot.goalModeActive);
+  restoreComposerAppModelContextSnapshot(
+    input.composerHandle,
+    input.snapshot.appModelContextAttachments ?? [],
+  );
   replaceReviewCommentAttachments(input.threadId, input.snapshot.commentAttachments);
 }
 
 interface HydratedThreadComposerProps extends ThreadComposerProps {
+  readonly intentFocusNonce: number | null;
+  readonly onIntentFocused: (nonce: number) => void;
   readonly prompt: string;
   readonly readPrompt: () => string;
   readonly setPrompt: (prompt: string) => void;
@@ -1028,6 +1069,7 @@ function ControlledThreadComposer(
   );
   const [transfer, setTransfer] = useScopedAtom(transferDefinition);
   const consumedIntentNonceRef = useRef(consumedIntentNonce);
+  const [intentFocusNonce, setIntentFocusNonce] = useState<number | null>(null);
   const [queuedFollowUpEdit, setQueuedFollowUpEdit] = useState<
     CodexComposerIntent["queuedFollowUpEdit"] | null
   >(null);
@@ -1046,6 +1088,7 @@ function ControlledThreadComposer(
       consumedTransferIdRef.current = transfer.transferId;
       applyCompletedDraftSnapshot({
         snapshot: transfer,
+        composerHandle,
         setFileAttachments,
         setAddedFiles,
         setImageAttachments,
@@ -1070,6 +1113,11 @@ function ControlledThreadComposer(
       const mentionPrompt = buildPersistedMentionPrompt(intent.promptInput);
       const documentPrompt = buildPersistedPromptDocument(intent.promptInput);
       const append = intent.attachmentMode === "append";
+      restoreComposerAppModelContext(
+        composerHandle,
+        intent.promptInput?.mcpAppModelContextAttachments ?? [],
+        append,
+      );
       if (append) {
         setFileAttachments((current) =>
           appendUniqueBy(
@@ -1150,6 +1198,7 @@ function ControlledThreadComposer(
         });
       }
       setConsumedIntentNonce(intent.focusNonce);
+      setIntentFocusNonce(intent.focusNonce);
       if (composerThreadId) {
         actions.onConsumeComposerIntent(composerThreadId, intent.focusNonce);
       } else if (model.newThreadTarget?.sessionId) {
@@ -1165,6 +1214,7 @@ function ControlledThreadComposer(
     actions,
     browserAnnotationConversationId,
     composerThreadId,
+    composerHandle,
     initialized,
     intent,
     model.hostId,
@@ -1228,6 +1278,10 @@ function ControlledThreadComposer(
       key={resetGeneration}
       {...props}
       intelligenceController={intelligenceController}
+      intentFocusNonce={intentFocusNonce}
+      onIntentFocused={(nonce) =>
+        setIntentFocusNonce((current) => (current === nonce ? null : current))
+      }
       prompt={promptDraft.prompt}
       readPrompt={promptDraft.readPrompt}
       setPrompt={setPrompt}
@@ -1252,6 +1306,8 @@ function HydratedThreadComposer({
   queuedFollowUpEdit,
   clearQueuedFollowUpEdit,
   intelligenceController,
+  intentFocusNonce,
+  onIntentFocused,
 }: HydratedThreadComposerProps) {
   const {
     floating: isFloatingComposer,
@@ -1303,6 +1359,20 @@ function HydratedThreadComposer({
     pausedQueueSendDialogOpen,
   ]);
   const promptEditorRef = useRef<ComposerPromptEditorHandle>(null);
+  const lastFocusedIntentRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (
+      intentFocusNonce === null ||
+      !composerVisible ||
+      lastFocusedIntentRef.current === intentFocusNonce
+    )
+      return;
+    const editor = promptEditorRef.current;
+    if (!editor?.getElement()?.isConnected) return;
+    editor.focusAtEnd();
+    lastFocusedIntentRef.current = intentFocusNonce;
+    onIntentFocused(intentFocusNonce);
+  }, [intentFocusNonce, composerVisible, onIntentFocused]);
   const dictationEditorRef = useRef<ComposerPromptEditorHandle | null>(null);
   const addContextMenuRef = useRef<ComposerAddContextMenuHandle>(null);
   const appendPromptToHistoryRef = useRef<(text: string) => void>(() => {});
@@ -1318,7 +1388,7 @@ function HydratedThreadComposer({
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const commandKeymapQuery = useCommandKeymapState();
   const dictationShortcutPresentation = resolveCommandShortcutPresentation(
-    commandKeymapQuery.data,
+    commandKeymapQuery.data ?? createCommandKeymapState({}, resolveCodexRendererCommandPlatform()),
     "composerDictationHold",
     "Ctrl+M",
   );
@@ -1327,6 +1397,15 @@ function HydratedThreadComposer({
     composerScopeIdentity: model.composerScopeIdentity,
     isSideChat: model.conversation?.source?.sideConversation === true,
     threadScopePath,
+  });
+  const appModelContext = useComposerAppModelContext({
+    hostId: model.hostId,
+    threadId: model.conversation?.threadId ?? null,
+    enabled: Boolean(
+      model.conversation &&
+      !model.isCloudNewThreadTarget &&
+      (model.provider === null || model.provider === undefined || model.provider.kind === "codex"),
+    ),
   });
   const imageEditComposerChannelId = imageEditComposerTarget.channelId;
   useEffect(() => {
@@ -1416,6 +1495,27 @@ function HydratedThreadComposer({
       }
     },
   });
+  useLayoutEffect(
+    () =>
+      registerComposerImageAttachmentTarget(imageEditComposerTarget, {
+        hostId: model.hostId,
+        threadId: composerThreadId,
+        scopeKey: composerScopeKey,
+        append: (images) => {
+          if (!imageInputSupported || !composerMountedRef.current) return false;
+          imageAttachmentController.addResolvedImages(images);
+          return true;
+        },
+      }),
+    [
+      imageEditComposerTarget,
+      model.hostId,
+      composerThreadId,
+      composerScopeKey,
+      imageInputSupported,
+      imageAttachmentController,
+    ],
+  );
   useEffect(() => {
     if (browserImageAttachments.length === 0) return;
     const attachmentIds = browserImageAttachments.map((attachment) => attachment.id);
@@ -1477,9 +1577,18 @@ function HydratedThreadComposer({
       pastedTextAttachments,
     ],
   );
-  const hasAttachments = hasComposerAttachmentStateContent(attachmentState);
-  const hasSubmittableAttachments = hasSubmittableComposerAttachmentState(attachmentState);
+  const hasVisibleAppModelContext = appModelContext.attachments.some(isCodexAppModelContextVisible);
+  const hasAppModelContextInput =
+    hasVisibleAppModelContext ||
+    appModelContext.attachments.some((entry) => entry.kind === "message");
+  const hasAttachments =
+    hasComposerAttachmentStateContent(attachmentState) || hasAppModelContextInput;
+  const hasVisibleAttachments =
+    hasComposerAttachmentStateContent(attachmentState) || hasVisibleAppModelContext;
+  const hasSubmittableAttachments =
+    hasSubmittableComposerAttachmentState(attachmentState) || hasAppModelContextInput;
   const hasVisibleNonImageAttachments =
+    hasVisibleAppModelContext ||
     fileAttachments.length > 0 ||
     addedFiles.length > 0 ||
     appshotContexts.length > 0 ||
@@ -2011,7 +2120,7 @@ function HydratedThreadComposer({
         attachments: effectiveAttachmentState,
         executionHostId,
       });
-      const hasPromptAttachments = promptInput !== undefined;
+      const hasPromptAttachments = promptInput !== undefined || hasAppModelContextInput;
       const target = model.newThreadTarget;
       const goalActionAvailable =
         model.conversation !== null
@@ -2063,7 +2172,8 @@ function HydratedThreadComposer({
           });
           return false;
         }
-        if (!model.conversation || !actions.onOpenSideChat) {
+        const openSideChat = actions.onOpenSideChat;
+        if (!model.conversation || !openSideChat) {
           toast.danger("Failed to open side chat", {
             id: "side-chat-open-failed",
           });
@@ -2078,10 +2188,16 @@ function HydratedThreadComposer({
             attachments: effectiveAttachmentState,
             executionHostId: model.hostId,
           });
-          await actions.onOpenSideChat({
-            prompt: sideChatPrompt,
-            promptInput: sideChatPromptInput,
-          });
+          await appModelContext.submit((mcpAppModelContextAttachments) =>
+            openSideChat({
+              prompt: sideChatPrompt,
+              promptInput: withComposerModelContext(
+                sideChatPromptInput,
+                sideChatPrompt,
+                mcpAppModelContextAttachments,
+              ),
+            }),
+          );
           await finalizeEditedQueuedFollowUp();
           await cleanupSubmittedPastedTextAttachments(submittedPastedTextFiles);
           completeSuccessfulSubmission(sideChatPrompt);
@@ -2130,59 +2246,94 @@ function HydratedThreadComposer({
               return false;
             }
             await intelligenceController.flush();
-            const startCompletion = actions.onStartThreadForSession({
-              projectId: target.projectId,
-              sessionId: target.sessionId,
-              projectDraftId: target.projectDraftId,
-              prompt: nextPrompt,
-              promptInput,
-              runInTarget: target.runInTarget,
-              runInEnvironmentPath: target.runInEnvironmentPath,
-              worktreeStartingState: target.worktreeStartingState,
+            const startThreadForSession = actions.onStartThreadForSession;
+            await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+              const startCompletion = startThreadForSession({
+                projectId: target.projectId,
+                sessionId: target.sessionId,
+                projectDraftId: target.projectDraftId,
+                prompt: nextPrompt,
+                promptInput: withComposerModelContext(
+                  promptInput,
+                  nextPrompt,
+                  mcpAppModelContextAttachments,
+                ),
+                runInTarget: target.runInTarget,
+                runInEnvironmentPath: target.runInEnvironmentPath,
+                worktreeStartingState: target.worktreeStartingState,
+              });
+              clearAdmittedSubmission();
+              completedFirstSubmission = true;
+              await startCompletion;
             });
-            clearAdmittedSubmission();
-            completedFirstSubmission = true;
-            await startCompletion;
             recordSuccessfulPromptSubmit(nextPrompt);
           } else {
             onErrorMessage("Select a session before starting a new thread.");
             return false;
           }
         } else if (model.isThreadRunning) {
+          const threadId = model.conversation.threadId;
           if (isImageEditFollowUp || input.submitAction === "queue") {
             if (queuedFollowUpEdit && actions.onReplaceQueuedFollowUp) {
-              const replaced = await actions.onReplaceQueuedFollowUp(
-                model.conversation.threadId,
-                queuedFollowUpEdit.followUpId,
-                queuedFollowUpEdit.ledgerRevision,
-                nextPrompt,
-                {
-                  collaborationMode: model.selectedCollaborationMode,
-                  promptInput,
-                },
-              );
-              if (!replaced)
-                throw new Error("The queued message changed before it could be edited");
+              const replaceQueuedFollowUp = actions.onReplaceQueuedFollowUp;
+              const edit = queuedFollowUpEdit;
+              await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+                const replaced = await replaceQueuedFollowUp(
+                  threadId,
+                  edit.followUpId,
+                  edit.ledgerRevision,
+                  nextPrompt,
+                  {
+                    collaborationMode: model.selectedCollaborationMode,
+                    promptInput: withComposerModelContext(
+                      promptInput,
+                      nextPrompt,
+                      mcpAppModelContextAttachments,
+                    ),
+                  },
+                );
+                if (!replaced)
+                  throw new Error("The queued message changed before it could be edited");
+              });
               clearQueuedFollowUpEdit();
             } else {
-              await actions.onEnqueueQueuedFollowUp(model.conversation.threadId, nextPrompt, {
-                collaborationMode: model.selectedCollaborationMode,
-                promptInput,
-              });
+              await appModelContext.submit((mcpAppModelContextAttachments) =>
+                actions.onEnqueueQueuedFollowUp(threadId, nextPrompt, {
+                  collaborationMode: model.selectedCollaborationMode,
+                  promptInput: withComposerModelContext(
+                    promptInput,
+                    nextPrompt,
+                    mcpAppModelContextAttachments,
+                  ),
+                }),
+              );
               await finalizeEditedQueuedFollowUp();
             }
           } else if (input.submitAction === "steer") {
-            if (!model.activeTurn || model.activeTurn.turnId === null) {
-              onErrorMessage(
-                "Nodex is already running. Wait for the active turn to load or queue the follow-up instead.",
+            await appModelContext.submit(async (mcpAppModelContextAttachments) => {
+              const effectivePromptInput = withComposerModelContext(
+                promptInput,
+                nextPrompt,
+                mcpAppModelContextAttachments,
               );
-              return false;
-            }
-            await actions.onSteerPrompt({
-              expectedTurnId: model.activeTurn.turnId,
-              prompt: nextPrompt,
-              promptInput,
-              collaborationMode: model.selectedCollaborationMode,
+              if (effectivePromptInput?.mcpAppModelContextAttachments?.length) {
+                await actions.onEnqueueQueuedFollowUp(threadId, nextPrompt, {
+                  collaborationMode: model.selectedCollaborationMode,
+                  promptInput: effectivePromptInput,
+                });
+                return;
+              }
+              const expectedTurnId = model.activeTurn?.turnId;
+              if (!expectedTurnId)
+                throw new Error(
+                  "Nodex is already running. Wait for the active turn to load or queue the follow-up instead.",
+                );
+              await actions.onSteerPrompt({
+                expectedTurnId,
+                prompt: nextPrompt,
+                promptInput: effectivePromptInput,
+                collaborationMode: model.selectedCollaborationMode,
+              });
             });
             await finalizeEditedQueuedFollowUp();
           } else {
@@ -2205,12 +2356,18 @@ function HydratedThreadComposer({
           const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
           await intelligenceController.flush();
           const predictionSubmission = composerPrediction.beforeSubmit();
-          await actions.onSendPrompt(nextPrompt, {
-            submittedPresentation,
-            collaborationMode: model.selectedCollaborationMode,
-            promptInput,
-            ...intelligenceController.turnOverrides,
-          });
+          await appModelContext.submit((mcpAppModelContextAttachments) =>
+            actions.onSendPrompt(nextPrompt, {
+              submittedPresentation,
+              collaborationMode: model.selectedCollaborationMode,
+              promptInput: withComposerModelContext(
+                promptInput,
+                nextPrompt,
+                mcpAppModelContextAttachments,
+              ),
+              ...intelligenceController.turnOverrides,
+            }),
+          );
           composerPrediction.recordSubmitted(predictionSubmission, nextPrompt);
           if (queuedFollowUpResolution) {
             try {
@@ -2282,6 +2439,7 @@ function HydratedThreadComposer({
     },
     [
       actions,
+      appModelContext,
       composerPrediction,
       attachmentState,
       canStartNewThread,
@@ -2290,6 +2448,7 @@ function HydratedThreadComposer({
       clearQueuedFollowUpEdit,
       finalizeEditedQueuedFollowUp,
       goalModeActive,
+      hasAppModelContextInput,
       hasPendingPastedTextAttachments,
       imageAttachments,
       imageEditDraft,
@@ -2329,6 +2488,7 @@ function HydratedThreadComposer({
       (model.provider === null || model.provider === undefined || model.provider.kind === "codex")
       ? { hostId: model.hostId, threadId: model.conversation.threadId }
       : null,
+    appModelContext.recipient,
   );
   const isRealtimeVoiceActive =
     model.dictation.capabilities.microphoneOwner === "realtime-voice" ||
@@ -4006,14 +4166,18 @@ function HydratedThreadComposer({
                 className="composer-attachments"
                 data-composer-attachments="true"
                 data-composer-spacing="default"
-                data-visible-attachments={hasAttachments ? "true" : undefined}
+                data-visible-attachments={hasVisibleAttachments ? "true" : undefined}
               >
-                {hasAttachments ? (
+                {hasVisibleAttachments ? (
                   <ComposerImageAttachmentRow
                     attachments={imageAttachments}
                     controller={imageAttachmentController}
                     hasVisibleNonImageAttachments={hasVisibleNonImageAttachments}
                   >
+                    <ComposerAppModelContextAttachments
+                      attachments={appModelContext.attachments}
+                      onRemove={appModelContext.remove}
+                    />
                     {appshotContexts.map((context) => (
                       <NodexTooltip
                         key={context.id}

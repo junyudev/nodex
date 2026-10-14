@@ -1934,6 +1934,10 @@ export interface IpcApi {
     args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceAppendSpeechInput];
     result: void;
   };
+  "codex:realtime-voice:inject-context": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceInjectContextInput];
+    result: void;
+  };
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
   "codex:visualization:capture-image": {

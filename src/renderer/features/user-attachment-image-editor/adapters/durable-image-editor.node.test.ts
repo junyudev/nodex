@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { normalizeUserAttachmentImageEditorOptions } from "../model/feature-policy";
+import { WorkbenchImageEditorSurfaceConfigSchema } from "../../../../shared/schemas/workbench-image-editor";
 import {
   createWorkbenchImageEditorSurfaceConfig,
   materializeWorkbenchImageEditorSurfaceConfig,
@@ -129,4 +130,19 @@ describe("durable image editor config", () => {
       status: "ready",
     });
   });
+});
+test("read-only tabs keep their permission through pin and restoration", () => {
+  const options = normalizeUserAttachmentImageEditorOptions({
+    src: "nodex://assets/read-only-image",
+    attachmentSrc: "nodex://assets/read-only-image",
+    alt: "View",
+    readOnly: true,
+    openInEditor: true,
+  });
+  const config = createWorkbenchImageEditorSurfaceConfig(options)!;
+  expect(config.readOnly).toBe(true);
+  const persisted = WorkbenchImageEditorSurfaceConfigSchema.parse(
+    JSON.parse(JSON.stringify(config)),
+  );
+  expect(restoreNormalizedImageEditorOptions(persisted, "View").readOnly).toBe(true);
 });

@@ -10,6 +10,7 @@ function createActions(log: string[]): ThreadStageActions {
     onPermissionModeChange: () => {},
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
+    onSendCapturedFollowUp: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
     onRespondApproval: async (requestId, response, context) => {

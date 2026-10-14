@@ -136,6 +136,7 @@ const fixture = () => {
     }),
     appendText: vi.fn(async () => {}),
     appendSpeech: vi.fn(async () => {}),
+    injectContext: vi.fn(async () => {}),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {

@@ -380,7 +380,7 @@ vi.mock("./local-conversation-deps", () => ({
             },
           },
           steer,
-          requiresIdle: false,
+          requiresIdle: app.responseItems.length > 0,
         };
       }
       if (channel === "codex:queued-messages:prepare") {
@@ -2774,6 +2774,90 @@ describe("local-conversation-store", () => {
       expect(localManager.readComposerIntent("remote-thread")).toBeNull();
     } finally {
       remoteActivity[Symbol.dispose]();
+      view.unmount();
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    }
+  });
+
+  test("captured control keeps the source host and an explicit projectless destination", async () => {
+    const {
+      __resetLocalConversationStoreForTests,
+      LocalConversationProvider,
+      useCodexAppServerControl,
+    } = await import("./local-conversation-store");
+    const { createMaitaiStore, MaitaiProvider } = await import("../../lib/maitai");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    let control: ReturnType<typeof useCodexAppServerControl> | null = null;
+    function Probe() {
+      const current = useCodexAppServerControl(
+        "unrelated-active-project",
+        "shared-thread",
+        "remote-host",
+      );
+      useLayoutEffect(() => {
+        control = current;
+        return () => {
+          if (control === current) control = null;
+        };
+      }, [current]);
+      return null;
+    }
+    const view = render(
+      createElement(MaitaiProvider, {
+        store: createMaitaiStore(),
+        children: createElement(
+          LocalConversationProvider,
+          null,
+          createElement(NativeFixtureRegistration),
+          createElement(Probe),
+        ),
+      }),
+    );
+    await settleAsyncRender();
+    if (!fixtureGetManager) throw new Error("Peer fixture unavailable");
+    const local = trackNativeTestManager(fixtureGetManager("local"));
+    const remote = trackNativeTestManager(fixtureGetManager("remote-host"));
+    await act(async () => {
+      for (const manager of [local, remote]) {
+        manager.receiveCoordination("threadStreamStateChanged", {
+          sourceClientId: "peer-owner",
+          params: {
+            hostId: manager.getHostId(),
+            conversationId: "shared-thread",
+            change: {
+              type: "snapshot",
+              revision: 1,
+              conversationState: {
+                ...canonicalFixture(buildConversation("shared-thread", "project-1")),
+                hostId: manager.getHostId(),
+              },
+            },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+    const localSend = vi.spyOn(local, "sendCapturedFollowUp");
+    const remoteSend = vi
+      .spyOn(remote, "sendCapturedFollowUp")
+      .mockImplementation(async (_id, _prompt, prepareInput) => {
+        await prepareInput();
+      });
+    const permission = vi.spyOn(remote, "loadPermissionState");
+    try {
+      await act(async () => {
+        if (!control) throw new Error("Control fixture unavailable");
+        await control.sendCapturedFollowUp("shared-thread", "Apply captured annotation", {
+          projectId: null,
+        });
+      });
+      expect(remoteSend).toHaveBeenCalledTimes(1);
+      expect(localSend).not.toHaveBeenCalled();
+      expect(permission).toHaveBeenLastCalledWith(null);
+    } finally {
+      remoteSend.mockRestore();
+      localSend.mockRestore();
+      permission.mockRestore();
       view.unmount();
       resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     }
@@ -16722,6 +16806,201 @@ describe("local-conversation-store", () => {
       expect(
         manager.readConversation("thread-1")?.queuedFollowUps.entries.map((entry) => entry.pause),
       ).toEqual([null, { kind: "failed", reason: "Connection refused" }]);
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test.each([
+    { name: "active ordinary", threadSource: null, active: true, immediate: false },
+    { name: "idle ordinary", threadSource: null, active: false, immediate: false },
+    { name: "active native source", threadSource: "aeon", active: true, immediate: true },
+    { name: "idle native source", threadSource: "aeon", active: false, immediate: true },
+  ])(
+    "captured follow-up selects delivery from $name metadata",
+    async ({ threadSource, active, immediate }) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const fixture = withCanonicalState({
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          {
+            threadId: "thread-1",
+            turnId: "turn-active",
+            status: active ? "inProgress" : "completed",
+            itemIds: [],
+            items: [],
+          },
+        ],
+      });
+      if (!fixture.canonicalState) throw new Error("Missing canonical source fixture");
+      resumeThreadResult = {
+        ...fixture,
+        threadSource,
+        canonicalState: { ...fixture.canonicalState, threadSource },
+      };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      try {
+        await manager.requestThreadStreamResume("thread-1");
+        expect(manager.readConversation("thread-1")?.canonicalState).toMatchObject({
+          threadSource,
+        });
+        invokeRecords = [];
+        await manager.sendCapturedFollowUp("thread-1", "Captured annotation", async () => ({}));
+        await flushAsyncWork();
+        expect(
+          invokeRecords.filter((record) => record.channel === "codex:queued-messages:prepare"),
+        ).toHaveLength(1);
+        expect(
+          invokeRecords.filter((record) => record.channel === "codex:turn:native-steer:execute"),
+        ).toHaveLength(immediate && active ? 1 : 0);
+        expect(
+          invokeRecords.filter((record) => record.channel === "codex:turn:native:execute"),
+        ).toHaveLength(immediate && !active ? 1 : 0);
+        expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toHaveLength(
+          immediate ? 0 : 1,
+        );
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
+  test.each(["owner-loss", "native-retirement", "entity-retirement", "destroy"] as const)(
+    "captured follow-up cannot enter queue or execution after %s during input preparation",
+    async (retirement) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const fixture = withCanonicalState(buildConversation("thread-1", "project-1"));
+      if (!fixture.canonicalState) throw new Error("Missing canonical source fixture");
+      resumeThreadResult = { ...fixture, threadSource: "aeon" };
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      let releaseInput: () => void = () => undefined;
+      const input = new Promise<void>((resolve) => {
+        releaseInput = resolve;
+      });
+      try {
+        await manager.requestThreadStreamResume("thread-1");
+        invokeRecords = [];
+        const pending = manager
+          .sendCapturedFollowUp("thread-1", "Captured annotation", async () => {
+            await input;
+            return {};
+          })
+          .then(
+            () => null,
+            (error: unknown) => error,
+          );
+        if (retirement === "owner-loss") {
+          dispatchTestThreadStreamStateChanged(manager, {
+            hostId: "local",
+            conversationId: "thread-1",
+            sourceClientId: "new-owner",
+            change: {
+              type: "snapshot",
+              revision: 999,
+              conversationState: manager.readConversation("thread-1")!.canonicalState!,
+            },
+          });
+        } else if (retirement === "native-retirement") manager.retireNativeHostContext();
+        else if (retirement === "destroy") manager.destroy();
+        else {
+          const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+          dispatchCodexAppServerMessage("thread-deleted", {
+            hostId: "local",
+            threadId: "thread-1",
+          });
+        }
+        releaseInput();
+        expect(await pending).toBeInstanceOf(Error);
+        expect(
+          invokeRecords.filter((record) =>
+            [
+              "codex:queued-messages:prepare",
+              "codex:queued-messages:write",
+              "codex:turn:native-steer:execute",
+              "codex:turn:native:execute",
+            ].includes(record.channel),
+          ),
+        ).toEqual([]);
+      } finally {
+        releaseInput();
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    },
+  );
+
+  test("captured app context queues the same input when immediate preparation requires idle", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const fixture = withCanonicalState({
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        {
+          threadId: "thread-1",
+          turnId: "turn-active",
+          status: "inProgress",
+          itemIds: [],
+          items: [],
+        },
+      ],
+    });
+    if (!fixture.canonicalState) throw new Error("Missing canonical source fixture");
+    resumeThreadResult = {
+      ...fixture,
+      canonicalState: { ...fixture.canonicalState, threadSource: "aeon" },
+    };
+    const input = {
+      text: "Apply this change",
+      mcpAppModelContextAttachments: [
+        {
+          id: "annotation",
+          kind: "context" as const,
+          sourceName: "Preview",
+          text: null,
+          structuredContent: { color: "#445566" },
+          imageAttachments: [],
+          untrusted: true as const,
+        },
+      ],
+    };
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      invokeRecords = [];
+      await manager.sendCapturedFollowUp("thread-1", input.text, async () => ({
+        options: { promptInput: input },
+      }));
+      await flushAsyncWork();
+      expect(
+        invokeRecords.filter((record) => record.channel === "codex:queued-messages:prepare"),
+      ).toHaveLength(1);
+      const preparation = invokeRecords.filter(
+        (record) => record.channel === "codex:queued-messages:prepare-native",
+      );
+      expect(preparation).toHaveLength(1);
+      expect(preparation[0]?.args[1]).toMatchObject({
+        id: "queued-native-1",
+        context: {
+          prompt: input.text,
+          mcpAppModelContextAttachments: input.mcpAppModelContextAttachments,
+        },
+      });
+      expect(
+        manager.readConversation("thread-1")?.queuedFollowUps.entries.map((row) => row.followUpId),
+      ).toEqual(["queued-native-1"]);
+      expect(queuedMessageFixtureState["thread-1"]?.[0]).toEqual(preparation[0]?.args[1]);
+      expect(
+        invokeRecords.filter((record) =>
+          ["codex:turn:native-steer:execute", "codex:turn:native:execute"].includes(record.channel),
+        ),
+      ).toEqual([]);
     } finally {
       resumeThreadResult = null;
       manager.destroy();

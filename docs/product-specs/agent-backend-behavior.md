@@ -271,8 +271,9 @@ editing the only turn starts a fresh unsaved native identity. Steering and compa
 controls. Every accepted steering message remains visible, including images, whether Claude folds
 it into the running Turn or consumes it in a later Turn. Native echoes reconcile the same user
 record. Turn settlement always revokes its admitted application authority independently of the
-native result's consumed-message echoes. Read-only task details remain observations rather than
-durable Codex Threads.
+native result's consumed-message echoes. Read-only task details retain the opening view and parent
+Thread context when their trigger unmounts or the selected task changes. They remain observations
+rather than durable Codex Threads and do not acquire Session attachment or execution controls.
 
 Diagnostics expose native health, account, agents and MCP status. An explicit title action uses a
 bounded auxiliary Query with tools, hooks, MCP and persistence disabled; ordinary sends do not run a

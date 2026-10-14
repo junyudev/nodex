@@ -1682,23 +1682,19 @@ vi.mock("@/features/local-conversation", () => ({
     const composerIntent = props.newThreadComposerIntent as
       | {
           prompt?: string;
+          clearText?: boolean;
           focusNonce?: number;
         }
       | null
       | undefined;
     useEffect(() => {
-      if (!props.isNewThreadTab || !target?.sessionId || !composerIntent?.prompt) return;
-      setMockPrompt(composerIntent.prompt);
+      if (!props.isNewThreadTab || !target?.sessionId || !composerIntent) return;
+      if (!composerIntent.prompt && !composerIntent.clearText) return;
+      setMockPrompt(composerIntent.clearText ? "" : (composerIntent.prompt ?? ""));
       if (typeof composerIntent.focusNonce === "number") {
         actions?.onConsumeNewThreadComposerIntent?.(target.sessionId, composerIntent.focusNonce);
       }
-    }, [
-      actions,
-      composerIntent?.focusNonce,
-      composerIntent?.prompt,
-      props.isNewThreadTab,
-      target?.sessionId,
-    ]);
+    }, [actions, composerIntent, props.isNewThreadTab, target?.sessionId]);
     return createElement(
       Fragment,
       null,

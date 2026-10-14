@@ -97,6 +97,7 @@ function buildConfig(
   if (images.length !== options.images.length) return null;
   return {
     availableImageCount: options.availableImageCount,
+    readOnly: options.readOnly ?? false,
     composerTarget: options.composerTarget,
     entrypoint: options.entrypoint,
     imageSource: options.imageSource,
@@ -235,6 +236,7 @@ export function restoreNormalizedImageEditorOptions(
     config.imageSource === "generated" ? (images as GeneratedImageDescriptor[]) : null;
   return {
     availableImageCount: config.availableImageCount,
+    readOnly: config.readOnly ?? false,
     composerTarget: config.composerTarget,
     entrypoint: config.entrypoint,
     generatedImages,

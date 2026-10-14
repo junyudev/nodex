@@ -36,3 +36,20 @@ test("native execution has no implicit Codex handlers while shared Session navig
   await expect(actions.onPermissionModeChange("full-access")).rejects.toThrow("unavailable");
   expect(codexExecution).not.toHaveBeenCalled();
 });
+
+test("a native read-only surface can prepare a projectless draft without acquiring execution", async () => {
+  const prefill = vi.fn(async () => {});
+  const actions = composeNativeThreadStageActions(
+    {
+      onQueueingEnabledChange: () => {},
+      onOpenThread: () => {},
+      onStartNewChatWithPrompt: prefill,
+    },
+    {},
+  );
+  const input = { projectId: null, prompt: "", isSourceCurrent: () => true };
+  await actions.onStartNewChatWithPrompt?.(input);
+  expect(prefill).toHaveBeenCalledExactlyOnceWith(input);
+  await expect(actions.onSendPrompt("prompt")).rejects.toThrow("unavailable");
+  await expect(actions.onSendCapturedFollowUp("thread", "prompt")).rejects.toThrow("unavailable");
+});

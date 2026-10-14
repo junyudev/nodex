@@ -56,6 +56,9 @@ function fixture(
   options?: {
     readonly threadId?: string;
     readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+    readonly projectId?: string | null;
+    readonly onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
+    readonly streaming?: boolean;
   },
 ) {
   const threadId = options?.threadId ?? key.threadId;
@@ -107,13 +110,39 @@ function fixture(
       : new CodexTranscriptReadOwner({ hostId, threadId });
   if (owner !== native.owner)
     owner.applyEvent({ type: "reset", value: projectCodexTranscript(native.state) });
+  if (options?.streaming) {
+    const details = owner.readTurnDetails(key.entityKey)!;
+    owner.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { hostId, threadId, entityKey: key.entityKey },
+          details: {
+            ...details,
+            status: "inProgress",
+            lifecycleStatusByItemId: { [key.itemId]: "inProgress" },
+          },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    const realtime = owner.readRealtimeItem("voice");
+    if (realtime)
+      owner.applyEvent({
+        type: "changes",
+        changes: [
+          { type: "realtime-item", itemId: "voice", value: { ...realtime, completed: false } },
+        ],
+      });
+  }
   const release = owner.subscribeStructure(() => {});
   const turn = owner.readTurn(key.entityKey)!;
   const model = buildTurnRenderModel({
     turn,
     requests: [],
     isLatestTurn: true,
-    isStreamingTurn: false,
+    isStreamingTurn: options?.streaming ?? false,
   });
   const block = model.trailingBlocks.find((value) => value.type === "assistantMessage")!;
   const entry = native
@@ -126,7 +155,12 @@ function fixture(
     );
   const nativeLeaf =
     family === "ordinary" ? (
-      <ThreadBlockRenderer block={block} hostId={hostId} isLatestTurn isStreamingTurn={false} />
+      <ThreadBlockRenderer
+        block={block}
+        hostId={hostId}
+        isLatestTurn
+        isStreamingTurn={options?.streaming ?? false}
+      />
     ) : entry && isCodexTimelineTurnEntry(entry) ? (
       <LocalConversationTimelinePromotion entry={entry} cwd="/source" />
     ) : entry && isCodexRealtimeTimelineEntry(entry) ? (
@@ -169,7 +203,9 @@ function fixture(
               threadId={threadId}
               cwd="/source"
               workspaceRoot="/source-root"
+              projectId={options?.projectId ?? null}
               onOpenThread={onOpenThread}
+              onStartNewChatWithPrompt={options?.onStartNewChatWithPrompt}
               skills={skills}
             >
               <CodexTranscriptTurnEntityContext value={key.entityKey}>

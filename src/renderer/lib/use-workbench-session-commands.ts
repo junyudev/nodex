@@ -483,21 +483,33 @@ export function useWorkbenchSessionCommands({
   );
 
   const prefillNewChat = useCallback(
-    async (input: { projectId: string | null; prompt: string }) => {
-      const session = await ensureDefaultDraftSessionForProject(input.projectId);
+    async (
+      input: Parameters<NonNullable<ThreadStageActions["onStartNewChatWithPrompt"]>>[0],
+      options?: { revealComposer?: boolean },
+    ) => {
+      if (input.isSourceCurrent?.() === false) return null;
+      const session = await ensureDefaultDraftSessionForProject(input.projectId, { select: false });
+      if (input.isSourceCurrent?.() === false) return null;
+      selectSession(session);
       setSettingsPath(null);
       setAutomationsPath(null);
       setNewThreadComposerIntentsBySessionId((current) => ({
         ...current,
         [session.id]: {
           prompt: input.prompt,
+          ...(input.prompt.length === 0 ? { clearText: true } : {}),
           focusNonce: Date.now(),
         },
       }));
+      if (options?.revealComposer)
+        panelControllerRef.current.durable.patchPanel(session, "right", {
+          size: { ...session.panels.right.size, fullWidth: false },
+        });
       return session;
     },
     [
       ensureDefaultDraftSessionForProject,
+      selectSession,
       setAutomationsPath,
       setNewThreadComposerIntentsBySessionId,
       setSettingsPath,
@@ -505,14 +517,8 @@ export function useWorkbenchSessionCommands({
   );
 
   const startNewChatWithPrompt = useCallback(
-    async (input: { projectId: string | null; prompt: string }) => {
-      const session = await prefillNewChat(input);
-      panelControllerRef.current.durable.patchPanel(session, "right", {
-        size: {
-          ...session.panels.right.size,
-          fullWidth: false,
-        },
-      });
+    async (input: Parameters<NonNullable<ThreadStageActions["onStartNewChatWithPrompt"]>>[0]) => {
+      await prefillNewChat(input, { revealComposer: true });
     },
     [prefillNewChat],
   );

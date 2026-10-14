@@ -41,6 +41,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onPermissionModeChange: () => undefined,
     onQueueingEnabledChange: () => undefined,
     onSendPrompt: noopAsync,
+    onSendCapturedFollowUp: noopAsync,
     onSteerPrompt: noopAsync,
     onInterruptTurn: noopAsync,
     onRespondApproval: noopAsync,

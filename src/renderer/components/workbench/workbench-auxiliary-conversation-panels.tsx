@@ -45,6 +45,7 @@ export function BackgroundAgentSessionTab({
   onRefreshSessions,
   onOpenMcpAppSidePanel,
   onOpenHooksSettings,
+  onStartNewChatWithPrompt,
   threadQueueFollowUpsEnabled,
   composerEnterBehavior,
   onQueueingEnabledChange,
@@ -59,6 +60,7 @@ export function BackgroundAgentSessionTab({
   onRefreshSessions: (projectId: string) => Promise<WorkbenchSessionRenderProjection[]>;
   onOpenMcpAppSidePanel: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenHooksSettings: NonNullable<ThreadStageActions["onOpenHooksSettings"]>;
+  onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
   threadQueueFollowUpsEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   onQueueingEnabledChange: ThreadStageActions["onQueueingEnabledChange"];
@@ -111,6 +113,7 @@ export function BackgroundAgentSessionTab({
         onOpenNewThreadLocalEnvironmentsSettings: () => undefined,
         onOpenMcpAppSidePanel,
         onOpenHooksSettings,
+        onStartNewChatWithPrompt,
         selectedCollaborationMode,
         setSelectedCollaborationMode,
       }),
@@ -119,6 +122,7 @@ export function BackgroundAgentSessionTab({
       codexControl,
       onOpenMcpAppSidePanel,
       onOpenHooksSettings,
+      onStartNewChatWithPrompt,
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,
@@ -182,6 +186,7 @@ export function SubagentsPanelSessionTab({
   onRefreshSessions,
   onOpenMcpAppSidePanel,
   onOpenHooksSettings,
+  onStartNewChatWithPrompt,
   threadQueueFollowUpsEnabled,
   composerEnterBehavior,
   onQueueingEnabledChange,
@@ -197,6 +202,7 @@ export function SubagentsPanelSessionTab({
   onRefreshSessions: (projectId: string) => Promise<WorkbenchSessionRenderProjection[]>;
   onOpenMcpAppSidePanel: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenHooksSettings: NonNullable<ThreadStageActions["onOpenHooksSettings"]>;
+  onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
   threadQueueFollowUpsEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   onQueueingEnabledChange: ThreadStageActions["onQueueingEnabledChange"];
@@ -395,6 +401,7 @@ export function SubagentsPanelSessionTab({
           onRefreshSessions={onRefreshSessions}
           onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
           onOpenHooksSettings={onOpenHooksSettings}
+          onStartNewChatWithPrompt={onStartNewChatWithPrompt}
           threadQueueFollowUpsEnabled={threadQueueFollowUpsEnabled}
           composerEnterBehavior={composerEnterBehavior}
           onQueueingEnabledChange={onQueueingEnabledChange}
@@ -433,6 +440,7 @@ export function SideChatSessionTab({
   onRecreateSideChat,
   onOpenMcpAppSidePanel,
   onOpenHooksSettings,
+  onStartNewChatWithPrompt,
   threadQueueFollowUpsEnabled,
   composerEnterBehavior,
   onQueueingEnabledChange,
@@ -448,6 +456,7 @@ export function SideChatSessionTab({
   onRecreateSideChat: () => void;
   onOpenMcpAppSidePanel: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenHooksSettings: NonNullable<ThreadStageActions["onOpenHooksSettings"]>;
+  onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
   threadQueueFollowUpsEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   onQueueingEnabledChange: ThreadStageActions["onQueueingEnabledChange"];
@@ -504,6 +513,7 @@ export function SideChatSessionTab({
         onOpenNewThreadLocalEnvironmentsSettings: () => undefined,
         onOpenMcpAppSidePanel,
         onOpenHooksSettings,
+        onStartNewChatWithPrompt,
         selectedCollaborationMode,
         setSelectedCollaborationMode,
       }),
@@ -512,6 +522,7 @@ export function SideChatSessionTab({
       codexControl,
       onOpenMcpAppSidePanel,
       onOpenHooksSettings,
+      onStartNewChatWithPrompt,
       onOpenThread,
       onOpenTurnDiffReview,
       onOpenTurnDiffFileInSidePanel,

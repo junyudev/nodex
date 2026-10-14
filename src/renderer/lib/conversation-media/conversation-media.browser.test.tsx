@@ -9,6 +9,8 @@ import { TestQueryProvider, createTestQueryClient } from "@/test/query";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { ConversationMediaProvider, conversationMediaComponents } from "./conversation-media";
 import type { ConversationMediaSource } from "./conversation-media-model";
+import { registerUserAttachmentImagePreviewOpener } from "@/features/user-attachment-image-editor/adapters/image-preview-opener-registry";
+import type { OpenUserAttachmentImagePreviewOptions } from "@/features/user-attachment-image-editor/model/types";
 
 const components = { ...streamdownComponents, ...conversationMediaComponents };
 const source: ConversationMediaSource = {
@@ -96,6 +98,7 @@ test("decodes captured file media, preserves grouped image identity through term
   const reads: string[] = [];
   installWindowApi({
     invoke: async (channel: string, input: unknown) => {
+      if (channel === "asset:image:save") return { source: "nodex://assets/browser-image-menu" };
       if (channel !== "read-file-binary") throw new Error(`Unexpected operation ${channel}`);
       const path = (input as { path: string }).path;
       reads.push(path);
@@ -147,6 +150,31 @@ test("decodes captured file media, preserves grouped image identity through term
     });
     view.rerender(tree(false, `${content}\n\nCompleted.`));
     expect(view.getByAltText("One")).toBe(image);
+    const opened: OpenUserAttachmentImagePreviewOptions[] = [];
+    const releaseOpener = registerUserAttachmentImagePreviewOpener(async (options) => {
+      opened.push(options);
+      return true;
+    });
+    try {
+      await act(async () => {
+        await userEvent.click(image, { button: "right" });
+        await Promise.resolve();
+      });
+      const menuItem = await view.findByRole("menuitem", { name: "Open image in new tab" });
+      expect(view.queryByRole("dialog")).toBeNull();
+      expect(view.queryByRole("menuitem", { name: "Open in file manager" })).toBeNull();
+      await click(menuItem);
+      await waitFor(() => expect(opened).toHaveLength(1));
+      expect(opened[0]).toMatchObject({
+        readOnly: true,
+        openInEditor: true,
+        src: "nodex://assets/browser-image-menu",
+        attachmentSrc: "nodex://assets/browser-image-menu",
+      });
+      expect(view.getByAltText("One")).toBe(image);
+    } finally {
+      releaseOpener();
+    }
     expect(view.getByAltText("Two")).toBe(two);
     expect(document.activeElement).toBe(button);
     await click(button);

@@ -75,6 +75,7 @@ import {
   QueuedMessageExecution,
   QueueNotReady,
 } from "../../../shared/codex-queued-message-execution";
+import { readCodexFollowUpDeliveryPolicy } from "./codex-follow-up-delivery-policy";
 import {
   bindRendererConversationWindowActivity,
   readRendererConversationWindowActivity,
@@ -6930,8 +6931,68 @@ export class CodexAppServerManager {
       presentationTicket,
     );
     lifetime.assertCurrent();
-    await this.loadQueuedMessages(threadId);
+    await this.enqueueCapturedFollowUp(threadId, message, lifetime.assertCurrent);
+  }
+  private enqueueQueuedFollowUpAsOwner = this.enqueueQueuedFollowUp.bind(this);
+
+  /** Captured app follow-ups share queue admission and native execution with ordinary submissions. */
+  async sendCapturedFollowUp(
+    threadId: string,
+    prompt: string,
+    prepareInput: () => Promise<{
+      readonly options?: import("../../../shared/codex-queued-message").CodexQueuedMessagePrepareOptions;
+      readonly presentationTicket?: CodexTurnPresentationTicket;
+    }>,
+  ): Promise<void> {
+    const conversation = this.historyClient.getConversation(threadId);
+    if (!conversation) throw new Error("Follow-up requires a loaded conversation");
+    const deliveryPolicy = readCodexFollowUpDeliveryPolicy(conversation);
+    using lifetime = this.observeOwnerActionLifetime(threadId, "captured follow-up", true);
+    const input = await prepareInput();
     lifetime.assertCurrent();
+    const message = await runConversationOperation(
+      "codex:queued-messages:prepare",
+      threadId,
+      prompt,
+      input.options,
+      input.presentationTicket,
+    );
+    lifetime.assertCurrent();
+    if (deliveryPolicy === "queue") {
+      await this.enqueueCapturedFollowUp(threadId, message, lifetime.assertCurrent);
+      return;
+    }
+    const delivery = await this.queuedExecution.sendExternalNow(
+      threadId,
+      message.id,
+      async (accepted) => {
+        lifetime.assertCurrent();
+        const result = await this.queuedExecution.submitCapturedNow(threadId, message, {
+          isCurrent: lifetime.isCurrent,
+          prepare: (id, captured, mode) => this.prepareQueuedSubmission(id, captured, mode, "view"),
+        });
+        if (result.status === "sent") {
+          accepted();
+          lifetime.assertCurrent();
+          return result;
+        }
+        lifetime.assertCurrent();
+        await this.enqueueCapturedFollowUp(threadId, message, lifetime.assertCurrent);
+        return { status: "queued" as const };
+      },
+    );
+    if (!delivery) throw new Error("Follow-up submission is unavailable");
+    lifetime.assertCurrent();
+  }
+
+  private async enqueueCapturedFollowUp(
+    threadId: string,
+    message: CodexQueuedMessage,
+    assertCurrent: () => void,
+  ): Promise<void> {
+    assertCurrent();
+    await this.loadQueuedMessages(threadId);
+    assertCurrent();
     if (
       this.isServerQueueEnabled(threadId) &&
       !requiresUntrustedAppInputConfirmation(message.context) &&
@@ -6944,11 +7005,12 @@ export class CodexAppServerManager {
       })
     ) {
       await this.serverQueuedMessages.enqueue(threadId, message);
+      assertCurrent();
       return;
     }
     await this.queuedMessages.update(threadId, (messages) => [...messages, message]);
+    assertCurrent();
   }
-  private enqueueQueuedFollowUpAsOwner = this.enqueueQueuedFollowUp.bind(this);
 
   private async forwardQueuedMessageAction(
     request: CodexQueuedMessageFollowerRequest,
@@ -10430,6 +10492,14 @@ export function useCodexThreadStartProgress(
   );
 }
 
+type CodexFollowUpOptions = Pick<
+  CodexTurnStartOptions,
+  "untrustedAppMessage" | "serviceTier" | "promptInput"
+> & {
+  readonly projectId?: string | null;
+  readonly collaborationMode?: CodexCollaborationModeKind | null;
+};
+
 export function useCodexAppServerControl(
   activeProjectId: string | null,
   activeConversationId: string | null = null,
@@ -10718,17 +10788,11 @@ export function useCodexAppServerControl(
     [activeProjectId, managerForConversation, workbenchOwner],
   );
 
-  const enqueueQueuedFollowUp = useCallback(
+  const prepareFollowUpInput = useCallback(
     async (
+      targetManager: CodexAppServerManager,
       threadId: string,
-      prompt: string,
-      opts?: {
-        projectId?: string;
-        collaborationMode?: CodexCollaborationModeKind | null;
-        untrustedAppMessage?: CodexTurnStartOptions["untrustedAppMessage"];
-        serviceTier?: CodexServiceTier;
-        promptInput?: CodexTurnStartOptions["promptInput"];
-      },
+      opts?: CodexFollowUpOptions,
       submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
       const presentationTicket = await captureCodexTurnPresentation(
@@ -10739,8 +10803,7 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      const resolvedProjectId = opts?.projectId ?? activeProjectId;
-      const targetManager = managerForConversation(threadId);
+      const resolvedProjectId = opts?.projectId === undefined ? activeProjectId : opts.projectId;
       await targetManager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
         permissionMode: targetManager.readPermissionMode(resolvedProjectId),
@@ -10749,9 +10812,49 @@ export function useCodexAppServerControl(
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };
-      await targetManager.enqueueQueuedFollowUp(threadId, prompt, turnOpts, presentationTicket);
+      return { options: turnOpts, presentationTicket };
     },
-    [activeProjectId, managerForConversation, workbenchOwner],
+    [activeProjectId, workbenchOwner],
+  );
+  const enqueueQueuedFollowUp = useCallback(
+    async (
+      threadId: string,
+      prompt: string,
+      opts?: CodexFollowUpOptions,
+      submittedPresentation?: WorkbenchSubmitPresentation,
+    ) => {
+      const targetManager = managerForConversation(threadId);
+      const prepared = await prepareFollowUpInput(
+        targetManager,
+        threadId,
+        opts,
+        submittedPresentation,
+      );
+      await targetManager.enqueueQueuedFollowUp(
+        threadId,
+        prompt,
+        prepared.options,
+        prepared.presentationTicket,
+      );
+    },
+    [managerForConversation, prepareFollowUpInput],
+  );
+  const sendCapturedFollowUp = useCallback(
+    async (
+      threadId: string,
+      prompt: string,
+      opts?: CodexFollowUpOptions,
+      submittedPresentation?: WorkbenchSubmitPresentation,
+    ) => {
+      const hostId = preferredHostId?.trim();
+      const targetManager = hostId
+        ? registry.getForHostId(hostId)
+        : managerForConversation(threadId);
+      await targetManager.sendCapturedFollowUp(threadId, prompt, () =>
+        prepareFollowUpInput(targetManager, threadId, opts, submittedPresentation),
+      );
+    },
+    [managerForConversation, preferredHostId, prepareFollowUpInput, registry],
   );
 
   const removeQueuedFollowUp = useCallback(
@@ -11122,6 +11225,7 @@ export function useCodexAppServerControl(
     startTurn,
     resumeInterruptedTurn,
     enqueueQueuedFollowUp,
+    sendCapturedFollowUp,
     removeQueuedFollowUp,
     replaceQueuedFollowUp,
     reorderQueuedFollowUps,

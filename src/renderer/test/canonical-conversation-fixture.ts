@@ -34,7 +34,7 @@ export function buildThreadFromConversation(conversation: CodexConversationSnaps
     cwd: conversation.cwd ?? "",
     cliVersion: "test",
     source: "appServer",
-    threadSource: null,
+    threadSource: conversation.threadSource ?? conversation.canonicalState?.threadSource ?? null,
     agentNickname: null,
     agentRole: null,
     gitInfo: null,

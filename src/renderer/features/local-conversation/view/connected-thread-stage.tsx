@@ -2,7 +2,7 @@ import { useConversationBodyPresentation } from "../use-conversation-body-presen
 import { ConversationTaskDialog } from "./conversation-task-dialog";
 import { ConversationRuntimeContext } from "../conversation-runtime";
 import { appScope, useScopeHandle } from "@/lib/maitai";
-import { ThreadScope } from "@/lib/workbench-ui-scopes";
+import { RouteScope } from "@/lib/workbench-ui-scopes";
 import { openModal } from "@/lib/modal-registry";
 import { useBackgroundSubagentRows } from "../use-background-subagent-rows";
 import { supportsConversationProviderControl } from "../conversation-provider-controls";
@@ -1202,7 +1202,7 @@ function ConnectedThreadStageContent({
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
   const appHandle = useScopeHandle(appScope);
-  const parentThreadScope = useScopeHandle(ThreadScope);
+  const parentContext = useScopeHandle(RouteScope);
   const actions = useMemo<ThreadStageActions>(() => {
     if (
       !activeThreadId ||
@@ -1219,7 +1219,7 @@ function ConnectedThreadStageContent({
       openModal(appHandle, ConversationTaskDialog, {
         runtime,
         parentThreadId: activeThreadId,
-        parentThreadScope,
+        parentContext,
         initialTaskId,
         stopTask: input.provider?.controls?.stopTask ? input.provider.stopTask : undefined,
         renderDetail: (child) => (
@@ -1250,7 +1250,7 @@ function ConnectedThreadStageContent({
     input,
     providedActions,
     appHandle,
-    parentThreadScope,
+    parentContext,
     runtime,
   ]);
   const connection = useLocalConversationConnection(activeThreadId);

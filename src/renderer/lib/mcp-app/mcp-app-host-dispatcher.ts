@@ -72,6 +72,9 @@ export interface McpAppHostDispatcherOptions {
   onWidgetState?(value: unknown): void;
   scope: McpAppScopeSnapshot;
   sendFollowUpMessage?(value: McpAppFollowUpMessage): unknown | Promise<unknown>;
+  updateModelContext?(
+    value: unknown,
+  ): { readonly updateId?: string } | Promise<{ readonly updateId?: string }>;
 }
 
 export class McpAppHostDispatcher {
@@ -128,6 +131,19 @@ export class McpAppHostDispatcher {
     }
     const params = request.params;
     switch (request.method) {
+      case "ui/update-model-context": {
+        if (!this.#options.updateModelContext)
+          throw new McpAppRpcError("MCP model context requires an available composer", -32_601);
+        try {
+          const result = await this.#options.updateModelContext(params);
+          return result.updateId
+            ? { _meta: { "openai/modelContext": { updateId: result.updateId } } }
+            : {};
+        } catch (error) {
+          if (error instanceof McpAppRpcError) throw error;
+          throw new McpAppRpcError("Invalid MCP model context params", -32_602);
+        }
+      }
       case "ping":
         return {};
       case "tools/call":

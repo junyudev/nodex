@@ -30,6 +30,7 @@ import {
 } from "../../conversation-markdown-source";
 import { renderConversationInline } from "../../conversation-markdown-inline";
 import { ConversationDirectiveDetails } from "./conversation-directive-details";
+import { ConversationTaskSuggestion } from "./conversation-task-suggestion";
 
 interface MarkdownCoreProps {
   dialect?: MarkdownDisplayDialect;
@@ -80,8 +81,16 @@ function renderVisualization(token: ConversationDirectiveToken) {
     />
   );
 }
-const renderConversationDirective: ConversationDirectiveRenderer = (_token, context) => {
+const renderConversationDirective: ConversationDirectiveRenderer = (token, context) => {
   const { registration } = context;
+  if (registration.kind === "task-stub")
+    return (
+      <ConversationTaskSuggestion
+        title={registration.title}
+        prompt={registration.prompt}
+        raw={token.raw}
+      />
+    );
   if (registration.kind !== "github-details") return undefined;
   return (
     <ConversationDirectiveDetails

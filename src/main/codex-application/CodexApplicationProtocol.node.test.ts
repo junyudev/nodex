@@ -1298,6 +1298,17 @@ it.effect(
           },
           { method: "thread/realtime/sdp", params: { threadId: "voice", sdp: "native-answer" } },
           {
+            method: "thread/realtime/itemAdded",
+            params: {
+              threadId: "voice",
+              item: {
+                type: "handoff_request",
+                handoff_id: "native-handoff",
+                input_transcript: "work",
+              },
+            },
+          },
+          {
             method: "thread/realtime/error",
             params: { threadId: "voice", message: "native-failure" },
           },

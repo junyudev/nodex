@@ -11,6 +11,7 @@ import * as Stream from "effect/Stream";
 import { createCodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { DEFAULT_DICTATION_SETTINGS, type DictationSettings } from "../../shared/dictation";
 import type { CodexRealtimeVoiceEvent } from "../../shared/codex-realtime-voice";
+import type { CodexAppModelContextAttachment } from "../../shared/codex-untrusted-app-input";
 import { CodexMedia } from "./CodexMedia";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import {
@@ -113,6 +114,7 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
   let nativeStart: Effect.Effect<unknown> = Effect.succeed({});
   let nativeStop: Effect.Effect<unknown, Error> = Effect.succeed({});
   let nativeSpeech: Effect.Effect<unknown, Error> = Effect.succeed({});
+  let nativeInjection: Effect.Effect<unknown, Error> = Effect.succeed({});
   let allowed = true;
   let generation = 1;
   let nextCapabilityCheck: Effect.Effect<void> = Effect.void;
@@ -224,6 +226,7 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
           if (method === "thread/realtime/stop") return nativeStop;
           if (method === "thread/realtime/appendText") return Effect.succeed({});
           if (method === "thread/realtime/appendSpeech") return nativeSpeech;
+          if (method === "thread/inject_items") return nativeInjection;
           return Effect.die(`Unexpected native method ${method}`);
         },
       } as unknown as CodexGateway["Service"]),
@@ -244,6 +247,9 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
     },
     speechWith: (operation: Effect.Effect<unknown, Error>) => {
       nativeSpeech = operation;
+    },
+    injectWith: (operation: Effect.Effect<unknown, Error>) => {
+      nativeInjection = operation;
     },
     setAllowed: (value: boolean) => {
       allowed = value;
@@ -322,6 +328,72 @@ it.effect("speaks through the owning claim and rejects a retired native acknowle
     assert.strictEqual(
       f.requests.filter(({ method }) => method === "thread/realtime/appendSpeech").length,
       2,
+    );
+  }).pipe(Effect.scoped),
+);
+
+it.effect("injects captured app context through the owning voice claim before native start", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const grant = yield* f.voice.prepare(1, target);
+    const attachments: readonly CodexAppModelContextAttachment[] = [
+      {
+        id: "widget",
+        kind: "context",
+        sourceName: "Chart",
+        server: "charts",
+        untrusted: true,
+        content: [{ type: "text", text: "selection", annotations: { audience: ["assistant"] } }],
+      },
+    ];
+    assert.strictEqual(
+      (yield* f.voice.injectContext(2, grant.claimId, attachments).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.strictEqual(f.requests.length, 0);
+    yield* f.voice.injectContext(1, grant.claimId, attachments);
+    yield* f.voice.start(1, grant.claimId, "offer");
+    assert.deepStrictEqual(
+      f.requests.map(({ method }) => method),
+      ["thread/inject_items", "thread/realtime/start"],
+    );
+    assert.deepInclude(f.requests[0], {
+      scheduling: { expectedHostId: "local", expectedGeneration: 1 },
+    });
+    assert.deepInclude(f.requests[0]?.params, { threadId: "thread" });
+    const items = (f.requests[0]?.params as { items: { type: string; output?: unknown[] }[] })
+      .items;
+    assert.strictEqual(items[0]?.type, "function_call");
+    assert.deepInclude(items[1]?.output?.[0], {
+      type: "input_text",
+      text: '{"kind":"model_context","source":"mcp_app","sourceId":"widget","server":"charts","title":"Chart","text":"selection"}',
+    });
+  }).pipe(Effect.scoped),
+);
+
+it.effect("does not confirm an app-context injection after its native generation retires", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const grant = yield* f.voice.prepare(1, target);
+    yield* f.voice.injectContext(1, grant.claimId, []);
+    assert.strictEqual(f.requests.length, 0);
+    const entered = yield* Deferred.make<void>();
+    const accepted = yield* Deferred.make<void>();
+    f.injectWith(
+      Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
+    );
+    const pending = yield* f.voice
+      .injectContext(1, grant.claimId, [
+        { id: "widget", title: "Chart", untrusted: true, text: "selected", imageAttachments: [] },
+      ])
+      .pipe(Effect.result, Effect.forkChild);
+    yield* Deferred.await(entered);
+    f.replaceHost();
+    yield* Deferred.succeed(accepted, undefined);
+    assert.strictEqual((yield* Fiber.join(pending))._tag, "Failure");
+    assert.strictEqual(
+      f.requests.filter(({ method }) => method === "thread/inject_items").length,
+      1,
     );
   }).pipe(Effect.scoped),
 );

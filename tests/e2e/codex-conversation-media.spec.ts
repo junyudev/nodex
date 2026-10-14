@@ -128,6 +128,43 @@ test("reads message media through its native source and preserves it when stream
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(trigger).toBeFocused();
+    await image.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Open image in new tab", exact: true }).click();
+    const imageTab = page.getByRole("tab", { name: /message-image\.png/u });
+    const imageTabChrome = imageTab.locator("xpath=ancestor::*[@data-panel-tab-id][1]");
+    await expect(imageTab).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Zoom, /u })).toBeVisible();
+    const openedImages = page.getByRole("img", { name: "Source image", exact: true });
+    await expect(openedImages).toHaveCount(2);
+    await expect
+      .poll(() =>
+        openedImages.evaluateAll((elements) =>
+          elements.every((element) => (element as HTMLImageElement).naturalWidth === 1),
+        ),
+      )
+      .toBe(true);
+    await expect(page.getByRole("button", { name: "Comment", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Resize", exact: true })).toHaveCount(0);
+    await imageTab.dblclick();
+    await expect(imageTabChrome).not.toHaveAttribute("data-app-shell-tab-preview", "true");
+    await page.reload();
+    await page.evaluate(() => window.api?.awaitInitialization?.());
+    await expect(imageTab).toBeVisible();
+    await expect(imageTabChrome).not.toHaveAttribute("data-app-shell-tab-preview", "true");
+    await expect(page.getByRole("button", { name: /^Zoom, /u })).toBeVisible();
+    await expect
+      .poll(() =>
+        page
+          .getByRole("img", { name: "Source image", exact: true })
+          .evaluateAll(
+            (elements) =>
+              elements.length > 0 &&
+              elements.every((element) => (element as HTMLImageElement).naturalWidth === 1),
+          ),
+      )
+      .toBe(true);
+    await expect(page.getByRole("button", { name: "Comment", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Resize", exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
     await testInfo.attach("native-message-media", {
       body: JSON.stringify({ resource, errors }),

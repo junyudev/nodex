@@ -1485,7 +1485,7 @@ export function formatCommandShortcutLabel(
 }
 
 export function resolveCommandShortcutPresentation(
-  state: CommandKeymapState | null | undefined,
+  state: CommandKeymapState,
   commandId: string,
   fallback?: string,
 ): CommandShortcutPresentation | null {
@@ -1495,7 +1495,7 @@ export function resolveCommandShortcutPresentation(
   const resolvedAccelerator = accelerator ?? fallback;
   if (!resolvedAccelerator) return null;
 
-  const platform = state?.platform ?? resolveRuntimePlatform();
+  const platform = state.platform;
   const ariaKeyShortcuts = formatAcceleratorAriaKeyShortcut(resolvedAccelerator, platform);
 
   return {

@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { CodexComposerSkill, CodexConnectionState } from "../../../../shared/types";
 import type { ThreadStageActions } from "../thread-stage-types";
+import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor";
 import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks";
 import type { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
 import {
@@ -18,6 +19,7 @@ import {
 } from "../local-conversation-store";
 
 export interface ConversationMarkdownSource {
+  readonly projectId: string | null;
   readonly hostId: string;
   readonly threadId: string;
   readonly cwd: string | null;
@@ -31,6 +33,8 @@ export interface ConversationMarkdownSource {
   /** Shared reads follow the resident source, independently of one mounted consumer. */
   readonly isResourceCurrent: () => boolean;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
+  readonly imageComposerTarget?: ImageEditComposerTarget;
   readonly skills?: readonly CodexComposerSkill[];
 }
 export type ConversationMarkdownNativeSource =
@@ -41,6 +45,7 @@ const ConversationMarkdownSourceContext = createContext<ConversationMarkdownSour
 export const useConversationMarkdownSource = () => useContext(ConversationMarkdownSourceContext);
 
 interface SourceIdentity {
+  readonly projectId: string | null;
   readonly owner: CodexTranscriptReadOwner | null;
   readonly hostId: string;
   readonly threadId: string;
@@ -50,6 +55,8 @@ interface SourceIdentity {
   readonly registry: CodexAppServerManagerRegistry;
   readonly connection: CodexConnectionState;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
+  readonly imageComposerTarget?: ImageEditComposerTarget;
 }
 function isResourceCurrent(source: SourceIdentity) {
   if (!source.owner || source.registry.readForHostId(source.hostId) !== source.manager)
@@ -80,19 +87,25 @@ function createSourceLease() {
 
 /** A mounted source delegates to existing Files and Thread owners without registering a new session. */
 export function ConversationMarkdownSourceProvider({
+  projectId = null,
   hostId,
   threadId,
   cwd,
   workspaceRoot,
   onOpenThread,
+  onStartNewChatWithPrompt,
+  imageComposerTarget,
   skills,
   children,
 }: {
+  readonly projectId?: string | null;
   readonly hostId: string;
   readonly threadId: string | null;
   readonly cwd: string | null;
   readonly workspaceRoot: string | null;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
+  readonly imageComposerTarget?: ImageEditComposerTarget;
   readonly skills?: readonly CodexComposerSkill[];
   readonly children: ReactNode;
 }) {
@@ -110,6 +123,7 @@ export function ConversationMarkdownSourceProvider({
   const [lease] = useState(createSourceLease);
   const source = useMemo(
     () => ({
+      projectId,
       owner,
       manager,
       registry,
@@ -119,14 +133,30 @@ export function ConversationMarkdownSourceProvider({
       cwd,
       workspaceRoot,
       onOpenThread,
+      onStartNewChatWithPrompt,
+      imageComposerTarget,
     }),
-    [owner, manager, registry, connection, hostId, threadId, cwd, workspaceRoot, onOpenThread],
+    [
+      projectId,
+      owner,
+      manager,
+      registry,
+      connection,
+      hostId,
+      threadId,
+      cwd,
+      workspaceRoot,
+      onOpenThread,
+      onStartNewChatWithPrompt,
+      imageComposerTarget,
+    ],
   );
   useLayoutEffect(() => lease.activate(source), [lease, source]);
   const value = useMemo<ConversationMarkdownSource | null>(
     () =>
       threadId
         ? {
+            projectId,
             hostId,
             threadId,
             cwd,
@@ -143,11 +173,14 @@ export function ConversationMarkdownSourceProvider({
             isCurrent: () => lease.matches(source),
             isResourceCurrent: () => isResourceCurrent(source),
             onOpenThread,
+            onStartNewChatWithPrompt,
+            imageComposerTarget,
             skills,
           }
         : null,
     [
       threadId,
+      projectId,
       hostId,
       cwd,
       workspaceRoot,
@@ -156,6 +189,8 @@ export function ConversationMarkdownSourceProvider({
       lease,
       source,
       onOpenThread,
+      onStartNewChatWithPrompt,
+      imageComposerTarget,
       skills,
     ],
   );

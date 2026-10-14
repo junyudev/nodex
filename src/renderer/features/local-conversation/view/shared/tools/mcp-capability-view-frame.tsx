@@ -6,6 +6,9 @@ import { useMcpAppRuntimeManager } from "../../../../../lib/mcp-app/mcp-app-runt
 import { useMcpAppFollowUpHandler } from "../../../../../lib/mcp-app/mcp-app-follow-up-context";
 import type { McpAppRuntimeConfig } from "../../../../../lib/mcp-app/mcp-app-runtime";
 import { cn } from "../../../../../lib/utils";
+import { useComposerAppModelContextRecipient } from "../../composer/composer-app-model-context";
+import { useConversationMarkdownSource } from "../../conversation-markdown-source";
+import { McpAppRpcError } from "../../../../../lib/mcp-app/mcp-app-host-dispatcher";
 import {
   resolveMcpAppFrameHeight,
   type McpRenderableResource,
@@ -35,17 +38,56 @@ export function McpCapabilityViewFrame({
   const [surfaceElement, setSurfaceElement] = useState<HTMLDivElement | null>(null);
   const runtimeManager = useMcpAppRuntimeManager();
   const sendFollowUpMessage = useMcpAppFollowUpHandler();
+  const source = useConversationMarkdownSource();
+  const readContextRecipient = useComposerAppModelContextRecipient(source);
   const isSidePanel = mode === "side-panel";
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!resource || !runtimeConfig) return;
+    const contextRecipient = readContextRecipient();
+    let current = true;
+    const modelContext =
+      source && contextRecipient && runtimeConfig.threadId === source.threadId
+        ? {
+            identity: JSON.stringify([
+              source.sourceIdentity,
+              capabilityId,
+              contextRecipient.scope.path,
+            ]),
+            isCurrent: () => current && source.isCurrent() && contextRecipient.isCurrent(),
+            update: (value: unknown) => {
+              if (!current || !source.isCurrent() || !contextRecipient.isCurrent())
+                throw new McpAppRpcError("The widget source is no longer active", -32_000);
+              return contextRecipient.publish(
+                {
+                  id: capabilityId,
+                  server: runtimeConfig.server,
+                  sourceName: runtimeConfig.server,
+                },
+                value,
+              );
+            },
+          }
+        : undefined;
     runtimeManager.upsert({
       ...runtimeConfig,
       capabilityId,
       resource,
       ...(sendFollowUpMessage ? { sendFollowUpMessage } : {}),
+      modelContext,
     });
-  }, [capabilityId, resource, runtimeConfig, runtimeManager, sendFollowUpMessage]);
+    return () => {
+      current = false;
+    };
+  }, [
+    capabilityId,
+    resource,
+    runtimeConfig,
+    runtimeManager,
+    sendFollowUpMessage,
+    source,
+    readContextRecipient,
+  ]);
 
   const subscribeRuntime = useCallback(
     (listener: () => void) => runtimeManager.subscribeRuntime(capabilityId, listener),

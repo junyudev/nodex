@@ -55,6 +55,7 @@ export function classifyConversationMedia(source: string): ConversationMediaKind
 }
 
 export interface ConversationMediaSource {
+  readonly imageComposerTarget?: import("@/features/user-attachment-image-editor/model/types").ImageEditComposerTarget;
   readonly hostId: string;
   readonly threadId: string;
   readonly sourceIdentity: string;

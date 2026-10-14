@@ -84,6 +84,7 @@ function createActions(log: string[]): ThreadStageActions {
       log.push(`send:${prompt}:${opts?.collaborationMode ?? "none"}`);
     },
     onSteerPrompt: async () => {},
+    onSendCapturedFollowUp: async () => {},
     onInterruptTurn: async () => {},
     onRespondApproval: async (requestId, response, context) => {
       log.push(

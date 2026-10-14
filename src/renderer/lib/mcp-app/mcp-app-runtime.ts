@@ -10,7 +10,7 @@ import {
 } from "../../../shared/mcp-app/mcp-app-scope";
 import type { ProtocolListMcpServerStatusResponse } from "../../../shared/types";
 import { invokeRendererQuery as invoke } from "../renderer-command";
-import { McpAppHostDispatcher } from "./mcp-app-host-dispatcher";
+import { McpAppHostDispatcher, McpAppRpcError } from "./mcp-app-host-dispatcher";
 import { readMcpAppHostStyleVariables } from "./mcp-app-host-styles";
 import type { McpAppFollowUpHandler } from "./mcp-app-follow-up-context";
 import { connectMcpAppSandbox, type ConnectedMcpAppSandbox } from "./mcp-app-port-rpc";
@@ -24,6 +24,11 @@ export interface McpAppRuntimeConfig {
   resource: McpRenderableResource;
   server: string;
   sendFollowUpMessage?: McpAppFollowUpHandler;
+  modelContext?: {
+    readonly identity: string;
+    readonly isCurrent: () => boolean;
+    readonly update: (value: unknown) => { readonly updateId?: string };
+  };
   statuses: ProtocolListMcpServerStatusResponse;
   threadId: string;
   toolInput: unknown;
@@ -323,6 +328,12 @@ export class McpAppRuntime {
           this.#widgetState = value;
         },
         sendFollowUpMessage: this.#config.sendFollowUpMessage,
+        updateModelContext: (value) => {
+          const context = this.#config.modelContext;
+          if (this.#abortController.signal.aborted || !context?.isCurrent())
+            throw new McpAppRpcError("MCP model context requires an available composer", -32_601);
+          return context.update(value);
+        },
       });
       const connectedPromise = connectMcpAppSandbox({
         expectedOrigin: identity.origin,
@@ -353,10 +364,21 @@ export class McpAppRuntime {
         maxWidth: this.element.clientWidth,
         measureWidth: false,
         mcpApps: {
-          forwardedRequestMethods: [],
+          forwardedRequestMethods: ["ui/update-model-context"],
           hostCapabilities: {
             logging: {},
             ...(this.#config.sendFollowUpMessage ? { message: {} } : {}),
+            ...(this.#config.modelContext?.isCurrent()
+              ? {
+                  updateModelContext: {
+                    resource: {},
+                    resourceLink: {},
+                    image: {},
+                    structuredContent: {},
+                    text: {},
+                  },
+                }
+              : {}),
             openLinks: {},
             serverResources: {},
             serverTools: {},

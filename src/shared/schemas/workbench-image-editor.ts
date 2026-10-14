@@ -98,6 +98,7 @@ const WorkbenchImageEditorImageConfigSchema = z
 
 export const WorkbenchImageEditorSurfaceConfigSchema = z
   .object({
+    readOnly: z.boolean().optional(),
     availableImageCount: z.number().int().positive().max(10_000),
     composerTarget: z
       .object({

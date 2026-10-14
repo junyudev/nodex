@@ -1,6 +1,7 @@
 import {
   Suspense,
   createContext,
+  useCallback,
   useContext,
   useId,
   useLayoutEffect,
@@ -22,6 +23,18 @@ import {
 } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
+import {
+  NodexContextMenuRoot,
+  NodexContextMenuTrigger,
+  NodexContextMenuPortal,
+  NodexContextMenuContent,
+  NodexContextMenuItem,
+} from "@/components/ui/context-menu";
+import { toast } from "@/components/ui/toast";
+import {
+  createConversationImageActions,
+  type ConversationImageAction,
+} from "./conversation-image-actions";
 import { LazyConversationVideoPlayer } from "./conversation-video-lazy";
 import { displayTime, safeDuration, seekMedia } from "./conversation-media-playback";
 import { writeTextToClipboard } from "../clipboard";
@@ -50,6 +63,7 @@ interface PreviewEntry {
   readonly element: HTMLImageElement;
   readonly image: EditableImageDescriptor;
   readonly isCurrent: () => boolean;
+  readonly actions: () => readonly ConversationImageAction[];
 }
 
 function createImageCollection() {
@@ -130,6 +144,10 @@ export function ConversationMediaProvider({
   const [collection] = useState(createImageCollection);
   const entries = useSyncExternalStore(collection.subscribe, collection.read);
   const [preview, setPreview] = useState<ImagePreview | null>(null);
+  const [menu, setMenu] = useState<{
+    readonly entry: PreviewEntry;
+    readonly actions: readonly ConversationImageAction[];
+  } | null>(null);
   const context = useMemo<MediaContext>(
     () => ({
       source,
@@ -150,9 +168,48 @@ export function ConversationMediaProvider({
   const navigate = (image: EditableImageDescriptor) => {
     if (preview?.isCurrent()) setPreview({ ...preview, id: image.id });
   };
+  const actions = menu?.actions ?? [];
   return (
     <MediaContext value={context}>
-      {children}
+      <NodexContextMenuRoot
+        onOpenChange={(open) => {
+          if (!open) setMenu(null);
+        }}
+      >
+        <NodexContextMenuTrigger>
+          <div
+            className="contents"
+            onContextMenu={(event) => {
+              const entry = collection.read().find(({ element }) => element === event.target);
+              const actions = entry?.isCurrent() ? entry.actions() : [];
+              if (!entry || actions.length === 0) {
+                event.preventDefault();
+                return;
+              }
+              setMenu({ entry, actions });
+            }}
+          >
+            {children}
+          </div>
+        </NodexContextMenuTrigger>
+        <NodexContextMenuPortal>
+          <NodexContextMenuContent data-content-search-skip="true">
+            {actions.map((action) => (
+              <NodexContextMenuItem
+                key={action.id}
+                onSelect={() => {
+                  void action.run().catch((error: unknown) => {
+                    if (menu?.entry.isCurrent())
+                      toast.danger(error instanceof Error ? error.message : "Image action failed");
+                  });
+                }}
+              >
+                {action.label}
+              </NodexContextMenuItem>
+            ))}
+          </NodexContextMenuContent>
+        </NodexContextMenuPortal>
+      </NodexContextMenuRoot>
       {active && preview && isPreviewCurrent() ? (
         <ImagePreviewDialog
           open
@@ -473,27 +530,69 @@ function ConversationImage({
   const context = useContext(MediaContext);
   const wide = useContext(WideMediaContext);
   const id = useId();
+  const { identity, url, path, isCurrent } = resource;
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [state, setState] = useState<{ identity: string; status: "loaded" | "error" } | null>(null);
   const current = state?.identity === resource.identity ? state.status : null;
+  const bindImage = useCallback(
+    (element: HTMLImageElement | null) => {
+      setImage(element);
+      if (!element?.complete || element.naturalWidth <= 0) return;
+      setState((previous) =>
+        previous?.identity === identity && previous.status === "loaded"
+          ? previous
+          : { identity, status: "loaded" },
+      );
+    },
+    [identity],
+  );
+  const download = useMediaDownload(resource, raw);
+  const actionLifetime = useRef<{
+    readonly identity: string;
+    readonly controller: AbortController;
+  } | null>(null);
   useLayoutEffect(() => {
-    if (!image || !resource.url || !context) return;
+    const lifetime = { identity: resource.identity, controller: new AbortController() };
+    actionLifetime.current = lifetime;
+    return () => {
+      lifetime.controller.abort();
+      if (actionLifetime.current === lifetime) actionLifetime.current = null;
+    };
+  }, [resource.identity]);
+  useLayoutEffect(() => {
+    if (!image || !url || !context) return;
     return context.register({
       element: image,
-      isCurrent: resource.isCurrent,
+      isCurrent: isCurrent,
+      actions: () => {
+        const lifetime = actionLifetime.current;
+        if (current !== "loaded" || !context.source || lifetime?.identity !== identity) return [];
+        return createConversationImageActions({
+          url: url,
+          raw,
+          alt,
+          hostId: context.source?.hostId,
+          threadId: context.source?.threadId,
+          path: path,
+          composerTarget: context.source?.imageComposerTarget,
+          isCurrent: () => image.isConnected && !image.closest("[inert]") && isCurrent(),
+          signal: lifetime.controller.signal,
+          download: download.save,
+        });
+      },
       image: {
         id,
-        src: resource.url,
-        previewSrc: resource.url,
-        downloadSrc: resource.url,
+        src: url,
+        previewSrc: url,
+        downloadSrc: url,
         alt,
         attachmentSrc: raw,
         source: "uploaded",
         hostId: context.source?.hostId,
-        ...(resource.path ? { localPath: resource.path } : {}),
+        ...(path ? { localPath: path } : {}),
       },
     });
-  }, [image, resource.url, resource.path, resource.isCurrent, context, id, alt, raw]);
+  }, [image, url, path, isCurrent, context, id, alt, raw, current, identity, download.save]);
   const open = async (trigger: HTMLButtonElement) => {
     if (!resource.url || !resource.isCurrent() || current !== "loaded") return;
     const images = context?.images() ?? [];
@@ -528,11 +627,7 @@ function ConversationImage({
         className="inline-flex max-w-full rounded-lg"
       >
         <img
-          ref={(element) => {
-            setImage(element);
-            if (element?.complete && element.naturalWidth > 0)
-              setState({ identity: resource.identity, status: "loaded" });
-          }}
+          ref={bindImage}
           src={resource.url ?? undefined}
           alt={alt}
           loading="lazy"
@@ -541,7 +636,7 @@ function ConversationImage({
           onError={() => setState({ identity: resource.identity, status: "error" })}
         />
       </button>
-      {current === "loaded" ? <MediaDownload resource={resource} raw={raw} kind="image" /> : null}
+      {current === "loaded" ? <MediaDownloadButton download={download} kind="image" /> : null}
     </span>
   );
   return <NodexTooltip tooltipContent={title}>{element}</NodexTooltip>;
@@ -598,16 +693,13 @@ function useMediaDownload(resource: MediaResource, raw: string) {
   const current = status?.identity === resource.identity ? status : null;
   return { save, current };
 }
-function MediaDownload({
-  resource,
-  raw,
+function MediaDownloadButton({
+  download: { save, current },
   kind,
 }: {
-  resource: MediaResource;
-  raw: string;
-  kind: ConversationMediaKind;
+  readonly download: ReturnType<typeof useMediaDownload>;
+  readonly kind: ConversationMediaKind;
 }) {
-  const { save, current } = useMediaDownload(resource, raw);
   return (
     <span data-content-search-skip="true" className="absolute bottom-2 right-2">
       <NodexTooltip tooltipContent={`Download ${kind}`}>

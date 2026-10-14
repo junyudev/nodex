@@ -512,6 +512,7 @@ type PlainResultCommandEndpointPolicy =
   | "codex:realtime-voice:stop"
   | "codex:realtime-voice:append-text"
   | "codex:realtime-voice:append-speech"
+  | "codex:realtime-voice:inject-context"
   | "codex:dictation:settings:consume-global-shortcut-nudge"
   | "codex:dictation:settings:update"
   | "codex:dictation:voice-language:update"

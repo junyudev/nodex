@@ -9,6 +9,9 @@ import type {
   CodexRealtimeVoiceMuteInput,
 } from "../../../shared/codex-realtime-voice";
 import type { ConversationTextRole } from "@nodex/codex-app-server-protocol";
+import type { CodexAppModelContextAttachment } from "../../../shared/codex-untrusted-app-input";
+import { isAppContextJson } from "../../../shared/codex-untrusted-app-input";
+import type { ThreadRealtimeItemAddedNotification } from "@nodex/codex-app-server-protocol/v2";
 import {
   defineRendererCommand,
   invokePlainCommand,
@@ -44,7 +47,21 @@ const appendVoiceSpeechCommand = defineRendererCommand({
   owner: "RealtimeVoiceWindow",
   protocol: { kind: "pending_operation" },
 });
+const injectVoiceContextCommand = defineRendererCommand({
+  key: "realtime_voice.inject_context",
+  channel: "codex:realtime-voice:inject-context",
+  authority: "external",
+  owner: "RealtimeVoiceWindow",
+  protocol: { kind: "pending_operation" },
+});
 const native = z.discriminatedUnion("method", [
+  z.object({
+    method: z.literal("thread/realtime/itemAdded"),
+    params: z.object({
+      threadId: z.string(),
+      item: z.custom<ThreadRealtimeItemAddedNotification["item"]>(isAppContextJson),
+    }),
+  }),
   z.object({
     method: z.literal("thread/realtime/started"),
     params: z.object({
@@ -113,6 +130,10 @@ export interface RealtimeVoiceClient {
   release(claimId: string): Promise<boolean>;
   appendText(claimId: string, role: ConversationTextRole, text: string): Promise<void>;
   appendSpeech(claimId: string, text: string): Promise<void>;
+  injectContext(
+    claimId: string,
+    attachments: readonly CodexAppModelContextAttachment[],
+  ): Promise<void>;
   subscribe(listener: (event: CodexRealtimeVoiceEvent) => void): () => void;
 }
 export const mainRealtimeVoiceClient: RealtimeVoiceClient = {
@@ -127,6 +148,8 @@ export const mainRealtimeVoiceClient: RealtimeVoiceClient = {
   appendText: (claimId, role, text) =>
     invokePlainCommand(appendVoiceTextCommand, { claimId, role, text }),
   appendSpeech: (claimId, text) => invokePlainCommand(appendVoiceSpeechCommand, { claimId, text }),
+  injectContext: (claimId, attachments) =>
+    invokePlainCommand(injectVoiceContextCommand, { claimId, attachments }),
   subscribe: (listener) => {
     if (!window.api) return () => undefined;
     return window.api.on("codex:realtime-voice:event", (input) => {

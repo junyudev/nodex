@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../components/ui/tooltip";
-import { createMaitaiStore, MaitaiProvider, ScopeProvider } from "../../../lib/maitai";
-import { ThreadScope, type ThreadScopeDescriptor } from "../../../lib/workbench-ui-scopes";
+import { createMaitaiStore, MaitaiProvider } from "../../../lib/maitai";
+import {
+  WorkbenchSessionScopePath,
+  type ThreadScopeDescriptor,
+} from "../../../lib/workbench-ui-scopes";
 import { installAsyncRequestAnimationFrame } from "../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../test/dom";
 import type {
@@ -55,11 +58,15 @@ function TooltipProvider({ children }: { readonly children: ReactNode }) {
   const [store] = useState(() => createMaitaiStore());
   return (
     <MaitaiProvider store={store}>
-      <ScopeProvider scope={ThreadScope} descriptor={TEST_THREAD_SCOPE}>
+      <WorkbenchSessionScopePath
+        thread={TEST_THREAD_SCOPE}
+        route={{ routeKey: "/thread-body", kind: "thread" }}
+        selected={false}
+      >
         <LocalConversationTestQueryProvider>
           <NodexTooltipProvider>{children}</NodexTooltipProvider>
         </LocalConversationTestQueryProvider>
-      </ScopeProvider>
+      </WorkbenchSessionScopePath>
     </MaitaiProvider>
   );
 }
@@ -375,6 +382,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},
     onEnqueueQueuedFollowUp: async () => {},
+    onSendCapturedFollowUp: async () => {},
     onRemoveQueuedFollowUp: async () => {},
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
