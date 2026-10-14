@@ -12,10 +12,12 @@ const MAX_TEXTAREA_HEIGHT_PX = 240;
 export function InboxComposer({
   onSend,
   focusToken,
+  placeholder = "Drop a thought, task, or question…",
 }: {
   readonly onSend: (text: string) => Promise<boolean>;
   /** Changing this value focuses the composer, for example after a keyboard shortcut. */
   readonly focusToken?: number;
+  readonly placeholder?: string;
 }) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -59,7 +61,7 @@ export function InboxComposer({
         aria-label="Message your Inbox"
         rows={1}
         value={draft}
-        placeholder="Drop a thought, task, or question…"
+        placeholder={placeholder}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onKeyDown={handleKeyDown}
         className="min-h-[34px] flex-1 resize-none bg-transparent py-[7px] text-size-chat leading-[20px] outline-none placeholder:text-token-input-placeholder-foreground"

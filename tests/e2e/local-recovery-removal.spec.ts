@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { recoverySummary } from "../../src/renderer/lib/document-recovery-staging";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
@@ -13,7 +14,7 @@ test("unverified retained edits can be removed without changing the source Page"
       const pageId = manifest.pageIdsByKey.source!;
       const original = await seed.readPage(manifest.projectId, pageId);
       await page.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await openBoardPageFromCard({
         card: page.locator(`[data-board-uuid-v7="${pageId}"]`),
         page,
@@ -88,7 +89,7 @@ test("unverified retained edits can be removed without changing the source Page"
         0,
       );
       await page.reload();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await expect(page.getByRole("button", { name: "Content issues", exact: true })).toHaveCount(
         0,
       );

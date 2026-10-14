@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   createConvergenceBoardPage,
@@ -45,7 +46,7 @@ test("undoes later typing before a native Subpage cut and restores the same owne
     );
     await seedConvergenceDocument(page, project, child, "owned content\nowned tail");
     await page.getByRole("button", { name: "Open Chronological history", exact: true }).click();
-    await page.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(page);
     const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
     await openBoardPageFromCard({
       page,

@@ -184,7 +184,6 @@ describe("InitialProjectBootstrapRuntime", () => {
         assert.deepEqual(presentations, [
           {
             projectId: input?.projectId,
-            defaultDatabaseViewId: "view:default",
             starterPageId: input?.starterPage.pageId,
             starterPageTitle: "Welcome to Nodex",
           },

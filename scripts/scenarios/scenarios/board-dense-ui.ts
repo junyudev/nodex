@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { openProjectBoard } from "../harness/project-board-ui";
 
 import { WORKFLOW_STATUS_ORDER } from "../../../src/shared/workflow-status";
 import type { ScenarioManifest } from "../contracts";
@@ -25,7 +26,7 @@ export const focusBoardDenseProjectHome = async (
       exact: true,
     })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   await primaryCard.waitFor();
 };
 

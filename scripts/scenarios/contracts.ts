@@ -2,6 +2,7 @@ import type {
   InboxDispatchAction,
   InboxDispatchInput,
   InboxEntryKind,
+  InboxScope,
   InboxWindow,
   InboxWindowFilter,
 } from "../../src/shared/inbox";
@@ -178,7 +179,8 @@ export interface ScenarioSeedPort {
   moveSidebarSectionItem(input: SidebarSectionMoveItemInput): Promise<void>;
   listSidebarSections(): Promise<readonly SidebarSectionSummary[]>;
   listSidebarSectionItems(sectionId: string): Promise<SidebarSectionItemWindow>;
-  sendInboxMessage(text: string): Promise<{ readonly pageId: string }>;
+  /** Sends into the Library Inbox unless a Project's Inbox is named. */
+  sendInboxMessage(text: string, scope?: InboxScope): Promise<{ readonly pageId: string }>;
   /** Records an Agent-shaped suggestion for current message content. Core seeding only. */
   proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
   dispatchInboxEntries(input: InboxDispatchInput): Promise<void>;
@@ -186,7 +188,7 @@ export interface ScenarioSeedPort {
   recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */
   completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void>;
-  readInbox(filter: InboxWindowFilter): Promise<InboxWindow>;
+  readInbox(filter: InboxWindowFilter, scope?: InboxScope): Promise<InboxWindow>;
 }
 
 export interface ScenarioManifest {

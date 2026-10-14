@@ -10,6 +10,7 @@ import {
 import {
   invokeCalls,
   openPanelMenu,
+  openProjectBoard,
   renderWorkbench,
   rendererCommandPayload,
   agentRuntimeLaunchCalls,
@@ -78,7 +79,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     expect(screen.getByRole("tab", { name: "Canvas" })).not.toBeNull();
   });
 
-  test("renders New chat immediately for an empty Project without creating a Session", async () => {
+  test("renders New chat beside the Board of an empty Project without creating a Session", async () => {
     const screen = renderWorkbench({
       projects: [makeProject()],
       sessionsByProject: { alpha: [] },
@@ -86,6 +87,9 @@ describe("workbench session shell / Project Agent Dock", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    // The Home has its own composer, so the Dock waits on the Project's other tabs.
+    expect(screen.queryByLabelText("Connected chat: New chat")).toBeNull();
+    await openProjectBoard(screen);
 
     expect(screen.getByLabelText("Connected chat: New chat") !== null).toBe(true);
     expect(screen.getByLabelText("Project Agent Dock prompt") !== null).toBe(true);
@@ -107,6 +111,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Connected chat: New chat"));
@@ -120,7 +125,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
+    expect(screen.queryByTestId("project-scene-surface") !== null).toBe(true);
     expect(screen.queryByTestId("session-thread-page")).toBe(null);
     expect(screen.getByLabelText("Connected chat: Agent target") !== null).toBe(true);
 
@@ -141,6 +146,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Send from Dock" }));
@@ -167,7 +173,7 @@ describe("workbench session shell / Project Agent Dock", () => {
       message: { text: "Start from Project Agent Dock" },
     });
     await settleAsyncRender();
-    expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
+    expect(screen.queryByTestId("project-scene-surface") !== null).toBe(true);
     expect(screen.queryByTestId("session-thread-page")).toBe(null);
   });
 
@@ -188,6 +194,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Connected chat: New chat"));
@@ -255,6 +262,7 @@ describe("workbench session shell / Project Agent Dock", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Connected chat: New chat"));

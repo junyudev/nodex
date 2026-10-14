@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -23,7 +24,7 @@ const waitForProjectHome = async (page: Page, pageId: string): Promise<void> => 
       exact: true,
     })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   await target.waitFor();
 };
 

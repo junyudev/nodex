@@ -103,7 +103,6 @@ describe("WindowSessionState", () => {
       const initial = state.createFreshSession();
       const presentation = {
         projectId: "project-default",
-        defaultDatabaseViewId: "view-default",
         starterPageId: "page-welcome",
         starterPageTitle: "Welcome to Nodex",
       };
@@ -122,7 +121,11 @@ describe("WindowSessionState", () => {
         kind: "project",
         projectId: presentation.projectId,
       });
-      expect(scene?.primary?.kind).toBe("db_view");
+      // The Project opens on its Inbox Home, with the Welcome Page beside it.
+      expect(scene?.primary).toMatchObject({
+        kind: "inbox",
+        config: { projectId: presentation.projectId },
+      });
       expect(Object.values(scene?.panelSurfacesById ?? {}).map((surface) => surface.kind)).toEqual([
         "page_stage",
       ]);

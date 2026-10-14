@@ -20,12 +20,12 @@ pub(crate) struct InboxSendResult {
     operation_id: String,
     duplicate: bool,
     page_id: String,
-    /// The Project the message is labeled with; null when sent from outside every Project.
+    /// The Project whose Inbox received the message; null for the Library Inbox.
     project_id: Option<String>,
 }
 
-/// Sends from inside a Project carry that Project as their source; anywhere else the
-/// message is still accepted, labeled only as coming from the command line.
+/// Sends from inside a Project land in that Project's Inbox; anywhere else the message
+/// waits in the Library Inbox, labeled as coming from the command line.
 pub(crate) fn send(
     client: &CoreClient,
     explicit_project: Option<&str>,
@@ -69,6 +69,8 @@ pub(crate) fn send(
                     document_id: stable_uuid(&operation_id, "inbox-document"),
                     text,
                     title: arguments.title,
+                    // Core places the message in the Inbox of the Project this connection binds.
+                    project_id: None,
                 },
             },
         )

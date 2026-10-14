@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import type { PageDetail } from "../../src/shared/page-detail";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -49,7 +50,7 @@ test("two windows retain independent text history after the same Document's stru
       await window
         .getByRole("button", { name: "Open Shared Document history", exact: true })
         .click();
-      await window.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(window);
       await openBoardPageFromCard({
         page: window,
         card: window.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -198,7 +199,7 @@ test("cross-window paste supersedes only the source Cut and keeps independent Un
     const targetSeed = await seedConvergenceDocument(sourceWindow, project, target, "target\ntail");
     const open = async (window: Page, page: ConvergencePage, title: string) => {
       await window.getByRole("button", { name: "Open Window history", exact: true }).click();
-      await window.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(window);
       await openBoardPageFromCard({
         page: window,
         card: window.locator(`[data-board-uuid-v7="${page.pageId}"]`),

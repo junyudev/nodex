@@ -104,11 +104,13 @@ function PickerTrigger({
 
 /**
  * Edits the exact action a user authorizes. The same form serves suggested and hand-written
- * dispatches, so there is one way to say where a message goes.
+ * dispatches, so there is one way to say where a message goes. In a Project's Inbox, chats
+ * start or continue in that Project, and moving files the message into another Project.
  */
 export function InboxDispatchEditor({
   initial,
   projects,
+  inboxProjectId = null,
   embedded = false,
   onSubmit,
   onCancel,
@@ -117,10 +119,16 @@ export function InboxDispatchEditor({
   /** Inside a message's strip the form takes the strip's frame instead of its own. */
   readonly embedded?: boolean;
   readonly projects: readonly Project[];
+  /** The Project whose Inbox holds the messages, or null for the Library Inbox. */
+  readonly inboxProjectId?: string | null;
   readonly onSubmit: (action: InboxDispatchAction) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraft] = useState(() =>
+    inboxProjectId !== null && initial.type === "new_chat"
+      ? { ...initial, projectId: inboxProjectId }
+      : initial,
+  );
   const [submitting, setSubmitting] = useState(false);
   const activeProjects = useMemo(
     () => projects.filter((project) => project.lifecycle === "active"),
@@ -128,10 +136,34 @@ export function InboxDispatchEditor({
   );
   const { threads } = useCommandPaletteThreadItems({
     enabled: draft.type === "send_to_chat",
-    activeProjectId: null,
+    activeProjectId: inboxProjectId,
     refreshKey: 0,
   });
-  const chats = useMemo(() => threads.filter((thread) => thread.sessionId), [threads]);
+  const chats = useMemo(
+    () =>
+      threads.filter(
+        (thread) =>
+          thread.sessionId && (inboxProjectId === null || thread.projectId === inboxProjectId),
+      ),
+    [threads, inboxProjectId],
+  );
+  const choosableProjects =
+    draft.type === "move_to_project" && inboxProjectId !== null
+      ? activeProjects.filter((project) => project.id !== inboxProjectId)
+      : activeProjects;
+  const selectType = (type: ActionType) =>
+    setDraft((current) => ({
+      ...current,
+      type,
+      projectId:
+        inboxProjectId === null
+          ? current.projectId
+          : type === "new_chat"
+            ? inboxProjectId
+            : type === "move_to_project" && current.projectId === inboxProjectId
+              ? null
+              : current.projectId,
+    }));
   const action = actionFromDraft(draft);
   const projectName = (projectId: string | null) =>
     projectId === null
@@ -166,7 +198,7 @@ export function InboxDispatchEditor({
               type="button"
               role="radio"
               aria-checked={draft.type === type}
-              onClick={() => setDraft((current) => ({ ...current, type }))}
+              onClick={() => selectType(type)}
               className={cn(
                 "cursor-interaction inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors",
                 draft.type === type
@@ -181,7 +213,8 @@ export function InboxDispatchEditor({
         })}
       </div>
 
-      {draft.type === "new_chat" || draft.type === "move_to_project" ? (
+      {draft.type === "new_chat" && inboxProjectId !== null ? null : draft.type === "new_chat" ||
+        draft.type === "move_to_project" ? (
         <div className="flex items-center gap-2 px-1 text-sm text-token-description-foreground">
           <span>Project</span>
           <NodexDropdownMenu
@@ -197,7 +230,7 @@ export function InboxDispatchEditor({
                 No Project
               </NodexDropdownItem>
             ) : null}
-            {activeProjects.map((project) => (
+            {choosableProjects.map((project) => (
               <NodexDropdownItem
                 key={project.id}
                 rightSlot={draft.projectId === project.id ? <NodexDropdownSelectedIcon /> : null}

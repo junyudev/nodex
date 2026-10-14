@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import type { ScenarioManifest } from "../../scripts/scenarios/contracts";
@@ -27,7 +28,7 @@ const focusProjectHome = async (page: Page, manifest: ScenarioManifest): Promise
   await page
     .getByRole("button", { name: "Open Related Chat Activity", exact: true })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   await activityRow.waitFor();
 };
 

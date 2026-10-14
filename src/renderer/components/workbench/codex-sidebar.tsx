@@ -986,6 +986,7 @@ export function CodexProjectRow({
   sectionActions,
   sectionCatalog,
   currentSectionId = null,
+  inboxCount = 0,
   children,
 }: {
   project: Project;
@@ -1013,6 +1014,8 @@ export function CodexProjectRow({
   sectionActions?: ReactNode;
   sectionCatalog?: SidebarSectionsCatalog;
   currentSectionId?: string | null;
+  /** Messages waiting in this Project's own Inbox, which is its Home. */
+  inboxCount?: number;
   children?: ReactNode;
 }) {
   const sortableEnabled = dnd !== undefined;
@@ -1290,6 +1293,14 @@ export function CodexProjectRow({
               >
                 {project.name}
               </span>
+              {inboxCount > 0 ? (
+                <span
+                  aria-label={`${inboxCount} in ${project.name}'s Inbox`}
+                  className="shrink-0 pr-1.5 text-xs text-token-description-foreground tabular-nums group-hover/folder-row:hidden"
+                >
+                  {inboxCount}
+                </span>
+              ) : null}
             </button>
           </CodexSidebarRowLayout>
         </CodexSidebarTreeRow>

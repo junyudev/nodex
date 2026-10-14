@@ -27,6 +27,7 @@ import {
   moveSidebarPointer,
   hoverSidebarDestination,
   openPanelMenu,
+  openProjectBoard,
   pointerActivate,
   pointerDownAndSettle,
   renderWorkbench,
@@ -91,6 +92,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const screen = renderWorkbench({ sessionsByProject: { alpha: [] } });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     setInvokeCalls([]);
     const databaseViewSurfaceProps = (

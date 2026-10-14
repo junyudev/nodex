@@ -69,6 +69,11 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     ...referenceBase,
+    kind: z.literal("inbox"),
+    config: z.strictObject({ projectId: identity }),
+  }),
+  z.strictObject({
+    ...referenceBase,
     kind: z.literal("db_view"),
     config: WorkbenchDbViewSurfaceConfigSchema,
   }),
@@ -424,6 +429,7 @@ export function projectWorkbenchSurfaceReference(
 function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   const { kind, config } = surface;
   if (kind === "conversation") return JSON.stringify([kind, config.sessionId]);
+  if (kind === "inbox") return JSON.stringify([kind, config.projectId]);
   if (kind === "browser") return JSON.stringify([kind, config.browserTabId]);
   if (kind === "files")
     return JSON.stringify([kind, config.projectId, workbenchFilesResourceKey(config)]);

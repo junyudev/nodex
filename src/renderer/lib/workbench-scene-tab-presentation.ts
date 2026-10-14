@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { MessageSquare } from "@/components/shared/icons/generic-icons";
-import { ImageEditorTabIcon } from "@/components/shared/icons";
+import { ImageEditorTabIcon, InboxIcon } from "@/components/shared/icons";
 import type { WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { getPanelNewTabAction } from "./workbench-panel-actions";
 
@@ -11,9 +11,9 @@ export interface WorkbenchSceneTabPresentation {
 
 export function resolveWorkbenchSceneTabPresentation(
   surface: WorkbenchSurfaceDescriptor,
-  isProjectHomeRoot: boolean,
 ): WorkbenchSceneTabPresentation {
-  if (isProjectHomeRoot) return { title: "Project Home" };
+  // A Project's Home is its own Inbox.
+  if (surface.kind === "inbox") return { title: "Inbox", icon: InboxIcon };
   if (surface.kind === "conversation") {
     return { title: surface.titleSnapshot, icon: MessageSquare };
   }

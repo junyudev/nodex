@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   createConvergenceBoardPage,
@@ -89,7 +90,7 @@ test("replays Board, List, and editor transfers through their content participan
     );
     const listViewId = await createConvergenceListView(page, project);
     await page.getByRole("button", { name: "Open Surface history", exact: true }).click();
-    await page.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(page);
     const triage = page.locator('[data-board-column-root][data-board-column-id="triage"]');
     const build = page.locator('[data-board-column-root][data-board-column-id="build"]');
     const card = `[data-board-uuid-v7="${first.pageId}"]`;

@@ -3820,6 +3820,7 @@ mod tests {
                     document_id: "document:inbox".to_owned(),
                     text: "Review the proposal".to_owned(),
                     title: None,
+                    project_id: None,
                 },
             ),
         ] {
@@ -3855,7 +3856,9 @@ mod tests {
             panic!("Project binding");
         };
         let ProjectWorkspaceReadValue::InboxSummary { summary } =
-            read_workspace(ProjectWorkspaceRead::InboxSummary)
+            read_workspace(ProjectWorkspaceRead::InboxSummary {
+                scope: nodex_core_contracts::inbox::ProjectWorkspaceInboxScope::Library,
+            })
         else {
             panic!("Inbox summary");
         };

@@ -14,9 +14,9 @@ export interface InitialProjectWelcomePage {
   readonly nfm: string;
 }
 
+/** The first window shows the new Project on its Inbox Home with the Welcome Page open. */
 export interface InitialProjectPresentation {
   readonly projectId: string;
-  readonly defaultDatabaseViewId: string;
   readonly starterPageId: string;
   readonly starterPageTitle: string;
 }

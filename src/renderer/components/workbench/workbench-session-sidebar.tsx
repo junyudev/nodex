@@ -8,6 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import type { InboxCounts } from "../../../shared/inbox";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
@@ -685,6 +686,7 @@ function SidebarProjectThreadRowsContent({
 }
 
 function SidebarThreadOrganizerSections({
+  projectInboxCounts,
   activeProjectId,
   activeSessionId,
   activePendingClientThreadId,
@@ -736,6 +738,8 @@ function SidebarThreadOrganizerSections({
   loadingMoreProjects,
   onLoadMoreProjects,
 }: {
+  /** Messages waiting in each Project's own Inbox. */
+  projectInboxCounts: Readonly<Record<string, number>>;
   activeProjectId: string | null;
   activeSessionId: string | null;
   activePendingClientThreadId?: string | null;
@@ -1445,6 +1449,7 @@ function SidebarThreadOrganizerSections({
         active={activeSessionId === null && activeProjectId === project.id}
         expanded={expanded}
         dnd={dnd}
+        inboxCount={projectInboxCounts[project.id] ?? 0}
         threadItems={projectThreadItems}
         onActivate={() => onToggleProjectExpanded(project.id)}
         onSelectProject={() => onSelectProject(project.id)}
@@ -1774,8 +1779,8 @@ export interface ProjectSessionSidebarProps extends Omit<
   onOpenCommandPalette: () => void;
   onOpenInbox: () => void;
   inboxActive: boolean;
-  /** Suggestions waiting for the user's decision. */
-  inboxCount: number;
+  /** Messages waiting in the Library Inbox and in each Project's Inbox. */
+  inboxCounts: InboxCounts;
   projectPickerOpenTick?: number;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;
   onUpdateProject: (projectId: string, updates: ProjectUpdateInput) => Promise<Project | null>;
@@ -1845,7 +1850,7 @@ export function ProjectSessionSidebar({
   onOpenCommandPalette,
   onOpenInbox,
   inboxActive,
-  inboxCount,
+  inboxCounts,
   projectPickerOpenTick = 0,
   onCreateProject,
   onUpdateProject,
@@ -2098,7 +2103,7 @@ export function ProjectSessionSidebar({
             <SidebarInboxButton
               entry={{
                 active: inboxActive,
-                count: inboxCount,
+                count: inboxCounts.library,
                 shortcutLabel: resolveCodexInboxShortcutLabel(),
                 onOpen: onOpenInbox,
               }}
@@ -2126,6 +2131,7 @@ export function ProjectSessionSidebar({
               onLibraryMove={handleLibraryMove}
             >
               <SidebarThreadOrganizerSections
+                projectInboxCounts={inboxCounts.projects}
                 activeProjectId={activeProjectId}
                 activeSessionId={activeSessionId}
                 activePendingClientThreadId={activePendingClientThreadId}

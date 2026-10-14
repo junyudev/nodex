@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Project } from "../../../shared/types";
 import type { LibraryPageRelocationUndoToken } from "../../../shared/library-module";
 import { toast } from "@/components/ui/toast";
+import { setInboxEntryState } from "@/lib/inbox-runtime";
 import {
   libraryPageRelocationDestinationsQueryOptions,
   useApplyLibraryOperation,
@@ -13,7 +14,8 @@ const MAX_DESTINATION_PAGES = 5;
 
 /**
  * Moves Inbox message Pages into a Project's primary Database through the same Library
- * relocation the Move-to picker uses, so the move carries ordinary one-shot Undo.
+ * relocation the Move-to picker uses, so the move carries ordinary one-shot Undo. Undoing it
+ * also returns the message to its Inbox, since filing it was the decision being undone.
  */
 export function useMoveInboxPagesToProject() {
   const queryClient = useQueryClient();
@@ -62,6 +64,7 @@ export function useMoveInboxPagesToProject() {
               label: "Undo",
               onClick: () => {
                 void undoRelocation(undoToken)
+                  .then(() => setInboxEntryState({ pageIds, state: "open" }))
                   .then(() => toast.success("Move undone"))
                   .catch((error: unknown) =>
                     toast.danger(error instanceof Error ? error.message : "Could not undo move"),

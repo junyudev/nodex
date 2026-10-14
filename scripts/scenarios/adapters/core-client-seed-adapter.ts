@@ -44,7 +44,13 @@ import {
   runScenarioLibrary,
   runScenarioProjectWorkspace,
 } from "./core-client-seed-runtime";
-import type { InboxDispatchInput, InboxWindow, InboxWindowFilter } from "../../../src/shared/inbox";
+import {
+  LIBRARY_INBOX,
+  type InboxDispatchInput,
+  type InboxScope,
+  type InboxWindow,
+  type InboxWindowFilter,
+} from "../../../src/shared/inbox";
 import type { ScenarioInboxProposalSeed } from "../contracts";
 
 const requireSuccess = <Value>(
@@ -409,8 +415,11 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async sendInboxMessage(text: string): Promise<{ readonly pageId: string }> {
-    return await runScenarioInbox(this.#runtime, (inbox) => inbox.send({ text }));
+  async sendInboxMessage(
+    text: string,
+    scope: InboxScope = LIBRARY_INBOX,
+  ): Promise<{ readonly pageId: string }> {
+    return await runScenarioInbox(this.#runtime, (inbox) => inbox.send({ scope, text }));
   }
 
   async proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void> {
@@ -450,8 +459,13 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     await runScenarioInbox(this.#runtime, (inbox) => inbox.completeDispatch(proposalId, threadId));
   }
 
-  async readInbox(filter: InboxWindowFilter): Promise<InboxWindow> {
-    return await runScenarioInbox(this.#runtime, (inbox) => inbox.window({ filter, first: 200 }));
+  async readInbox(
+    filter: InboxWindowFilter,
+    scope: InboxScope = LIBRARY_INBOX,
+  ): Promise<InboxWindow> {
+    return await runScenarioInbox(this.#runtime, (inbox) =>
+      inbox.window({ scope, filter, first: 200 }),
+    );
   }
 
   async readPageChatActivity(

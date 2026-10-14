@@ -3,10 +3,10 @@ use nodex_core_contracts::collection::CollectionWindowRequest;
 use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
-    ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
-    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
+    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
+    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -63,7 +63,19 @@ fn read_host(
         .value
 }
 
+const PROJECT: &str = "project:default";
+
+fn project_scope() -> ProjectWorkspaceInboxScope {
+    ProjectWorkspaceInboxScope::Project {
+        project_id: PROJECT.into(),
+    }
+}
+
 fn send(module: &ProjectWorkspaceModule, id: &str, text: &str) {
+    send_to(module, id, text, None);
+}
+
+fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Option<&str>) {
     apply_host(
         module,
         &format!("send:{id}"),
@@ -72,6 +84,7 @@ fn send(module: &ProjectWorkspaceModule, id: &str, text: &str) {
             document_id: format!("document:{id}"),
             text: text.to_owned(),
             title: None,
+            project_id: project_id.map(str::to_owned),
         },
     );
 }
@@ -80,9 +93,18 @@ fn window(
     module: &ProjectWorkspaceModule,
     filter: ProjectWorkspaceInboxWindowFilter,
 ) -> Vec<ProjectWorkspaceInboxItem> {
+    window_in(module, ProjectWorkspaceInboxScope::Library, filter)
+}
+
+fn window_in(
+    module: &ProjectWorkspaceModule,
+    scope: ProjectWorkspaceInboxScope,
+    filter: ProjectWorkspaceInboxWindowFilter,
+) -> Vec<ProjectWorkspaceInboxItem> {
     let ProjectWorkspaceReadValue::InboxWindow { items } = read_host(
         module,
         ProjectWorkspaceRead::InboxWindow {
+            scope,
             filter,
             window: CollectionWindowRequest {
                 after: None,
@@ -96,8 +118,15 @@ fn window(
 }
 
 fn summary(module: &ProjectWorkspaceModule) -> ProjectWorkspaceInboxSummary {
+    summary_in(module, ProjectWorkspaceInboxScope::Library)
+}
+
+fn summary_in(
+    module: &ProjectWorkspaceModule,
+    scope: ProjectWorkspaceInboxScope,
+) -> ProjectWorkspaceInboxSummary {
     let ProjectWorkspaceReadValue::InboxSummary { summary } =
-        read_host(module, ProjectWorkspaceRead::InboxSummary)
+        read_host(module, ProjectWorkspaceRead::InboxSummary { scope })
     else {
         panic!("Inbox summary");
     };
@@ -226,6 +255,7 @@ fn project_selection_preserves_the_profile_inbox() {
                     document_id: "document:cross-project".into(),
                     text: "Shared Profile message".into(),
                     title: None,
+                    project_id: None,
                 },
             ),
         )
@@ -235,7 +265,9 @@ fn project_selection_preserves_the_profile_inbox() {
             &context(),
             ModuleReadRequest {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                read: ProjectWorkspaceRead::InboxSummary,
+                read: ProjectWorkspaceRead::InboxSummary {
+                    scope: ProjectWorkspaceInboxScope::Library,
+                },
             },
         )
         .expect("same Profile Inbox");
@@ -569,6 +601,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
             document_id: format!("document:{id}"),
             text: "The settings buttons are missing accessible labels".into(),
             title: Some("Label the  settings buttons".into()),
+            project_id: None,
         }),
     };
     let agent = BoundModuleContext {
@@ -578,7 +611,15 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
     module
         .apply(&agent, request("agent:write", command("write", "agent")))
         .expect("Agent Inbox drop");
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    // The Turn works in the default Project, so its message waits in that Project's Inbox.
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    let item = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    )
+    .remove(0);
+    assert_eq!(item.scope, project_scope());
     // A sender's own title is final; only Core's provisional title is open to naming.
     assert_eq!(item.title, "Label the settings buttons");
     assert_eq!(
@@ -621,7 +662,12 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
         .expect("an idempotent replay is not a new message");
     assert!(replay.committed.receipt.mutation.duplicate);
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Inbox
+        )
+        .len(),
         usize::try_from(cap).expect("cap")
     );
 }
@@ -640,6 +686,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         document_id: format!("document:{id}"),
         text: "Benchmark search on the large fixture".into(),
         title: None,
+        project_id: None,
     };
     module
         .apply(
@@ -653,22 +700,26 @@ fn command_line_sends_are_labeled_with_their_project() {
             request("cli:project", intent("project")),
         )
         .expect("Project-scoped command line send");
-    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
-    let sources = items
-        .iter()
-        .map(|item| item.source.clone())
-        .collect::<Vec<_>>();
+    let project_items = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    );
+    assert_eq!(project_items.len(), 1);
     let ProjectWorkspaceInboxSource::CommandLine {
         project_id: Some(project_id),
         label,
-    } = &sources[0]
+    } = &project_items[0].source
     else {
-        panic!("Project-scoped source: {:?}", sources[0]);
+        panic!("Project-scoped source: {:?}", project_items[0].source);
     };
-    assert_eq!(project_id, "project:default");
-    assert!(label.starts_with("Command line · "), "{label}");
+    assert_eq!(project_id, PROJECT);
+    // The Project's Inbox already names the Project.
+    assert_eq!(label, "Command line");
+    let library_items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(library_items.len(), 1);
     assert_eq!(
-        sources[1],
+        library_items[0].source,
         ProjectWorkspaceInboxSource::CommandLine {
             project_id: None,
             label: "Command line".into(),
@@ -680,14 +731,16 @@ fn command_line_sends_are_labeled_with_their_project() {
             &command_line(true),
             ModuleReadRequest {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                read: ProjectWorkspaceRead::InboxSummary,
+                read: ProjectWorkspaceRead::InboxSummary {
+                    scope: ProjectWorkspaceInboxScope::Library,
+                },
             },
         )
         .expect("command line reads the current Profile Inbox");
     let ProjectWorkspaceReadValue::InboxSummary { summary } = read.value else {
         panic!("summary")
     };
-    assert_eq!(summary.entry_count, 2);
+    assert_eq!(summary.entry_count, 1);
     module
         .apply(
             &command_line(true),
@@ -701,7 +754,12 @@ fn command_line_sends_are_labeled_with_their_project() {
         )
         .expect("selected Project does not fence triage");
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].page_id,
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Processed
+        )[0]
+        .page_id,
         "page:project"
     );
 }
@@ -954,6 +1012,7 @@ fn agent_send(
                     document_id: format!("document:{id}"),
                     text: "A background result".into(),
                     title: None,
+                    project_id: None,
                 }),
             },
         ),
@@ -999,7 +1058,13 @@ fn runtime_child_capture_uses_its_bound_session_and_run_after_other_sessions_sta
     create_session_thread(module, "other", "session:other", "thread:other", None, 2);
     agent_send(module, &provenance, "runtime-child")
         .expect("child can capture while another Session runs");
-    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    // The Session belongs to a Project, so its Agent's message waits in that Project's Inbox.
+    let item = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    )
+    .remove(0);
     assert_eq!(
         item.source,
         ProjectWorkspaceInboxSource::Agent {
@@ -1059,9 +1124,13 @@ fn native_connection_capture_keeps_unknown_run_empty_with_its_own_budget() {
         thread_id,
         run_id,
         ..
-    } = window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
-        .remove(0)
-        .source
+    } = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    )
+    .remove(0)
+    .source
     else {
         panic!("source")
     };
@@ -1155,4 +1224,410 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         .unwrap();
     assert_eq!(chat.thread_id.as_deref(), Some("thread:runtime-root"));
     assert_eq!(chat.status, None);
+}
+
+fn page_parent(workspace: &TestWorkspace, page_id: &str) -> String {
+    let page_id = page_id.to_owned();
+    workspace
+        .kernel
+        .readers()
+        .read_default(move |connection| {
+            Ok(connection.query_row(
+                "SELECT parent_id FROM pages WHERE block_id = ?1",
+                [&page_id],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .expect("Page parent")
+}
+
+fn project_data_source(workspace: &TestWorkspace) -> String {
+    workspace
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            Ok(connection.query_row(
+                "SELECT source.id FROM project_database_bindings binding \
+                 JOIN data_sources source ON source.home_database_block_id = binding.database_block_id \
+                 WHERE binding.project_id = 'project:default'",
+                [],
+                |row| row.get::<_, String>(0),
+            )?)
+        })
+        .expect("Project Data Source")
+}
+
+fn counts(
+    module: &ProjectWorkspaceModule,
+) -> nodex_core_contracts::inbox::ProjectWorkspaceInboxCounts {
+    let ProjectWorkspaceReadValue::InboxCounts { counts } =
+        read_host(module, ProjectWorkspaceRead::InboxCounts)
+    else {
+        panic!("Inbox counts");
+    };
+    counts
+}
+
+#[test]
+fn project_messages_become_project_pages_and_wait_in_the_project_inbox() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send_to(
+        module,
+        "idea",
+        "Sidebar hover is too bright in dark mode",
+        Some(PROJECT),
+    );
+    send(module, "loose", "Look into a weekly digest");
+
+    // The Page is born in the Project's Database, so it is already on the Board.
+    assert_eq!(
+        page_parent(&workspace, "page:idea"),
+        project_data_source(&workspace)
+    );
+    let project_items = window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Inbox,
+    );
+    assert_eq!(project_items.len(), 1);
+    assert_eq!(project_items[0].page_id, "page:idea");
+    assert_eq!(project_items[0].scope, project_scope());
+    // Location is relative to the message's own Inbox, whose home is the Project's Database.
+    assert_eq!(
+        project_items[0].location,
+        ProjectWorkspaceInboxLocation::Inbox
+    );
+
+    // Each Inbox shows and counts only its own messages.
+    let library_items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(library_items.len(), 1);
+    assert_eq!(library_items[0].page_id, "page:loose");
+    assert_eq!(summary_in(module, project_scope()).inbox_count, 1);
+    assert_eq!(summary(module).inbox_count, 1);
+    assert_eq!(
+        counts(module).projects,
+        vec![ProjectWorkspaceInboxProjectCount {
+            project_id: PROJECT.into(),
+            inbox_count: 1,
+        }]
+    );
+    assert_eq!(counts(module).library_count, 1);
+
+    // A Project's message can be erased from its own Inbox.
+    apply_host(
+        module,
+        "delete:idea",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:idea".into()],
+        },
+    );
+    assert!(counts(module).projects.is_empty());
+}
+
+#[test]
+fn only_the_desktop_app_chooses_a_project_inbox() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let command_line = BoundModuleContext {
+        adapter: AdapterKind::NativeCli,
+        project_id: None,
+        ..context()
+    };
+    assert_eq!(
+        module
+            .apply(
+                &command_line,
+                request(
+                    "cli:choose",
+                    ProjectWorkspaceIntent::SendInboxMessage {
+                        page_id: "page:cli".into(),
+                        document_id: "document:cli".into(),
+                        text: "Choose for me".into(),
+                        title: None,
+                        project_id: Some(PROJECT.into()),
+                    },
+                ),
+            )
+            .expect_err("command line chooses an Inbox")
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "send:missing",
+            ProjectWorkspaceIntent::SendInboxMessage {
+                page_id: "page:missing".into(),
+                document_id: "document:missing".into(),
+                text: "Nowhere".into(),
+                title: None,
+                project_id: Some("project:missing".into()),
+            },
+        ),
+        CoreErrorCode::NotFound
+    );
+}
+
+#[test]
+fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "task", "Document the capture shortcut");
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:file",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::MoveToProject {
+            project_id: PROJECT.into(),
+        },
+    );
+    // The user's own Library relocation, which the desktop app performs before confirming.
+    let data_source = project_data_source(&workspace);
+    workspace
+        .kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "UPDATE pages SET parent_id = ?1 WHERE block_id = 'page:task'",
+                [&data_source],
+            )?;
+            Ok(())
+        })
+        .expect("relocate Page");
+    apply_host(
+        module,
+        "confirm:file",
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            proposal_id: "proposal:file".into(),
+            expected_revision: 1,
+            action: None,
+            session_id: None,
+        },
+    );
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    let history = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].state, ProjectWorkspaceInboxEntryState::Kept);
+    assert_eq!(history[0].scope, ProjectWorkspaceInboxScope::Library);
+    let ProjectWorkspaceInboxLocation::Database { project_id, .. } = &history[0].location else {
+        panic!("Filed location: {:?}", history[0].location);
+    };
+    assert_eq!(project_id.as_deref(), Some(PROJECT));
+    // Filing is the decision; it does not open again in the Project.
+    assert!(
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Inbox
+        )
+        .is_empty()
+    );
+
+    // Undoing the move returns the message to the Inbox that received it.
+    apply_host(
+        module,
+        "reopen:file",
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec!["page:task".into()],
+            state: ProjectWorkspaceInboxEntryState::Open,
+        },
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)[0].page_id,
+        "page:task"
+    );
+}
+
+#[test]
+fn filing_by_hand_records_the_move_the_user_made() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "task", "Document the capture shortcut");
+    let file = || ProjectWorkspaceIntent::DispatchInboxEntries {
+        proposal_id: "proposal:by-hand".into(),
+        page_ids: vec!["page:task".into()],
+        action: ProjectWorkspaceInboxDispatchAction::MoveToProject {
+            project_id: PROJECT.into(),
+        },
+        session_id: None,
+    };
+    // Filing never moves content itself; the user's Library relocation comes first.
+    assert_eq!(
+        apply_host_error(module, "file:early", file()),
+        CoreErrorCode::Conflict
+    );
+    let data_source = project_data_source(&workspace);
+    workspace
+        .kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "UPDATE pages SET parent_id = ?1 WHERE block_id = 'page:task'",
+                [&data_source],
+            )?;
+            Ok(())
+        })
+        .expect("relocate Page");
+    apply_host(module, "file:by-hand", file());
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
+        ProjectWorkspaceInboxEntryState::Kept
+    );
+}
+
+#[test]
+fn a_project_inbox_routes_only_inside_its_project() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "project-chat",
+        "session:project-chat",
+        "thread:project-chat",
+        Some(PROJECT),
+        2,
+    );
+    create_session_thread(
+        module,
+        "loose-chat",
+        "session:loose-chat",
+        "thread:loose-chat",
+        None,
+        3,
+    );
+    send_to(module, "idea", "Explain the hover flicker", Some(PROJECT));
+    let entry = pending(module).remove(0);
+    assert_eq!(entry.scope, project_scope());
+
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context: routing } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec![entry.page_id.clone()],
+        },
+    ) else {
+        panic!("routing context");
+    };
+    assert_eq!(routing.scope, project_scope());
+    assert_eq!(
+        routing
+            .projects
+            .iter()
+            .map(|project| project.project_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![PROJECT]
+    );
+    assert_eq!(
+        routing
+            .sessions
+            .iter()
+            .map(|session| session.session_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["session:project-chat"]
+    );
+
+    let propose_error = |id: &str, action| {
+        apply_host_error(
+            module,
+            &format!("propose:{id}"),
+            ProjectWorkspaceIntent::ProposeInboxDispatch {
+                proposal_id: format!("proposal:{id}"),
+                page_ids: vec![entry.page_id.clone()],
+                basis: vec![entry.basis.clone()],
+                action,
+                entry_kind: None,
+                summary: "Route it".into(),
+                rationale: None,
+                produced_by: None,
+            },
+        )
+    };
+    assert_eq!(
+        propose_error(
+            "projectless",
+            ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Explain it".into(),
+            },
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    assert_eq!(
+        propose_error(
+            "other-chat",
+            ProjectWorkspaceInboxDispatchAction::SendToChat {
+                session_id: "session:loose-chat".into(),
+                prompt: "Explain it".into(),
+            },
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    assert_eq!(
+        propose_error(
+            "same-project",
+            ProjectWorkspaceInboxDispatchAction::MoveToProject {
+                project_id: PROJECT.into(),
+            },
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    propose(
+        module,
+        "proposal:project-chat",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::SendToChat {
+            session_id: "session:project-chat".into(),
+            prompt: "Explain the hover flicker".into(),
+        },
+    );
+}
+
+#[test]
+fn one_suggestion_pass_never_mixes_inboxes() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "first", "First loose thought");
+    send_to(
+        module,
+        "project",
+        "A thought about the Project",
+        Some(PROJECT),
+    );
+    send(module, "second", "Second loose thought");
+
+    let batch = pending(module);
+    assert_eq!(
+        batch
+            .iter()
+            .map(|entry| entry.page_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["page:first", "page:second"]
+    );
+    for entry in &batch {
+        propose(
+            module,
+            &format!("proposal:{}", entry.page_id),
+            entry,
+            ProjectWorkspaceInboxDispatchAction::Keep,
+        );
+    }
+    let batch = pending(module);
+    assert_eq!(batch.len(), 1);
+    assert_eq!(batch[0].page_id, "page:project");
+
+    assert_eq!(
+        apply_host_error(
+            module,
+            "dispatch:mixed",
+            ProjectWorkspaceIntent::DispatchInboxEntries {
+                proposal_id: "proposal:mixed".into(),
+                page_ids: vec!["page:first".into(), "page:project".into()],
+                action: ProjectWorkspaceInboxDispatchAction::Keep,
+                session_id: None,
+            },
+        ),
+        CoreErrorCode::InvalidInput
+    );
 }

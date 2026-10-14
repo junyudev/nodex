@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Locator } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -88,6 +89,7 @@ respect_system_proxy = false
         );
         const source = await createConvergenceBoardPage(page, project, "Send source", prompt);
         await page.getByRole("button", { name: "Open Send Blocks", exact: true }).click();
+        await openProjectBoard(page);
         await openBoardPageFromCard({
           page,
           card: page.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -136,6 +138,7 @@ respect_system_proxy = false
           timeout: 30_000,
         });
         await page.getByRole("button", { name: "Open Send Blocks", exact: true }).click();
+        await openProjectBoard(page);
         await openBoardPageFromCard({
           page,
           card: page.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -169,6 +172,7 @@ respect_system_proxy = false
           .getAttribute("data-app-action-sidebar-thread-id");
         if (!firstThreadId) throw new Error("Submitted Chat identity is unavailable");
         await page.getByRole("button", { name: "Open Send Blocks", exact: true }).click();
+        await openProjectBoard(page);
         const card = page.locator(`[data-board-uuid-v7="${source.pageId}"]:visible`);
         await card
           .locator('button[data-card-context-menu-trigger="true"]')

@@ -370,14 +370,15 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
       kind: "project",
       projectId: "alpha",
     });
-    if (currentScene.primary?.kind !== "db_view") {
-      throw new Error("Expected a Project Database primary");
-    }
+    if (!currentScene.primary) throw new Error("Expected a Project Home");
+    // Before v8 a Project's Home was its default Database View.
     const legacyScene = {
       ...currentScene,
       version: 3,
       primary: {
         ...currentScene.primary,
+        kind: "db_view",
+        titleSnapshot: "Database",
         config: {
           projectId: "alpha",
           target: { kind: "project-default" },
@@ -402,12 +403,11 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
       location: { kind: "project", projectId: "alpha" },
       databaseSearchByProject: { alpha: "owner:me" },
     });
+    // The old Home becomes the Project's Inbox in the same place.
     expect(migrated.scenesByOwnerKey["project:alpha"]?.primary).toMatchObject({
-      kind: "db_view",
-      config: {
-        routingContext: { kind: "project", projectId: "alpha" },
-        target: { kind: "project-default" },
-      },
+      id: currentScene.primary.id,
+      kind: "inbox",
+      config: { projectId: "alpha" },
     });
   });
 

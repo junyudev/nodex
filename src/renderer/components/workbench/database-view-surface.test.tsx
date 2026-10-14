@@ -48,8 +48,10 @@ import {
 } from "./block-transfer/cross-surface-drag";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../../shared/workbench-layout";
 import {
+  createWorkbenchSceneSurface,
   materializeInitialWorkbenchScene,
   makeWorkbenchSceneKey,
+  type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import {
   createScopeHandle,
@@ -765,8 +767,22 @@ describe("DatabaseViewSurface", () => {
   test("publishes the committed Board or List body and revokes its display reader on unmount", async () => {
     const store = createMaitaiStore();
     const sceneOwner = { kind: "project" as const, projectId: "project-1" };
-    const scene = materializeInitialWorkbenchScene(sceneOwner);
-    if (scene.primary?.kind !== "db_view") throw new Error("Expected a View");
+    // The Project's Board opens beside its Inbox Home as an ordinary tab.
+    const boardSurface = {
+      id: "surface:board",
+      kind: "db_view",
+      titleSnapshot: "Board",
+      config: {
+        routingContext: { kind: "project", projectId: "project-1" },
+        target: { kind: "project-default" },
+      },
+      stateKey: 0,
+      state: null,
+    } satisfies WorkbenchSurfaceDescriptor;
+    const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(sceneOwner), {
+      panelId: "right",
+      surface: boardSurface,
+    });
     const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
       ...createDefaultWorkbenchLayoutSnapshot(),
       location: sceneOwner,
@@ -775,11 +791,11 @@ describe("DatabaseViewSurface", () => {
     owner.initialize();
     const release = owner.registerResolvedDatabaseView(
       sceneOwner,
-      scene.primary,
+      boardSurface,
       model.databaseViewId,
     );
     const binding = {
-      presentation: { owner, sceneOwner, surface: scene.primary },
+      presentation: { owner, sceneOwner, surface: boardSurface },
       preferencesRevision: 3,
       preferencesPending: false,
       loading: false,
@@ -790,7 +806,7 @@ describe("DatabaseViewSurface", () => {
         {
           kind: "capture_view",
           sceneOwner,
-          tabId: scene.primary!.id,
+          tabId: boardSurface.id,
           expectedPresentationRevision: owner.read().presentationRevision,
           purpose: "display",
           range: "loaded",

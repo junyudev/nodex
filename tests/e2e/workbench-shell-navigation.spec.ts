@@ -233,13 +233,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expect(
             rail(page).getByRole("button", { name: "Home", exact: true }),
           ).toHaveAttribute("aria-current", "page");
-          await expect(
-            page.getByRole("tab", { name: "Project Home", exact: true }),
-          ).toHaveAttribute("aria-selected", "true");
-          await expect(page.getByRole("tab", { name: "Project Home", exact: true })).toBeVisible();
-          await expect(
-            page.locator(`[data-board-uuid-v7="${relocation.sourcePageId}"]:visible`),
-          ).toBeVisible();
+          // A Project's Home is its own Inbox.
+          const home = tabs(page).and(page.getByRole("tab", { name: "Inbox", exact: true }));
+          await expect(home).toHaveAttribute("aria-selected", "true");
+          await expect(home).toBeVisible();
+          await expect(page.locator('[data-inbox-scope="project"]:visible')).toBeVisible();
         };
         const expectSpacePage = async () => {
           await expect(
@@ -785,11 +783,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           await rail(page).getByRole("button", { name: "Home", exact: true }).click();
           await expectHomeProject();
-          claim(
-            "Home restores its Project checkpoint",
-            ["Project Home"],
-            await readTabLabels(page),
-          );
+          claim("Home restores its Project checkpoint", ["Inbox"], await readTabLabels(page));
           await rail(page).getByRole("button", { name: "Space", exact: true }).click();
           await expectSpacePage();
           claim(
@@ -870,7 +864,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expectHomeProject();
           claim(
             "Cold reopen retains the Home Project checkpoint",
-            ["Project Home"],
+            ["Inbox"],
             await readTabLabels(page),
           );
           await page.screenshot({ path: path.join(artifacts, "reopened-home.png") });

@@ -58,7 +58,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         // Caller limits are clamped to a small fixed batch with bounded content per entry.
         ProjectWorkspaceRead::InboxPendingSuggestions { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
-        | ProjectWorkspaceRead::InboxDispatchOutbox { .. } => ReadBudgetPolicy::BoundedBatch,
+        | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
+        | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,
         ProjectWorkspaceRead::NativeSessionBindings { .. }
         | ProjectWorkspaceRead::ProjectActivitySummaries { .. }
         | ProjectWorkspaceRead::PageChatActivitySummaries { .. } => ReadBudgetPolicy::BoundedBatch,
@@ -77,7 +78,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }
         | ProjectWorkspaceRead::SidebarSectionPlacement { .. }
-        | ProjectWorkspaceRead::InboxSummary => ReadBudgetPolicy::Identity,
+        | ProjectWorkspaceRead::InboxSummary { .. } => ReadBudgetPolicy::Identity,
     }
 }
 

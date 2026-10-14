@@ -19,6 +19,7 @@ import {
   getThreadRowTitles,
   invokeCalls,
   openPanelMenu,
+  openProjectBoard,
   renderWorkbench,
   rendererCommandPayload,
 } from "./workbench-testkit/workbench-shell-harness";
@@ -41,6 +42,15 @@ async function ensureProjectRowExpanded(
   });
   await settleAsyncRender();
   return row;
+}
+
+/** The Home's panel tab; the Inbox's own Inbox/History switch also uses tab roles. */
+function getInboxHomeTab(screen: ReturnType<typeof renderWorkbench>): HTMLElement {
+  const tab = screen
+    .getAllByRole("tab", { name: "Inbox" })
+    .find((candidate) => candidate.closest("[data-panel-tab-row]"));
+  if (!tab) throw new Error("Expected the Inbox Home tab");
+  return tab;
 }
 
 describe("workbench session shell / sidebar-projects", () => {
@@ -184,7 +194,7 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
 
     expect(projectRow.getAttribute("data-app-action-sidebar-project-collapsed")).toBe("false");
-    expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
+    expect(screen.queryByTestId("project-scene-surface") !== null).toBe(true);
     const exitingThreadRow = screen.container.querySelector(
       '[data-app-action-sidebar-thread-title="Active thread"]',
     );
@@ -234,7 +244,7 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(screen.queryByTestId("session-right-panel")).toBe(null);
   });
 
-  test("Project Scene keeps a fixed Database root without creating a Session", async () => {
+  test("Project Scene keeps a fixed Inbox Home without creating a Session", async () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [] },
     });
@@ -247,15 +257,15 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(within(projectRow).queryByText("Loading chats...")).toBe(null);
     expect(within(projectGroup).getByText("No chats inside") !== null).toBe(true);
 
-    expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
     expect(
       screen
-        .getByTestId("project-database-surface")
+        .getByTestId("project-scene-surface")
         .getAttribute("data-app-shell-main-content-layout"),
     ).toBe("default");
-    const projectHomeTab = screen.getByRole("tab", { name: "Project Home" });
-    expect(projectHomeTab.querySelector('[data-project-home-tab-marker="true"]')).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Close Project Home tab" })).toBeNull();
+    expect(getInboxHomeTab(screen).getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("button", { name: "Close Inbox tab" })).toBeNull();
+    expect(screen.container.querySelector('[data-inbox-scope="project"]')).not.toBeNull();
+    expect(screen.getByPlaceholderText("Add a thought to Alpha…")).not.toBeNull();
     expect(screen.queryByTestId("project-scene-header")).toBeNull();
     expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
     expect(
@@ -271,6 +281,7 @@ describe("workbench session shell / sidebar-projects", () => {
       await Promise.resolve();
     });
 
+    await openProjectBoard(screen);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Canvas" }));
       await Promise.resolve();
@@ -283,8 +294,36 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(invokeCalls.filter((call) => call[0] === "project-sessions:create")).toHaveLength(0);
     expect(screen.queryByTestId("project-right-panel") !== null).toBe(true);
 
-    expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
+    expect(screen.queryByTestId("project-scene-surface") !== null).toBe(true);
     expect(invokeCalls.some((call) => call[0] === "project-sessions:archive")).toBe(false);
+  });
+
+  test("the Library Inbox keeps its header when opened from a Project", async () => {
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    // The Project Home's own header is inline in its tab.
+    expect(screen.getAllByRole("tablist", { name: "Inbox view" })).toHaveLength(1);
+
+    const inboxRow = screen.container.querySelector(
+      '[data-testid="sidebar-inbox-row-wrapper"] button',
+    );
+    if (!(inboxRow instanceof HTMLElement)) throw new Error("Expected the sidebar Inbox row");
+    await act(async () => {
+      fireEvent.click(inboxRow);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    const route = await waitFor(() => {
+      const element = screen.container.querySelector('[data-inbox-scope="library"]');
+      if (!(element instanceof HTMLElement)) throw new Error("Expected the Library Inbox");
+      return element;
+    });
+    // The Library Inbox's header joins the window's title row instead of its own surface.
+    const header = await screen.findByRole("tablist", { name: "Inbox view" });
+    expect(route.contains(header)).toBe(false);
+    expect(screen.getByRole("button", { name: "Inbox settings" })).not.toBeNull();
   });
 
   test("empty Project bottom panel opens a Project-scoped Terminal", async () => {
@@ -307,12 +346,24 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
   });
 
-  test("Project Home opens Database Pages in an adjacent right tab group", async () => {
+  test("the Project Board opens beside its Home and opens Pages in an adjacent tab group", async () => {
     const screen = renderWorkbench({
       sessionsByProject: { alpha: [] },
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
+    const boardTab = screen.getByRole("tab", { name: "DB View", selected: true });
+    const homeTab = getInboxHomeTab(screen);
+    expect(boardTab.closest("[data-panel-tab-row]")).toBe(homeTab.closest("[data-panel-tab-row]"));
+    // Opening the Board again from the Home reuses its tab.
+    await act(async () => {
+      fireEvent.click(homeTab);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    await openProjectBoard(screen);
+    expect(screen.getAllByRole("tab", { name: "DB View" })).toHaveLength(1);
 
     const props = (
       globalThis as {
@@ -320,7 +371,7 @@ describe("workbench session shell / sidebar-projects", () => {
       }
     ).__lastDatabaseViewSurfaceProps;
     if (typeof props?.onOpenPage !== "function") {
-      throw new Error("Expected Project Home Database Page opener");
+      throw new Error("Expected Project Board Page opener");
     }
     await act(async () => {
       await (
@@ -334,15 +385,14 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const projectHomeTab = screen.getByRole("tab", { name: "Project Home" });
     const pageTab = screen.getByRole("tab", { name: "Card One" });
     expect(pageTab.closest('[data-app-shell-tab-preview="true"]')).not.toBeNull();
-    const projectHomeRow = projectHomeTab.closest("[data-panel-tab-row]");
+    const boardRow = screen.getByRole("tab", { name: "DB View" }).closest("[data-panel-tab-row]");
     const pageRow = pageTab.closest("[data-panel-tab-row]");
-    expect(projectHomeRow).not.toBeNull();
+    expect(boardRow).not.toBeNull();
     expect(pageRow).not.toBeNull();
     expect(pageRow?.getAttribute("data-panel-tab-row")).not.toBe(
-      projectHomeRow?.getAttribute("data-panel-tab-row"),
+      boardRow?.getAttribute("data-panel-tab-row"),
     );
     const nextProps = (
       globalThis as {
@@ -372,6 +422,7 @@ describe("workbench session shell / sidebar-projects", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     const hostProps = (
       globalThis as {
@@ -379,7 +430,7 @@ describe("workbench session shell / sidebar-projects", () => {
       }
     ).__lastDatabaseViewSurfaceProps;
     if (typeof hostProps?.onOpenPage !== "function") {
-      throw new Error("Expected Project Home Database Page opener");
+      throw new Error("Expected Project Board Page opener");
     }
     await act(async () => {
       await (
@@ -419,6 +470,7 @@ describe("workbench session shell / sidebar-projects", () => {
     });
     await settleAsyncRender();
     await settleAsyncRender();
+    await openProjectBoard(screen);
 
     const menu = await openPanelMenu(screen, "Open side panel tab");
     const dbViewItem = within(menu).getByText("DB View").closest('[role="menuitem"]');
@@ -441,7 +493,8 @@ describe("workbench session shell / sidebar-projects", () => {
     });
     await settleAsyncRender();
 
-    expect(screen.getByRole("tab", { name: "Project Home" }) !== null).toBe(true);
+    expect(getInboxHomeTab(screen)).not.toBeNull();
+    expect(screen.getAllByRole("tab", { name: "DB View" })).toHaveLength(2);
     expect(screen.getByRole("tab", { name: "DB View", selected: true }) !== null).toBe(true);
     expect(screen.queryByRole("tab", { name: "Database" })).toBeNull();
   });

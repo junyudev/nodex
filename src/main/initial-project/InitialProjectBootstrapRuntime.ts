@@ -188,16 +188,8 @@ const make = (options: InitialProjectBootstrapRuntimeOptions) =>
           presentation: InitialProjectPresentation,
         ) => Effect.Effect<void, InitialProjectPresentationError>,
       ) {
-        const defaultDatabaseViewId = created.project.defaultDatabaseViewId;
-        if (!defaultDatabaseViewId) {
-          return yield* runtimeError(
-            "presentation.resolve",
-            new Error("Initial Project has no default Database View"),
-          );
-        }
         yield* onProvisioned({
           projectId: created.project.id,
-          defaultDatabaseViewId,
           starterPageId: attempt.payload.starterPage.pageId,
           starterPageTitle: attempt.payload.starterPage.titleMarkdown,
         }).pipe(Effect.mapError((cause) => runtimeError("presentation.persist", cause)));

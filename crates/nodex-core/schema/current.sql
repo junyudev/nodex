@@ -4397,6 +4397,7 @@ CREATE TABLE inbox_entries (
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   updated_at TEXT NOT NULL,
   source_budget_key TEXT,
+  scope_project_id TEXT REFERENCES projects(id) ON DELETE CASCADE CHECK (scope_project_id IS NULL OR length(scope_project_id) BETWEEN 1 AND 512),
   UNIQUE (library_id, seq),
   CHECK (source_kind = 'agent' OR (source_session_id IS NULL AND source_thread_id IS NULL AND source_turn_id IS NULL)),
   CHECK (source_kind <> 'user' OR (source_project_id IS NULL AND source_label IS NULL)),
@@ -4406,6 +4407,7 @@ CREATE TABLE inbox_entries (
 CREATE INDEX idx_inbox_entries_suggestion ON inbox_entries(library_id, suggestion_state, seq);
 CREATE INDEX idx_inbox_entries_source_budget ON inbox_entries(library_id, source_budget_key)
   WHERE source_budget_key IS NOT NULL;
+CREATE INDEX idx_inbox_entries_scope ON inbox_entries(library_id, scope_project_id, seq);
 CREATE TABLE inbox_proposals (
   proposal_id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4444,7 +4446,7 @@ CREATE TABLE block_erasure_requests (
   CHECK (length(requested_at) > 0)
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 182;
+PRAGMA user_version = 183;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

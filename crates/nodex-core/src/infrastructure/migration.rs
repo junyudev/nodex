@@ -321,6 +321,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 182,
         apply: migrate_v181_to_v182,
     },
+    MigrationStep {
+        from_revision: 182,
+        to_revision: 183,
+        apply: migrate_v182_to_v183,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2312,6 +2317,23 @@ fn migrate_v171_to_v172(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"native_claude_backend":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// Inbox entries record which Inbox owns their decision instead of inferring it from where
+/// their Page lives.
+fn migrate_v182_to_v183(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v182_to_v183.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_scope":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())

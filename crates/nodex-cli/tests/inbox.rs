@@ -5,7 +5,9 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use nodex_core_contracts::collection::CollectionWindowRequest;
-use nodex_core_contracts::inbox::{ProjectWorkspaceInboxSource, ProjectWorkspaceInboxWindowFilter};
+use nodex_core_contracts::inbox::{
+    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxWindowFilter,
+};
 use nodex_core_contracts::workspace::{
     PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceRead,
     ProjectWorkspaceReadValue, ProjectWorkspaceStarterPage,
@@ -66,7 +68,7 @@ fn nodex(home: &Path, cwd: &Path, args: &[&str], stdin: Option<&str>) -> Value {
 }
 
 #[test]
-fn command_line_sends_append_to_the_inbox_with_their_project() {
+fn command_line_sends_land_in_the_inbox_of_their_project() {
     let directory = tempfile::tempdir().unwrap();
     let home = directory.path().join("profile");
     let workspace = directory.path().join("workspace");
@@ -127,48 +129,56 @@ fn command_line_sends_append_to_the_inbox_with_their_project() {
     );
     assert_eq!(outside["project_id"], Value::Null);
 
-    let window = client
-        .workspace_read(
-            None,
-            ProjectWorkspaceRead::InboxWindow {
-                filter: ProjectWorkspaceInboxWindowFilter::Inbox,
-                window: CollectionWindowRequest {
-                    after: None,
-                    first: Some(10),
+    let read = |scope: ProjectWorkspaceInboxScope| {
+        let window = client
+            .workspace_read(
+                None,
+                ProjectWorkspaceRead::InboxWindow {
+                    scope,
+                    filter: ProjectWorkspaceInboxWindowFilter::Inbox,
+                    window: CollectionWindowRequest {
+                        after: None,
+                        first: Some(10),
+                    },
                 },
-            },
-        )
-        .unwrap();
-    let ResponseEnvelope::Ok(snapshot) = window.0 else {
-        panic!("Inbox window")
+            )
+            .unwrap();
+        let ResponseEnvelope::Ok(snapshot) = window.0 else {
+            panic!("Inbox window")
+        };
+        let ProjectWorkspaceReadValue::InboxWindow { items } = snapshot.value else {
+            panic!("Inbox window value")
+        };
+        items
+            .items
+            .into_iter()
+            .map(|item| (item.title, item.body, item.source))
+            .collect::<Vec<_>>()
     };
-    let ProjectWorkspaceReadValue::InboxWindow { items } = snapshot.value else {
-        panic!("Inbox window value")
-    };
-    let entries = items
-        .items
-        .iter()
-        .map(|item| (item.title.as_str(), item.body.as_str(), item.source.clone()))
-        .collect::<Vec<_>>();
+    // Sent from outside every Project, the message waits in the Library Inbox.
     assert_eq!(
-        entries,
-        vec![
-            (
-                "Try the new tokenizer",
-                "Try the new tokenizer\nOnly after the benchmark lands.",
-                ProjectWorkspaceInboxSource::CommandLine {
-                    project_id: None,
-                    label: "Command line".into(),
-                },
-            ),
-            (
-                "Search benchmark",
-                "Benchmark search on the large fixture",
-                ProjectWorkspaceInboxSource::CommandLine {
-                    project_id: Some(PROJECT.into()),
-                    label: "Command line · Search".into(),
-                },
-            ),
-        ]
+        read(ProjectWorkspaceInboxScope::Library),
+        vec![(
+            "Try the new tokenizer".to_owned(),
+            "Try the new tokenizer\nOnly after the benchmark lands.".to_owned(),
+            ProjectWorkspaceInboxSource::CommandLine {
+                project_id: None,
+                label: "Command line".into(),
+            },
+        )]
+    );
+    // Sent from the Project's folder, it waits in that Project's own Inbox.
+    assert_eq!(
+        read(ProjectWorkspaceInboxScope::Project {
+            project_id: PROJECT.into(),
+        }),
+        vec![(
+            "Search benchmark".to_owned(),
+            "Benchmark search on the large fixture".to_owned(),
+            ProjectWorkspaceInboxSource::CommandLine {
+                project_id: Some(PROJECT.into()),
+                label: "Command line".into(),
+            },
+        )]
     );
 }

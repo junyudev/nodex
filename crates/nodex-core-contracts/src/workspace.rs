@@ -4,9 +4,10 @@ use utoipa::ToSchema;
 use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::inbox::{
-    ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxDispatchContext,
-    ProjectWorkspaceInboxDispatchWork, ProjectWorkspaceInboxEntryKind,
-    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxPageBasis,
+    ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
+    ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
+    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
     ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSummary,
     ProjectWorkspaceInboxWindowFilter,
 };
@@ -156,12 +157,18 @@ pub enum ProjectWorkspaceRead {
         window: CollectionWindowRequest,
     },
     ManagedWorktreeLifecycleSnapshot,
-    InboxSummary,
+    InboxSummary {
+        scope: ProjectWorkspaceInboxScope,
+    },
+    /// Messages still waiting in the Library Inbox and in each Project's Inbox.
+    InboxCounts,
     InboxWindow {
+        scope: ProjectWorkspaceInboxScope,
         filter: ProjectWorkspaceInboxWindowFilter,
         window: CollectionWindowRequest,
     },
-    /// Entries the suggestion Agent should consider, oldest first.
+    /// Entries the suggestion Agent should consider, oldest first. One read never
+    /// mixes Inboxes: it returns the oldest waiting entry's Inbox only.
     InboxPendingSuggestions {
         limit: u32,
     },
@@ -291,6 +298,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxSummary {
         summary: ProjectWorkspaceInboxSummary,
+    },
+    InboxCounts {
+        counts: ProjectWorkspaceInboxCounts,
     },
     InboxWindow {
         items: CollectionWindow<ProjectWorkspaceInboxItem>,
@@ -1669,8 +1679,9 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         intent: ProjectSessionIntent,
     },
-    /// Captures one message as a Page in the Inbox Database. The Inbox Database is
-    /// created on first use. Agent provenance, when present, becomes immutable source.
+    /// Captures one message as a Page. A Library Inbox message becomes a Page in the
+    /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
+    /// that Project's Database. Agent provenance, when present, becomes immutable source.
     /// The whole text becomes the Page body. Without a sender title, Core gives the
     /// Page a provisional title that the suggestion Agent may later replace.
     SendInboxMessage {
@@ -1679,10 +1690,14 @@ pub enum ProjectWorkspaceIntent {
         text: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
+        /// The Project whose Inbox receives the message. Only the Desktop Host chooses;
+        /// an Agent Turn uses its own Project and the command line its bound Project.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_id: Option<String>,
     },
     /// Erases messages the user wants gone. Their entries and every suggestion naming them
     /// leave now; each Page is tombstoned with all its revisions so Store maintenance
-    /// collects what remains. Only Pages still in the Inbox Database qualify.
+    /// collects what remains. Only Pages still in their own Inbox's Database qualify.
     DeleteInboxMessages {
         page_ids: Vec<String>,
     },

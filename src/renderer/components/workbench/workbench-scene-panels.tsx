@@ -23,7 +23,6 @@ import {
 } from "../../../shared/workbench-scene";
 import type { AppShellTabItem } from "./app-shell-tabs";
 import type { PanelDestination } from "./panel-destination-picker-model";
-import { ProjectMarker } from "./project-marker";
 import { WorkbenchPanelHost } from "./workbench-panel-host";
 
 export interface WorkbenchScenePanelsProps {
@@ -66,7 +65,6 @@ export interface WorkbenchScenePanelsProps {
 
 function makePanelItems(
   scene: WorkbenchSceneSnapshot,
-  project: Project | null,
   currentLibraryId: string | null,
   browserConversationId: string,
   browserViewScopeId: string,
@@ -88,11 +86,7 @@ function makePanelItems(
     });
     itemsByLeafId[leaf.id] = surfaces.map((surface) => {
       const preview = previewSurfaceIds.has(surface.id);
-      const isProjectHomeRoot =
-        scene.owner.kind === "project" &&
-        surface.id === scene.primary?.id &&
-        surface.kind === "db_view";
-      const presentation = resolveWorkbenchSceneTabPresentation(surface, isProjectHomeRoot);
+      const presentation = resolveWorkbenchSceneTabPresentation(surface);
       const browserTabSnapshot =
         surface.kind === "browser"
           ? browserTabSnapshotByKey.get(
@@ -126,12 +120,6 @@ function makePanelItems(
               faviconUrl={browserTabSnapshot?.faviconUrl ?? surface.config.faviconUrl}
               isLoading={browserTabSnapshot?.isLoading ?? false}
               isWaitingForResponse={browserTabSnapshot?.isWaitingForResponse ?? false}
-            />
-          ) : isProjectHomeRoot && project ? (
-            <ProjectMarker
-              appearance={project.appearance}
-              className="size-4"
-              data-project-home-tab-marker="true"
             />
           ) : undefined,
         closable: surface.id !== scene.primary?.id,
@@ -185,7 +173,6 @@ export function buildWorkbenchScenePanels({
   const renderPanel = (panelId: PanelId) => {
     const projection = makePanelItems(
       scene,
-      project,
       currentLibraryId,
       ownerKey,
       browserViewScopeId,

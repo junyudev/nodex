@@ -28,8 +28,9 @@ import {
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
+import { LIBRARY_INBOX, projectInbox } from "../../../shared/inbox";
 import { parseDatabaseId } from "../../../shared/database-identities";
-import { useInboxInvalidation, useInboxSummary } from "@/features/inbox/use-inbox";
+import { useInboxCounts, useInboxInvalidation } from "@/features/inbox/use-inbox";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
@@ -153,6 +154,7 @@ import {
 } from "../../../shared/workbench-scene";
 import {
   findWorkbenchPanelLeafForTab,
+  getWorkbenchPanelActiveLeaf,
   listWorkbenchPanelLeaves,
 } from "../../../shared/workbench-panel-layout";
 import {
@@ -1929,7 +1931,21 @@ export function WorkbenchRuntime({
     setInboxFocusToken((current) => current + 1);
     if (workbenchWindow.location.kind !== "inbox") workbenchWindow.openRoute({ kind: "inbox" });
   }, [closePendingWorktreeRoute, workbenchWindow]);
-  const inboxSummaryQuery = useInboxSummary();
+  // Capture where you are: inside a Project the shortcut opens that Project's own Inbox.
+  const captureInbox = useCallback(() => {
+    const home = activeProjectScene?.primary;
+    if (
+      workbenchWindow.location.kind === "project" &&
+      activeProjectScene &&
+      home?.kind === "inbox"
+    ) {
+      setInboxFocusToken((current) => current + 1);
+      void executeSceneCommand(activeProjectScene.owner, { kind: "activate_tab", tabId: home.id });
+      return;
+    }
+    openInbox();
+  }, [activeProjectScene, executeSceneCommand, openInbox, workbenchWindow.location.kind]);
+  const inboxCounts = useInboxCounts();
   useInboxInvalidation();
   useEffect(() => {
     const keymap =
@@ -1937,11 +1953,11 @@ export function WorkbenchRuntime({
     const onKeyDown = (event: KeyboardEvent) => {
       if (!matchesKeyboardEventToCommand(event, keymap, "openInbox")) return;
       event.preventDefault();
-      openInbox();
+      captureInbox();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [commandKeymapState, isMacPlatform, openInbox]);
+  }, [captureInbox, commandKeymapState, isMacPlatform]);
 
   const openAutomations = useCallback(
     (path = buildAutomationsPath()) => {
@@ -3383,6 +3399,10 @@ export function WorkbenchRuntime({
       },
     });
   const inboxRouteOpen = workbenchWindow.location.kind === "inbox";
+  // A full-width Scene panel covers the title row only while its Scene is showing,
+  // never under a route such as the Inbox or Automations opened over it.
+  const appShellHeaderCoveredByScene =
+    rightPanelFullWidth && automationsRouteShell == null && !inboxRouteOpen;
   const appShellHeaderCenterVisible =
     settingsRouteShell == null &&
     (activePanelOwnerKey != null ||
@@ -3418,7 +3438,7 @@ export function WorkbenchRuntime({
       executeWorkbenchCommand={executeWorkbenchCommand}
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
-      openInbox={openInbox}
+      openInbox={captureInbox}
       openAutomations={openAutomations}
       openLibraryFiles={() => {
         const projectId = activeProject?.id ?? activeProjectId;
@@ -3469,6 +3489,47 @@ export function WorkbenchRuntime({
           tabId: surface.id,
         });
       };
+
+      if (surface.kind === "inbox") {
+        const projectId = surface.config.projectId;
+        const homeProject = projects.find((project) => project.id === projectId);
+        return (
+          <InboxRoute
+            scope={projectInbox(projectId)}
+            visible={context.active}
+            projects={projects}
+            focusComposerToken={inboxFocusToken}
+            onOpenSession={sessionCommands.openProjectSessionById}
+            onOpenPage={(pageId) =>
+              void openProjectScenePage(projectId, pageId, "Page", {
+                placement: { kind: "same-group", sourceSurfaceId: surface.id },
+              })
+            }
+            onOpenDatabase={(databaseId) => {
+              // The Board button opens this Project's default View beside its Home.
+              if (databaseId === homeProject?.databaseId) {
+                void presentProjectSceneSurface(
+                  projectId,
+                  {
+                    kind: "db_view",
+                    config: {
+                      routingContext: { kind: "project", projectId },
+                      target: { kind: "project-default" },
+                    },
+                  },
+                  { panelId: context.panelId },
+                );
+                return;
+              }
+              void openResourceTarget({
+                kind: "database",
+                databaseId: parseDatabaseId(databaseId),
+              });
+            }}
+            onOpenSettings={() => openSettingsAt("inbox-settings")}
+          />
+        );
+      }
 
       if (
         (surface.kind === "db_view" ||
@@ -3805,8 +3866,12 @@ export function WorkbenchRuntime({
       activeSearchQuery,
       bottomPanelMotion.animatedSize,
       ensureDefaultDraftSessionForProject,
+      inboxFocusToken,
       onLeavePageStage,
       openAttachedThreadSessionById,
+      openResourceTarget,
+      openSettingsAt,
+      presentProjectSceneSurface,
       openBrowserSettings,
       openProjectSceneCanvas,
       openProjectSceneManualSurface,
@@ -4018,11 +4083,9 @@ export function WorkbenchRuntime({
               projectWorkspaceRoot: projectWorkspaceRootOrNull(activeProject),
             },
           ),
-          currentProjectDbViewExists:
-            projectScenePresentation.scene.primary?.kind === "db_view" ||
-            Object.values(projectScenePresentation.scene.panelSurfacesById).some(
-              (surface) => surface.kind === "db_view",
-            ),
+          currentProjectDbViewExists: Object.values(
+            projectScenePresentation.scene.panelSurfacesById,
+          ).some((surface) => surface.kind === "db_view"),
           rightPanelHeaderAfterList,
           rightPanelHeaderStartInsetWidth,
           bottomPanelGlobalHeaderInsetWidth,
@@ -4252,7 +4315,12 @@ export function WorkbenchRuntime({
           ),
         )
       : "none";
+  const projectHomeActive =
+    activeProjectScene?.primary?.kind === "inbox" &&
+    getWorkbenchPanelActiveLeaf(activeProjectScene.panels.right.layout).activeTabId ===
+      activeProjectScene.primary.id;
   const projectAgentDock =
+    !projectHomeActive &&
     selectedProjectSceneId &&
     projectSceneKey &&
     activeProjectScene?.agentDock &&
@@ -4338,7 +4406,7 @@ export function WorkbenchRuntime({
         <WorkbenchSceneFrame
           ownerKey={projectSceneKey}
           primary={null}
-          primaryTestId="project-database-surface"
+          primaryTestId="project-scene-surface"
           primaryHidden
           rightPanelTestId="project-right-panel"
           bottomPanelTestId="project-bottom-panel"
@@ -4601,7 +4669,7 @@ export function WorkbenchRuntime({
     onOpenResourceTargetInProject: openResourceTargetInProject,
     activeResourceTarget: pagesSceneNavigation.activeRoot,
     inboxActive: workbenchWindow.location.kind === "inbox",
-    inboxCount: inboxSummaryQuery.data?.inboxCount ?? 0,
+    inboxCounts,
     projectPickerOpenTick,
     onCreateProject: async (input) => await onCreateProject(input),
     onUpdateProject: onUpdateProject ?? (async () => null),
@@ -4729,13 +4797,11 @@ export function WorkbenchRuntime({
                     />
                     {appShellHeaderCenterVisible ? (
                       <motion.div
-                        aria-hidden={
-                          automationsRouteShell == null && rightPanelFullWidth ? "true" : undefined
-                        }
+                        aria-hidden={appShellHeaderCoveredByScene ? "true" : undefined}
                         data-testid="app-shell-header-context-menu-surface"
                         className={cn(
                           "group/titlebar-main pointer-events-none flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
-                          automationsRouteShell == null && rightPanelFullWidth && "invisible",
+                          appShellHeaderCoveredByScene && "invisible",
                         )}
                       >
                         <span
@@ -4747,7 +4813,10 @@ export function WorkbenchRuntime({
                           data-testid="thread-stage-header-content"
                           className="pointer-events-none w-full min-w-0 flex-1 [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto"
                         >
-                          {selectedProjectSceneId ? null : <SelectedAppShellHeaderContent />}
+                          {/* A showing Project Scene owns this row; a route opened over it keeps its header. */}
+                          {workbenchWindow.location.kind === "project" ? null : (
+                            <SelectedAppShellHeaderContent />
+                          )}
                         </div>
                         {!automationsRouteShell ? (
                           <HeaderInlineActionRail
@@ -4869,6 +4938,7 @@ export function WorkbenchRuntime({
                                 selected
                               >
                                 <InboxRoute
+                                  scope={LIBRARY_INBOX}
                                   projects={projects}
                                   focusComposerToken={inboxFocusToken}
                                   onOpenSession={(sessionId) =>

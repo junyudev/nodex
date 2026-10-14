@@ -57,21 +57,29 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
-        ProjectWorkspaceRead::InboxSummary => Ok(ProjectWorkspaceReadValue::InboxSummary {
-            summary: super::inbox_read::read_summary(connection, context, library_id)?,
-        }),
-        ProjectWorkspaceRead::InboxWindow { filter, window } => {
-            Ok(ProjectWorkspaceReadValue::InboxWindow {
-                items: super::inbox_read::read_window(
-                    connection,
-                    context,
-                    library_id,
-                    commit_head,
-                    filter,
-                    &window,
-                )?,
+        ProjectWorkspaceRead::InboxSummary { scope } => {
+            Ok(ProjectWorkspaceReadValue::InboxSummary {
+                summary: super::inbox_read::read_summary(connection, context, library_id, &scope)?,
             })
         }
+        ProjectWorkspaceRead::InboxCounts => Ok(ProjectWorkspaceReadValue::InboxCounts {
+            counts: super::inbox_read::read_counts(connection, context, library_id)?,
+        }),
+        ProjectWorkspaceRead::InboxWindow {
+            scope,
+            filter,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::InboxWindow {
+            items: super::inbox_read::read_window(
+                connection,
+                context,
+                library_id,
+                commit_head,
+                &scope,
+                filter,
+                &window,
+            )?,
+        }),
         ProjectWorkspaceRead::InboxPendingSuggestions { limit } => {
             Ok(ProjectWorkspaceReadValue::InboxPendingSuggestions {
                 entries: super::inbox_read::read_pending_suggestions(

@@ -1601,6 +1601,7 @@ export interface components {
                 readonly proposal?: null | components["schemas"]["ProjectWorkspaceInboxProposal"];
                 /** Format: int64 */
                 readonly revision: number;
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
                 readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
                 readonly state: components["schemas"]["ProjectWorkspaceInboxEntryState"];
                 readonly submitted_at: string;
@@ -7291,6 +7292,11 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "send_inbox_message";
                 readonly page_id: string;
+                /**
+                 * @description The Project whose Inbox receives the message. Only the Desktop Host chooses;
+                 *     an Agent Turn uses its own Project and the command line its bound Project.
+                 */
+                readonly project_id?: string | null;
                 readonly text: string;
                 readonly title?: string | null;
             } | {
@@ -8391,10 +8397,15 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "inbox_summary";
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_counts";
             } | {
                 readonly filter: components["schemas"]["ProjectWorkspaceInboxWindowFilter"];
                 /** @enum {string} */
                 readonly kind: "inbox_window";
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
@@ -9017,6 +9028,13 @@ export interface components {
             readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
             readonly title: string;
         };
+        /** @description Messages still waiting in each Inbox, for navigation badges. */
+        readonly ProjectWorkspaceInboxCounts: {
+            /** Format: int32 */
+            readonly library_count: number;
+            /** @description Only active Projects whose Inbox holds at least one message. */
+            readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxProjectCount"][];
+        };
         /** @description The exact action a proposal asks the user to authorize. */
         readonly ProjectWorkspaceInboxDispatchAction: {
             /** @enum {string} */
@@ -9038,12 +9056,14 @@ export interface components {
         };
         /**
          * @description Bounded routing context for the suggestion Agent. It intentionally carries
-         *     no transcripts or Page bodies other than the entries being considered.
+         *     no transcripts or Page bodies other than the entries being considered. For a
+         *     Project's Inbox, Projects and chats are narrowed to that Project.
          */
         readonly ProjectWorkspaceInboxDispatchContext: {
             readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
             readonly open_proposals: readonly components["schemas"]["ProjectWorkspaceInboxContextProposal"][];
             readonly projects: readonly components["schemas"]["ProjectWorkspaceInboxContextProject"][];
+            readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly sessions: readonly components["schemas"]["ProjectWorkspaceInboxContextSession"][];
         };
         /** @description A confirmed dispatch that the Desktop Host must deliver. */
@@ -9075,6 +9095,7 @@ export interface components {
          * @enum {string}
          */
         readonly ProjectWorkspaceInboxEntryState: "open" | "kept" | "done";
+        /** @description Where a message's Page lives, relative to the Inbox that received it. */
         readonly ProjectWorkspaceInboxLocation: {
             /** @enum {string} */
             readonly kind: "inbox";
@@ -9096,6 +9117,11 @@ export interface components {
             /** Format: int64 */
             readonly head_seq: number;
             readonly page_id: string;
+        };
+        readonly ProjectWorkspaceInboxProjectCount: {
+            /** Format: int32 */
+            readonly inbox_count: number;
+            readonly project_id: string;
         };
         readonly ProjectWorkspaceInboxProposal: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
@@ -9120,6 +9146,18 @@ export interface components {
         readonly ProjectWorkspaceInboxProposalOrigin: "agent" | "user";
         /** @enum {string} */
         readonly ProjectWorkspaceInboxProposalState: "open" | "superseded" | "dismissed" | "dispatching" | "completed" | "failed";
+        /**
+         * @description Which Inbox owns an entry's decision. It is fixed at capture and does not follow
+         *     the Page: a message filed into another Project stays in its own Inbox's History.
+         */
+        readonly ProjectWorkspaceInboxScope: {
+            /** @enum {string} */
+            readonly kind: "library";
+        } | {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly project_id: string;
+        };
         readonly ProjectWorkspaceInboxSource: {
             /** @enum {string} */
             readonly kind: "user";
@@ -9145,6 +9183,7 @@ export interface components {
             readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
             readonly page_id: string;
             readonly page_key?: string | null;
+            readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
             readonly source: components["schemas"]["ProjectWorkspaceInboxSource"];
             readonly submitted_at: string;
             readonly title: string;
@@ -9154,6 +9193,7 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceInboxSuggestionState: "pending" | "settled" | "failed";
         readonly ProjectWorkspaceInboxSummary: {
+            /** @description The Database new messages of this Inbox become Pages in, once it exists. */
             readonly database_id?: string | null;
             /** Format: int32 */
             readonly dispatching_count: number;
@@ -9570,6 +9610,11 @@ export interface components {
             /** @enum {string} */
             readonly kind: "send_inbox_message";
             readonly page_id: string;
+            /**
+             * @description The Project whose Inbox receives the message. Only the Desktop Host chooses;
+             *     an Agent Turn uses its own Project and the command line its bound Project.
+             */
+            readonly project_id?: string | null;
             readonly text: string;
             readonly title?: string | null;
         } | {
@@ -11539,6 +11584,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "inbox_summary";
                     readonly summary: components["schemas"]["ProjectWorkspaceInboxSummary"];
+                } | {
+                    readonly counts: components["schemas"]["ProjectWorkspaceInboxCounts"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_counts";
                 } | {
                     readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxItem"];
                     /** @enum {string} */

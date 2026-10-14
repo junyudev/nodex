@@ -23,11 +23,12 @@ const isChatAction = (action: InboxDispatchAction) =>
   action.type === "new_chat" || action.type === "send_to_chat";
 
 /**
- * Mirrors Core's Inbox membership: a message is handled once a chat dispatch is confirmed,
- * its Page leaves the Inbox Database, or it is kept or done. A failed dispatch is not.
+ * Mirrors Core's Inbox membership: a message is handled once a chat dispatch is confirmed, or
+ * once it is filed, kept, or done. Where its Page lives never decides it. A failed dispatch is
+ * not handled.
  */
 export function isInboxItemHandled(item: InboxItem): boolean {
-  if (item.state !== "open" || item.location.kind !== "inbox") return true;
+  if (item.state !== "open") return true;
   const proposal = item.proposal;
   return Boolean(
     proposal &&

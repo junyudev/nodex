@@ -1,10 +1,12 @@
 import type { components } from "@nodex/core-protocol";
 import type {
   InboxChat,
+  InboxCounts,
   InboxDispatchAction,
   InboxItem,
   InboxLocation,
   InboxProposal,
+  InboxScope,
   InboxSource,
   InboxSummary,
   InboxThreadStatus,
@@ -22,6 +24,8 @@ type CoreInboxSource = Schemas["ProjectWorkspaceInboxSource"];
 type CoreInboxLocation = Schemas["ProjectWorkspaceInboxLocation"];
 type CoreInboxChat = Schemas["ProjectWorkspaceInboxChat"];
 type CoreInboxSummary = Schemas["ProjectWorkspaceInboxSummary"];
+type CoreInboxCounts = Schemas["ProjectWorkspaceInboxCounts"];
+export type CoreInboxScope = Schemas["ProjectWorkspaceInboxScope"];
 type CoreThreadStatus = Schemas["ProjectWorkspaceThreadStatus"];
 
 export const inboxDispatchActionFromCore = (
@@ -51,6 +55,12 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
       return { type: "move_to_project", project_id: action.projectId };
   }
 };
+
+export const inboxScopeFromCore = (scope: CoreInboxScope): InboxScope =>
+  scope.kind === "library" ? { kind: "library" } : { kind: "project", projectId: scope.project_id };
+
+export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
+  scope.kind === "library" ? { kind: "library" } : { kind: "project", project_id: scope.projectId };
 
 export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
   switch (source.kind) {
@@ -131,6 +141,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   state: item.state,
   suggestionState: item.suggestion_state,
   suggestionError: item.suggestion_error ?? null,
+  scope: inboxScopeFromCore(item.scope),
   location: locationFromCore(item.location),
   proposal: item.proposal ? proposalFromCore(item.proposal) : null,
   revision: item.revision,
@@ -144,4 +155,11 @@ export const inboxSummaryFromCore = (summary: CoreInboxSummary): InboxSummary =>
   needsDecisionCount: summary.needs_decision_count,
   pendingSuggestionCount: summary.pending_suggestion_count,
   dispatchingCount: summary.dispatching_count,
+});
+
+export const inboxCountsFromCore = (counts: CoreInboxCounts): InboxCounts => ({
+  library: counts.library_count,
+  projects: Object.fromEntries(
+    counts.projects.map((project) => [project.project_id, project.inbox_count]),
+  ),
 });

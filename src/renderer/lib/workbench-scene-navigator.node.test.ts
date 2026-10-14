@@ -149,7 +149,7 @@ describe("WorkbenchSceneNavigator", () => {
       surfaceId: first.status === "presented" ? first.surfaceId : "",
     });
     const scene = harness.scenes[makeWorkbenchSceneKey(owner)];
-    expect(scene.primary?.kind).toBe("db_view");
+    expect(scene.primary?.kind).toBe("inbox");
     expect(scene.panels.right.collapsed).toBe(false);
     expect(Object.values(scene.panelSurfacesById)).toHaveLength(1);
   });

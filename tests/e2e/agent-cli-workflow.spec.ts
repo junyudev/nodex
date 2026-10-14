@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -132,6 +133,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       await page
         .getByRole("button", { name: `Open ${AGENT_CLI_PROJECT_NAME}`, exact: true })
         .click();
+      await openProjectBoard(page);
       const card = page.locator(
         `[data-board-uuid-v7="${pageId}"] [data-card-context-menu-trigger="true"]`,
       );

@@ -1,6 +1,11 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import type { InboxItem, InboxWindowFilter } from "../../../shared/inbox";
+import {
+  inboxScopeProjectId,
+  type InboxItem,
+  type InboxScope,
+  type InboxWindowFilter,
+} from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import {
   ArchiveIcon,
@@ -12,6 +17,7 @@ import {
   SettingsGeneralIcon,
   AskAiIcon,
 } from "@/components/shared/icons";
+import { useApplicationPending } from "@/bootstrap/application-surface";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
@@ -45,18 +51,27 @@ const STICK_TO_BOTTOM_PX = 160;
 const EASE_OUT = [0.2, 0, 0, 1] as const;
 
 export interface InboxRouteProps {
+  /**
+   * Which Inbox to show. The Library Inbox is a full route whose header joins the app shell;
+   * a Project's Inbox is that Project's Home tab and carries its header inline.
+   */
+  readonly scope: InboxScope;
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
+  /** Whether this Inbox is the visible surface; only then does its first load hold startup. */
+  readonly visible?: boolean;
 }
 
 function InboxHeader({
   view,
   inboxCount,
   databaseId,
+  databaseLabel,
+  inline,
   onViewChange,
   onOpenDatabase,
   onOpenSettings,
@@ -64,12 +79,23 @@ function InboxHeader({
   readonly view: InboxWindowFilter;
   readonly inboxCount: number;
   readonly databaseId: string | null;
+  /** What the Database button opens: the Inbox's own Database or the Project's Board. */
+  readonly databaseLabel: string;
+  /** Inside a Project's tab the header sits in the surface, not the window's title bar. */
+  readonly inline: boolean;
   readonly onViewChange: (view: InboxWindowFilter) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
 }) {
   return (
-    <header className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 electron:h-toolbar">
+    <header
+      className={cn(
+        "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4",
+        inline
+          ? "mx-auto h-11 max-w-(--thread-content-max-width) shrink-0 px-toolbar"
+          : "electron:h-toolbar",
+      )}
+    >
       <div role="tablist" aria-label="Inbox view" className="flex min-w-0 items-center">
         {(["inbox", "processed"] as const).map((option) => (
           <button
@@ -96,11 +122,11 @@ function InboxHeader({
       </div>
       <div className="flex items-center gap-0.5">
         {databaseId ? (
-          <NodexTooltip tooltipContent="Open Inbox as a Database" side="bottom">
+          <NodexTooltip tooltipContent={databaseLabel} side="bottom">
             <NodexButton
               size="icon-xs"
               variant="ghost"
-              aria-label="Open Inbox as a Database"
+              aria-label={databaseLabel}
               onClick={() => onOpenDatabase(databaseId)}
             >
               <BoardIcon className="icon-xs" />
@@ -125,10 +151,13 @@ function InboxHeader({
 function EmptyState({
   view,
   everUsed,
+  projectName,
   onShowHistory,
 }: {
   readonly view: InboxWindowFilter;
   readonly everUsed: boolean;
+  /** Set for a Project's Inbox. */
+  readonly projectName: string | null;
   readonly onShowHistory: () => void;
 }) {
   if (view === "processed") {
@@ -144,10 +173,13 @@ function EmptyState({
   if (!everUsed) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-        <p className="text-base font-medium text-token-foreground">Nothing in your Inbox yet</p>
+        <p className="text-base font-medium text-token-foreground">
+          {projectName ? `Nothing in ${projectName} yet` : "Nothing in your Inbox yet"}
+        </p>
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          Drop a thought, a todo, or a question. Nodex suggests where it should go, and nothing runs
-          until you confirm.
+          {projectName
+            ? "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it."
+            : "Drop a thought, a todo, or a question. Nodex suggests where it should go, and nothing runs until you confirm."}
         </p>
       </div>
     );
@@ -209,14 +241,20 @@ function streamEntries(items: readonly InboxItem[], nowMs: number): readonly Str
 }
 
 export function InboxRoute({
+  scope,
   projects,
   focusComposerToken,
   onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenSettings,
+  visible = true,
 }: InboxRouteProps) {
   useInboxInvalidation();
+  const inboxProjectId = inboxScopeProjectId(scope);
+  const projectName = inboxProjectId
+    ? (projects.find((project) => project.id === inboxProjectId)?.name ?? "this Project")
+    : null;
   const [view, setView] = useState<InboxWindowFilter>("inbox");
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [manualDrafts, setManualDrafts] = useState<Readonly<Record<string, InboxDispatchDraft>>>(
@@ -224,10 +262,11 @@ export function InboxRoute({
   );
   const [bulkDraft, setBulkDraft] = useState<InboxDispatchDraft | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<InboxDeleteRequest | null>(null);
-  const stream = useInboxStream(view);
-  const summary = useInboxSummary();
+  const stream = useInboxStream(scope, view);
+  const summary = useInboxSummary(scope);
+  useApplicationPending(visible && (stream.isPending || summary.isPending));
   const settings = useInboxSettings();
-  const actions = useInboxActions(projects);
+  const actions = useInboxActions(projects, scope);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -306,7 +345,11 @@ export function InboxRoute({
             setManualDraft(
               item.pageId,
               draftFromAction(
-                proposal?.action ?? { type: "new_chat", projectId: null, prompt: item.body },
+                proposal?.action ?? {
+                  type: "new_chat",
+                  projectId: inboxProjectId,
+                  prompt: item.body,
+                },
                 item.body,
               ),
             ),
@@ -320,6 +363,7 @@ export function InboxRoute({
       <InboxTriage
         item={item}
         projects={projects}
+        inboxProjectId={inboxProjectId}
         suggestionsEnabled={settings.suggestionsEnabled}
         actions={actions}
         manualDraft={manualDrafts[item.pageId] ?? null}
@@ -362,21 +406,33 @@ export function InboxRoute({
     </button>
   ) : null;
 
+  const header = (
+    <InboxHeader
+      view={view}
+      inboxCount={summary.data?.inboxCount ?? 0}
+      databaseId={summary.data?.databaseId ?? null}
+      databaseLabel={projectName ? "Open Board" : "Open Inbox as a Database"}
+      inline={projectName !== null}
+      onViewChange={changeView}
+      onOpenDatabase={onOpenDatabase}
+      onOpenSettings={onOpenSettings}
+    />
+  );
+
   return (
-    <div data-testid="inbox-route" className="flex h-full min-h-0 w-full flex-col">
-      <AppShellHeaderContentRegistrar
-        content={
-          <InboxHeader
-            view={view}
-            inboxCount={summary.data?.inboxCount ?? 0}
-            databaseId={summary.data?.databaseId ?? null}
-            onViewChange={changeView}
-            onOpenDatabase={onOpenDatabase}
-            onOpenSettings={onOpenSettings}
-          />
-        }
-      />
-      <div aria-hidden="true" className="h-toolbar shrink-0" />
+    <div
+      data-testid="inbox-route"
+      data-inbox-scope={inboxProjectId ? "project" : "library"}
+      className="flex h-full min-h-0 w-full flex-col"
+    >
+      {projectName ? (
+        header
+      ) : (
+        <>
+          <AppShellHeaderContentRegistrar content={header} />
+          <div aria-hidden="true" className="h-toolbar shrink-0" />
+        </>
+      )}
       <div
         ref={scrollRef}
         data-testid="inbox-stream"
@@ -394,6 +450,7 @@ export function InboxRoute({
           <EmptyState
             view={view}
             everUsed={(summary.data?.entryCount ?? 0) > 0}
+            projectName={projectName}
             onShowHistory={() => changeView("processed")}
           />
         ) : view === "processed" ? (
@@ -460,6 +517,7 @@ export function InboxRoute({
                     embedded
                     initial={bulkDraft}
                     projects={projects}
+                    inboxProjectId={inboxProjectId}
                     onCancel={() => setBulkDraft(null)}
                     onSubmit={async (action) => {
                       const done = await actions.dispatch(selectedPageIds, action);
@@ -493,7 +551,7 @@ export function InboxRoute({
                     onClick={() =>
                       setBulkDraft(
                         draftFromAction(
-                          { type: "new_chat", projectId: null, prompt: combinedText },
+                          { type: "new_chat", projectId: inboxProjectId, prompt: combinedText },
                           combinedText,
                         ),
                       )
@@ -534,7 +592,11 @@ export function InboxRoute({
             </motion.div>
           ) : null}
         </AnimatePresence>
-        <InboxComposer onSend={send} focusToken={focusComposerToken} />
+        <InboxComposer
+          onSend={send}
+          focusToken={focusComposerToken}
+          placeholder={projectName ? `Add a thought to ${projectName}…` : undefined}
+        />
       </div>
       {deleteRequest ? (
         <InboxDeleteDialog

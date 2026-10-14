@@ -179,11 +179,14 @@ export function InboxTriage({
   manualDraft,
   groupedWithKey,
   menu,
+  inboxProjectId,
   onManualDraftChange,
   children,
 }: {
   readonly item: InboxItem;
   readonly projects: readonly Project[];
+  /** The Project whose Inbox holds the message, or null for the Library Inbox. */
+  readonly inboxProjectId: string | null;
   readonly suggestionsEnabled: boolean;
   readonly actions: InboxActions;
   /** A hand-written dispatch opened from the message menu. */
@@ -203,7 +206,7 @@ export function InboxTriage({
   const keep = () => void actions.keep([item.pageId]);
   const dispatchByHand = () =>
     onManualDraftChange(
-      draftFromAction({ type: "new_chat", projectId: null, prompt: message }, message),
+      draftFromAction({ type: "new_chat", projectId: inboxProjectId, prompt: message }, message),
     );
   const keepAction = <InboxIconAction label="Keep as a note" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
@@ -226,6 +229,7 @@ export function InboxTriage({
             embedded
             initial={editorDraft}
             projects={projects}
+            inboxProjectId={inboxProjectId}
             onCancel={() => {
               setEditing(null);
               onManualDraftChange(null);

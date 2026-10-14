@@ -134,10 +134,12 @@ const context = (): CoreInboxDispatchContext => ({
       source: { kind: "user" },
       kind: null,
       submitted_at: "2026-10-15T00:00:00.000Z",
+      scope: { kind: "library" },
       basis: { page_id: "page:one", generation: 1, head_seq: 3 },
       title_provisional: false,
     },
   ],
+  scope: { kind: "library" },
   projects: [{ project_id: "project:one", name: "Project", description: "" }],
   sessions: [
     {

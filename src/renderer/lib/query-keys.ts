@@ -151,8 +151,9 @@ export const queryKeys = {
   },
   inbox: {
     all: () => ["inbox"] as const,
-    summary: () => ["inbox", "summary"] as const,
-    window: (filter: string) => ["inbox", "window", filter] as const,
+    summary: (scope: string) => ["inbox", "summary", scope] as const,
+    counts: () => ["inbox", "counts"] as const,
+    window: (scope: string, filter: string) => ["inbox", "window", scope, filter] as const,
     settings: () => ["inbox", "settings"] as const,
   },
   threadExecution: {

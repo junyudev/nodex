@@ -7,14 +7,17 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type {
+  InboxCounts,
   InboxItem,
+  InboxScope,
   InboxSettings,
   InboxWindowFilter,
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
-import { DEFAULT_INBOX_SETTINGS } from "../../../shared/inbox";
+import { DEFAULT_INBOX_SETTINGS, inboxScopeKey } from "../../../shared/inbox";
 import { subscribeInboxChanges, subscribeLibraryChanges } from "@/lib/api";
 import {
+  readInboxCounts,
   readInboxSettings,
   readInboxSummary,
   readInboxWindow,
@@ -41,12 +44,24 @@ export function useInboxInvalidation(): void {
   }, [queryClient]);
 }
 
-export function useInboxSummary() {
+export function useInboxSummary(scope: InboxScope) {
   return useQuery({
-    queryKey: queryKeys.inbox.summary(),
-    queryFn: readInboxSummary,
+    queryKey: queryKeys.inbox.summary(inboxScopeKey(scope)),
+    queryFn: () => readInboxSummary({ scope }),
     staleTime: 5_000,
   });
+}
+
+const NO_COUNTS: InboxCounts = { library: 0, projects: {} };
+
+/** Messages waiting in the Library Inbox and each Project's Inbox, for navigation badges. */
+export function useInboxCounts(): InboxCounts {
+  const query = useQuery({
+    queryKey: queryKeys.inbox.counts(),
+    queryFn: readInboxCounts,
+    staleTime: 5_000,
+  });
+  return query.data ?? NO_COUNTS;
 }
 
 export function useInboxSettings(): InboxSettings {
@@ -68,12 +83,12 @@ export function useUpdateInboxSettings() {
   });
 }
 
-/** Newest-first Core windows for one view; each further page reaches older messages. */
-export function useInboxStream(filter: InboxWindowFilter) {
+/** Newest-first Core windows for one Inbox view; each further page reaches older messages. */
+export function useInboxStream(scope: InboxScope, filter: InboxWindowFilter) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.inbox.window(filter),
+    queryKey: queryKeys.inbox.window(inboxScopeKey(scope), filter),
     queryFn: ({ pageParam }) =>
-      readInboxWindow({ filter, after: pageParam, first: INBOX_WINDOW_SIZE }),
+      readInboxWindow({ scope, filter, after: pageParam, first: INBOX_WINDOW_SIZE }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     staleTime: 2_000,

@@ -623,7 +623,10 @@ describe("workbench session shell / layout-panel-actions", () => {
         );
         expect(panel.getAttribute("data-right-panel-width-mode")).toBe("full");
         if (destination === "project") {
-          expect(within(panel).getByText("DB:alpha:board")).toBeTruthy();
+          // A Project's root is its own Inbox.
+          expect(within(panel).getByTestId("inbox-route").getAttribute("data-inbox-scope")).toBe(
+            "project",
+          );
         } else {
           expect(within(panel).getByRole("tab", { name: "Tasks", selected: true })).toBeTruthy();
           expect(within(panel).getByTestId("workbench-database-view-surface")).toBeTruthy();

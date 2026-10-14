@@ -22,10 +22,10 @@ import {
   migrateWorkbenchSceneV4ToV5,
   moveWorkbenchSceneSurface,
   patchWorkbenchScenePanel,
+  projectInboxSurface,
   removeWorkbenchSceneSurface,
   reorderWorkbenchSceneSurfaces,
   splitWorkbenchSceneLeaf,
-  updateWorkbenchSceneSurface,
   type WorkbenchSceneIdentityFactory,
   type WorkbenchSceneSnapshot,
   type WorkbenchSceneSnapshotV1,
@@ -73,6 +73,23 @@ function browserSurface(id = "browser-surface"): WorkbenchSurfaceDescriptor {
 function protectedPrimary(scene: WorkbenchSceneSnapshot): WorkbenchSurfaceDescriptor {
   if (!scene.primary) throw new Error("Expected a protected Scene primary");
   return scene.primary;
+}
+
+const projectDatabase = (id: string): WorkbenchSurfaceDescriptor => ({
+  id,
+  kind: "db_view",
+  titleSnapshot: "Database",
+  config: {
+    routingContext: { kind: "project", projectId: "project-1" },
+    target: { kind: "project-default" },
+  },
+  stateKey: 0,
+  state: null,
+});
+
+/** Before v8 a Project Scene's Home was its default Database View. */
+function databaseHome(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+  return { ...scene, primary: projectDatabase(protectedPrimary(scene).id) };
 }
 
 function sceneV2Fields(
@@ -132,12 +149,11 @@ describe("WorkbenchScene", () => {
       },
     );
 
+    // A Project's Home is its own Inbox.
     expect(project.primary).toMatchObject({
-      kind: "db_view",
-      config: {
-        routingContext: { kind: "project", projectId: "project-1" },
-        target: { kind: "project-default" },
-      },
+      kind: "inbox",
+      titleSnapshot: "Inbox",
+      config: { projectId: "project-1" },
     });
     expect(session.primary).toMatchObject({
       kind: "conversation",
@@ -192,21 +208,26 @@ describe("WorkbenchScene", () => {
     ).toBe(withBrowser);
   });
 
-  test("persists an exact Database View target on the protected Project primary", () => {
-    const initial = projectScene();
-    const primary = protectedPrimary(initial);
-    const exact = updateWorkbenchSceneSurface(initial, primary.id, {
-      titleSnapshot: "List",
-      config: {
-        routingContext: { kind: "project", projectId: "project-1" },
-        target: { kind: "database-view", databaseViewId: "view-list" },
-      },
-    });
+  test("a saved Database Home becomes the Project's Inbox in the same place", () => {
+    const saved = { ...databaseHome(projectScene()), version: 7 };
 
-    expect(WorkbenchSceneSnapshotSchema.parse(exact).primary).toMatchObject({
-      titleSnapshot: "List",
-      config: { target: { kind: "database-view", databaseViewId: "view-list" } },
+    const migrated = WorkbenchSceneSnapshotSchema.parse(saved);
+
+    expect(migrated.version).toBe(8);
+    expect(migrated.primary).toEqual(
+      projectInboxSurface(protectedPrimary(migrated).id, "project-1"),
+    );
+    expect(migrated.primary?.id).toBe(saved.primary?.id);
+    expect(migrated.panels).toEqual(saved.panels);
+    // A current Project Scene keeps only its Inbox as Home; a Database View is an ordinary tab.
+    expect(WorkbenchSceneSnapshotSchema.safeParse(databaseHome(projectScene())).success).toBe(
+      false,
+    );
+    const withBoard = createWorkbenchSceneSurface(projectScene(), {
+      panelId: "right",
+      surface: projectDatabase("board"),
     });
+    expect(WorkbenchSceneSnapshotSchema.parse(withBoard)).toEqual(withBoard);
   });
 
   test("persists image editors only through stable asset locators", () => {
@@ -586,7 +607,7 @@ describe("WorkbenchScene", () => {
   });
 
   test("migrates an active Project Conversation surface into Agent Dock", () => {
-    const current = projectScene();
+    const current = databaseHome(projectScene());
     if (current.panels.right.layout.root.type !== "leaf") {
       throw new Error("Expected a single Project root leaf");
     }
@@ -632,7 +653,8 @@ describe("WorkbenchScene", () => {
       newDraftId: `agent-draft:${canonical.primary.id}`,
     });
     const currentSnapshot = WorkbenchSceneSnapshotSchema.parse(canonical);
-    expect(currentSnapshot.version).toBe(7);
+    expect(currentSnapshot.version).toBe(8);
+    expect(currentSnapshot.primary?.kind).toBe("inbox");
     expect(WorkbenchSceneSnapshotSchema.parse(legacy)).toEqual(currentSnapshot);
   });
 
@@ -661,7 +683,7 @@ describe("WorkbenchScene", () => {
   });
 
   test("migrates v3 resource configs to explicit Project access", () => {
-    const current = projectScene();
+    const current = databaseHome(projectScene());
     if (current.owner.kind === "pages") {
       throw new Error("Expected a legacy-compatible Project Scene");
     }
@@ -692,22 +714,23 @@ describe("WorkbenchScene", () => {
   });
 
   test("removes the v5 synthetic Database layout from Scene identity", () => {
-    const current = projectScene();
-    const primary = protectedPrimary(current);
-    if (primary.kind !== "db_view") throw new Error("Expected Database primary");
+    const board = projectDatabase("board");
+    const current = createWorkbenchSceneSurface(projectScene(), {
+      panelId: "right",
+      surface: board,
+    });
     const legacy = {
       ...current,
       version: 5,
-      primary: {
-        ...primary,
-        config: { ...primary.config, view: "calendar" },
+      panelSurfacesById: {
+        board: { ...board, config: { ...board.config, view: "calendar" } },
       },
     };
 
     const migrated = WorkbenchSceneSnapshotSchema.parse(legacy);
 
-    expect(migrated.version).toBe(7);
-    expect(migrated.primary?.config).not.toHaveProperty("view");
+    expect(migrated.version).toBe(8);
+    expect(migrated.panelSurfacesById.board?.config).not.toHaveProperty("view");
     expect(WorkbenchSceneSnapshotSchema.parse(migrated)).toEqual(migrated);
   });
 
@@ -824,12 +847,11 @@ describe("WorkbenchScene", () => {
       { kind: "session", sessionId: "session-1" },
       { identityFactory: identityFactory("reuse") },
     );
-    const databaseScene = projectScene();
-
     expect(getWorkbenchSurfaceReuseKey(protectedPrimary(conversation))).toBe(
       "conversation:session-1",
     );
-    expect(getWorkbenchSurfaceReuseKey(protectedPrimary(databaseScene))).toBe(
+    expect(getWorkbenchSurfaceReuseKey(protectedPrimary(projectScene()))).toBe("inbox:project-1");
+    expect(getWorkbenchSurfaceReuseKey(projectDatabase("board"))).toBe(
       "db:project:project-1:default",
     );
     expect(

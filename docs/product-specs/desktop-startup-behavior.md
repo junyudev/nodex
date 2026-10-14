@@ -49,7 +49,8 @@ Workbench and its state. Renderer readiness waits for the initial route's data s
 visible loading boundaries to commit their content; committing an empty loading fallback does
 not release the activation coordinator. Later route changes do not reopen the startup gate.
 This includes ordinary data-loading branches: a restored Database waits for its initial View
-model, a Page waits for its detail, Document preparation, and first content sync, and a visible
+model, a restored Inbox, including a Project's Inbox Home, waits for its first messages and
+counts, a Page waits for its detail, Document preparation, and first content sync, and a visible
 Composer waits for its persisted draft and initial input to commit. Hidden
 retained tabs and hidden Composer content do not delay readiness; retained conversation
 lifecycles continue while their content loads. Their import failures stay within their own

@@ -2,21 +2,42 @@
 
 ## Intent and authority
 
-The Inbox is the Profile's single capture surface. A user drops a thought, a todo,
-or a question without first deciding which Project or chat it belongs to. Every
+The Inbox is where a user drops a thought, a todo, or a question without first
+deciding which chat it belongs to. The Library Inbox takes anything; each
+Project's own Inbox, its Home, takes what is already about that Project. Every
 message is saved at once as an ordinary Page. A bound suggestion Agent may then
 propose where it should go, but nothing runs until the user confirms.
 
-Rust Core owns the Inbox Database, each Inbox entry's provenance and triage
-state, and versioned dispatch proposals. The Desktop Host owns suggestion
-generation, delivery of confirmed chat work, and the Profile's Inbox
+Rust Core owns the Library Inbox Database, each Inbox entry's Inbox, provenance,
+and triage state, and versioned dispatch proposals. The Desktop Host owns
+suggestion generation, delivery of confirmed chat work, and the Profile's Inbox
 preferences. The renderer owns route presentation, drafts, and selection only.
+
+## Library and Project Inboxes
+
+- Each message belongs to exactly one Inbox, fixed when it is captured: the
+  Library Inbox or one Project's Inbox. Moving its Page later never changes
+  which Inbox it belongs to.
+- A Project's Inbox is its Home: the first tab of the Project, which cannot be
+  closed or moved. The Project's Views are ordinary tabs beside it. The Home's
+  `Open Board` button opens the Project's default View, or focuses it when it is
+  already open. The Project's Agent Dock is hidden while the Home is showing,
+  since the Home has its own composer.
+- The Inbox composer sends to the Inbox it shows. Agent Turns send to their
+  chat's Project Inbox, and the command line to its Project's Inbox; both use
+  the Library Inbox outside a Project. Only the desktop app chooses an Inbox
+  explicitly.
+- The sidebar's `Inbox` row counts the Library Inbox. Each Project row shows its
+  own Inbox count, muted, in place of nothing when the count is zero.
 
 ## Messages are Pages
 
-- Sending a message creates one Page in the Library's Inbox Database. Core
-  creates that Database lazily on the first send, under the Page-key prefix `IN`.
-  It never appears as a standalone sidebar root or Library root.
+- A message sent to the Library Inbox becomes a Page in the Library's Inbox
+  Database. Core creates that Database lazily on the first send, under the
+  Page-key prefix `IN`. It never appears as a standalone sidebar root or Library
+  root.
+- A message sent to a Project's Inbox becomes a Page in that Project's Database,
+  in Triage, with the Project's Page key. It is on the Project's Board at once.
 - The whole message becomes the Page body, line for line, and the stream bubble
   shows exactly that body. The Page title is only a label for Board, List,
   search, tabs, and new chats. The stream does not show it; the message menu's
@@ -36,8 +57,8 @@ preferences. The renderer owns route presentation, drafts, and selection only.
     Provider proves it. Renders left-aligned and labeled
     `From <chat>`; the label opens that chat.
   - **Command line:** sent with `nodex inbox send`. Renders left-aligned and
-    labeled `From Command line`, with `· <Project>` added when it was sent from
-    inside a Project.
+    labeled `From Command line`. The label names the Project only when a message
+    sent from inside one could not land in that Project's Inbox.
 - A suggestion is fenced by the Page revision it was computed from. After the
   Page is edited, confirming that suggestion fails; `Suggest again` produces a
   fresh one.
@@ -47,15 +68,17 @@ preferences. The renderer owns route presentation, drafts, and selection only.
 The goal is an empty Inbox. A message stays in the Inbox only while it still
 needs the user; once handled, it moves to History.
 
-- **Inbox:** open messages whose Page is still in the Inbox Database and that
-  have no confirmed chat dispatch. This covers messages being suggested, with a
-  suggestion to decide, with a failed suggestion, with no suggestion, or whose
-  delivery failed.
+- **Inbox:** open messages with no confirmed chat dispatch. This covers
+  messages being suggested, with a suggestion to decide, with a failed
+  suggestion, with no suggestion, or whose delivery failed.
 - **History:** every handled message: a confirmed chat dispatch (including one
-  still being delivered), a Page moved out of the Inbox Database, Keep, or Done.
+  still being delivered), a message filed in a Project, Keep, or Done.
 
-A failed delivery and an undone move bring a message back to the Inbox. Core
-applies the same membership to the stream windows and to the Inbox count.
+Where a message's Page lives never decides this. Moving the Page by other means,
+such as dragging it on a Board, leaves the message in its Inbox until it is
+handled. A failed delivery and an undone move bring a message back to the
+Inbox. Core applies the same membership to the stream windows and to every
+Inbox count.
 
 Each entry has a user-editable kind and a triage state.
 
@@ -88,18 +111,23 @@ Expanding a line shows the message, its Page key, and icon buttons:
 - `Open chat` or `Open in Project`;
 - `Open Page`;
 - `Return to Inbox`, for kept or done messages;
-- `Delete…`, while the Page is still in the Inbox Database.
+- `Delete…`, while the Page is still in its Inbox's Database.
 
-The sidebar count and the `Inbox` tab count are the number of messages in the
-Inbox. They are never an unread count.
+Every count, in the sidebar and on the `Inbox` tab, is the number of messages in
+that Inbox. It is never an unread count.
 
 ## Suggestions
 
 When suggestions are enabled, Main reads pending entries in batches of up to
-eight, waiting briefly so a burst of messages can be considered together. The
-suggestion Agent sees each message's text plus a bounded routing context of
-active Projects, recent chats, and open suggestions. It has no tools and cannot
-read the Library.
+eight, waiting briefly so a burst of messages can be considered together. One
+batch never mixes Inboxes. The suggestion Agent sees each message's text plus a
+bounded routing context of active Projects, recent chats, and open suggestions.
+It has no tools and cannot read the Library.
+
+A Project's Inbox narrows that context to the Project. Its messages are already
+that Project's Pages, so a new chat starts in the Project, an existing chat must
+be one of the Project's own, and a move can only file the message in another
+Project. The same limits apply to dispatches written by hand.
 
 Its single write records one proposal per message or group. Each proposal has
 one exact action:
@@ -107,7 +135,7 @@ one exact action:
 - **Keep:** keep it as a note.
 - **New chat:** start a chat in a Project or without one, with a prompt.
 - **Send to chat:** send a prompt to an existing chat.
-- **Move to Project:** file the message Page in a Project's Database.
+- **Move to Project:** file the message Page in another Project's Database.
 
 Main rejects a proposal whose target is not in the routing context. A suggestion
 can never invent a destination.
@@ -169,8 +197,10 @@ the proposal was computed from.
 - **Send to chat:** delivery waits while the target chat is busy. History shows
   `Queued for “<chat>”` and delivers when the chat becomes idle.
 - **Move to Project:** the user's own Library relocation moves the Page into the
-  Project's Database, with Undo. Core then completes the suggestion only after
-  the Page is actually there. History shows `Moved to <Project>`.
+  Project's Database. Core then records the message as filed, only after the
+  Page is actually there. Filing is final: the message is kept in History as
+  `Moved to <Project>` and never opens again in that Project's Inbox. The move's
+  `Undo` moves the Page back and returns the message to its Inbox.
 - **Keep:** marks the entries `kept`.
 
 Confirmed chat work is a durable outbox in Core. After a restart, Main re-reads
@@ -187,10 +217,11 @@ can be deleted:
 
 - from the message menu (`Delete…`);
 - for the whole selection, from the selection bar;
-- from an expanded History line, while its Page is still in the Inbox Database.
+- from an expanded History line, while its Page is still in its Inbox's
+  Database.
 
-A message that was moved into a Project is that Project's Page now and is
-deleted there.
+A message filed in another Project is that Project's Page now and is deleted
+there.
 
 Deleting is erasure and is confirmed once. The dialog shows the message and
 says that text already sent to a suggestion agent or a chat cannot be recalled,
@@ -235,15 +266,17 @@ messages are ordinary Pages and retain the Profile's full content access, includ
 for parent, child and background Agents and planning interactions.
 
 - **Agent tool:** an Agent uses the `send_to_inbox` application tool. Core records
-  its chat and Project from the verified execution source. A proven Run can send
+  its chat and Project from the verified execution source, and the message lands
+  in that Project's Inbox, or the Library Inbox for a projectless chat. A proven
+  Run can send
   at most five messages. When the native protocol cannot prove a Run, Core leaves
   it null and applies the same five-message budget to that native connection,
   independently of foreground Runs. Model-authored fields cannot replace the source.
 - **Command line:** `nodex inbox send [TEXT] [--title TITLE]` reads TEXT or
   redirected stdin.
   Inside a Project's source or managed worktree, or with `--project`, the
-  message is labeled with that Project. Anywhere else it is still accepted and
-  labeled only as coming from the command line.
+  message lands in that Project's Inbox. Anywhere else it lands in the Library
+  Inbox.
 
 Both paths accept an optional title, which is final. Without one, the message
 gets a provisional title like any other message. Both paths also accept an
@@ -252,12 +285,16 @@ creates a second message, and does not count against the Agent budget again.
 
 ## Entry points and settings
 
-- The sidebar's `Inbox` row sits directly above `New chat`.
-- `⌘/Ctrl+Shift+D` opens the Inbox and focuses its composer. The command palette
-  exposes the same command as `Open Inbox`.
-- The route header offers:
+- The sidebar's `Inbox` row sits directly above `New chat` and opens the
+  Library Inbox. A Project row opens that Project on its Inbox Home.
+- `⌘/Ctrl+Shift+D` captures where the user is: in a Project it shows that
+  Project's Inbox Home, and anywhere else it opens the Library Inbox. Either
+  way it focuses the composer. The command palette exposes the same command as
+  `Open Inbox`.
+- The Inbox header offers:
   - the `Inbox` and `History` tabs;
-  - `Open Inbox as a Database`, which opens the backing Database View;
+  - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
+    Project's Inbox;
   - `Inbox settings`.
 - `Settings → Inbox` holds these Profile preferences:
   - whether suggestions run;

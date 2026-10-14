@@ -19,6 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import * as Y from "yjs";
+import { DEFAULT_INBOX_SETTINGS } from "../../../../shared/inbox";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../../shared/block-documents/page-document";
 import type { DatabaseViewConfigV6, DatabaseViewSort } from "../../../../shared/database-kernel";
@@ -1852,6 +1853,7 @@ vi.mock("@/features/local-conversation", () => ({
 }));
 
 let boardDataReady: Promise<void> | null = null;
+let inboxDataReady: Promise<void> | null = null;
 
 vi.mock("@/lib/use-board", () => ({
   useBoard: (options?: { projectId?: string; databaseViewId?: string }) => {
@@ -2421,6 +2423,7 @@ export function renderWorkbench({
   sessionGetOverride,
   applicationReadiness,
   initialBoardDataReady,
+  initialInboxDataReady,
   ownershipPathsByPage = {},
   scheduledAutomations = [],
   automationInboxItems = [],
@@ -2452,6 +2455,8 @@ export function renderWorkbench({
   sessionGetOverride?: (sessionId: string) => Promise<ProjectSession | null>;
   applicationReadiness?: ComponentProps<typeof ApplicationReadinessRoot>["readiness"];
   initialBoardDataReady?: Promise<void>;
+  /** Holds every Inbox window read until it resolves. */
+  initialInboxDataReady?: Promise<void>;
   ownershipPathsByPage?: Record<
     string,
     ReadonlyArray<{
@@ -2471,6 +2476,7 @@ export function renderWorkbench({
   onCreateProject?: ComponentProps<typeof WorkbenchShell>["onCreateProject"];
 } = {}) {
   boardDataReady = initialBoardDataReady ?? null;
+  inboxDataReady = initialInboxDataReady ?? null;
   const resolvedInitialSelectedSessionId =
     initialSelectedSessionId === undefined
       ? (Object.values(sessionsByProject).flat()[0]?.id ?? projectlessSessions[0]?.id ?? null)
@@ -2639,16 +2645,6 @@ export function renderWorkbench({
     generatedAt: 1,
   });
   mockInvokeImpl = async (channel, ...args) => {
-    if (channel === "inbox:summary")
-      return {
-        databaseId: null,
-        viewId: null,
-        entryCount: 0,
-        inboxCount: 0,
-        needsDecisionCount: 0,
-        pendingSuggestionCount: 0,
-        dispatchingCount: 0,
-      };
     if (channel === "agent-runtime:providers:read")
       return [
         {
@@ -3272,6 +3268,26 @@ export function renderWorkbench({
         return { changed, value: undefined };
       });
     }
+    // Every Project's Home is its Inbox; the shell renders it empty unless a test seeds it.
+    if (channel === "inbox:counts") return { library: 0, projects: {} };
+    if (channel === "inbox:summary") {
+      // A Project's Inbox files into its own Database, so its Home offers the Board.
+      const scope = (args[0] as { scope?: { kind?: string } } | undefined)?.scope;
+      return {
+        databaseId: scope?.kind === "project" ? makeProject().databaseId : null,
+        viewId: null,
+        entryCount: 0,
+        inboxCount: 0,
+        needsDecisionCount: 0,
+        pendingSuggestionCount: 0,
+        dispatchingCount: 0,
+      };
+    }
+    if (channel === "inbox:window") {
+      if (inboxDataReady) await inboxDataReady;
+      return { items: [], nextCursor: null, projectionRevision: 0 };
+    }
+    if (channel === "settings:inbox:get") return DEFAULT_INBOX_SETTINGS;
     if (channel === "codex:sidebar:snapshot") {
       return buildSidebarSnapshot();
     }
@@ -4751,6 +4767,17 @@ export async function openPanelMenu(
     expect(screen.queryByRole("menu") !== null).toBe(true);
   });
   return screen.getByRole("menu");
+}
+
+/** A Project opens on its Inbox Home; its Board button opens the default View as an ordinary tab. */
+export async function openProjectBoard(screen: ReturnType<typeof renderWorkbench>): Promise<void> {
+  const button = await screen.findByRole("button", { name: "Open Board" });
+  await act(async () => {
+    fireEvent.click(button);
+    await Promise.resolve();
+  });
+  await settleAsyncRender();
+  await settleAsyncRender();
 }
 
 export async function clickMenuItem(menu: HTMLElement, label: string): Promise<void> {

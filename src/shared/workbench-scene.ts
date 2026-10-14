@@ -46,7 +46,7 @@ import {
   type WorkbenchPanelSplitSide,
 } from "./workbench-panel-layout";
 
-export const WORKBENCH_SCENE_VERSION = 7 as const;
+export const WORKBENCH_SCENE_VERSION = 8 as const;
 export const WORKBENCH_SCENE_MAX_PANEL_SURFACES = 2_048;
 
 export type WorkbenchSceneOwner =
@@ -92,6 +92,7 @@ export function makeWorkbenchSceneKey(owner: WorkbenchSceneOwner): WorkbenchScen
 
 export type WorkbenchSurfaceKind =
   | "conversation"
+  | "inbox"
   | "db_view"
   | "page_stage"
   | "canvas_stage"
@@ -103,6 +104,11 @@ export type WorkbenchSurfaceKind =
 
 export interface WorkbenchConversationSurfaceConfig {
   readonly sessionId: string;
+}
+
+/** A Project's own Inbox, which is that Project Scene's Home. */
+export interface WorkbenchInboxSurfaceConfig {
+  readonly projectId: string;
 }
 
 export interface WorkbenchDbViewSurfaceConfig {
@@ -169,6 +175,7 @@ export interface WorkbenchFilesSurfaceConfig {
 
 export interface WorkbenchSurfaceConfigByKind {
   readonly conversation: WorkbenchConversationSurfaceConfig;
+  readonly inbox: WorkbenchInboxSurfaceConfig;
   readonly db_view: WorkbenchDbViewSurfaceConfig;
   readonly page_stage: WorkbenchPageStageSurfaceConfig;
   readonly canvas_stage: WorkbenchCanvasStageSurfaceConfig;
@@ -509,7 +516,7 @@ export function isPagesSceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor):
 }
 
 export function isProjectScenePanelSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
-  return surface.kind !== "conversation" && surface.kind !== "review";
+  return surface.kind !== "conversation" && surface.kind !== "review" && surface.kind !== "inbox";
 }
 
 export function isWorkbenchScenePanelSurfaceAllowed(
@@ -518,7 +525,7 @@ export function isWorkbenchScenePanelSurfaceAllowed(
 ): boolean {
   if (owner.kind === "project") return isProjectScenePanelSurfaceAllowed(surface);
   if (owner.kind === "pages") return isPagesSceneSurfaceAllowed(surface);
-  return surface.kind !== "conversation";
+  return surface.kind !== "conversation" && surface.kind !== "inbox";
 }
 
 function enforcePagesSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
@@ -714,22 +721,37 @@ export function applyLegacySessionViewToWorkbenchScene(
   });
 }
 
+/** A Project's Home: its own Inbox, the protected first tab of its Scene. */
+export function projectInboxSurface(id: string, projectId: string): WorkbenchSurfaceDescriptor {
+  return {
+    id,
+    kind: "inbox",
+    titleSnapshot: "Inbox",
+    config: { projectId },
+    stateKey: 0,
+    state: null,
+  };
+}
+
+/**
+ * Project Scenes saved while a Database View was their Home adopt the Project Inbox in the
+ * same place. The Board is one click away from the Inbox.
+ */
+export function adoptProjectInboxHome<
+  Scene extends Pick<WorkbenchSceneSnapshot, "owner" | "primary">,
+>(scene: Scene): Scene {
+  if (scene.owner.kind !== "project" || !scene.primary || scene.primary.kind === "inbox") {
+    return scene;
+  }
+  return { ...scene, primary: projectInboxSurface(scene.primary.id, scene.owner.projectId) };
+}
+
 function ownerRootPrimary(
   owner: WorkbenchSceneOwner,
   identityFactory: WorkbenchSceneIdentityFactory,
 ): WorkbenchSurfaceDescriptor | null {
   if (owner.kind === "project") {
-    return {
-      id: identityFactory.createId("surface"),
-      kind: "db_view",
-      titleSnapshot: "Database",
-      config: {
-        routingContext: { kind: "project", projectId: owner.projectId },
-        target: { kind: "project-default" },
-      },
-      stateKey: 0,
-      state: null,
-    };
+    return projectInboxSurface(identityFactory.createId("surface"), owner.projectId);
   }
 
   if (owner.kind === "session")
@@ -982,11 +1004,13 @@ export function migrateWorkbenchSceneV4ToV5(
   legacy: WorkbenchSceneSnapshotV4,
 ): WorkbenchSceneSnapshot {
   if (legacy.owner.kind !== "resource") {
-    return normalizeWorkbenchScene({
-      ...legacy,
-      version: WORKBENCH_SCENE_VERSION,
-      owner: legacy.owner,
-    });
+    return normalizeWorkbenchScene(
+      adoptProjectInboxHome({
+        ...legacy,
+        version: WORKBENCH_SCENE_VERSION,
+        owner: legacy.owner,
+      }),
+    );
   }
   const retainedSiblings = Object.entries(legacy.panelSurfacesById)
     .filter(([, surface]) => isPagesSceneSurfaceAllowed(surface))
@@ -1295,6 +1319,8 @@ export function getWorkbenchSurfaceReuseKey(
   switch (surface.kind) {
     case "conversation":
       return `conversation:${surface.config.sessionId}`;
+    case "inbox":
+      return `inbox:${surface.config.projectId}`;
     case "db_view": {
       const accessKey = contentRoutingContextKey(surface.config.routingContext);
       return surface.config.target.kind === "project-default"

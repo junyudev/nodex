@@ -103,12 +103,32 @@ const describeStatus = (status: CoreInboxDispatchContext["sessions"][number]["st
   return "idle";
 };
 
+/** The Project whose own Inbox these messages were left in, or null for the Library Inbox. */
+const scopeProject = (context: CoreInboxDispatchContext) => {
+  const { scope } = context;
+  if (scope.kind !== "project") return null;
+  return context.projects.find((project) => project.project_id === scope.project_id) ?? null;
+};
+
+const LIBRARY_ACTIONS = `Actions:
+- keep: leave it in the Inbox as a note, todo, or open question. Prefer this for observations, reminders, undecided questions, or unclear intent.
+- new_chat: start a new chat with a self-contained prompt for a coding agent. Set project_id to one listed Project, or null for a projectless chat.
+- send_to_chat: send a follow-up to one listed chat when the message clearly continues that chat's current work.
+- move_to_project: file it as a task in one listed Project's task database when it is concrete work for later.`;
+
+const projectActions = (projectId: string) => `Actions:
+- keep: keep it as one of this Project's notes, todos, or open questions. Prefer this for observations, reminders, undecided questions, concrete work for later, or unclear intent.
+- new_chat: start a new chat in this Project with a self-contained prompt for a coding agent. Set project_id to ${JSON.stringify(projectId)}.
+- send_to_chat: send a follow-up to one listed chat of this Project when the message clearly continues that chat's current work.
+Do not use move_to_project.`;
+
 /** Builds the suggestion prompt. Message text is quoted data, never instructions. */
 export const buildInboxSuggestionPrompt = (input: {
   readonly context: CoreInboxDispatchContext;
   readonly instructions: string;
 }): string => {
   const { context } = input;
+  const project = scopeProject(context);
   const projects =
     context.projects.length === 0
       ? "- (none)"
@@ -156,14 +176,13 @@ export const buildInboxSuggestionPrompt = (input: {
   const preferences = input.instructions.trim()
     ? `\nThe user's standing preferences:\n${clip(input.instructions, 4_000)}\n`
     : "";
+  const where = project
+    ? `The user drops quick thoughts, todos, and questions about the Project "${clip(project.name, 80)}" into that Project's own Inbox. They already belong to this Project; suggest how each should be handled within it.`
+    : "The user drops quick thoughts, todos, and questions into the Inbox. Suggest how each message should be handled.";
   return `You route messages from a personal Inbox in Nodex, a local workspace where coding agents work in chats inside Projects.
-The user drops quick thoughts, todos, and questions into the Inbox. Suggest how each message should be handled. Never answer, research, or carry out a message yourself; the user confirms every suggestion before anything runs.
+${where} Never answer, research, or carry out a message yourself; the user confirms every suggestion before anything runs.
 
-Actions:
-- keep: leave it in the Inbox as a note, todo, or open question. Prefer this for observations, reminders, undecided questions, or unclear intent.
-- new_chat: start a new chat with a self-contained prompt for a coding agent. Set project_id to one listed Project, or null for a projectless chat.
-- send_to_chat: send a follow-up to one listed chat when the message clearly continues that chat's current work.
-- move_to_project: file it as a task in one listed Project's task database when it is concrete work for later.
+${project ? projectActions(project.project_id) : LIBRARY_ACTIONS}
 
 Rules:
 - Use only project_id and session_id values that appear below; otherwise use null.
@@ -231,6 +250,8 @@ export const validateInboxSuggestions = (
 ): InboxSuggestionValidation => {
   const entryIds = new Set(entries.map((entry) => entry.page_id));
   const projectIds = new Set(context.projects.map((project) => project.project_id));
+  // A Project's Inbox works inside its Project: chats start there and nothing is filed away.
+  const inboxProjectId = context.scope.kind === "project" ? context.scope.project_id : null;
   const sessionIds = new Set(context.sessions.map((session) => session.session_id));
   const claimed = new Set<string>();
   const suggestions: ValidatedInboxSuggestion[] = [];
@@ -246,18 +267,24 @@ export const validateInboxSuggestions = (
       case "keep":
         action = { type: "keep" };
         break;
-      case "new_chat":
-        if (prompt && (raw.project_id === null || projectIds.has(raw.project_id))) {
-          action = { type: "new_chat", projectId: raw.project_id, prompt };
+      case "new_chat": {
+        const projectId = inboxProjectId ?? raw.project_id;
+        if (
+          prompt &&
+          (projectId === null || projectIds.has(projectId)) &&
+          (inboxProjectId === null || raw.project_id === null || raw.project_id === inboxProjectId)
+        ) {
+          action = { type: "new_chat", projectId, prompt };
         }
         break;
+      }
       case "send_to_chat":
         if (prompt && raw.session_id !== null && sessionIds.has(raw.session_id)) {
           action = { type: "send_to_chat", sessionId: raw.session_id, prompt };
         }
         break;
       case "move_to_project":
-        if (raw.project_id !== null && projectIds.has(raw.project_id)) {
+        if (inboxProjectId === null && raw.project_id !== null && projectIds.has(raw.project_id)) {
           action = { type: "move_to_project", projectId: raw.project_id };
         }
         break;

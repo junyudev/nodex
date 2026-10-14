@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
@@ -347,7 +348,7 @@ test("moves Board cards and List rows into NFM as real Page blocks", async () =>
       await expect(referenceTab).not.toHaveAttribute("data-app-shell-tab-preview", "true");
       await referenceTab.click({ button: "right" });
       await page.getByRole("menuitem", { name: /^Move to (?:right|bottom) panel$/u }).click();
-      await page.getByRole("tab", { name: "Project Home" }).click();
+      await openProjectBoard(page);
 
       const primaryPageId = manifest.pageIdsByKey.boundedProjection;
       const boardSourcePageId = manifest.pageIdsByKey.offlineRecovery;
@@ -418,7 +419,7 @@ test("round-trips a Board Page through a Subpage without stale presentation", as
       await expect(referenceTab).not.toHaveAttribute("data-app-shell-tab-preview", "true");
       await referenceTab.click({ button: "right" });
       await page.getByRole("menuitem", { name: /^Move to (?:right|bottom) panel$/u }).click();
-      await page.getByRole("tab", { name: "Project Home" }).click();
+      await openProjectBoard(page);
 
       const primaryPageId = manifest.pageIdsByKey.boundedProjection;
       const boardSourcePageId = manifest.pageIdsByKey.offlineRecovery;

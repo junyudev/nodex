@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { openProjectBoard } from "../harness/project-board-ui";
 
 import type { ScenarioManifest } from "../contracts";
 import { LIBRARY_FILES_PAGE_A_KEY } from "./library-files";
@@ -14,7 +15,7 @@ export const focusLibraryFilesProjectHome = async (
   await page
     .getByRole("button", { name: "Open Library Files Lab", exact: true })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   await pageACard.waitFor();
 };
 

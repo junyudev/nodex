@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -28,7 +29,7 @@ const focusSettingsDatabase = async (page: Page): Promise<void> => {
   await page
     .getByRole("button", { name: "Open Database settings", exact: true })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   await surface.waitFor();
 };
 

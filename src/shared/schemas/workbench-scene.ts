@@ -18,6 +18,7 @@ import {
   migrateWorkbenchSceneV2ToV4,
   migrateWorkbenchSceneV3ToV4,
   migrateWorkbenchSceneV4ToV5,
+  projectInboxSurface,
   type WorkbenchSceneOwner,
   type WorkbenchSceneOwnerV4,
   type WorkbenchSceneSnapshot,
@@ -234,6 +235,13 @@ export const WorkbenchSurfaceDescriptorSchema = z
         ...surfaceBaseSchema,
         kind: z.literal("conversation"),
         config: WorkbenchConversationSurfaceConfigSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...surfaceBaseSchema,
+        kind: z.literal("inbox"),
+        config: z.object({ projectId: z.string().trim().min(1).max(512) }).strict(),
       })
       .strict(),
     z
@@ -661,8 +669,10 @@ function stripDatabaseLayoutsFromScene(value: unknown): unknown {
 function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): boolean {
   if (!surface || typeof surface !== "object" || Array.isArray(surface)) return true;
   const record = surface as Record<string, unknown>;
-  if (ownerKind === "project") return record.kind !== "conversation" && record.kind !== "review";
-  if (ownerKind === "session") return record.kind !== "conversation";
+  if (ownerKind === "project") {
+    return record.kind !== "conversation" && record.kind !== "review" && record.kind !== "inbox";
+  }
+  if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
   if (ownerKind !== "pages") return true;
 
   const config = record.config;
@@ -730,6 +740,17 @@ function stripOwnerInvalidPanelSurfacesFromScene(value: unknown): unknown {
   };
 }
 
+/** Before v8 a Project's Home was a Database View; it becomes the Project's Inbox in place. */
+function adoptRawProjectInboxHome(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const scene = value as Record<string, unknown>;
+  const owner = scene.owner as Record<string, unknown> | null | undefined;
+  const primary = scene.primary as Record<string, unknown> | null | undefined;
+  if (owner?.kind !== "project" || typeof owner.projectId !== "string") return value;
+  if (!primary || typeof primary.id !== "string" || primary.kind === "inbox") return value;
+  return { ...scene, primary: projectInboxSurface(primary.id, owner.projectId) };
+}
+
 function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
   const record =
     value && typeof value === "object" && !Array.isArray(value)
@@ -738,11 +759,13 @@ function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
   if (record?.version === WORKBENCH_SCENE_VERSION) {
     return stripOwnerInvalidPanelSurfacesFromScene(stripDatabaseLayoutsFromScene(value));
   }
-  if (record?.version === 5 || record?.version === 6) {
-    return stripOwnerInvalidPanelSurfacesFromScene({
-      ...(stripDatabaseLayoutsFromScene(value) as Record<string, unknown>),
-      version: WORKBENCH_SCENE_VERSION,
-    });
+  if (record?.version === 5 || record?.version === 6 || record?.version === 7) {
+    return adoptRawProjectInboxHome(
+      stripOwnerInvalidPanelSurfacesFromScene({
+        ...(stripDatabaseLayoutsFromScene(value) as Record<string, unknown>),
+        version: WORKBENCH_SCENE_VERSION,
+      }),
+    );
   }
   const v4Candidate = record?.version === 4 ? stripDatabaseLayoutsFromScene(value) : value;
   const previousCurrent = WorkbenchSceneSnapshotV4InputSchema.safeParse(v4Candidate);
@@ -833,17 +856,13 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
       if (scene.owner.kind === "project") {
         if (
           !scene.primary ||
-          scene.primary.kind !== "db_view" ||
-          scene.primary.config.routingContext.kind !== "project" ||
-          scene.primary.config.routingContext.projectId !== scene.owner.projectId ||
-          (scene.primary.config.target.kind !== "project-default" &&
-            scene.primary.config.target.kind !== "database-view")
+          scene.primary.kind !== "inbox" ||
+          scene.primary.config.projectId !== scene.owner.projectId
         ) {
           context.addIssue({
             code: "custom",
             path: ["primary"],
-            message:
-              "Project Scene primary must target the Project default or an exact Database View",
+            message: "A Project Scene's Home must be that Project's Inbox",
           });
         }
         if (scene.agentDock === null) {

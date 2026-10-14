@@ -11,6 +11,8 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { StoreAdministration } from "../core-runtime/StoreAdministration";
 import { make as makeInboxApplication } from "./InboxApplication";
 
+const LIBRARY = { kind: "library" } as const;
+
 type ScenarioClient = CoreScenarioContext["client"];
 
 /** Holds one isolated Core scenario open for the lifetime of the test Scope. */
@@ -75,7 +77,7 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
       );
       const message =
         "Homepage feels like a dev tool.\nMaybe it should read like a personal assistant?";
-      const { pageId } = yield* inbox.send({ text: message });
+      const { pageId } = yield* inbox.send({ scope: LIBRARY, text: message });
 
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
@@ -100,7 +102,7 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
         rationale: null,
         producedBy: "Test",
       });
-      const window = yield* inbox.window({ filter: "inbox" });
+      const window = yield* inbox.window({ scope: LIBRARY, filter: "inbox" });
       assert.deepInclude(window.items[0], {
         pageId,
         title: "Homepage positioning",
@@ -131,12 +133,15 @@ it.effect("deleting a message erases it from both views and wakes Store maintena
           }),
         } as unknown as StoreAdministration["Service"]),
       );
-      const { pageId } = yield* inbox.send({ text: "Use the key sk-live-0123456789 for staging" });
+      const { pageId } = yield* inbox.send({
+        scope: LIBRARY,
+        text: "Use the key sk-live-0123456789 for staging",
+      });
       yield* inbox.delete({ pageIds: [pageId] });
 
-      assert.deepEqual((yield* inbox.window({ filter: "inbox" })).items, []);
-      assert.deepEqual((yield* inbox.window({ filter: "processed" })).items, []);
-      assert.strictEqual((yield* inbox.summary).entryCount, 0);
+      assert.deepEqual((yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items, []);
+      assert.deepEqual((yield* inbox.window({ scope: LIBRARY, filter: "processed" })).items, []);
+      assert.strictEqual((yield* inbox.summary({ scope: LIBRARY })).entryCount, 0);
       assert.strictEqual(erasureRequests, 1);
       // The Page is no longer readable anywhere in the Library.
       const page = yield* Effect.promise(() =>

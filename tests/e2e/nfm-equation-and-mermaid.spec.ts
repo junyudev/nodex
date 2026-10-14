@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import type { ElectronApplication } from "playwright";
 import type { ScenarioManifest } from "../../scripts/scenarios/contracts";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -28,7 +29,7 @@ async function openNfmScene(
   await page
     .getByRole("button", { name: "Open Equation and Mermaid", exact: true })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   const card = page.locator(`[data-board-uuid-v7="${pageId}"]`);
   await openBoardPageFromCard({ card, page, tabName: input.tabName });
 
@@ -171,7 +172,7 @@ test("Page Stage preserves its viewport across remount and delayed Block layout"
       });
       expect(Math.abs(expectedOffset - 120)).toBeLessThan(2);
 
-      await page.getByRole("tab", { name: "Project Home", exact: true }).click();
+      await openProjectBoard(page);
       await page.getByRole("tab", { name: "Exercise Viewport Continuity", exact: true }).click();
 
       const restoredSurface = page.locator(`[data-page-stage-page-id="${pageId}"]:visible`);

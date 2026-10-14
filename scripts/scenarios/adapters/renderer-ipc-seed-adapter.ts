@@ -1,5 +1,11 @@
 import type { Page } from "playwright";
-import type { InboxDispatchInput, InboxWindow, InboxWindowFilter } from "../../../src/shared/inbox";
+import {
+  LIBRARY_INBOX,
+  type InboxDispatchInput,
+  type InboxScope,
+  type InboxWindow,
+  type InboxWindowFilter,
+} from "../../../src/shared/inbox";
 
 import type { CoreResult } from "../../../src/shared/core-result";
 import type { IpcApi } from "../../../src/shared/ipc-api";
@@ -390,8 +396,11 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return { totalRows: snapshot.totalRows, commitSeq: snapshot.commitSeq, groups };
   }
 
-  async sendInboxMessage(text: string): Promise<{ readonly pageId: string }> {
-    return await this.#invoke("inbox:send", { text });
+  async sendInboxMessage(
+    text: string,
+    scope: InboxScope = LIBRARY_INBOX,
+  ): Promise<{ readonly pageId: string }> {
+    return await this.#invoke("inbox:send", { scope, text });
   }
 
   async proposeInboxDispatch(): Promise<void> {
@@ -414,8 +423,11 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     throw new Error("Inbox delivery is seeded only through Core");
   }
 
-  async readInbox(filter: InboxWindowFilter): Promise<InboxWindow> {
-    return await this.#invoke("inbox:window", { filter, first: 200 });
+  async readInbox(
+    filter: InboxWindowFilter,
+    scope: InboxScope = LIBRARY_INBOX,
+  ): Promise<InboxWindow> {
+    return await this.#invoke("inbox:window", { scope, filter, first: 200 });
   }
 
   async createRelatedChat(input: ScenarioRelatedChatSeed): Promise<ScenarioRelatedChatSeedResult> {

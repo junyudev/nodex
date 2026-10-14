@@ -1,5 +1,6 @@
 import { invokeIpc } from "./support/editor-scenario";
 import { expect, test, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -369,7 +370,7 @@ test("structural gestures preserve Files and hand off source and target independ
           }
         }
         // One native List gesture reuses the same source and exact command boundary.
-        await page.getByRole("tab", { name: "Project Home", exact: true }).click();
+        await openProjectBoard(page);
         await page
           .getByRole("tablist", { name: "Database views" })
           .locator(`[data-database-view-tab-menu-target="${fixture.listViewId}"]`)

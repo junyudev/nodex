@@ -10,9 +10,11 @@ import type {
   InboxDispatchInput,
   InboxPageIdsInput,
   InboxProposalInput,
+  InboxScope,
   InboxSendInput,
   InboxSetKindInput,
   InboxSetStateInput,
+  InboxSummaryInput,
   InboxWindowInput,
 } from "../inbox";
 
@@ -48,8 +50,18 @@ export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("move_to_project"), projectId: id }).strict(),
 ]) satisfies z.ZodType<InboxDispatchAction>;
 
+export const InboxScopeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("library") }).strict(),
+  z.object({ kind: z.literal("project"), projectId: id }).strict(),
+]) satisfies z.ZodType<InboxScope>;
+
+export const InboxSummaryInputSchema = z
+  .object({ scope: InboxScopeSchema })
+  .strict() satisfies z.ZodType<InboxSummaryInput>;
+
 export const InboxWindowInputSchema = z
   .object({
+    scope: InboxScopeSchema,
     filter: InboxWindowFilterSchema,
     after: z.string().min(1).max(4096).nullable().optional(),
     first: z.number().int().min(1).max(200).optional(),
@@ -58,6 +70,7 @@ export const InboxWindowInputSchema = z
 
 export const InboxSendInputSchema = z
   .object({
+    scope: InboxScopeSchema,
     text: z
       .string()
       .refine((value) => value.trim().length > 0, "Message is empty")

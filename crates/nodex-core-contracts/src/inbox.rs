@@ -1,8 +1,9 @@
 //! Inbox capture, dispatch proposals, and dispatch outbox contracts.
 //!
-//! The Inbox is a Workspace-owned triage surface over ordinary Library Pages.
-//! A Page enters it as an Inbox entry with immutable provenance. A dispatch
-//! proposal is a versioned, typed suggestion for one or more entries; only an
+//! An Inbox is a Workspace-owned triage surface over ordinary Library Pages. The
+//! Library has one Inbox and every Project has its own. A Page enters exactly one of
+//! them as an Inbox entry with immutable provenance. A dispatch proposal is a
+//! versioned, typed suggestion for one or more entries of the same Inbox; only an
 //! explicit confirmation turns it into executable dispatch work.
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,26 @@ use utoipa::ToSchema;
 
 use crate::collection::CollectionWindow;
 use crate::workspace::ProjectWorkspaceThreadStatus;
+
+/// Which Inbox owns an entry's decision. It is fixed at capture and does not follow
+/// the Page: a message filed into another Project stays in its own Inbox's History.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxScope {
+    /// The Library Inbox, for thoughts whose Project is not known yet.
+    Library,
+    /// A Project's own Inbox. Its messages are Pages in the Project's Database.
+    Project { project_id: String },
+}
+
+impl ProjectWorkspaceInboxScope {
+    pub fn project_id(&self) -> Option<&str> {
+        match self {
+            Self::Library => None,
+            Self::Project { project_id } => Some(project_id),
+        }
+    }
+}
 
 /// User-editable classification of what an Inbox entry is. It never implies
 /// that work is authorized.
@@ -72,7 +93,8 @@ pub enum ProjectWorkspaceInboxDispatchAction {
     },
     /// Send a follow-up to one existing chat. Delivery waits until it is idle.
     SendToChat { session_id: String, prompt: String },
-    /// Move the entries' Pages into one active Project's primary Database.
+    /// File the entries into one active Project: their Pages move into its primary
+    /// Database and the entries are kept, without reopening there.
     MoveToProject { project_id: String },
 }
 
@@ -103,10 +125,14 @@ pub enum ProjectWorkspaceInboxSource {
     },
 }
 
+/// Where a message's Page lives, relative to the Inbox that received it.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceInboxLocation {
+    /// Still in its Inbox's home Database: the Library Inbox Database, or the
+    /// Project's own Database for a Project's Inbox.
     Inbox,
+    /// Filed or moved into another Database.
     Database {
         database_id: String,
         database_name: String,
@@ -121,7 +147,7 @@ pub enum ProjectWorkspaceInboxLocation {
 pub enum ProjectWorkspaceInboxWindowFilter {
     /// Messages that still need the user: undecided, being suggested, or failed.
     Inbox,
-    /// Messages the user has handled: dispatched, moved out, kept, or done.
+    /// Messages the user has handled: dispatched, filed, kept, or done.
     Processed,
 }
 
@@ -171,6 +197,7 @@ pub struct ProjectWorkspaceInboxItem {
     pub state: ProjectWorkspaceInboxEntryState,
     pub suggestion_state: ProjectWorkspaceInboxSuggestionState,
     pub suggestion_error: Option<String>,
+    pub scope: ProjectWorkspaceInboxScope,
     pub location: ProjectWorkspaceInboxLocation,
     pub proposal: Option<ProjectWorkspaceInboxProposal>,
     pub revision: i64,
@@ -178,6 +205,7 @@ pub struct ProjectWorkspaceInboxItem {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxSummary {
+    /// The Database new messages of this Inbox become Pages in, once it exists.
     pub database_id: Option<String>,
     pub view_id: Option<String>,
     pub entry_count: u32,
@@ -186,6 +214,20 @@ pub struct ProjectWorkspaceInboxSummary {
     pub needs_decision_count: u32,
     pub pending_suggestion_count: u32,
     pub dispatching_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxProjectCount {
+    pub project_id: String,
+    pub inbox_count: u32,
+}
+
+/// Messages still waiting in each Inbox, for navigation badges.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxCounts {
+    pub library_count: u32,
+    /// Only active Projects whose Inbox holds at least one message.
+    pub projects: Vec<ProjectWorkspaceInboxProjectCount>,
 }
 
 /// One entry the suggestion Agent should consider, with bounded content.
@@ -198,6 +240,7 @@ pub struct ProjectWorkspaceInboxSuggestionInput {
     pub source: ProjectWorkspaceInboxSource,
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
     pub submitted_at: String,
+    pub scope: ProjectWorkspaceInboxScope,
     pub basis: ProjectWorkspaceInboxPageBasis,
     /// The Page still has Core's provisional title, so the suggestion Agent may name it.
     pub title_provisional: bool,
@@ -230,9 +273,11 @@ pub struct ProjectWorkspaceInboxContextProposal {
 }
 
 /// Bounded routing context for the suggestion Agent. It intentionally carries
-/// no transcripts or Page bodies other than the entries being considered.
+/// no transcripts or Page bodies other than the entries being considered. For a
+/// Project's Inbox, Projects and chats are narrowed to that Project.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxDispatchContext {
+    pub scope: ProjectWorkspaceInboxScope,
     pub entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
     pub projects: Vec<ProjectWorkspaceInboxContextProject>,
     pub sessions: Vec<ProjectWorkspaceInboxContextSession>,

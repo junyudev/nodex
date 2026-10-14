@@ -6,6 +6,7 @@ import type {
   InboxSendInput,
   InboxSetKindInput,
   InboxSetStateInput,
+  InboxSummaryInput,
   InboxWindowInput,
   UpdateInboxSettingsInput,
 } from "../../shared/inbox";
@@ -54,7 +55,9 @@ const settingsCommand = defineRendererCommand({
   protocol: { kind: "pending_operation" },
 });
 
-export const readInboxSummary = () => invokeRendererQuery("inbox:summary");
+export const readInboxSummary = (input: InboxSummaryInput) =>
+  invokeRendererQuery("inbox:summary", input);
+export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxWindowInput) =>
   invokeRendererQuery("inbox:window", input);
 export const sendInboxMessage = (input: InboxSendInput) => invokePlainCommand(commands.send, input);

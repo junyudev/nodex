@@ -22,6 +22,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
+  scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: null,
   revision: 1,
@@ -108,25 +109,22 @@ describe("inboxTriageModel", () => {
 });
 
 describe("isInboxItemHandled", () => {
-  it("matches Core: confirmed chats, filed Pages, kept and done messages leave the Inbox", () => {
+  it("matches Core: confirmed chats and filed, kept, or done messages leave the Inbox", () => {
+    const elsewhere = {
+      kind: "database",
+      databaseId: "db",
+      databaseName: "Nodex DB",
+      projectId: "project:nodex",
+      projectName: "Nodex",
+    } as const;
     expect(isInboxItemHandled(item({ proposal: proposal() }))).toBe(false);
     expect(isInboxItemHandled(item({ proposal: proposal({ state: "dispatching" }) }))).toBe(true);
     expect(isInboxItemHandled(item({ proposal: proposal({ state: "failed" }) }))).toBe(false);
     expect(isInboxItemHandled(item({ state: "kept" }))).toBe(true);
     expect(isInboxItemHandled(item({ state: "done" }))).toBe(true);
-    expect(
-      isInboxItemHandled(
-        item({
-          location: {
-            kind: "database",
-            databaseId: "db",
-            databaseName: "Nodex DB",
-            projectId: "project:nodex",
-            projectName: "Nodex",
-          },
-        }),
-      ),
-    ).toBe(true);
+    // Filing marks the message kept; moving its Page by other means does not handle it.
+    expect(isInboxItemHandled(item({ state: "kept", location: elsewhere }))).toBe(true);
+    expect(isInboxItemHandled(item({ location: elsewhere }))).toBe(false);
   });
 });
 

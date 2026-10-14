@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Home and Space separate chats and Projects from content browsing while remembering each destination. The navigation rail remains available with the sidebar hidden, and each split panel has an Open tabs chooser with live titles and counts.
 
-- An Inbox above New chat captures thoughts, todos and questions as Pages without first choosing a Project. A suggestion Agent names each message and proposes a new chat, an existing chat, a Project, or keeping it, right on the message; nothing runs until you confirm. Handled messages leave for History, so the Inbox can reach zero, and a message sent by mistake can be deleted for good. Agents and `nodex inbox send` can leave messages there too.
+- An Inbox above New chat captures thoughts, todos and questions as Pages without first choosing a Project. A suggestion Agent names each message and proposes a new chat, an existing chat, a Project, or keeping it, right on the message; nothing runs until you confirm. Handled messages leave for History, so the Inbox can reach zero, and a message sent by mistake can be deleted for good. Agents and `nodex inbox send` can leave messages too, in the Inbox of the Project they work in.
 
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
 
@@ -34,6 +34,7 @@ All notable changes to this project will be documented in this file.
 
 - Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
 
+- A Project now opens on its own Inbox. Thoughts about the Project land there as Pages on its Board, suggestions stay inside the Project, and the sidebar counts what is waiting. The Board opens beside the Inbox as an ordinary tab, and `⌘⇧D` captures into the Inbox of the Project you are in.
 - Nodex starts faster by loading optional panels when opened, with a restart action if a view cannot load.
 
 - Agents can read and write all Projects, Pages and Library resources in the current Profile, including across Sessions and from background tasks. Native execution uses full access and automatically approves permission requests while retaining questions that need your input.

@@ -74,7 +74,8 @@ export const live: Layer.Layer<
       task: Handler<Channel>,
     ) => invokeIpc.handlePlainCommand(channel, task);
 
-    yield* query("inbox:summary", () => inbox.summary);
+    yield* query("inbox:summary", (_, input) => inbox.summary(input));
+    yield* query("inbox:counts", () => inbox.counts);
     yield* query("inbox:window", (_, input) => inbox.window(input));
     yield* command("inbox:send", (_, input) => inbox.send(input));
     yield* command("inbox:confirm", (_, input) => inbox.confirm(input));

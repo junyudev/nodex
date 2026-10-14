@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../scripts/scenarios/scenarios/board-dense";
@@ -108,9 +109,7 @@ test("opens Page Stage references in the invoking tab group", async () => {
       const sourceLeafId = await sourceLeaf.getAttribute("data-panel-group-leaf-id");
       if (!sourceLeafId) throw new Error("Source Page Stage has no tab group");
 
-      const projectHomeTab = page.getByRole("tab", { name: "Project Home" });
-      await projectHomeTab.click();
-      await expect(projectHomeTab).toHaveAttribute("aria-selected", "true");
+      await openProjectBoard(page);
       await expect(sourceLeaf).toHaveAttribute("data-panel-group-leaf-active", "false");
 
       await sourceSurface

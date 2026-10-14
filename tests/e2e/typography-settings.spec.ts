@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -275,6 +276,7 @@ test("persists typography across real conversation, Page, settings and Electron 
     await holdReviewFrame(page);
     await page.screenshot({ path: path.join(artifacts, "default.png") });
     await page.getByRole("button", { name: "Open Typography review", exact: true }).click();
+    await openProjectBoard(page);
     await openBoardPageFromCard({
       card: page.locator(`[data-board-uuid-v7="${pageId}"]`),
       page,
@@ -570,6 +572,7 @@ test("persists typography across real conversation, Page, settings and Electron 
     await expect(page.locator(`[data-page-stage-page-id="${pageId}"] .bn-editor`)).toBeVisible();
     await page.reload();
     await waitForNodexWindowInitialization(page);
+    await openProjectBoard(page);
     await openBoardPageFromCard({
       card: page.locator(`[data-board-uuid-v7="${pageId}"]`),
       page,
@@ -617,6 +620,7 @@ test("persists typography across real conversation, Page, settings and Electron 
       { ui: restarted.ui, code: restarted.code, page: restarted.page },
     );
     await page.getByRole("button", { name: "Open Typography review", exact: true }).click();
+    await openProjectBoard(page);
     await openBoardPageFromCard({
       card: page.locator(`[data-board-uuid-v7="${pageId}"]`),
       page,

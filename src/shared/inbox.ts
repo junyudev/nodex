@@ -15,6 +15,25 @@ export type InboxProposalState =
 /** `inbox` holds what still needs the user; `processed` is the handled history. */
 export type InboxWindowFilter = "inbox" | "processed";
 
+/**
+ * Which Inbox owns a message's decision: the Library Inbox, for thoughts whose Project is not
+ * known yet, or one Project's own Inbox. It is fixed when the message arrives.
+ */
+export type InboxScope =
+  | { readonly kind: "library" }
+  | { readonly kind: "project"; readonly projectId: string };
+
+export const LIBRARY_INBOX: InboxScope = { kind: "library" };
+
+export const projectInbox = (projectId: string): InboxScope => ({ kind: "project", projectId });
+
+/** A stable identity for caches and keys. */
+export const inboxScopeKey = (scope: InboxScope): string =>
+  scope.kind === "library" ? "library" : `project:${scope.projectId}`;
+
+export const inboxScopeProjectId = (scope: InboxScope): string | null =>
+  scope.kind === "project" ? scope.projectId : null;
+
 export const INBOX_ENTRY_KINDS = [
   "note",
   "todo",
@@ -102,6 +121,7 @@ export interface InboxItem {
   readonly state: InboxEntryState;
   readonly suggestionState: InboxSuggestionState;
   readonly suggestionError: string | null;
+  readonly scope: InboxScope;
   readonly location: InboxLocation;
   readonly proposal: InboxProposal | null;
   readonly revision: number;
@@ -114,6 +134,7 @@ export interface InboxWindow {
 }
 
 export interface InboxSummary {
+  /** The Database this Inbox's messages become Pages in, once it exists. */
   readonly databaseId: string | null;
   readonly viewId: string | null;
   readonly entryCount: number;
@@ -124,13 +145,26 @@ export interface InboxSummary {
   readonly dispatchingCount: number;
 }
 
+/** Messages still waiting in each Inbox, for navigation badges. */
+export interface InboxCounts {
+  readonly library: number;
+  /** Active Projects whose Inbox holds at least one message, keyed by Project. */
+  readonly projects: Readonly<Record<string, number>>;
+}
+
+export interface InboxSummaryInput {
+  readonly scope: InboxScope;
+}
+
 export interface InboxWindowInput {
+  readonly scope: InboxScope;
   readonly filter: InboxWindowFilter;
   readonly after?: string | null;
   readonly first?: number;
 }
 
 export interface InboxSendInput {
+  readonly scope: InboxScope;
   readonly text: string;
 }
 

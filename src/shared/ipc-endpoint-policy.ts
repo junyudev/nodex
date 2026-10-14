@@ -208,6 +208,7 @@ type QueryEndpointPolicy =
   | "page-chats:activity-summaries"
   | "page-chats:list"
   | "inbox:summary"
+  | "inbox:counts"
   | "inbox:window"
   | "files:read"
   | "page-ownership-path:resolve"

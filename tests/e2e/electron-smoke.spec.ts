@@ -7,6 +7,7 @@ import {
   dispatchEditorAncestorScroll,
 } from "./support/drag-block-with-mouse";
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import {
   _electron as electron,
   type CDPSession,
@@ -1115,7 +1116,7 @@ test.describe("parallel functional Electron smoke", () => {
         await page
           .getByRole("button", { name: "Open Image hierarchy clipboard", exact: true })
           .click();
-        await page.getByRole("tab", { name: "Project Home" }).waitFor();
+        await openProjectBoard(page);
         const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
         await expect(board).toBeVisible({ timeout: 15_000 });
         await openBoardPageFromCard({
@@ -1268,7 +1269,7 @@ test.describe("parallel functional Electron smoke", () => {
       page.on("pageerror", (error) => pageErrors.push(error.message));
 
       await page.getByRole("button", { name: "Open Structural subpage edit", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(board).toBeVisible({ timeout: 15_000 });
       await openBoardPageFromCard({
@@ -1489,7 +1490,7 @@ test.describe("parallel functional Electron smoke", () => {
       page.on("pageerror", (error) => pageErrors.push(error.message));
 
       await page.getByRole("button", { name: "Open Subpage turn into", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(board).toBeVisible({ timeout: 15_000 });
       await openBoardPageFromCard({
@@ -1618,7 +1619,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page
         .getByRole("button", { name: "Open Retained structural paste", exact: true })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${parent.pageId}"]`),
@@ -1742,7 +1743,7 @@ test.describe("parallel functional Electron smoke", () => {
       await page
         .getByRole("button", { name: "Open Structural consecutive cut", exact: true })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -1834,7 +1835,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await page.getByRole("button", { name: "Open Structural subpage cut", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(board).toBeVisible({ timeout: 15_000 });
       await openBoardPageFromCard({
@@ -2185,7 +2186,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await page.getByRole("button", { name: "New Page or Database" }).click({
         force: true,
       });
@@ -2342,7 +2343,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await page
         .getByRole("button", {
           name: "Actions for Source Page",
@@ -2422,7 +2423,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
 
@@ -2664,7 +2665,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await expect(
         page.locator('[data-board-column-root][data-board-column-id="triage"]'),
       ).toBeVisible({
@@ -2756,7 +2757,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const card = page.locator(`[data-board-uuid-v7="${fixturePage.pageId}"]`);
       await expect(card).toBeVisible({ timeout: 15_000 });
       await card.click();
@@ -2894,7 +2895,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
       const openFixture = async (window: Page): Promise<Locator> => {
         await window.getByRole("button", { name: "Open Block children", exact: true }).click();
-        await window.getByRole("tab", { name: "Project Home" }).waitFor();
+        await openProjectBoard(window);
         const board = window.locator('[data-board-column-root][data-board-column-id="triage"]');
         const card = board.locator(`[data-board-uuid-v7="${fixturePage.pageId}"]`);
         await expect(card).toBeVisible({ timeout: 15_000 });
@@ -3027,7 +3028,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
       await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(1);
@@ -3123,7 +3124,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await page.getByRole("button", { name: "Open Editor subtree DnD", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -3220,7 +3221,7 @@ test.describe("parallel functional Electron smoke", () => {
       const existingChildId = requireString(seeded.blockIds[3], "Existing toggle child Block id");
 
       await page.getByRole("button", { name: "Open Editor toggle DnD", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await openBoardPageFromCard({
         card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
@@ -3321,7 +3322,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await page.getByRole("button", { name: "Open Instant structural DnD", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
@@ -3590,7 +3591,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
       await expect(triageColumn.locator("[data-board-uuid-v7]")).toHaveCount(3, {
@@ -3740,7 +3741,7 @@ test.describe("parallel functional Electron smoke", () => {
         .first();
       await expect(listSourceBlock).toBeVisible({ timeout: 15_000 });
 
-      await page.getByRole("tab", { name: "Project Home", exact: true }).click();
+      await openProjectBoard(page);
       await page
         .getByRole("tablist", { name: "Database views" })
         .locator(`[data-database-view-tab-menu-target="${listViewId}"]`)
@@ -4075,7 +4076,7 @@ test.describe("parallel functional Electron smoke", () => {
       await targetPage.waitForLoadState("domcontentloaded");
       await targetPage.evaluate(() => window.api?.awaitInitialization?.());
       await targetPage.getByRole("button", { name: "Open Page File move", exact: true }).click();
-      await targetPage.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(targetPage);
       const targetWindowColumn = targetPage.locator(
         '[data-board-column-root][data-board-column-id="triage"]',
       );
@@ -4507,7 +4508,7 @@ test("keeps Page ready and idle CPU bounded with 14k LocalCommit history @perfor
         exact: true,
       })
       .click();
-    await page.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(page);
     await expect
       .poll(async () => await page.locator("[data-board-uuid-v7]").count(), { timeout: 15_000 })
       .toBe(PAGE_READY_ROUNDS);
@@ -4824,7 +4825,7 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
         exact: true,
       })
       .click();
-    await page.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(page);
     const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
     await expect(triageColumn).toBeVisible({ timeout: 15_000 });
     await expect
@@ -4856,7 +4857,7 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
         exact: true,
       })
       .click();
-    await audiencePage.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(audiencePage);
     const webContentsIds = await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
         .filter((window) => !window.isDestroyed())
@@ -5283,7 +5284,7 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
         exact: true,
       })
       .click();
-    await page.getByRole("tab", { name: "Project Home" }).waitFor();
+    await openProjectBoard(page);
     const boardColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
     await expect(boardColumn).toBeVisible({ timeout: 15_000 });
     const initialBoardCards = page.locator("[data-board-uuid-v7]");

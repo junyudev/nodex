@@ -7,6 +7,7 @@ import {
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
   type WorkbenchSceneOwner,
+  type WorkbenchSurfaceDescriptor,
 } from "../../shared/workbench-scene";
 import {
   createMaitaiStore,
@@ -46,11 +47,30 @@ function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "project", projectId:
   return { owner, sceneOwner, scene };
 }
 
+/** A Project's Board opens beside its Inbox Home as an ordinary, selected tab. */
+function boardFixture() {
+  const sceneOwner = { kind: "project", projectId: "project-a" } as const;
+  const board = {
+    id: "surface:board",
+    kind: "db_view",
+    titleSnapshot: "Board",
+    config: {
+      routingContext: { kind: "project", projectId: "project-a" },
+      target: { kind: "project-default" },
+    },
+    stateKey: 0,
+    state: null,
+  } satisfies WorkbenchSurfaceDescriptor;
+  const { owner } = fixture(sceneOwner);
+  owner.setScene(sceneOwner, (scene) =>
+    createWorkbenchSceneSurface(scene!, { panelId: "right", surface: board }),
+  );
+  return { owner, sceneOwner, surface: board };
+}
+
 describe("Workbench rendered presentation lifetime", () => {
   test("captures the rendered default View and keeps an earlier submission exact after it changes", async () => {
-    const { owner, sceneOwner, scene } = fixture();
-    if (scene.primary?.kind !== "db_view") throw new Error("Expected Project primary View");
-    const surface = scene.primary;
+    const { owner, sceneOwner, surface } = boardFixture();
     const view = renderHook(
       ({ databaseViewId }: { databaseViewId: string | null }) =>
         useWorkbenchDatabaseViewPresentation({ owner, sceneOwner, surface }, databaseViewId),
@@ -88,9 +108,7 @@ describe("Workbench rendered presentation lifetime", () => {
   });
 
   test("matches the original descriptor and prevents old cleanup from revoking a replacement", () => {
-    const { owner, sceneOwner, scene } = fixture();
-    if (scene.primary?.kind !== "db_view") throw new Error("Expected Project primary View");
-    const surface = scene.primary;
+    const { owner, sceneOwner, surface } = boardFixture();
     const releaseOld = owner.registerResolvedDatabaseView(sceneOwner, surface, "view-first");
     const releaseNew = owner.registerResolvedDatabaseView(sceneOwner, surface, "view-second");
     releaseOld();

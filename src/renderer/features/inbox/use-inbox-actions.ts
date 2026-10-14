@@ -4,6 +4,7 @@ import type {
   InboxEntryKind,
   InboxEntryState,
   InboxProposal,
+  InboxScope,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { toast } from "@/components/ui/toast";
@@ -42,8 +43,8 @@ const clearedLabel = (outcome: "kept" | "done", count: number): string => {
   return count > 1 ? `Marked ${count} messages done` : "Marked done";
 };
 
-/** Inbox commands with uniform failure reporting and invalidation. */
-export function useInboxActions(projects: readonly Project[]): InboxActions {
+/** Inbox commands with uniform failure reporting and invalidation. New messages go to `scope`. */
+export function useInboxActions(projects: readonly Project[], scope: InboxScope): InboxActions {
   const queryClient = useQueryClient();
   const moveToProject = useMoveInboxPagesToProject();
 
@@ -95,12 +96,12 @@ export function useInboxActions(projects: readonly Project[]): InboxActions {
   };
 
   return {
-    send: (text) => run("The message could not be saved", () => sendInboxMessage({ text })),
+    send: (text) => run("The message could not be saved", () => sendInboxMessage({ scope, text })),
     confirm: (proposal, edited) =>
       run("The suggestion could not be confirmed", async () => {
         const action = edited ?? proposal.action;
         if (action.type === "move_to_project") {
-          // The move is the user's own Library relocation; Core then records it as done.
+          // The move is the user's own Library relocation; Core then records it as filed.
           await moveToProject(proposal.pageIds, requireProject(action.projectId));
         }
         await confirmInboxDispatch({
@@ -115,6 +116,7 @@ export function useInboxActions(projects: readonly Project[]): InboxActions {
       run("The message could not be dispatched", async () => {
         if (action.type === "move_to_project") {
           await moveToProject(pageIds, requireProject(action.projectId));
+          await dispatchInboxEntries({ pageIds, action });
           return;
         }
         if (action.type === "keep") {

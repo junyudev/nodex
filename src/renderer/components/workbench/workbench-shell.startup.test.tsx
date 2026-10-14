@@ -16,31 +16,30 @@ import {
 import { renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
 
 describe("Workbench startup readiness", () => {
-  test("waits for the restored Board's data before reporting ready", async () => {
-    let resolveBoard = (): void => undefined;
-    const initialBoardDataReady = new Promise<void>((resolve) => {
-      resolveBoard = resolve;
+  test("waits for the restored Project Inbox's messages before reporting ready", async () => {
+    let resolveInbox = (): void => undefined;
+    const initialInboxDataReady = new Promise<void>((resolve) => {
+      resolveInbox = resolve;
     });
     const readiness = createApplicationReadiness();
     const ready = vi.fn();
     void readiness.ready.then(ready);
     const view = renderWorkbench({
       sessionsByProject: {},
-      initialBoardDataReady,
+      initialInboxDataReady,
       applicationReadiness: readiness,
       initialWindowLayoutSnapshot: {
         ...createDefaultWorkbenchLayoutSnapshot(),
         location: { kind: "project", projectId: "alpha" },
       },
     });
-    await view.findByText("Opening Database…");
+    await view.findByTestId("inbox-route");
     await settleAsyncRender();
     expect(ready).not.toHaveBeenCalled();
 
-    await act(async () => resolveBoard());
+    await act(async () => resolveInbox());
     await waitFor(() => expect(ready).toHaveBeenCalledOnce());
-    expect(view.queryByText("Opening Database…")).toBeNull();
-    expect(view.getByRole("button", { name: "Card One" })).toBeTruthy();
+    expect(view.getByText("Nothing in Alpha yet")).toBeTruthy();
   });
 
   test("waits for Board data after selected chat detail materializes its panels", async () => {

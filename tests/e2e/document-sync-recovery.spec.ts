@@ -5,6 +5,7 @@ import { openPageDocument } from "../../src/shared/block-documents";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { openBoardPageFromCard } from "./support/open-board-page";
@@ -50,7 +51,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
         BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: 1440, height: 960 }),
       );
       await page.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await openBoardPageFromCard({
         card: page.locator(`[data-board-uuid-v7="${sourceId}"]`),
         page,
@@ -296,7 +297,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       expect(await page.evaluate(() => window.api?.invoke("window:new", {}))).toBe(true);
       const audience = await audienceOpened;
       await audience.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
-      await audience.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(audience);
       await openBoardPageFromCard({
         card: audience.locator(`[data-board-uuid-v7="${sourceId}"]`),
         page: audience,
@@ -369,7 +370,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       await expect(review).toHaveCount(0);
       await expect(audienceReview).toHaveCount(0);
       await page.reload();
-      await page.getByRole("tab", { name: "Project Home" }).waitFor();
+      await openProjectBoard(page);
       await expect(review).toHaveCount(0);
       expect((await seed.readPage(manifest.projectId, sourceId)).title).toBe(
         "Edit and recover · recovered draft",

@@ -1019,7 +1019,11 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [sessionId: string, input: PageChatLinkInput];
     result: void;
   };
-  "inbox:summary": { args: []; result: import("./inbox").InboxSummary };
+  "inbox:summary": {
+    args: [input: import("./inbox").InboxSummaryInput];
+    result: import("./inbox").InboxSummary;
+  };
+  "inbox:counts": { args: []; result: import("./inbox").InboxCounts };
   "inbox:window": {
     args: [input: import("./inbox").InboxWindowInput];
     result: import("./inbox").InboxWindow;

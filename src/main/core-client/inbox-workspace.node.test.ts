@@ -28,6 +28,7 @@ describe("Inbox over the real Core transport", () => {
 
       const window = await client.workspaceRead({
         kind: "inbox_window",
+        scope: { kind: "library" },
         filter: "inbox",
         window: { after: null, first: 20 },
       });
@@ -76,7 +77,10 @@ describe("Inbox over the real Core transport", () => {
           dispatched_thread_id: null,
         },
       });
-      const summary = await client.workspaceRead({ kind: "inbox_summary" });
+      const summary = await client.workspaceRead({
+        kind: "inbox_summary",
+        scope: { kind: "library" },
+      });
       if (summary.value.kind !== "inbox_summary") throw new Error("Wrong summary variant");
       expect(inboxSummaryFromCore(summary.value.summary)).toMatchObject({
         entryCount: 1,
@@ -85,6 +89,7 @@ describe("Inbox over the real Core transport", () => {
       });
       const dispatched = await client.workspaceRead({
         kind: "inbox_window",
+        scope: { kind: "library" },
         filter: "processed",
         window: { after: null, first: 20 },
       });

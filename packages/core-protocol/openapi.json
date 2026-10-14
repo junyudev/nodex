@@ -6657,6 +6657,7 @@
                 "source",
                 "state",
                 "suggestion_state",
+                "scope",
                 "location",
                 "revision"
               ],
@@ -6702,6 +6703,9 @@
                 "revision": {
                   "type": "integer",
                   "format": "int64"
+                },
+                "scope": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
                 },
                 "source": {
                   "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
@@ -30337,7 +30341,7 @@
               },
               {
                 "type": "object",
-                "description": "Captures one message as a Page in the Inbox Database. The Inbox Database is\ncreated on first use. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
                 "required": [
                   "page_id",
                   "document_id",
@@ -30357,6 +30361,13 @@
                   "page_id": {
                     "type": "string"
                   },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The Project whose Inbox receives the message. Only the Desktop Host chooses;\nan Agent Turn uses its own Project and the command line its bound Project."
+                  },
                   "text": {
                     "type": "string"
                   },
@@ -30370,7 +30381,7 @@
               },
               {
                 "type": "object",
-                "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in the Inbox Database qualify.",
+                "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in their own Inbox's Database qualify.",
                 "required": [
                   "page_ids",
                   "kind"
@@ -35278,6 +35289,7 @@
               {
                 "type": "object",
                 "required": [
+                  "scope",
                   "kind"
                 ],
                 "properties": {
@@ -35286,12 +35298,31 @@
                     "enum": [
                       "inbox_summary"
                     ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Messages still waiting in the Library Inbox and in each Project's Inbox.",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_counts"
+                    ]
                   }
                 }
               },
               {
                 "type": "object",
                 "required": [
+                  "scope",
                   "filter",
                   "window",
                   "kind"
@@ -35306,6 +35337,9 @@
                       "inbox_window"
                     ]
                   },
+                  "scope": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
+                  },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
                   }
@@ -35313,7 +35347,7 @@
               },
               {
                 "type": "object",
-                "description": "Entries the suggestion Agent should consider, oldest first.",
+                "description": "Entries the suggestion Agent should consider, oldest first. One read never\nmixes Inboxes: it returns the oldest waiting entry's Inbox only.",
                 "required": [
                   "limit",
                   "kind"
@@ -37494,6 +37528,28 @@
           }
         }
       },
+      "ProjectWorkspaceInboxCounts": {
+        "type": "object",
+        "description": "Messages still waiting in each Inbox, for navigation badges.",
+        "required": [
+          "library_count",
+          "projects"
+        ],
+        "properties": {
+          "library_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxProjectCount"
+            },
+            "description": "Only active Projects whose Inbox holds at least one message."
+          }
+        }
+      },
       "ProjectWorkspaceInboxDispatchAction": {
         "oneOf": [
           {
@@ -37561,7 +37617,7 @@
           },
           {
             "type": "object",
-            "description": "Move the entries' Pages into one active Project's primary Database.",
+            "description": "File the entries into one active Project: their Pages move into its primary\nDatabase and the entries are kept, without reopening there.",
             "required": [
               "project_id",
               "type"
@@ -37583,8 +37639,9 @@
       },
       "ProjectWorkspaceInboxDispatchContext": {
         "type": "object",
-        "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered.",
+        "description": "Bounded routing context for the suggestion Agent. It intentionally carries\nno transcripts or Page bodies other than the entries being considered. For a\nProject's Inbox, Projects and chats are narrowed to that Project.",
         "required": [
+          "scope",
           "entries",
           "projects",
           "sessions",
@@ -37608,6 +37665,9 @@
             "items": {
               "$ref": "#/components/schemas/ProjectWorkspaceInboxContextProject"
             }
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
           },
           "sessions": {
             "type": "array",
@@ -37717,6 +37777,7 @@
         "oneOf": [
           {
             "type": "object",
+            "description": "Still in its Inbox's home Database: the Library Inbox Database, or the\nProject's own Database for a Project's Inbox.",
             "required": [
               "kind"
             ],
@@ -37731,6 +37792,7 @@
           },
           {
             "type": "object",
+            "description": "Filed or moved into another Database.",
             "required": [
               "database_id",
               "database_name",
@@ -37777,7 +37839,8 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Where a message's Page lives, relative to the Inbox that received it."
       },
       "ProjectWorkspaceInboxPageBasis": {
         "type": "object",
@@ -37797,6 +37860,23 @@
             "format": "int64"
           },
           "page_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceInboxProjectCount": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "inbox_count"
+        ],
+        "properties": {
+          "inbox_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "project_id": {
             "type": "string"
           }
         }
@@ -37912,6 +37992,45 @@
           "failed"
         ]
       },
+      "ProjectWorkspaceInboxScope": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "The Library Inbox, for thoughts whose Project is not known yet.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "library"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A Project's own Inbox. Its messages are Pages in the Project's Database.",
+            "required": [
+              "project_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "Which Inbox owns an entry's decision. It is fixed at capture and does not follow\nthe Page: a message filed into another Project stays in its own Inbox's History."
+      },
       "ProjectWorkspaceInboxSource": {
         "oneOf": [
           {
@@ -38007,6 +38126,7 @@
           "body",
           "source",
           "submitted_at",
+          "scope",
           "basis",
           "title_provisional"
         ],
@@ -38035,6 +38155,9 @@
               "string",
               "null"
             ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxScope"
           },
           "source": {
             "$ref": "#/components/schemas/ProjectWorkspaceInboxSource"
@@ -38073,7 +38196,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "The Database new messages of this Inbox become Pages in, once it exists."
           },
           "dispatching_count": {
             "type": "integer",
@@ -39960,7 +40084,7 @@
           },
           {
             "type": "object",
-            "description": "Captures one message as a Page in the Inbox Database. The Inbox Database is\ncreated on first use. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
             "required": [
               "page_id",
               "document_id",
@@ -39980,6 +40104,13 @@
               "page_id": {
                 "type": "string"
               },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The Project whose Inbox receives the message. Only the Desktop Host chooses;\nan Agent Turn uses its own Project and the command line its bound Project."
+              },
               "text": {
                 "type": "string"
               },
@@ -39993,7 +40124,7 @@
           },
           {
             "type": "object",
-            "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in the Inbox Database qualify.",
+            "description": "Erases messages the user wants gone. Their entries and every suggestion naming them\nleave now; each Page is tombstoned with all its revisions so Store maintenance\ncollects what remains. Only Pages still in their own Inbox's Database qualify.",
             "required": [
               "page_ids",
               "kind"
@@ -49325,6 +49456,24 @@
                           },
                           "summary": {
                             "$ref": "#/components/schemas/ProjectWorkspaceInboxSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "counts",
+                          "kind"
+                        ],
+                        "properties": {
+                          "counts": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceInboxCounts"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_counts"
+                            ]
                           }
                         }
                       },

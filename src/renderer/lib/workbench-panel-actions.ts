@@ -144,15 +144,18 @@ export function isWorkbenchTabKind(
 
 export function filterAvailablePanelActions(
   actions: readonly PanelNewTabAction[],
-  tabs: readonly { readonly kind: WorkbenchTabKind | "conversation" }[],
+  tabs: readonly { readonly kind: WorkbenchTabKind | "conversation" | "inbox" }[],
   panelId: PanelId,
   owner: Parameters<typeof resolveWorkbenchPanelCapabilities>[0]["owner"],
 ): PanelNewTabAction[] {
   const actionsByKind = new Map(actions.map((action) => [action.kind, action]));
+  // An owner's Home (a Session's conversation, a Project's Inbox) is never a new-tab choice.
   const capabilities = resolveWorkbenchPanelCapabilities({
     panelId,
     owner,
-    existingTabKinds: tabs.flatMap((tab) => (tab.kind === "conversation" ? [] : [tab.kind])),
+    existingTabKinds: tabs.flatMap((tab) =>
+      tab.kind === "conversation" || tab.kind === "inbox" ? [] : [tab.kind],
+    ),
   });
   return capabilities.availableActionKinds.flatMap((kind) => {
     const action = actionsByKind.get(kind);

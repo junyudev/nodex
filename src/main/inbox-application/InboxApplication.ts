@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type {
   InboxConfirmInput,
+  InboxCounts,
   InboxDispatchAction,
   InboxDispatchInput,
   InboxEntryKind,
@@ -14,6 +15,7 @@ import type {
   InboxSetKindInput,
   InboxSetStateInput,
   InboxSummary,
+  InboxSummaryInput,
   InboxWindow,
   InboxWindowInput,
 } from "../../shared/inbox";
@@ -26,13 +28,16 @@ import {
   InboxSetKindInputSchema,
   InboxSetStateInputSchema,
   InboxSuggestionRequestInputSchema,
+  InboxSummaryInputSchema,
   InboxWindowInputSchema,
 } from "../../shared/schemas/inbox";
 import { serializeInlineContent } from "../../shared/nfm/serializer-inline";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
+  inboxCountsFromCore,
   inboxDispatchActionToCore,
   inboxItemFromCore,
+  inboxScopeToCore,
   inboxSummaryFromCore,
   type CoreInboxDispatchContext,
   type CoreInboxDispatchWork,
@@ -81,7 +86,9 @@ type InboxEffect<A> = Effect.Effect<A, InboxApplicationError>;
 export class InboxApplication extends Context.Service<
   InboxApplication,
   {
-    readonly summary: InboxEffect<InboxSummary>;
+    readonly summary: (input: InboxSummaryInput) => InboxEffect<InboxSummary>;
+    /** Messages waiting in the Library Inbox and in each Project's Inbox. */
+    readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
     readonly send: (input: InboxSendInput) => InboxEffect<InboxSendResult>;
     readonly confirm: (input: InboxConfirmInput) => InboxEffect<void>;
@@ -147,11 +154,20 @@ export const make = Effect.gen(function* () {
       .apply({ operationId: createOperationId(`inbox.${operation}`), intent }, undefined, null)
       .pipe(Effect.asVoid, Effect.mapError(fail(operation)));
 
-  const summary = read("summary", { kind: "inbox_summary" }).pipe(
+  const summary = Effect.fn("InboxApplication.summary")(function* (input: InboxSummaryInput) {
+    const parsed = yield* parse("summary", () => InboxSummaryInputSchema.parse(input));
+    const snapshot = yield* read("summary", {
+      kind: "inbox_summary",
+      scope: inboxScopeToCore(parsed.scope),
+    });
+    return yield* parse("summary", () =>
+      inboxSummaryFromCore(expectVariant(snapshot, "inbox_summary").summary),
+    );
+  });
+
+  const counts = read("counts", { kind: "inbox_counts" }).pipe(
     Effect.flatMap((snapshot) =>
-      parse("summary", () =>
-        inboxSummaryFromCore(expectVariant(snapshot, "inbox_summary").summary),
-      ),
+      parse("counts", () => inboxCountsFromCore(expectVariant(snapshot, "inbox_counts").counts)),
     ),
   );
 
@@ -159,6 +175,7 @@ export const make = Effect.gen(function* () {
     const parsed = yield* parse("window", () => InboxWindowInputSchema.parse(input));
     const snapshot = yield* read("window", {
       kind: "inbox_window",
+      scope: inboxScopeToCore(parsed.scope),
       filter: parsed.filter,
       window: { after: parsed.after ?? null, first: parsed.first ?? 50 },
     });
@@ -180,6 +197,7 @@ export const make = Effect.gen(function* () {
       page_id: pageId,
       document_id: createUuidV7(),
       text: parsed.text,
+      project_id: parsed.scope.kind === "project" ? parsed.scope.projectId : null,
     });
     return { pageId } satisfies InboxSendResult;
   });
@@ -369,6 +387,7 @@ export const make = Effect.gen(function* () {
 
   return InboxApplication.of({
     summary,
+    counts,
     window,
     send,
     confirm,

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../scripts/scenarios/scenarios/board-dense";
 import { openBoardPageFromCard } from "./support/open-board-page";
@@ -12,6 +13,7 @@ test("keeps Page description editing and history live across creation and retain
       page.on("pageerror", (error) => errors.push(error.message));
       const mod = process.platform === "darwin" ? "Meta" : "Control";
       await page.getByRole("button", { name: "Open Dense Board", exact: true }).click();
+      await openProjectBoard(page);
       await page.getByRole("button", { name: "Create Page in Triage", exact: true }).click();
       const dialog = page.getByRole("dialog");
       const title = dialog.getByLabel("Page title", { exact: true });

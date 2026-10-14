@@ -14,8 +14,10 @@ import {
 } from "../../shared/nodex-app-tools/workbench-view-content";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
 import {
+  createWorkbenchSceneSurface,
   materializeInitialWorkbenchScene,
   makeWorkbenchSceneKey,
+  type WorkbenchSurfaceDescriptor,
 } from "../../shared/workbench-scene";
 import {
   createMaitaiStore,
@@ -76,8 +78,22 @@ const config = upgradeDatabaseViewConfigV2({
 
 function fixture() {
   const sceneOwner = { kind: "project" as const, projectId: "project-a" };
-  const scene = materializeInitialWorkbenchScene(sceneOwner);
-  if (scene.primary?.kind !== "db_view") throw new Error("Expected default View");
+  // The Project's Board opens beside its Inbox Home as an ordinary tab.
+  const board = {
+    id: "surface:board",
+    kind: "db_view",
+    titleSnapshot: "Board",
+    config: {
+      routingContext: { kind: "project", projectId: "project-a" },
+      target: { kind: "project-default" },
+    },
+    stateKey: 0,
+    state: null,
+  } satisfies WorkbenchSurfaceDescriptor;
+  const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(sceneOwner), {
+    panelId: "right",
+    surface: board,
+  });
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
   const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
@@ -86,8 +102,8 @@ function fixture() {
     scenesByOwnerKey: { [makeWorkbenchSceneKey(sceneOwner)]: scene },
   });
   owner.initialize();
-  const presentation = { owner, sceneOwner, surface: scene.primary };
-  disposers.push(owner.registerResolvedDatabaseView(sceneOwner, scene.primary, "view-a"));
+  const presentation = { owner, sceneOwner, surface: board };
+  disposers.push(owner.registerResolvedDatabaseView(sceneOwner, board, "view-a"));
   const binding = {
     presentation,
     preferencesRevision: 9,
@@ -129,7 +145,7 @@ function fixture() {
   ): WorkbenchCaptureViewRequest => ({
     kind: "capture_view",
     sceneOwner,
-    tabId: scene.primary!.id,
+    tabId: board.id,
     expectedPresentationRevision: owner.read().presentationRevision,
     purpose: "display",
     range: "loaded",

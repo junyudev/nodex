@@ -1,8 +1,10 @@
 //! Inbox capture and dispatch authority.
 //!
-//! Every Inbox message is an ordinary Page in the Library's Inbox Database. The
-//! Workspace owns the entry provenance, triage state, and dispatch proposals
-//! beside it. A proposal is advice: only `ConfirmInboxDispatch` or
+//! Every Inbox message is an ordinary Page. The Library Inbox keeps its Pages in the
+//! Library's Inbox Database; a Project's Inbox keeps them in the Project's own
+//! Database. Which Inbox owns a message's decision is fixed at capture and recorded
+//! on the entry, never derived from where the Page lives now. The Workspace owns the
+//! entry provenance, triage state, and dispatch proposals beside it. A proposal is advice: only `ConfirmInboxDispatch` or
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
@@ -50,7 +52,8 @@ const MAX_SESSION_TITLE_CHARS: usize = 120;
 pub(super) const MAX_AGENT_MESSAGES_PER_TURN: i64 = 5;
 pub(super) const COMMAND_LINE_SOURCE_LABEL: &str = "Command line";
 
-pub(super) struct InboxRegistry {
+/// Where an Inbox's new messages become Pages.
+pub(super) struct InboxHome {
     pub(super) database_id: String,
     pub(super) data_source_id: String,
     pub(super) view_id: String,
@@ -74,7 +77,7 @@ fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
 pub(super) fn read_registry(
     connection: &Connection,
     library_id: &str,
-) -> Result<Option<InboxRegistry>, StoreError> {
+) -> Result<Option<InboxHome>, StoreError> {
     Ok(connection
         .query_row(
             "SELECT inbox.database_block_id, inbox.data_source_id, inbox.view_id \
@@ -91,7 +94,7 @@ pub(super) fn read_registry(
              WHERE inbox.library_id = ?1",
             [library_id],
             |row| {
-                Ok(InboxRegistry {
+                Ok(InboxHome {
                     database_id: row.get(0)?,
                     data_source_id: row.get(1)?,
                     view_id: row.get(2)?,
@@ -101,6 +104,61 @@ pub(super) fn read_registry(
         .optional()?)
 }
 
+/// A Project's Inbox lives in its primary Database: the first active Data Source and
+/// the Database's default View, or its first View when no default is set.
+pub(super) fn project_home(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+) -> Result<Option<InboxHome>, StoreError> {
+    Ok(connection
+        .query_row(
+            "SELECT binding.database_block_id, source.id, COALESCE(default_view.id, (\
+               SELECT view.id FROM database_views view \
+               WHERE view.data_source_id = source.id AND view.lifecycle = 'active' \
+               ORDER BY view.rank_key, view.id LIMIT 1)) \
+             FROM projects project \
+             JOIN project_database_bindings binding ON binding.project_id = project.id \
+               AND binding.library_id = project.library_id AND binding.lifecycle = 'active' \
+             JOIN database_containers container ON container.block_id = binding.database_block_id \
+               AND container.lifecycle = 'active' \
+             JOIN data_sources source ON source.home_database_block_id = binding.database_block_id \
+               AND source.lifecycle = 'active' \
+             LEFT JOIN database_views default_view ON default_view.id = container.default_view_id \
+               AND default_view.data_source_id = source.id AND default_view.lifecycle = 'active' \
+             WHERE project.id = ?1 AND project.library_id = ?2 AND project.lifecycle = 'active' \
+             ORDER BY source.rank_key, source.id LIMIT 1",
+            params![project_id, library_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            },
+        )
+        .optional()?
+        .and_then(|(database_id, data_source_id, view_id)| {
+            view_id.map(|view_id| InboxHome {
+                database_id,
+                data_source_id,
+                view_id,
+            })
+        }))
+}
+
+/// The home of the Inbox named by `scope`: the Library's Inbox Database or a Project's.
+pub(super) fn scope_home(
+    connection: &Connection,
+    library_id: &str,
+    scope: Option<&str>,
+) -> Result<Option<InboxHome>, StoreError> {
+    match scope {
+        None => read_registry(connection, library_id),
+        Some(project_id) => project_home(connection, library_id, project_id),
+    }
+}
+
 /// Creates the Library's Inbox Database when it is missing or no longer active.
 /// A replaced Database keeps its Pages; their entries continue to appear by Page.
 fn ensure_registry(
@@ -108,11 +166,11 @@ fn ensure_registry(
     library_id: &str,
     identity_namespace: &str,
     now: &str,
-) -> Result<(InboxRegistry, bool), StoreError> {
+) -> Result<(InboxHome, bool), StoreError> {
     if let Some(registry) = read_registry(connection, library_id)? {
         return Ok((registry, false));
     }
-    let registry = InboxRegistry {
+    let registry = InboxHome {
         database_id: stable_uuid_v7(identity_namespace, "inbox-database", library_id),
         data_source_id: stable_uuid_v7(identity_namespace, "inbox-data-source", library_id),
         view_id: stable_uuid_v7(identity_namespace, "inbox-view", library_id),
@@ -384,6 +442,36 @@ fn entry_source(
     }
 }
 
+/// Which Inbox receives a new message. The Desktop Host chooses; an Agent Turn and the
+/// command line speak for their own Project. A Project that is no longer active, or has
+/// no Database, cannot hold messages, so theirs go to the Library Inbox.
+fn capture_scope(
+    connection: &Connection,
+    library_id: &str,
+    source: &EntrySource,
+    requested: Option<&str>,
+) -> Result<Option<String>, StoreError> {
+    if let Some(project_id) = requested {
+        if source.kind != "user" {
+            return Err(StoreError::new(
+                StoreErrorCode::Unauthorized,
+                "Only the desktop app chooses which Inbox receives a message",
+                false,
+            ));
+        }
+        validate_id("project_id", project_id)?;
+        super::session_lifecycle::require_project(connection, library_id, project_id, true)?;
+        if project_home(connection, library_id, project_id)?.is_none() {
+            return Err(not_found("The Project has no active Database"));
+        }
+        return Ok(Some(project_id.to_owned()));
+    }
+    let Some(project_id) = source.project_id.as_deref() else {
+        return Ok(None);
+    };
+    Ok(project_home(connection, library_id, project_id)?.map(|_| project_id.to_owned()))
+}
+
 /// Runs inside the mutation so an idempotent replay returns its receipt instead.
 fn require_turn_capacity(
     connection: &Connection,
@@ -492,11 +580,21 @@ pub(super) fn send_message(
     document_id: &str,
     text: &str,
     title: Option<&str>,
+    project_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("page_id", page_id)?;
     validate_id("document_id", document_id)?;
     let message = message_page(text, title)?;
-    let source = entry_source(connection, library_id, context, provenance)?;
+    let mut source = entry_source(connection, library_id, context, provenance)?;
+    let inbox_project = capture_scope(connection, library_id, &source, project_id)?;
+    // A Project's Inbox already names its Project; the label names it only when the
+    // message had to land somewhere else.
+    if source.kind == "command_line"
+        && inbox_project.is_some()
+        && inbox_project == source.project_id
+    {
+        source.label = Some(COMMAND_LINE_SOURCE_LABEL.to_owned());
+    }
     let now = sqlite_now(connection)?;
     run_mutation(
         connection,
@@ -507,13 +605,22 @@ pub(super) fn send_message(
         &now,
         |scope| {
             require_turn_capacity(connection, library_id, &source)?;
+            // The Library Inbox registry also allocates every Inbox's message sequence.
             let (registry, created) = ensure_registry(connection, library_id, operation_id, &now)?;
+            let home = match inbox_project.as_deref() {
+                None => None,
+                Some(project_id) => Some(
+                    project_home(connection, library_id, project_id)?
+                        .ok_or_else(|| not_found("The Project has no active Database"))?,
+                ),
+            };
+            let home_ref = home.as_ref().unwrap_or(&registry);
             let destination = resolve_page_transfer_data_source_destination(
                 connection,
                 library_id,
-                None,
-                &registry.data_source_id,
-                &registry.view_id,
+                inbox_project.as_deref(),
+                &home_ref.data_source_id,
+                &home_ref.view_id,
                 Some(INBOX_STATUS_GROUP_KEY),
                 None,
             )?;
@@ -523,7 +630,7 @@ pub(super) fn send_message(
                     context,
                     commit_context: scope.evidence(),
                     library_id,
-                    actor_project_id: None,
+                    actor_project_id: inbox_project.as_deref(),
                     operation_id,
                     store_epoch,
                     page_id,
@@ -539,8 +646,8 @@ pub(super) fn send_message(
                 "INSERT INTO inbox_entries(\
                    page_id, library_id, seq, submitted_at, source_kind, source_session_id, \
                    source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, \
-                   provisional_title, updated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?4)",
+                   provisional_title, scope_project_id, updated_at\
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?4)",
                 params![
                     page_id,
                     library_id,
@@ -554,6 +661,7 @@ pub(super) fn send_message(
                     source.label,
                     source.budget_key,
                     message.provisional_title,
+                    inbox_project,
                 ],
             )?;
             let mut block_ids = vec![created_page.page_create.page_id.clone()];
@@ -665,7 +773,8 @@ pub(super) fn propose(
     let page_ids = unique_page_ids(input.page_ids, MAX_PROPOSAL_PAGES)?;
     require_open_entries(connection, library_id, &page_ids)?;
     require_basis(connection, &page_ids, input.basis)?;
-    let action = normalize_action(connection, library_id, input.action)?;
+    let scope = require_one_scope(connection, &page_ids)?;
+    let action = normalize_action(connection, library_id, scope.as_deref(), input.action)?;
     let summary = bounded_text("summary", input.summary, MAX_SUMMARY_CHARS)?;
     let rationale = input
         .rationale
@@ -855,10 +964,13 @@ pub(super) fn confirm(
         // An unedited suggestion is valid only for the message content it saw.
         require_basis(connection, &proposal.page_ids, &proposal.basis)?;
     }
-    let action = match edited_action {
-        Some(action) => normalize_action(connection, library_id, action)?,
-        None => normalize_action(connection, library_id, &proposal.action)?,
-    };
+    let scope = require_one_scope(connection, &proposal.page_ids)?;
+    let action = normalize_action(
+        connection,
+        library_id,
+        scope.as_deref(),
+        edited_action.unwrap_or(&proposal.action),
+    )?;
     let now = sqlite_now(connection)?;
     run_mutation(
         connection,
@@ -897,7 +1009,8 @@ pub(super) fn dispatch_entries(
     validate_id("proposal_id", proposal_id)?;
     let page_ids = unique_page_ids(page_ids, MAX_PROPOSAL_PAGES)?;
     require_live_entries(connection, library_id, &page_ids)?;
-    let action = normalize_action(connection, library_id, action)?;
+    let scope = require_one_scope(connection, &page_ids)?;
+    let action = normalize_action(connection, library_id, scope.as_deref(), action)?;
     let basis = current_basis(connection, &page_ids)?;
     let summary = user_summary(&action);
     let now = sqlite_now(connection)?;
@@ -940,14 +1053,12 @@ pub(super) fn dispatch_entries(
 
 fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     match action {
-        ProjectWorkspaceInboxDispatchAction::Keep => "Keep in Inbox".to_owned(),
+        ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
             "Send to an existing chat".to_owned()
         }
-        ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => {
-            "Move into a Project".to_owned()
-        }
+        ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => "File in a Project".to_owned(),
     }
 }
 
@@ -984,6 +1095,9 @@ fn apply_confirmation(
                 }
             }
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
+            // Filing is the decision: the message stays handled in its own Inbox and does
+            // not open again in the Project it was filed into.
+            set_entries_state(connection, library_id, page_ids, "kept", now)?;
             Ok(simple_effects("inbox_confirm_move", now))
         }
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, .. } => {
@@ -1151,24 +1265,32 @@ pub(super) fn delete_messages(
         request_hash,
         &now,
         |_| {
-            let registry = read_registry(connection, library_id)?
-                .ok_or_else(|| not_found("Inbox message not found"))?;
             for page_id in &page_ids {
-                let parent = connection
+                let (parent_kind, parent_id, scope) = connection
                     .query_row(
-                        "SELECT page.parent_kind, page.parent_id FROM inbox_entries entry \
+                        "SELECT page.parent_kind, page.parent_id, entry.scope_project_id \
+                         FROM inbox_entries entry \
                          JOIN pages page ON page.block_id = entry.page_id \
                          JOIN blocks block ON block.id = entry.page_id \
                            AND block.lifecycle <> 'deleted' \
                          WHERE entry.page_id = ?1 AND entry.library_id = ?2",
                         params![page_id, library_id],
-                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, Option<String>>(2)?,
+                            ))
+                        },
                     )
                     .optional()?
                     .ok_or_else(|| not_found("Inbox message not found"))?;
-                if parent != ("data_source".to_owned(), registry.data_source_id.clone()) {
+                let home = scope_home(connection, library_id, scope.as_deref())?;
+                if parent_kind != "data_source"
+                    || home.is_none_or(|home| home.data_source_id != parent_id)
+                {
                     return Err(conflict(
-                        "This message now lives in a Project; delete its Page there",
+                        "This message was filed elsewhere; delete its Page there",
                     ));
                 }
             }
@@ -1706,15 +1828,48 @@ fn require_basis(
     ))
 }
 
+/// The Inbox that owns these entries. Entries decided together must share it.
+fn require_one_scope(
+    connection: &Connection,
+    page_ids: &[String],
+) -> Result<Option<String>, StoreError> {
+    let mut scopes = BTreeSet::new();
+    for page_id in page_ids {
+        let scope = connection
+            .query_row(
+                "SELECT scope_project_id FROM inbox_entries WHERE page_id = ?1",
+                [page_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .ok_or_else(|| not_found("Inbox entry is unavailable"))?;
+        scopes.insert(scope);
+    }
+    if scopes.len() > 1 {
+        return Err(invalid(
+            "Messages from different Inboxes cannot be handled together",
+        ));
+    }
+    Ok(scopes.into_iter().next().flatten())
+}
+
 /// Validates targets against current Workspace state and returns the canonical action.
+/// A Project's Inbox works inside its Project: its chats start or continue there, and
+/// filing moves a message to a different Project.
 fn normalize_action(
     connection: &Connection,
     library_id: &str,
+    scope: Option<&str>,
     action: &ProjectWorkspaceInboxDispatchAction,
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, prompt } => {
+            if scope.is_some() && project_id.as_deref() != scope {
+                return Err(invalid(
+                    "A chat started from a Project's Inbox runs in that Project",
+                ));
+            }
             if let Some(project_id) = project_id {
                 validate_id("project_id", project_id)?;
                 super::session_lifecycle::require_project(
@@ -1738,6 +1893,11 @@ fn normalize_action(
                     "The target chat has not started yet; start a new chat instead",
                 ));
             }
+            if scope.is_some() && authority.project_id.as_deref() != scope {
+                return Err(invalid(
+                    "A Project's Inbox can only send to that Project's chats",
+                ));
+            }
             Ok(ProjectWorkspaceInboxDispatchAction::SendToChat {
                 session_id: session_id.clone(),
                 prompt: normalize_prompt(prompt)?,
@@ -1745,6 +1905,9 @@ fn normalize_action(
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
             validate_id("project_id", project_id)?;
+            if scope == Some(project_id.as_str()) {
+                return Err(invalid("The message is already in this Project"));
+            }
             super::session_lifecycle::require_project(connection, library_id, project_id, true)?;
             project_data_source(connection, library_id, project_id)?;
             Ok(ProjectWorkspaceInboxDispatchAction::MoveToProject {

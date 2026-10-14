@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import type { ElectronApplication } from "playwright";
 import type { ScenarioManifest } from "../../scripts/scenarios/contracts";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -31,7 +32,7 @@ async function focusCodeBlockScene(
   await page
     .getByRole("button", { name: "Open Code Block Actions", exact: true })
     .evaluate((element) => (element as HTMLElement).click());
-  await page.getByRole("tab", { name: "Project Home" }).waitFor();
+  await openProjectBoard(page);
   const card = page.locator(`[data-board-uuid-v7="${pageId}"]`);
   await openBoardPageFromCard({ card, page, tabName: "Exercise Code Block actions" });
 

@@ -44,6 +44,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
+  scope: { kind: "library" },
   location: { kind: "inbox" },
   proposal: proposal(),
   revision: 1,
@@ -72,6 +73,7 @@ const renderTriage = (overrides: Partial<Parameters<typeof InboxTriage>[0]> = {}
       actions={commands}
       manualDraft={null}
       groupedWithKey={null}
+      inboxProjectId={null}
       menu={null}
       onManualDraftChange={vi.fn()}
       {...overrides}

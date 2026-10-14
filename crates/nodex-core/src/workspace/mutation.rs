@@ -316,6 +316,7 @@ pub(super) fn apply(
                     document_id,
                     text,
                     title,
+                    project_id,
                 } => super::inbox::send_message(
                     transaction,
                     &library_id,
@@ -328,6 +329,7 @@ pub(super) fn apply(
                     document_id,
                     text,
                     title.as_deref(),
+                    project_id.as_deref(),
                 ),
                 ProjectWorkspaceIntent::ProposeInboxDispatch {
                     proposal_id,

@@ -1,3 +1,4 @@
+import { projectInbox } from "../../../src/shared/inbox";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import {
   parseScenarioFacts,
@@ -8,7 +9,7 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 1 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 2 as const;
 
 const PAGE_KEYS = {
   kept: "keptNote",
@@ -17,9 +18,13 @@ const PAGE_KEYS = {
   move: "moveSuggestion",
   dispatched: "dispatchedMessage",
   failed: "failedSuggestion",
+  projectNewChat: "projectNewChatSuggestion",
+  projectSendToChat: "projectSendToChatSuggestion",
+  projectMove: "projectMoveSuggestion",
 } as const;
 const WORKING_SESSION_KEY = "workingSession";
 const WORKING_THREAD_KEY = "workingThread";
+const WEBSITE_PROJECT_KEY = "websiteProject";
 
 export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly entryCount: number;
@@ -28,6 +33,8 @@ export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly keptCount: number;
   readonly dispatchedCount: number;
   readonly failedSuggestionCount: number;
+  /** Messages waiting in the Nodex Project's own Inbox. */
+  readonly projectInboxCount: number;
 }
 
 export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScenarioFacts => {
@@ -43,6 +50,7 @@ export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScen
       "keptCount",
       "dispatchedCount",
       "failedSuggestionCount",
+      "projectInboxCount",
     ].every((key) => typeof candidate[key] === "number")
   ) {
     throw new Error("inbox/triage facts are invalid");
@@ -52,7 +60,8 @@ export const requireInboxTriageScenarioFacts = (value: unknown): InboxTriageScen
 
 /**
  * Every Inbox reply state in one stream, without anything left for a live Agent to do: each
- * message is already suggested, kept, delivered, or failed.
+ * message is already suggested, kept, delivered, or failed. The Nodex Project's own Inbox holds
+ * suggestions that stay inside that Project or file into another one.
  */
 const materializeInboxTriage = async (
   port: ScenarioSeedPort,
@@ -60,6 +69,7 @@ const materializeInboxTriage = async (
 ): Promise<ScenarioManifest> => {
   const project = await port.createProject({ name: "Nodex", sources: [workspace] });
   if (!project.defaultDatabaseViewId) throw new Error("inbox/triage Project has no default View");
+  const website = await port.createProject({ name: "Website", sources: [] });
   const workingThreadId = createUuidV7();
   const working = await port.createRelatedChat({
     projectId: project.id,
@@ -146,6 +156,52 @@ const materializeInboxTriage = async (
   const failed = await port.sendInboxMessage("Should Telegram become an Inbox source?");
   await port.recordInboxSuggestionFailure([failed.pageId], "The suggestion model is unavailable");
 
+  const nodexInbox = projectInbox(project.id);
+  const projectNewChat = await port.sendInboxMessage(
+    "Board columns waste a lot of space on narrow windows.",
+    nodexInbox,
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [projectNewChat.pageId],
+    action: {
+      type: "new_chat",
+      projectId: project.id,
+      prompt:
+        "Make Board columns collapse gracefully on narrow windows. Keep the wide layout unchanged.",
+    },
+    kind: "todo",
+    summary: "Start a chat to tighten narrow Board columns.",
+    rationale: "A concrete layout fix inside this Project.",
+  });
+
+  const projectSendToChat = await port.sendInboxMessage(
+    "Sidebar section headers should stick while scrolling.",
+    nodexInbox,
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [projectSendToChat.pageId],
+    action: {
+      type: "send_to_chat",
+      sessionId: working.sessionId,
+      prompt: "Also keep sidebar section headers pinned while the list scrolls.",
+    },
+    kind: "todo",
+    summary: "Add sticky headers to the sidebar polish chat.",
+    rationale: "Same surface as the sidebar work already running.",
+  });
+
+  const projectMove = await port.sendInboxMessage(
+    "The pricing page still calls the app a beta.",
+    nodexInbox,
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [projectMove.pageId],
+    action: { type: "move_to_project", projectId: website.id },
+    kind: "todo",
+    summary: "File this in Website.",
+    rationale: "It is about the marketing site, not the app.",
+  });
+
   return {
     version: 1,
     scenarioId: INBOX_TRIAGE_SCENARIO_ID,
@@ -159,10 +215,14 @@ const materializeInboxTriage = async (
       [PAGE_KEYS.sendToChat]: sendToChat.pageId,
       [PAGE_KEYS.move]: move.pageId,
       [PAGE_KEYS.failed]: failed.pageId,
+      [PAGE_KEYS.projectNewChat]: projectNewChat.pageId,
+      [PAGE_KEYS.projectSendToChat]: projectSendToChat.pageId,
+      [PAGE_KEYS.projectMove]: projectMove.pageId,
     },
     entityIdsByKey: {
       [WORKING_SESSION_KEY]: working.sessionId,
       [WORKING_THREAD_KEY]: workingThreadId,
+      [WEBSITE_PROJECT_KEY]: website.id,
     },
     minimumCommitSeq: 0,
     materializedAt: new Date().toISOString(),
@@ -186,6 +246,8 @@ const inspectInboxTriage = async (
     keptCount: items.filter((item) => item.state === "kept").length,
     dispatchedCount: items.filter((item) => item.proposal?.state === "completed").length,
     failedSuggestionCount: items.filter((item) => item.suggestionState === "failed").length,
+    projectInboxCount: (await port.readInbox("inbox", projectInbox(manifest.projectId))).items
+      .length,
   };
   if (
     facts.entryCount !== 6 ||
@@ -193,7 +255,8 @@ const inspectInboxTriage = async (
     facts.needsDecisionCount !== 3 ||
     facts.keptCount !== 1 ||
     facts.dispatchedCount !== 1 ||
-    facts.failedSuggestionCount !== 1
+    facts.failedSuggestionCount !== 1 ||
+    facts.projectInboxCount !== 3
   ) {
     throw new Error(
       `inbox/triage materialized facts do not match revision ${INBOX_TRIAGE_SCENARIO_REVISION}`,
