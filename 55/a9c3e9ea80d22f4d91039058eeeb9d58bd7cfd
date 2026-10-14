@@ -1,0 +1,23 @@
+src/renderer/components/shared/icons/voice-icons.tsx
+  s_0b88fd1fc800e4::t_8e84833dab9426 1-46
+src/renderer/components/shared/icons/index.ts
+  s_0b88fd1fc800e4::t_8e84833dab9426 12
+src/renderer/features/realtime-voice/realtime-voice-controls.tsx
+  s_0b88fd1fc800e4::t_8e84833dab9426 1-7,58,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "55a9c3e9ea80d22f4d91039058eeeb9d58bd7cfd",
+  "prompts": {},
+  "sessions": {
+    "s_0b88fd1fc800e4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13874-eac5-7761-a82e-2a34d8a24f8b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
