@@ -1,0 +1,19 @@
+src/renderer/components/shared/icons/app-icons.tsx
+  s_c8af451c5a84e1::t_11004c0516fa2b 2394,2396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e586ad49700b464ef7cbe4ad2ecae2765b6c8ea",
+  "prompts": {},
+  "sessions": {
+    "s_c8af451c5a84e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aacb9a5b-41e3-4504-b3c2-4e5c300244c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
