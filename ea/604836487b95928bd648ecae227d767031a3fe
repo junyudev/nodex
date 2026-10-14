@@ -1,0 +1,43 @@
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 623
+  s_5cd527886c6c64::t_819951eb8d43df 40
+src/renderer/components/shared/icons/app-icons.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 2391,2395
+  s_5cd527886c6c64::t_819951eb8d43df 2382
+  s_c8af451c5a84e1::t_11004c0516fa2b 2394,2396
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 2334
+  s_5cd527886c6c64::t_819951eb8d43df 62
+src/renderer/features/local-conversation/view/thread-user-message-navigation-rail.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 33,131
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 31,383,882
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 16,377
+src/renderer/features/local-conversation/view/shared/tools/tool-call-icons.tsx
+  s_c8af451c5a84e1::t_1e5255f916c901 35,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea604836487b95928bd648ecae227d767031a3fe",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c8af451c5a84e1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aacb9a5b-41e3-4504-b3c2-4e5c300244c6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
