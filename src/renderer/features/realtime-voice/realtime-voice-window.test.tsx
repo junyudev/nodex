@@ -7,6 +7,7 @@ import type {
   CodexRealtimeVoiceTarget,
 } from "../../../shared/codex-realtime-voice";
 import { NodexTooltipProvider } from "../../components/ui/tooltip";
+import { NodexToastProvider, __resetNodexToastStoreForTests } from "../../components/ui/toast";
 import type {
   RealtimeVoiceMedia,
   RealtimeVoiceMediaInput,
@@ -24,6 +25,11 @@ import {
   type RealtimeVoiceWindowOwner,
 } from "./realtime-voice-window-owner";
 import { RealtimeVoiceWindowProvider, useComposerRealtimeVoice } from "./realtime-voice-window";
+
+const mediaFactory = vi.hoisted(() => ({ create: vi.fn() }));
+vi.mock("../../lib/realtime-voice/realtime-voice-media", () => ({
+  createRealtimeVoiceMedia: mediaFactory.create,
+}));
 
 const target = { hostId: "local", threadId: "thread" };
 const grant: CodexRealtimeVoiceGrant = {
@@ -129,6 +135,7 @@ const fixture = () => {
       return true;
     }),
     appendText: vi.fn(async () => {}),
+    appendSpeech: vi.fn(async () => {}),
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -167,6 +174,94 @@ const fixture = () => {
 };
 
 describe("window Voice claim and query lifecycle", () => {
+  test("the default window owner shows the usage warning and sends it through the named speech command", async () => {
+    const f = fixture();
+    const inputs: RealtimeVoiceMediaInput[] = [];
+    const events = new Set<(event: unknown) => void>();
+    const calls: { channel: string; input: unknown }[] = [];
+    mediaFactory.create.mockImplementation(async (input: RealtimeVoiceMediaInput) => {
+      inputs.push(input);
+      return { offerSdp: "offer", media: f.media };
+    });
+    installWindowApi({
+      invoke: async (channel: string, input: unknown) => {
+        calls.push({ channel, input });
+        if (channel === "codex:realtime-voice:read") return { available: true, session: null };
+        if (channel === "codex:realtime-voice:prepare") return grant;
+        if (channel === "codex:realtime-voice:release") return true;
+        if (
+          [
+            "codex:realtime-voice:start",
+            "codex:realtime-voice:stop",
+            "codex:realtime-voice:append-speech",
+          ].includes(channel)
+        )
+          return;
+        throw new Error(`Unexpected Voice command ${channel}`);
+      },
+      on: (channel: string, listener: (event: unknown) => void) => {
+        expect(channel).toBe("codex:realtime-voice:event");
+        events.add(listener);
+        return () => events.delete(listener);
+      },
+    });
+    const client = createTestQueryClient();
+    const view = render(
+      <TestQueryProvider client={client}>
+        <RealtimeVoiceWindowProvider>
+          <NodexTooltipProvider>
+            <NodexToastProvider>
+              <Controls />
+            </NodexToastProvider>
+          </NodexTooltipProvider>
+        </RealtimeVoiceWindowProvider>
+      </TestQueryProvider>,
+    );
+    try {
+      await view.findByRole("button", { name: "Start voice" });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Start voice" }));
+      });
+      await waitFor(() =>
+        expect(
+          calls.filter(({ channel }) => channel === "codex:realtime-voice:start"),
+        ).toHaveLength(1),
+      );
+      await act(async () => {
+        for (const notify of events) notify({ type: "snapshot", snapshot: snapshot("active") });
+        const event = JSON.stringify({
+          type: "session.usage.updated",
+          usage_limit: { status: "approaching" },
+        });
+        inputs[0]!.onEvent?.(event);
+        inputs[0]!.onEvent?.(event);
+      });
+      const warning = "You’re approaching your Codex usage limit, so this voice chat may end soon";
+      await view.findByText(warning);
+      expect(
+        calls.filter(({ channel }) => channel === "codex:realtime-voice:append-speech"),
+      ).toEqual([
+        {
+          channel: "codex:realtime-voice:append-speech",
+          input: {
+            claimId: grant.claimId,
+            text: `Urgent system notice: Interrupt the user or yourself if either is speaking. Say only this warning immediately, exactly as written, before continuing anything else: “${warning}”`,
+          },
+        },
+      ]);
+      expect(f.media.stop).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "End voice" }));
+      });
+      await view.findByRole("button", { name: "Start voice" });
+      expect(f.media.stop).toHaveBeenCalledTimes(1);
+    } finally {
+      view.unmount();
+      client.clear();
+      __resetNodexToastStoreForTests();
+      mediaFactory.create.mockReset();
+    }
+  });
   test("released claims refresh two visible windows without focus or policy changes", async () => {
     const f = fixture();
     f.setSession(snapshot("active"));

@@ -12,6 +12,13 @@ import type {
 } from "../../lib/realtime-voice/realtime-voice-media";
 import { mainRealtimeVoiceClient, type RealtimeVoiceClient } from "./realtime-voice-client";
 import { requestMicrophoneAccess } from "../../lib/api";
+import { z } from "zod";
+
+const usageEventSchema = z.object({
+  type: z.literal("session.usage.updated"),
+  usage_limit: z.object({ status: z.literal("approaching").nullable() }),
+});
+const usageWarning = "You’re approaching your Codex usage limit, so this voice chat may end soon";
 
 export interface RealtimeVoiceWindowSnapshot {
   readonly target: CodexRealtimeVoiceTarget | null;
@@ -35,6 +42,7 @@ interface Attempt {
   muteWrites: Promise<void>;
   retiredClaimId: string | null;
   pendingMicrophone: { readonly claimId: string; readonly deviceId: string | null } | null;
+  usageLimitApproaching: boolean;
 }
 export interface RealtimeVoiceWindowOwner {
   readonly subscribe: (listener: () => void) => () => void;
@@ -54,6 +62,7 @@ interface Ports {
   ) => Promise<{ readonly offerSdp: string; readonly media: RealtimeVoiceMedia }>;
   readonly requestMicrophoneAccess?: () => Promise<MicrophoneAccessResult>;
   readonly onError?: (error: unknown) => void;
+  readonly onWarning?: (message: string) => void;
 }
 const sameTarget = (left: CodexRealtimeVoiceTarget, right: CodexRealtimeVoiceTarget) =>
   left.hostId === right.hostId && left.threadId === right.threadId;
@@ -81,6 +90,30 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
     leases > 0 && current === attempt && !attempt.controller.signal.aborted;
   const reportError = (error: unknown) => {
     if (leases > 0) ports.onError?.(error);
+  };
+  const receiveMediaEvent = (attempt: Attempt, message: string): void => {
+    if (!active(attempt) || !attempt.grant) return;
+    let value: unknown;
+    try {
+      value = JSON.parse(message);
+    } catch {
+      return;
+    }
+    const event = usageEventSchema.safeParse(value);
+    if (!event.success) return;
+    const approaching = event.data.usage_limit.status === "approaching";
+    if (approaching === attempt.usageLimitApproaching) return;
+    attempt.usageLimitApproaching = approaching;
+    if (!approaching) return;
+    ports.onWarning?.(usageWarning);
+    void client
+      .appendSpeech(
+        attempt.grant.claimId,
+        `Urgent system notice: Interrupt the user or yourself if either is speaking. Say only this warning immediately, exactly as written, before continuing anything else: “${usageWarning}”`,
+      )
+      .catch((error: unknown) => {
+        if (active(attempt)) console.warn("Could not speak the voice usage warning", error);
+      });
   };
   const requestNativeStop = (attempt: Attempt, grant: CodexRealtimeVoiceGrant): Promise<void> => {
     attempt.stopRequest ??= Promise.resolve().then(() => client.stop(grant.claimId));
@@ -284,6 +317,7 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
       muteWrites: Promise.resolve(),
       retiredClaimId: null,
       pendingMicrophone: null,
+      usageLimitApproaching: false,
     };
     current = attempt;
     publish({
@@ -326,6 +360,7 @@ export const createRealtimeVoiceWindowOwner = (ports: Ports = {}): RealtimeVoice
             requestMicrophoneAccess: ports.requestMicrophoneAccess ?? requestMicrophoneAccess,
             onConnected: () => report(attempt, "connected"),
             onInitialized: () => report(attempt, "initialized"),
+            onEvent: (message) => receiveMediaEvent(attempt, message),
             onFailure: (error) => fail(attempt, error),
           }),
         );

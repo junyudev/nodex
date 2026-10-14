@@ -41,6 +41,9 @@ export function RealtimeVoiceWindowProvider({
       createRealtimeVoiceWindowOwner({
         onError: (error) =>
           toast.danger(error instanceof Error ? error.message : "Could not start voice"),
+        onWarning: (message) => {
+          toast.warning(message);
+        },
       }),
   );
   const queryClient = useQueryClient();

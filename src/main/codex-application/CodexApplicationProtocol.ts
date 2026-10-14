@@ -680,7 +680,8 @@ export const make: Effect.Effect<
                 notification.method === "thread/realtime/started" ||
                   notification.method === "thread/realtime/sdp" ||
                   notification.method === "thread/realtime/closed" ||
-                  notification.method === "thread/realtime/error"
+                  notification.method === "thread/realtime/error" ||
+                  notification.method === "turn/completed"
                   ? realtimeVoice.observeNative(occurrence, notification)
                   : Effect.void,
               ),

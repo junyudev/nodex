@@ -334,6 +334,7 @@ const makeVoice = () => {
     stop: vi.fn(async () => {}),
     release: vi.fn(async () => true),
     appendText: vi.fn(async () => {}),
+    appendSpeech: vi.fn(async () => {}),
     subscribe: (listener) => {
       receive = listener;
       return () => {

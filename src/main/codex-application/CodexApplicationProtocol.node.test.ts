@@ -1283,7 +1283,7 @@ it.effect("clears an earlier optional request countdown when a blocking question
 );
 
 it.effect(
-  "delivers reliable realtime startup controls through the existing occurrence interpreter",
+  "delivers reliable realtime controls and safety completions through the existing occurrence interpreter",
   () =>
     withProtocol(({ inbox, realtimeControls, observedNotifications }) =>
       Effect.gen(function* () {
@@ -1305,6 +1305,22 @@ it.effect(
             method: "thread/realtime/closed",
             params: { threadId: "voice", reason: "transport_closed" },
           },
+          {
+            method: "turn/completed",
+            params: {
+              threadId: "voice",
+              turn: {
+                ...buildAgentActivityV2CorpusThread([]).turns[0]!,
+                status: "failed",
+                error: {
+                  message: "Blocked",
+                  codexErrorInfo: "misalignmentPolicyViolation",
+                  additionalDetails: null,
+                  misalignment: null,
+                },
+              },
+            },
+          },
         ] as const;
         for (const message of messages)
           yield* inbox.publishNotification({
@@ -1313,9 +1329,9 @@ it.effect(
             protocol: "generated",
             ...message,
           });
-        for (let index = 0; index < 100 && realtimeControls.length < 4; index++)
+        for (let index = 0; index < 100 && realtimeControls.length < messages.length; index++)
           yield* Effect.yieldNow;
-        assert.strictEqual(realtimeControls.length, 4);
+        assert.strictEqual(realtimeControls.length, messages.length);
         assert.deepStrictEqual(
           realtimeControls.map(({ notification }) => notification),
           [...messages],

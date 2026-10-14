@@ -52,6 +52,7 @@ const fixture = () => {
     stop: vi.fn(async () => {}),
     release: vi.fn(async () => true),
     appendText: vi.fn(async () => {}),
+    appendSpeech: vi.fn(async () => {}),
     subscribe: vi.fn((next) => {
       listener = next;
       return () => {
@@ -65,7 +66,13 @@ const fixture = () => {
     return { offerSdp: "native-offer", media };
   });
   const error = vi.fn();
-  const owner = createRealtimeVoiceWindowOwner({ client, createMedia, onError: error });
+  const warning = vi.fn();
+  const owner = createRealtimeVoiceWindowOwner({
+    client,
+    createMedia,
+    onError: error,
+    onWarning: warning,
+  });
   const release = owner.acquireWindow();
   const emit = (event: CodexRealtimeVoiceEvent) => listener?.(event);
   const activate = (revision = 1) =>
@@ -81,10 +88,104 @@ const fixture = () => {
         revision,
       },
     });
-  return { owner, client, media, createMedia, inputs, error, release, emit, activate };
+  return { owner, client, media, createMedia, inputs, error, warning, release, emit, activate };
 };
 
 describe("window-owned realtime Voice", () => {
+  test("warns and speaks once per approaching usage edge from the current data channel", async () => {
+    const f = fixture();
+    await f.owner.start(target);
+    f.activate();
+    const message = (status: unknown) =>
+      f.inputs[0]!.onEvent?.(
+        JSON.stringify({ type: "session.usage.updated", usage_limit: { status } }),
+      );
+    f.inputs[0]!.onEvent?.("invalid JSON");
+    message("unknown");
+    message(null);
+    expect(f.warning).not.toHaveBeenCalled();
+    message("approaching");
+    message("approaching");
+    await flush();
+    const warning = "You’re approaching your Codex usage limit, so this voice chat may end soon";
+    expect(f.warning).toHaveBeenCalledExactlyOnceWith(warning);
+    expect(f.client.appendSpeech).toHaveBeenCalledExactlyOnceWith(
+      grant.claimId,
+      `Urgent system notice: Interrupt the user or yourself if either is speaking. Say only this warning immediately, exactly as written, before continuing anything else: “${warning}”`,
+    );
+    message(null);
+    message("approaching");
+    await flush();
+    expect(f.warning).toHaveBeenCalledTimes(2);
+    expect(f.client.appendSpeech).toHaveBeenCalledTimes(2);
+    expect(f.owner.read().phase).toBe("active");
+    await f.owner.stop();
+    message(null);
+    message("approaching");
+    expect(f.warning).toHaveBeenCalledTimes(2);
+    f.release();
+  });
+  test("a failed spoken warning preserves the same usable call", async () => {
+    const f = fixture();
+    await f.owner.start(target);
+    f.activate();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      vi.mocked(f.client.appendSpeech).mockRejectedValueOnce(new Error("speech unavailable"));
+      f.inputs[0]!.onEvent?.(
+        JSON.stringify({ type: "session.usage.updated", usage_limit: { status: "approaching" } }),
+      );
+      await flush();
+      expect(f.owner.read().phase).toBe("active");
+      expect(f.warning).toHaveBeenCalledTimes(1);
+      expect(f.media.stop).not.toHaveBeenCalled();
+      expect(f.client.release).not.toHaveBeenCalled();
+      expect(f.error).not.toHaveBeenCalled();
+      expect(warning).toHaveBeenCalledTimes(1);
+      await f.owner.setMicrophoneMuted(true);
+      expect(f.media.setMicrophoneMuted).toHaveBeenCalledExactlyOnceWith(true);
+    } finally {
+      await f.owner.stop();
+      f.release();
+      warning.mockRestore();
+    }
+  });
+  test("late warning failure and media callbacks cannot affect a replacement call", async () => {
+    const f = fixture();
+    const spoken = deferred<void>();
+    vi.mocked(f.client.appendSpeech).mockReturnValueOnce(spoken.promise);
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await f.owner.start(target);
+      f.activate();
+      const old = f.inputs[0]!;
+      const message = JSON.stringify({
+        type: "session.usage.updated",
+        usage_limit: { status: "approaching" },
+      });
+      old.onEvent?.(message);
+      await f.owner.stop();
+      await f.owner.start(target);
+      f.activate();
+      spoken.reject(new Error("old failure"));
+      await flush();
+      old.onEvent?.(
+        JSON.stringify({ type: "session.usage.updated", usage_limit: { status: null } }),
+      );
+      old.onEvent?.(message);
+      expect(f.warning).toHaveBeenCalledTimes(1);
+      f.inputs[1]!.onEvent?.(message);
+      await flush();
+      expect(f.warning).toHaveBeenCalledTimes(2);
+      expect(f.client.appendSpeech).toHaveBeenCalledTimes(2);
+      expect(f.owner.read().phase).toBe("active");
+      expect(warning).not.toHaveBeenCalled();
+    } finally {
+      await f.owner.stop();
+      f.release();
+      warning.mockRestore();
+    }
+  });
   test("shares one startup and waits for actual Main startup evidence before showing active", async () => {
     const f = fixture();
     const preparing = deferred<CodexRealtimeVoiceGrant>();

@@ -19,6 +19,7 @@ import type {
 import { isCodexRealtimeVoiceStartupComplete } from "../../shared/codex-realtime-voice";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { ConversationTextRole } from "@nodex/codex-app-server-protocol";
+import type { TurnCompletedNotification } from "@nodex/codex-app-server-protocol/v2";
 import { CodexMedia } from "./CodexMedia";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import {
@@ -78,6 +79,12 @@ interface VoiceAttempt {
   closing: boolean;
   readonly closed: Deferred.Deferred<void>;
 }
+type VoiceObservation =
+  | CodexRealtimeVoiceNativeNotification
+  | {
+      readonly method: "turn/completed";
+      readonly params: TurnCompletedNotification;
+    };
 
 export class CodexRealtimeVoice extends Context.Service<
   CodexRealtimeVoice,
@@ -95,7 +102,7 @@ export class CodexRealtimeVoice extends Context.Service<
     ) => Effect.Effect<void, CodexRealtimeVoiceError>;
     readonly observeNative: (
       source: { readonly hostId: string; readonly generation: number },
-      notification: CodexRealtimeVoiceNativeNotification,
+      notification: VoiceObservation,
     ) => Effect.Effect<void>;
     readonly reportMedia: (
       webContentsId: number,
@@ -117,6 +124,11 @@ export class CodexRealtimeVoice extends Context.Service<
       webContentsId: number,
       claimId: string,
       role: ConversationTextRole,
+      text: string,
+    ) => Effect.Effect<void, CodexRealtimeVoiceError>;
+    readonly appendSpeech: (
+      webContentsId: number,
+      claimId: string,
       text: string,
     ) => Effect.Effect<void, CodexRealtimeVoiceError>;
   }
@@ -538,7 +550,7 @@ export const make = Effect.gen(function* () {
       const attempt = current;
       if (
         !attempt ||
-        !attempt.startIssued ||
+        (!attempt.startIssued && notification.method !== "turn/completed") ||
         attempt.terminated ||
         !owns(attempt) ||
         source.hostId !== attempt.capabilities.hostId ||
@@ -555,6 +567,11 @@ export const make = Effect.gen(function* () {
         attempt.terminated
       )
         return;
+      if (notification.method === "turn/completed") {
+        if (notification.params.turn.error?.codexErrorInfo === "misalignmentPolicyViolation")
+          terminate(attempt);
+        return;
+      }
       if (notification.method === "thread/realtime/started") {
         if (notification.params.realtimeSessionId !== attempt.grant.realtimeSessionId) return;
         attempt.evidence.started = true;
@@ -647,6 +664,21 @@ export const make = Effect.gen(function* () {
               role,
               text,
             },
+            codexGatewayGenerationFence(attempt.capabilities),
+          )
+          .pipe(Effect.mapError(failure));
+        yield* assertCurrent(attempt);
+      },
+    ),
+    appendSpeech: Effect.fn("CodexRealtimeVoice.appendSpeech")(
+      function* (webContentsId, claimId, text) {
+        const attempt = yield* resolve(webContentsId, claimId);
+        yield* assertCurrent(attempt);
+        yield* gateway
+          .requestOnHost(
+            attempt.grant.hostId,
+            "thread/realtime/appendSpeech",
+            { threadId: attempt.grant.threadId, text },
             codexGatewayGenerationFence(attempt.capabilities),
           )
           .pipe(Effect.mapError(failure));

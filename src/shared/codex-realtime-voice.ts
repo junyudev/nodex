@@ -5,6 +5,7 @@ import type {
   ThreadRealtimeClosedNotification,
   ThreadRealtimeErrorNotification,
   ThreadRealtimeSdpNotification,
+  ThreadRealtimeAppendSpeechParams,
 } from "@nodex/codex-app-server-protocol/v2";
 
 export interface CodexRealtimeVoiceTarget {
@@ -101,3 +102,5 @@ export interface CodexRealtimeVoiceAppendTextInput extends CodexRealtimeVoiceCla
   readonly role: ConversationTextRole;
   readonly text: string;
 }
+export interface CodexRealtimeVoiceAppendSpeechInput
+  extends CodexRealtimeVoiceClaimInput, Readonly<Pick<ThreadRealtimeAppendSpeechParams, "text">> {}

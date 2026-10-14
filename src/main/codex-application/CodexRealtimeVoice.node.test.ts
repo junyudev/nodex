@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { Thread } from "@nodex/codex-app-server-protocol/v2";
+import type { Thread, TurnCompletedNotification } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -32,6 +32,27 @@ import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/error
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 
 const target = { hostId: "local", threadId: "thread" };
+const completedTurn = (threadId = target.threadId, blocked = true): TurnCompletedNotification => ({
+  threadId,
+  turn: {
+    id: "blocked-turn",
+    rootTurnId: null,
+    items: [],
+    itemsView: "full",
+    status: blocked ? "failed" : "completed",
+    error: blocked
+      ? {
+          message: "Blocked",
+          codexErrorInfo: "misalignmentPolicyViolation",
+          additionalDetails: null,
+          misalignment: null,
+        }
+      : null,
+    startedAt: 1,
+    completedAt: 2,
+    durationMs: 1000,
+  },
+});
 const metadata: Thread = {
   id: "thread",
   sessionId: "session",
@@ -91,8 +112,10 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
   const requests: { method: string; params: unknown; scheduling: unknown }[] = [];
   let nativeStart: Effect.Effect<unknown> = Effect.succeed({});
   let nativeStop: Effect.Effect<unknown, Error> = Effect.succeed({});
+  let nativeSpeech: Effect.Effect<unknown, Error> = Effect.succeed({});
   let allowed = true;
   let generation = 1;
+  let nextCapabilityCheck: Effect.Effect<void> = Effect.void;
   const capability = createCodexAppServerCapabilitySnapshot({
     hostId: "local",
     generation,
@@ -109,7 +132,12 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
       CodexAppServerCapabilities.of({
         forHost: () => Effect.succeed(capability),
         forThread: () => Effect.succeed(capability),
-        isCurrent: (captured) => Effect.succeed(captured.generation === generation),
+        isCurrent: (captured) =>
+          Effect.suspend(() => {
+            const check = nextCapabilityCheck;
+            nextCapabilityCheck = Effect.void;
+            return check.pipe(Effect.map(() => captured.generation === generation));
+          }),
       }),
     ),
     Effect.provideService(
@@ -195,6 +223,7 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
           if (method === "thread/realtime/start") return nativeStart;
           if (method === "thread/realtime/stop") return nativeStop;
           if (method === "thread/realtime/appendText") return Effect.succeed({});
+          if (method === "thread/realtime/appendSpeech") return nativeSpeech;
           return Effect.die(`Unexpected native method ${method}`);
         },
       } as unknown as CodexGateway["Service"]),
@@ -213,11 +242,17 @@ const fixture = Effect.fn("VoiceTest.fixture")(function* () {
     stopWith: (operation: Effect.Effect<unknown, Error>) => {
       nativeStop = operation;
     },
+    speechWith: (operation: Effect.Effect<unknown, Error>) => {
+      nativeSpeech = operation;
+    },
     setAllowed: (value: boolean) => {
       allowed = value;
     },
     replaceHost: () => {
       generation += 1;
+    },
+    checkCapabilityWith: (check: Effect.Effect<void>) => {
+      nextCapabilityCheck = check;
     },
     publishPolicy: (product: RealtimeVoiceProductPolicy) => PubSub.publish(policyEvents, product),
     changeMicrophone: (deviceId: string | null) =>
@@ -255,6 +290,131 @@ it.effect("claims one cross-window session and keeps current policy unknown fail
     assert.isTrue(yield* f.voice.release(1, grant.claimId));
     assert.isNull(f.microphone.readOwner());
   }).pipe(Effect.scoped),
+);
+
+it.effect("speaks through the owning claim and rejects a retired native acknowledgement", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture();
+    const grant = yield* f.voice.prepare(1, target);
+    yield* f.voice.start(1, grant.claimId, "offer");
+    assert.strictEqual(
+      (yield* f.voice.appendSpeech(2, grant.claimId, "foreign").pipe(Effect.result))._tag,
+      "Failure",
+    );
+    yield* f.voice.appendSpeech(1, grant.claimId, " exact warning ");
+    assert.deepStrictEqual(f.requests.at(-1), {
+      method: "thread/realtime/appendSpeech",
+      params: { threadId: "thread", text: " exact warning " },
+      scheduling: { expectedHostId: "local", expectedGeneration: 1 },
+    });
+    const entered = yield* Deferred.make<void>();
+    const accepted = yield* Deferred.make<void>();
+    f.speechWith(
+      Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
+    );
+    const pending = yield* f.voice
+      .appendSpeech(1, grant.claimId, "held")
+      .pipe(Effect.result, Effect.forkChild);
+    yield* Deferred.await(entered);
+    f.replaceHost();
+    yield* Deferred.succeed(accepted, undefined);
+    assert.strictEqual((yield* Fiber.join(pending))._tag, "Failure");
+    assert.strictEqual(
+      f.requests.filter(({ method }) => method === "thread/realtime/appendSpeech").length,
+      2,
+    );
+  }).pipe(Effect.scoped),
+);
+
+for (const phase of ["starting", "active"] as const)
+  it.effect(
+    `a matching safety completion retires a ${phase} call without admitting foreign completions`,
+    () =>
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const grant = yield* f.voice.prepare(1, target);
+        if (phase === "active") {
+          yield* f.voice.start(1, grant.claimId, "offer");
+          yield* f.voice.reportMedia(1, grant.claimId, "connected");
+          yield* f.voice.reportMedia(1, grant.claimId, "initialized");
+          yield* f.voice.observeNative(
+            { hostId: "local", generation: 1 },
+            {
+              method: "thread/realtime/started",
+              params: {
+                threadId: target.threadId,
+                realtimeSessionId: grant.realtimeSessionId,
+                version: "v3",
+              },
+            },
+          );
+        }
+        for (const source of [
+          { hostId: "ssh:foreign", generation: 1 },
+          { hostId: "local", generation: 2 },
+        ])
+          yield* f.voice.observeNative(source, {
+            method: "turn/completed",
+            params: completedTurn(),
+          });
+        yield* f.voice.observeNative(
+          { hostId: "local", generation: 1 },
+          { method: "turn/completed", params: completedTurn("foreign") },
+        );
+        yield* f.voice.observeNative(
+          { hostId: "local", generation: 1 },
+          { method: "turn/completed", params: completedTurn("thread", false) },
+        );
+        assert.strictEqual(f.voice.readSession()?.phase, phase);
+        yield* f.voice.observeNative(
+          { hostId: "local", generation: 1 },
+          { method: "turn/completed", params: completedTurn() },
+        );
+        assert.strictEqual(f.voice.readSession()?.phase, "stopping");
+        assert.deepStrictEqual(
+          f.events.filter((event) => event.type === "terminate"),
+          [{ type: "terminate", claimId: grant.claimId }],
+        );
+        assert.strictEqual(
+          (yield* f.voice.start(1, grant.claimId, "late-offer").pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.strictEqual(f.requests.length, phase === "active" ? 1 : 0);
+        yield* f.voice.release(1, grant.claimId);
+        assert.isNull(f.voice.readSession());
+        assert.isNull(f.microphone.readOwner());
+      }).pipe(Effect.scoped),
+  );
+
+it.effect(
+  "a safety observation awaiting authority cannot retire a reopened call on the same Thread",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const first = yield* f.voice.prepare(1, target);
+      const entered = yield* Deferred.make<void>();
+      const checked = yield* Deferred.make<void>();
+      f.checkCapabilityWith(
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(checked))),
+      );
+      const observing = yield* f.voice
+        .observeNative(
+          { hostId: "local", generation: 1 },
+          { method: "turn/completed", params: completedTurn() },
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      yield* f.voice.release(1, first.claimId);
+      const reopened = yield* f.voice.prepare(1, target);
+      yield* Deferred.succeed(checked, undefined);
+      yield* Fiber.join(observing);
+      assert.strictEqual(f.voice.readSession()?.claimId, reopened.claimId);
+      assert.strictEqual(f.voice.readSession()?.phase, "starting");
+      assert.isFalse(
+        f.events.some((event) => event.type === "terminate" && event.claimId === reopened.claimId),
+      );
+      yield* f.voice.release(1, reopened.claimId);
+    }).pipe(Effect.scoped),
 );
 
 it.effect(

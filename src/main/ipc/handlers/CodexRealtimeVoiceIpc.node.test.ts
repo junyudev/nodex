@@ -90,6 +90,8 @@ const withIpc = <A, E>(
           operation("release", sender, claim).pipe(Effect.as(true)),
         appendText: (sender: number, claim: string, role: unknown, text: string) =>
           operation("text", sender, claim, role, text),
+        appendSpeech: (sender: number, claim: string, text: string) =>
+          operation("speech", sender, claim, text),
       } as unknown as CodexRealtimeVoice["Service"]),
     );
     yield* Layer.buildWithScope(live.pipe(Layer.provide(deps)), yield* Scope.Scope);
@@ -151,6 +153,8 @@ it.effect(
           ["start", { claimId, sdp: "a".repeat(1_048_577) }],
           ["report-media", { claimId, evidence: "requestAccepted" }],
           ["append-text", { claimId, role: "system", text: "text" }],
+          ["append-speech", { claimId, text: "x".repeat(1_048_577) }],
+          ["append-speech", { claimId, threadId: "foreign", text: "text" }],
           ["stop", { claimId: "not-a-claim" }],
         ] as const)
           assert.strictEqual(
@@ -166,9 +170,14 @@ it.effect(
           role: "user",
           text: " exact ",
         });
+        yield* handlers.get("codex:realtime-voice:append-speech")!(event(), {
+          claimId,
+          text: " exact warning ",
+        });
         assert.deepStrictEqual(calls, [
           ["start", 42, claimId, "offer"],
           ["text", 42, claimId, "user", " exact "],
+          ["speech", 42, claimId, " exact warning "],
         ]);
       }),
     ),

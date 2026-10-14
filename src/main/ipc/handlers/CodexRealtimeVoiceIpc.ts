@@ -28,6 +28,7 @@ const textSchema = claimSchema
     text: z.string().min(1).max(1_048_576),
   })
   .strict();
+const speechSchema = claimSchema.extend({ text: z.string().min(1).max(1_048_576) }).strict();
 export class CodexRealtimeVoiceIpcError extends Schema.TaggedError<CodexRealtimeVoiceIpcError>()(
   "CodexRealtimeVoiceIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -105,6 +106,11 @@ export const live = Layer.effectDiscard(
         Effect.flatMap((value) =>
           voice.appendText(event.sender.id, value.claimId, value.role, value.text),
         ),
+      ),
+    );
+    yield* ipc.handlePlainCommand("codex:realtime-voice:append-speech", (event, input) =>
+      decode(event, input, speechSchema).pipe(
+        Effect.flatMap((value) => voice.appendSpeech(event.sender.id, value.claimId, value.text)),
       ),
     );
   }),

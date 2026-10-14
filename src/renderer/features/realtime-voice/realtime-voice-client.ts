@@ -37,6 +37,13 @@ const appendVoiceTextCommand = defineRendererCommand({
   owner: "RealtimeVoiceWindow",
   protocol: { kind: "pending_operation" },
 });
+const appendVoiceSpeechCommand = defineRendererCommand({
+  key: "realtime_voice.append_speech",
+  channel: "codex:realtime-voice:append-speech",
+  authority: "external",
+  owner: "RealtimeVoiceWindow",
+  protocol: { kind: "pending_operation" },
+});
 const native = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/realtime/started"),
@@ -105,6 +112,7 @@ export interface RealtimeVoiceClient {
   stop(claimId: string): Promise<void>;
   release(claimId: string): Promise<boolean>;
   appendText(claimId: string, role: ConversationTextRole, text: string): Promise<void>;
+  appendSpeech(claimId: string, text: string): Promise<void>;
   subscribe(listener: (event: CodexRealtimeVoiceEvent) => void): () => void;
 }
 export const mainRealtimeVoiceClient: RealtimeVoiceClient = {
@@ -118,6 +126,7 @@ export const mainRealtimeVoiceClient: RealtimeVoiceClient = {
   release: (claimId) => invokeRendererControl("codex:realtime-voice:release", { claimId }),
   appendText: (claimId, role, text) =>
     invokePlainCommand(appendVoiceTextCommand, { claimId, role, text }),
+  appendSpeech: (claimId, text) => invokePlainCommand(appendVoiceSpeechCommand, { claimId, text }),
   subscribe: (listener) => {
     if (!window.api) return () => undefined;
     return window.api.on("codex:realtime-voice:event", (input) => {

@@ -1930,6 +1930,10 @@ export interface IpcApi {
     args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceAppendTextInput];
     result: void;
   };
+  "codex:realtime-voice:append-speech": {
+    args: [input: import("./codex-realtime-voice").CodexRealtimeVoiceAppendSpeechInput];
+    result: void;
+  };
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
   "codex:visualization:capture-image": {
