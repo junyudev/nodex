@@ -59,12 +59,7 @@ import {
 } from "./sidebar-thread-reorder";
 import type { StableWorktreeEntry } from "./stable-worktree-production";
 import { StableWorktreeSidebarRows } from "./stable-worktree-sidebar-row";
-import {
-  AutomationsIcon,
-  NewChatIcon,
-  ThreadIcon,
-  ComposerPluginsIcon,
-} from "@/components/shared/icons";
+import { AutomationsIcon, NewChatIcon, ThreadIcon, PluginsIcon } from "@/components/shared/icons";
 import {
   NodexDialog,
   NodexDialogAction,
@@ -2336,7 +2331,7 @@ export function ProjectSessionSidebar({
                       />
                       <CodexSidebarTopActionButton
                         label="Plugins"
-                        icon={<ComposerPluginsIcon className="icon-xs" />}
+                        icon={<PluginsIcon className="icon-xs" />}
                         onClick={() => onShowUnavailableProduct("Plugins")}
                       />
                     </div>

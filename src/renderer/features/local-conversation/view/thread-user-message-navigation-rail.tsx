@@ -30,7 +30,7 @@ import {
   ConnectorFallbackIcon,
   EditFilesIcon,
   ConnectorGlobeIcon,
-  PluginCubeIcon,
+  PluginsIcon,
 } from "@/components/shared/icons";
 
 export type ThreadUserMessageNavigationRevealMode = MarkerNavigationRevealMode;
@@ -128,7 +128,7 @@ export function hasEnoughThreadUserMessageNavigationLeftSpace({
 function resolveOutputIcon(
   type: ThreadUserMessageNavigationOutputType,
 ): ComponentType<{ className?: string; "aria-hidden"?: boolean }> {
-  if (type === "app") return PluginCubeIcon;
+  if (type === "app") return PluginsIcon;
   if (type === "website") return ConnectorGlobeIcon;
   if (type === "google-drive") return ConnectorFallbackIcon;
   if (type === "image") return EditFilesIcon;

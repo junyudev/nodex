@@ -37,11 +37,7 @@ import {
   type BranchSelectorState,
 } from "../shared/branch-selector-state";
 import { DiffStats } from "../shared/tools/diff-file-shared";
-import {
-  ConnectorFallbackIcon,
-  ConnectorGlobeIcon,
-  PluginCubeIcon,
-} from "@/components/shared/icons";
+import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
 import { openFileLink } from "../../../../lib/file-system-operations";
 import {
   CODEX_SUMMARY_PANEL_TRANSITION,
@@ -624,7 +620,7 @@ function SummaryOutputIcon({ row }: { row: ThreadSummaryPanelOutputRow }) {
   }
 
   if (row.kind === "appgen-app") {
-    return <PluginCubeIcon className="size-3.5" aria-hidden={true} />;
+    return <PluginsIcon className="size-3.5" aria-hidden={true} />;
   }
 
   return <FileIcon className="size-3.5" />;

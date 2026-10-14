@@ -13,7 +13,7 @@ import {
   SidePanelSideChatIcon,
   SidePanelTerminalIcon,
   ComposerPlanModeIcon,
-  ComposerPluginsIcon,
+  PluginsIcon,
   ImageEditorTabIcon,
 } from "@/components/shared/icons";
 import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favicon";
@@ -374,7 +374,7 @@ export function useWorkbenchPanelProjection({
           icon: isSideChatPanelTab(tab)
             ? SidePanelSideChatIcon
             : isMcpAppPanelTab(tab)
-              ? ComposerPluginsIcon
+              ? PluginsIcon
               : isPlanPanelTab(tab)
                 ? ComposerPlanModeIcon
                 : isAutomationPanelTab(tab)

@@ -32,7 +32,7 @@ import {
   EditFilesIcon,
   ConnectorGlobeIcon,
   HooksIcon,
-  PluginCubeIcon,
+  PluginsIcon,
   ReadFilesIcon,
   SkillIcon,
   TerminalActivityIcon,
@@ -129,7 +129,7 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
     case "node-repl":
       return <TerminalActivityIcon aria-hidden className={iconClassName} />;
     case "plugin":
-      return <PluginCubeIcon aria-hidden className={iconClassName} />;
+      return <PluginsIcon aria-hidden className={iconClassName} />;
     case "read-files":
       return <ReadFilesIcon aria-hidden className={iconClassName} />;
     case "settings":

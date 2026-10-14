@@ -28,7 +28,7 @@ import {
   ComposerAddFilesIcon,
   ComposerAppshotIcon,
   ComposerPlanModeIcon,
-  ComposerPluginsIcon,
+  PluginsIcon,
   CheckmarkIcon,
   ConversationIcon,
   PlusIcon,
@@ -380,7 +380,7 @@ function buildComposerAppItem(app: ProtocolAppInfo): ComposerContextItemView {
         iconUrl={app.logoUrl}
         iconUrlDark={app.logoUrlDark}
         brandColor={null}
-        fallback={<ComposerPluginsIcon className="size-3.5" />}
+        fallback={<PluginsIcon className="size-3.5" />}
       />
     ),
     active: false,
@@ -879,7 +879,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
               plugin.id.startsWith("browser@") ? (
                 <SidePanelBrowserIcon className="size-3.5" />
               ) : (
-                <ComposerPluginsIcon className="size-3.5" />
+                <PluginsIcon className="size-3.5" />
               )
             }
           />
