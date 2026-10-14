@@ -1,0 +1,82 @@
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bd811abbf24a41::t_173206d952860f 277-278,286-294
+crates/nodex-cli/src/lib.rs
+  s_bd811abbf24a41::t_78a73a061bf28f 18
+src/main/app-tools/InboxAppTools.node.test.ts
+  s_bd811abbf24a41::t_5211eef07d6315 1-115
+crates/nodex-core/schema/migrations/v175_to_v176.sql
+  s_bd811abbf24a41::t_4515c8613f408d 18,21,33-34,39-40
+crates/nodex-core-contracts/src/inbox.rs
+  s_bd811abbf24a41::t_6ebfd1f7c428b4 97-101
+src/main/inbox-application/inbox-suggestions.ts
+  s_bd811abbf24a41::t_db750c03cab4b3 130-132
+crates/nodex-core/schema/current.sql
+  s_bd811abbf24a41::t_4515c8613f408d 5024,5027,5039-5040,5045-5046
+crates/nodex-cli/src/cli.rs
+  s_bd811abbf24a41::t_78a73a061bf28f 123-124,830-850
+  s_bd811abbf24a41::t_877ef07d0e5a4e 851
+crates/nodex-core/src/workspace/inbox.rs
+  s_bd811abbf24a41::t_a2431e2f8dca74 303,350-351,354-358,361-362,372,380,448
+  s_bd811abbf24a41::t_af892704bacea4 47-49,283,285,288,290-302,304-314,317-349,352-353,359-360,363-371,413,416,418,438,481-482,488-493
+  s_bd811abbf24a41::t_b5f2511c51661e 315-316
+agent-skills/nodex/SKILL.md
+  s_bd811abbf24a41::t_ea3ff60a62362e 24
+src/main/app-tools/InboxAppTools.ts
+  s_bd811abbf24a41::t_b74f1bf6fd6b1e 1-73
+crates/nodex-cli/src/agent_interface/schema.rs
+  s_bd811abbf24a41::t_e1a2b3e2e2cc66 103
+crates/nodex-cli/tests/inbox.rs
+  s_bd811abbf24a41::t_6abe250f38cd1e 1-170
+crates/nodex-cli/src/runtime.rs
+  s_bd811abbf24a41::t_78a73a061bf28f 271-273
+  s_bd811abbf24a41::t_0780853c495011 38-40
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bd811abbf24a41::t_0780853c495011 628-631,634-637
+  s_bd811abbf24a41::t_dff6a72b0093e5 606
+  s_bd811abbf24a41::t_44fbe7ab8f127e 583-605,607-627,632-633,638-690
+crates/nodex-store-format/src/lib.rs
+  s_bd811abbf24a41::t_46e353255a0be0 175
+packages/core-protocol/src/generated.ts
+  s_bd811abbf24a41::t_c30d972834a155 9304-9308
+src/renderer/features/inbox/inbox-message.tsx
+  s_bd811abbf24a41::t_db750c03cab4b3 171-174
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_bd811abbf24a41::t_a572caf6ffdbe2 1-17
+src/renderer/components/workbench/workbench-settings-sections.node.test.ts
+  s_bd811abbf24a41::t_2eb7262c48d662 8,12-14
+src/shared/inbox.ts
+  s_bd811abbf24a41::t_db750c03cab4b3 38-43
+src/main/core-client/inbox-adapter.ts
+  s_bd811abbf24a41::t_db750c03cab4b3 55-60,67-74
+crates/nodex-cli/src/inbox.rs
+  s_bd811abbf24a41::t_224d8c2fbaf003 1-119
+crates/nodex-cli/src/agent_interface.rs
+  s_bd811abbf24a41::t_e1a2b3e2e2cc66 374-396,1641
+  s_bd811abbf24a41::t_a8dc3073aa3d1e 373
+packages/core-protocol/openapi.json
+  s_bd811abbf24a41::t_c30d972834a155 38671-38695
+packages/core-protocol/src/compatibility.generated.ts
+  s_bd811abbf24a41::t_cfefdc326eaf29 43
+src/main/app-tools/AppToolInterpreter.ts
+  s_bd811abbf24a41::t_788a09fffec79a 29,54,88,118
+src/main/app-tools/NativeAppToolSession.ts
+  s_bd811abbf24a41::t_958a1badc26281 29
+src/shared/nodex-app-tools/catalog.ts
+  s_bd811abbf24a41::t_e85171328d5a06 14,35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "40e8ea8a166ecdc969f55f6fba128dc278cee59d",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
