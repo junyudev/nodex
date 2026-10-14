@@ -1,9 +1,7 @@
 import {
-  CODEX_ACCENT_PRESETS,
   normalizeCodexAccentColor,
   parseCodexAccent,
   type CodexAccent,
-  type CodexAccentPreset,
 } from "./codex-theme-variant";
 
 export const THEME_STORAGE_KEY = "nodex-theme";
@@ -13,15 +11,13 @@ export type ThemePreference = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
 export interface AccentColorPreferences {
-  readonly preset: CodexAccentPreset;
-  readonly light: string | null;
-  readonly dark: string | null;
+  readonly light: CodexAccent;
+  readonly dark: CodexAccent;
 }
 
 const DEFAULT_ACCENT_COLOR_PREFERENCES: AccentColorPreferences = {
-  preset: "default",
-  light: null,
-  dark: null,
+  light: { kind: "preset", name: "default" },
+  dark: { kind: "preset", name: "default" },
 };
 
 export function normalizeThemePreference(value: unknown): ThemePreference {
@@ -49,10 +45,15 @@ export function writeThemePreference(value: ThemePreference): ThemePreference {
 export function decodeAccentColorPreferences(value: unknown): AccentColorPreferences {
   if (typeof value !== "object" || value === null) return DEFAULT_ACCENT_COLOR_PREFERENCES;
   const record = value as Record<string, unknown>;
+  const decodeAppearance = (appearance: unknown): CodexAccent => {
+    if (typeof appearance === "object" && appearance !== null) return parseCodexAccent(appearance);
+    const color = normalizeCodexAccentColor(appearance);
+    if (color !== null) return { kind: "custom", color };
+    return parseCodexAccent({ kind: "preset", name: record.preset });
+  };
   return {
-    preset: CODEX_ACCENT_PRESETS.find((preset) => preset === record.preset) ?? "default",
-    light: normalizeCodexAccentColor(record.light),
-    dark: normalizeCodexAccentColor(record.dark),
+    light: decodeAppearance(record.light),
+    dark: decodeAppearance(record.dark),
   };
 }
 
@@ -73,19 +74,16 @@ export function resolveAccentColorPreference(
   preferences: AccentColorPreferences,
   variant: ResolvedTheme,
 ): CodexAccent {
-  const color = preferences[variant];
-  return color === null ? { kind: "preset", name: preferences.preset } : { kind: "custom", color };
+  return preferences[variant];
 }
 
-/** Presets are shared; custom colors belong to the appearance being edited. */
+/** Every color choice belongs to the appearance being edited. */
 export function updateAccentColorPreference(
   preferences: AccentColorPreferences,
   variant: ResolvedTheme,
   value: CodexAccent,
 ): AccentColorPreferences {
-  const accent = parseCodexAccent(value);
-  if (accent.kind === "custom") return { ...preferences, [variant]: accent.color };
-  return { ...preferences, preset: accent.name, [variant]: null };
+  return { ...preferences, [variant]: parseCodexAccent(value) };
 }
 
 export function writeAccentColorPreferences(

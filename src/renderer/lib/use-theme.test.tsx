@@ -5,12 +5,13 @@ import { createMaitaiStore, disposeMaitaiStore, MaitaiProvider } from "./maitai"
 import { getCodexThemeVariantStyle } from "./codex-theme-variant";
 import { ACCENT_COLOR_STORAGE_KEY, THEME_STORAGE_KEY } from "./theme-preferences";
 import { initializeApplicationAppearance } from "../bootstrap/application-appearance";
-import { ThemeProvider, useTheme } from "./use-theme";
+import { ThemeProvider, useAppearanceAccent, useTheme } from "./use-theme";
 
 const stores: ReturnType<typeof createMaitaiStore>[] = [];
 
 function Controls({ customColor }: { customColor: string }) {
   const { accent, resolved, setAccent, setTheme } = useTheme();
+  const { setAccent: setDarkAccent } = useAppearanceAccent("dark");
   return (
     <>
       <output aria-label="Appearance">{resolved}</output>
@@ -21,6 +22,7 @@ function Controls({ customColor }: { customColor: string }) {
       <button onClick={() => setAccent({ kind: "custom", color: customColor })}>Custom</button>
       <button onClick={() => setTheme("dark")}>Dark</button>
       <button onClick={() => setTheme("light")}>Light</button>
+      <button onClick={() => setDarkAccent({ kind: "preset", name: "green" })}>Dark green</button>
     </>
   );
 }
@@ -72,7 +74,10 @@ describe("appearance preference application", () => {
     ).toBe("#000000");
     await click("Default");
     expect(screen.getByLabelText("Accent").textContent).toBe("default");
-    expect(JSON.parse(localStorage.getItem(ACCENT_COLOR_STORAGE_KEY)!).preset).toBe("default");
+    expect(JSON.parse(localStorage.getItem(ACCENT_COLOR_STORAGE_KEY)!).light).toEqual({
+      kind: "preset",
+      name: "default",
+    });
     expect(
       document.documentElement.style.getPropertyValue("--color-background-composer-primary"),
     ).toBe(expected["--color-background-composer-primary"]);
@@ -96,18 +101,18 @@ describe("appearance preference application", () => {
     );
   });
 
-  test("saves a shared preset, retains appearance-specific custom colors, and restores after remount", async () => {
+  test("retains independent colors and restores after remount", async () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
     const view = mountTheme();
     await click("Green");
     await click("Custom");
     expect(screen.getByLabelText("Accent").textContent).toBe("#112233");
     await click("Dark");
-    await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("green"));
+    await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("default"));
     view.unmount();
     mountTheme();
     expect(screen.getByLabelText("Appearance").textContent).toBe("dark");
-    expect(screen.getByLabelText("Accent").textContent).toBe("green");
+    expect(screen.getByLabelText("Accent").textContent).toBe("default");
     await click("Light");
     await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("#112233"));
   });
@@ -156,9 +161,8 @@ describe("appearance preference application", () => {
       await Promise.resolve();
     });
     expect(JSON.parse(localStorage.getItem(ACCENT_COLOR_STORAGE_KEY)!)).toEqual({
-      preset: "default",
-      light: "#112233",
-      dark: "#445566",
+      light: { kind: "custom", color: "#112233" },
+      dark: { kind: "custom", color: "#445566" },
     });
   });
 
@@ -191,5 +195,19 @@ describe("appearance preference application", () => {
     await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("#445566"));
     expect(document.documentElement.style.getPropertyValue("--codex-base-accent")).toBe("#445566");
     expect(localStorage.getItem(ACCENT_COLOR_STORAGE_KEY)).toBe(preferences);
+  });
+
+  test("editing an inactive preset leaves the active theme untouched until that mode is selected", async () => {
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
+    mountTheme();
+    const activeColor = document.documentElement.style.getPropertyValue("--codex-base-accent");
+    await click("Dark green");
+    expect(screen.getByLabelText("Appearance").textContent).toBe("light");
+    expect(screen.getByLabelText("Accent").textContent).toBe("default");
+    expect(document.documentElement.style.getPropertyValue("--codex-base-accent")).toBe(
+      activeColor,
+    );
+    await click("Dark");
+    await waitFor(() => expect(screen.getByLabelText("Accent").textContent).toBe("green"));
   });
 });

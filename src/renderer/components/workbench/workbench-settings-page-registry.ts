@@ -32,6 +32,7 @@ export interface SettingsSectionPageProps {
   composerEnterBehavior: ComposerEnterBehavior;
   initialLocalEnvironmentConfigPath?: string | null;
   initialLocalEnvironmentProjectId?: string | null;
+  initialSearchQuery?: string;
   isMacPlatform: boolean;
   onComposerEnterBehaviorChange: (value: ComposerEnterBehavior) => void;
   onOpenBrowserDetail: (
@@ -48,6 +49,7 @@ export interface SettingsSectionPageProps {
   open: boolean;
   path: string;
   projects: Project[];
+  settingsAnchor?: string | null;
   taskShorthandPagePromotionEnabled: boolean;
   threadQueueFollowUpsEnabled: boolean;
   worktreeAutoBranchPrefix: string;

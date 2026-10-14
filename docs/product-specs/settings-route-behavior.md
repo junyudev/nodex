@@ -27,6 +27,8 @@ file references; file-opening behavior never intercepts a Settings route.
 `Back to app` restores the owning Workbench return location. Settings itself is
 outside app-window Back/Forward Scene checkpoints, so it does not create a
 second Scene layout owner.
+Resizing Settings preserves the hidden Workbench panel layout. Workbench
+responsive adjustments resume when returning to that surface.
 
 ## Section catalog
 
@@ -103,6 +105,18 @@ Switching appearance updates these roles together, including content that uses
 the shared legacy background and foreground aliases. Native sidebar material
 and typography preferences remain independent of the palette.
 
+Appearance groups Mode and Theme in Visual style. Theme groups `Accent color`
+with the UI `Font`. Advanced starts collapsed and owns UI, Content and Code font sizes,
+Reduce motion, Content and Code font families, and `Separate light/dark modes`.
+The latter reveals both appearance editors without switching Mode, copying
+preferences, or changing saved values. When disabled, the editor presents the
+currently resolved appearance. Changing an inactive appearance preserves the
+active palette and font choices.
+Settings searches targeting an Advanced control expand that group on arrival.
+Its Reset action restores the three sizes, Content and Code families for both
+appearances, and Reduce motion, then returns to a single appearance editor.
+Mode, UI font families and accents keep their saved values.
+
 Appearance includes an `Accent color` picker with Default, Blue, Green, Yellow,
 Pink, Orange, Purple, and Black presets; Black is labeled White in dark mode.
 Named presets apply one coordinated palette to conversation send/stop actions,
@@ -115,9 +129,9 @@ and a neutral bubble in dark mode.
 
 `Custom` uses a six-digit Hex field and continuous color picker. It starts from
 the active accent color, commits complete colors immediately, and discards an
-incomplete draft on blur or appearance change. Custom colors are independent for
-light and dark appearances. Selecting a named preset updates the shared preset
-and clears only the current appearance's custom override. Custom colors drive
+incomplete draft on blur or appearance change. Accent colors are independent for
+light and dark appearances. Selecting a named preset replaces only the edited
+appearance's accent. Custom colors drive
 the accent-derived palette while conversation send/stop actions and bubbles
 use their neutral semantic surfaces. Foreground contrast is resolved with the
 same palette, including saturated blue colors.
@@ -135,7 +149,10 @@ synchronize between windows sharing browser storage; startup restores them
 before application content paints. See [Typography behavior](typography-behavior.md)
 for role ownership and size/line-height rules.
 
-Appearance also owns the renderer-local `Reduced motion` preference. `System`
+Advanced presents the independent Page body size as `Content font size`, marked
+`Pages`. Page title size continues to follow the UI heading scale.
+
+Appearance also owns the renderer-local `Reduce motion` preference. `System`
 tracks the operating-system media query, `On` reduces hook-driven interface
 motion, and `Off` allows it. The resolved preference governs shared activity
 spinners, Browser tab loading chrome, and Motion-based interface transitions;

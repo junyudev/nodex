@@ -8,7 +8,7 @@ import { SettingsSidebar } from "./workbench-settings-sidebar";
 function renderSidebar({
   onSelectSection,
 }: {
-  onSelectSection?: (sectionId: SettingsSectionId) => void;
+  onSelectSection?: (sectionId: SettingsSectionId, searchQuery?: string) => void;
 } = {}) {
   let selectedSectionId: SettingsSectionId | null = null;
   const view = render(
@@ -20,9 +20,9 @@ function renderSidebar({
         projectNames: ["Nodex", "Docs"],
       }}
       onBack={() => {}}
-      onSelectSection={(sectionId) => {
+      onSelectSection={(sectionId, searchQuery) => {
         selectedSectionId = sectionId;
-        onSelectSection?.(sectionId);
+        onSelectSection?.(sectionId, searchQuery);
       }}
     />,
   );
@@ -201,6 +201,32 @@ describe("SettingsSidebar search", () => {
 
     expect(view.selectedSectionId()).toBe("keyboard-shortcuts");
     expect(input.value).toBe("keyboard shortcuts");
+  });
+
+  test("forwards the active query for pointer and keyboard search navigation", async () => {
+    const selections: { sectionId: SettingsSectionId; query?: string }[] = [];
+    const view = renderSidebar({
+      onSelectSection: (sectionId, query) => selections.push({ sectionId, query }),
+    });
+    const input = view.getByRole("searchbox", { name: "Search settings" }) as HTMLInputElement;
+    await changeSearchQuery(input, "Code font size");
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Code font size, Appearance" }));
+      await Promise.resolve();
+    });
+    expect(selections.at(-1)).toEqual({ sectionId: "appearance", query: "Code font size" });
+
+    await changeSearchQuery(input, "UI font size");
+    await pressSearchKey(input, "ArrowDown");
+    await pressSearchKey(input, "Enter");
+    expect(selections.at(-1)).toEqual({ sectionId: "appearance", query: "UI font size" });
+
+    await changeSearchQuery(input, "");
+    await act(async () => {
+      fireEvent.click(view.getByRole("link", { name: "Appearance" }));
+      await Promise.resolve();
+    });
+    expect(selections.at(-1)).toEqual({ sectionId: "appearance", query: undefined });
   });
 
   test("no-results state renders when the query has no matches", async () => {

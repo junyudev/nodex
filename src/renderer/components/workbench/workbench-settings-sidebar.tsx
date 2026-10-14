@@ -31,7 +31,7 @@ interface SettingsSidebarProps {
   initialSearchQuery?: string;
   initialHighlightedSearchIndex?: number;
   onBack: () => void;
-  onSelectSection: (sectionId: SettingsSectionId) => void;
+  onSelectSection: (sectionId: SettingsSectionId, searchQuery?: string) => void;
 }
 
 interface SettingsSectionGroup {
@@ -258,7 +258,7 @@ export function SettingsSidebar({
     isActive: isSearchActive,
     items: searchResults,
     onEscape: () => setQuery(""),
-    onSelect: (result) => onSelectSection(result.sectionId),
+    onSelect: (result) => onSelectSection(result.sectionId, query),
   });
   return (
     <aside className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex">
@@ -287,7 +287,7 @@ export function SettingsSidebar({
                 listRef={listNavigation.listRef}
                 results={searchResults}
                 sections={sections}
-                onSelectResult={(result) => onSelectSection(result.sectionId)}
+                onSelectResult={(result) => onSelectSection(result.sectionId, query)}
               />
             ) : (
               <>

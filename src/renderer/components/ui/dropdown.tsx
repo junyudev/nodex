@@ -240,7 +240,7 @@ const dropdownItemBaseClassName =
 const dropdownItemInteractiveClassName =
   "hover:bg-token-list-hover-background focus:bg-token-list-hover-background cursor-interaction";
 const dropdownItemLeftSlotClassName =
-  "shrink-0 text-token-text-secondary [&_svg]:size-4 [&_svg]:shrink-0";
+  "inline-flex shrink-0 items-center justify-center text-token-text-secondary [&_svg]:size-4 [&_svg]:shrink-0";
 const dropdownItemLeftSlotInteractiveClassName =
   "group-focus:text-token-foreground group-hover:text-token-foreground";
 const dropdownSectionLabelClassName =
@@ -455,7 +455,20 @@ export type NodexDropdownButtonTriggerProps = Omit<ComponentPropsWithoutRef<"but
   showChevron?: boolean;
   chrome?: "filled" | "transparent" | "outline" | "raised";
   shape?: "default" | "pill";
+  leadingVisual?: ReactNode;
 };
+
+/** Color indicators keep their geometry both inside triggers and menu slots. */
+export function NodexDropdownColorDot({ color, className }: { color: string; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-slot="dropdown-color-dot"
+      className={cn("block size-3 shrink-0 rounded-full border border-default", className)}
+      style={{ backgroundColor: color }}
+    />
+  );
+}
 
 export const NodexDropdownButtonTrigger = forwardRef<
   HTMLButtonElement,
@@ -470,6 +483,7 @@ export const NodexDropdownButtonTrigger = forwardRef<
     showChevron = true,
     chrome = "outline",
     shape = "default",
+    leadingVisual,
     ...props
   },
   ref,
@@ -497,14 +511,19 @@ export const NodexDropdownButtonTrigger = forwardRef<
             : size === "rule"
               ? "h-8 rounded-lg px-2 py-0 text-sm/5"
               : size === "settings"
-                ? "h-token-button-composer rounded-lg px-3 py-0 text-base leading-[18px]"
+                ? "h-7 rounded-full px-2 py-0 text-xs leading-4"
                 : "h-7 rounded-lg px-2 py-0 text-sm/4.5",
         shape === "pill" && "rounded-full pl-1 pr-2",
         className,
       )}
       {...props}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-1">{children}</span>
+      <span className={cn("flex min-w-0 flex-1 items-center", leadingVisual ? "gap-2" : "gap-1")}>
+        {leadingVisual ? (
+          <span className="inline-flex shrink-0 items-center justify-center">{leadingVisual}</span>
+        ) : null}
+        {children}
+      </span>
       {showChevron ? <ChevronDownIcon className="icon-2xs" /> : null}
     </button>
   );
@@ -585,7 +604,7 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
         )}
         {...props}
       >
-        <div className={cn("flex w-full items-center gap-1.5", alignSlotsToStart && "items-start")}>
+        <div className={cn("flex w-full items-center gap-2", alignSlotsToStart && "items-start")}>
           {leftSlot ? (
             <span
               className={cn(
@@ -701,7 +720,7 @@ export const NodexDropdownRadioItem = forwardRef<HTMLDivElement, NodexDropdownRa
         )}
         {...props}
       >
-        <div className="flex w-full items-center gap-1.5">
+        <div className="flex w-full items-center gap-2">
           {leftSlot ? (
             <span
               className={cn(
@@ -808,6 +827,7 @@ function NodexStaticOptionPicker({
         options.map((option) => (
           <NodexDropdownItem
             key={option.value}
+            aria-current={option.value === value ? true : undefined}
             onSelect={() => onValueChange(option.value)}
             disabled={option.disabled}
             leftSlot={option.leftSlot}
@@ -881,7 +901,7 @@ function NodexFilterOptionButton({
         option.disabled && "cursor-default opacity-50",
       )}
     >
-      <span className="flex w-full items-center gap-1.5">
+      <span className="flex w-full items-center gap-2">
         {option.leftSlot ? (
           <span
             className={cn(

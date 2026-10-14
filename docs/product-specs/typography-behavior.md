@@ -23,6 +23,12 @@ storage and synchronizes across windows sharing that storage. Changing one
 size or font role preserves the others and the inactive appearance. Window
 zoom remains an independent setting.
 
+Appearance places UI, Content and Code sizes in its collapsed Advanced options
+and groups each appearance's font choices with its theme controls. The independent
+Page size is `Content font size`, marked `Pages`. Showing separate
+light and dark editors changes only the settings presentation; it never copies
+font choices or switches the active appearance.
+
 Parser-time initialization and the mounted renderer use the same preference
 normalizer and CSS-variable projector. Effective family, size, and scale tokens
 are applied to root and body before content paints. Reopening a window restores

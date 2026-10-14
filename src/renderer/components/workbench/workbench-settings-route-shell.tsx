@@ -10,18 +10,21 @@ import {
   useState,
   type ComponentType,
 } from "react";
-import { DeleteIcon, ResetIcon } from "@/components/shared/icons";
-import { Monitor, Moon, Sun } from "@/components/shared/icons/generic-icons";
+import { DeleteIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import {
   NodexDropdownButtonTrigger,
   NodexDropdownItem,
+  NodexDropdownInput,
   NodexDropdownMenu,
+  NodexDropdownSeparator,
   NodexDropdownSelectedIcon,
   NodexSettingsDropdownTrigger,
+  NodexOptionPicker,
 } from "@/components/ui/dropdown";
 import { Input } from "../ui/input";
+import { NodexThemeModeSelector } from "../ui/theme-mode-selector";
 import {
   backupRuntimePort,
   deleteBackup,
@@ -39,16 +42,8 @@ import { handleFormSubmit, resolveFormErrorMessage, resolveZodErrorMessage } fro
 import { FILE_LINK_OPENER_ICON_URLS } from "../../lib/file-link-opener-icons";
 import { useFileLinkOpener } from "../../lib/use-file-link-opener";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
-import {
-  DEFAULT_CODE_FONT_SIZE,
-  MAX_CODE_FONT_SIZE,
-  MIN_CODE_FONT_SIZE,
-} from "../../lib/code-font-size";
-import {
-  DEFAULT_SANS_FONT_SIZE,
-  MAX_SANS_FONT_SIZE,
-  MIN_SANS_FONT_SIZE,
-} from "../../lib/sans-font-size";
+import { MAX_CODE_FONT_SIZE, MIN_CODE_FONT_SIZE } from "../../lib/code-font-size";
+import { MAX_SANS_FONT_SIZE, MIN_SANS_FONT_SIZE } from "../../lib/sans-font-size";
 import { useCodeFontSize } from "../../lib/use-code-font-size";
 import { useCopyFileReferenceSettings } from "../../lib/use-copy-file-reference-settings";
 import { useNfmAutolinkSettings } from "../../lib/use-nfm-autolink-settings";
@@ -125,9 +120,14 @@ import {
 import { SettingsSidebar } from "./workbench-settings-sidebar";
 import {
   buildBrowserSettingsPath,
+  buildSettingsAnchorPath,
   buildSettingsPath,
   resolveSettingsShellState,
 } from "./workbench-settings-routes";
+import {
+  APPEARANCE_ADVANCED_ANCHOR,
+  shouldExpandAppearanceAdvanced,
+} from "./workbench-settings-search-catalog";
 
 const OpenSourceLicensesSettingsPage = lazy(async () => {
   const module = await import("./open-source-licenses-settings-page");
@@ -181,18 +181,24 @@ interface SegmentedOption<T extends string> {
 }
 
 interface SegmentedControlProps<T extends string> {
+  ariaLabel: string;
   value: T;
   onChange: (value: T) => void;
   options: SegmentedOption<T>[];
 }
 
 function SegmentedControl<T extends string>({
+  ariaLabel,
   value,
   onChange,
   options,
 }: SegmentedControlProps<T>) {
   return (
-    <div className="inline-flex items-center gap-0.5" role="group">
+    <div
+      className="inline-flex max-w-full flex-wrap items-center gap-0.5"
+      role="group"
+      aria-label={ariaLabel}
+    >
       {options.map((option) => {
         const Icon = option.icon;
         const isActive = value === option.value;
@@ -204,7 +210,7 @@ function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
             aria-pressed={isActive}
             className={cn(
-              "flex items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm/4.5 transition-colors",
+              "flex items-center gap-1 rounded-full border border-transparent px-2 py-0.5 text-sm/4.5",
               "outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border/30",
               isActive
                 ? "bg-foreground-5 text-(--foreground)"
@@ -304,31 +310,31 @@ function ThreadNotificationTurnModeControl({
 export function ThemeSettingControl() {
   const { theme, setTheme } = useTheme();
 
-  return (
-    <SegmentedControl
-      value={theme}
-      onChange={setTheme}
-      options={[
-        { value: "system", label: "System", icon: Monitor },
-        { value: "light", label: "Light", icon: Sun },
-        { value: "dark", label: "Dark", icon: Moon },
-      ]}
-    />
-  );
+  return <NodexThemeModeSelector value={theme} onValueChange={setTheme} />;
 }
 
 export function ReducedMotionSettingControl() {
   const { preference, setPreference } = useReducedMotionPreference();
 
   return (
-    <SegmentedControl
+    <NodexOptionPicker
+      search="none"
+      align="end"
+      contentWidth="menu"
       value={preference}
-      onChange={setPreference}
+      onValueChange={(next) => {
+        if (next === "system" || next === "on" || next === "off") setPreference(next);
+      }}
       options={[
         { value: "system", label: "System" },
         { value: "on", label: "On" },
         { value: "off", label: "Off" },
       ]}
+      triggerButton={
+        <NodexSettingsDropdownTrigger aria-label="Reduce motion" className="min-w-24">
+          {preference === "system" ? "System" : preference === "on" ? "On" : "Off"}
+        </NodexSettingsDropdownTrigger>
+      }
     />
   );
 }
@@ -427,6 +433,7 @@ export function ServiceTierSettingControl() {
 
   return (
     <SegmentedControl<"standard" | "fast">
+      ariaLabel="Service tier"
       value={selectedValue}
       onChange={(value) => {
         setServiceTier(value === "fast" ? "fast" : null, "settings");
@@ -445,6 +452,7 @@ export function WindowRestoreSettingControl() {
 
   return (
     <SegmentedControl<WindowRestorePolicy>
+      ariaLabel="Window restore"
       value={selectedValue}
       onChange={(policy) => {
         void updateSettings({ policy });
@@ -934,7 +942,7 @@ export function ThreadDetailLevelSettingControl() {
   return (
     <NodexDropdownMenu
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label="Thread detail" className="min-w-56 text-base/4.5">
+        <NodexSettingsDropdownTrigger aria-label="Thread detail" className="min-w-56">
           <span className="truncate">
             {formatCodexThreadDetailLevelLabel(selectedOption.value)}
           </span>
@@ -961,61 +969,61 @@ export function ThreadDetailLevelSettingControl() {
 
 function FontSizeSettingControl({
   ariaLabel,
-  defaultValue,
   max,
   min,
   onChangeValue,
   value,
 }: {
   ariaLabel: string;
-  defaultValue: number;
   max: number;
   min: number;
   onChangeValue: (value: number) => void;
   value: number;
 }) {
-  const [draft, setDraft] = useState(String(value));
-  const isDefault = value === defaultValue;
+  const [edit, setEdit] = useState({ source: value, draft: String(value) });
+  if (edit.source !== value) setEdit({ source: value, draft: String(value) });
+  const draft = edit.source === value ? edit.draft : String(value);
+  const setDraft = (next: string) => setEdit({ source: value, draft: next });
+  const pointerStartValue = useRef<string | null>(null);
 
-  const commit = useCallback(() => {
-    const parsed = Number(draft);
-    if (draft.trim() === "" || !Number.isFinite(parsed) || parsed < min || parsed > max) {
+  const commit = (input = draft) => {
+    const parsed = Number(input);
+    if (input.trim() === "" || !Number.isFinite(parsed) || parsed < min || parsed > max) {
       setDraft(String(value));
       return;
     }
 
-    onChangeValue(parsed);
-  }, [draft, max, min, onChangeValue, value]);
+    setDraft(String(parsed));
+    if (parsed !== value) onChangeValue(parsed);
+  };
 
   return (
-    <div className="flex items-center gap-2.5">
+    <div className="flex items-center gap-2">
       <NodexSettingsNumberInput
         aria-label={ariaLabel}
         className="w-16"
         max={max}
         min={min}
-        onBlur={commit}
+        onBlur={() => commit()}
+        onPointerDown={(event) => {
+          pointerStartValue.current = event.currentTarget.value;
+        }}
+        onPointerUp={(event) => {
+          const start = pointerStartValue.current;
+          pointerStartValue.current = null;
+          if (start === null || start === event.currentTarget.value) return;
+          commit(event.currentTarget.value);
+        }}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
           event.preventDefault();
-          commit();
           event.currentTarget.blur();
         }}
         step={1}
         value={draft}
       />
       <span className="text-sm text-token-text-secondary">px</span>
-      <NodexButton
-        variant="ghost"
-        size="xs"
-        disabled={isDefault}
-        onClick={() => onChangeValue(defaultValue)}
-        className="gap-1 text-token-text-secondary"
-      >
-        <ResetIcon className="size-3.5" />
-        <span>Default</span>
-      </NodexButton>
     </div>
   );
 }
@@ -1025,9 +1033,7 @@ export function SansFontSizeSettingControl() {
 
   return (
     <FontSizeSettingControl
-      key={sansFontSize}
       ariaLabel="UI font size"
-      defaultValue={DEFAULT_SANS_FONT_SIZE}
       max={MAX_SANS_FONT_SIZE}
       min={MIN_SANS_FONT_SIZE}
       onChangeValue={setSansFontSize}
@@ -1041,9 +1047,7 @@ export function CodeFontSizeSettingControl() {
 
   return (
     <FontSizeSettingControl
-      key={codeFontSize}
       ariaLabel="Code font size"
-      defaultValue={DEFAULT_CODE_FONT_SIZE}
       max={MAX_CODE_FONT_SIZE}
       min={MIN_CODE_FONT_SIZE}
       onChangeValue={setCodeFontSize}
@@ -1056,9 +1060,7 @@ export function PageFontSizeSettingControl() {
   const { preferences, setFontSize } = useTypographyPreferences();
   return (
     <FontSizeSettingControl
-      key={preferences.pageFontSize}
-      ariaLabel="Page font size"
-      defaultValue={FONT_SIZE_LIMITS.page.default}
+      ariaLabel="Content font size"
       max={FONT_SIZE_LIMITS.page.max}
       min={FONT_SIZE_LIMITS.page.min}
       onChangeValue={(value) => setFontSize("page", value)}
@@ -1073,7 +1075,7 @@ const FONT_FAMILY_LABELS: Record<FontFamilyRole, string> = {
   code: "Code font",
 };
 
-function FontFamilySettingControl({
+export function FontFamilySettingControl({
   role,
   variant,
 }: {
@@ -1082,53 +1084,78 @@ function FontFamilySettingControl({
 }) {
   const { preferences, setFontFamily } = useTypographyPreferences();
   const family = preferences.fonts[variant][role];
-  const [draft, setDraft] = useState(family ?? "");
   return (
-    <Input
-      aria-label={`${variant === "light" ? "Light" : "Dark"} ${FONT_FAMILY_LABELS[role]}`}
-      className="w-52 text-sm"
-      placeholder={role === "content" ? "Same as UI font" : "System"}
-      value={draft}
-      onChange={(event) => setDraft(event.currentTarget.value)}
-      onBlur={() => {
-        setFontFamily(variant, role, draft);
-        setDraft(normalizeFontFamily(draft) ?? "");
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        event.currentTarget.blur();
-      }}
+    <FontFamilyInput
+      family={family}
+      role={role}
+      variant={variant}
+      onCommit={(value) => setFontFamily(variant, role, value)}
     />
   );
 }
 
-export function FontFamilySettingsControls() {
-  const { resolved } = useTheme();
-  const { preferences } = useTypographyPreferences();
-  const [variant, setVariant] = useState<ResolvedTheme>(resolved);
+function FontFamilyInput({
+  family,
+  role,
+  variant,
+  onCommit,
+}: {
+  family: string | null;
+  role: FontFamilyRole;
+  variant: ResolvedTheme;
+  onCommit: (value: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(family ?? "");
+  const label = `${variant === "light" ? "Light" : "Dark"} ${FONT_FAMILY_LABELS[role]}`;
+  const defaultLabel = role === "content" ? "Same as UI font" : "System";
+  const normalized = normalizeFontFamily(draft);
+  const invalid = draft.trim() !== "" && normalized === null;
+  const commit = () => {
+    if (invalid) return;
+    if (normalized !== family) onCommit(normalized);
+    setOpen(false);
+  };
   return (
-    <>
-      <SettingRow label="Font appearance">
-        <SegmentedControl
-          value={variant}
-          onChange={setVariant}
-          options={[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ]}
-        />
-      </SettingRow>
-      {(["ui", "content", "code"] as const).map((role) => (
-        <SettingRow key={role} label={FONT_FAMILY_LABELS[role]}>
-          <FontFamilySettingControl
-            key={`${variant}-${role}-${preferences.fonts[variant][role] ?? ""}`}
-            role={role}
-            variant={variant}
-          />
-        </SettingRow>
-      ))}
-    </>
+    <NodexDropdownMenu
+      align="end"
+      contentWidth="menuWide"
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setDraft(family ?? "");
+      }}
+      triggerButton={
+        <NodexSettingsDropdownTrigger aria-label={label} className="w-36 max-w-full">
+          <span className="truncate">{family ?? defaultLabel}</span>
+        </NodexSettingsDropdownTrigger>
+      }
+    >
+      <NodexDropdownItem
+        onSelect={() => {
+          if (family !== null) onCommit(null);
+        }}
+        rightSlot={family === null ? <NodexDropdownSelectedIcon /> : null}
+      >
+        {defaultLabel}
+      </NodexDropdownItem>
+      <NodexDropdownSeparator />
+      <NodexDropdownInput
+        aria-label={`Custom ${label}`}
+        aria-invalid={invalid || undefined}
+        spellCheck={false}
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          commit();
+        }}
+      />
+      <NodexDropdownItem disabled={invalid} onSelect={commit}>
+        Use custom font value
+      </NodexDropdownItem>
+    </NodexDropdownMenu>
   );
 }
 
@@ -1142,7 +1169,7 @@ export function FileLinkOpenerSettingControl() {
       triggerButton={
         <NodexSettingsDropdownTrigger
           aria-label={`Open markdown file links in ${selectedOption.label}`}
-          className="min-w-50 text-base/4.5"
+          className="min-w-50"
         >
           <span className="flex items-center gap-1.5">
             <img
@@ -1201,6 +1228,7 @@ export function WorktreeStartModeSettingControl({
 }) {
   return (
     <SegmentedControl<WorktreeStartMode>
+      ariaLabel="New worktree mode"
       value={value}
       onChange={onChange}
       options={[
@@ -2095,9 +2123,13 @@ export function SettingsRouteShell({
           initialSearchQuery={initialSettingsSearchQuery}
           initialHighlightedSearchIndex={initialSettingsSearchHighlightIndex}
           onBack={onBackToApp}
-          onSelectSection={(sectionId) => {
+          onSelectSection={(sectionId, searchQuery) => {
             startTransition(() => {
-              onPathChange(buildSettingsPath(sectionId));
+              onPathChange(
+                sectionId === "appearance" && shouldExpandAppearanceAdvanced(searchQuery ?? "")
+                  ? buildSettingsAnchorPath(sectionId, APPEARANCE_ADVANCED_ANCHOR)
+                  : buildSettingsPath(sectionId),
+              );
             });
           }}
         />
@@ -2135,6 +2167,8 @@ export function SettingsRouteShell({
               <ActiveSectionComponent
                 open={true}
                 path={path}
+                settingsAnchor={settingsAnchor}
+                initialSearchQuery={initialSettingsSearchQuery}
                 onPathChange={onPathChange}
                 browserAnchor={browserAnchor}
                 browserDetail={browserDetail}

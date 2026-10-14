@@ -7,16 +7,24 @@ export const CODEX_SETTINGS_SHELL_STYLE = {
 
 export type NodexSettingsNumberInputProps = Omit<ComponentProps<"input">, "type">;
 
-export function NodexSettingsNumberInput({ className, ...props }: NodexSettingsNumberInputProps) {
+export function NodexSettingsNumberInput({
+  className,
+  onKeyDown,
+  ...props
+}: NodexSettingsNumberInputProps) {
   return (
     <input
       {...props}
       type="number"
       data-slot="settings-number-input"
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.stopPropagation();
+        onKeyDown?.(event);
+      }}
       className={cn(
-        "h-token-button-composer rounded-lg border border-token-border bg-token-input-background px-2 py-0 text-right text-sm text-token-text-primary shadow-sm outline-none",
-        "focus-visible:ring-2",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "h-7 min-w-0 rounded-md border border-primary-outline bg-primary-soft px-2 py-0 text-sm text-default tabular-nums outline-none",
+        "focus:border-ring aria-invalid:border-text-danger aria-invalid:ring-2 aria-invalid:ring-text-danger/20",
+        "disabled:cursor-not-allowed disabled:text-secondary",
         className,
       )}
     />
@@ -82,6 +90,8 @@ export interface NodexSettingsRowProps {
   label: string;
   description?: ReactNode;
   className?: string;
+  size?: "default" | "compact";
+  variant?: "default" | "nested";
   children: ReactNode;
 }
 
@@ -89,13 +99,32 @@ export function NodexSettingsRow({
   label,
   description,
   className,
+  size = "default",
+  variant = "default",
   children,
 }: NodexSettingsRowProps) {
   return (
-    <div className={cn("flex items-center justify-between gap-6 px-4 py-3", className)}>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-y-2 px-4",
+        variant === "nested"
+          ? "min-h-10 gap-x-3 py-2"
+          : size === "compact"
+            ? "gap-x-4 py-2"
+            : "gap-x-6 py-3",
+        className,
+      )}
+    >
+      <div className="flex min-w-32 flex-1 items-center gap-3">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="min-w-0 text-sm font-medium text-token-text-primary">{label}</div>
+          <div
+            className={cn(
+              "min-w-0 text-sm text-token-text-primary",
+              variant === "default" && "font-medium",
+            )}
+          >
+            {label}
+          </div>
           {description ? (
             <div className="min-w-0 break-words text-xs leading-4 text-balance text-token-text-secondary">
               {description}
@@ -103,7 +132,9 @@ export function NodexSettingsRow({
           ) : null}
         </div>
       </div>
-      <div className="flex max-w-full shrink-0 items-center gap-2">{children}</div>
+      <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+        {children}
+      </div>
     </div>
   );
 }
@@ -111,11 +142,13 @@ export function NodexSettingsRow({
 export function NodexSettingsSection({
   id,
   title,
+  titlePlacement = "outside",
   children,
   cardClassName,
 }: {
   id?: string;
   title?: string;
+  titlePlacement?: "outside" | "inside";
   children: ReactNode;
   cardClassName?: string;
 }) {
@@ -123,7 +156,7 @@ export function NodexSettingsSection({
 
   return (
     <section id={id} aria-labelledby={title ? titleId : undefined} className="flex flex-col">
-      {title ? (
+      {title && titlePlacement === "outside" ? (
         <h2
           id={titleId}
           className="min-h-toolbar pb-1.5 text-base font-medium text-token-text-primary"
@@ -137,12 +170,20 @@ export function NodexSettingsSection({
             "flex flex-col overflow-hidden rounded-2xl border border-token-border",
             "[&>*:not(:last-child)]:relative [&>*:not(:last-child)]:after:pointer-events-none",
             "[&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-4",
-            "[&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-[0.5px]",
+            "[&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-px",
             "[&>*:not(:last-child)]:after:bg-token-border [&>*:not(:last-child)]:after:content-['']",
             cardClassName,
           )}
           style={{ backgroundColor: "var(--color-background-panel, var(--color-token-bg-fog))" }}
         >
+          {title && titlePlacement === "inside" ? (
+            <h2
+              id={titleId}
+              className="flex min-h-10 items-center px-4 py-2 text-sm font-medium text-token-text-primary"
+            >
+              {title}
+            </h2>
+          ) : null}
           {children}
         </div>
       </div>
@@ -189,7 +230,7 @@ export function NodexSettingsPageSurface({
           )}
         >
           <div className="flex items-center justify-between gap-3 pb-panel">
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5 pb-panel">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <h1
                 id={titleId}
                 className="heading-base break-words electron:text-[length:var(--text-heading-lg)] electron:leading-[1.2]"

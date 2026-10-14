@@ -1,5 +1,5 @@
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
-import { AccentColorSettingControl } from "./accent-color-setting-control";
+import { AppearanceSettingsPage } from "./appearance-settings-page";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import { CodexHomeSettingsControl } from "./codex-home-settings-control";
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
@@ -36,9 +36,6 @@ import {
 } from "./workbench-settings-overlay-deps";
 import {
   BackupSettingsControl,
-  CodeFontSizeSettingControl,
-  PageFontSizeSettingControl,
-  FontFamilySettingsControls,
   ComposerEnterBehaviorControl,
   ConfigValueDropdown,
   CopyFileReferencesAsLocalPathsSettingControl,
@@ -51,12 +48,9 @@ import {
   NfmAutolinkTypingSettingControl,
   PasteResourceDescriptionSoftLimitSettingControl,
   PasteResourceTextThresholdSettingControl,
-  ReducedMotionSettingControl,
-  SansFontSizeSettingControl,
   ServiceTierSettingControl,
   TaskShorthandPagePromotionSettingControl,
   SpellcheckSettingControl,
-  ThemeSettingControl,
   ThreadDetailLevelSettingControl,
   ThreadNotificationSettingControl,
   ThreadQueueFollowUpsSettingControl,
@@ -312,37 +306,6 @@ export function GeneralSettingsPage({
       {permissionError ? (
         <div className="text-sm text-[var(--red-text)]">{permissionError}</div>
       ) : null}
-    </SettingsPageSurface>
-  );
-}
-
-export function AppearanceSettingsPage() {
-  return (
-    <SettingsPageSurface title="Appearance">
-      <SectionBlock>
-        <SettingRow label="Theme">
-          <ThemeSettingControl />
-        </SettingRow>
-        <SettingRow label="Accent color">
-          <AccentColorSettingControl />
-        </SettingRow>
-        <SettingRow
-          label="Reduced motion"
-          description="Follow the system setting, reduce interface motion, or allow full motion."
-        >
-          <ReducedMotionSettingControl />
-        </SettingRow>
-        <SettingRow label="UI font size">
-          <SansFontSizeSettingControl />
-        </SettingRow>
-        <SettingRow label="Code font size">
-          <CodeFontSizeSettingControl />
-        </SettingRow>
-        <SettingRow label="Page font size">
-          <PageFontSizeSettingControl />
-        </SettingRow>
-        <FontFamilySettingsControls />
-      </SectionBlock>
     </SettingsPageSurface>
   );
 }

@@ -29,9 +29,13 @@ interface EvidenceClaim {
   actual: unknown;
 }
 
-const openAppearance = async (page: Page) => {
+const openAppearance = async (page: Page, advanced = true) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("link", { name: "Appearance", exact: true }).click();
+  await expect(page.getByRole("radiogroup", { name: "Mode", exact: true })).toBeVisible();
+  if (!advanced) return;
+  const trigger = page.getByRole("button", { name: "Advanced", exact: true });
+  if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
   await expect(page.getByRole("spinbutton", { name: "UI font size", exact: true })).toBeVisible();
 };
 const returnToApp = async (page: Page) => {
@@ -39,13 +43,51 @@ const returnToApp = async (page: Page) => {
   await expect(page.getByRole("button", { name: "Back to app", exact: true })).toHaveCount(0);
 };
 const changeSize = async (page: Page, role: "UI" | "Code" | "Page", value: number) => {
-  const input = page.getByRole("spinbutton", { name: `${role} font size`, exact: true });
+  const input = page.getByRole("spinbutton", {
+    name: `${role === "Page" ? "Content" : role} font size`,
+    exact: true,
+  });
   await input.fill(String(value));
   await input.press("Enter");
   await expect(input).toHaveValue(String(value));
 };
+const readSizes = async (page: Page) =>
+  Promise.all(
+    ["UI", "Code", "Content"].map((role) =>
+      page.getByRole("spinbutton", { name: `${role} font size`, exact: true }).inputValue(),
+    ),
+  );
+const changeFamily = async (page: Page, label: string, value: string) => {
+  const trigger = page.getByRole("button", { name: label, exact: true });
+  await trigger.click();
+  const input = page.getByRole("textbox", { name: `Custom ${label}`, exact: true });
+  await input.fill(value);
+  await input.press("Enter");
+  await expect(input).toHaveCount(0);
+  await expect(trigger).toHaveText(value);
+};
+const accentPresetColors = [
+  { label: "Blue", color: "rgb(53, 102, 240)" },
+  { label: "Green", color: "rgb(4, 187, 159)" },
+  { label: "Yellow", color: "rgb(255, 204, 56)" },
+  { label: "Pink", color: "rgb(250, 112, 171)" },
+  { label: "Orange", color: "rgb(255, 128, 102)" },
+  { label: "Purple", color: "rgb(162, 91, 255)" },
+];
+const readAccentDot = async (element: ReturnType<Page["getByRole"]>) =>
+  element.locator('[data-slot="dropdown-color-dot"]').evaluate((dot) => {
+    const bounds = dot.getBoundingClientRect();
+    const row = dot.parentElement?.parentElement;
+    if (!row) throw new Error("Missing accent color row");
+    return {
+      color: getComputedStyle(dot).backgroundColor,
+      width: bounds.width,
+      height: bounds.height,
+      gap: Number.parseFloat(getComputedStyle(row).columnGap),
+    };
+  });
 const holdReviewFrame = async (page: Page) => {
-  await page.mouse.move(150, 850);
+  await page.mouse.move(1350, 920);
   // Assertions own settling; this pause makes the native review recording readable.
   await page.waitForTimeout(1000);
 };
@@ -254,16 +296,140 @@ test("persists typography across real conversation, Page, settings and Electron 
         page: baseline.page,
       },
     );
-    await openAppearance(page);
+    await openAppearance(page, false);
+    const advanced = page.getByRole("button", { name: "Advanced", exact: true });
     claim(
-      "Settings show their effective defaults",
-      ["14", "12", "14"],
-      await Promise.all(
-        ["UI", "Code", "Page"].map((role) =>
-          page!.getByRole("spinbutton", { name: `${role} font size`, exact: true }).inputValue(),
-        ),
-      ),
+      "Appearance starts with native Mode radios and collapsed Advanced",
+      { modes: ["System", "Light", "Dark"], advanced: "false", sizes: 0 },
+      {
+        modes: await page
+          .getByRole("radiogroup", { name: "Mode" })
+          .getByRole("radio")
+          .evaluateAll((radios) => radios.map((radio) => radio.getAttribute("aria-label"))),
+        advanced: await advanced.getAttribute("aria-expanded"),
+        sizes: await page.getByRole("spinbutton").count(),
+      },
     );
+    await holdReviewFrame(page);
+    const darkMode = page.getByRole("radio", { name: "Dark", exact: true });
+    await darkMode.locator("..").click();
+    await expect(darkMode).toBeChecked();
+    await advanced.click();
+    const separate = page.getByRole("switch", { name: "Separate light/dark modes", exact: true });
+    await separate.click();
+    claim(
+      "Separate modes exposes both themes without changing the active Mode",
+      { mode: "Dark", separate: "true", fonts: 2 },
+      {
+        mode: await page.getByRole("radio", { checked: true }).getAttribute("aria-label"),
+        separate: await separate.getAttribute("aria-checked"),
+        fonts: await page.getByRole("button", { name: /^(Light|Dark) UI font$/u }).count(),
+      },
+    );
+    for (const variant of ["Light", "Dark"] as const) {
+      const accent = page.getByRole("button", { name: `${variant} accent color`, exact: true });
+      claim(
+        `${variant} accent trigger has a 12px color dot, 8px gap and 28px height`,
+        { color: "rgb(53, 102, 240)", width: 12, height: 12, gap: 8, triggerHeight: 28 },
+        {
+          ...(await readAccentDot(accent)),
+          triggerHeight: await accent.evaluate((button) => button.getBoundingClientRect().height),
+        },
+      );
+      await accent.click();
+      const menu = page.getByRole("menu");
+      await expect(menu).toHaveCount(1);
+      await expect(menu).toBeVisible();
+      await menu.evaluate(async (element) => {
+        await Promise.all(element.getAnimations().map((animation) => animation.finished));
+      });
+      const presets = [
+        { label: "Default", color: variant === "Light" ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)" },
+        ...accentPresetColors,
+        variant === "Light"
+          ? { label: "Black", color: "rgb(0, 0, 0)" }
+          : { label: "White", color: "rgb(255, 255, 255)" },
+      ];
+      const actual = [];
+      for (const preset of presets) {
+        actual.push({
+          label: preset.label,
+          ...(await readAccentDot(menu.getByRole("menuitem", { name: preset.label, exact: true }))),
+        });
+      }
+      claim(
+        `${variant} preset menu renders every color with actual 12px dots and 8px gaps`,
+        presets.map((preset) => ({ ...preset, width: 12, height: 12, gap: 8 })),
+        actual,
+      );
+      await holdReviewFrame(page);
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+    }
+    const activeBefore = await page.evaluate(() => ({
+      accent: getComputedStyle(document.documentElement)
+        .getPropertyValue("--codex-base-accent")
+        .trim(),
+      content: getComputedStyle(document.documentElement).getPropertyValue("--font-content").trim(),
+    }));
+    await page.getByRole("button", { name: "Light accent color", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Green", exact: true }).click();
+    await changeFamily(page, "Light Content font", "Charter");
+    claim(
+      "Editing the inactive Light theme preserves active Dark accent and content family",
+      {
+        ...activeBefore,
+        mode: "dark",
+        lightAccent: { kind: "preset", name: "green" },
+        lightContent: "Charter",
+        darkContent: null,
+      },
+      await page.evaluate(() => {
+        const fonts = JSON.parse(localStorage.getItem("nodex-typography-v1") ?? "{}").fonts;
+        const accents = JSON.parse(localStorage.getItem("nodex-accent-color-v1") ?? "{}");
+        return {
+          accent: getComputedStyle(document.documentElement)
+            .getPropertyValue("--codex-base-accent")
+            .trim(),
+          content: getComputedStyle(document.documentElement)
+            .getPropertyValue("--font-content")
+            .trim(),
+          mode: localStorage.getItem("nodex-theme"),
+          lightAccent: accents.light,
+          lightContent: fonts.light.content,
+          darkContent: fonts.dark.content,
+        };
+      }),
+    );
+    await page.setViewportSize({ width: 760, height: 800 });
+    await expect(page.getByRole("button", { name: "Dark UI font", exact: true })).toBeVisible();
+    const overflow = await page
+      .getByRole("heading", { name: "Appearance", exact: true })
+      .evaluate((heading) => {
+        const surface = heading.closest("main");
+        if (!surface) throw new Error("Missing Appearance surface");
+        const scroller = Array.from(surface.children).find(
+          (child) => getComputedStyle(child).overflowY === "auto",
+        );
+        if (!scroller) throw new Error("Missing Appearance content scroller");
+        return {
+          surface: Math.max(0, scroller.scrollWidth - scroller.clientWidth),
+          document: Math.max(
+            0,
+            document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          ),
+        };
+      });
+    claim(
+      "Expanded Appearance fits a narrow Electron window without horizontal overflow",
+      { surface: 0, document: 0 },
+      overflow,
+    );
+    await holdReviewFrame(page);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await separate.click();
+    await expect(page.getByRole("button", { name: "Light UI font", exact: true })).toHaveCount(0);
+    claim("Settings show their effective defaults", ["14", "12", "14"], await readSizes(page));
     await changeSize(page, "UI", 16);
     await returnToApp(page);
     await expect
@@ -304,22 +470,23 @@ test("persists typography across real conversation, Page, settings and Electron 
     await openAppearance(page);
     await changeSize(page, "Page", 18);
     await changeSize(page, "Code", 16);
-    const contentFamily = page.getByRole("textbox", { name: /^(Light|Dark) Content font$/u });
-    await contentFamily.fill("Georgia");
-    await contentFamily.press("Enter");
+    const contentFamily = page.getByRole("button", { name: "Dark Content font", exact: true });
+    await changeFamily(page, "Dark Content font", "Georgia");
     claim(
       "Configured Appearance controls show UI 16, code 16, Page 18 and content Georgia",
       { sizes: ["16", "16", "18"], content: "Georgia" },
       {
-        sizes: await Promise.all(
-          ["UI", "Code", "Page"].map((role) =>
-            page!.getByRole("spinbutton", { name: `${role} font size`, exact: true }).inputValue(),
-          ),
-        ),
-        content: await contentFamily.inputValue(),
+        sizes: await readSizes(page),
+        content: await contentFamily.innerText(),
       },
     );
     await holdReviewFrame(page);
+    const unavailableAction = page.getByText("This panel action is unavailable", { exact: true });
+    claim(
+      "Appearance edits do not invoke an unavailable panel action",
+      0,
+      await unavailableAction.count(),
+    );
     await page.screenshot({ path: path.join(artifacts, "appearance.png") });
     await returnToApp(page);
     await expect
@@ -492,7 +659,7 @@ test("persists typography across real conversation, Page, settings and Electron 
     );
     await writeFile(
       path.join(artifacts, "README.md"),
-      `# Typography verification\n\nStatus: **${status}**\n\nFresh disposable Electron Profile; Pages were created through typed public lifecycle operations and chat content arrived through the native transcript fixture. No user Profile was accessed.\n\nThe single native recording shows default chat and Page sizes, real Appearance setting edits, the configured chat, independently sized Page/code content, content-family separation, and renderer reopening. Each recorded claim has exact expected/actual evidence in result.json. Cold Electron restart is asserted after the recording.\n\nScreenshots: default.png (default chat), appearance.png (configured settings), configured-chat.png (configured chat), final.png (reopened Page).\n\n${claims.map((entry) => `- ${entry.name}`).join("\n")}\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+      `# Appearance verification\n\nStatus: **${status}**\n\nFresh disposable Electron Profile; Pages were created through typed public lifecycle operations and chat content arrived through the native transcript fixture. No user Profile was accessed.\n\nThe single native recording shows the collapsed Appearance page, native Mode controls, both theme menus with every preset's actual color and geometry, inactive-theme isolation, a narrow window without horizontal overflow, real font edits, independently sized Page/code content, and renderer reopening. Each recorded claim has exact expected/actual evidence in result.json. Cold Electron restart is asserted after the recording.\n\nScreenshots: default.png (default chat), appearance.png (configured settings), configured-chat.png (configured chat), final.png (reopened Page).\n\n${claims.map((entry) => `- ${entry.name}`).join("\n")}\n${failure ? `\nFailure: ${failure}\n` : ""}`,
     );
     await harness.close();
   }

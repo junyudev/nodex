@@ -2597,6 +2597,7 @@ export function WorkbenchRuntime({
   }, [activeProjectScene]);
 
   useEffect(() => {
+    if (settingsPath !== null) return;
     const atMediumWidth = shellWidthClass !== "wide";
     const atNarrowWidth = shellWidthClass === "narrow";
     const crossedMediumWidth = atMediumWidth !== shellAtMediumWidthRef.current;
@@ -2649,6 +2650,7 @@ export function WorkbenchRuntime({
     rightPanel,
     setFloatingSidebarFocusActive,
     setSidebarCollapsedWithCodexState,
+    settingsPath,
     sidePanelOpen,
     sidebarOpen,
     shellWidthClass,

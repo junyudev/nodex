@@ -12,7 +12,10 @@ const theme = vi.hoisted(() => ({
   setAccent: vi.fn(),
 }));
 
-vi.mock("@/lib/use-theme", () => ({ useTheme: () => theme }));
+vi.mock("@/lib/use-theme", () => ({
+  useTheme: () => theme,
+  useAppearanceAccent: () => theme,
+}));
 
 beforeEach(() => {
   theme.accent = { kind: "preset", name: "default" };

@@ -1,4 +1,4 @@
-import type { SettingsSearchContext } from "@/lib/settings-search";
+import { buildSettingsSearchResults, type SettingsSearchContext } from "@/lib/settings-search";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
 
@@ -15,6 +15,7 @@ interface SettingsSearchCatalogPanel {
 }
 
 interface SettingsSearchCatalogGroup {
+  anchor?: string;
   title: string;
   description?: string;
   entries?: readonly SettingsSearchCatalogEntry[];
@@ -80,7 +81,9 @@ function projectNameTerms({
   return uniqueText([projectNames, activeProjectName]);
 }
 
-const SETTINGS_SEARCH_PANELS = {
+export const APPEARANCE_ADVANCED_ANCHOR = "advanced";
+
+export const SETTINGS_SEARCH_PANELS = {
   "general-settings": {
     title: "General",
     subtitle: "App-wide shell behavior and notifications.",
@@ -220,12 +223,15 @@ const SETTINGS_SEARCH_PANELS = {
   },
   appearance: {
     title: "Appearance",
-    subtitle: "Theme and typography tokens used across the app.",
     groups: [
+      {
+        title: "Mode",
+        messages: ["Visual style"],
+        entries: [entry("Mode", "", ["System", "Light", "Dark", "Theme", "force fixed theme"])],
+      },
       {
         title: "Theme",
         entries: [
-          entry("Theme", "Match system mode or force a fixed theme.", ["System", "Light", "Dark"]),
           entry("Accent color", "", [
             "Default",
             "Blue",
@@ -239,27 +245,32 @@ const SETTINGS_SEARCH_PANELS = {
             "Custom",
             "hex color",
           ]),
-          entry(
+          entry("Font", "", ["UI font", "System", "font family", "Light theme", "Dark theme"]),
+        ],
+      },
+      {
+        title: "Advanced",
+        anchor: APPEARANCE_ADVANCED_ANCHOR,
+        messages: ["Reset", "Reset advanced appearance"],
+        entries: [
+          entry("UI font size", "", ["Default", "font size", "interface", "chat text"]),
+          entry("Content font size", "Pages", ["Page font size", "document", "body", "headings"]),
+          entry("Code font size", "", [
+            "Default",
+            "editor font size",
+            "chats",
+            "diffs",
+            "terminals",
+          ]),
+          entry("Reduce motion", "", [
+            "System",
+            "On",
+            "Off",
             "Reduced motion",
-            "Follow the system setting, reduce interface motion, or allow full motion.",
-            ["System", "On", "Off", "animation", "accessibility"],
-          ),
-          entry(
-            "UI font size",
-            "Scales shared sans typography tokens and chat body text across the app.",
-            ["Default", "font size", "sans typography"],
-          ),
-          entry(
-            "Code font size",
-            "Sets the size of code across chats, editors, diffs, and terminals.",
-            ["Default", "editor font size", "code typography"],
-          ),
-          entry(
-            "Page font size",
-            "Sets Page body and heading text independently of the interface.",
-            ["Default", "document", "content size"],
-          ),
-          entry("UI font", "", ["Font appearance", "Light", "Dark", "System", "font family"]),
+            "animation",
+            "accessibility",
+          ]),
+          entry("Separate light/dark modes", "", ["Light theme", "Dark theme", "font appearance"]),
           entry("Content font", "", ["Same as UI font", "Light", "Dark", "font family"]),
           entry("Code font", "", ["System", "Light", "Dark", "monospace", "font family"]),
         ],
@@ -705,6 +716,26 @@ const SETTINGS_SEARCH_PANELS = {
     ],
   },
 } satisfies Record<string, SettingsSearchCatalogPanel>;
+
+/** Use the canonical Advanced group when a settings search opens Appearance. */
+export function shouldExpandAppearanceAdvanced(query: string | undefined): boolean {
+  if (!query?.trim()) return false;
+  if (query.trim().toLowerCase() === SETTINGS_SEARCH_PANELS.appearance.title.toLowerCase()) {
+    return false;
+  }
+  const targets = SETTINGS_SEARCH_PANELS.appearance.groups.map((group) => ({
+    sectionId: "anchor" in group ? (group.anchor ?? group.title) : group.title,
+    panelLabel: group.title,
+    messageTexts: materializePanelSearchMessages({ title: group.title, groups: [group] }),
+    termTexts: [],
+  }));
+  const results = buildSettingsSearchResults({
+    query,
+    targets,
+    visibleSectionIds: targets.map((target) => target.sectionId),
+  });
+  return results[0]?.sectionId === APPEARANCE_ADVANCED_ANCHOR;
+}
 
 export const SETTINGS_SEARCH_CATALOG = {
   "general-settings": {

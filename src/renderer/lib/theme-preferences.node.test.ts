@@ -10,21 +10,18 @@ describe("accent color preferences", () => {
     expect(
       decodeAccentColorPreferences({ preset: "green", light: " #AABBCC ", dark: "#123" }),
     ).toEqual({
-      preset: "green",
-      light: "#aabbcc",
-      dark: null,
+      light: { kind: "custom", color: "#aabbcc" },
+      dark: { kind: "preset", name: "green" },
     });
     expect(
       decodeAccentColorPreferences({ preset: "unrecognized", light: "red", dark: 42 }),
     ).toEqual({
-      preset: "default",
-      light: null,
-      dark: null,
+      light: { kind: "preset", name: "default" },
+      dark: { kind: "preset", name: "default" },
     });
     expect(decodeAccentColorPreferences(null)).toEqual({
-      preset: "default",
-      light: null,
-      dark: null,
+      light: { kind: "preset", name: "default" },
+      dark: { kind: "preset", name: "default" },
     });
   });
 
@@ -48,7 +45,7 @@ describe("accent color preferences", () => {
     });
   });
 
-  test("changing the shared preset preserves another appearance's custom override", () => {
+  test("changing a preset preserves every choice in the other appearance", () => {
     const preferences = decodeAccentColorPreferences({
       preset: "blue",
       light: "#112233",
@@ -64,6 +61,16 @@ describe("accent color preferences", () => {
       kind: "custom",
       color: "#445566",
     });
-    expect(preferences.light).toBe("#112233");
+    expect(preferences.light).toEqual({ kind: "custom", color: "#112233" });
+    const independent = decodeAccentColorPreferences({
+      light: { kind: "preset", name: "blue" },
+      dark: { kind: "preset", name: "green" },
+    });
+    const updated = updateAccentColorPreference(independent, "dark", {
+      kind: "preset",
+      name: "pink",
+    });
+    expect(updated.light).toEqual({ kind: "preset", name: "blue" });
+    expect(updated.dark).toEqual({ kind: "preset", name: "pink" });
   });
 });

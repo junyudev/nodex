@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { HexColorPicker } from "react-colorful";
 
-import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
+import {
+  NodexDropdownColorDot,
+  NodexOptionPicker,
+  NodexSettingsDropdownTrigger,
+} from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
   CODEX_ACCENT_PRESETS,
@@ -10,7 +14,8 @@ import {
   resolveEffectiveCodexAccent,
   type CodexAccentPreset,
 } from "@/lib/codex-theme-variant";
-import { useTheme } from "@/lib/use-theme";
+import { useAppearanceAccent, useTheme } from "@/lib/use-theme";
+import type { ResolvedTheme } from "@/lib/theme-preferences";
 
 const ACCENT_LABELS: Record<CodexAccentPreset, string> = {
   default: "Default",
@@ -33,16 +38,6 @@ function accentSwatch(name: CodexAccentPreset, variant: "light" | "dark"): strin
   return getCodexAccentStyle(variant, { kind: "preset", name })[
     "--color-background-composer-primary"
   ];
-}
-
-function AccentSwatch({ color }: { color: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="size-3 shrink-0 rounded-full border border-default"
-      style={{ backgroundColor: color }}
-    />
-  );
 }
 
 function CustomAccentColorInput({
@@ -79,18 +74,18 @@ function CustomAccentColorInput({
         if (!next) setDraft(null);
       }}
     >
-      <div className="relative flex h-7 w-24 shrink-0 items-center gap-2 rounded-full border border-default px-2 focus-within:ring-2 focus-within:ring-ring">
+      <div className="relative flex h-7 w-24 shrink-0 items-center gap-2 rounded-full border border-default px-2">
         <NodexPopoverTrigger>
           <button
             type="button"
             aria-label={`Choose ${label.toLowerCase()}`}
-            className="size-3.5 shrink-0 cursor-interaction rounded-full border border-default"
+            className="size-3.5 shrink-0 cursor-interaction rounded-full border border-default outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border"
             style={{ backgroundColor: color }}
           />
         </NodexPopoverTrigger>
         <input
           aria-label={label}
-          className="min-w-0 flex-1 bg-transparent text-xs uppercase tabular-nums outline-hidden"
+          className="min-w-0 flex-1 rounded-sm bg-transparent text-xs uppercase tabular-nums outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border"
           spellCheck={false}
           type="text"
           value={(draft ?? color).toUpperCase()}
@@ -110,15 +105,21 @@ function CustomAccentColorInput({
   );
 }
 
-export function AccentColorSettingControl() {
-  const { accent, resolved, setAccent } = useTheme();
+export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme }) {
+  const { resolved } = useTheme();
+  const appearance = variant ?? resolved;
+  const { accent, setAccent } = useAppearanceAccent(appearance);
   const effectiveAccent = resolveEffectiveCodexAccent(accent);
-  const variantLabel = resolved === "light" ? "Light" : "Dark";
+  const selectedColor =
+    effectiveAccent.kind === "preset"
+      ? accentSwatch(effectiveAccent.name, appearance)
+      : effectiveAccent.color;
+  const variantLabel = appearance === "light" ? "Light" : "Dark";
   const value = accent.kind === "custom" ? "custom" : accent.name;
-  const label = accent.kind === "custom" ? "Custom" : accentLabel(accent.name, resolved);
+  const label = accent.kind === "custom" ? "Custom" : accentLabel(accent.name, appearance);
   const chooseAccent = (next: string) => {
     if (next === "custom") {
-      const color = getCodexAccentStyle(resolved, effectiveAccent)["--codex-base-accent"];
+      const color = getCodexAccentStyle(appearance, effectiveAccent)["--codex-base-accent"];
       setAccent({ kind: "custom", color });
       return;
     }
@@ -129,7 +130,7 @@ export function AccentColorSettingControl() {
   const updateCustomAccent = (color: string) => setAccent({ kind: "custom", color });
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
       <NodexOptionPicker
         search="none"
         align="end"
@@ -138,27 +139,33 @@ export function AccentColorSettingControl() {
         options={[
           ...CODEX_ACCENT_PRESETS.map((name) => ({
             value: name,
-            label: accentLabel(name, resolved),
-            leftSlot: <AccentSwatch color={accentSwatch(name, resolved)} />,
+            label: accentLabel(name, appearance),
+            leftSlot: <NodexDropdownColorDot color={accentSwatch(name, appearance)} />,
           })),
-          { value: "custom", label: "Custom" },
+          {
+            value: "custom",
+            label: "Custom",
+            leftSlot: (
+              <NodexDropdownColorDot
+                color={getCodexAccentStyle(appearance, effectiveAccent)["--codex-base-accent"]}
+              />
+            ),
+          },
         ]}
         onValueChange={chooseAccent}
         triggerButton={
           <NodexSettingsDropdownTrigger
             aria-label={`${variantLabel} accent color`}
             className="w-36"
+            leadingVisual={<NodexDropdownColorDot color={selectedColor} />}
           >
-            {effectiveAccent.kind === "preset" ? (
-              <AccentSwatch color={accentSwatch(effectiveAccent.name, resolved)} />
-            ) : null}
             <span className="truncate">{label}</span>
           </NodexSettingsDropdownTrigger>
         }
       />
       {accent.kind === "custom" ? (
         <CustomAccentColorInput
-          key={resolved}
+          key={appearance}
           color={accent.color}
           label={`${variantLabel} custom accent color`}
           onChange={updateCustomAccent}

@@ -772,7 +772,7 @@ function PolicySelect({
       align="end"
       contentWidth="xs"
       triggerButton={
-        <NodexSettingsDropdownTrigger aria-label={ariaLabel} className={cn("h-8", className)}>
+        <NodexSettingsDropdownTrigger aria-label={ariaLabel} className={className}>
           <span className="truncate">{selectedLabel}</span>
         </NodexSettingsDropdownTrigger>
       }

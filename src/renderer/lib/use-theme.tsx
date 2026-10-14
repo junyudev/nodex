@@ -59,12 +59,6 @@ const resolvedThemeAtom = scopedDerivedAtom(
   { debugLabel: "resolved-theme" },
 );
 
-const resolvedAccentAtom = scopedDerivedAtom(
-  appScope,
-  (get) => resolveAccentColorPreference(get(accentColorPreferenceAtom), get(resolvedThemeAtom)),
-  { debugLabel: "resolved-accent-color" },
-);
-
 function syncDocumentThemeClasses(resolved: ResolvedTheme, accent: CodexAccent): void {
   const root = document.documentElement;
   const isDark = resolved === "dark";
@@ -78,28 +72,31 @@ function syncDocumentThemeClasses(resolved: ResolvedTheme, accent: CodexAccent):
   root.classList.toggle("electron-light", !isDark);
 }
 
+export function useAppearanceAccent(variant: ResolvedTheme) {
+  const [preferences, setAccentPreferences] = useScopedAtom(accentColorPreferenceAtom);
+  const accent = resolveAccentColorPreference(preferences, variant);
+  const setAccent = useCallback(
+    (next: CodexAccent) => {
+      setAccentPreferences((previous) =>
+        writeAccentColorPreferences(
+          updateAccentColorPreference(readAccentColorPreferences(previous), variant, next),
+        ),
+      );
+    },
+    [variant, setAccentPreferences],
+  );
+  return { accent, setAccent };
+}
+
 function useThemeInternal(): ThemeContextValue {
   const [theme, setThemeState] = useScopedAtom(themePreferenceAtom);
-  const [, setAccentPreferences] = useScopedAtom(accentColorPreferenceAtom);
   const resolved = useScopedAtomValue(resolvedThemeAtom);
-  const accent = useScopedAtomValue(resolvedAccentAtom);
-
+  const { accent, setAccent } = useAppearanceAccent(resolved);
   const setTheme = useCallback(
     (next: ThemePreference) => {
       setThemeState(writeThemePreference(next));
     },
     [setThemeState],
-  );
-
-  const setAccent = useCallback(
-    (next: CodexAccent) => {
-      setAccentPreferences((previous) =>
-        writeAccentColorPreferences(
-          updateAccentColorPreference(readAccentColorPreferences(previous), resolved, next),
-        ),
-      );
-    },
-    [resolved, setAccentPreferences],
   );
 
   return { theme, resolved, accent, setTheme, setAccent };

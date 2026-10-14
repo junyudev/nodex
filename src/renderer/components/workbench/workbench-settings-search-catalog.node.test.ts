@@ -5,6 +5,7 @@ import {
   type SettingsSearchContext,
 } from "@/lib/settings-search";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "./workbench-settings-sections";
+import { shouldExpandAppearanceAdvanced } from "./workbench-settings-search-catalog";
 
 const SEARCH_CONTEXT: SettingsSearchContext = {
   activeProjectName: "Nodex Workspace",
@@ -58,6 +59,23 @@ describe("workbench settings search catalog", () => {
     expect(results.length).toBe(1);
     expect(results[0]?.sectionId).toBe("local-environments");
     expect(results[0]?.label).toBe("Environments");
+  });
+
+  test("routes typography to Appearance and expands Advanced only for its own settings", () => {
+    for (const query of [
+      "UI font size",
+      "Content font size",
+      "Page font size",
+      "Code font size",
+      "Separate light/dark modes",
+      "Content font",
+    ]) {
+      expect(searchCatalog(query)[0]?.sectionId).toBe("appearance");
+      expect(shouldExpandAppearanceAdvanced(query)).toBe(true);
+    }
+    for (const query of [undefined, "", "Appearance", "Accent color", "Mode"]) {
+      expect(shouldExpandAppearanceAdvanced(query)).toBe(false);
+    }
   });
 
   test("does not index the retired sidebar section preferences", () => {
