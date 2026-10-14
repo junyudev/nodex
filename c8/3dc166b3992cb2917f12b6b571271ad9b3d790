@@ -1,0 +1,44 @@
+src/renderer/features/local-conversation/agent-conversation-adapter.test.tsx
+  s_85aa1fac1fed1a::t_df1f9d96e06eac 231,234,356,361-364,366-367,370-377,379-385,387-388,394,403-438,440-485
+  s_85aa1fac1fed1a::t_ffc1afa0035722 6,439
+  s_85aa1fac1fed1a::t_b434e8ddddccba 360,365,486-487
+docs/product-specs/agent-backend-behavior.md
+  s_5cd527886c6c64::t_c27c6b58c9ff31 224-229
+src/renderer/features/local-conversation/agent-conversation-adapter.ts
+  s_85aa1fac1fed1a::t_dcbc3e6f89efce 24-28,49,53-54,292-296,298,325,327,331-344,450,496-500,518-521,525-529,580
+  s_85aa1fac1fed1a::t_31ab745f8f50b7 436-442
+  s_85aa1fac1fed1a::t_767a239ceef659 817,821,827
+  s_85aa1fac1fed1a::t_45b3508f29aac9 443
+src/renderer/lib/native-intelligence-selection.ts
+  s_85aa1fac1fed1a::t_722825a1358800 6,9,44-65,67-79,81-97,99-109
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_85aa1fac1fed1a::t_73f1d6f2607e82 890,892
+src/renderer/lib/native-agent-draft-owner.ts
+  s_85aa1fac1fed1a::t_78e7c73528bd3e 58-85
+src/renderer/lib/native-intelligence-selection.node.test.ts
+  s_85aa1fac1fed1a::t_3fd06fa3b85dac 3-4,48-73,75-76,79,81,84-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c83dc166b3992cb2917f12b6b571271ad9b3d790",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_85aa1fac1fed1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "92727e07-b8ba-40f7-aac5-42473d56f479",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
