@@ -743,6 +743,8 @@ export interface NodexOptionPickerProps {
   readonly search?: NodexOptionPickerSearchMode;
   readonly searchPlaceholder?: string;
   readonly searchAriaLabel?: string;
+  /** Compact actions that belong to the list as a whole, aligned at the end of the search row. */
+  readonly searchTrailingContent?: ReactNode;
   readonly title?: ReactNode;
   /** Scoped option controls and management actions share the picker's floating surface. */
   readonly footer?: ReactNode;
@@ -931,6 +933,7 @@ function NodexFilterOptionPicker({
   onValueChange,
   searchPlaceholder = "Search options…",
   searchAriaLabel,
+  searchTrailingContent,
   title,
   footer,
   emptyMessage,
@@ -1056,6 +1059,7 @@ function NodexFilterOptionPicker({
             value={effectiveQuery}
             onChange={(event) => setQuery(event.currentTarget.value)}
             onKeyDown={handleSearchKeyDown}
+            trailingContent={searchTrailingContent}
           />
           <div
             ref={listboxRef}

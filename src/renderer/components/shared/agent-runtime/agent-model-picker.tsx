@@ -8,12 +8,24 @@ import type {
 } from "../../../../shared/agent-conversation";
 import type { AgentModelOption } from "../../../../shared/types";
 import { isClaudeEffortLevel } from "../../../../shared/claude-models";
-import { agentModelKey, flattenAgentConfigOptions } from "@/lib/agent-model-selection";
+import {
+  agentModelKey,
+  agentRuntimeQualifier,
+  flattenAgentConfigOptions,
+} from "@/lib/agent-model-selection";
 import {
   formatCodexModelLabel,
   formatCodexReasoningEffortLabel,
 } from "@/lib/codex-thread-settings";
 import {
+  AgentProviderIcon,
+  ChevronDownIcon,
+  RefreshIcon,
+  SettingsGeneralIcon,
+} from "@/components/shared/icons";
+import { NodexIconButton } from "@/components/ui/button";
+import {
+  NodexDropdownActionRow,
   NodexDropdownButtonTrigger,
   NodexDropdownSeparator,
   NodexDropdownMessage,
@@ -21,6 +33,7 @@ import {
   NodexSettingsDropdownTrigger,
   type NodexOptionPickerOption,
 } from "@/components/ui/dropdown";
+import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 import {
   IntelligenceSelectorTrigger,
@@ -89,16 +102,19 @@ function OptionRow({
       side="left"
       align="end"
       triggerButton={
-        <NodexSettingsDropdownTrigger
+        <NodexDropdownButtonTrigger
+          chrome="transparent"
+          showChevron={false}
           disabled={disabled}
-          className="w-full justify-between"
+          className="w-full gap-3 px-[var(--padding-row-x)] hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background"
           aria-label={`${label} ${typeof selected === "string" ? selected : value}`}
         >
-          <span>{label}</span>
-          <span className="min-w-0 truncate text-token-description-foreground">
+          <span className="shrink-0">{label}</span>
+          <span className="ms-auto min-w-0 truncate text-token-description-foreground">
             {selected || "—"}
           </span>
-        </NodexSettingsDropdownTrigger>
+          <ChevronDownIcon className="icon-2xs text-token-input-placeholder-foreground" />
+        </NodexDropdownButtonTrigger>
       }
     />
   );
@@ -156,19 +172,32 @@ export function AgentModelPicker(
   const reasoningOptions =
     models.find((model) => model.id === selection.model)?.supportedReasoningEfforts ?? [];
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
-  const options: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => ({
-    value: agentModelKey(entry.binding, entry.model.id),
-    label: entry.model.displayName,
-    subText: entry.label,
-    searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
-    tooltipText: entry.model.description || entry.model.id,
-    disabled: pending,
-  }));
+  const options: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => {
+    const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
+    return {
+      value: agentModelKey(entry.binding, entry.model.id),
+      leftSlot: <AgentProviderIcon kind={entry.binding.kind} className="size-3.5" />,
+      label: qualifier ? (
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="truncate">{entry.model.displayName}</span>
+          <span className="min-w-0 truncate text-xs text-token-description-foreground">
+            {qualifier}
+          </span>
+        </span>
+      ) : (
+        entry.model.displayName
+      ),
+      searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
+      tooltipText: entry.model.description || entry.model.id,
+      disabled: pending,
+    };
+  });
   const genericOptions =
     isCodex || selection.kind === "claude"
       ? []
       : (catalog.configOptions?.filter((option) => option.category !== "model") ?? []);
   const disabled = props.disabled === true || pending;
+  const runtimeOptions = catalog.runtimeOptions ?? [];
   const hasOptions =
     isCodex || selection.kind === "claude"
       ? reasoningOptions.length > 0 ||
@@ -182,6 +211,27 @@ export function AgentModelPicker(
       search="filter"
       searchPlaceholder="Search models…"
       searchAriaLabel="Search models"
+      searchTrailingContent={
+        <span className="-me-1 flex items-center">
+          <NodexIconButton
+            size="xs"
+            ariaLabel="Refresh models"
+            icon={RefreshIcon}
+            className={cn(catalog.loading && "[&_svg]:animate-spin")}
+            disabled={catalog.loading || pending}
+            onClick={catalog.refresh}
+          />
+          <NodexIconButton
+            size="xs"
+            ariaLabel="Manage providers"
+            icon={SettingsGeneralIcon}
+            onClick={() => {
+              changeOpen(false);
+              catalog.manage();
+            }}
+          />
+        </span>
+      }
       value={agentModelKey(catalog.selected.binding, catalog.selected.model)}
       options={options}
       emptyMessage={catalog.loading ? "Loading models…" : "No models available"}
@@ -193,7 +243,7 @@ export function AgentModelPicker(
       align="end"
       sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
       alignOffset={geometry.alignOffset}
-      contentClassName="w-[300px]"
+      contentClassName="w-[288px]"
       triggerButton={
         props.triggerStyle === "settings" ? (
           <NodexSettingsDropdownTrigger
@@ -340,46 +390,28 @@ export function AgentModelPicker(
               onChange={(value) => void run(() => catalog.changeMode?.(value))}
             />
           ) : null}
-          <NodexDropdownSeparator />
-          {catalog.runtimeOptions?.map((runtime) => (
-            <NodexDropdownButtonTrigger
+          {runtimeOptions.length > 0 || catalog.error ? <NodexDropdownSeparator /> : null}
+          {runtimeOptions.map((runtime) => (
+            <NodexDropdownActionRow
               key={agentModelKey(runtime.binding, "")}
-              chrome="transparent"
-              showChevron={false}
-              className="w-full"
+              className="items-center gap-1.5"
               onClick={() => {
                 changeOpen(false);
                 catalog.chooseRuntime?.(runtime.binding);
               }}
             >
-              Start with {runtime.label}
-            </NodexDropdownButtonTrigger>
+              <AgentProviderIcon
+                kind={runtime.binding.kind}
+                className="size-3.5 text-token-text-secondary"
+              />
+              <span className="min-w-0 truncate">Start with {runtime.label}</span>
+            </NodexDropdownActionRow>
           ))}
           {catalog.error ? (
-            <NodexDropdownMessage compact>{catalog.error}</NodexDropdownMessage>
+            <NodexDropdownMessage compact tone="error">
+              {catalog.error}
+            </NodexDropdownMessage>
           ) : null}
-          <div className="flex items-center justify-between px-1">
-            <NodexDropdownButtonTrigger
-              chrome="transparent"
-              showChevron={false}
-              className="text-sm"
-              onClick={() => {
-                changeOpen(false);
-                catalog.manage();
-              }}
-            >
-              Connect providers…
-            </NodexDropdownButtonTrigger>
-            <NodexDropdownButtonTrigger
-              chrome="transparent"
-              showChevron={false}
-              aria-label="Refresh models"
-              disabled={catalog.loading || pending}
-              onClick={catalog.refresh}
-            >
-              Refresh
-            </NodexDropdownButtonTrigger>
-          </div>
         </>
       }
     />

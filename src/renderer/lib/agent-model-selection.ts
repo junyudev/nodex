@@ -15,6 +15,24 @@ export const agentBindingKey = (binding: AgentBackendBinding): string =>
 export const agentModelKey = (binding: AgentBackendBinding, model: string): string =>
   JSON.stringify([agentBindingKey(binding), model]);
 
+const BRANDED_RUNTIME_NAMES: Partial<Record<AgentBackendBinding["kind"], readonly string[]>> = {
+  codex: ["codex"],
+  claude: ["claude", "claude code"],
+};
+
+/**
+ * Branded runtimes are identified by their mark, so a picker row names the runtime only when the
+ * instance label adds information (for example a second Claude account).
+ */
+export const agentRuntimeQualifier = (
+  binding: AgentBackendBinding,
+  label: string,
+): string | null => {
+  const trimmed = label.trim();
+  if (!trimmed) return null;
+  return BRANDED_RUNTIME_NAMES[binding.kind]?.includes(trimmed.toLowerCase()) ? null : trimmed;
+};
+
 export const flattenAgentConfigOptions = (
   option: Extract<AgentSessionConfigOption, { type: "select" }>,
 ): readonly AgentSessionConfigSelectOption[] =>

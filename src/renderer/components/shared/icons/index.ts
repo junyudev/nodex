@@ -10,3 +10,4 @@ export * from "./priority-value-icon";
 export * from "./rating-icons";
 export * from "./response-copy-icon";
 export * from "./voice-icons";
+export * from "./provider-icons";

@@ -134,7 +134,7 @@ test("exposes boolean and native mode controls plus provider setup with a single
   await click(await view.findByRole("button", { name: "Mode Build" }));
   await click(await view.findByRole("menuitem", { name: "Review" }));
   await waitFor(() => expect(changeMode).toHaveBeenCalledWith("review-native"));
-  await click(await view.findByRole("button", { name: "Connect providers…" }));
+  await click(await view.findByRole("button", { name: "Manage providers" }));
   expect(manage).toHaveBeenCalledOnce();
 });
 

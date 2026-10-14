@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { agentBindingKey, agentModelKey, selectAgentCatalogModel } from "./agent-model-selection";
+import {
+  agentBindingKey,
+  agentModelKey,
+  agentRuntimeQualifier,
+  selectAgentCatalogModel,
+} from "./agent-model-selection";
 import { modelCatalog } from "./agent-model-catalog.test-fixtures";
 
 const variant = {
@@ -72,5 +77,22 @@ describe("runtime model choices", () => {
     expect(selectAgentCatalogModel(catalog, "moonshot/kimi-k3")).toBeNull();
     expect(selectAgentCatalogModel(modelCatalog(), "unknown")).toBeNull();
     expect(selectAgentCatalogModel(modelCatalog(), "local/small")?.options).toBeUndefined();
+  });
+});
+
+describe("runtime qualifiers", () => {
+  test("branded runtimes rely on their mark unless the instance label distinguishes them", () => {
+    expect(agentRuntimeQualifier({ kind: "codex" }, "Codex")).toBeNull();
+    const claude = { kind: "claude", instanceConfigId: "claude-default" } as const;
+    expect(agentRuntimeQualifier(claude, "Claude Code")).toBeNull();
+    expect(agentRuntimeQualifier(claude, " claude ")).toBeNull();
+    expect(agentRuntimeQualifier(claude, "Work")).toBe("Work");
+  });
+
+  test("unbranded runtimes always name their instance", () => {
+    const opencode = { kind: "opencode", instanceConfigId: "local" } as const;
+    expect(agentRuntimeQualifier(opencode, "Local · Moonshot")).toBe("Local · Moonshot");
+    expect(agentRuntimeQualifier(opencode, "Codex")).toBe("Codex");
+    expect(agentRuntimeQualifier(opencode, "  ")).toBeNull();
   });
 });
