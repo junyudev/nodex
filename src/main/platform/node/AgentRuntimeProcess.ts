@@ -153,6 +153,8 @@ export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimePro
   {
     reason: Schema.Literals(["closed", "protocol", "pressure", "request", "rejected", "start"]),
     message: Schema.String,
+    /** The engine failure's tag when the engine rejected a request. */
+    engineTag: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
@@ -308,6 +310,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
         new AgentRuntimeProcessError({
           reason: "rejected",
           message: reply.data.error.message,
+          ...(reply.data.error.tag === undefined ? {} : { engineTag: reply.data.error.tag }),
         }),
       );
       return;

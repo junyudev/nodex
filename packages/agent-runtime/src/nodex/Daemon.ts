@@ -10,6 +10,19 @@ import { HostBridge } from "./HostBridge.ts";
 import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
+/** The failure's own tag, so the host can tell engine errors apart without parsing text. */
+const errorTag = (error: unknown): string | undefined => {
+  for (const candidate of [error, error instanceof Error ? error.cause : undefined])
+    if (
+      typeof candidate === "object" &&
+      candidate !== null &&
+      "_tag" in candidate &&
+      typeof candidate._tag === "string"
+    )
+      return candidate._tag;
+  return undefined;
+};
+
 export async function runAgentRuntimeProcess(): Promise<void> {
   const MAX_ACTIVE_REQUESTS = 32;
   const MAX_WAITING_REQUESTS = 128;
@@ -80,10 +93,14 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           await write({ id: envelope?.id ?? "", success: true, output });
           if (envelope?.method === "shutdown") await dispose();
         } catch (error) {
+          const tag = errorTag(error);
           await write({
             id: envelope?.id ?? "",
             success: false,
-            error: { message: error instanceof Error ? error.message : String(error) },
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              ...(tag === undefined ? {} : { tag }),
+            },
           });
         }
       };
