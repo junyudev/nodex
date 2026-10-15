@@ -157,11 +157,7 @@ export const readRootActivity = Effect.fn("ExecutionActivity.readRootActivity")(
           {
             rootThreadId: row.root_thread_id,
             status:
-              row.pending_requests > 0
-                ? "waiting"
-                : row.active_runs > 0
-                  ? "running"
-                  : "background",
+              row.pending_requests > 0 ? "waiting" : row.active_runs > 0 ? "running" : "background",
             activeRunId: head.active_run_id,
             pendingRequestCount: row.pending_requests,
             activeTaskCount: row.active_tasks,

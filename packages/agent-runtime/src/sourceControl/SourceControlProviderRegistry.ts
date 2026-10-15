@@ -329,8 +329,7 @@ export const layerWithoutHosts = Layer.succeed(
         provider: unsupportedProvider(SourceControlProviderKind.make("unknown")),
         context: null,
       }),
-    resolve: () =>
-      Effect.succeed(unsupportedProvider(SourceControlProviderKind.make("unknown"))),
+    resolve: () => Effect.succeed(unsupportedProvider(SourceControlProviderKind.make("unknown"))),
     discover: Effect.succeed([]),
   }),
 );

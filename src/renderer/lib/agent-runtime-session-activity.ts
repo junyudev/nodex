@@ -180,9 +180,7 @@ export const agentRuntimeActivityStore = createAgentRuntimeActivityStore({
     (resolveRendererTransport().subscribeAgentRuntimeActivityChanges ?? noSubscription)(listener),
   readConnection: () => agentRuntimeRuntime.connection(),
   subscribeConnection: (listener) =>
-    (resolveRendererTransport().subscribeAgentRuntimeConnectionChanges ?? noSubscription)(
-      listener,
-    ),
+    (resolveRendererTransport().subscribeAgentRuntimeConnectionChanges ?? noSubscription)(listener),
 });
 
 const idle = () => null;

@@ -687,7 +687,8 @@ export function useAgentRuntimeConversationAdapter(input: {
   const runtimeConnection = useAgentRuntimeConnectionState();
   const previousConnection = useRef(runtimeConnection.status);
   useEffect(() => {
-    const recovered = runtimeConnection.status === "ready" && previousConnection.current !== "ready";
+    const recovered =
+      runtimeConnection.status === "ready" && previousConnection.current !== "ready";
     previousConnection.current = runtimeConnection.status;
     if (!recovered) return;
     if (owner?.getSnapshot().connection === "failed") void owner.resume();

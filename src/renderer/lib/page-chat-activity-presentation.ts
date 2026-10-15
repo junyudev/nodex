@@ -62,7 +62,9 @@ export function presentPageChatActivity(
   }
   if (workingCount > 0) parts.push(counted(workingCount, "working chat"));
   if (backgroundCount > 0) {
-    parts.push(counted(backgroundCount, "chat working in background", "chats working in background"));
+    parts.push(
+      counted(backgroundCount, "chat working in background", "chats working in background"),
+    );
   }
   if (summary.unreadCount > 0) parts.push(counted(summary.unreadCount, "unread chat"));
   const unread = summary.unreadCount > 0;
