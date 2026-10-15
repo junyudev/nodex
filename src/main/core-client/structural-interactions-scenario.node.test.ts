@@ -7,7 +7,7 @@ import {
   requireStructuralInteractionsFacts,
 } from "../../../scripts/scenarios/scenarios/structural-interactions";
 
-test("structural fixtures preserve Page-derived File access and read-only Page grants", async () => {
+test("structural edits and File reads work across Project routing with exact Document heads", async () => {
   await withCoreScenario({ scenarioId: STRUCTURAL_INTERACTIONS_SCENARIO_ID }, async (context) => {
     const facts = requireStructuralInteractionsFacts(context.facts);
     const client = context.runtime.clientForProject(context.manifest.projectId);
@@ -17,10 +17,11 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
         source: { kind: "page", page_id: facts.sourcePageId },
       });
       expect(bytes.bytes.length).toBeGreaterThan(60);
-      await expect(client.readFileBlob({ fileId, source: { kind: "direct" } })).rejects.toThrow();
+      const direct = await client.readFileBlob({ fileId, source: { kind: "direct" } });
+      expect(direct.bytes).toEqual(bytes.bytes);
     }
-    const readOnlyPageId = context.manifest.pageIdsByKey.readOnly;
-    if (!readOnlyPageId) throw new Error("Read-only fixture Page is missing");
+    const targetPageId = context.manifest.pageIdsByKey.readOnly;
+    if (!targetPageId) throw new Error("Target Page is missing");
     const root = createCoreLibraryModuleAdapter({
       client: context.runtime.rootClient,
       ...context.runtime.identity,
@@ -28,9 +29,9 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
     const readHead = async () => {
       const result = await context.runtime.rootClient.documentRead(createUuidV7(), {
         kind: "descriptor",
-        owner_block_id: readOnlyPageId,
+        owner_block_id: targetPageId,
       });
-      if (result.value.kind !== "descriptor") throw new Error("Read-only Document is missing");
+      if (result.value.kind !== "descriptor") throw new Error("Target Document is missing");
       const head = result.value.descriptor;
       return {
         documentId: head.documentId,
@@ -50,7 +51,7 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
         title: "Protected child",
         parent: {
           kind: "page",
-          pageId: readOnlyPageId,
+          pageId: targetPageId,
           expectedDocumentGeneration: initialHead.generation,
           expectedDocumentHeadSeq: initialHead.expectedHeadSeq,
           insertion: { kind: "append" },
@@ -64,8 +65,8 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
       ...context.runtime.identity,
       editorHistoryOwnerId: createUuidV7(),
     });
-    const before = await library.readProjectPageDetail(context.manifest.projectId, readOnlyPageId);
-    if (!before.ok) throw new Error("Read-only fixture Page is not readable");
+    const before = await library.readProjectPageDetail(context.manifest.projectId, targetPageId);
+    if (!before.ok) throw new Error("Target Page is not readable");
     const selection = {
       sourceDocumentId: sourceHead.documentId,
       sourceHead,
@@ -80,8 +81,8 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
       },
     });
     if (!captured.ok || !captured.value.structuralEdit?.clipboard)
-      throw new Error("Read-only content could not be copied");
-    const denied = await library.apply({
+      throw new Error("Target content could not be copied");
+    const cut = await library.apply({
       operationId: createUuidV7(),
       storeEpoch: context.runtime.identity.storeEpoch,
       operation: {
@@ -94,14 +95,19 @@ test("structural fixtures preserve Page-derived File access and read-only Page g
         },
       },
     });
-    expect(denied).toMatchObject({ ok: false, error: { code: "resource_not_found" } });
-    const after = await library.readProjectPageDetail(context.manifest.projectId, readOnlyPageId);
+    expect(cut).toMatchObject({
+      ok: true,
+      value: { structuralEdit: { sourceRootBlockIds: [childId] } },
+    });
+    const after = await library.readProjectPageDetail(context.manifest.projectId, targetPageId);
+    if (!after.ok) throw new Error(after.error.message);
+    expect(after.value.page.documentHeadSeq).toBeGreaterThan(sourceHead.expectedHeadSeq);
     expect(after).toMatchObject({
       ok: true,
       value: {
         page: {
           lifecycle: "active",
-          documentHeadSeq: sourceHead.expectedHeadSeq,
+          documentHeadSeq: expect.any(Number),
         },
       },
     });

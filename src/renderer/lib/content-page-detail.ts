@@ -1,6 +1,6 @@
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { LibraryPageDetail, PageDetail } from "../../shared/page-detail";
 import { invalidateExactQuery } from "./query-invalidation";
 import { libraryPageDetailQueryOptions } from "./library-page-detail-query";
@@ -16,22 +16,22 @@ export interface ContentPageDetailSnapshot {
 }
 
 /**
- * Resolves Page presentation metadata through the same authorization boundary
+ * Resolves Page presentation metadata through the same Profile content boundary
  * as the content surface that contains it.
  */
 export const useContentPageDetail = (
   libraryId: string | null,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   pageId: string | null,
 ): ContentPageDetailSnapshot => {
   const queryClient = useQueryClient();
-  const projectId = accessContext.kind === "project" ? accessContext.projectId : null;
+  const projectId = routingContext.kind === "project" ? routingContext.projectId : null;
   const project = usePageDetail(libraryId, projectId, pageId);
   const libraryPageId = pageId ?? "";
   const libraryQueryKey = queryKeys.library.pageDetail(libraryPageId);
   const library = useQuery({
     ...libraryPageDetailQueryOptions(libraryPageId),
-    enabled: accessContext.kind === "library" && Boolean(pageId),
+    enabled: routingContext.kind === "library" && Boolean(pageId),
   });
   const libraryDetail = library.data ?? null;
 
@@ -56,7 +56,7 @@ export const useContentPageDetail = (
       : null,
   );
 
-  if (accessContext.kind === "project") return project;
+  if (routingContext.kind === "project") return project;
   return {
     detail: libraryDetail,
     loading: library.isPending || library.isFetching,

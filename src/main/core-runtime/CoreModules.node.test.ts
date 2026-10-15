@@ -27,8 +27,6 @@ const provenance = {
     actor_project_id: "project:actor",
     library_id: "library:a",
     store_epoch: "epoch:a",
-    scope: "project",
-    source: "project_turn",
   },
 } as const;
 

@@ -29,7 +29,7 @@ const canvasSurface = {
   kind: "canvas_stage",
   titleSnapshot: "Snapshot title",
   config: {
-    accessContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "project", projectId: "project-1" },
     canvasBlockId: "canvas-1",
     titleSnapshot: "Snapshot title",
   },

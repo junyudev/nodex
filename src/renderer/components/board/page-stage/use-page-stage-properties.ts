@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DataSourcePropertyOptionRegistryState } from "@/components/database/data-source-property-editor-binding";
 import { usePropertyOptionRegistries } from "@/components/database/use-property-option-registries";
 import type { DatabasePropertyOption } from "../../../../shared/database-kernel";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import {
   readDataSourceRelationTargets,
   readDataSourceRelationTargetDescriptor,
@@ -87,7 +87,7 @@ const EMPTY_PROPERTIES: readonly PageStageDataSourceProperty[] = [];
 
 export function usePageStageProperties(input: {
   readonly pageModel: PageStagePageModel | null;
-  readonly contentAccessContext: ContentAccessContext;
+  readonly contentRoutingContext: ContentRoutingContext;
   readonly onUpdateProperty: PageStageProps["onUpdateProperty"];
   readonly onOpenPage: PageStageProps["onOpenPage"];
   readonly onRefreshProperties: PageStageProps["onRefreshProperties"];
@@ -95,7 +95,7 @@ export function usePageStageProperties(input: {
 }): PageStagePropertyControls {
   const {
     pageModel,
-    contentAccessContext,
+    contentRoutingContext,
     onUpdateProperty,
     onOpenPage,
     onRefreshProperties,
@@ -123,7 +123,7 @@ export function usePageStageProperties(input: {
     return Object.fromEntries(entries);
   }, [properties]);
   const optionRegistries = usePropertyOptionRegistries({
-    accessContext: contentAccessContext,
+    routingContext: contentRoutingContext,
     properties: optionProperties,
     requiredOptionIds,
   });
@@ -265,43 +265,43 @@ export function usePageStageProperties(input: {
   const loadRelationTargets = useCallback(
     (property: PageStageDataSourceProperty, after: string | null) =>
       readDataSourceRelationTargets({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         pageId: pageModel?.page.id ?? "",
         property: property.property,
         after,
       }),
-    [contentAccessContext, pageModel?.page.id],
+    [contentRoutingContext, pageModel?.page.id],
   );
 
   const searchRelationCandidates = useCallback(
     (property: PageStageDataSourceProperty, query: string, after?: string | null) =>
       searchDataSourceRelationCandidates({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         property: property.property,
         query,
         after,
       }),
-    [contentAccessContext],
+    [contentRoutingContext],
   );
 
   const loadRelationTargetDescriptor = useCallback(
     (property: PageStageDataSourceProperty) =>
       readDataSourceRelationTargetDescriptor({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         property: property.property,
       }),
-    [contentAccessContext],
+    [contentRoutingContext],
   );
   const openRelationPage = useMemo(() => {
     if (!onOpenPage) return undefined;
     return (pageId: string, title: string) => {
       void onOpenPage({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         pageId,
         titleSnapshot: title,
       });
     };
-  }, [contentAccessContext, onOpenPage]);
+  }, [contentRoutingContext, onOpenPage]);
   const refreshRelationValue = useCallback(async () => {
     await onRefreshProperties?.();
   }, [onRefreshProperties]);

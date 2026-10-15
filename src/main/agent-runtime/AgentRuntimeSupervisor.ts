@@ -123,15 +123,47 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     (operation) => gate.withPermit(operation),
   );
 
-  const close = gate.withPermit(
-    Effect.gen(function* () {
-      if ((yield* Ref.get(state)).closed) return;
-      yield* Ref.set(state, { closed: true, current: null, remainingRestarts: 0 });
-      yield* Scope.close(ownerScope, Exit.void);
-    }),
-  );
+  const close = gate
+    .withPermit(Ref.set(state, { closed: true, current: null, remainingRestarts: 0 }))
+    .pipe(Effect.andThen(Scope.close(ownerScope, Exit.void)));
   yield* Effect.addFinalizer(() => close);
   const get = () => acquire(false);
+  const withStopped = <A, E, R>(
+    operation: Effect.Effect<A, E, R>,
+    options: {
+      readonly retireOnSuccess?: boolean;
+      readonly expectedConnection?: AgentRuntimeProcessConnection;
+    } = {},
+  ) =>
+    gate
+      .withPermit(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(state);
+          if (current.closed)
+            return yield* new AgentRuntimeSupervisorError({ operation: "closed" });
+          if (
+            options.expectedConnection &&
+            current.current?.connection !== options.expectedConnection
+          )
+            return yield* new AgentRuntimeSupervisorError({ operation: "generation-changed" });
+          // Recovery observes the cleared identity after the gate opens and never restarts it.
+          yield* Ref.set(state, { ...current, current: null });
+          if (current.current) yield* Scope.close(current.current.scope, Exit.void);
+          const result = yield* operation;
+          if (options.retireOnSuccess)
+            yield* Ref.update(state, (current) => ({
+              ...current,
+              closed: true,
+              remainingRestarts: 0,
+            }));
+          return result;
+        }),
+      )
+      .pipe(
+        Effect.tap(() =>
+          options.retireOnSuccess ? Scope.close(ownerScope, Exit.void) : Effect.void,
+        ),
+      );
   const request = Effect.fn("AgentRuntimeSupervisor.request")(function* <
     Method extends AgentRuntimeMethod,
   >(method: Method, input: AgentRuntimeOperations[Method]["input"]) {
@@ -142,6 +174,7 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     get,
     request,
     close,
+    withStopped,
     inspect: Ref.get(state).pipe(
       Effect.map((current) => current.current?.connection.identity ?? null),
     ),

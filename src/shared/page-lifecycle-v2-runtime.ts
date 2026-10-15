@@ -341,14 +341,14 @@ export interface PageLifecycleOwnedBlockAuthorityV2 {
 }
 
 export interface PageLifecyclePreflightV2 {
-  readonly defaultView: DatabaseViewQueryResultV2;
-  readonly tagsProperty: PageLifecycleTagsPropertySnapshotV2;
+  readonly defaultView: DatabaseViewQueryResultV2 | null;
+  readonly tagsProperty: PageLifecycleTagsPropertySnapshotV2 | null;
   readonly reservedBlockType: string | null;
   readonly page: PageLifecycleOwnedBlockAuthorityV2 | null;
 }
 
 export interface PageLifecyclePreflightSnapshotV2 {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
@@ -360,7 +360,6 @@ export type PageLifecyclePreflightErrorCodeV2 =
   | "store_not_initialized"
   | "project_not_found"
   | "page_not_found"
-  | "authorization_denied"
   | "state_corrupt"
   | "unknown";
 
@@ -376,7 +375,7 @@ export type PageLifecyclePreflightResultV2 =
     };
 
 interface PageLifecycleIntentBaseV2 {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly operationId: string;
   readonly clientSessionId?: string;
 }
@@ -384,6 +383,7 @@ interface PageLifecycleIntentBaseV2 {
 export type PageLifecycleIntentV2 =
   | (PageLifecycleIntentBaseV2 & {
       readonly kind: "create";
+      readonly projectId: string;
       readonly pageId: string;
       readonly status: WorkflowStatus;
       readonly input: PageCreateInput;
@@ -438,11 +438,11 @@ export class PageLifecycleRuntimeErrorV2 extends Error {
 
 export interface PageLifecycleRuntimeDependenciesV2 {
   readonly readPreflight: (
-    projectId: string,
+    projectId: string | null,
     pageId: string,
   ) => Promise<PageLifecyclePreflightResultV2>;
   readonly mutate: (
-    projectId: string,
+    projectId: string | null,
     request: PageLifecycleMutationRequestV2,
   ) => Promise<PageLifecycleMutationCommandResultV2>;
   readonly readBoardProjection: (
@@ -474,6 +474,9 @@ const primaryView = (preflight: PageLifecyclePreflightSnapshotV2) => {
     return runtimeFail("preflight_mismatch", "Page lifecycle v2 preflight is missing");
   }
   const query = value.defaultView;
+  if (!query || !value.tagsProperty) {
+    return runtimeFail("preflight_mismatch", "Page creation requires a Project default Database");
+  }
   const { database, dataSource, view } = query;
   if (
     database.lifecycle !== "active" ||
@@ -599,9 +602,11 @@ export const compilePageLifecycleRequestV2 = (input: {
       "Page lifecycle v2 preflight does not match the requested Project",
     );
   }
-  primaryView(preflight);
-
   if (intent.kind === "create") {
+    primaryView(preflight);
+    if (!preflight.value.tagsProperty) {
+      return runtimeFail("preflight_mismatch", "Page creation requires a Project tags Property");
+    }
     const displayNameRequest: PageLifecycleCreateDisplayIntent = {
       operationId: intent.operationId,
       projectId: intent.projectId,
@@ -742,6 +747,7 @@ const readBoardProjection = async (
   receipt: PageLifecycleMutationReceiptV2,
   dependencies: PageLifecycleRuntimeDependenciesV2,
 ): Promise<DatabasePage | null> => {
+  if (intent.projectId === null) return null;
   const expectsDeleted = receipt.lifecycle === "deleted";
   for (let attempt = 0; attempt < 3; attempt += 1) {
     let page: DatabasePage | null = null;

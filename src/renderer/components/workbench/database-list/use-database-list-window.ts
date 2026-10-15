@@ -159,7 +159,7 @@ export const mergeDatabaseListWindow = (
 };
 
 interface DatabaseListWindowRequest {
-  readonly accessContext: DatabaseViewRenderModel["accessContext"];
+  readonly routingContext: DatabaseViewRenderModel["routingContext"];
   readonly input: DatabaseListWindowInput & { readonly databaseViewId: string };
 }
 
@@ -185,7 +185,7 @@ const descriptorFor = (
   effective: EffectiveDatabaseView,
 ): DatabaseListWindowDescriptor => {
   const request = {
-    accessContext: model.accessContext,
+    routingContext: model.routingContext,
     input: {
       databaseViewId: model.databaseViewId,
       first: DATABASE_LIST_WINDOW_SIZE,
@@ -197,7 +197,7 @@ const descriptorFor = (
     },
   } satisfies DatabaseListWindowRequest;
   const presentationIdentity = JSON.stringify({
-    accessContext: request.accessContext,
+    routingContext: request.routingContext,
     databaseViewId: request.input.databaseViewId,
     preferencesOverride: request.input.preferencesOverride,
   });
@@ -220,8 +220,8 @@ const descriptorFor = (
 const readWindow = async (
   request: DatabaseListWindowRequest,
 ): Promise<AnyDatabaseListWindowSnapshot> => {
-  if (request.accessContext.kind === "project") {
-    return await readDatabaseListWindow(request.accessContext.projectId, request.input);
+  if (request.routingContext.kind === "project") {
+    return await readDatabaseListWindow(request.routingContext.projectId, request.input);
   }
   return await readLibraryDatabaseListWindow(request.input);
 };
@@ -449,7 +449,7 @@ export class DatabaseListWindowStore {
   }
 
   setRequest(model: DatabaseViewRenderModel, effective: EffectiveDatabaseView): void {
-    if (model.authorization === null) {
+    if (model.boundedRead == null) {
       this.clearUnavailableAuthority();
       return;
     }
@@ -667,7 +667,7 @@ export class DatabaseListWindowStore {
 
 const storeIdentityFor = (model: DatabaseViewRenderModel): string =>
   JSON.stringify([
-    model.accessContext,
+    model.routingContext,
     model.libraryId,
     model.databaseId,
     model.dataSourceId,

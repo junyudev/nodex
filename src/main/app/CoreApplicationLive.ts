@@ -19,10 +19,6 @@ import {
   DocumentLiveRuntime,
   live as documentLiveRuntimeLive,
 } from "../core-runtime/DocumentLiveRuntime";
-import {
-  StoreAdministration,
-  live as storeAdministrationLive,
-} from "../core-runtime/StoreAdministration";
 import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { live as coreTransportLive } from "../core-runtime/CoreTransport";
 import { DesktopDocumentSessionRuntime, desktopDocumentSessionRuntimeLive } from "../core-client";
@@ -59,17 +55,9 @@ import {
   layer as nodexAgentDynamicToolsLive,
 } from "../nodex-agent-application/NodexAgentDynamicTools";
 import {
-  NodexAgentResourceAccess,
-  live as nodexAgentResourceAccessLive,
-} from "../nodex-agent-application/NodexAgentResourceAccess";
-import {
   ProjectWorkspace,
   live as projectWorkspaceLive,
 } from "../project-application/ProjectWorkspace";
-import {
-  InboxApplication,
-  live as inboxApplicationLive,
-} from "../inbox-application/InboxApplication";
 import { MainConfig } from "./MainConfig";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
@@ -109,8 +97,6 @@ const applicationData = Layer.merge(libraryModuleLive, databaseModuleLive).pipe(
 const fileExports = fileExportRuntimeLive.pipe(Layer.provideMerge(applicationData));
 const automationRouting = automationRoutingIndexLive.pipe(Layer.provideMerge(core));
 const automation = automationApplicationLive.pipe(Layer.provideMerge(automationRouting));
-const storeAdministration = storeAdministrationLive.pipe(Layer.provideMerge(core));
-const inbox = inboxApplicationLive.pipe(Layer.provideMerge(storeAdministration));
 const worktreeEnvironment = worktreeEnvironmentRuntimeLive.pipe(Layer.provideMerge(core));
 const canvasPresence = canvasPresenceRuntimeLive();
 const documentLive = documentLiveRuntimeLive;
@@ -129,7 +115,6 @@ const nodexAgentTools = Layer.unwrap(
     );
   }),
 ).pipe(Layer.provideMerge(nodexAgent));
-const nodexAgentResourceAccess = nodexAgentResourceAccessLive.pipe(Layer.provideMerge(core));
 
 /** Core authority and its direct application projections as one declarative dependency cluster. */
 export const live: Layer.Layer<
@@ -137,7 +122,6 @@ export const live: Layer.Layer<
   | CoreSessionAccess
   | CoreModules
   | ProjectWorkspace
-  | InboxApplication
   | ProjectRuntimeLifecycleRuntime
   | CodexEphemeralThreadRouting
   | CodexThreadHostResolver
@@ -146,26 +130,21 @@ export const live: Layer.Layer<
   | LibraryModule
   | FileExportRuntime
   | DatabaseModule
-  | StoreAdministration
   | WorktreeEnvironmentRuntime
   | CanvasPresenceRuntime
   | DocumentLiveRuntime
   | DesktopDocumentSessionRuntime
   | NodexAgentApplication
-  | NodexAgentDynamicTools
-  | NodexAgentResourceAccess,
+  | NodexAgentDynamicTools,
   CoreRuntimeError,
   MainConfig | MainShutdown | ScopedCallbackRuntime | ApplicationInitializationRuntime
 > = Layer.mergeAll(
   fileExports,
   workspace,
-  inbox,
   hostResolver,
   projectRuntimeLifecycleLive,
   automation,
-  storeAdministration,
   worktreeEnvironment,
   documentSessions,
   nodexAgentTools,
-  nodexAgentResourceAccess,
 );

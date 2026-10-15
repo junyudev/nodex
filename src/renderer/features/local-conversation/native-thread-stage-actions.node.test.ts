@@ -12,8 +12,6 @@ test("native execution has no implicit Codex handlers while shared Session navig
     onOpenThread: open,
     onQueueingEnabledChange: vi.fn(),
     onCompactThread: codexExecution,
-    onPermissionModeChange: codexExecution,
-    onRespondPermissionRequest: codexExecution,
     onRetryThreadAttachment: codexExecution,
     onRespondSetupCodexStep: codexExecution,
     onUploadFeedback: codexExecution,
@@ -27,13 +25,11 @@ test("native execution has no implicit Codex handlers while shared Session navig
   expect(open).toHaveBeenCalledWith("target");
   for (const key of [
     "onCompactThread",
-    "onRespondPermissionRequest",
     "onRetryThreadAttachment",
     "onRespondSetupCodexStep",
     "onUploadFeedback",
   ] as const)
     expect(actions[key]).toBeUndefined();
-  await expect(actions.onPermissionModeChange("full-access")).rejects.toThrow("unavailable");
   expect(codexExecution).not.toHaveBeenCalled();
 });
 

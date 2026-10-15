@@ -20,9 +20,9 @@ import {
   releaseStructuralHistory,
 } from "../../../lib/surface-history/structural-resources";
 import {
-  contentAccessContextKey,
-  type ContentAccessContext,
-} from "../../../../shared/content-access-context";
+  contentRoutingContextKey,
+  type ContentRoutingContext,
+} from "../../../../shared/content-routing-context";
 import { canRetryNfmHistory } from "./nfm-history-command";
 import type {
   NodexClipboardEnvelopeV1,
@@ -157,7 +157,7 @@ export interface NfmStructuralEditingSessionOptions {
 }
 
 export interface NfmStructuralEditingRuntime {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly libraryId: string;
   readonly source: {
     readonly documentId: string;
@@ -473,8 +473,8 @@ export class NfmStructuralEditingSession {
         this.runtime.source.storeEpoch !== runtime.source.storeEpoch ||
         this.runtime.source.generation !== runtime.source.generation ||
         this.runtime.libraryId !== runtime.libraryId ||
-        contentAccessContextKey(this.runtime.accessContext) !==
-          contentAccessContextKey(runtime.accessContext))
+        contentRoutingContextKey(this.runtime.routingContext) !==
+          contentRoutingContextKey(runtime.routingContext))
     ) {
       throw new Error("A structural editing session cannot change its Document authority.");
     }
@@ -487,7 +487,7 @@ export class NfmStructuralEditingSession {
     const runtime = this.boundRuntime;
     return {
       libraryId: runtime.libraryId,
-      accessContext: runtime.accessContext,
+      routingContext: runtime.routingContext,
       storeEpoch: runtime.source.storeEpoch,
     };
   }
@@ -634,7 +634,6 @@ export class NfmStructuralEditingSession {
     if (transfer.mode === "move") {
       localStructuralTransactionPresentation.beginDatabasePageMove({
         operationId: transfer.operationId,
-        projectId: transfer.projectId,
         storeEpoch: transfer.storeEpoch,
         dataSourceId: transfer.dataSourceId,
         pageIds: transfer.rootBlockIds,
@@ -832,7 +831,7 @@ export class NfmStructuralEditingSession {
     }
     if (this.cleanupApply) {
       // The injected transport owns its outstanding response, just as Main owns production attempts.
-      void this.cleanupApply(attempt.accessContext, attempt.request)
+      void this.cleanupApply(attempt.routingContext, attempt.request)
         .then(async (result) => {
           if (!result.ok && result.error.code === "unknown") throw new Error(result.error.message);
           const token = result.ok ? result.value.structuralEdit?.history : undefined;
@@ -841,14 +840,14 @@ export class NfmStructuralEditingSession {
         .catch((error: unknown) => this.reportError(error));
       return;
     }
-    await abandonStructuralHistory(attempt.accessContext, attempt.request);
+    await abandonStructuralHistory(attempt.routingContext, attempt.request);
   }
 
   private async releaseStructuralHistory(
     tokens: readonly LibraryStructuralHistoryToken[],
   ): Promise<void> {
     await releaseStructuralHistory(
-      this.boundRuntime.accessContext,
+      this.boundRuntime.routingContext,
       this.boundRuntime.source.storeEpoch,
       tokens,
       this.cleanupApply,
@@ -1048,7 +1047,7 @@ export class NfmStructuralEditingSession {
   ): NfmLibraryHistoryRequest {
     return {
       kind: "library",
-      accessContext: this.boundRuntime.accessContext,
+      routingContext: this.boundRuntime.routingContext,
       request: {
         operationId,
         storeEpoch: this.boundRuntime.source.storeEpoch,
@@ -1117,8 +1116,8 @@ export class NfmStructuralEditingSession {
         const runtime = this.boundRuntime;
         if (
           transfer.storeEpoch !== runtime.source.storeEpoch ||
-          (runtime.accessContext.kind === "project" &&
-            transfer.projectId !== runtime.accessContext.projectId) ||
+          (runtime.routingContext.kind === "project" &&
+            transfer.projectId !== runtime.routingContext.projectId) ||
           (transfer.target.kind === "document" &&
             transfer.target.documentId !== runtime.source.documentId)
         )
@@ -1157,8 +1156,8 @@ export class NfmStructuralEditingSession {
           promotion.sourceDocumentId !== runtime.source.documentId ||
           promotion.storeEpoch !== runtime.source.storeEpoch ||
           promotion.sourceDocumentGeneration !== runtime.source.generation ||
-          (runtime.accessContext.kind === "project" &&
-            promotion.projectId !== runtime.accessContext.projectId)
+          (runtime.routingContext.kind === "project" &&
+            promotion.projectId !== runtime.routingContext.projectId)
         )
           throw new Error("The source Page changed; reopen it before moving Blocks.");
         const sourceHead = await this.prepareAndFence();
@@ -1351,7 +1350,7 @@ export class NfmStructuralEditingSession {
         receipt: { kind: "block_transfer", result },
       };
     }
-    const result = await this.apply(attempt.accessContext, attempt.request);
+    const result = await this.apply(attempt.routingContext, attempt.request);
     if (!result.ok) {
       const { error } = result;
       if (error.code === "unknown") return { kind: "unknown", reason: error.message };
@@ -1514,7 +1513,7 @@ export class NfmStructuralEditingSession {
     const capturedResult = await withRendererStructuralSpan(
       { ...span, phase: "clipboard_capture" },
       () =>
-        this.apply(this.boundRuntime.accessContext, {
+        this.apply(this.boundRuntime.routingContext, {
           operationId: command.captureOperationId,
           storeEpoch: this.boundRuntime.source.storeEpoch,
           operation: {
@@ -1551,7 +1550,7 @@ export class NfmStructuralEditingSession {
         html: command.presentation.html,
         text: command.presentation.text,
         ...(command.fileExportCandidates?.length
-          ? { fileExportAccess: this.boundRuntime.accessContext }
+          ? { fileExportAccess: this.boundRuntime.routingContext }
           : {}),
       }),
     );
@@ -1665,7 +1664,7 @@ export class NfmStructuralEditingSession {
     const destinationPageId = mention.destinationPageId ?? mention.hostPageId;
     let destinationHead = hostHead;
     if (destinationPageId !== mention.hostPageId) {
-      const read = await readLibraryModule(this.boundRuntime.accessContext, {
+      const read = await readLibraryModule(this.boundRuntime.routingContext, {
         read: { mode: "page_mention_destination", pageId: destinationPageId },
       });
       if (!read.ok) throw new Error(read.error.message);

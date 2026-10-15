@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nodex_core_contracts::agent::{
-    AgentConsentRequirement, AgentEffectClass, AgentExecutionAuthorization,
-    AgentOperationFootprint, AgentOperationPreparation, AgentOperationPreparationState,
-    AgentOwnershipTransformation, AgentPreparedExecution, AgentResourceKind, AgentResourceTarget,
+    AgentEffectClass, AgentExecutionAuthorization, AgentOperationFootprint,
+    AgentOperationPreparation, AgentOperationPreparationState, AgentOwnershipTransformation,
+    AgentPreparedExecution, AgentResourceKind, AgentResourceTarget,
 };
 use nodex_core_contracts::library::{
     LibraryAgentCreatePagePreparation, LibraryAgentCreatePagesPreparation,
@@ -23,8 +23,8 @@ use serde_json::json;
 use crate::database::{
     ExistingPageTransferTarget, PageCopyDataSourceDestination, PageCopyPositionAnchor,
     PageCopyValueDraft, PageCopyViewPlacement, StagedPagePlacementRevisions, active_property,
-    current_page_key_for_page, normalize_value, place_staged_page_in_data_source_prevalidated,
-    transfer_existing_page_for_agent_move_prevalidated,
+    current_page_key_for_page, normalize_value, place_staged_page_in_data_source,
+    transfer_existing_page_for_agent_move,
 };
 use crate::document::{
     DocumentMaterialization, DocumentRuntimeCache, mint_document_semantic_etags,
@@ -193,12 +193,11 @@ pub(super) fn prepare_create_pages(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: LibraryReadValue::AgentCreatePagesPreparation {
                     value: Box::new(LibraryAgentCreatePagesPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::CommittedReplay,
-                            consent: AgentConsentRequirement::None,
+
                             footprint,
                             preview_markdown: None,
                             token: None,
@@ -231,12 +230,11 @@ pub(super) fn prepare_create_pages(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: LibraryReadValue::AgentCreatePagesPreparation {
                     value: Box::new(LibraryAgentCreatePagesPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::Prepared,
-                            consent: AgentConsentRequirement::None,
+
                             footprint: preflight.footprint,
                             preview_markdown: None,
                             token: Some(issued.token),
@@ -741,19 +739,10 @@ fn apply_pages(
         );
 
         match &page.destination {
-            LibraryPageCopyDestination::Library { .. } => {
-                super::mutation::insert_creator_resource_grant(
-                    connection,
-                    preflight.actor_project_id.as_deref(),
-                    library_id,
-                    "page",
-                    &page.page_id,
-                    &now,
-                )?;
-            }
+            LibraryPageCopyDestination::Library { .. } => {}
             LibraryPageCopyDestination::DataSource { .. } => {
                 let destination = data_source_destination(&page.destination)?;
-                let placement = place_staged_page_in_data_source_prevalidated(
+                let placement = place_staged_page_in_data_source(
                     connection,
                     library_id,
                     preflight.actor_project_id.as_deref(),
@@ -809,7 +798,7 @@ fn apply_pages(
                 page_id: target_page_id,
                 ..
             } => {
-                let placement = transfer_existing_page_for_agent_move_prevalidated(
+                let placement = transfer_existing_page_for_agent_move(
                     connection,
                     library_id,
                     preflight.actor_project_id.as_deref(),

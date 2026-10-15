@@ -18,7 +18,6 @@ describe("nfm codex prompt input", () => {
               model: "gpt-5.2-codex",
               reasoning: "high",
               speed: "fast",
-              permission: "auto",
             },
           },
         ],
@@ -46,6 +45,5 @@ describe("nfm codex prompt input", () => {
     expect(promptInput.agentConfigs?.[0]?.model).toBe("gpt-5.2-codex");
     expect(promptInput.agentConfigs?.[0]?.reasoning).toBe("high");
     expect(promptInput.agentConfigs?.[0]?.speed).toBe("fast");
-    expect(promptInput.agentConfigs?.[0]?.permission).toBe("auto");
   });
 });

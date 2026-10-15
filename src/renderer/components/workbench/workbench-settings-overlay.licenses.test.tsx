@@ -48,7 +48,6 @@ function installSettingsWindowApi(noticesText: string | null): void {
         case "settings:thread-notifications:get":
           return {
             turnMode: "unfocused",
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         case "settings:app-updates:get":

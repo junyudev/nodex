@@ -564,7 +564,6 @@ mod tests {
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
                 workspace_transition: None,
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
 
@@ -723,7 +722,6 @@ mod tests {
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
                 workspace_transition: None,
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
         let after = task_window(&workspace, Some("project:a"), None, 4);

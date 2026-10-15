@@ -70,7 +70,7 @@ const createLane = (
     },
     prepareStructuralReverse: async (token) => ({
       kind: "library",
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       request: {
         operationId: createUuidV7(),
         storeEpoch: token.storeEpoch,

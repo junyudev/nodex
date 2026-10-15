@@ -667,6 +667,9 @@ importers:
       '@napi-rs/keyring':
         specifier: 1.3.0
         version: 1.3.0
+      '@nodex/codex-app-server-protocol':
+        specifier: workspace:*
+        version: link:../codex-app-server-protocol
       '@opencode-ai/sdk':
         specifier: 1.15.13
         version: 1.15.13
@@ -798,6 +801,9 @@ importers:
 
   packages/agent-runtime/vendor/effect-acp:
     dependencies:
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../shared
       effect:
         specifier: 4.0.3
         version: 4.0.3
@@ -820,6 +826,9 @@ importers:
 
   packages/agent-runtime/vendor/effect-codex-app-server:
     dependencies:
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../shared
       effect:
         specifier: 4.0.3
         version: 4.0.3
@@ -916,6 +925,9 @@ importers:
 
   packages/agent-runtime/vendor/provider-core:
     dependencies:
+      '@nodex/codex-app-server-protocol':
+        specifier: workspace:*
+        version: link:../../../codex-app-server-protocol
       '@t3tools/contracts':
         specifier: workspace:*
         version: link:../contracts

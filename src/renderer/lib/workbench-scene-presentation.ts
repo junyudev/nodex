@@ -36,8 +36,8 @@ function resourceProjectId(
     surface.kind === "page_stage" ||
     surface.kind === "canvas_stage"
   ) {
-    return surface.config.accessContext.kind === "project"
-      ? surface.config.accessContext.projectId
+    return surface.config.routingContext.kind === "project"
+      ? surface.config.routingContext.projectId
       : null;
   }
   return "projectId" in surface.config ? surface.config.projectId : (session.projectId ?? null);

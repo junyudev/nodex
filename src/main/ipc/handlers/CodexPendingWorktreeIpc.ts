@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { CodexPendingWorktreeCreateInput } from "../../../shared/codex-pending-worktree";
 import { requireCodexWorktreeEnvironmentConfigPath } from "../../../shared/codex-worktree-environment-path";
-import type { CodexAgentMode } from "../../../shared/types";
+
 import { MainConfig } from "../../app/MainConfig";
 import { CodexClientThreadIdentity } from "../../codex-application/CodexClientThreadIdentity";
 import { CodexForkSidePanelTransfer } from "../../codex-application/CodexForkSidePanelTransferRuntime";
@@ -30,20 +30,6 @@ const requireLabel = (value: string): string => {
   const label = requireIdentifier(value, "Pending worktree label").trim();
   if (!label) throw new Error("Pending worktree label is required");
   return label;
-};
-
-const requireAgentMode = (value: CodexAgentMode): CodexAgentMode => {
-  if (
-    value === "read-only" ||
-    value === "auto" ||
-    value === "granular" ||
-    value === "guardian-approvals" ||
-    value === "full-access" ||
-    value === "custom"
-  ) {
-    return value;
-  }
-  throw new Error("Agent mode is invalid");
 };
 
 const requireSourceWorkspaceRoots = (
@@ -155,18 +141,13 @@ export const live: Layer.Layer<
         Effect.map((allocated) => allocated.result),
       ),
     );
-    yield* handlePlainCommand(
-      "codex:pending-worktree:auto-fix",
-      (_, hostId, pendingWorktreeId, agentMode) =>
-        validate("auto-fix", () => ({
-          hostId: requireIdentifier(hostId, "Host id"),
-          pendingWorktreeId: requireIdentifier(pendingWorktreeId, "Pending worktree id"),
-          agentMode: requireAgentMode(agentMode),
-        })).pipe(
-          Effect.flatMap((input) =>
-            pending.createSetupRepair(input.hostId, input.pendingWorktreeId, input.agentMode),
-          ),
-        ),
+    yield* handlePlainCommand("codex:pending-worktree:auto-fix", (_, hostId, pendingWorktreeId) =>
+      validate("auto-fix", () => ({
+        hostId: requireIdentifier(hostId, "Host id"),
+        pendingWorktreeId: requireIdentifier(pendingWorktreeId, "Pending worktree id"),
+      })).pipe(
+        Effect.flatMap((input) => pending.createSetupRepair(input.hostId, input.pendingWorktreeId)),
+      ),
     );
     yield* handlePlainCommand("codex:pending-worktree:retry", (_, hostId, pendingWorktreeId) =>
       requireOwned(hostId, pendingWorktreeId).pipe(

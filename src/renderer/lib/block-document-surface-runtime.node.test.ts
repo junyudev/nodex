@@ -37,12 +37,11 @@ import {
 
 const descriptor = (overrides: Partial<OwnedDocumentDescriptor> = {}): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   ownerBlockId: "card-1",
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "document:card-1",
-  authorization: null,
   storeEpoch: "store-1",
   generation: 1,
   headSeq: 1,

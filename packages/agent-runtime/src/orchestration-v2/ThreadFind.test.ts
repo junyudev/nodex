@@ -27,11 +27,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as EventStore from "./EventStore.ts";
-import {
-  encodeThreadHistoryCursor,
-  selectHistoryPageFromCursor,
-  THREAD_HISTORY_PAGE_POLICY,
-} from "./threadHistoryPaging.ts";
+import { encodeThreadHistoryCursor, THREAD_HISTORY_PAGE_POLICY } from "./threadHistoryPaging.ts";
 import { projectTurnItemForWire } from "./WireProjection.ts";
 
 const layerTest = Layer.mergeAll(EventStore.layer, ProjectionStore.layer, ProjectStore.layer).pipe(
@@ -955,19 +951,16 @@ describe("V2 history materialization", () => {
           threadId,
           cursor,
         );
-        assert.deepEqual(page, {
-          snapshotSequence: snapshot.snapshotSequence,
-          ...selectHistoryPageFromCursor({
-            items: rows,
-            cursor,
-            snapshotSequence: snapshot.snapshotSequence,
-          }),
-        });
+        assert.equal(page.snapshotSequence, snapshot.snapshotSequence);
+        assert.deepEqual(yield* projection.getThreadHistoryPage(threadId, cursor), page);
+        assert.isAtMost(
+          Buffer.byteLength(JSON.stringify(page), "utf8"),
+          THREAD_HISTORY_PAGE_POLICY.maxEncodedBytes,
+        );
         assert.isAtMost(page.items.length, THREAD_HISTORY_PAGE_POLICY.maxItems);
-        assert.isTrue(
-          page.items.length === 1 ||
-            Buffer.byteLength(JSON.stringify(page.items), "utf8") <=
-              THREAD_HISTORY_PAGE_POLICY.maxEncodedBytes,
+        assert.isAtMost(
+          Buffer.byteLength(JSON.stringify(page.items), "utf8"),
+          THREAD_HISTORY_PAGE_POLICY.maxEncodedBytes,
         );
         collected.unshift(...page.items.map((row) => String(row.sourceItemId)));
         cursor = page.nextCursor;
@@ -979,44 +972,48 @@ describe("V2 history materialization", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
-  it.effect("enforces fallback item and byte limits and always admits an oversized row", () =>
-    Effect.gen(function* () {
-      const projection = yield* setup;
-      const count = THREAD_HISTORY_PAGE_POLICY.maxItems + 5;
-      yield* putItems(
-        Array.from({ length: count }, (_, ordinal) =>
-          item(`row:${ordinal}`, ordinal, ordinal < count - 2 ? "small" : "large ".repeat(200_000)),
-        ),
-      );
-      const snapshot = yield* projection.getThreadSnapshot(threadId);
-      const rows = snapshot.projection.visibleTurnItems.map((row) => ({
-        ...row,
-        item: projectTurnItemForWire(row.item),
-      }));
-      let cursor: string | null = encodeThreadHistoryCursor({
-        snapshotSequence: snapshot.snapshotSequence,
-        sourceThreadId: threadId,
-        sourceItemId: "absent",
-        position: rows.length,
-      });
-      const sizes: number[] = [];
-      while (cursor !== null) {
-        const page: OrchestrationV2ThreadHistoryPage = yield* projection.getThreadHistoryPage(
-          threadId,
-          cursor,
+  it.effect(
+    "enforces fallback item and encoded byte limits while making progress through oversized rows",
+    () =>
+      Effect.gen(function* () {
+        const projection = yield* setup;
+        const count = THREAD_HISTORY_PAGE_POLICY.maxItems + 5;
+        yield* putItems(
+          Array.from({ length: count }, (_, ordinal) =>
+            item(
+              `row:${ordinal}`,
+              ordinal,
+              ordinal < count - 2 ? "small" : "large ".repeat(200_000),
+            ),
+          ),
         );
-        assert.deepEqual(page, {
+        const snapshot = yield* projection.getThreadSnapshot(threadId);
+        const rows = snapshot.projection.visibleTurnItems.map((row) => ({
+          ...row,
+          item: projectTurnItemForWire(row.item),
+        }));
+        let cursor: string | null = encodeThreadHistoryCursor({
           snapshotSequence: snapshot.snapshotSequence,
-          ...selectHistoryPageFromCursor({
-            items: rows,
-            cursor,
-            snapshotSequence: snapshot.snapshotSequence,
-          }),
+          sourceThreadId: threadId,
+          sourceItemId: "absent",
+          position: rows.length,
         });
-        sizes.push(page.items.length);
-        cursor = page.nextCursor;
-      }
-      assert.deepEqual(sizes, [1, 1, THREAD_HISTORY_PAGE_POLICY.maxItems, 3]);
-    }).pipe(Effect.provide(layerTest)),
+        const sizes: number[] = [];
+        while (cursor !== null) {
+          const page: OrchestrationV2ThreadHistoryPage = yield* projection.getThreadHistoryPage(
+            threadId,
+            cursor,
+          );
+          assert.equal(page.snapshotSequence, snapshot.snapshotSequence);
+          assert.deepEqual(yield* projection.getThreadHistoryPage(threadId, cursor), page);
+          assert.isAtMost(
+            Buffer.byteLength(JSON.stringify(page), "utf8"),
+            THREAD_HISTORY_PAGE_POLICY.maxEncodedBytes,
+          );
+          sizes.push(page.items.length);
+          cursor = page.nextCursor;
+        }
+        assert.deepEqual(sizes, [1, 1, THREAD_HISTORY_PAGE_POLICY.maxItems, 3]);
+      }).pipe(Effect.provide(layerTest)),
   );
 });

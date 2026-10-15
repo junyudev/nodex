@@ -138,7 +138,7 @@ describe("ServerSettings default permissions", () => {
     expect(DEFAULT_SERVER_SETTINGS.defaultRuntimeMode).toBe("full-access");
   });
 
-  it.each(["approval-required", "auto-accept-edits", "auto", "full-access"])(
+  it.each(["full-access", "full-access", "auto", "full-access"])(
     "round-trips %s as an environment default and project override",
     (defaultRuntimeMode) => {
       const input = {

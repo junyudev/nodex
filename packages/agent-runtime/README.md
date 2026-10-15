@@ -39,7 +39,7 @@ its explicit ownership token for scoped cancellation.
 The process registers the four provider drivers and execution MCP tools. OpenCode instances
 select their native 1.x or 2.x adapter from their executable. ACP's stdio bridge commands use
 a separate entry path without acquiring the engine or provider runtimes.
-Desktop launch, worktree setup, content authorization and schedules compose
+Desktop launch, worktree setup, content operations and schedules compose
 through their host boundaries. The complete production assembly is retained in
 `src/orchestration-v2/runtimeLayer.ts`; its execution layer shares the same stores,
 workers and request queues with the independent host. Scheduling capabilities are
@@ -69,18 +69,36 @@ malformed ownership refuses admission; stale recovery requires a proven absent P
 owner token under an exclusive nested `.recovering` claim. Scope release verifies the exact
 token, and a PID reused by another process conservatively retains ownership.
 
-Host tools require the currently admitted foreground attempt. Active native
-background work prevents ambiguous session credentials from acquiring a newer
-Run's content authority. App-owned delegated children use their own admitted
-Turn. The host remains responsible for content authorization and ownership.
-MCP profiles remain bound to the native incarnation that initialized them; each tool request
-captures its admitted actor before reading the body and revalidates it at execution.
+All Agents can read and write the current Profile across Projects and Sessions. Plan selects
+planning intent and does not restrict content or native execution. Providers use full access and
+automatically approve authorization requests; information questions still await a user answer.
+Project coordinates determine placement, working directory, list selection and lifecycle.
+Ordinary Session creation binds its product identity before the first Run begins.
 
-Command receipts bind the complete immutable request. Identical submissions replay their
-original result; changed command or user/MCP message content cannot reuse an accepted identity.
-Server-owned completion mailboxes retain their intentional undelivered-message updates.
+MCP profiles remain bound to the native incarnation that initialized them. Native call metadata
+captures the original Session, Run and attempt, including background work after its parent Turn
+ends. Each call revalidates that exact identity. Cancellation and incarnation retirement invalidate
+old calls. Independent native notifications and HTTP ingress use a bounded registration barrier,
+so a request never borrows a newer foreground Run. Closing an incarnation removes its HTTP
+profiles and call registrations. Admission retains at most 4096 profiles and 128 native calls.
+
+Stable command identities and durable transactional receipts replay accepted results across
+retries and reconnects. Accepted no-op commands also retain a receipt. Scratch launch retries
+read the accepted creation workspace. Rollback selects its original accepted target and shares
+the Thread's command lane across native work, preventing a delayed rollback from erasing a newer Run.
+Attachment publication preserves existing copies; pending uploads use content-derived identities
+and serialize admission through rollback. Context compaction creates one durable maintenance Run
+per request and uses the normal native lifecycle and Host preparation boundary.
 Claude custom model traits are compiled at the native boundary, including thinking-off effort
 limits and permitted context-window suffixes.
+Restored Claude history uses the SDK's `SessionStore`: the configured account supplies authentication,
+while the SDK privately materializes captured root and subagent transcripts for resume. Continued
+entries are durably mirrored into the Profile, including native forks. Missing managed history and
+mirror failures reject execution rather than falling back to another history owner. Each native
+transcript is admitted whole within 128 MiB and 250,000 entries; larger transcripts fail explicitly.
+Restored Codex history uses its captured native home and the current configured provider policy.
+The Host obtains current credentials privately for ephemeral login and refresh; execution receipts,
+configuration and formal native history captures never persist those credentials.
 
 The package retains provider replay fixtures and lifecycle, transaction, recovery,
 delegation and bounded-transport verification. Run focused tests with this package's

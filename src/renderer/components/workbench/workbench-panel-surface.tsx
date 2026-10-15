@@ -142,7 +142,7 @@ export function WorkbenchTabProjectionPanel({
   )?.surface;
   if (
     (tab.kind === "db_view" || tab.kind === "page_stage" || tab.kind === "canvas_stage") &&
-    tab.config.accessContext.kind === "library"
+    tab.config.routingContext.kind === "library"
   ) {
     if (
       !canonicalSurface ||
@@ -177,9 +177,9 @@ export function WorkbenchTabProjectionPanel({
     );
   }
   if (tab.kind === "db_view") {
-    const accessContext = tab.config.accessContext;
-    if (accessContext.kind !== "project") return null;
-    const projectId = accessContext.projectId;
+    const routingContext = tab.config.routingContext;
+    if (routingContext.kind !== "project") return null;
+    const projectId = routingContext.projectId;
     const workbenchPresentation =
       canonicalSurface?.kind === "db_view"
         ? { owner: workbenchOwner, sceneOwner, surface: canonicalSurface }
@@ -188,7 +188,7 @@ export function WorkbenchTabProjectionPanel({
       return (
         <WorkbenchDatabaseViewSurface
           workbenchPresentation={workbenchPresentation}
-          accessContext={accessContext}
+          routingContext={routingContext}
           target={tab.config.target}
           presentedPageIds={presentedPageIds}
           onOpenPage={(pageId, titleSnapshot, openMode) => {
@@ -210,7 +210,7 @@ export function WorkbenchTabProjectionPanel({
         sessionId={activeSession.id}
         tab={{
           ...tab,
-          config: { accessContext, target: { kind: "database-view", databaseViewId } },
+          config: { routingContext, target: { kind: "database-view", databaseViewId } },
         }}
         projects={projects}
         activeSearchQuery={activeSearchQuery}
@@ -227,7 +227,7 @@ export function WorkbenchTabProjectionPanel({
         onSelectDatabaseView={(databaseViewId, title) => {
           onUpdateTab(tab.id, {
             title,
-            config: { accessContext, target: { kind: "database-view", databaseViewId } },
+            config: { routingContext, target: { kind: "database-view", databaseViewId } },
           });
         }}
         targetLeafId={resolveLeafIdForPanelTab(activeSession, tab.panelId, tab.id)}
@@ -236,8 +236,8 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "canvas_stage") {
-    const accessContext = tab.config.accessContext;
-    if (accessContext.kind !== "project") return null;
+    const routingContext = tab.config.routingContext;
+    if (routingContext.kind !== "project") return null;
     const surface = {
       id: tab.id,
       kind: "canvas_stage" as const,
@@ -257,7 +257,7 @@ export function WorkbenchTabProjectionPanel({
           onUpdateTab(tab.id, { title });
         }}
         onOpenPage={({ pageId, titleSnapshot }) => {
-          void onOpenPageTab(accessContext.projectId, pageId, titleSnapshot, {
+          void onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {
             openMode: "durable",
             placement: { kind: "same-group", sourceSurfaceId: tab.id },
           });
@@ -267,8 +267,8 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "page_stage") {
-    if (tab.config.accessContext.kind !== "project") return null;
-    const pageAccessProjectId = tab.config.accessContext.projectId;
+    if (tab.config.routingContext.kind !== "project") return null;
+    const pageAccessProjectId = tab.config.routingContext.projectId;
     const pageTab = tab;
     return (
       <PageStageSessionTab

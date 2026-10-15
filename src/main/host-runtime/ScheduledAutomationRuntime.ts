@@ -95,7 +95,7 @@ export const live = (
                     type: "automationRunsUpdated",
                     event: {
                       automationId: null,
-                      threadId: null,
+                      runId: null,
                       reason: "settle",
                     },
                   },
@@ -143,6 +143,8 @@ export const live = (
               now: tickNow,
               reason: "scheduled",
               leaseId: claim.leaseId,
+              dispatchId: claim.dispatchId,
+              definitionRevision: claim.definitionRevision,
               ...(claim.definition.kind === "heartbeat"
                 ? {
                     heartbeat: heartbeatRunContext({

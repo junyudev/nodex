@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { CodexScheduledAutomation } from "../../shared/types";
 import {
   AutomationApplication,
@@ -16,19 +16,18 @@ import {
   type ProjectWorkspaceService,
 } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { make } from "./AutomationAppTools";
+import { make, makeWithCapture } from "./AutomationAppTools";
+import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppToolCaller";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread:a",
   turnId: "turn:a",
   rootThreadId: "thread:a",
   actorProjectId: "project:a",
   libraryId: "library:a",
   storeEpoch: "epoch:a",
-  frozenAtMs: 1_000,
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1_000,
 };
 const provenance = {
   profile_id: "profile:a",
@@ -39,8 +38,6 @@ const provenance = {
     actor_project_id: "project:a",
     library_id: "library:a",
     store_epoch: "epoch:a",
-    scope: "project",
-    source: "project_turn",
   },
 };
 const input = (args: Record<string, unknown>): AppToolInvocation => ({
@@ -75,7 +72,6 @@ const item: CodexScheduledAutomation = {
   status: "ACTIVE",
   projectId: "project:a",
   targetSessionId: null,
-  targetThreadId: null,
   notificationPolicy: "failed_runs_only",
   name: "Check release builds",
   prompt: "Check release builds and report failed jobs.",
@@ -111,28 +107,25 @@ const setup = (
     } as ProjectWorkspaceService),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
     Effect.provideService(CodexTurnAuthority, {
-      capture: () => Effect.succeed({ ...authority, readOnly: options.readOnly ?? false }),
+      capture: () => Effect.succeed({ ...authority }),
     } as never),
   );
 
-it.effect("allows authorized discovery on read-only Turns and rejects every mutation", () =>
+it.effect("reads definition windows with execution provenance and rejects forged authority", () =>
   Effect.gen(function* () {
     const reads: unknown[] = [];
-    const execute = yield* setup(
-      {
-        listWindow: (query) =>
-          Effect.gen(function* () {
-            reads.push({ query, provenance: yield* CoreApplicationAgent });
-            return { items: [item], nextCursor: "older" };
-          }),
-        get: (id) =>
-          Effect.gen(function* () {
-            reads.push({ id, provenance: yield* CoreApplicationAgent });
-            return item;
-          }),
-      },
-      { readOnly: true },
-    );
+    const execute = yield* setup({
+      listWindow: (query) =>
+        Effect.gen(function* () {
+          reads.push({ query, provenance: yield* CoreApplicationAgent });
+          return { items: [item], nextCursor: "older" };
+        }),
+      get: (id) =>
+        Effect.gen(function* () {
+          reads.push({ id, provenance: yield* CoreApplicationAgent });
+          return item;
+        }),
+    });
     const listed = yield* execute(
       input({ mode: "list", query: "build", cursor: "page", limit: 7 }),
     );
@@ -143,15 +136,6 @@ it.effect("allows authorized discovery on read-only Turns and rejects every muta
       { query: { query: "build", cursor: "page", limit: 7 }, provenance },
       { id: item.id, provenance },
     ]);
-    for (const args of [
-      { ...cron, mode: "create" },
-      { ...cron, mode: "update", id: item.id, expectedRevision: 1, status: "PAUSED" },
-      { mode: "delete", id: item.id, expectedRevision: 1 },
-    ]) {
-      const rejected = yield* execute(input(args));
-      assert.isTrue(rejected.isError);
-      assert.deepStrictEqual(rejected.structuredContent, { error: { code: "read_only_turn" } });
-    }
     const forged = yield* execute(
       input({ ...cron, mode: "create", authority: { scope: "library" } }),
     );
@@ -191,7 +175,7 @@ it.effect("relays exact definition commands, revision fences, and stable retry p
         }),
     });
     const call = input({ ...cron, mode: "create" });
-    const operationId = createStableOperationId("app.automation_update", authority.frozenAtMs, [
+    const operationId = createStableOperationId("app.automation_update", authority.admittedAtMs, [
       "profile:a",
       "thread:a",
       "turn:a",
@@ -283,7 +267,7 @@ it.effect("defaults Heartbeats to the caller's stable Session and preserves expl
           getThread: (threadId) =>
             Effect.gen(function* () {
               lookups.push({ threadId, provenance: yield* CoreApplicationAgent });
-              return { sessionId: "session:caller" } as never;
+              return { sessionId: "session:caller", executionHostId: "local" } as never;
             }),
         },
       },
@@ -329,7 +313,7 @@ it.effect("rejects a caller withdrawn during target lookup before committing a H
           getThread: () =>
             Effect.sync(() => {
               active = false;
-              return { sessionId: "session:caller" } as never;
+              return { sessionId: "session:caller", executionHostId: "local" } as never;
             }),
         },
       },
@@ -388,7 +372,7 @@ it.effect(
 
 it.effect("returns review proposals without mutation and rejects stale update proposals", () =>
   Effect.gen(function* () {
-    const execute = yield* setup({ get: () => Effect.succeed(item) }, { readOnly: true });
+    const execute = yield* setup({ get: () => Effect.succeed(item) }, {});
     const created = yield* execute(input({ ...cron, mode: "suggested_create" }));
     assert.deepStrictEqual(created.structuredContent, {
       proposal: { ...cron, mode: "suggested_create", backendBinding: { kind: "codex" } },
@@ -412,4 +396,68 @@ it.effect("returns review proposals without mutation and rejects stale update pr
       },
     );
   }),
+);
+
+it.effect(
+  "Runtime Heartbeats target the trusted Session and validate canonical provider metadata without legacy Thread reads",
+  () =>
+    Effect.gen(function* () {
+      const definitions: unknown[] = [];
+      const caller = createHostedAppToolCaller({
+        backend: "codex",
+        authority,
+        callId: "runtime-heartbeat",
+        generation: 1,
+        isActive: () => true,
+        capture: Effect.succeed(authority),
+        sessionContext: {
+          sessionId: "runtime-session",
+          projectId: "project:a",
+          runtimeId: "engine",
+          rootThreadId: "engine-root",
+          threadId: "engine-child",
+          runId: "engine-run",
+          cwd: "/workspace",
+        },
+      });
+      const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
+        Effect.provideService(ProjectWorkspace, {
+          getThread: () => Effect.die("Runtime callers must not read old Thread coordinates"),
+        } as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          inspect: () => Effect.succeed({ thread: { providerInstanceId: "codex" } }),
+          catalog: () => Effect.succeed([{ instanceId: "codex", models: [] }]),
+        } as never),
+        Effect.provideService(AutomationApplication, {
+          definitions: {
+            get: () => Effect.succeed(null),
+            create: (definition: unknown) =>
+              Effect.sync(() => {
+                definitions.push(definition);
+                return item;
+              }),
+          },
+        } as never),
+      );
+      const result = yield* execute({
+        caller,
+        name: "automation_update",
+        arguments: {
+          mode: "create",
+          kind: "heartbeat",
+          name: "Watch",
+          prompt: "Report changes",
+          rrule: "FREQ=HOURLY;INTERVAL=1",
+        },
+      });
+      assert.isUndefined(result.isError);
+      assert.equal(
+        (definitions[0] as { targetSessionId: string }).targetSessionId,
+        "runtime-session",
+      );
+      assert.deepEqual((definitions[0] as { backendBinding: unknown }).backendBinding, {
+        kind: "codex",
+      });
+    }),
 );

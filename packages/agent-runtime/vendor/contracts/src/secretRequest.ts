@@ -20,7 +20,7 @@ const SECRET_REQUEST_FAILURE_MESSAGES = {
   load_failed: "Could not load the secret request.",
   not_found: "This secret request no longer exists.",
   already_answered: "This secret request was already answered.",
-  agent_stopped: "The agent that asked has stopped, so this secret can't be used.",
+  request_closed: "This secret request ended before the answer was saved.",
   store_failed: "Could not store the secret.",
   record_failed: "Saved the secret, but could not update the request.",
   invalid_ref: "That secretRef is not valid.",

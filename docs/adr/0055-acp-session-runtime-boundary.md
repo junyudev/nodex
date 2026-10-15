@@ -2,9 +2,20 @@
 
 ## Status
 
-Accepted — 2026-09-02
+Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md).
+Native account configuration, imported history and metadata discovery remain Provider-owned;
+current behavior is defined in [Agent Backend Behavior](../product-specs/agent-backend-behavior.md)
+and [Agent Runtime behavior](../product-specs/agent-runtime-behavior.md).
 
-## Context
+ACP execution now belongs to the supervised Agent Runtime. Native execution uses
+full access and automatic permission approval. Standard ACP tool calls carry the
+exact Session and native incarnation with unknown Run left null. Cancellation
+retires that physical source before another prompt is admitted. Project paths
+route execution and do not impose resource or filesystem permissions.
+
+The Main execution owner and permission rules below describe the superseded decision.
+
+## Historical context
 
 Nodex can support agent backends that speak stable Agent Client Protocol v1 without making ACP
 the product's durable conversation model. An ACP process owns protocol negotiation and ephemeral
@@ -18,7 +29,7 @@ operations while a prompt is in flight. Those callbacks, child exit, transport f
 backpressure, and application shutdown must share one lifecycle. Treating the SDK connection as a
 Promise utility would create an unscoped process owner and an unbounded event path.
 
-## Decision
+## Historical decision
 
 ACP support is an isolated Electron Main backend family with two deep Modules:
 
@@ -89,7 +100,7 @@ Codex remains a native, richer application Module. The shared registry selects l
 without flattening Codex history, review, approval, Browser, or subagent semantics into ACP's
 lowest common denominator.
 
-## Consequences
+## Historical consequences
 
 ACP agents can be exercised deterministically at the real process and stdio boundary without model
 API use. New tasks select an enabled Profile-local Agent instance; attached tasks resolve their

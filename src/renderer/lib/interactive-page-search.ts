@@ -90,20 +90,14 @@ function scopeKey(projectIds: readonly string[]): string {
   return [...new Set(projectIds)].sort().join("\n");
 }
 
-function projectionIsValid(snapshot: PageSearchMetadataSnapshot, expectedScope: string): boolean {
-  const authorizedProjects = new Set(snapshot.authorization.projectIds);
+function projectionIsValid(snapshot: PageSearchMetadataSnapshot): boolean {
   const pageIds = new Set(snapshot.documents.map((document) => document.pageId));
   return (
-    snapshot.libraryId === snapshot.authorization.libraryId &&
-    snapshot.storeEpoch === snapshot.authorization.storeEpoch &&
-    snapshot.commitSeq === snapshot.authorization.coveredCommitSeq &&
-    scopeKey(snapshot.authorization.projectIds) === expectedScope &&
-    pageIds.size === snapshot.documents.length &&
-    snapshot.documents.every(
-      (document) =>
-        document.authorizedProjectIds.length > 0 &&
-        document.authorizedProjectIds.every((projectId) => authorizedProjects.has(projectId)),
-    )
+    snapshot.libraryId.length > 0 &&
+    snapshot.storeEpoch.length > 0 &&
+    Number.isSafeInteger(snapshot.commitSeq) &&
+    snapshot.commitSeq >= 0 &&
+    pageIds.size === snapshot.documents.length
   );
 }
 
@@ -125,7 +119,7 @@ async function refresh(pageIds?: readonly string[]): Promise<void> {
     );
     if (
       currentGeneration !== generation ||
-      !projectionIsValid(snapshot, expectedScope) ||
+      !projectionIsValid(snapshot) ||
       (state.storeEpoch === snapshot.storeEpoch && snapshot.commitSeq < state.commitSeq)
     ) {
       // A partial response can legitimately finish after a newer full response.

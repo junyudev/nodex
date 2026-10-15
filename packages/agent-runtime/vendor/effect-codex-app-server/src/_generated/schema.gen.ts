@@ -44186,6 +44186,7 @@ export type V2TurnStartedNotification__Turn = {
   readonly durationMs?: number | null;
   readonly error?: V2TurnStartedNotification__TurnError | null;
   readonly id: string;
+  readonly rootTurnId?: string | null;
   readonly items: ReadonlyArray<V2TurnStartedNotification__ThreadItem>;
   readonly itemsView?: V2TurnStartedNotification__TurnItemsView;
   readonly startedAt?: number | null;
@@ -44239,6 +44240,7 @@ export const V2TurnStartedNotification__Turn = Schema.Struct({
       Schema.Null,
     ]),
   ),
+  rootTurnId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: V2TurnStartedNotification__TurnStatus,
 }).annotate({ identifier: "V2TurnStartedNotification__Turn" });
 

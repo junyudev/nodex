@@ -605,12 +605,6 @@ const layerBoot = (input: {
       name: input.name,
       runtimePolicyOverride: {
         cwd: input.workspace,
-        approvalPolicy: "never",
-        sandboxPolicy: {
-          type: "readOnly",
-          access: { type: "fullAccess" },
-          networkAccess: false,
-        },
       },
     },
     ProviderAdapterRegistry.layerSingle(makeCodexAdapter(input.capturedTurns)),

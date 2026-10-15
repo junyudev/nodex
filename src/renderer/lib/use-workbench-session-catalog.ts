@@ -21,6 +21,7 @@ import {
 import {
   getCachedProjectSessionDetail,
   prefetchProjectSessionDetail,
+  readCurrentProjectSessionDetail,
   preferNewestProjectSessionSummaryWindow,
   projectSessionToSummary,
   readProjectSessionSummaryWindowThrough,
@@ -40,6 +41,8 @@ import {
 } from "./workbench-session-presentation";
 import type { WorkbenchSessionCatalogEntry } from "./workbench-window-state";
 import { workspaceSessionCommands } from "./workspace-catalog-commands";
+import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   ensureWorkbenchThreadSession,
   forkWorkbenchSession,
@@ -130,6 +133,7 @@ export interface WorkbenchSessionCatalog {
   readonly loadMore: (projectId: string | null) => Promise<void>;
   readonly seed: (session: ProjectSession | null | undefined) => void;
   readonly prefetch: (sessionId: string) => Promise<ProjectSession | null>;
+  readonly readCurrent: (sessionId: string) => Promise<ProjectSession | null>;
   readonly reorder: (
     projectId: string | null,
     orderedSessionIds: readonly string[],
@@ -149,6 +153,7 @@ export interface WorkbenchSessionCatalog {
     session: ProjectSession,
     input: ProjectSessionForkInput & {
       readonly browserViewScopeId: string;
+      readonly sourceThreadId?: string;
     },
   ) => Promise<ProjectSessionForkResult>;
 }
@@ -569,8 +574,39 @@ export function useWorkbenchSessionCatalog({
       session: ProjectSession,
       input: ProjectSessionForkInput & {
         readonly browserViewScopeId: string;
+        readonly sourceThreadId?: string;
       },
     ): Promise<ProjectSessionForkResult> => {
+      if (session.executionRef) {
+        const result = await agentRuntimeRuntime.fork({
+          source: {
+            sessionId: session.id,
+            threadId: input.sourceThreadId ?? session.executionRef.threadId,
+          },
+          sessionId: createUuidV7(),
+          requestId: createUuidV7(),
+          acceptedAt: Date.now(),
+          environment: input.target === "newWorktree" ? "worktree" : "same-directory",
+          runInEnvironmentPath: input.localEnvironmentConfigPath,
+          sourceRunId: input.turnId,
+        });
+        const forked = await readCurrentProjectSessionDetail(result.sessionId);
+        if (forked?.executionRef?.threadId !== result.threadId)
+          throw new Error("Fork execution binding changed");
+        seedProjectSessionDetail(queryClient, forked);
+        await refresh(result.projectId);
+        return {
+          session: forked,
+          threadId: result.threadId,
+          ...(input.message
+            ? { composerIntent: { prompt: input.message, focusNonce: Date.now() } }
+            : {}),
+        };
+      }
+      if (session.thread && (session.thread.executionHostId ?? "local") === "local")
+        throw new Error(
+          "This imported conversation has no execution owner. Open a new chat to continue.",
+        );
       const result = await forkWorkbenchSession(
         session.id,
         {
@@ -666,6 +702,7 @@ export function useWorkbenchSessionCatalog({
     loadMore,
     seed,
     prefetch,
+    readCurrent: readCurrentProjectSessionDetail,
     reorder,
     markUnread,
     setPinned,

@@ -1,105 +1,80 @@
 # Security
 
-## History replay authorization
+## Profile and execution identity
 
-Database history authorizes the complete replay target set before comparing
-current values, hierarchy or positions with retained evidence. An unauthorized
-target must not disclose whether a guessed post-image matches through a conflict
-result. Scalar capture uses the same current write authority before reading its
-before-image; normal writers still enforce schema, membership and revision
-preconditions within the transaction. See [Database history](product-specs/database-pages-and-views-behavior.md).
+Nodex has one local user per current Profile. An authenticated connection can
+read and mutate every resource in that Profile's Library. Project is execution
+and presentation routing; it does not restrict content access. Plan mode changes
+how an Agent plans work and adds no content permission boundary.
 
-Block-promotion history likewise authorizes every promoted Page, the source Page
-for a move, and any restored Data Source schema before normalizing saved bodies
-or comparing Document heads, properties and File state. Copy Undo does not need
-access to its independent source. A restricted Page keeps the ordinary Page
-authorization boundary's non-disclosing not-found response; an earlier root's
-content conflict cannot take precedence over a later root's missing access.
+Core verifies Profile, Library, Store epoch, connection and exact captured
+execution identity before an Agent operation. A later foreground Run cannot
+supply an earlier caller's identity. Background and child work keep their own
+captured identity when a foreground parent completes. Cancellation, native
+Scope exit, generation retirement and Session lifecycle invalidate the affected
+lease. Parent relationships do not confer or limit content access.
+When a native transport provides no causal Run evidence, Core admits its exact
+Session connection lifetime separately from Run admission. Run remains absent;
+there is no synthetic Run or latest-foreground lookup. A retired incarnation
+cannot be rebound or reactivated, including by replaying an earlier admission.
 
-## Relation references
+## History and resource lifecycle
 
-Relation is non-authorizing. Creating a definition requires source schema authority and readable target Data Source; adding an edge requires source write plus independent target Page read. Core assigns each edge a random 256-bit opaque identity. Incremental removal accepts only that source-owned handle and verifies its source membership/Property scope, so losing target read does not make an owned relation undeletable and a guessed Page ID cannot probe membership. Clear-all uses an explicit value-revision fence. Stale, unknown, wrong-source, and unauthorized edge handles share a non-oracular failure boundary. Project reads authorize every projected target, and saved Relation filter operands are reauthorized on every View descriptor/window/context/group read after grants change. A compact preview exposes only visible targets plus the restricted count. The paged selected-target window may expose a generic `Restricted page` row and its source-owned removal handle, but never the target Page ID, title, Document, parent, Data Source, ownership path, or source metadata. Relation cursors contain only an ordinal plus a constant marker. Library-trusted local reads do not materialize grants.
+History replay validates current owner identity, resource lifecycle, schema,
+Document heads and revision preconditions before comparing retained witnesses.
+References and Relations never transfer ownership. Missing, deleted and
+cross-Library targets remain unavailable; malformed storage fails closed.
+Opaque Relation edge handles are bound to their source membership and Property.
+Clear-all retains its explicit value-revision fence. Relation previews report
+physically unavailable targets without returning nonexistent metadata.
 
-## LocalCommit delivery authorization
+## LocalCommit delivery integrity
 
-Physical Module events are private reconstruction evidence, never an authorization unit. Store v110 seals closed typed DeliveryAtoms whose descriptors contain the exact canonical `ResourceKey` requirements extracted from their payload. Core sends an atom only when the packet's post-state authorization scope can read every requirement. A mixed business result that has independently visible portions is compiled into independently redacted atoms before Manifest sealing; Main and renderer never trim fields or infer claims. Authority-bearing tables record raw OLD/NEW facts only inside a transaction-owned visibility journal; seal compares reconstructed pre-state with current authorization, hashes the resulting visibility evidence, and rejects missing trigger context, unconsumed facts, or noncanonical deltas. Projection requirements are stored as private sealed descriptors, so historical payload authorization does not depend on a future extractor implementation.
+Core seals semantic effects, typed atoms, Document resources and projection
+coordinates into one transaction-owned LocalCommit. Packet integrity covers the
+exact delivery address, Manifest, complete atom/resource coverage and projection
+effects. Project addresses route presentation updates; they are not resource
+permission scopes. Main and renderer validate packets mechanically and never
+rewrite canonical payloads.
 
-Packet v4 binds a separate `DeliveryAddress`, a Core-authored `AuthorizationScope`, complete Manifest coverage, Document and Projection effects, and Manifest-bound `VisibilityDelta` values into one integrity identity. Exact `Revoke` deltas evict matching authority before post-state content; `ConservativeReset` fences an entire address only when the journal cannot prove an exact bounded closure. Transport failures never invent either delta: the Core barrier signs an `AuthorizedRecipientLease`, and Main may use that immutable lease only to route the exact address or author a non-Manifest `AddressReset`. Audience IPC accepts owned top-level renderer frames, validates the requested Library/address and a 200-address bound, and cannot submit an authorization scope. Apply, audience-live, and durable ingress use the same packet-v4 structural validator and fail closed on legacy shape, malformed lease, coverage mismatch, or Store/Library/event mismatch. Visibility evidence evicts stale client authority but never replaces Core authorization on a later canonical read.
-
-Multiple owned WebContents may consume one logical address without sharing
-renderer state. Main retains only the current Core lease and barrier floor for
-that active address; each later recipient must accept a lease-bound floor reset
-before packet admission. Destroying the recipient removes its pending packet,
-ACK, reset, timer, and WebContents reference. Neither ref-counting nor retry can
-mint a new scope or keep a released lease alive.
-
-Canonical Library navigation/Page, Database View/row, Page Detail, and owned-Document descriptor reads carry a Core-authored `AuthorizedReadStamp`. Its subject, request dependencies, dynamic authorization dependencies, address/scope, Store epoch, covered commit, and canonical hash come from the same SQLite read snapshot. Inherited authorization stamps the complete grant-to-subject ownership path. A proof union beyond the contract bound is replaced by the scope's Library/Project aggregate root, which the visibility journal invalidates on every exact change for that scope; journal compilation overflow still uses `ConservativeReset`. Adapters may transport the stamp but cannot add roots or raise its floor. Renderer caches verify it and reject a response below any observed address or matching root floor. Exact revocation therefore cannot be defeated by a late response, an inferred ancestor path, or a cache entry created before its dynamic roots were known. Root, registration, address, and in-flight bounds fail closed; none use drop-oldest eviction.
+Owned renderer frames acquire bounded address leases. Disconnect, recipient
+release, Store replacement and transport gaps fence stale delivery and require
+canonical repair. Cache freshness follows resource generations, semantic
+revisions and exact projection coordinates. Global replay sequence is progress,
+not a substitute for a resource revision.
 
 ## Page-key lookup
 
-Page keys are short and guessable, so they are locators rather than secrets or
-capabilities. Core may parse and index-resolve a complete current or historical
-key before broad search, but it must evaluate the caller's current
-Project/Library/Database grant and lifecycle scope before returning Page ID,
-title, current key, matched alias, Database identity, or any other metadata.
-Project-bound CLI and Agent callers cannot use a Library-wide prefix hit to
-cross their selected authority. External missing and unauthorized results share
-the existing non-enumerating error boundary.
-
-Prefix creation and rename validate canonical ASCII grammar and Library-wide
-current/retained uniqueness inside the Core transaction. Renderer suggestions,
-display settings, copied text, and caller-provided Project names cannot reserve
-or allocate a key. `pageKey`, matched aliases, and namespace revisions are
-untrusted input at Adapter boundaries; mutation authority is always canonical
-Page UUID plus the existing ETag, ownership, grant, and exact-Turn evidence.
-
-Page keys may appear in local diagnostics as bounded structured identifiers,
-but they must not replace UUIDs in audit/receipt identity or be joined with
-otherwise inaccessible Page metadata. Ordinary telemetry and remote diagnostics
-follow the same content-redaction policy as Page titles and search queries.
+Page keys are locators rather than secrets. Core resolves current and historical
+aliases within the current Library and validates physical Page lifecycle before
+returning metadata. Prefix creation and rename enforce Library-wide uniqueness
+in the transaction. Mutations use canonical Page UUIDs and ETag/CAS guards;
+an alias never replaces a receipt or execution identity.
 
 ## Threat Model
 
-Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and unsafe command/file-change approvals during Codex thread execution.
+Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and stale or incorrectly attributed Agent execution. Native execution uses full access and automatically answers controllable permission requests; connection and execution identity remain enforced.
 
 ## Library File boundaries
 
-File metadata, lifecycle, content versions, and direct grants are owned by the
-Library. A Page owns only its optional path entries. A containing Page may
-resolve only current metadata and bytes for a File in its canonical entry or
-body-use projection. File references carry opaque stable IDs, but the ID alone grants no
-access, exposes no content hash, and reveals no Profile path. Core verifies the
-requesting Page placement on every current-content read and rejects missing,
-deleted, cross-Library, or unauthorized references before Document commit.
-Typed structural compilers may carry an already-authorized placement within one
-transaction; generic collaborative writes must prove existing owner or
-placement read access. Prepared upload receipts are Store-, Project-,
-operation-, size-, and expiry-bound and are single-use except for exact
-idempotent replay.
+The Library owns File metadata, lifecycle and immutable versions. A Page owns
+only its optional path entries and canonical body uses. Current presentation,
+Canvas slots, history and recovery resolve their exact File identities and
+captured versions. Core rejects missing, deleted and cross-Library references.
+A URI or Blob hash exposes no host path and is not an authenticated connection.
 
-Logical paths are normalized and must be portable relative paths. Core rejects
-absolute paths, traversal, empty segments, reserved Windows names, Unicode/case
-collisions, control characters, and bounded depth/length violations. Desktop
-file and directory import accepts only regular files, rejects symlinks and
-special nodes, and enforces 64 MiB per File, 100 Files, and 256 MiB per batch.
-Text previews are separately bounded. Download chooses a user destination and
-does not reinterpret a logical path as a host filesystem authority. Canvas
-stores stable File identity plus an immutable version and frozen name in each
-slot. Upload creates a File first; display, history, and recovery then read only
-through that exact authorized Canvas slot. Revocation clears pending binary
-reads and remounts the active presentation after pending scene work is retained.
+Prepared upload receipts bind Store, operation, size and expiry and are consumed
+atomically with File and relationship writes. Logical paths reject absolute
+paths, traversal, reserved names, controls and normalization collisions. Desktop
+import accepts regular files, rejects symlinks and special nodes and preserves
+its bounded per-File and batch limits. Save destinations never reinterpret a
+Page logical path as a host filesystem path.
 
-Exact-format scripts and binaries are inert content. Agents cannot execute a
-managed blob root or use it as cwd; execution requires explicit materialization
-into the normal workspace and remains governed by existing filesystem and
-command approval policy. Backup restore hashes every managed Blob
-before Profile switch, and garbage collection is serialized against snapshots.
-
-Queued and submitted Thread attachments retain exact Blob bytes independently
-of Library File permissions. New queue content requires prepared receipts for
-the same operation; only that Thread's existing queue closure can be reused
-without publication. Reads require the Thread's Project or trusted Library
-authority. A known hash or a local cache hit never grants access to Core bytes.
+Scripts and binaries remain inert managed content. Execution requires explicit
+materialization in a workspace. Backup restore hashes managed bytes before
+publication; collection is serialized with snapshots. Queued and submitted
+conversation inputs retain exact bytes independently of a source File and are
+read through the authenticated Profile and exact execution identity boundary.
 
 ## Security Controls in Place
 
@@ -217,21 +192,23 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   native extensions are signed and their manifest is resealed before the outer app signature.
   Main rejects mismatched platforms, altered artifacts and symlinked runtime paths. It never
   installs packages or substitutes system runtimes during discovery. Python import isolation
-  is not a sandbox; subsequent execution remains subject to the task's execution permissions.
+  is not a sandbox; Agent execution runs with full native access as the current user.
 
 - Native Claude Code instances run user-managed executables through the official Agent SDK.
   Inherited user/project/local settings may execute hooks, skills, subagents, and MCP servers as the
-  current user. Claude Code owns filesystem and shell permissions; Nodex's ACP workspace callback
-  restrictions do not apply to native tools. The optional account config directory changes only the
+  current user. Nodex starts Claude Code with bypass permissions and automatically approves
+  native authorization requests; genuine information questions remain interactive. The optional account config directory changes only the
   child/worker environment. Existing Claude credentials are never copied into Nodex settings. Explicit instance environment
   secrets use OS-backed encryption, with immutable ciphertext outside ordinary settings and references
   published only after encryption and storage succeed. Settings reads never return secret plaintext;
   retaining a secret requires the same instance and variable name. Only Main's launch read decrypts
   values, shared by the new connection's history worker and child process. Encryption failure has no
   plaintext fallback. Reserved account-location and nesting variables remain launcher-owned. Main's
-  HOME and environment remain unchanged. Pending SDK decisions are Thread-scoped, bounded, and invalidated
-  on completion, stop, or close; renderer input cannot name an arbitrary tool or replace its input.
-  Native tools do not inherit Codex-only Nodex application/desktop capabilities.
+  HOME and environment remain unchanged. SDK requests retain exact native Session
+  and process-generation correlation and remain bounded.
+  Cancellation or connection closure retires their source; foreground completion does not
+  revoke live background work. Renderer answers address only the original information request.
+  Native tools use the same current-Profile application capabilities across providers.
 
 - Native OpenCode instances use a user-managed executable and the pinned SDK transport.
   Each local connection has an isolated native profile and Thread-scoped server; provider
@@ -240,9 +217,9 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   and explicit environment secrets follow the same encrypted-reference contract as Claude.
   Native repository configuration and plugins execute inside the local-code trust boundary.
   External HTTP(S) servers are explicit instance configuration, receive only explicit server
-  credentials, and never receive Nodex application-tool leases. Native permission and question
-  replies authorize only a pending request in the owning session or its verified descendants.
-  Discovery and session restoration resolve the exact Core workspace and native owner in Main;
+  credentials, and never receive Nodex application-tool leases. Native permission requests are approved automatically. Information-question replies
+  address only the exact pending request in the owning Session or proven descendant.
+  Discovery and session restoration resolve the exact workspace and configured native owner;
   a missing session or changed profile cannot silently create a replacement conversation.
 
 - ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
@@ -250,11 +227,13 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   and Node executable after canonical path, entry containment, package/version, executable-version,
   and Node-version checks. The Settings UI states that these checks do not verify package or
   dependency bytes. The selected credential and proxy policies bound environment inheritance, and
-  unowned ACP client capabilities remain unadvertised. Advertised filesystem callbacks reject
-  paths outside the canonical Project workspace and symlink traversal; advertised terminals share
-  the supervised Main runtime, bounded output, workspace cwd, and session lifetime. Whoever can
-  replace the configured package
-  or executable is inside this local-code trust boundary. A future managed ACP distribution must
+  unsupported ACP client capabilities remain unadvertised. Advertised filesystem callbacks
+  resolve exact paths with bounded reads and writes under the native connection lifetime;
+  Project roots are execution locations rather than filesystem permission scopes. Advertised
+  terminals share the supervised Agent Runtime, bounded output, cwd and Session lifetime.
+  Native permission requests are approved automatically. Standard ACP application calls retain
+  their exact Session identity with unknown Run left null, and cancellation closes that source.
+  Whoever can replace the configured package or executable is inside this local-code trust boundary. A future managed ACP distribution must
   use a separate locked archive, verified dependency closure, private immutable staging, and release
   provenance path; npm registry integrity metadata alone cannot attest a mutable installed tree.
 
@@ -346,7 +325,7 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
 - Structural editor copy writes bounded HTML/plain presentation plus an opaque
   capability envelope through trusted Main IPC. The owned snapshot stays in
   Core. Paste verifies the Profile, Library, Store epoch, manifest hash,
-  capability hash, current authorization, target head, payload size, Block
+  capability hash, execution lifetime, target head, payload size, Block
   count, and nesting depth before it may create an owner; malformed or foreign
   envelopes have no owner-creation authority.
 - Imported and pasted rich-document structure remains untrusted after transport
@@ -473,7 +452,7 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   the verified canonical helper app.
 - Workspace-file IPC is available only to the top-level renderer frame of an owned app window. Directory browsing accepts canonical root-relative coordinates, verifies lexical and resolved-realpath containment, and omits directory symlinks that escape the selected root. Exact-file existence/metadata/text/binary reads accept an absolute path and explicit host without a Project-root grant so agent outputs remain openable outside the active source; this relies on the trusted-renderer boundary rather than path sandboxing. Remote reads use only the selected native connection, reject results after its generation or capability source epoch retires, enforce decoded byte budgets, and never interpret remote paths through local IO. Directory browsing, writes, save-copy, and watches accept only the local host. Bounded raster previews become ephemeral `blob:` URLs and renderer cleanup revokes them. PDF bytes are transferred to the bundled PDF.js worker as a `Uint8Array`; canvas, selectable text, and annotation links are rendered in app-owned DOM without iframe navigation, form rendering, or embedded script execution. PDF external links cross a top-level trusted-renderer IPC that accepts only bounded, credential-free HTTP(S) URLs before Main calls the system browser. Write requests use an expected-modification-time CAS guard and never create missing parent directories implicitly.
 - Renderer file references use a semantic Workbench router: ordinary references enter the validated Files surface, while explicit external/reveal actions use typed IPC. Local references are never opened through renderer-created `file://` windows or a document-wide link capture handler; bounded copy-contents actions still go through the existing `read-file` IPC budget.
-- Managed-asset mutation, byte reads, bounded previews, path resolution, and dictation IPC are likewise available only to the top-level frame of an owned app window and validate payload types and byte budgets again in Main. Temporary `nodex://assets/<safe-name>` locators resolve only in the Profile media cache and do not expose the Core Blob root. Durable File and Thread bytes use their independently authorized Core read boundary. File clipboard exports use a validated File source and exact version on every materialization; Main places verified bytes in `cache/file-exports`, never returns a Core Blob path, and does not treat a cache hit as authority. The trusted renderer resolves a managed locator to an absolute path through the synchronous preload capability and uses the shared `app://fs/@fs/...` display transport; successful resolutions are cached only for the renderer window lifetime. Remote-host catalog images use separate opaque, Main-issued `app://fs/host/<asset-id>` capabilities; renderer code cannot choose a host or filesystem path, and Main authorizes only absolute image paths discovered through the native catalog. The `app://fs/*` request gate admits the `app://-` renderer and the exact configured HTTP(S) development origin, excluding the Browser-sidebar partition. The handler accepts extension-addressed image, audio, and video MIME families, follows filesystem symlinks, and does not grant renderer script code a general file-read IPC capability. Production CSP admits `app:` for image and media elements and the exact `app://fs` origin for Fetch. The scheme enables CORS and filesystem responses grant anonymous cross-origin reads only to the trusted renderer or exact development origin, allowing image decoding and canvas export without admitting untrusted frames. The handler rejects non-regular files. CSP does not admit `file:`.
+- Managed-asset mutation, byte reads, bounded previews, path resolution, and dictation IPC are likewise available only to the top-level frame of an owned app window and validate payload types and byte budgets again in Main. Temporary `nodex://assets/<safe-name>` locators resolve only in the Profile media cache and do not expose the Core Blob root. Durable File and Thread bytes use their authenticated Profile read boundary. File clipboard exports use a validated File source and exact version on every materialization; Main places verified bytes in `cache/file-exports`, never returns a Core Blob path, and does not treat a cache hit as authority. The trusted renderer resolves a managed locator to an absolute path through the synchronous preload capability and uses the shared `app://fs/@fs/...` display transport; successful resolutions are cached only for the renderer window lifetime. Remote-host catalog images use separate opaque, Main-issued `app://fs/host/<asset-id>` capabilities; renderer code cannot choose a host or filesystem path, and Main authorizes only absolute image paths discovered through the native catalog. The `app://fs/*` request gate admits the `app://-` renderer and the exact configured HTTP(S) development origin, excluding the Browser-sidebar partition. The handler accepts extension-addressed image, audio, and video MIME families, follows filesystem symlinks, and does not grant renderer script code a general file-read IPC capability. Production CSP admits `app:` for image and media elements and the exact `app://fs` origin for Fetch. The scheme enables CORS and filesystem responses grant anonymous cross-origin reads only to the trusted renderer or exact development origin, allowing image decoding and canvas export without admitting untrusted frames. The handler rejects non-regular files. CSP does not admit `file:`.
 - Electron bootstrap fixes Rust Core as the only production authority before
   store startup; the retired selector and JavaScript SQLite/Yjs implementation
   are absent. Native launch validates a regular, executable,
@@ -586,19 +565,22 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   and artifacts. Existing tags never move, lower versions cannot replace
   `main`, and branch plus annotated tag publish atomically.
 - Stable asset URI scheme avoids embedding brittle absolute local URLs.
-- Codex approvals are explicit protocol responses (`accept`/`decline`/etc) and are gated by the per-project Threads permission mode.
+- Native provider requests retain exact request and process-generation correlation. Nodex content access does not depend on a Project permission preset.
 - Codex user-input auto-resolution never infers or selects an answer. Main may end an inactive ordinary request with the protocol’s empty answer object after the bounded foreground/background timeout; any request-card interaction snoozes that timeout, and explicit renderer submission remains the only path that can send answer content. App-server disconnect clears renderer-memory request drafts and rejects the old inbound generation, so a reused JSON-RPC scalar id cannot recover secret freeform content or receive a late response from the previous process.
 - Codex authentication is owned by the selected native Codex home and its app-server auth protocol. Renderer and Core never receive plaintext authentication material, and Nodex does not maintain a parallel application credential store. External-agent imports intentionally omit authentication and connection state; each backend must establish those secrets through its own authority boundary.
 - External-agent import is an explicit trusted-renderer workflow backed by expiring opaque scan ids. Source homes are canonicalized. Session content is hashed before and immediately before import. Conversations in the active Codex home are explicitly attached through read-only native metadata without changing their IDs; other homes use app-server `thread/fork(path)` to create independent Threads. Attachment failures never delete native history. Import receipts stay in the Nodex Profile. Native file copies never replace a target, reject symlinks, stage directory trees before rename, and do not copy SQLite/WAL/SHM files. Config translation allowlists passive settings, removes literal MCP environment/header/token material, and omits authentication, approval, sandbox, and connection state.
-- `nodex_app` reads and writes derive an exact-Turn authority snapshot from the verified launched task; model arguments and renderer responses cannot select another Project, Library, store epoch, Turn, or catalog revision. Ordinary snapshots use Project binding/grants. Main persists the selected Nodex preset separately from raw Codex config and requires both to agree before the built-in Full access preset records `:danger-full-access` provenance and receives temporary same-Library scope; Custom settings with equivalent raw sandbox values do not upgrade a Turn. Missing historical provenance falls back to Project scope, while stale or inconsistent recorded provenance fails closed.
-- Every `nodex_app@6` write performs mutation-free canonical preflight before any required consent, then re-resolves the exact `(thread, turn, root thread, actor Project, Library, Profile, store epoch)` authority. Execution proceeds only when the fresh effect class, target resources, deletions, and ownership transformations equal the approved footprint. Primary-Database and `read_write`-grant operations, including destructive writes, execute without a renderer card. Full-access Library scope also auto-approves. Neither path bypasses ETag/CAS guards, schema revisions, lifecycle checks, footprint equality, or transaction validation.
+- Application tools use a verified Profile connection and captured execution
+  identity. Model arguments cannot replace Store epoch, runtime generation or
+  Run identity. Every semantic write revalidates lifecycle, ETag/CAS guards,
+  schema revisions, prepared footprint and transaction invariants; Project
+  routing and Plan mode impose no content access restriction.
 - Native Core prepared operations expose no additional private route: prepare
   and execute are typed intents in the owning Module `read/apply` pair. Only an
   Electron-host connection (or the isolated test role) may submit the exact
   persisted Turn provenance. Tokens contain 256 bits of fresh entropy, live for
   at most 60 seconds, are stored only as hashes, are capped globally and per
-  connection, and bind request fingerprint, UDS connection, authority
-  revisions, target footprint, and effect class. Execution acquires one
+  connection, and bind request fingerprint, UDS connection, execution
+  identity, target footprint, and effect class. Execution acquires one
   in-flight lease inside the writer command and consumes it only after commit;
   rollback releases the lease for a bounded retry, concurrent use fails, and
   store replacement or process restart invalidates every outstanding token.
@@ -628,10 +610,21 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
   then derives user identity/color from the trusted WebContents target.
   Presence is memory-only, sender-excluded, TTL-bounded, and never reaches Core,
   SQLite, diagnostics bodies, history, receipts, or the durable outbox.
-- Nodex resource consent exists only in main and is independent of Codex filesystem/command approval modes. One-call consent binds the exact call and prepared footprint. Task consent binds app session, verified root task, Project, Library, store epoch, and canonical resource roots; it is not owned by the renderer that presented it. Project consent is the only choice that persists `project_resource_grants`, and exact-Turn authority is revalidated before that write. Canonical conversation-state ownership and renderer fields cannot grant or elevate Nodex authority. Denial, timeout, task archive, Project/store change, shutdown, restart, or a headless first prompt withholds or invalidates transient authority without mutation.
-- Each accepted Agent Turn also freezes an immutable execution policy in Core. Plan Mode and read-only or unverified sandbox permissions forbid writes even when the resource is granted or the Turn has Full access Library scope. Derived Turns cannot elevate a read-only parent. Historical Turns without proven execution policy remain read-only. Resource planning and execution check this constraint in their Core transaction.
-- Full-access Library authority is an ephemeral overlay and never creates or expands `project_resource_grants`. Cross-compatibility-owner structure writes validate actor/source/target in one Library, move the complete ownership closure in one deferred-FK transaction, rebuild derived projections, require a clean `foreign_key_check`, and publish immutable source/final owner members. Store restore changes the epoch and invalidates prior Turn authority and the Main-scoped authorization Module's transient grants.
-- Authorization responses travel through the targeted active-view renderer route and use random occurrence identities, preventing another renderer or an equal app-server call ID from satisfying the request. The renderer validates the bound Project/task, presents the request as a local overlay, and cannot publish it into or elevate canonical owner/follower state. Exact durable call replay bypasses authorization only after its request fingerprint and prior compact result are verified; same-call/different-input collisions fail closed.
+- The authenticated current Profile has full Library content access. Core validates
+  exact execution credentials and physical resource lifecycle; Project placement,
+  Plan, parent completion and foreground selection do not narrow content access.
+  Child and background work retain their captured execution identity. Cancellation,
+  native Scope exit, generation retirement and Session archive/delete invalidate it.
+  A delayed request cannot borrow a newer foreground Run.
+- Structural writes validate source and target in one Library, move the complete
+  ownership closure in one deferred-FK transaction, rebuild derived projections,
+  require a clean `foreign_key_check`, and publish immutable source/final owner
+  members. Prepared operations bind exact request, footprint, head and lifetime
+  for transactional correctness. They carry no resource consent or grant policy.
+- Store restore changes the epoch and retires prior execution credentials and
+  physical runtime connections. Session, launch, logical Automation dispatch and
+  execution receipt identities remain stable so an authenticated new connection
+  can reconcile prior work without creating a second task.
 - Native Module receipt replay follows the same ordering: current store epoch
   and the exact provenance/intent fingerprint must match, but a committed
   operation is returned before a fresh token, current ETag, or current head is
@@ -654,13 +647,10 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
 
 ## Current Gaps
 
-- No role-based access control model (single-user/local trust assumption).
 - Security logging/auditing is still local-first and not audit-grade. Backend logs redact common secret-bearing fields (for example authorization headers, tokens, API keys, passwords, cookies, and session values) before writing JSON-line log records; optional Sentry crash diagnostics are for failure triage, not an audit trail.
-- `full-access` is intentionally high authority: it removes Nodex approval prompts for the exact Turn and permits every read/write/destructive action currently exposed by `nodex_app@6` across the current Library, in addition to unrestricted Codex filesystem and network access.
-- Workspace-write sandbox roots are derived from user-configured project sources. Additional allow-listing beyond those local source roots remains future hardening work.
 - A compromised trusted top-level renderer can request exact local file reads through the workspace-file bridge. Webviews, subframes, and unowned renderer contents are rejected, but process-level renderer isolation is still the confidentiality boundary for these reads.
 - Erasure removes content from the live Store; it does not rewrite existing backups, and freed SQLite pages may keep fragments until they are reused or vacuumed. Text already sent to a model runtime cannot be recalled.
-- Dynamic-tool receipts are an idempotency and recovery ledger, not an audit-grade record of human intent. They intentionally exclude raw Nested Markdown/body content; the authorization preview is not retained as a second document history.
+- Dynamic-tool receipts are an idempotency and recovery ledger, not an audit-grade record of human intent. They intentionally exclude raw Nested Markdown/body content; receipts do not retain a second document history.
 
 ## Safe Operating Practices
 
@@ -673,5 +663,4 @@ authority. A known hash or a local cache hit never grants access to Core bytes.
 ## Hardening Backlog
 
 - Basic security smoke checks in CI for IPC/body limits and absence of SQL inspection routes.
-- Approval policy profiles (for example, command/file-change scopes and allow-lists) beyond the current `sandbox`/`full-access`/`custom` permission presets.
-- Additional execution boundary controls for Codex subprocess invocations.
+- Stronger native subprocess lifecycle diagnostics without content-access policy.

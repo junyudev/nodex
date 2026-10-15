@@ -18,7 +18,6 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
 import * as EventSink from "../orchestration-v2/EventSink.ts";
-import { fingerprintCommand } from "../orchestration-v2/CommandIdentity.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as LegacyV1ThreadImporter from "../orchestration-v2/legacy/LegacyV1ThreadImporter.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
@@ -224,7 +223,6 @@ export const make = Effect.gen(function* () {
    */
   const commit = Effect.fn("ProjectService.commit")(function* (command: ProjectCommand) {
     const { projectId } = command;
-    const requestFingerprint = fingerprintCommand(command);
     const dispatchError = (cause: unknown) =>
       new ProjectOperationError({ operation: "dispatch-project-command", projectId, cause });
     const workspaceRoot = command.type === "project.delete" ? undefined : command.workspaceRoot;
@@ -250,7 +248,6 @@ export const make = Effect.gen(function* () {
       });
       if (Result.isSuccess(planned)) {
         const { receipt } = yield* eventSink.commitProjectCommand({
-          requestFingerprint,
           commandId: command.commandId,
           projectId,
           commandType: command.type,
@@ -260,7 +257,6 @@ export const make = Effect.gen(function* () {
         return receipt;
       }
       return yield* eventSink.commitRejectedProjectCommand({
-        requestFingerprint,
         commandId: command.commandId,
         projectId,
         commandType: command.type,

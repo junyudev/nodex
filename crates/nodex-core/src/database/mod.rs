@@ -1,15 +1,14 @@
-pub(crate) mod authorization;
 mod genesis;
 mod list_drag;
 mod manual_order;
 mod mutation;
 mod order_read;
 pub(crate) mod page_key;
+pub(crate) mod project_default;
 mod projection_delta;
 pub(crate) mod property_semantics;
 pub(crate) mod query;
 pub(crate) mod read;
-mod read_authorization;
 mod relation;
 mod relation_projection;
 pub(crate) mod view_contract;
@@ -38,21 +37,15 @@ pub(crate) use mutation::{
     ExistingPageTransferTarget, PageCopyDataSourceDestination, PageCopyPositionAnchor,
     PageCopyValueDraft, PageCopyViewPlacement, PageTaskShorthandBatchPlan,
     PageTaskShorthandCandidate, PageTaskShorthandPreservedReason, StagedPagePlacementRevisions,
-    active_property, apply_page_task_shorthand_schema,
-    finalize_agent_moved_pages_in_data_source_prevalidated, normalize_value,
-    place_copied_page_in_data_source, place_copied_page_in_data_source_prevalidated,
-    place_staged_page_in_data_source, place_staged_page_in_data_source_prevalidated,
+    active_property, apply_page_task_shorthand_schema, finalize_agent_moved_pages_in_data_source,
+    normalize_value, place_copied_page_in_data_source, place_staged_page_in_data_source,
     plan_page_task_shorthand,
     refresh_transferred_page_projection as refresh_copied_page_projection,
     repair_scheduled_page_indexes, resolve_page_transfer_board_destination,
-    resolve_page_transfer_data_source_destination,
-    resolve_page_transfer_data_source_destination_prevalidated,
-    resolve_page_transfer_list_destination, synchronize_membership_completion_timestamp,
-    synchronize_relation_value_projections, transfer_existing_page_for_agent_move_prevalidated,
-    transfer_existing_page_for_block_transfer, validate_page_copy_data_source_destination,
-    validate_page_copy_data_source_destination_prevalidated, validate_page_copy_data_source_source,
-    validate_page_transfer_data_source_source,
-    validate_page_transfer_data_source_source_prevalidated,
+    resolve_page_transfer_data_source_destination, resolve_page_transfer_list_destination,
+    synchronize_membership_completion_timestamp, synchronize_relation_value_projections,
+    transfer_existing_page_for_agent_move, transfer_existing_page_for_block_transfer,
+    validate_page_copy_data_source_destination, validate_page_transfer_data_source_source,
 };
 pub(crate) use page_key::{
     create_page_key_namespace, current_page_key_for_database_page, current_page_key_for_page,
@@ -68,8 +61,7 @@ pub(crate) use relation::{
 };
 pub(crate) use view_contract::is_exact_primary_board_config;
 pub(crate) use window::{
-    default_page_move_view_id, mint_page_move_etag, mint_page_move_etag_prevalidated,
-    page_relocation_database_targets,
+    default_page_move_view_id, mint_page_move_etag_prevalidated, page_relocation_database_targets,
 };
 
 #[derive(Clone, Debug)]
@@ -86,9 +78,8 @@ use nodex_core_contracts::database::{
     DatabaseCommitValue, DatabaseIntent, DatabaseRead, DatabaseReadValue, DatabaseReceipt,
 };
 use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, CommittedCoreModuleEvent, CoreError, CoreErrorCode,
-    CoreErrorRecovery, DATABASE_CONTRACT_VERSION, ModuleApplyRequest, ModuleReadRequest,
-    ModuleReadSnapshot,
+    BoundModuleContext, CommittedCoreModuleEvent, CoreError, CoreErrorCode, CoreErrorRecovery,
+    DATABASE_CONTRACT_VERSION, ModuleApplyRequest, ModuleReadRequest, ModuleReadSnapshot,
 };
 use rusqlite::OptionalExtension;
 
@@ -100,14 +91,6 @@ use crate::infrastructure::writer::{StoreReaders, StoreWriter};
 pub struct DatabaseApplyOutcome {
     pub committed: crate::ModuleWriterResult<DatabaseCommitValue, DatabaseReceipt>,
     pub event: Option<CommittedCoreModuleEvent>,
-}
-
-pub(crate) fn is_trusted_library_database_context(context: &BoundModuleContext) -> bool {
-    context.project_id.is_none()
-        && matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-        )
 }
 
 pub struct DatabaseModule {
@@ -195,20 +178,12 @@ impl DatabaseModule {
                     &context,
                     read.clone(),
                 )?;
-                let authorization = read_authorization::issue(
-                    &transaction,
-                    &context,
-                    &store_epoch,
-                    commit_seq,
-                    &read,
-                    &value,
-                )?;
+
                 transaction.commit()?;
                 Ok(ModuleReadSnapshot {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     store_epoch: nodex_core_contracts::StoreEpoch(store_epoch),
                     commit_head: commit_seq,
-                    authorization,
                     value,
                 })
             })
@@ -313,8 +288,7 @@ mod tests {
     };
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
-        ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
-        ProjectWorkspaceTurnAuthoritySource,
+        ProjectWorkspaceTurnAuthority,
     };
     use nodex_core_contracts::{
         AdapterKind, CoreModuleEventPayload, LibraryId, LocalProjectionPatch, LocalProjectionScope,
@@ -1012,14 +986,12 @@ mod tests {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     operation_id: "operation:database-agent-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: "thread:database-agent".to_owned(),
                         turn_id: "turn:database-agent".to_owned(),
                         root_thread_id: "thread:database-agent".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
+
                     },
                 },
             )
@@ -1034,12 +1006,9 @@ mod tests {
                     actor_project_id: Some("project-1".to_owned()),
                     library_id: "library-1".to_owned(),
                     store_epoch: "epoch-1".to_owned(),
-                    scope: ProjectWorkspaceTurnAuthorityScope::Project,
-                    source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                 },
             },
             call_id: "call:database-agent".to_owned(),
-            resource_access: None,
         };
         let module = DatabaseModule::new("profile-1", "library-1", &kernel);
 
@@ -1071,29 +1040,6 @@ mod tests {
                 },
             )
             .expect("read the first bounded Database View window");
-        let authorization = first_window
-            .authorization
-            .as_ref()
-            .expect("Database View window has canonical read authorization");
-        assert_eq!(authorization.covered_commit_seq, first_window.commit_head);
-        assert!(matches!(
-            &authorization.subject,
-            nodex_core_contracts::events::ResourceKey::Project { project_id }
-                if project_id == "project-1"
-        ));
-        assert!(
-            authorization
-                .authorization_dependencies
-                .iter()
-                .any(|resource| {
-                    matches!(
-                        resource,
-                        nodex_core_contracts::events::ResourceKey::Page { page_id }
-                            if page_id == "page:database-row"
-                    )
-                })
-        );
-        assert_eq!(authorization.stamp_hash.len(), 64);
         let DatabaseReadValue::ViewWindow {
             value: first_window,
         } = first_window.value
@@ -1203,7 +1149,6 @@ mod tests {
                 },
             )
             .expect("Native CLI query uses bound Project authority");
-        assert!(native.authorization.is_some());
         let DatabaseReadValue::DataSourceQuery { value: native } = native.value else {
             panic!("native query result");
         };
@@ -1247,6 +1192,56 @@ mod tests {
             changed.is_err(),
             "query cursor must bind projection selection"
         );
+
+        let library_query = ModuleReadRequest {
+            contract_version: DATABASE_CONTRACT_VERSION,
+            read: DatabaseRead::AgentDataSourceQuery {
+                data_source_id: SOURCE_ID.to_owned(),
+                query: DatabaseAgentDataSourceQuery {
+                    authorization: agent_authorization.clone(),
+                    cursor: None,
+                    limit: Some(1),
+                    projection_property_ids: None,
+                    filter: DatabaseViewFilter::Group {
+                        operator: DatabaseViewFilterGroupOperator::And,
+                        children: Vec::new(),
+                    },
+                    sort: Vec::new(),
+                },
+            },
+        };
+        let library_snapshot = module
+            .read(&library_context(AdapterKind::Test), library_query.clone())
+            .expect("query explicit Data Source without Project routing");
+        let DatabaseReadValue::AgentDataSourceQuery {
+            value: library_window,
+        } = library_snapshot.value
+        else {
+            panic!("Library Agent Data Source query")
+        };
+        assert_eq!(library_window.rows.items[0].page_id, "page:database-row");
+        assert!(matches!(library_window.projection.scope.scope,
+            nodex_core_contracts::events::LocalProjectionScope::Library { ref library_id } if library_id == "library-1"));
+        let mut continuation = library_query;
+        let DatabaseRead::AgentDataSourceQuery { query, .. } = &mut continuation.read else {
+            unreachable!()
+        };
+        query.cursor = library_window.rows.next_cursor;
+        query.authorization.call_id = "call:library-data-source-next".to_owned();
+        let continued = module
+            .read(&library_context(AdapterKind::Test), continuation)
+            .expect("continue Library query");
+        let DatabaseReadValue::AgentDataSourceQuery {
+            value: continued_window,
+        } = continued.value
+        else {
+            panic!("continued Library Agent Data Source query")
+        };
+        assert_eq!(
+            continued_window.rows.items[0].page_id,
+            "page:database-row-2"
+        );
+        assert!(continued_window.rows.next_cursor.is_none());
 
         let agent_query = module
             .read(
@@ -1459,14 +1454,7 @@ mod tests {
                      VALUES ('project-2', 'library-1', 'Granted reader', ?1, ?1)",
                     [NOW],
                 )?;
-                connection.execute(
-                    "INSERT INTO project_resource_grants(\
-                       id, project_id, library_id, root_kind, root_id, access, recursive, \
-                       revision, lifecycle, created_at, updated_at\
-                     ) VALUES ('grant:project-2-database', 'project-2', 'library-1', \
-                       'database', ?1, 'read', 1, 1, 'active', ?2, ?2)",
-                    params![DATABASE_ID, NOW],
-                )?;
+
                 Ok(())
             })
             .expect("grant a second Project the source Database");
@@ -1518,15 +1506,6 @@ mod tests {
                     && effect.requires_read_at_least
             }));
         }
-        assert!(transfer_manifest.revocations.iter().any(|revocation| {
-            matches!(
-                &revocation.authorization_scope,
-                nodex_core_contracts::events::DeliveryAuthorizationScope::Project {
-                    project_id,
-                    ..
-                } if project_id == "project-2"
-            ) && revocation.resource_id == "page:database-row-2"
-        }));
         let continued_after_change = module
             .read(
                 &context(),
@@ -2311,8 +2290,11 @@ mod tests {
                     },
                 },
             )
-            .expect_err("untrusted Adapter cannot claim Library Database scope");
-        assert_eq!(untrusted_library_read.code, CoreErrorCode::Unauthorized);
+            .expect("authenticated Profile reads concrete Data Source");
+        assert!(matches!(
+            untrusted_library_read.value,
+            DatabaseReadValue::DataSource { .. }
+        ));
 
         let library_write = module
             .apply(
@@ -2432,14 +2414,14 @@ mod tests {
                         observed.fetch_add(1, Ordering::Relaxed);
                         false
                     }))?;
-                    let compiled = record_local_projection_delta(
-                        transaction, &commit, "library-1",
-                        &ProjectionImpact::Resources {
+                    let compiled = record_local_projection_delta(transaction,
+&commit,
+"library-1",
+&ProjectionImpact::Resources {
                             page_ids: vec!["page:changed".to_owned()],
                             view_ids: vec![VIEW_ID.to_owned()],
                             database_ids: vec![], data_source_ids: vec![], document_heads: vec![],
-                        }, &[],
-                    );
+                        },);
                     transaction.progress_handler(0, None::<fn() -> bool>)?;
                     Ok((compiled?, ticks.load(Ordering::Relaxed) * 100))
                 })
@@ -6083,7 +6065,7 @@ mod tests {
                 resolve_page_transfer_list_destination(
                     connection,
                     "library-1",
-                    "project-1",
+                    Some("project-1"),
                     SOURCE_ID,
                     VIEW_ID,
                     &DatabaseViewPreferencesOverrideInput::default(),
@@ -6993,7 +6975,7 @@ mod tests {
                 transfer_existing_page_for_block_transfer(
                     connection,
                     "library-1",
-                    "project-1",
+                    Some("project-1"),
                     "page:schedule-row",
                     expected_parent_revision,
                     expected_membership_revision,
@@ -7377,7 +7359,7 @@ mod tests {
         let preview = &filtered.rows.items[0].database_values["p_blocked0"]["value"];
         assert_eq!(preview["total_count"], 5);
         assert_eq!(preview["targets"].as_array().map(Vec::len), Some(3));
-        assert_eq!(preview["restricted_count"], 0);
+        assert_eq!(preview["unavailable_count"], 0);
         assert_eq!(preview["has_more"], true);
         let snapshot = module
             .read(
@@ -7617,13 +7599,14 @@ mod tests {
 
     fn read_view_context(
         module: &DatabaseModule,
+        bound: &BoundModuleContext,
         view_id: &str,
         first: u32,
         after: Option<String>,
         group_scope: Option<DatabaseGroupScope>,
     ) -> Result<nodex_core_contracts::database::DatabaseViewContext, CoreError> {
         let snapshot = module.read(
-            &context(),
+            bound,
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewContext {
@@ -7648,12 +7631,17 @@ mod tests {
         assert_eq!(value.projection.scope.schema_version, 1);
         assert_eq!(
             value.projection.scope.scope,
-            nodex_core_contracts::LocalProjectionScope::DatabaseView {
-                project_id: "project-1".to_owned(),
-                database_id: DATABASE_ID.to_owned(),
-                data_source_id: SOURCE_ID.to_owned(),
-                view_id: view_id.to_owned(),
-            }
+            bound.project_id.as_ref().map_or_else(
+                || nodex_core_contracts::LocalProjectionScope::Library {
+                    library_id: "library-1".to_owned()
+                },
+                |project| nodex_core_contracts::LocalProjectionScope::DatabaseView {
+                    project_id: project.0.clone(),
+                    database_id: DATABASE_ID.to_owned(),
+                    data_source_id: SOURCE_ID.to_owned(),
+                    view_id: view_id.to_owned(),
+                },
+            )
         );
         Ok(*value)
     }
@@ -7771,6 +7759,12 @@ mod tests {
 
     #[test]
     fn view_context_composes_descriptors_groups_rows_and_signed_move_authority() {
+        for bound in [context(), library_context(AdapterKind::Test)] {
+            verify_view_context_composition(&bound);
+        }
+    }
+
+    fn verify_view_context_composition(bound: &BoundModuleContext) {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
@@ -7792,7 +7786,8 @@ mod tests {
             ],
         );
 
-        let first = read_view_context(&module, VIEW_ID, 1, None, None).expect("first context");
+        let first =
+            read_view_context(&module, bound, VIEW_ID, 1, None, None).expect("first context");
         assert_eq!(first.database.database_id, DATABASE_ID);
         assert_eq!(first.data_source.data_source_id, SOURCE_ID);
         assert_eq!(first.view.view_id, VIEW_ID);
@@ -7822,7 +7817,7 @@ mod tests {
             .clone()
             .expect("context continuation");
 
-        let second = read_view_context(&module, VIEW_ID, 1, Some(cursor.clone()), None)
+        let second = read_view_context(&module, bound, VIEW_ID, 1, Some(cursor.clone()), None)
             .expect("next context");
         assert_eq!(second.rows.items.len(), 1);
         assert_ne!(
@@ -7847,20 +7842,22 @@ mod tests {
                 Ok(())
             })
             .expect("seed another View");
-        let cross_view = read_view_context(&module, OTHER_VIEW_ID, 1, Some(cursor.clone()), None)
-            .expect_err("cursor cannot cross Views");
+        let cross_view =
+            read_view_context(&module, bound, OTHER_VIEW_ID, 1, Some(cursor.clone()), None)
+                .expect_err("cursor cannot cross Views");
         assert_eq!(cross_view.code, CoreErrorCode::InvalidInput);
 
         let mut tampered = cursor.into_bytes();
         let last = tampered.last_mut().expect("non-empty cursor");
         *last = if *last == b'a' { b'b' } else { b'a' };
         let tampered = String::from_utf8(tampered).expect("ASCII cursor");
-        let rejection = read_view_context(&module, VIEW_ID, 1, Some(tampered), None)
+        let rejection = read_view_context(&module, bound, VIEW_ID, 1, Some(tampered), None)
             .expect_err("tampered cursor");
         assert_eq!(rejection.code, CoreErrorCode::InvalidInput);
 
         let triage = read_view_context(
             &module,
+            bound,
             VIEW_ID,
             200,
             None,
@@ -7892,6 +7889,7 @@ mod tests {
             .expect("change the row position authority");
         let moved = read_view_context(
             &module,
+            bound,
             VIEW_ID,
             200,
             None,
@@ -7929,8 +7927,11 @@ mod tests {
                     },
                 },
             )
-            .expect_err("another Project cannot read View context");
-        assert_eq!(unauthorized.code, CoreErrorCode::Unauthorized);
+            .expect("another Project route can read View context");
+        assert!(matches!(
+            unauthorized.value,
+            DatabaseReadValue::ViewContext { .. }
+        ));
     }
 
     #[test]

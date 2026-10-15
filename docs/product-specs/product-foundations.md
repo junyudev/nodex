@@ -5,8 +5,9 @@
 Nodex is a local-first workspace for durable content and agent work. A local
 Profile owns one Library. The Library owns Pages, Databases, Blocks, Documents,
 Canvases, assets, schedules, and durable history. Projects organize execution:
-they own source folders, Chats, terminals, worktrees, approval policy, and one
-primary Database binding, and they may receive access to other Library content.
+they own source folders, Chats, terminals, worktrees, execution settings, and one
+primary Database binding. The user and every Agent can read and write all content
+in the current Profile, independently of Project placement.
 
 Project lifecycle never owns or deletes Library content. The canonical domain
 language and complete ownership invariants live in [CONTEXT.md](../../CONTEXT.md).
@@ -55,13 +56,11 @@ directory and initializes Git when available.
 Removing a Project archives the execution context only after active Turns,
 requests, terminals, and background processes are proved absent. It leaves
 source folders and all Library content intact. Removed Projects can be restored
-with their stable identity, sources, Chats, and current content access.
+with their stable identity, sources and Chats.
 
-Project access to Library content comes from the primary Database binding or
-explicit recursive Page/Database grants. `Read` and `Read & write` are
-capabilities, not ownership. Inherited access is shown as an effective floor;
-editing a direct grant does not claim to remove access inherited from a parent
-or primary binding.
+Project binding organizes execution and navigation. It never limits Library
+content access. Parent Agents, children and background work share the same
+Profile access; Plan mode changes planning behavior while permitting writes.
 
 ## Library and Pages navigation
 
@@ -73,14 +72,14 @@ Project is archived.
 
 Selecting a Pages row opens or focuses that resource in the window's singleton
 Pages Scene. It never chooses a Project or creates a Chat. The Pages Scene may
-hold ordinary Library-authorized Page, Database, View, and Canvas surfaces; it
+hold ordinary Page, Database, View, and Canvas surfaces; it
 cannot own execution-only Terminal, Browser, Review, or Files-tree surfaces.
-Opening a resource in a Project is a separate explicit access-and-navigation
-action.
+Opening a resource in a Project changes its presentation route without changing
+content access.
 
 Moving a Page, Database, or Canvas within the Library changes exclusive
 ownership while preserving stable identity and owned Documents. References,
-mentions, relations, Views, and grants never move content. Page movement is
+mentions, relations and Views never move content. Page movement is
 specified by [Page Relocation](page-relocation-behavior.md); the compact
 Database-resource destination behavior is specified in
 [Library Move Destination Picker Behavior](library-move-destination-picker-behavior.md).

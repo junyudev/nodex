@@ -9,7 +9,7 @@ use crate::domain::project_appearance::project_appearance_from_storage;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::execution;
-use super::thread::{read_permission_mode, read_projectless_permission_mode, read_thread};
+use super::thread::read_thread;
 
 const MAX_ID_LENGTH: usize = 512;
 
@@ -92,6 +92,18 @@ pub(super) fn read(
                 )?,
             })
         }
+        ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { runtime_id, window } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeExecutionCleanupWindow {
+                cleanups: super::agent_runtime_cleanup::read_window(
+                    connection,
+                    context,
+                    library_id,
+                    commit_head,
+                    &runtime_id,
+                    &window,
+                )?,
+            },
+        ),
         ProjectWorkspaceRead::LocalCodexThreadIds { window } => {
             Ok(ProjectWorkspaceReadValue::LocalCodexThreadIds {
                 thread_ids: super::local_codex_thread_ids::read_window(
@@ -172,20 +184,15 @@ pub(super) fn read(
                 projection_revision: commit_head,
             })
         }
-        ProjectWorkspaceRead::PageChatActivitySummaries {
-            page_access_project_id,
-            page_ids,
-        } => Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
-            summaries: super::page_chat::read_page_chat_activity_summaries(
-                connection,
-                library_id,
-                &page_access_project_id,
-                &page_ids,
-            )?,
-            projection_revision: commit_head,
-        }),
+        ProjectWorkspaceRead::PageChatActivitySummaries { page_ids } => {
+            Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
+                summaries: super::page_chat::read_page_chat_activity_summaries(
+                    connection, library_id, &page_ids,
+                )?,
+                projection_revision: commit_head,
+            })
+        }
         ProjectWorkspaceRead::PageChatWindow {
-            page_access_project_id,
             page_id,
             include_archived,
             window,
@@ -194,24 +201,11 @@ pub(super) fn read(
                 connection,
                 library_id,
                 commit_head,
-                &page_access_project_id,
                 &page_id,
                 include_archived.unwrap_or(false),
                 &window,
             )?,
         }),
-        ProjectWorkspaceRead::ProjectPermissionMode { project_id } => {
-            validate_id("project_id", &project_id)?;
-            require_project(connection, library_id, &project_id)?;
-            Ok(ProjectWorkspaceReadValue::ProjectPermissionMode {
-                mode: read_permission_mode(connection, &project_id)?,
-            })
-        }
-        ProjectWorkspaceRead::ProjectlessPermissionMode => {
-            Ok(ProjectWorkspaceReadValue::ProjectlessPermissionMode {
-                mode: read_projectless_permission_mode(connection)?,
-            })
-        }
         ProjectWorkspaceRead::SessionWindow { archived, window } => {
             Ok(ProjectWorkspaceReadValue::SessionWindow {
                 sessions: super::session_listing::read_session_window(
@@ -311,32 +305,35 @@ pub(super) fn read(
                 )?,
             })
         }
-        ProjectWorkspaceRead::AgentRuntimeParentAdmission {
+        ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority { identity } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeNativeSessionAuthority {
+                resolution: super::agent_runtime_native_session::read_authority(
+                    connection, context, library_id, &identity,
+                )?,
+            },
+        ),
+        ProjectWorkspaceRead::AgentRuntimeAdmissionWindow {
             runtime_id,
-            thread_id,
-            run_id,
-        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeParentAdmission {
-            identity: super::agent_runtime_authority::read_parent_admission(
+            lease_id,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeAdmissionWindow {
+            admissions: super::agent_runtime_admission_window::read_window(
                 connection,
                 context,
                 library_id,
+                commit_head,
                 &runtime_id,
-                &thread_id,
-                &run_id,
+                &lease_id,
+                &window,
             )?,
         }),
-        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
-            identity,
-            include_revoked,
-        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority {
-            resolution: super::agent_runtime_authority::read_authority(
-                connection,
-                context,
-                library_id,
-                &identity,
-                include_revoked.unwrap_or(false),
-            )?,
-        }),
+        ProjectWorkspaceRead::AgentRuntimeTurnAuthority { identity } => {
+            Ok(ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority {
+                resolution: super::agent_runtime_authority::read_authority(
+                    connection, context, library_id, &identity,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution {
             runtime_id,
             runtime_thread_id,
@@ -349,6 +346,23 @@ pub(super) fn read(
                 &runtime_thread_id,
             )?,
         }),
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+            runtime_id,
+            project_id,
+            window,
+        } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow {
+                bindings: super::agent_runtime_binding::read_binding_window(
+                    connection,
+                    context,
+                    library_id,
+                    commit_head,
+                    &runtime_id,
+                    project_id.as_deref(),
+                    &window,
+                )?,
+            },
+        ),
         ProjectWorkspaceRead::AgentAuthority { provenance } => {
             super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
             let authority = &provenance.authority;
@@ -371,16 +385,6 @@ pub(super) fn read(
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
-            if provenance.authority.scope
-                != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library
-                && row.project_id.as_deref() != provenance.authority.actor_project_id.as_deref()
-            {
-                return Err(StoreError::new(
-                    StoreErrorCode::Unauthorized,
-                    "Session transcript is outside the Turn's authorized Project",
-                    false,
-                ));
-            }
             let thread = row
                 .thread_id
                 .as_deref()
@@ -504,10 +508,6 @@ pub(super) fn read(
                     })
                 })
                 .transpose()?;
-            let permission_mode = match thread.project_id.as_deref() {
-                Some(project_id) => read_permission_mode(connection, project_id)?,
-                None => read_projectless_permission_mode(connection)?,
-            };
             Ok(ProjectWorkspaceReadValue::ExecutionContext {
                 context: Box::new(ProjectWorkspaceExecutionContext {
                     workspace_state: super::execution::read_thread_workspace_state(
@@ -515,7 +515,6 @@ pub(super) fn read(
                     )?,
                     thread,
                     project,
-                    permission_mode,
                 }),
             })
         }
@@ -759,25 +758,6 @@ pub(super) fn project_session_display_title(
         .find(|title| !title.is_empty())
         .unwrap_or("New thread")
         .to_owned()
-}
-
-fn require_project(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-) -> Result<(), StoreError> {
-    if connection
-        .query_row(
-            "SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2",
-            params![project_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Project is unavailable in this Library"))
 }
 
 fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {

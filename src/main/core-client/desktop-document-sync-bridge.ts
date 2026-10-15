@@ -9,9 +9,6 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 
-import { revocationsFromVisibilityDelta } from "../../shared/local-commit-delivery";
-import type { ResourceRevocation } from "../../shared/resource-revocation-stream";
-
 import type {
   AdditionalDocumentCommandRequest,
   AdditionalDocumentCommandResult,
@@ -74,7 +71,7 @@ import type {
   DocumentSyncUnsubscribeAck,
 } from "../../shared/block-documents/document-sync";
 import {
-  documentSyncUnauthorized,
+  documentSyncInvalidSession,
   type DocumentSyncClientTarget,
 } from "../document-sync-transport";
 import { createCanvasPresenceHub, type CanvasPresenceHub } from "../canvas-presence-hub";
@@ -87,9 +84,9 @@ import {
 } from "../../shared/block-documents/document-presence";
 import { decodeCanvasSceneSseEvent } from "../../shared/block-documents/canvas-scene-http-contract";
 import {
-  contentAccessContextKey,
-  type ContentAccessContext,
-} from "../../shared/content-access-context";
+  contentRoutingContextKey,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 import {
   createCoreCanvasSceneCommands,
   mapCanvasLiveEnvelope,
@@ -120,7 +117,7 @@ import {
 
 const DOCUMENT_SYNC_EVENT_CHANNEL = "document-sync:event";
 
-export type DesktopDocumentSyncScope = ContentAccessContext;
+export type DesktopDocumentSyncScope = ContentRoutingContext;
 
 export class DesktopDocumentSessionError extends Schema.TaggedError<DesktopDocumentSessionError>()(
   "DesktopDocumentSessionError",
@@ -130,15 +127,10 @@ export class DesktopDocumentSessionError extends Schema.TaggedError<DesktopDocum
 type SessionEffect<Value> = Effect.Effect<Value, DesktopDocumentSessionError>;
 
 export interface DesktopDocumentSessionService {
-  /** Publishes exact Document effects to already-authorized active sessions. */
+  /** Publishes exact Document effects to active client sessions. */
   publishDocumentEffects(
     packet: CoreAuthorizedDeliveryPacket,
     documentId?: string,
-  ): Effect.Effect<void>;
-  /** Closes only sessions addressed by one Core-authored revocation. */
-  publishResourceRevocation(
-    packet: CoreAuthorizedDeliveryPacket,
-    revocation: ResourceRevocation,
   ): Effect.Effect<void>;
   getOwnedDocumentDescriptor(
     projectId: string,
@@ -308,31 +300,7 @@ type NativeSubscriptionReservation =
       readonly pending: PendingNativeSubscription;
     };
 
-const scopeKey = (scope: DesktopDocumentSyncScope): string => contentAccessContextKey(scope);
-
-const authorizationScopeMatchesDocumentScope = (
-  authorization: CoreAuthorizedDeliveryPacket["authorization_scope"],
-  scope: DesktopDocumentSyncScope,
-): boolean => {
-  if (authorization.kind === "library") return scope.kind === "library";
-  const projectId = authorization.project_id ?? null;
-  if (projectId === null) return scope.kind === "library";
-  return scope.kind === "project" && scope.projectId === projectId;
-};
-
-const packetRevokesDocumentScope = (
-  packet: CoreAuthorizedDeliveryPacket,
-  documentId: string,
-  scope: DesktopDocumentSyncScope,
-): boolean =>
-  packet.visibility_deltas
-    .flatMap(revocationsFromVisibilityDelta)
-    .some(
-      (revocation) =>
-        revocation.resource_kind === "document" &&
-        revocation.resource_id === documentId &&
-        authorizationScopeMatchesDocumentScope(revocation.authorization_scope, scope),
-    );
+const scopeKey = (scope: DesktopDocumentSyncScope): string => contentRoutingContextKey(scope);
 
 const subscriptionKey = (
   target: DocumentSyncClientTarget,
@@ -348,7 +316,7 @@ const canvasSceneSubscriptionKey = (
   JSON.stringify([
     "canvas_scene",
     target.id,
-    contentAccessContextKey(request.accessContext),
+    contentRoutingContextKey(request.routingContext),
     request.clientSessionId,
     request.documentId,
   ]);
@@ -396,8 +364,8 @@ const canvasSceneFailure = (
   },
 });
 
-const canvasSceneUnauthorized = (mutationId?: string): CanvasCommandFailure =>
-  canvasSceneFailure("access_scope_mismatch", "An exact Canvas scene subscription is required", {
+const canvasSceneInvalidSession = (mutationId?: string): CanvasCommandFailure =>
+  canvasSceneFailure("invalid_session", "An exact Canvas scene subscription is required", {
     mutationId,
   });
 
@@ -432,7 +400,7 @@ const hasCanvasSceneIdentity = (request: CanvasSceneSubscribeRequest): boolean =
     return false;
   }
   try {
-    contentAccessContextKey(request.accessContext);
+    contentRoutingContextKey(request.routingContext);
     return true;
   } catch {
     return false;
@@ -640,7 +608,7 @@ const makeDesktopDocumentSessionState = (
 
   type RealtimeDeliveryOptions = {
     readonly drain?: boolean;
-    readonly revokeAfter?: boolean;
+    readonly closeAfter?: boolean;
   };
 
   const drainDocumentRealtimeEvents = (key: string, target: DocumentSyncClientTarget): void => {
@@ -761,7 +729,7 @@ const makeDesktopDocumentSessionState = (
       const delivered = sendDocumentRealtimeEvent(key, target, event);
       if (!delivered) return false;
       suspendSubscriptionBoundary(key);
-      if (options.revokeAfter && subscriptions.has(key)) closeSubscription(key);
+      if (options.closeAfter && subscriptions.has(key)) closeSubscription(key);
       return true;
     }
 
@@ -872,7 +840,7 @@ const makeDesktopDocumentSessionState = (
       const delivered = sendCanvasRealtimeEvent(key, target, {
         type: "canvas_scene_resync_required",
         libraryId: event.libraryId,
-        accessContext: event.accessContext,
+        routingContext: event.routingContext,
         documentId: event.documentId,
         storeEpoch: event.storeEpoch,
         generation: event.generation,
@@ -890,7 +858,7 @@ const makeDesktopDocumentSessionState = (
       const delivered = sendCanvasRealtimeEvent(key, target, {
         type: "canvas_scene_resync_required",
         libraryId: event.libraryId,
-        accessContext: event.accessContext,
+        routingContext: event.routingContext,
         documentId: event.documentId,
         storeEpoch: event.storeEpoch,
         generation: subscription.generation,
@@ -969,7 +937,7 @@ const makeDesktopDocumentSessionState = (
 
   const runCanvasCommand = <Success extends { readonly ok: true }>(
     operation: string,
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     run: (
       commands: ReturnType<typeof createCoreCanvasSceneCommands>,
     ) => Promise<Success | CanvasCommandFailure>,
@@ -985,12 +953,12 @@ const makeDesktopDocumentSessionState = (
             client,
             {
               libraryId: input.coreAuthority.identity.libraryId,
-              accessContext,
+              routingContext,
             },
             { signal },
           ),
         ),
-      { projectId: projectIdFor(accessContext) },
+      { projectId: projectIdFor(routingContext) },
     );
     return (
       key === undefined ? command : withDocumentLease(key, command, replayAfterReconnect)
@@ -1169,14 +1137,14 @@ const makeDesktopDocumentSessionState = (
   ): Effect.Effect<CanvasSceneCompactionCommandResult> =>
     runCanvasCommand(
       "canvas.compact",
-      request.accessContext,
+      request.routingContext,
       async (commands) => {
         if (
           !hasCanvasSceneIdentity(request) ||
           !hasNativeCanvasSceneSubscription(target, request) ||
           request.trigger !== "automatic_idle"
         ) {
-          return canvasSceneUnauthorized(request.mutationId);
+          return canvasSceneInvalidSession(request.mutationId);
         }
         const eligibility = await commands.readCompaction(request);
         if (!eligibility.value.eligible) {
@@ -1239,16 +1207,9 @@ const makeDesktopDocumentSessionState = (
           readonly recipients: Map<string, NativeSubscription>;
         }
       >();
-      // Each active subscription was authorized by Core for this exact
-      // Document. A root-stream packet may cover several subscription scopes,
-      // so its packet scope is not the audience for each Document ref. Access
-      // loss is carried separately by the scoped revocation lane below.
+      // Active subscriptions retain exact Document and physical client identity.
       for (const [key, subscription] of subscriptions) {
-        if (
-          subscription.engine === "yjs" &&
-          subscription.documentId === reference.document_id &&
-          !packetRevokesDocumentScope(packet, reference.document_id, subscription.scope)
-        ) {
+        if (subscription.engine === "yjs" && subscription.documentId === reference.document_id) {
           const keyForScope = scopeKey(subscription.scope);
           const group = scopes.get(keyForScope) ?? {
             scope: subscription.scope,
@@ -1267,7 +1228,8 @@ const makeDesktopDocumentSessionState = (
               continue;
             }
             deliverDocumentRealtimeEvent(key, subscription.target, event, {
-              revokeAfter: event.kind === "resync-required" && event.reason === "access-revoked",
+              closeAfter:
+                event.kind === "resync-required" && event.reason === "identity-boundary-changed",
             });
           }
         };
@@ -1313,9 +1275,6 @@ const makeDesktopDocumentSessionState = (
       if (onlyDocumentId && event.document_id !== onlyDocumentId) return;
       for (const [key, subscription] of [...subscriptions]) {
         if (subscription.documentId !== event.document_id) continue;
-        if (packetRevokesDocumentScope(packet, event.document_id, subscription.scope)) {
-          continue;
-        }
         if (subscription.storeEpoch && subscription.storeEpoch !== identity.store_epoch) {
           closeSubscription(key);
           continue;
@@ -1334,13 +1293,9 @@ const makeDesktopDocumentSessionState = (
                 headSeq: compacted ? event.head_seq : (subscription.headSeq ?? 0),
                 commitSeq: identity.commit_seq,
                 effectSequence: effect.descriptor.atom_order,
-                reason: compacted
-                  ? "history-compacted"
-                  : event.reason === "access_changed"
-                    ? "access-revoked"
-                    : "identity-boundary-changed",
+                reason: compacted ? "history-compacted" : "identity-boundary-changed",
               },
-              compacted ? {} : { revokeAfter: true },
+              compacted ? {} : { closeAfter: true },
             );
             void delivered;
           }
@@ -1354,7 +1309,7 @@ const makeDesktopDocumentSessionState = (
           const delivered = deliverCanvasRealtimeEvent(key, subscription.target, {
             type: "canvas_scene_resync_required",
             libraryId: subscription.libraryId,
-            accessContext: subscription.scope,
+            routingContext: subscription.scope,
             documentId: event.document_id,
             storeEpoch: identity.store_epoch,
             generation: event.generation,
@@ -1377,7 +1332,7 @@ const makeDesktopDocumentSessionState = (
             JSON.stringify({
               type: "canvas_scene_committed",
               libraryId: subscription.libraryId,
-              accessContext: subscription.scope,
+              routingContext: subscription.scope,
               documentId: event.document_id,
               storeEpoch: identity.store_epoch,
               generation: event.generation,
@@ -1400,46 +1355,6 @@ const makeDesktopDocumentSessionState = (
       discard: true,
     });
   };
-
-  const publishResourceRevocation = (
-    packet: CoreAuthorizedDeliveryPacket,
-    revocation: ResourceRevocation,
-  ): Effect.Effect<void> =>
-    Effect.sync(() => {
-      if (!accepting || revocation.resource_kind !== "document") return;
-      if (revocation.authorization_scope.kind !== "document") return;
-      const identity = packet.manifest.identity;
-      for (const [key, subscription] of [...subscriptions]) {
-        if (subscription.documentId !== revocation.resource_id) continue;
-        if (
-          !authorizationScopeMatchesDocumentScope(
-            revocation.authorization_scope,
-            subscription.scope,
-          )
-        )
-          continue;
-        if (subscription.engine !== "yjs") {
-          closeSubscription(key);
-          continue;
-        }
-        const delivered = deliverDocumentRealtimeEvent(
-          key,
-          subscription.target,
-          {
-            kind: "resync-required",
-            documentId: revocation.resource_id,
-            storeEpoch: identity.store_epoch,
-            generation: subscription.generation ?? 1,
-            headSeq: subscription.headSeq ?? 0,
-            commitSeq: identity.commit_seq,
-            effectSequence: packet.atoms.length,
-            reason: "access-revoked",
-          },
-          { revokeAfter: true },
-        );
-        void delivered;
-      }
-    });
 
   const transferBlocks = (
     intent: BlockTransferIntent,
@@ -1537,7 +1452,6 @@ const makeDesktopDocumentSessionState = (
 
   const service = {
     publishDocumentEffects,
-    publishResourceRevocation,
     getOwnedDocumentDescriptor: (projectId, ownerBlockId) =>
       input.coreSession
         .use(
@@ -1607,7 +1521,7 @@ const makeDesktopDocumentSessionState = (
     ): Effect.Effect<DocumentSyncCommandResult<DocumentSyncSubscriptionAck>> =>
       Effect.gen(function* () {
         if (!accepting || target.isDestroyed()) {
-          return documentSyncUnauthorized<DocumentSyncSubscriptionAck>();
+          return documentSyncInvalidSession<DocumentSyncSubscriptionAck>();
         }
         const key = subscriptionKey(target, scope, request);
         const ownerKey = bindingKey(request);
@@ -1617,10 +1531,10 @@ const makeDesktopDocumentSessionState = (
           return { ok: true, value: { subscribed: true } };
         }
         if (reservation.kind === "target_destroyed") {
-          return documentSyncUnauthorized<DocumentSyncSubscriptionAck>();
+          return documentSyncInvalidSession<DocumentSyncSubscriptionAck>();
         }
         if (reservation.kind === "conflict") {
-          return documentSyncUnauthorized<DocumentSyncSubscriptionAck>();
+          return documentSyncInvalidSession<DocumentSyncSubscriptionAck>();
         }
         const { pending } = reservation;
         return yield* Effect.gen(function* () {
@@ -1644,7 +1558,8 @@ const makeDesktopDocumentSessionState = (
                 return;
               }
               deliverDocumentRealtimeEvent(key, target, event, {
-                revokeAfter: event.kind === "resync-required" && event.reason === "access-revoked",
+                closeAfter:
+                  event.kind === "resync-required" && event.reason === "identity-boundary-changed",
               });
             };
             const receive = (event: DocumentSyncRealtimeEvent): void => {
@@ -1705,9 +1620,7 @@ const makeDesktopDocumentSessionState = (
                     reason:
                       repair.reason === "identity_changed"
                         ? "identity-boundary-changed"
-                        : repair.reason === "access_revoked"
-                          ? "access-revoked"
-                          : "event-gap",
+                        : "event-gap",
                   });
                 }),
               onRealtime: (event) => Effect.sync(() => receive(event)),
@@ -1760,7 +1673,7 @@ const makeDesktopDocumentSessionState = (
             if (!accepting || target.isDestroyed()) {
               closeLease();
               if (bindings.get(ownerKey) === key) bindings.delete(ownerKey);
-              return documentSyncUnauthorized<DocumentSyncSubscriptionAck>();
+              return documentSyncInvalidSession<DocumentSyncSubscriptionAck>();
             }
             const subscribed = addNativeSubscription(key, {
               engine: "yjs",
@@ -1827,7 +1740,7 @@ const makeDesktopDocumentSessionState = (
     sync: (scope, target, request) =>
       Effect.gen(function* () {
         if (!hasNativeSubscription(target, scope, request)) {
-          return documentSyncUnauthorized();
+          return documentSyncInvalidSession();
         }
         const key = subscriptionKey(target, scope, request);
         const subscription = subscriptions.get(key);
@@ -1849,7 +1762,7 @@ const makeDesktopDocumentSessionState = (
     applyUpdate: (scope, target, request) =>
       Effect.gen(function* () {
         if (!hasNativeSubscription(target, scope, request)) {
-          return documentSyncUnauthorized();
+          return documentSyncInvalidSession();
         }
         return yield* withDocumentLease(
           subscriptionKey(target, scope, request),
@@ -1862,7 +1775,7 @@ const makeDesktopDocumentSessionState = (
     publishAwareness: (scope, target, request) =>
       Effect.gen(function* () {
         if (!hasNativeSubscription(target, scope, request)) {
-          return documentSyncUnauthorized();
+          return documentSyncInvalidSession();
         }
         return yield* withDocumentLease(
           subscriptionKey(target, scope, request),
@@ -1877,7 +1790,7 @@ const makeDesktopDocumentSessionState = (
     subscribeCanvasScene: (target, request): Effect.Effect<CanvasSceneSubscriptionCommandResult> =>
       Effect.gen(function* () {
         if (!accepting || target.isDestroyed() || !hasCanvasSceneIdentity(request)) {
-          return canvasSceneUnauthorized();
+          return canvasSceneInvalidSession();
         }
         const key = canvasSceneSubscriptionKey(target, request);
         const ownerKey = bindingKey(request);
@@ -1887,9 +1800,9 @@ const makeDesktopDocumentSessionState = (
           return { ok: true, value: { subscribed: true } };
         }
         if (reservation.kind === "target_destroyed") {
-          return canvasSceneUnauthorized();
+          return canvasSceneInvalidSession();
         }
-        if (reservation.kind === "conflict") return canvasSceneUnauthorized();
+        if (reservation.kind === "conflict") return canvasSceneInvalidSession();
         const { pending } = reservation;
         return yield* Effect.gen(function* () {
           let closeLease: (() => void) | null = null;
@@ -1920,12 +1833,12 @@ const makeDesktopDocumentSessionState = (
             };
             const binding = {
               libraryId: input.coreAuthority.identity.libraryId,
-              accessContext: request.accessContext,
+              routingContext: request.routingContext,
             };
             const lease = yield* input.documentLive.subscribe({
               open: (onEvent, onRepair, onRealtime) =>
                 openPhysicalDocumentSubscription(
-                  request.accessContext,
+                  request.routingContext,
                   request,
                   onEvent,
                   onRepair,
@@ -1941,7 +1854,7 @@ const makeDesktopDocumentSessionState = (
                   receive({
                     type: "canvas_scene_resync_required",
                     libraryId: binding.libraryId,
-                    accessContext: binding.accessContext,
+                    routingContext: binding.routingContext,
                     documentId: repair.document_id,
                     storeEpoch: repair.store_epoch,
                     generation: repair.document_generation,
@@ -1969,7 +1882,7 @@ const makeDesktopDocumentSessionState = (
                   receive({
                     type: "canvas_scene_resync_required",
                     libraryId: binding.libraryId,
-                    accessContext: binding.accessContext,
+                    routingContext: binding.routingContext,
                     documentId: barrier.document_id,
                     storeEpoch: barrier.store_epoch,
                     generation: barrier.document_generation,
@@ -2011,12 +1924,12 @@ const makeDesktopDocumentSessionState = (
             if (!accepting || target.isDestroyed()) {
               closeLease();
               if (bindings.get(ownerKey) === key) bindings.delete(ownerKey);
-              return canvasSceneUnauthorized();
+              return canvasSceneInvalidSession();
             }
             const subscribed = addNativeSubscription(key, {
               engine: "canvas_scene",
               bindingKey: ownerKey,
-              scope: request.accessContext,
+              scope: request.routingContext,
               libraryId: input.coreAuthority.identity.libraryId,
               documentId: request.documentId,
               clientSessionId: request.clientSessionId,
@@ -2031,7 +1944,7 @@ const makeDesktopDocumentSessionState = (
             canvasPresenceHub.register({
               key,
               libraryId: input.coreAuthority.identity.libraryId,
-              accessContext: request.accessContext,
+              routingContext: request.routingContext,
               documentId: request.documentId,
               clientSessionId: request.clientSessionId,
               targetId: target.id,
@@ -2087,7 +2000,7 @@ const makeDesktopDocumentSessionState = (
       }),
     unsubscribeCanvasScene: (target, request) =>
       Effect.sync(() => {
-        if (!hasCanvasSceneIdentity(request)) return canvasSceneUnauthorized();
+        if (!hasCanvasSceneIdentity(request)) return canvasSceneInvalidSession();
         const key = canvasSceneSubscriptionKey(target, request);
         if (subscriptions.get(key)?.target === target) closeSubscription(key);
         return { ok: true, value: { unsubscribed: true } };
@@ -2095,14 +2008,14 @@ const makeDesktopDocumentSessionState = (
     syncCanvasScene: (target, request) =>
       Effect.gen(function* () {
         if (!hasNativeCanvasSceneSubscription(target, request)) {
-          return canvasSceneUnauthorized();
+          return canvasSceneInvalidSession();
         }
         const key = canvasSceneSubscriptionKey(target, request);
         const subscription = subscriptions.get(key);
         suspendSubscriptionBoundary(key);
         const result = yield* runCanvasCommand(
           "canvas.sync",
-          request.accessContext,
+          request.routingContext,
           (commands) => commands.sync(request),
           undefined,
           key,
@@ -2118,10 +2031,10 @@ const makeDesktopDocumentSessionState = (
     applyCanvasSceneMutation: (target, request) =>
       runCanvasCommand(
         "canvas.apply-mutation",
-        request.accessContext,
+        request.routingContext,
         async (commands) => {
           if (!hasNativeCanvasSceneSubscription(target, request)) {
-            return canvasSceneUnauthorized(request.mutationId);
+            return canvasSceneInvalidSession(request.mutationId);
           }
           return await commands.applyMutation(request);
         },
@@ -2140,7 +2053,7 @@ const makeDesktopDocumentSessionState = (
           );
         }
         const subscriptionRequest: CanvasSceneSubscribeRequest = {
-          accessContext: parsed.accessContext,
+          routingContext: parsed.routingContext,
           documentId: parsed.publication.documentId,
           clientSessionId: parsed.clientSessionId,
         };
@@ -2150,7 +2063,7 @@ const makeDesktopDocumentSessionState = (
           subscriptions.get(key)?.generation === undefined
         ) {
           return canvasPresenceFailure(
-            "unauthorized",
+            "invalid_session",
             "An exact active Canvas subscription is required for presence",
           );
         }
@@ -2169,16 +2082,16 @@ const makeDesktopDocumentSessionState = (
           if (error instanceof TypeError) {
             return canvasPresenceFailure("invalid_presence", message);
           }
-          return canvasPresenceFailure("unauthorized", message);
+          return canvasPresenceFailure("invalid_session", message);
         }
       }),
     readCanvasSceneCompaction: (target, request) =>
       runCanvasCommand(
         "canvas.read-compaction",
-        request.accessContext,
+        request.routingContext,
         async (commands) => {
           if (!hasNativeCanvasSceneSubscription(target, request)) {
-            return canvasSceneUnauthorized();
+            return canvasSceneInvalidSession();
           }
           return await commands.readCompaction(request);
         },

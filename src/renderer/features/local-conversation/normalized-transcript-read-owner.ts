@@ -674,6 +674,7 @@ export class CodexTranscriptReadOwner {
     const imageContextTurns = new Set<string>();
     const replacementSlots = new Set<string>();
     const appendedSlots = new Map<string, CodexTranscriptItemSlots["entries"]>();
+    const prependedSlots = new Map<string, CodexTranscriptItemSlots["entries"]>();
     const changedTurns = new Set<string>();
     const changedProjectionContext = new Set<string>();
     const changedItems = new Set<string>();
@@ -816,19 +817,36 @@ export class CodexTranscriptReadOwner {
         }
         const turn = this.turns.get(entityKey);
         if (!turn) throw new Error("Transcript item update has no Turn");
-        if (change.type === "item-slots" || change.type === "item-slots-append") {
+        if (
+          change.type === "item-slots" ||
+          change.type === "item-slots-append" ||
+          change.type === "item-slots-prepend"
+        ) {
           if (change.type === "item-slots") {
             imageContextTurns.add(entityKey);
             replacementSlots.add(entityKey);
-          } else
-            appendedSlots.set(entityKey, [
-              ...(appendedSlots.get(entityKey) ?? []),
-              ...change.entries,
-            ]);
+          } else {
+            const admitted = change.type === "item-slots-prepend" ? prependedSlots : appendedSlots;
+            admitted.set(entityKey, [...(admitted.get(entityKey) ?? []), ...change.entries]);
+          }
           const slots =
             change.type === "item-slots"
               ? change.slots
-              : { length: change.length, entries: [...turn.itemSlots.entries, ...change.entries] };
+              : change.type === "item-slots-prepend"
+                ? {
+                    length: change.length,
+                    entries: [
+                      ...change.entries,
+                      ...turn.itemSlots.entries.map((entry) => ({
+                        ...entry,
+                        index: entry.index + change.length - change.previousLength,
+                      })),
+                    ],
+                  }
+                : {
+                    length: change.length,
+                    entries: [...turn.itemSlots.entries, ...change.entries],
+                  };
           if (
             change.type === "item-slots-append" &&
             (change.previousLength !== turn.itemSlots.length ||
@@ -836,6 +854,13 @@ export class CodexTranscriptReadOwner {
               change.entries.some(({ index }) => index < change.previousLength))
           )
             throw new Error("Transcript slot append is out of order");
+          if (
+            change.type === "item-slots-prepend" &&
+            (change.previousLength !== turn.itemSlots.length ||
+              change.length < change.previousLength ||
+              change.entries.some(({ index }) => index >= change.length - change.previousLength))
+          )
+            throw new Error("Transcript slot prepend is out of order");
           validateSlots(slots);
           this.turns.set(entityKey, { ...turn, itemSlots: slots });
           changedTurns.add(entityKey);
@@ -913,6 +938,15 @@ export class CodexTranscriptReadOwner {
       for (const { itemId, index } of entries) indices.set(itemId, index);
       this.itemSlotIndices.set(entityKey, indices);
     }
+    for (const [entityKey] of prependedSlots) {
+      if (replacementSlots.has(entityKey)) continue;
+      const slots = this.turns.get(entityKey)?.itemSlots;
+      if (slots)
+        this.itemSlotIndices.set(
+          entityKey,
+          new Map(slots.entries.map(({ itemId, index }) => [itemId, index])),
+        );
+    }
     let imagesChanged = false;
     for (const [address, entityKey] of changedItemEntities) {
       const before = previousItems.get(address);
@@ -922,6 +956,17 @@ export class CodexTranscriptReadOwner {
     }
     for (const [entityKey, entries] of appendedSlots) {
       if (replacementSlots.has(entityKey)) continue;
+      for (const { itemId } of entries) {
+        const item = this.items.get(codexTranscriptItemAddress(entityKey, itemId));
+        if (item?.type === "imageGeneration")
+          imagesChanged = this.indexGeneratedImage(entityKey, itemId) || imagesChanged;
+      }
+    }
+    for (const [entityKey, entries] of prependedSlots) {
+      if (replacementSlots.has(entityKey)) continue;
+      for (const image of [...this.generatedImageIndex.values()])
+        if (image.entityKey === entityKey)
+          imagesChanged = this.indexGeneratedImage(entityKey, image.item.id) || imagesChanged;
       for (const { itemId } of entries) {
         const item = this.items.get(codexTranscriptItemAddress(entityKey, itemId));
         if (item?.type === "imageGeneration")
@@ -973,7 +1018,13 @@ export class CodexTranscriptReadOwner {
       }
     }
     if (structureChanged) {
-      this.rebuildStructure();
+      // Slot receipts prove existing bodies are unchanged. Recompute flags
+      // from admitted addresses and cached metadata, not the resident Turn.
+      const admitted = new Map([...appendedSlots, ...prependedSlots]);
+      for (const entityKey of replacementSlots) admitted.delete(entityKey);
+      for (const [address, entityKey] of changedItemEntities)
+        if (previousItems.get(address) !== undefined) admitted.delete(entityKey);
+      this.rebuildStructure(admitted);
       this.notify(this.structureListeners);
     }
     for (const entityKey of changedTurns) this.notify(this.turnListeners.get(entityKey));
@@ -1029,7 +1080,9 @@ export class CodexTranscriptReadOwner {
     return true;
   }
 
-  private rebuildStructure(): void {
+  private rebuildStructure(
+    admitted?: ReadonlyMap<string, CodexTranscriptItemSlots["entries"]>,
+  ): void {
     if (!this.metadata) {
       this.structure = null;
       return;
@@ -1041,21 +1094,37 @@ export class CodexTranscriptReadOwner {
       const cached = this.structureRows.get(entityKey);
       if (cached?.version === version && cached.row.value === value) return [cached.row];
       const itemIds = Array<string | undefined>(value.itemSlots.length);
-      let hasUserMessage = value.details.params.input.length > 0;
-      let hasAssistantMessage = false;
-      let hasMcpApp = false;
+      const newSlots = cached ? admitted?.get(entityKey) : undefined;
+      let hasUserMessage =
+        value.details.params.input.length > 0 ||
+        (newSlots !== undefined && cached?.row.hasUserMessage === true);
+      let hasAssistantMessage = newSlots !== undefined && cached?.row.hasAssistantMessage === true;
+      let hasMcpApp = newSlots !== undefined && cached?.row.hasMcpApp === true;
       let isStartupPrewarm = value.details.params.input.some(
         (input) => input.type === "text" && isCodexStartupToolPrewarmText(input.text),
       );
-      let lastWorkItemId: string | null = null;
-      let lastWorkItemIndex = -1;
-      let latestSteeringItemId: string | null = null;
-      let latestSteeringItemIndex = -1;
-      const rawItems = Array<CodexCanonicalItem>(value.itemSlots.length);
-      for (const { index, itemId } of value.itemSlots.entries) {
-        itemIds[index] = itemId;
+      isStartupPrewarm ||= newSlots !== undefined && cached?.row.isStartupPrewarm === true;
+      let lastWorkItemId =
+        newSlots === undefined ? null : (this.lastWorkItemIds.get(entityKey) ?? null);
+      let lastWorkItemIndex =
+        lastWorkItemId === null
+          ? -1
+          : (this.itemSlotIndices.get(entityKey)?.get(lastWorkItemId) ?? -1);
+      let latestSteeringItemId =
+        newSlots === undefined ? null : (cached?.latestSteeringItemId ?? null);
+      let latestSteeringItemIndex =
+        latestSteeringItemId === null
+          ? -1
+          : (this.itemSlotIndices.get(entityKey)?.get(latestSteeringItemId) ?? -1);
+      const rawItems =
+        newSlots === undefined ? Array<CodexCanonicalItem>(value.itemSlots.length) : [];
+      for (const { index, itemId } of value.itemSlots.entries) itemIds[index] = itemId;
+      for (const { index, itemId } of newSlots ?? value.itemSlots.entries) {
         const item = this.readItem(entityKey, itemId);
-        if (item) rawItems[index] = item;
+        if (item) {
+          if (newSlots === undefined) rawItems[index] = item;
+          else rawItems.push(item);
+        }
         if (item?.type === "steeringUserMessage" && index > latestSteeringItemIndex) {
           latestSteeringItemId = item.id;
           latestSteeringItemIndex = index;
@@ -1087,11 +1156,22 @@ export class CodexTranscriptReadOwner {
       this.structureRows.set(entityKey, { version, row, latestSteeringItemId });
       this.lastWorkItemIds.set(entityKey, lastWorkItemId);
       const openingId = value.details.itemsPagination?.openingUserMessageId;
+      const cachedOpening =
+        newSlots === undefined ? undefined : this.openingUserMessageIds.get(entityKey);
+      const admittedOpening = resolveCodexCanonicalTurnOpeningUserMessageId({
+        ...value.details,
+        items: rawItems,
+      });
+      const openingChanged =
+        cached?.row.value.details.params.clientUserMessageId !==
+        value.details.params.clientUserMessageId;
       this.openingUserMessageIds.set(
         entityKey,
         openingId !== undefined
           ? openingId
-          : (resolveCodexCanonicalTurnOpeningUserMessageId({ ...value.details, items: rawItems }) ??
+          : ((openingChanged
+              ? (admittedOpening ?? cachedOpening)
+              : (cachedOpening ?? admittedOpening)) ??
               (value.details.itemsPagination?.hasLoadedOldest === false ? undefined : null)),
       );
       return [row];

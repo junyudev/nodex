@@ -17,10 +17,10 @@ import {
   type CanvasSceneSyncAdapter,
 } from "./canvas-scene-provider";
 import { noOpLocalCommit } from "../../shared/testing/local-commit";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 
 const libraryId = "library-1";
-const accessContext = { kind: "project", projectId: "project-1" } as const;
+const routingContext = { kind: "project", projectId: "project-1" } as const;
 
 const element = (version: number, text = `v${version}`) => ({
   id: "element-1",
@@ -76,7 +76,7 @@ class MemoryAdapter implements CanvasSceneSyncAdapter {
         kind: "snapshot",
         syncRequestId: request.syncRequestId,
         libraryId,
-        accessContext,
+        routingContext,
         documentId: "document-1",
         storeEpoch: "epoch-1",
         generation: this.generation,
@@ -121,7 +121,7 @@ class MemoryAdapter implements CanvasSceneSyncAdapter {
       value: {
         mutationId: request.mutationId,
         libraryId,
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         documentId: request.documentId,
         storeEpoch: request.storeEpoch,
         generation: request.generation,
@@ -178,7 +178,7 @@ const makeProvider = (input: {
   let syncSequence = 0;
   return new CanvasSceneProvider({
     libraryId,
-    accessContext,
+    routingContext,
     documentId: "document-1",
     clientSessionId: input.clientSessionId ?? "window-1",
     adapter: input.adapter,
@@ -225,7 +225,7 @@ describe("CanvasSceneProvider", () => {
       adapter.presenceListener?.({
         type: "canvas_presence_snapshot",
         libraryId,
-        accessContext,
+        routingContext,
         documentId: "document-1",
         generation: 1,
         presences: [],
@@ -236,7 +236,7 @@ describe("CanvasSceneProvider", () => {
           kind: "snapshot",
           syncRequestId: request.syncRequestId,
           libraryId: "library-1",
-          accessContext,
+          routingContext,
           documentId: "document-1",
           storeEpoch: "epoch-1",
           generation: 1,
@@ -285,7 +285,7 @@ describe("CanvasSceneProvider", () => {
 
     expect(coalescing.callbacks).toHaveLength(0);
     expect(adapter.applied).toHaveLength(0);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     await provider.close();
   });
 
@@ -304,7 +304,7 @@ describe("CanvasSceneProvider", () => {
         kind: "up_to_date",
         syncRequestId: request.syncRequestId,
         libraryId: "library-1",
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         documentId: request.documentId,
         storeEpoch: "epoch-1",
         generation: 1,
@@ -316,7 +316,7 @@ describe("CanvasSceneProvider", () => {
     adapter.listener?.({
       type: "canvas_scene_resync_required",
       libraryId,
-      accessContext,
+      routingContext,
       documentId: "document-1",
       storeEpoch: "epoch-1",
       generation: 1,
@@ -337,7 +337,7 @@ describe("CanvasSceneProvider", () => {
         kind: "up_to_date",
         syncRequestId: request.syncRequestId,
         libraryId: "library-1",
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         documentId: request.documentId,
         storeEpoch: "epoch-1",
         generation: 1,
@@ -362,7 +362,7 @@ describe("CanvasSceneProvider", () => {
         kind: "snapshot",
         syncRequestId: `${request.syncRequestId}:stale`,
         libraryId: "library-1",
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         documentId: request.documentId,
         storeEpoch: "epoch-1",
         generation: 1,
@@ -400,7 +400,7 @@ describe("CanvasSceneProvider", () => {
     expect(adapter.applied[0]?.elementCandidates[0]?.version).toBe(3);
     expect(adapter.calls.filter((call) => call === "sync")).toHaveLength(1);
     expect(provider.getScene()?.elements[0]?.version).toBe(3);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     expect(provider.getStatus().phase).toBe("ready");
     await provider.close();
   });
@@ -416,7 +416,7 @@ describe("CanvasSceneProvider", () => {
     const flushing = provider.flush();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const stored = await outbox.list(accessContext, "document-1");
+    const stored = await outbox.list(routingContext, "document-1");
     expect(stored).toHaveLength(1);
     expect(adapter.applied).toHaveLength(1);
     adapter.applyError = null;
@@ -474,8 +474,8 @@ describe("CanvasSceneProvider", () => {
     await expect(rejected.committed).rejects.toThrow("cannot be redefined");
     await waitForCondition(() => provider.getStatus().phase === "ready");
 
-    expect(await outbox.list(accessContext, "document-1")).toEqual([]);
-    expect(await outbox.listQuarantined(accessContext, "document-1")).toEqual([
+    expect(await outbox.list(routingContext, "document-1")).toEqual([]);
+    expect(await outbox.listQuarantined(routingContext, "document-1")).toEqual([
       expect.objectContaining({
         rejectedAt: 123,
         intent: expect.objectContaining({ mutationId: "mutation-1" }),
@@ -515,7 +515,7 @@ describe("CanvasSceneProvider", () => {
     await submission.durable;
     void submission.committed.catch(() => undefined);
     await first.close({ requireCommitted: false });
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(1);
 
     const secondAdapter = new MemoryAdapter();
     const second = makeProvider({
@@ -528,7 +528,7 @@ describe("CanvasSceneProvider", () => {
 
     expect(secondAdapter.applied[0]?.clientSessionId).toBe("window-2");
     expect(secondAdapter.applied[0]?.mutationId).toBe(firstAdapter.applied[0]?.mutationId);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     await second.close();
   });
 
@@ -549,11 +549,11 @@ describe("CanvasSceneProvider", () => {
     });
     await submission.durable;
     void submission.committed.catch(() => undefined);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(1);
 
     await provider.retireOwner();
 
-    expect(await outbox.list(accessContext, "document-1")).toEqual([]);
+    expect(await outbox.list(routingContext, "document-1")).toEqual([]);
     expect(provider.getStatus().phase).toBe("closed");
     await expect(provider.connect()).rejects.toThrow("closed");
   });
@@ -589,7 +589,7 @@ describe("CanvasSceneProvider", () => {
     await second.durable;
 
     expect(
-      (await outbox.list(accessContext, "document-1")).map((entry) => entry.mutationId),
+      (await outbox.list(routingContext, "document-1")).map((entry) => entry.mutationId),
     ).toEqual(["mutation-1", "mutation-2"]);
     await provider.close({ requireCommitted: false });
   });
@@ -607,7 +607,7 @@ describe("CanvasSceneProvider", () => {
     adapter.listener?.({
       type: "canvas_scene_resync_required",
       libraryId,
-      accessContext,
+      routingContext,
       documentId: "document-1",
       storeEpoch: "epoch-1",
       generation: 1,
@@ -633,7 +633,7 @@ describe("CanvasSceneProvider", () => {
     adapter.listener?.({
       type: "canvas_scene_resync_required",
       libraryId,
-      accessContext,
+      routingContext,
       documentId: "document-1",
       storeEpoch: "epoch-1",
       generation: 1,
@@ -647,7 +647,7 @@ describe("CanvasSceneProvider", () => {
       adapter.listener?.({
         type: "canvas_scene_committed",
         libraryId,
-        accessContext,
+        routingContext,
         documentId: "document-1",
         storeEpoch: "epoch-1",
         generation: 1,
@@ -667,7 +667,7 @@ describe("CanvasSceneProvider", () => {
         kind: "snapshot",
         syncRequestId: pendingSyncRequestId,
         libraryId,
-        accessContext,
+        routingContext,
         documentId: "document-1",
         storeEpoch: "epoch-1",
         generation: 1,
@@ -694,13 +694,13 @@ describe("CanvasSceneProvider", () => {
       quarantine = this.delegate.quarantine;
       clear = this.delegate.clear;
       remove = async (
-        outboxAccessContext: ContentAccessContext,
+        outboxRoutingContext: ContentRoutingContext,
         documentId: string,
         mutationId: string,
       ): Promise<void> => {
         this.removeAttempts += 1;
         if (this.removeAttempts === 1) throw new Error("IndexedDB delete failed");
-        await this.delegate.remove(outboxAccessContext, documentId, mutationId);
+        await this.delegate.remove(outboxRoutingContext, documentId, mutationId);
       };
     }
     const adapter = new MemoryAdapter();
@@ -711,12 +711,12 @@ describe("CanvasSceneProvider", () => {
     const submitted = provider.submit({ elementCandidates: [element(2)] });
     provider.flush().catch(() => undefined);
     await waitForCondition(() => retry.callbacks.length === 1);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(1);
     retry.callbacks.shift()?.();
     await submitted;
     expect(outbox.removeAttempts).toBe(2);
     expect(adapter.applied[1]).toEqual(adapter.applied[0]);
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     await provider.close();
   });
 
@@ -729,7 +729,7 @@ describe("CanvasSceneProvider", () => {
       value: {
         mutationId: request.mutationId,
         libraryId,
-        accessContext: { kind: "project", projectId: "other-project" },
+        routingContext: { kind: "project", projectId: "other-project" },
         documentId: request.documentId,
         storeEpoch: request.storeEpoch,
         generation: request.generation,
@@ -757,7 +757,7 @@ describe("CanvasSceneProvider", () => {
     await expect(provider.submit({ elementCandidates: [element(2)] })).rejects.toThrow(
       "durable request boundary",
     );
-    expect(await outbox.listQuarantined(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.listQuarantined(routingContext, "document-1")).toHaveLength(1);
     expect(provider.getStatus().phase).toBe("error");
   });
 
@@ -766,7 +766,7 @@ describe("CanvasSceneProvider", () => {
     const outbox = new MemoryCanvasSceneOutbox(libraryId);
     await outbox.put({
       mutationId: "old-mutation",
-      accessContext,
+      routingContext,
       documentId: "document-1",
       storeEpoch: "old-epoch",
       generation: 1,
@@ -778,7 +778,7 @@ describe("CanvasSceneProvider", () => {
     const provider = makeProvider({ adapter, outbox });
     await provider.connect();
     expect(provider.getStatus().phase).toBe("reset-required");
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     expect(adapter.applied).toHaveLength(0);
   });
 
@@ -788,7 +788,7 @@ describe("CanvasSceneProvider", () => {
     const outbox = new MemoryCanvasSceneOutbox(libraryId);
     await outbox.put({
       mutationId: "old-generation-mutation",
-      accessContext,
+      routingContext,
       documentId: "document-1",
       storeEpoch: "epoch-1",
       generation: 1,
@@ -802,7 +802,7 @@ describe("CanvasSceneProvider", () => {
     await provider.connect();
 
     expect(provider.getStatus().phase).toBe("reset-required");
-    expect(await outbox.list(accessContext, "document-1")).toHaveLength(0);
+    expect(await outbox.list(routingContext, "document-1")).toHaveLength(0);
     expect(adapter.applied).toHaveLength(0);
   });
 
@@ -829,7 +829,7 @@ test("Canvas follows host reconnects and preserves terminal pending work", async
     const session = {
       type: "canvas_scene_session" as const,
       libraryId,
-      accessContext,
+      routingContext,
       documentId: "document-1",
       clientSessionId: "window-1",
     };
@@ -858,7 +858,7 @@ test("Canvas follows host reconnects and preserves terminal pending work", async
     expect(await rejected).toBeInstanceOf(Error);
     await provider.checkpointRecovery();
     expect(provider.getStatus().phase).toBe("error");
-    expect(await outbox.listQuarantined(accessContext, "document-1")).toHaveLength(1);
+    expect(await outbox.listQuarantined(routingContext, "document-1")).toHaveLength(1);
   } finally {
     await provider.close({ requireCommitted: false }).catch(() => undefined);
   }
@@ -872,7 +872,7 @@ test("connect resolves after the first physical connection's canonical resync", 
     adapter.listener?.({
       type: "canvas_scene_session",
       libraryId,
-      accessContext,
+      routingContext,
       documentId: "document-1",
       clientSessionId: "window-1",
       state: "connected",

@@ -7,7 +7,6 @@ import { CLIENT_REQUEST_PARAMS } from "@nodex/effect-codex-app-server/rpc";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import {
   CodexMainConversationManagers,
   MainConversationManagerError,
@@ -16,7 +15,8 @@ import {
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import {
   mutateCanonicalThreadSettingsPatch,
-  type CanonicalThreadSettingsPatch,
+  selectCanonicalThreadSettingsControlPatch,
+  type CanonicalThreadSettingsControlPatch,
   type CanonicalThreadSettingsCondition,
 } from "../../shared/codex-conversation-state/codex-thread-settings-update";
 
@@ -30,9 +30,8 @@ export class CodexMainConversationSettings extends Context.Service<
     readonly update: (
       hostId: string,
       conversationId: string,
-      patch: CanonicalThreadSettingsPatch,
+      patch: CanonicalThreadSettingsControlPatch,
       condition?: CanonicalThreadSettingsCondition,
-      activeTurnId?: string | null,
     ) => Effect.Effect<boolean, MainConversationManagerError>;
   }
 >()("nodex/main/codex-application/CodexMainConversationSettings") {}
@@ -54,7 +53,6 @@ export const make = Effect.gen(function* () {
   const managers = yield* CodexMainConversationManagers;
   const entities = yield* ConversationEntityMap;
   const gateway = yield* CodexGateway;
-  const capabilities = yield* CodexAppServerCapabilities;
   const lanes = yield* RcMap.make({ lookup: (_key: string) => Semaphore.make(1) });
   const support = new WeakMap<
     MainConversationManager,
@@ -75,11 +73,12 @@ export const make = Effect.gen(function* () {
           );
         }),
       ).pipe(Effect.mapError((cause) => new MainConversationManagerError({ hostId, cause }))),
-    update: (hostId, id, patch, condition, activeTurnId) =>
+    update: (hostId, id, patch, condition) =>
       Effect.scoped(
         Effect.gen(function* () {
           const manager = yield* managers.get(hostId);
           const nativeGeneration = manager.generation;
+          const control = selectCanonicalThreadSettingsControlPatch(patch);
           const lane = yield* RcMap.get(lanes, JSON.stringify([hostId, nativeGeneration, id]));
           return yield* lane.withPermit(
             Effect.gen(function* () {
@@ -113,7 +112,7 @@ export const make = Effect.gen(function* () {
               if (supportStatus() !== "unsupported") {
                 const params = yield* Schema.decodeUnknownEffect(
                   CLIENT_REQUEST_PARAMS["thread/settings/update"],
-                )({ threadId: id, ...patch });
+                )({ threadId: id, ...control });
                 const result = yield* gateway
                   .requestOnHost(hostId, "thread/settings/update", params, options)
                   .pipe(Effect.result);
@@ -131,19 +130,10 @@ export const make = Effect.gen(function* () {
                 current.state.latestThreadSettings === before.latestThreadSettings
               ) {
                 current.entity.mutateCanonicalState(
-                  (draft) => mutateCanonicalThreadSettingsPatch(draft, patch),
+                  (draft) => mutateCanonicalThreadSettingsPatch(draft, control),
                   Date.now(),
                 );
               }
-              if (activeTurnId == null || patch.approvalsReviewer == null) return true;
-              const capability = yield* capabilities.forHost(hostId);
-              yield* readOwner;
-              if (!capability.flags.turnApprovalsReviewer) return true;
-              const params = yield* Schema.decodeUnknownEffect(
-                CLIENT_REQUEST_PARAMS["turn/settings/update"],
-              )({ threadId: id, turnId: activeTurnId, approvalsReviewer: patch.approvalsReviewer });
-              yield* gateway.requestOnHost(hostId, "turn/settings/update", params, options);
-              yield* readOwner;
               return true;
             }),
           );

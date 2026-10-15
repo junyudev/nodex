@@ -45,7 +45,7 @@ type RelationDefinition = (
 pub(super) fn describe(name: &str) -> Option<SqlTable> {
     let (description, keys, args, ordering, fields): RelationDefinition = match name {
         "pages" => (
-            "One authorized active Page, including standalone Pages; no body is loaded.",
+            "One active Page, including standalone Pages; no body is loaded.",
             &["page_id"],
             &[],
             None,
@@ -73,7 +73,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "databases" => (
-            "One authorized active Database.",
+            "One active Database.",
             &["database_id"],
             &[],
             None,
@@ -82,13 +82,12 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
                 ("name", "TEXT", false),
                 ("default_view_id", "TEXT", true),
                 ("metadata_revision", "INTEGER", false),
-                ("access_revision", "INTEGER", false),
                 ("created_at", "TEXT", false),
                 ("updated_at", "TEXT", false),
             ],
         ),
         "data_sources" => (
-            "One active Source in an authorized Database. Bind its ID to query Property columns.",
+            "One active Source in a Database. Bind its ID to query Property columns.",
             &["data_source_id"],
             &[],
             None,
@@ -162,7 +161,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "page_relations" => (
-            "One visible Relation edge; restricted target identities are omitted, so visible counts are not total edge counts.",
+            "One active Relation edge in the current Library; unavailable target identities are omitted.",
             &["page_id", "data_source_id", "property_id", "target_page_id"],
             &[],
             None,
@@ -189,7 +188,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "search_hits" => (
-            "One of the top K authorized Page search hits. Outer WHERE filters those top K, not all matches; COUNT counts returned hits only.",
+            "One of the top K Page search hits. Outer WHERE filters those top K, not all matches; COUNT counts returned hits only.",
             &["page_id"],
             &["query", "k"],
             Some("ordinal"),
@@ -215,7 +214,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "page_files" => (
-            "One deduplicated current Page/File use. Page access grants current metadata, not independent File history.",
+            "One deduplicated current Page/File use. Current Page uses resolve current File metadata.",
             &["page_id", "file_id"],
             &[],
             None,
@@ -234,7 +233,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "files" => (
-            "One independently authorized Library File, including trashed Files.",
+            "One Library File, including trashed Files.",
             &["file_id"],
             &[],
             None,
@@ -269,7 +268,7 @@ pub(super) fn describe(name: &str) -> Option<SqlTable> {
             ],
         ),
         "file_usages" => (
-            "One authorized visible File usage; unavailable targets are not exposed.",
+            "One current File usage; unavailable targets are not exposed.",
             &["file_id", "target_kind", "target_id"],
             &[],
             None,

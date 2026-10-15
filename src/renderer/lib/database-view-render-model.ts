@@ -15,7 +15,6 @@ import type {
   LibraryDatabaseModuleReadSnapshotV2,
 } from "../../shared/database-module-v2";
 import type { DatabaseViewWindowSnapshot } from "../../shared/database-views";
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
 import type {
   DatabaseJsonValue,
   DatabasePropertyValueType,
@@ -39,7 +38,7 @@ const ESTIMATES = new Set<Estimate>(["xs", "s", "m", "l", "xl"]);
 
 export interface DatabaseViewRenderModel {
   readonly boundedRead?: DatabasePromotionReadEvidence | null;
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly libraryId: string;
   readonly databaseViewId: DatabaseViewId;
   readonly databaseId: DatabaseId;
@@ -49,10 +48,8 @@ export interface DatabaseViewRenderModel {
   readonly viewName: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp | null;
   readonly columns: readonly DatabaseViewRenderColumn[];
   readonly query: DatabaseViewQueryResultV2;
-  readonly readOnlyReason: string | null;
 }
 
 export interface PublishedDatabaseViewDefinitionPatch {
@@ -67,7 +64,7 @@ export interface PublishedDatabaseViewDefinitionPatch {
   readonly conditionalColors?: readonly DatabaseViewConditionalColorRule[];
 }
 
-export type DatabaseViewAccessContext =
+export type DatabaseViewRoutingContext =
   | { readonly kind: "project"; readonly projectId: string }
   | { readonly kind: "library" };
 
@@ -473,8 +470,8 @@ export const buildDatabaseViewRenderModel = (
   const groupPropertyId = query.view.config.presentation.group?.propertyId ?? null;
 
   return {
-    accessContext:
-      "accessContext" in snapshot
+    routingContext:
+      "routingContext" in snapshot
         ? { kind: "library" }
         : { kind: "project", projectId: snapshot.projectId },
     libraryId: snapshot.libraryId,
@@ -486,10 +483,8 @@ export const buildDatabaseViewRenderModel = (
     viewName: query.view.name,
     storeEpoch: snapshot.storeEpoch,
     commitSeq: snapshot.commitSeq,
-    authorization: snapshot.authorization,
     columns: buildDatabaseViewColumns(query, groupPropertyId),
     query,
-    readOnlyReason: null,
   };
 };
 
@@ -502,12 +497,11 @@ export const buildDatabaseViewWindowRenderModel = (
 ): DatabaseViewRenderModel => {
   const model = buildDatabaseViewRenderModel({
     ...(window.projectId === null
-      ? { accessContext: { kind: "library" as const } }
+      ? { routingContext: { kind: "library" as const } }
       : { projectId: window.projectId }),
     libraryId: window.libraryId,
     storeEpoch: window.storeEpoch,
     commitSeq: window.commitSeq,
-    authorization: window.authorization,
     value: { kind: "query", value: window.query },
   });
   return {

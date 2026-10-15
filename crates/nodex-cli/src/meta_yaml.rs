@@ -661,7 +661,7 @@ fn validate_property_value(
         (ProjectedPropertyTypeV1::Relation, Value::Mapping(mut summary)) => {
             expect_exact_keys(
                 &summary,
-                &["targets", "total_count", "restricted_count", "has_more"],
+                &["targets", "total_count", "unavailable_count", "has_more"],
                 span,
                 path,
             )?;
@@ -694,9 +694,9 @@ fn validate_property_value(
                 take(&mut summary, "total_count", path)?,
                 &format!("{path}.total_count"),
             )?;
-            let restricted_count = expect_nonnegative_i64(
-                take(&mut summary, "restricted_count", path)?,
-                &format!("{path}.restricted_count"),
+            let unavailable_count = expect_nonnegative_i64(
+                take(&mut summary, "unavailable_count", path)?,
+                &format!("{path}.unavailable_count"),
             )?;
             let has_more_node = take(&mut summary, "has_more", path)?;
             let has_more = match has_more_node.value {
@@ -709,7 +709,7 @@ fn validate_property_value(
                     ));
                 }
             };
-            if total_count < restricted_count + targets.len() as i64
+            if total_count < unavailable_count + targets.len() as i64
                 || has_more != (total_count > targets.len() as i64)
             {
                 return Err(invalid("relation summary counts are inconsistent").at_path(path));
@@ -718,7 +718,7 @@ fn validate_property_value(
                 ProjectedRelationSummaryV1 {
                     targets,
                     total_count,
-                    restricted_count,
+                    unavailable_count,
                     has_more,
                 },
             ))
@@ -1024,7 +1024,7 @@ id: page_1
     }
 
     #[test]
-    fn parses_relation_summary_without_exposing_restricted_identities() {
+    fn parses_relation_summary_with_unavailable_target_counts() {
         let metadata = parse(
             br#"id: "page_1"
 title: "Blocked task"
@@ -1037,7 +1037,7 @@ properties:
         - id: "page_visible"
           name: "Visible dependency"
       total_count: 3
-      restricted_count: 1
+      unavailable_count: 1
       has_more: true
 schedule: null
 "#,
@@ -1051,7 +1051,7 @@ schedule: null
                     name: "Visible dependency".to_owned(),
                 }],
                 total_count: 3,
-                restricted_count: 1,
+                unavailable_count: 1,
                 has_more: true,
             })
         );
@@ -1065,7 +1065,7 @@ properties:
     value:
       targets: []
       total_count: 1
-      restricted_count: 0
+      unavailable_count: 0
       has_more: false
 schedule: null
 "#;

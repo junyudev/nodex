@@ -194,7 +194,7 @@ export const OrchestrationV2SessionCapabilities = Schema.Struct({
   supportsMultipleProviderThreadsPerSession: Schema.Boolean,
   supportsModelSwitchInSession: Schema.Boolean,
   supportsProviderSwitchingViaHandoff: Schema.Boolean,
-  supportsRuntimeModeSwitchInSession: Schema.Boolean,
+
   pendingRequestsSurviveRestart: Schema.Boolean,
 });
 export type OrchestrationV2SessionCapabilities = typeof OrchestrationV2SessionCapabilities.Type;
@@ -540,12 +540,21 @@ export type OrchestrationV2ThreadLaunchWorkspaceStrategy =
 /** Failure code on the error item a failed workspace preparation leaves. */
 export const ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE = "workspace_preparation_failed";
 
+export const OrchestrationV2NativeInput = Schema.Struct({
+  runtimeGeneration: TrimmedNonEmptyString,
+  providerSessionId: ProviderSessionId, nativeGeneration: PositiveInt,
+  nativeThreadId: Schema.String, nativeTurnId: Schema.String,
+});
 export const OrchestrationV2Run = Schema.Struct({
+  /** Observed native work is adopted; it is never sent to the provider twice. */
+  nativeInput: Schema.optional(OrchestrationV2NativeInput),
   id: RunId,
   threadId: ThreadId,
   ordinal: PositiveInt,
   providerInstanceId: ProviderInstanceId,
   modelSelection: ModelSelection,
+  /** Per-message planning intent survives waiting in the queue. */
+  interactionMode: Schema.optional(ProviderInteractionMode),
   providerThreadId: Schema.NullOr(ProviderThreadId),
   userMessageId: MessageId,
   rootNodeId: Schema.NullOr(NodeId),
@@ -1758,7 +1767,6 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.marked-unread",
       "thread.metadata-updated",
       "thread.pull-request-synced",
-      "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
@@ -2578,7 +2586,6 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.marked-unread",
       "thread.pull-request-synced",
       "thread.metadata-updated",
-      "thread.runtime-mode-updated",
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
@@ -2832,6 +2839,8 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("thread.metadata.update"),
     commandId: CommandId,
     threadId: ThreadId,
+    /** Move product ownership of the root execution tree without replacing its identity or workspace. */
+    projectId: Schema.optional(ProjectId),
     title: Schema.optional(TrimmedNonEmptyString),
     /** Kick off (true) or abandon (false) an async title regeneration. */
     regenerateTitle: Schema.optional(Schema.Boolean),
@@ -2902,12 +2911,6 @@ export const OrchestrationV2Command = Schema.Union([
     title: Schema.optional(TrimmedNonEmptyString),
   }),
   Schema.Struct({
-    type: Schema.Literal("thread.runtime-mode.set"),
-    commandId: CommandId,
-    threadId: ThreadId,
-    runtimeMode: RuntimeMode,
-  }),
-  Schema.Struct({
     type: Schema.Literal("thread.interaction-mode.set"),
     commandId: CommandId,
     threadId: ThreadId,
@@ -2925,13 +2928,19 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     providerSessionId: ProviderSessionId,
     reason: Schema.optional(Schema.String),
+    /** Project cleanup refuses live work at the canonical command writer. */
+    onlyIfIdle: Schema.optional(Schema.Boolean),
+    revokeMcpCredential: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("message.dispatch"),
+    nativeInput: Schema.optional(OrchestrationV2NativeInput),
     notification: Schema.optional(OrchestrationV2Notification),
     ...OrchestrationV2CreationFields,
     scheduledTaskId: Schema.optional(ScheduledTaskId),
     senderThreadId: Schema.optional(ThreadId),
+    /** Captured sending Run; null denotes a Session-only source. */
+    senderRunId: Schema.optional(Schema.NullOr(RunId)),
     commandId: CommandId,
     threadId: ThreadId,
     messageId: MessageId,
@@ -2941,6 +2950,7 @@ export const OrchestrationV2Command = Schema.Union([
     /** Seed the temporary title and generate a durable replacement for the first message. */
     titleSeed: Schema.optional(TrimmedNonEmptyString),
     modelSelection: Schema.optional(ModelSelection),
+    interactionMode: Schema.optional(ProviderInteractionMode),
     sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
     restartContinuationOfRunId: Schema.optional(RunId),
     usageLimitContinuationOfRunId: Schema.optional(RunId),
@@ -3047,6 +3057,8 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.edit"),
+    modelSelection: Schema.optional(ModelSelection),
+    interactionMode: Schema.optional(ProviderInteractionMode),
     context: Schema.optional(OrchestrationMessageContext),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3061,7 +3073,7 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     requestId: RuntimeRequestId,
-    decision: Schema.optional(ProviderApprovalDecision),
+    decision: Schema.optional(Schema.Literals(["accept", "decline", "cancel"])),
     answers: Schema.optional(ProviderUserInputAnswers),
     attachmentsByQuestionId: Schema.optional(UserInputAttachments),
   }),
@@ -3073,6 +3085,8 @@ export const OrchestrationV2Command = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("checkpoint.rollback"),
+    /** Editing a user message removes this exact latest Run after an idle-state check. */
+    beforeRunId: Schema.optional(RunId),
     restoreFiles: Schema.optional(Schema.Boolean),
     commandId: CommandId,
     threadId: ThreadId,
@@ -3223,8 +3237,8 @@ const OrchestrationV2InternalCommand = Schema.Union([
     type: Schema.Literal("secret_request.record"),
     commandId: CommandId,
     threadId: ThreadId,
-    runId: RunId,
-    nodeId: NodeId,
+    runId: Schema.NullOr(RunId),
+    nodeId: Schema.NullOr(NodeId),
     turnItemId: TurnItemId,
     label: TrimmedNonEmptyString,
     reason: Schema.String,

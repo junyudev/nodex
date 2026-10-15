@@ -7,7 +7,7 @@ import type { FileReadAuthority } from "./library-file-resources";
 
 const authority = {
   libraryId: "library-1",
-  contentAccessContext: { kind: "project", projectId: "project-1" } as const,
+  contentRoutingContext: { kind: "project", projectId: "project-1" } as const,
   readSource: { kind: "page", page_id: "page-1" } as const,
   storeEpoch: "store-1",
 };

@@ -9,11 +9,9 @@ import type { components } from "@nodex/core-protocol";
 import type { DatabaseId, DatabaseViewId, DataSourceId } from "./database-identities";
 import type { DatabaseViewLayout } from "./database-kernel";
 import type { DocumentCommitRef } from "./block-documents/contracts";
-import type { ProjectAppearance } from "./project-appearance";
 import type { BlockPropertyFieldMutationV2 } from "./block-property-mutations-v2";
 import type { DatabaseApplyOperationV2 } from "./database-module-v2";
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
-import type { AuthorizedReadStamp } from "./authorized-read-stamp";
 import type { WorkflowStatus } from "./workflow-status";
 import type { PageSearchMatch, PageSearchTextPart } from "./types";
 import type { PortableRichText } from "./block-documents/portable-rich-text";
@@ -23,7 +21,6 @@ export const DEFAULT_LIBRARY_READ_LIMIT = 20 as const;
 export const MAX_LIBRARY_READ_LIMIT = 100 as const;
 export const MAX_LIBRARY_CURSOR_LENGTH = 2_048 as const;
 export const MAX_LIBRARY_QUERY_LENGTH = 256 as const;
-export const MAX_LIBRARY_PROJECT_ACCESS_CHANGES = 100_000 as const;
 export const MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS = 200 as const;
 
 export type LibraryRouteTarget =
@@ -208,10 +205,6 @@ export type LibraryRead =
       readonly mode: "structural_history_states";
       readonly tokens: readonly LibraryStructuralHistoryToken[];
     }
-  | {
-      readonly mode: "resource_project_access";
-      readonly target: LibraryResourceTarget;
-    }
   | { readonly mode: "canvas_target"; readonly canvasId: string }
   | {
       readonly mode: "children";
@@ -311,10 +304,6 @@ export type LibraryReadValue =
       readonly kind: "structural_history_states";
       readonly items: readonly LibraryStructuralHistoryState[];
     }
-  | {
-      readonly kind: "resource_project_access";
-      readonly value: LibraryResourceProjectAccess;
-    }
   | { readonly kind: "canvas_target"; readonly value: LibraryCanvasTarget }
   | {
       readonly kind: "children";
@@ -386,7 +375,6 @@ export interface LibraryModuleReadSnapshot {
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp | null;
   readonly value: LibraryReadValue;
 }
 
@@ -578,63 +566,6 @@ export interface RestoreLibraryResourceOperation {
       };
 }
 
-export interface GrantLibraryResourceToProjectOperation {
-  readonly kind: "grant_project_access";
-  readonly projectId: string;
-  readonly target: LibraryResourceTarget;
-  readonly access: "read" | "read_write";
-}
-
-export type LibraryAccess = "read" | "read_write";
-
-export type LibraryInheritedProjectAccessSource =
-  | {
-      readonly kind: "primary_database";
-      readonly databaseId: DatabaseId;
-      readonly databaseName: string;
-      readonly access: LibraryAccess;
-    }
-  | {
-      readonly kind: "ancestor_page";
-      readonly pageId: string;
-      readonly pageTitle: string;
-      readonly access: LibraryAccess;
-    }
-  | {
-      readonly kind: "database_grant";
-      readonly databaseId: DatabaseId;
-      readonly databaseName: string;
-      readonly access: LibraryAccess;
-    };
-
-export interface LibraryProjectAccessRow {
-  readonly projectId: string;
-  readonly projectName: string;
-  readonly appearance: ProjectAppearance;
-  readonly lifecycle: "active" | "inactive" | "archived";
-  readonly directGrant: {
-    readonly access: LibraryAccess;
-    readonly revision: number;
-  } | null;
-  readonly inheritedSources: readonly LibraryInheritedProjectAccessSource[];
-  readonly effectiveAccess: LibraryAccess | null;
-}
-
-export interface LibraryResourceProjectAccess {
-  readonly target: LibraryResourceTarget;
-  readonly projects: readonly LibraryProjectAccessRow[];
-}
-
-export interface SetLibraryProjectAccessOperation {
-  readonly kind: "set_project_access";
-  readonly target: LibraryResourceTarget;
-  readonly changes: readonly {
-    readonly projectId: string;
-    readonly access: LibraryAccess | null;
-    readonly expectedRevision: number | null;
-  }[];
-}
-
 export interface ApplyPageMetadataPropertiesOperation {
   readonly kind: "apply_page_metadata_properties";
   readonly clientSessionId?: string;
@@ -808,8 +739,6 @@ export type LibraryApplyOperation =
   | MoveLibraryBlockOperation
   | ArchiveLibraryResourceOperation
   | RestoreLibraryResourceOperation
-  | GrantLibraryResourceToProjectOperation
-  | SetLibraryProjectAccessOperation
   | ApplyPageMetadataPropertiesOperation
   | ApplyLibraryStructuralEditOperation
   | ReverseLibraryStructuralEditOperation;

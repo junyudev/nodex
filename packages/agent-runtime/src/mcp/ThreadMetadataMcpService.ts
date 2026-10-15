@@ -166,6 +166,12 @@ const make = Effect.gen(function* () {
     if (shell === null || shell.deletedAt !== null) {
       return yield* failure("thread_not_found", `Thread ${threadId} was not found.`);
     }
+    const caller =
+      scope.thread === undefined
+        ? undefined
+        : yield* threadManagement
+            .getThreadShell(scope.thread.threadId)
+            .pipe(Effect.mapError((error) => failure("orchestration_error", error.message)));
     const target = yield* threadManagement
       .getProjectThreadRecords({ projectId: shell.projectId, threadId }, [])
       .pipe(Effect.mapError(threadLookupFailure));

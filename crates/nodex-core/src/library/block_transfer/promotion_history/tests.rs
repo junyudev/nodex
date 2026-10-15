@@ -42,10 +42,15 @@ struct Fixture {
     library: LibraryModule,
     documents: OwnedDocumentModule,
     root: String,
+    context: BoundModuleContext,
 }
 
 impl Fixture {
     fn new() -> Self {
+        Self::new_with_context(context())
+    }
+
+    fn new_with_context(context: BoundModuleContext) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
         kernel.writer().call(|connection| with_immediate_transaction(connection, |transaction| {
@@ -63,6 +68,7 @@ impl Fixture {
             library,
             documents,
             root: String::new(),
+            context,
         };
         fixture
             .apply(LibraryIntent::CreatePage {
@@ -100,7 +106,7 @@ impl Fixture {
 
     fn apply(&self, intent: LibraryIntent) -> Result<LibraryApplyOutcome, CoreError> {
         self.library.apply(
-            &context(),
+            &self.context,
             ModuleApplyRequest {
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 operation_id: crate::domain::identity::random_uuid_v7().unwrap(),
@@ -138,7 +144,7 @@ impl Fixture {
         let head = self.head();
         self.documents
             .apply(
-                &context(),
+                &self.context,
                 ModuleApplyRequest {
                     contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                     operation_id: crate::domain::identity::random_uuid_v7().unwrap(),
@@ -170,13 +176,17 @@ impl Fixture {
             .unwrap()
     }
 
-    fn promote(&self, root: &str) -> LibraryStructuralHistoryToken {
-        self.apply(LibraryIntent::TransferBlocks {
+    fn promotion_intent(
+        &self,
+        root: &str,
+        head: LibraryBlockTransferDocumentHead,
+    ) -> LibraryIntent {
+        LibraryIntent::TransferBlocks {
             intent: LibraryBlockTransferLogicalIntent {
                 actor: serde_json::json!({ "kind": "test" }),
                 mode: LibraryBlockTransferMode::Move,
                 root_block_ids: vec![root.into()],
-                causal_dependencies: vec![self.head()],
+                causal_dependencies: vec![head],
                 source: LibraryBlockTransferSource::Document {
                     document_id: DOCUMENT.into(),
                 },
@@ -192,14 +202,18 @@ impl Fixture {
                 },
                 promotion_policy: LibraryPagePromotionPolicy::Literal,
             },
-        })
-        .unwrap()
-        .committed
-        .value
-        .block_transfer
-        .unwrap()
-        .history
-        .unwrap()
+        }
+    }
+
+    fn promote(&self, root: &str) -> LibraryStructuralHistoryToken {
+        self.apply(self.promotion_intent(root, self.head()))
+            .unwrap()
+            .committed
+            .value
+            .block_transfer
+            .unwrap()
+            .history
+            .unwrap()
     }
 
     fn reverse(&self, token: LibraryStructuralHistoryToken) -> LibraryApplyOutcome {
@@ -234,6 +248,104 @@ fn text_update(id: &str, text: &str) -> Operation {
             unset_content: false,
         },
     }
+}
+
+#[test]
+fn promotion_undo_delivers_live_source_across_projects_and_retires_dormant_updates() {
+    use crate::infrastructure::event_log::{CoreEventLog, DocumentLiveDelivery};
+
+    let fixture = Fixture::new();
+    let token = fixture.promote(&fixture.root);
+    let undone = fixture.reverse(token);
+    let result = undone.committed.value.structural_edit.as_ref().unwrap();
+    let dormant_document = result
+        .document_commits
+        .iter()
+        .find(|commit| commit.document_id != DOCUMENT)
+        .expect("demotion retains its final Document commit")
+        .document_id
+        .clone();
+    fixture.kernel.writer().call(|connection| {
+        connection.execute(
+            "INSERT INTO projects(id, library_id, name, created, updated) VALUES ('other-project', 'library', 'Other', 'now', 'now')",
+            [],
+        )?;
+        Ok(())
+    }).unwrap();
+    let other_project = BoundModuleContext {
+        project_id: Some(ProjectId("other-project".into())),
+        ..context()
+    };
+    let log = CoreEventLog::new(fixture.kernel.readers());
+    for inline in [false, true] {
+        let packet = log
+            .authorized_packet(undone.committed.commit_seq, &other_project, None, inline)
+            .expect("demotion packet")
+            .expect("source restoration packet");
+        assert_eq!(packet.document_effects.len(), 1);
+        assert_eq!(packet.document_effects[0].reference.document_id, DOCUMENT);
+        assert_eq!(
+            packet.document_effects[0].reference.result_head_seq,
+            fixture.head().expected_head_seq
+        );
+        assert_eq!(packet.document_effects[0].inline_update.is_some(), inline);
+    }
+    let live = log
+        .authorized_document_live_delivery(
+            undone.committed.commit_seq,
+            &other_project,
+            DOCUMENT,
+            &StoreEpoch("epoch".into()),
+            "native-generation",
+            0,
+        )
+        .expect("cross-Project exact Document subscription");
+    let DocumentLiveDelivery::Packet(packet) = live else {
+        panic!("source Document must receive its exact committed restoration");
+    };
+    assert_eq!(packet.document_effects.len(), 1);
+    assert_eq!(packet.document_effects[0].reference.document_id, DOCUMENT);
+    assert_eq!(
+        log.authorized_document_live_delivery(
+            undone.committed.commit_seq,
+            &other_project,
+            &dormant_document,
+            &StoreEpoch("epoch".into()),
+            "native-generation",
+            0,
+        )
+        .expect("retired exact subscription"),
+        DocumentLiveDelivery::DocumentUnavailable
+    );
+    fixture
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            assert!(
+                crate::document::read_document_authority(connection, &dormant_document).is_err(),
+                "ordinary Document reads must retain strict canonical owner checks"
+            );
+            Ok(())
+        })
+        .unwrap();
+    // A storage anomaly without exact demotion evidence must still stop delivery.
+    fixture
+        .kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "DELETE FROM structural_dormant_document_sources WHERE document_id = ?1",
+                [&dormant_document],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        log.authorized_packet(undone.committed.commit_seq, &other_project, None, false,)
+            .unwrap_err()
+            .code,
+        StoreErrorCode::StoreCorrupt
+    );
 }
 
 #[test]
@@ -468,4 +580,54 @@ fn promotion_undo_rejects_a_missing_restore_anchor_atomically() {
     assert_eq!(fixture.source(), before);
     assert_eq!(fixture.head().expected_head_seq, head.expected_head_seq);
     assert_eq!(fixture.active_rows(), 1);
+}
+
+#[test]
+fn library_routed_promotion_preserves_causal_source_and_inverse_history() {
+    let fixture = Fixture::new_with_context(BoundModuleContext {
+        project_id: None,
+        ..context()
+    });
+    let before = fixture.source().block_tree;
+    let promoted = fixture.promote(&fixture.root);
+    assert_eq!(fixture.active_rows(), 1);
+    let undone = fixture.reverse(promoted);
+    assert_eq!(fixture.active_rows(), 0);
+    assert_eq!(fixture.source().block_tree, before);
+    let redo = undone
+        .committed
+        .value
+        .structural_edit
+        .unwrap()
+        .history
+        .unwrap();
+    let redone = fixture.reverse(redo);
+    assert_eq!(fixture.active_rows(), 1);
+    let undo_again = redone
+        .committed
+        .value
+        .structural_edit
+        .unwrap()
+        .history
+        .unwrap();
+    fixture.reverse(undo_again);
+    assert_eq!(fixture.active_rows(), 0);
+    assert_eq!(fixture.source().block_tree, before);
+}
+
+#[test]
+fn library_routed_promotion_rejects_stale_causal_heads_before_publishing_pages() {
+    let fixture = Fixture::new_with_context(BoundModuleContext {
+        project_id: None,
+        ..context()
+    });
+    let intent = fixture.promotion_intent(&fixture.root, fixture.head());
+    fixture.edit(vec![text_update(SIBLING, "Later save")]);
+    let before = fixture.source().block_tree;
+    let head = fixture.head();
+    let rejected = fixture.apply(intent).unwrap_err();
+    assert_eq!(rejected.code, CoreErrorCode::RevisionConflict);
+    assert_eq!(fixture.source().block_tree, before);
+    assert_eq!(fixture.head().expected_head_seq, head.expected_head_seq);
+    assert_eq!(fixture.active_rows(), 0);
 }

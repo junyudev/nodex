@@ -53,9 +53,6 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECTION_HEADER: &str = "x-nodex-connection-id";
 const CONNECTION_BINDING_HEADER: &str = "x-nodex-connection-binding";
 const PROJECT_HEADER: &str = "x-nodex-project-id";
-const DATABASE_SCOPE_HEADER: &str = "x-nodex-database-scope";
-const DOCUMENT_SCOPE_HEADER: &str = "x-nodex-document-scope";
-const LIBRARY_SCOPE: &str = "library";
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -155,7 +152,7 @@ impl CoreClient {
                 contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
                 read,
             }),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -167,7 +164,7 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/library/apply",
             &LibraryApplyRequest(request),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -203,7 +200,7 @@ impl CoreClient {
             &path,
             source,
             byte_length,
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
             MAX_ORDINARY_JSON_RESPONSE_BYTES,
         )?;
         serde_json::from_slice(&body.bytes).map_err(ClientError::from)
@@ -241,7 +238,7 @@ impl CoreClient {
             &path,
             source,
             byte_length,
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
             MAX_ORDINARY_JSON_RESPONSE_BYTES,
         )?;
         serde_json::from_slice(&body.bytes).map_err(ClientError::from)
@@ -359,7 +356,7 @@ impl CoreClient {
             path,
             &mut empty,
             0,
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
             maximum_bytes,
         )?;
         let mime_type = response
@@ -389,7 +386,7 @@ impl CoreClient {
                 contract_version: nodex_core_contracts::QUERY_CONTRACT_VERSION,
                 read,
             }),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -404,7 +401,7 @@ impl CoreClient {
                 contract_version: nodex_core_contracts::database::DATABASE_CONTRACT_VERSION,
                 read,
             }),
-            ScopeHeaders::database(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -416,14 +413,13 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/database/apply",
             &DatabaseApplyRequest(request),
-            ScopeHeaders::database(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
     pub fn document_read(
         &self,
         project_id: Option<&str>,
-        library_scope: bool,
         read: OwnedDocumentRead,
     ) -> Result<OwnedDocumentReadResponse, ClientError> {
         if let OwnedDocumentRead::SyncYjs { document_id, .. }
@@ -438,7 +434,7 @@ impl CoreClient {
                 "/core/v1/modules/document/read",
                 &document_id,
                 &bytes,
-                ScopeHeaders::document(project_id, library_scope),
+                ContextHeaders::project(project_id),
             )?;
             if response.header("content-type").is_some_and(|value| {
                 value.starts_with("application/vnd.nodex.document-sync.v3+octet-stream")
@@ -460,14 +456,13 @@ impl CoreClient {
                 contract_version: <nodex_core_contracts::document::OwnedDocumentContract as VersionedModuleContract>::VERSION,
                 read,
             }),
-            ScopeHeaders::document(project_id, library_scope),
+            ContextHeaders::project(project_id),
         )
     }
 
     pub fn document_apply(
         &self,
         project_id: Option<&str>,
-        library_scope: bool,
         request: nodex_core_contracts::ModuleApplyRequest<OwnedDocumentIntent>,
     ) -> Result<OwnedDocumentApplyResponse, ClientError> {
         if let OwnedDocumentIntent::CaptureRecovery { capture } = &request.intent {
@@ -488,7 +483,7 @@ impl CoreClient {
                 ("x-nodex-contract-version", version.as_str()),
                 ("x-nodex-payload-hash", hash.as_str()),
             ];
-            headers.extend(ScopeHeaders::document(project_id, library_scope).values);
+            headers.extend(ContextHeaders::project(project_id).values);
             return request_bytes(
                 &self.socket,
                 &self.auth,
@@ -509,7 +504,7 @@ impl CoreClient {
                 "/core/v1/modules/document/apply",
                 &document_id,
                 &bytes,
-                ScopeHeaders::document(project_id, library_scope),
+                ContextHeaders::project(project_id),
             )?;
             if response.header("content-type").is_some_and(|value| {
                 value.starts_with("application/vnd.nodex.document-sync.v3+octet-stream")
@@ -528,14 +523,13 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/document/apply",
             &OwnedDocumentApplyRequest(request),
-            ScopeHeaders::document(project_id, library_scope),
+            ContextHeaders::project(project_id),
         )
     }
 
     pub fn document_export_recovery(
         &self,
         project_id: Option<&str>,
-        library_scope: bool,
         draft_id: &str,
     ) -> Result<Vec<u8>, ClientError> {
         let body = serde_json::to_vec(&nodex_core_contracts::document::RecoveryExportRequest {
@@ -545,7 +539,7 @@ impl CoreClient {
             (CONNECTION_HEADER, self.connection_id.as_str()),
             (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
         ];
-        headers.extend(ScopeHeaders::document(project_id, library_scope).values);
+        headers.extend(ContextHeaders::project(project_id).values);
         let response = request_raw_bytes(
             &self.socket,
             &self.auth,
@@ -581,7 +575,7 @@ impl CoreClient {
                 contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
                 read,
             }),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -593,7 +587,7 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/workspace/apply",
             &ProjectWorkspaceApplyRequest(request),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -608,7 +602,7 @@ impl CoreClient {
                 contract_version: <nodex_core_contracts::automation::AutomationContract as VersionedModuleContract>::VERSION,
                 read,
             }),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -620,7 +614,7 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/automation/apply",
             &AutomationApplyRequest(request),
-            ScopeHeaders::project(project_id),
+            ContextHeaders::project(project_id),
         )
     }
 
@@ -634,7 +628,7 @@ impl CoreClient {
                 contract_version: <nodex_core_contracts::administration::StoreAdministrationContract as VersionedModuleContract>::VERSION,
                 read,
             }),
-            ScopeHeaders::default(),
+            ContextHeaders::default(),
         )
     }
 
@@ -645,7 +639,7 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/modules/administration/apply",
             &StoreAdministrationApplyRequest(request),
-            ScopeHeaders::default(),
+            ContextHeaders::default(),
         )
     }
 
@@ -653,7 +647,7 @@ impl CoreClient {
         self.connected_request(
             "/core/v1/admin/shutdown",
             &ShutdownRequest::default(),
-            ScopeHeaders::default(),
+            ContextHeaders::default(),
         )
     }
 
@@ -662,7 +656,7 @@ impl CoreClient {
         path: &str,
         document_id: &str,
         bytes: &[u8],
-        scope: ScopeHeaders<'_>,
+        scope: ContextHeaders<'_>,
     ) -> Result<RawHttpResponse, ClientError> {
         let mut headers = vec![
             (CONNECTION_HEADER, self.connection_id.as_str()),
@@ -682,7 +676,7 @@ impl CoreClient {
         &self,
         path: &str,
         request: &Request,
-        scope: ScopeHeaders<'_>,
+        scope: ContextHeaders<'_>,
     ) -> Result<Response, ClientError> {
         let mut headers = vec![
             (CONNECTION_HEADER, self.connection_id.as_str()),
@@ -715,7 +709,7 @@ fn connected_stream_request(
     path: &str,
     source: &mut impl Read,
     byte_length: u64,
-    scope: ScopeHeaders<'_>,
+    scope: ContextHeaders<'_>,
     maximum_response_bytes: usize,
 ) -> Result<RawHttpResponse, ClientError> {
     let mut stream = UnixStream::connect(&client.socket)?;
@@ -897,38 +891,17 @@ fn wait_for_selection_result(child: &mut Child) -> Result<CoreSelectionResult, C
 }
 
 #[derive(Default)]
-struct ScopeHeaders<'a> {
+struct ContextHeaders<'a> {
     values: Vec<(&'static str, &'a str)>,
 }
 
-impl<'a> ScopeHeaders<'a> {
+impl<'a> ContextHeaders<'a> {
     fn project(project_id: Option<&'a str>) -> Self {
         Self {
             values: project_id
                 .map(|project_id| vec![(PROJECT_HEADER, project_id)])
                 .unwrap_or_default(),
         }
-    }
-
-    fn database(project_id: Option<&'a str>) -> Self {
-        match project_id {
-            Some(project_id) => Self::project(Some(project_id)),
-            None => Self {
-                values: vec![(DATABASE_SCOPE_HEADER, LIBRARY_SCOPE)],
-            },
-        }
-    }
-
-    fn document(project_id: Option<&'a str>, library_scope: bool) -> Self {
-        if let Some(project_id) = project_id {
-            return Self::project(Some(project_id));
-        }
-        if library_scope {
-            return Self {
-                values: vec![(DOCUMENT_SCOPE_HEADER, LIBRARY_SCOPE)],
-            };
-        }
-        Self::default()
     }
 }
 
@@ -1396,19 +1369,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scope_headers_never_mix_project_and_library_authority() {
+    fn context_headers_carry_only_optional_project_routing() {
         assert_eq!(
-            ScopeHeaders::database(Some("project-1")).values,
+            ContextHeaders::project(Some("project-1")).values,
             [(PROJECT_HEADER, "project-1")]
         );
-        assert_eq!(
-            ScopeHeaders::database(None).values,
-            [(DATABASE_SCOPE_HEADER, LIBRARY_SCOPE)]
-        );
-        assert_eq!(
-            ScopeHeaders::document(None, true).values,
-            [(DOCUMENT_SCOPE_HEADER, LIBRARY_SCOPE)]
-        );
+        assert!(ContextHeaders::project(None).values.is_empty());
     }
 
     #[test]

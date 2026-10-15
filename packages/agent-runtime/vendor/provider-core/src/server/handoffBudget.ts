@@ -12,6 +12,9 @@ import type {
 import * as Config from "effect/Config";
 
 export const DEFAULT_HANDOFF_TOKEN_CAP = 16_000;
+export const CONVERSATION_SUMMARY_CHAR_CAP = 32_000;
+export const CONVERSATION_SUMMARY_HEADER =
+  "Imported conversation history from the previous T3 Code orchestrator. Use it as context; do not repeat it unless the user asks.";
 const HANDOFF_BYTE_CAP = 64_000;
 export const handoffTokenCapConfig = Config.Int("T3CODE_CONTEXT_HANDOFF_TOKEN_CAP").pipe(
   Config.withDefault(DEFAULT_HANDOFF_TOKEN_CAP),
@@ -229,6 +232,8 @@ export function selectHistory(input: {
   readonly coverage: string;
   readonly omittedItems?: number;
   readonly budget: number;
+  /** True source heads may be absent from a bounded candidate read (for example, an oversized item). */
+  readonly priorityItemIds?: readonly (string | null)[];
 }) {
   const messages = input.messages;
   const selected = new Set<number>();
@@ -255,9 +260,14 @@ export function selectHistory(input: {
   };
   // Prioritize the latest request and partial answer, then original constraints.
   // Oversized items are omitted whole and remain available through thread_read.
-  tryAdd(messages.findLastIndex((message) => message.role === "user"));
-  tryAdd(messages.findLastIndex((message) => message.role === "assistant"));
-  tryAdd(messages.findIndex((message) => message.role === "user"));
+  if (input.priorityItemIds === undefined) {
+    tryAdd(messages.findLastIndex((message) => message.role === "user"));
+    tryAdd(messages.findLastIndex((message) => message.role === "assistant"));
+    tryAdd(messages.findIndex((message) => message.role === "user"));
+  } else {
+    for (const itemId of input.priorityItemIds)
+      tryAdd(messages.findIndex((message) => message.itemId === itemId));
+  }
   for (let index = messages.length - 1; index >= 0; index--) tryAdd(index);
   return {
     messages: messages.filter((_, index) => selected.has(index)),
@@ -272,11 +282,12 @@ export function selectHistory(input: {
 export function handoffCoverage(input: {
   readonly threadId: string;
   readonly coveredRunOrdinals: OrchestrationV2ContextHandoff["coveredRunOrdinals"];
-  readonly items: ReadonlyArray<OrchestrationV2TurnItem>;
+  readonly items?: ReadonlyArray<OrchestrationV2TurnItem>;
+  readonly sourceItemRange?: { readonly first: string | null; readonly last: string | null };
 }): string {
   return [
     `Provider context handoff. Thread: ${input.threadId}. Covered app runs: ${input.coveredRunOrdinals.from}-${input.coveredRunOrdinals.to}.`,
-    `Source item range: ${input.items.at(0)?.id ?? "none"} through ${input.items.at(-1)?.id ?? "none"}.`,
+    `Source item range: ${input.sourceItemRange?.first ?? input.items?.at(0)?.id ?? "none"} through ${input.sourceItemRange?.last ?? input.items?.at(-1)?.id ?? "none"}.`,
     `Recover omitted history using t3_thread_read({threadId:"${input.threadId}",view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. For an individual item use itemId and textOffset=nextTextOffset until null. Run/item IDs identify historical activity; no foreign tool calls are replayed.`,
   ].join("\n");
 }

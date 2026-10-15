@@ -1,11 +1,10 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use nodex_core_contracts::agent::{AgentAuthorizationTarget, AgentProjectResourceAction};
 use nodex_core_contracts::library::{
     LibraryAgentBlockTarget, LibraryAgentSiblingAnchor, LibraryCanvasLocation,
     LibraryCanvasSummary, LibraryCanvasTarget, LibraryCatalogEntry, LibraryCatalogKind,
     LibraryLifecycle, LibraryMoveDestinationEntry, LibraryMoveDestinationScope,
-    LibraryNavigationNode, LibraryNavigationParent, LibraryPageAccessContext, LibraryPageBacklink,
+    LibraryNavigationNode, LibraryNavigationParent, LibraryPageBacklink,
     LibraryPageDataSourceContext, LibraryPageDetail, LibraryPageDocumentDescriptor,
     LibraryPageIntrinsicProperty, LibraryPageKeyTarget, LibraryPageLocation, LibraryPageMembership,
     LibraryPageMentionDestinationHead, LibraryPageOwnershipPath, LibraryPageOwnershipPathAncestor,
@@ -149,10 +148,7 @@ pub(super) fn read(
                 limit,
             )?,
         }),
-        LibraryRead::Metadata
-        | LibraryRead::StructuralHistoryStates { .. }
-        | LibraryRead::ResourceProjectAccess { .. }
-        | LibraryRead::FilterProjectionImpactForProject { .. } => {
+        LibraryRead::Metadata | LibraryRead::StructuralHistoryStates { .. } => {
             Err(invalid("Read is assembled by the Library Module"))
         }
         LibraryRead::Children {
@@ -191,16 +187,8 @@ pub(super) fn read(
             force_include_target,
         ),
         LibraryRead::Path { target } => {
-            if let (Some(project_id), LibraryRouteTarget::Page { page_id }) =
-                (requesting_project_id, &target)
-            {
-                super::require_page_read_access(connection, library_id, project_id, page_id)?;
-            } else if matches!(&target, LibraryRouteTarget::Page { .. })
-                && !trusted_root_adapter(requesting_adapter)
-            {
-                return Err(unauthorized(
-                    "Library Page paths require a trusted root or bound Project Adapter",
-                ));
+            if let LibraryRouteTarget::Page { page_id } = &target {
+                super::require_page_read_access(connection, library_id, page_id)?;
             }
             if let LibraryRouteTarget::Canvas { canvas_id } = &target {
                 require_bound_canvas_read_access(
@@ -236,55 +224,34 @@ pub(super) fn read(
             scope,
             cursor: requested_cursor,
             limit,
-        } => {
-            if !trusted_root_adapter(requesting_adapter) {
-                return Err(unauthorized(
-                    "Library move destinations require a trusted root Adapter",
-                ));
-            }
-            move_destinations(
-                connection,
-                library_id,
-                target,
-                scope,
-                requested_cursor,
-                limit,
-            )
-        }
+        } => move_destinations(
+            connection,
+            library_id,
+            target,
+            scope,
+            requested_cursor,
+            limit,
+        ),
         LibraryRead::PageRelocationDestinations {
             page_id,
             scope,
             cursor: requested_cursor,
             limit,
-        } => {
-            if !trusted_root_adapter(requesting_adapter) {
-                return Err(unauthorized(
-                    "Page relocation destinations require a trusted root Adapter",
-                ));
-            }
-            page_relocation_destinations(
-                connection,
-                library_id,
-                store_epoch,
-                &page_id,
-                requesting_project_id,
-                scope,
-                requested_cursor,
-                limit,
-            )
-        }
+        } => page_relocation_destinations(
+            connection,
+            library_id,
+            store_epoch,
+            &page_id,
+            requesting_project_id,
+            scope,
+            requested_cursor,
+            limit,
+        ),
         LibraryRead::PageMentionDestination { page_id } => {
-            let Some(project_id) = requesting_project_id else {
-                if !trusted_root_adapter(requesting_adapter) {
-                    return Err(unauthorized(
-                        "Page mention destinations require a Project or trusted root Adapter",
-                    ));
-                }
+            let Some(_project_id) = requesting_project_id else {
                 return page_mention_destination(connection, library_id, &page_id);
             };
-            super::history::require_page_write_access(
-                connection, library_id, project_id, &page_id,
-            )?;
+            super::history::require_page_write_access(connection, library_id, &page_id)?;
             page_mention_destination(connection, library_id, &page_id)
         }
         LibraryRead::PageDetail { page_id } => {
@@ -393,15 +360,11 @@ pub(super) fn read(
             block_id,
             authorization,
         } => {
-            super::agent_authorization::authorize_execution(
+            super::agent_execution::validate_execution(
                 connection,
                 context,
                 library_id,
                 &authorization,
-                &AgentAuthorizationTarget::PageOrBlock {
-                    id: block_id.clone(),
-                },
-                AgentProjectResourceAction::Read,
             )?;
             let value = agent_block_target(
                 connection,
@@ -415,7 +378,7 @@ pub(super) fn read(
         }
         LibraryRead::AgentSurfaceDescription {
             authorization,
-            displayed_access_context,
+            displayed_routing_context,
             target,
         } => Ok(LibraryReadValue::AgentSurfaceDescription {
             value: super::agent_surface::describe(
@@ -423,7 +386,7 @@ pub(super) fn read(
                 library_id,
                 context,
                 &authorization,
-                displayed_access_context,
+                displayed_routing_context,
                 target,
             )?,
         }),
@@ -488,11 +451,6 @@ pub(super) fn read(
             .map(Box::new),
         }),
         LibraryRead::PageLocation { page_id } => {
-            if requesting_project_id.is_some() || !trusted_root_adapter(requesting_adapter) {
-                return Err(unauthorized(
-                    "Page location requires a trusted local root Adapter",
-                ));
-            }
             validate_identity(&page_id, "Page location")?;
             let exists = connection
                 .query_row(
@@ -507,17 +465,14 @@ pub(super) fn read(
                 .optional()?;
             let value = exists
                 .map(|page_id| {
-                    first_active_project_with_page_access(connection, library_id, &page_id).map(
-                        |project_id| {
-                            project_id.map(|project_id| LibraryPageLocation {
-                                page_id,
-                                access_project_id: project_id,
-                            })
-                        },
-                    )
+                    let project_id =
+                        first_active_project_with_page_access(connection, library_id, &page_id)?;
+                    Ok::<_, StoreError>(LibraryPageLocation {
+                        page_id,
+                        project_id,
+                    })
                 })
-                .transpose()?
-                .flatten();
+                .transpose()?;
             Ok(LibraryReadValue::PageLocation { value })
         }
         LibraryRead::CanvasTarget { canvas_id } => Ok(LibraryReadValue::CanvasTarget {
@@ -530,11 +485,6 @@ pub(super) fn read(
             )?),
         }),
         LibraryRead::ViewLocation { view_id } => {
-            if requesting_project_id.is_some() || !trusted_root_adapter(requesting_adapter) {
-                return Err(unauthorized(
-                    "View location requires a trusted local root Adapter",
-                ));
-            }
             validate_identity(&view_id, "View location")?;
             let coordinates = connection
                 .query_row(
@@ -568,18 +518,19 @@ pub(super) fn read(
                 .optional()?;
             let value = coordinates
                 .map(|(view_id, data_source_id, database_id)| {
-                    first_active_project_with_database_access(connection, library_id, &database_id)
-                        .map(|project_id| {
-                            project_id.map(|project_id| LibraryViewLocation {
-                                view_id,
-                                data_source_id,
-                                database_id,
-                                access_project_id: project_id,
-                            })
-                        })
+                    let project_id = first_active_project_with_database_access(
+                        connection,
+                        library_id,
+                        &database_id,
+                    )?;
+                    Ok::<_, StoreError>(LibraryViewLocation {
+                        view_id,
+                        data_source_id,
+                        database_id,
+                        project_id,
+                    })
                 })
-                .transpose()?
-                .flatten();
+                .transpose()?;
             Ok(LibraryReadValue::ViewLocation { value })
         }
         LibraryRead::Search {
@@ -607,20 +558,6 @@ pub(super) fn read(
             recent_page_ids,
             limit,
         } => {
-            let native_bound_search = matches!(requesting_adapter, AdapterKind::NativeCli)
-                && requesting_project_id.is_some_and(|project_id| {
-                    project_ids.as_slice() == [project_id]
-                        && preferred_project_id
-                            .as_deref()
-                            .is_none_or(|preferred| preferred == project_id)
-                });
-            if !native_bound_search {
-                require_trusted_root_only(
-                    requesting_project_id,
-                    requesting_adapter,
-                    "Project Page search requires a trusted root or the Native CLI's exact bound Project",
-                )?;
-            }
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearch {
@@ -640,11 +577,6 @@ pub(super) fn read(
             })
         }
         LibraryRead::ProjectPageSearchFacets { project_ids } => {
-            require_trusted_root_only(
-                requesting_project_id,
-                requesting_adapter,
-                "Project Page search facets require a trusted local root Adapter",
-            )?;
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearchFacets {
@@ -655,11 +587,6 @@ pub(super) fn read(
             project_ids,
             page_ids,
         } => {
-            require_trusted_root_only(
-                requesting_project_id,
-                requesting_adapter,
-                "Project Page search metadata requires a trusted local root Adapter",
-            )?;
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearchMetadata {
@@ -671,11 +598,6 @@ pub(super) fn read(
             limit,
             source_page_id,
         } => {
-            if context.project_id.is_none() && !trusted_root_adapter(&context.adapter) {
-                return Err(unauthorized(
-                    "Page reference candidates require a trusted root or bound Project Adapter",
-                ));
-            }
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::PageReferenceCandidates {
@@ -716,9 +638,7 @@ pub(super) fn read(
                 limit,
             )?),
         }),
-        LibraryRead::PlanAgentResourceAccess { .. } => Err(invalid(
-            "Agent resource planning is assembled by the Library Module",
-        )),
+
         LibraryRead::BlockTransferPresentationPlan { .. } => Err(invalid(
             "Block transfer presentation planning is assembled by the Library Module",
         )),
@@ -801,7 +721,6 @@ fn page_backlinks(
     )?;
     let mut rows = statement.query(params![library_id, target_page_id])?;
     let mut grouped = HashMap::<String, PageBacklinkAccumulator>::new();
-    let mut authorized_pages = HashSet::<String>::new();
     while let Some(row) = rows.next()? {
         let source_page_id = row.get::<_, String>(0)?;
         let source_block_id = row.get::<_, String>(1)?;
@@ -809,27 +728,11 @@ fn page_backlinks(
         let presentation = row.get::<_, String>(3)?;
         let count = row.get::<_, u32>(4)?;
         let updated_at = row.get::<_, String>(5)?;
-        let allowed = if let Some(project_id) = context.project_id.as_ref() {
-            authorized_pages.contains(&source_page_id)
-                || super::page_read_authorization_roots(
-                    connection,
-                    library_id,
-                    &project_id.0,
-                    &source_page_id,
-                )?
-                .is_some()
-        } else {
-            true
-        };
-        if !allowed {
-            continue;
-        }
-        authorized_pages.insert(source_page_id.clone());
         let stable_id = format!("{source_page_id}\0{source_block_id}");
         if !grouped.contains_key(&stable_id) && grouped.len() == 100_000 {
             return Err(StoreError::new(
                 StoreErrorCode::ResourceExhausted,
-                "Authorized Page backlink projection exceeds its read bound",
+                "Page backlink projection exceeds its read bound",
                 false,
             ));
         }
@@ -931,19 +834,11 @@ fn page_backlinks(
 fn require_bound_page_read_access(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
+    _requesting_project_id: Option<&str>,
+    _requesting_adapter: &AdapterKind,
     page_id: &str,
 ) -> Result<(), StoreError> {
-    if let Some(project_id) = requesting_project_id {
-        return super::require_page_read_access(connection, library_id, project_id, page_id);
-    }
-    if trusted_root_adapter(requesting_adapter) {
-        return Ok(());
-    }
-    Err(unauthorized(
-        "Library Page reads require a trusted root or bound Project Adapter",
-    ))
+    super::require_page_read_access(connection, library_id, page_id)
 }
 
 pub(super) fn require_bound_canvas_read_access(
@@ -969,7 +864,7 @@ pub(super) fn require_bound_canvas_read_access(
         )
         .optional()?
         .ok_or_else(|| not_found("Library Canvas is unavailable"))?;
-    authorize_canvas_row(
+    validate_canvas_owner_row(
         connection,
         library_id,
         requesting_project_id,
@@ -980,51 +875,19 @@ pub(super) fn require_bound_canvas_read_access(
     )
 }
 
-fn authorize_canvas_row(
+fn validate_canvas_owner_row(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
+    _requesting_project_id: Option<&str>,
+    _requesting_adapter: &AdapterKind,
     canvas_id: &str,
-    host_page_id: Option<&str>,
+    _host_page_id: Option<&str>,
     include_deleted: bool,
 ) -> Result<(), StoreError> {
-    if let Some(project_id) = requesting_project_id {
-        if let Some(page_id) = host_page_id {
-            return super::require_page_read_access(connection, library_id, project_id, page_id);
-        }
-        return if include_deleted {
-            super::require_canvas_lifecycle_read_access(
-                connection, library_id, project_id, canvas_id,
-            )
-        } else {
-            super::require_canvas_read_access(connection, library_id, project_id, canvas_id)
-        };
+    if include_deleted {
+        return super::require_canvas_lifecycle_read_access(connection, library_id, canvas_id);
     }
-    if trusted_root_adapter(requesting_adapter) {
-        return Ok(());
-    }
-    Err(unauthorized(
-        "Library Canvas reads require a trusted root or bound Project Adapter",
-    ))
-}
-
-fn trusted_root_adapter(adapter: &AdapterKind) -> bool {
-    matches!(
-        adapter,
-        AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-    )
-}
-
-fn require_trusted_root_only(
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
-    message: &str,
-) -> Result<(), StoreError> {
-    if requesting_project_id.is_none() && trusted_root_adapter(requesting_adapter) {
-        return Ok(());
-    }
-    Err(unauthorized(message))
+    super::require_canvas_read_access(connection, library_id, canvas_id)
 }
 
 fn agent_block_target(
@@ -1107,31 +970,12 @@ fn agent_block_target(
 fn page_target(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
+    _requesting_project_id: Option<&str>,
+    _requesting_adapter: &AdapterKind,
     page_id: &str,
 ) -> Result<Option<LibraryPageTarget>, StoreError> {
     validate_identity(page_id, "Page target")?;
-    let Some(authority) = page_projection_authority(
-        connection,
-        library_id,
-        requesting_project_id,
-        requesting_adapter,
-    )?
-    else {
-        return Ok(None);
-    };
-    if let PageProjectionAuthority::Project(project_id) = authority
-        && let Err(error) =
-            super::require_page_read_access(connection, library_id, project_id, page_id)
-    {
-        if error.code == StoreErrorCode::NotFound {
-            return Ok(Some(LibraryPageTarget::Missing {
-                target_page_id: page_id.to_owned(),
-            }));
-        }
-        return Err(error);
-    }
+
     let row = connection
         .query_row(
             "SELECT block.type, block.lifecycle, page.library_id, page.block_id IS NOT NULL, \
@@ -1216,49 +1060,28 @@ fn page_target(
 fn page_key_target(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
+    _requesting_project_id: Option<&str>,
+    _requesting_adapter: &AdapterKind,
     page_key: &str,
 ) -> Result<LibraryPageKeyTarget, StoreError> {
-    let Some(authority) = page_projection_authority(
-        connection,
-        library_id,
-        requesting_project_id,
-        requesting_adapter,
-    )?
-    else {
-        return Ok(LibraryPageKeyTarget::NotFound);
-    };
     let mut authorized = Vec::new();
     for resolution in resolve_page_key_matches_in_library(connection, library_id, page_key)? {
         if resolution.page_lifecycle == "deleted" {
             continue;
         }
-        if let PageProjectionAuthority::Project(project_id) = &authority
-            && let Err(error) = super::require_page_read_access(
-                connection,
-                library_id,
-                project_id,
-                &resolution.page_block_id,
-            )
-        {
-            if error.code == StoreErrorCode::NotFound {
-                continue;
-            }
-            return Err(error);
-        }
+
         authorized.push(resolution);
     }
-    Ok(page_key_target_from_authorized(authorized))
+    Ok(page_key_target_from_matches(authorized))
 }
 
-fn page_key_target_from_authorized(
+fn page_key_target_from_matches(
     mut authorized: Vec<crate::database::page_key::PageKeyResolution>,
 ) -> LibraryPageKeyTarget {
     match authorized.len() {
         0 => LibraryPageKeyTarget::NotFound,
         1 => {
-            let resolution = authorized.pop().expect("one authorized Page-key target");
+            let resolution = authorized.pop().expect("one Page-key target");
             LibraryPageKeyTarget::Resolved {
                 page_id: resolution.page_block_id,
                 current_page_key: resolution.current_page_key,
@@ -1290,7 +1113,7 @@ mod page_key_target_tests {
     #[test]
     fn page_key_target_reports_authorized_ambiguity_without_page_metadata() {
         assert_eq!(
-            page_key_target_from_authorized(vec![
+            page_key_target_from_matches(vec![
                 resolution("page:lab", "LAB-13"),
                 resolution("page:lab1", "LAB1-3"),
             ]),
@@ -1302,44 +1125,18 @@ mod page_key_target_tests {
 fn page_ownership_path(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
-    requesting_adapter: &AdapterKind,
+    _requesting_project_id: Option<&str>,
+    _requesting_adapter: &AdapterKind,
     page_id: &str,
 ) -> Result<Option<LibraryPageOwnershipPath>, StoreError> {
     validate_identity(page_id, "Page ownership path")?;
-    let Some(authority) = page_projection_authority(
-        connection,
-        library_id,
-        requesting_project_id,
-        requesting_adapter,
-    )?
-    else {
-        return Ok(None);
-    };
+
     let Some(hierarchy) = page_hierarchy(connection, library_id, page_id)? else {
         return Ok(Some(LibraryPageOwnershipPath::Missing {
             target_page_id: page_id.to_owned(),
         }));
     };
-    let visible = match authority {
-        PageProjectionAuthority::TrustedLibrary => hierarchy,
-        PageProjectionAuthority::Project(project_id) => {
-            let mut visible = Vec::new();
-            for page in hierarchy {
-                match super::require_page_read_access(
-                    connection,
-                    library_id,
-                    project_id,
-                    &page.page_id,
-                ) {
-                    Ok(()) => visible.push(page),
-                    Err(error) if error.code == StoreErrorCode::NotFound => break,
-                    Err(error) => return Err(error),
-                }
-            }
-            visible
-        }
-    };
+    let visible = hierarchy;
     if visible.first().is_none_or(|page| page.page_id != page_id) {
         return Ok(Some(LibraryPageOwnershipPath::Missing {
             target_page_id: page_id.to_owned(),
@@ -1359,30 +1156,6 @@ fn page_ownership_path(
         target_page_id: page_id.to_owned(),
         ancestors,
     }))
-}
-
-#[derive(Clone, Copy)]
-enum PageProjectionAuthority<'a> {
-    TrustedLibrary,
-    Project(&'a str),
-}
-
-fn page_projection_authority<'a>(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: Option<&'a str>,
-    requesting_adapter: &AdapterKind,
-) -> Result<Option<PageProjectionAuthority<'a>>, StoreError> {
-    if let Some(project_id) = requesting_project_id {
-        return Ok(project_scope_exists(connection, library_id, project_id)?
-            .then_some(PageProjectionAuthority::Project(project_id)));
-    }
-    if trusted_root_adapter(requesting_adapter) {
-        return Ok(Some(PageProjectionAuthority::TrustedLibrary));
-    }
-    Err(unauthorized(
-        "Page projections require a trusted root or bound Project Adapter",
-    ))
 }
 
 struct PageHierarchyEntry {
@@ -1484,48 +1257,16 @@ fn page_hierarchy(
     }
 }
 
-fn project_scope_exists(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-) -> Result<bool, StoreError> {
-    Ok(connection
-        .query_row(
-            "SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2 LIMIT 1",
-            params![project_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some())
-}
-
-fn active_project_ids(
-    connection: &Connection,
-    library_id: &str,
-) -> Result<Vec<String>, StoreError> {
-    connection
-        .prepare(
-            "SELECT id FROM projects WHERE library_id = ?1 AND lifecycle = 'active' \
-             ORDER BY id",
-        )?
-        .query_map([library_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(StoreError::from)
-}
-
 fn first_active_project_with_page_access(
     connection: &Connection,
     library_id: &str,
     page_id: &str,
 ) -> Result<Option<String>, StoreError> {
-    for project_id in active_project_ids(connection, library_id)? {
-        if super::page_read_authorization_roots(connection, library_id, &project_id, page_id)?
-            .is_some()
-        {
-            return Ok(Some(project_id));
-        }
-    }
-    Ok(None)
+    let database_id = super::history::owning_database(connection, library_id, page_id)?;
+    let Some(database_id) = database_id else {
+        return Ok(None);
+    };
+    first_active_project_with_database_access(connection, library_id, &database_id)
 }
 
 fn first_active_project_with_database_access(
@@ -1533,22 +1274,7 @@ fn first_active_project_with_database_access(
     library_id: &str,
     database_id: &str,
 ) -> Result<Option<String>, StoreError> {
-    for project_id in active_project_ids(connection, library_id)? {
-        let primary = crate::database::authorization::project_primary_database(
-            connection,
-            library_id,
-            &project_id,
-        )?;
-        if crate::database::authorization::authorize_database(
-            connection,
-            &project_id,
-            primary.as_deref(),
-            database_id,
-        )? {
-            return Ok(Some(project_id));
-        }
-    }
-    Ok(None)
+    connection.query_row("SELECT id FROM projects WHERE library_id = ?1 AND database_block_id = ?2 AND lifecycle = 'active' ORDER BY id LIMIT 1", params![library_id, database_id], |row| row.get(0)).optional().map_err(StoreError::from)
 }
 
 fn validate_identity(value: &str, label: &str) -> Result<(), StoreError> {
@@ -1641,7 +1367,6 @@ fn page_detail(
         document: document.0,
         intrinsic_properties,
         data_source_context,
-        access_context: LibraryPageAccessContext::Library,
     })
 }
 
@@ -2354,7 +2079,7 @@ fn canvas_target(
             canvas_id: canvas_id.to_owned(),
         });
     };
-    authorize_canvas_row(
+    validate_canvas_owner_row(
         connection,
         library_id,
         requesting_project_id,
@@ -3970,10 +3695,6 @@ fn catalog_id(entry: &LibraryCatalogEntry) -> &str {
 
 fn invalid(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn not_found(message: &str) -> StoreError {

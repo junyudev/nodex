@@ -9,13 +9,13 @@ export interface RelationTargetPreview {
 
 export type RelationTargetWindowItem =
   | RelationTargetPreview
-  | { readonly kind: "restricted"; readonly edgeId: string };
+  | { readonly kind: "unavailable"; readonly edgeId: string };
 
 export interface RelationValuePreview {
   readonly valueRevision: number;
   readonly totalCount: number;
   readonly targets: readonly RelationTargetPreview[];
-  readonly restrictedCount: number;
+  readonly unavailableCount: number;
   readonly hasMore: boolean;
 }
 
@@ -75,7 +75,7 @@ export const readRelationValuePreview = (input: unknown): RelationValuePreview |
     !Array.isArray(value.targets) ||
     !nonnegativeSafeInteger(value.value_revision) ||
     !nonnegativeSafeInteger(value.total_count) ||
-    !nonnegativeSafeInteger(value.restricted_count) ||
+    !nonnegativeSafeInteger(value.unavailable_count) ||
     typeof value.has_more !== "boolean"
   )
     return null;
@@ -87,7 +87,7 @@ export const readRelationValuePreview = (input: unknown): RelationValuePreview |
     targets.some((target) => target === null) ||
     targets.length > 3 ||
     visibleIds.size !== targets.length ||
-    value.total_count < value.restricted_count + targets.length ||
+    value.total_count < value.unavailable_count + targets.length ||
     value.has_more !== value.total_count > targets.length
   )
     return null;
@@ -95,7 +95,7 @@ export const readRelationValuePreview = (input: unknown): RelationValuePreview |
     valueRevision: value.value_revision,
     totalCount: value.total_count,
     targets: targets as readonly RelationTargetPreview[],
-    restrictedCount: value.restricted_count,
+    unavailableCount: value.unavailable_count,
     hasMore: value.has_more,
   };
 };

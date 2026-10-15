@@ -72,10 +72,5 @@ function projectDocumentValue(value: unknown, ancestors: Set<object>): unknown {
 export function projectCodexConversationDocument(
   conversation: CodexConversationSnapshot,
 ): CodexConversationSnapshot {
-  const requests = conversation.requests.filter(
-    (request) => request.type !== "nodexAgentAuthorization",
-  );
-  const shared =
-    requests.length === conversation.requests.length ? conversation : { ...conversation, requests };
-  return projectDocumentValue(shared, new Set()) as CodexConversationSnapshot;
+  return projectDocumentValue(conversation, new Set()) as CodexConversationSnapshot;
 }

@@ -317,9 +317,8 @@ export const useDatabasePromotionPresentation = (input: {
   const readModel = useEffectEvent(() => input.model);
   useLayoutEffect(() => {
     const model = readModel();
-    if (!model.authorization) return;
     return getRendererProjectionInvalidationRegistry().register({
-      scope: { ...model.accessContext, libraryId: model.libraryId },
+      scope: { ...model.routingContext, libraryId: model.libraryId },
       consumerKey: `database-promotion:${++nextConsumer}`,
       projectionEffects: "ignore",
       getCursor: () => {
@@ -332,7 +331,6 @@ export const useDatabasePromotionPresentation = (input: {
         viewIds: [model.databaseViewId],
         pageIds: owner.pageDependencies(),
       }),
-      revoke: owner.revoke,
       fence: owner.revoke,
       invalidate: () => undefined,
     });

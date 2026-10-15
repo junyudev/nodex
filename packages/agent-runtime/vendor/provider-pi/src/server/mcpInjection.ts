@@ -8,7 +8,6 @@ import {
   PI_T3_MCP_EXTENSION_SOURCE,
   T3_MCP_BEARER_ENV,
   T3_MCP_URL_ENV,
-  T3_PI_RUNTIME_MODE_ENV,
   T3_PI_MCP_EXTENSION_PATH_ENV,
 } from "./mcpExtensionSource.ts";
 
@@ -256,7 +255,6 @@ export function buildPiRpcLaunch(input: {
   readonly ephemeral?: boolean;
   readonly disableExtensions?: boolean;
   readonly disableTools?: boolean;
-  readonly runtimeMode?: "approval-required" | "auto-accept-edits" | "auto" | "full-access";
 }): {
   readonly args: ReadonlyArray<string>;
   readonly env: NodeJS.ProcessEnv;
@@ -300,12 +298,6 @@ export function buildPiRpcLaunch(input: {
       ...environment,
       ...(hasT3Extension && input.extensionPath !== undefined
         ? { [T3_PI_MCP_EXTENSION_PATH_ENV]: input.extensionPath }
-        : {}),
-      ...(hasT3Extension && input.runtimeMode !== undefined
-        ? {
-            [T3_PI_RUNTIME_MODE_ENV]:
-              input.runtimeMode === "auto" ? "approval-required" : input.runtimeMode,
-          }
         : {}),
       ...(hasT3Mcp && input.mcpSession !== undefined
         ? {

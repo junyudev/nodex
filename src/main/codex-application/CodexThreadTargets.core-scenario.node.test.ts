@@ -284,6 +284,7 @@ it.effect(
         } as unknown as CodexThreadDirectory["Service"];
         const gateway = {
           localHostId: target.hostId,
+          awaitReady: () => Effect.void,
           promoteQueuedCatalogPage: Effect.void,
           connection: () => Effect.succeed({ kind: "ready", hostId: target.hostId, generation: 1 }),
           requestLocal: (method: string, params: { archived?: boolean }) =>
@@ -314,7 +315,16 @@ it.effect(
           } as unknown as DatabaseNotifierRuntime["Service"]),
         );
         const beforeEnsure = applies;
-        expect((yield* sidebar.ensureSession(target.threadId))?.id).toBe(session!.id);
+        const beforeLocalEnsure = yield* core.workspace.read({
+          kind: "thread",
+          thread_id: target.threadId,
+        });
+        expect(
+          Exit.isFailure(yield* sidebar.ensureSession(target.threadId).pipe(Effect.exit)),
+        ).toBe(true);
+        expect(yield* core.workspace.read({ kind: "thread", thread_id: target.threadId })).toEqual(
+          beforeLocalEnsure,
+        );
         expect(applies).toBe(beforeEnsure);
         yield* sidebar.sync({ policy: "force", reason: "app-server-reconnect" });
         expect(

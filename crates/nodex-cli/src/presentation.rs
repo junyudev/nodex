@@ -2,7 +2,7 @@ use clap::ValueEnum;
 
 use crate::cli::{Command, DraftArgs, DraftCommand, FileCommand, PageCommand, PageFileCommand};
 
-/// Presentation is resolved once, independently of mutation identity and authorization.
+/// Presentation is resolved once, independently of mutation identity and execution routing.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum OutputFormat {
     #[default]

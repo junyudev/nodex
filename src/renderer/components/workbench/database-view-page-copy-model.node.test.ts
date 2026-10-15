@@ -4,7 +4,7 @@ import { resolveDatabaseViewPageCopyRequest } from "./database-view-page-copy-mo
 
 const page: DatabaseViewPageTarget = {
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   projectId: "project-1",
   pageId: "page-1",
   pageKey: "LAB-13",
@@ -42,7 +42,7 @@ describe("resolveDatabaseViewPageCopyRequest", () => {
       }),
     ).toMatchObject({
       kind: "materialized-markdown",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       pageId: "page-1",
     });
   });

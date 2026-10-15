@@ -1,3 +1,4 @@
+import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
@@ -17,6 +18,7 @@ import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -25,7 +27,6 @@ import * as FiberSet from "effect/FiberSet";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -219,10 +220,15 @@ interface LiveSessionEntry {
   readonly runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly exposedRuntime: ProviderAdapter.ProviderAdapterV2SessionRuntime;
   readonly eventSubscribers: Ref.Ref<
-    ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
+    ReadonlyMap<
+      number,
+      BoundedQueue.BoundedQueue<ProviderSessionEventSignal, ProviderAdapter.ProviderAdapterV2Error>
+    >
   >;
+  readonly terminalPublicationWaiters: Ref.Ref<ReadonlyMap<string, Deferred.Deferred<void>>>;
   readonly requestEventPermit: Semaphore.Semaphore;
   readonly scope: Scope.Closeable;
+  readonly nativeBindingScope: Scope.Closeable;
   readonly idleGeneration: number;
   /**
    * Turns this session is running, keyed by `busyTurnKey`. A turn's start adds
@@ -231,7 +237,7 @@ interface LiveSessionEntry {
    */
   readonly busyTurns: ReadonlySet<string>;
   readonly lastActivityAtMs: number;
-  readonly idleFiber: Fiber.Fiber<void, never> | null;
+  readonly idleFiber: Fiber.Fiber<void> | null;
   /** Set when idle release is deferred for pending background work; bounds total deferral. */
   readonly pinnedSinceMs: number | null;
   /**
@@ -245,7 +251,7 @@ interface LiveSessionEntry {
 interface IdleThreadUnload {
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly generation: number;
-  readonly fiber: Fiber.Fiber<void, never> | null;
+  readonly fiber: Fiber.Fiber<void> | null;
 }
 
 type ProviderSessionEventSignal =
@@ -254,6 +260,9 @@ type ProviderSessionEventSignal =
       readonly type: "failure";
       readonly cause: Cause.Cause<ProviderAdapter.ProviderAdapterV2Error>;
     };
+
+// One raw frame can publish several canonical updates before its terminal.
+export const MAX_EVENT_SUBSCRIPTION_ITEMS = BoundedQueue.DEFAULT_MAX_ITEMS * 2;
 
 export interface ProviderSessionManagerV2LayerOptions {
   readonly idleTimeoutMs?: number;
@@ -578,15 +587,35 @@ export const layerWithOptions = (
 
       const publishToSubscribers = (
         subscribers: Ref.Ref<
-          ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
+          ReadonlyMap<
+            number,
+            BoundedQueue.BoundedQueue<
+              ProviderSessionEventSignal,
+              ProviderAdapter.ProviderAdapterV2Error
+            >
+          >
         >,
         signal: ProviderSessionEventSignal,
       ) =>
         Ref.get(subscribers).pipe(
           Effect.flatMap((current) =>
-            Effect.forEach(current.values(), (queue) => Queue.offer(queue, signal), {
-              discard: true,
-            }),
+            Effect.forEach(
+              current.values(),
+              (queue) =>
+                signal.type === "failure"
+                  ? BoundedQueue.isOverflow(Cause.squash(signal.cause))
+                    ? BoundedQueue.failCause(queue, signal.cause)
+                    : BoundedQueue.offer(queue, signal).pipe(
+                        Effect.andThen(BoundedQueue.end(queue)),
+                      )
+                  : BoundedQueue.offer(queue, signal).pipe(
+                      Effect.flatMap(() => BoundedQueue.failure(queue)),
+                      Effect.flatMap((failure) =>
+                        Option.isSome(failure) ? Effect.fail(failure.value) : Effect.void,
+                      ),
+                    ),
+              { discard: true },
+            ),
           ),
         );
 
@@ -601,10 +630,9 @@ export const layerWithOptions = (
           yield* Effect.forEach(
             subscribers.values(),
             (queue) =>
-              Queue.offer(queue, {
-                type: "failure",
-                cause: Cause.fail(error),
-              }),
+              BoundedQueue.offer(queue, { type: "failure", cause: Cause.fail(error) }).pipe(
+                Effect.andThen(BoundedQueue.end(queue)),
+              ),
             { discard: true },
           );
         });
@@ -614,7 +642,7 @@ export const layerWithOptions = (
           const subscribers = yield* Ref.getAndSet(entry.eventSubscribers, new Map());
           yield* Effect.forEach(
             subscribers.values(),
-            (queue) => Queue.clear(queue).pipe(Effect.andThen(Queue.end(queue))),
+            (queue) => BoundedQueue.clear(queue).pipe(Effect.andThen(BoundedQueue.end(queue))),
             { discard: true },
           );
         });
@@ -625,12 +653,12 @@ export const layerWithOptions = (
       const endSubscribers = (entry: LiveSessionEntry) =>
         Effect.gen(function* () {
           const subscribers = yield* Ref.getAndSet(entry.eventSubscribers, new Map());
-          yield* Effect.forEach(subscribers.values(), (queue) => Queue.end(queue), {
+          yield* Effect.forEach(subscribers.values(), (queue) => BoundedQueue.end(queue), {
             discard: true,
           });
         });
 
-      const cancelIdleFiber = (fiber: Fiber.Fiber<void, never> | null) =>
+      const cancelIdleFiber = (fiber: Fiber.Fiber<void> | null) =>
         fiber === null ? Effect.void : Fiber.interrupt(fiber).pipe(Effect.ignore);
 
       const writeProviderSessionEvents = (input: {
@@ -877,11 +905,15 @@ export const layerWithOptions = (
       const removeLiveEntry = (input: {
         readonly providerSessionId: ProviderSessionId;
         readonly onlyIfIdleGeneration?: number;
+        readonly expectedRuntime?: ProviderAdapter.ProviderAdapterV2SessionRuntime;
       }): Effect.Effect<readonly [Option.Option<LiveSessionEntry>, DateTime.Utc]> =>
         Effect.gen(function* () {
           const key = sessionKey(input.providerSessionId);
           const candidate = (yield* Ref.get(sessions)).get(key);
-          if (candidate === undefined) {
+          if (
+            candidate === undefined ||
+            (input.expectedRuntime !== undefined && candidate.runtime !== input.expectedRuntime)
+          ) {
             return [Option.none<LiveSessionEntry>(), yield* DateTime.now] as const;
           }
           const removed = yield* Effect.zip(
@@ -958,6 +990,8 @@ export const layerWithOptions = (
         readonly cancelIdleFiber?: boolean;
         readonly onlyIfIdleGeneration?: number;
         readonly gracefulSubscribers?: boolean;
+        readonly terminalPublished?: Deferred.Deferred<void>;
+        readonly expectedRuntime?: ProviderAdapter.ProviderAdapterV2SessionRuntime;
       }) =>
         Effect.acquireUseRelease(
           removeLiveEntry(input),
@@ -969,7 +1003,26 @@ export const layerWithOptions = (
                   if (input.cancelIdleFiber !== false) {
                     yield* cancelIdleFiber(entry.idleFiber);
                   }
+                  if (input.expectedRuntime !== undefined) {
+                    // Expire source proof and authentication before a potentially
+                    // slow native finalizer can hold the cancelled incarnation open.
+                    yield* Scope.close(entry.nativeBindingScope, Exit.void);
+                    yield* Effect.forEach(
+                      entry.mcpCredentialIdByThread,
+                      ([threadId, credentialId]) => clearMcpSession(threadId, credentialId),
+                      { discard: true },
+                    );
+                  }
                   if (input.gracefulSubscribers === true) {
+                    if (input.terminalPublished !== undefined) {
+                      // Native Stop already queued its terminal frame. Revoke
+                      // tools immediately, then let that exact frame reach its
+                      // subscribers before ending the physical connection.
+                      yield* Deferred.await(input.terminalPublished).pipe(
+                        Effect.timeoutOption("2 seconds"),
+                        Effect.provideService(Clock.Clock, Clock.Clock.defaultValue()),
+                      );
+                    }
                     yield* endSubscribers(entry);
                   } else if (input.reason === "server_shutdown") {
                     yield* closeSubscribers(entry);
@@ -1364,7 +1417,7 @@ export const layerWithOptions = (
                       providerSessionId: input.providerSessionId,
                       nativeGeneration: entry.exposedRuntime.nativeGeneration,
                     })
-                    .pipe(Effect.provideService(Scope.Scope, entry.scope));
+                    .pipe(Effect.provideService(Scope.Scope, entry.nativeBindingScope));
                 }
                 yield* withActivityError(
                   input.providerSessionId,
@@ -1669,11 +1722,30 @@ export const layerWithOptions = (
 
       const makeEventSubscription = (
         subscribers: Ref.Ref<
-          ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
+          ReadonlyMap<
+            number,
+            BoundedQueue.BoundedQueue<
+              ProviderSessionEventSignal,
+              ProviderAdapter.ProviderAdapterV2Error
+            >
+          >
         >,
+        runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime,
       ): Effect.Effect<ProviderAdapter.ProviderAdapterV2EventSubscription> =>
         Effect.gen(function* () {
-          const queue = yield* Queue.unbounded<ProviderSessionEventSignal, Cause.Done>();
+          const queue = yield* BoundedQueue.make<
+            ProviderSessionEventSignal,
+            ProviderAdapter.ProviderAdapterV2Error
+          >({
+            label: "Provider event subscription",
+            maxItems: MAX_EVENT_SUBSCRIPTION_ITEMS,
+            mapOverflow: (cause) =>
+              new ProviderAdapter.ProviderAdapterEventStreamError({
+                driver: runtime.driver,
+                providerSessionId: runtime.providerSessionId,
+                cause,
+              }),
+          });
           const subscriberId = yield* Ref.getAndUpdate(nextSubscriberId, (value) => value + 1);
           yield* Ref.update(subscribers, (current) => {
             const updated = new Map(current);
@@ -1690,11 +1762,14 @@ export const layerWithOptions = (
           }).pipe(
             Effect.flatMap((removed) =>
               removed
-                ? Queue.clear(queue).pipe(Effect.andThen(Queue.end(queue)), Effect.asVoid)
+                ? BoundedQueue.clear(queue).pipe(
+                    Effect.andThen(BoundedQueue.end(queue)),
+                    Effect.asVoid,
+                  )
                 : Effect.void,
             ),
           );
-          const events = Stream.fromQueue(queue).pipe(
+          const events = BoundedQueue.stream(queue).pipe(
             Stream.mapEffect((signal) =>
               signal.type === "event"
                 ? Effect.succeed(signal.event)
@@ -1709,11 +1784,30 @@ export const layerWithOptions = (
         runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime,
         nativeGeneration: number,
         eventSubscribers: Ref.Ref<
-          ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
+          ReadonlyMap<
+            number,
+            BoundedQueue.BoundedQueue<
+              ProviderSessionEventSignal,
+              ProviderAdapter.ProviderAdapterV2Error
+            >
+          >
         >,
+        terminalPublicationWaiters: LiveSessionEntry["terminalPublicationWaiters"],
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
         const providerSessionId = runtime.providerSessionId;
-        const subscribeEvents = makeEventSubscription(eventSubscribers);
+        const subscribeEvents = makeEventSubscription(eventSubscribers, runtime);
+        const requireCurrentRuntime = Effect.gen(function* () {
+          const current = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
+          const retired =
+            runtime.nativeSessionRetired === undefined
+              ? false
+              : yield* runtime.nativeSessionRetired;
+          if (current?.runtime === runtime && !retired) return;
+          return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+            driver: runtime.driver,
+            detail: "Native session incarnation is no longer active.",
+          });
+        });
         // Every provider's turn operations pass through here, so this is where they are
         // counted. Only turn starts are timed: until the provider accepts the turn.
         const turnMetrics = (operation: string, model?: string) =>
@@ -1729,6 +1823,21 @@ export const layerWithOptions = (
         return {
           ...runtime,
           nativeGeneration,
+          ...(runtime.codexNative === undefined
+            ? {}
+            : {
+                codexNative: {
+                  ...runtime.codexNative,
+                  initialize: requireCurrentRuntime.pipe(
+                    Effect.andThen(runtime.codexNative.initialize),
+                  ),
+                  request: (method, params) =>
+                    requireCurrentRuntime.pipe(
+                      Effect.andThen(runtime.codexNative!.request(method, params)),
+                    ),
+                  retain: (nativeThreadId) => runtime.codexNative!.retain(nativeThreadId),
+                } satisfies import("@t3tools/provider-core/server/nativeInteraction").CodexNativeInteraction,
+              }),
           subscribeEvents,
           events: Stream.unwrap(
             subscribeEvents.pipe(Effect.map((subscription) => subscription.events)),
@@ -1742,6 +1851,7 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
+              Effect.andThen(requireCurrentRuntime),
               Effect.andThen(runtime.ensureThread(input)),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1758,7 +1868,7 @@ export const layerWithOptions = (
           resumeThread: (input) => {
             const threadId = input.threadId ?? input.providerThread.appThreadId;
             if (threadId === null || threadId === undefined) {
-              return runtime.resumeThread(input);
+              return requireCurrentRuntime.pipe(Effect.andThen(runtime.resumeThread(input)));
             }
             const providerThreadKey = providerThreadLoadKey({
               providerThread: input.providerThread,
@@ -1775,6 +1885,7 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
+              Effect.andThen(requireCurrentRuntime),
               Effect.andThen(
                 holdThreadLoaded({
                   providerSessionId,
@@ -1814,6 +1925,7 @@ export const layerWithOptions = (
                 providerInstanceId: runtime.instanceId,
               }),
             ).pipe(
+              Effect.andThen(requireCurrentRuntime),
               Effect.andThen(runtime.forkThread(input)),
               Effect.tap((providerThread) =>
                 markProviderThreadLoaded({
@@ -1832,96 +1944,174 @@ export const layerWithOptions = (
               ),
             ),
           startTurn: (input) =>
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
-              // A start that fails or is stopped may never emit turn.terminal,
-              // so it clears its own turn or the session never goes idle. If
-              // the adapter emits the terminal anyway, clearing the same turn
-              // again changes nothing, so another thread's turn on a shared
-              // session stays busy either way.
-              Effect.andThen(
-                holdThreadLoaded({
+            input.nativeInput !== undefined &&
+            (input.nativeInput.runtimeGeneration !== executionHost.runtimeGeneration ||
+              input.nativeInput.nativeGeneration !== nativeGeneration ||
+              input.nativeInput.providerSessionId !== providerSessionId)
+              ? Effect.fail(
+                  new ProviderAdapter.ProviderAdapterProtocolError({
+                    driver: runtime.driver,
+                    detail: "Observed native Turn source retired",
+                  }),
+                )
+              : observeActivity(
                   providerSessionId,
-                  threadId: input.threadId,
-                  providerThread: input.providerThread,
-                }),
-              ),
-              Effect.andThen(
-                Effect.acquireUseRelease(
-                  observeActivity(
+                  ensureThreadAttached({
                     providerSessionId,
-                    markBusy(
+                    threadId: input.threadId,
+                    providerInstanceId: runtime.instanceId,
+                  }),
+                ).pipe(
+                  Effect.andThen(requireCurrentRuntime),
+                  // A start that fails or is stopped may never emit turn.terminal,
+                  // so it clears its own turn or the session never goes idle. If
+                  // the adapter emits the terminal anyway, clearing the same turn
+                  // again changes nothing, so another thread's turn on a shared
+                  // session stays busy either way.
+                  Effect.andThen(
+                    holdThreadLoaded({
                       providerSessionId,
-                      busyTurnKey(input.providerThread.id, input.runOrdinal),
+                      threadId: input.threadId,
+                      providerThread: input.providerThread,
+                    }),
+                  ),
+                  Effect.andThen(
+                    Effect.acquireUseRelease(
+                      observeActivity(
+                        providerSessionId,
+                        markBusy(
+                          providerSessionId,
+                          busyTurnKey(input.providerThread.id, input.runOrdinal),
+                        ),
+                      ),
+                      () =>
+                        executionHost
+                          .prepareTurn({
+                            nativeDriver: runtime.driver,
+                            projectId: input.appThread.projectId,
+                            threadId: input.threadId,
+                            runId: input.runId,
+                            attemptId: input.attemptId,
+                            providerInstanceId: runtime.instanceId,
+                            providerSessionId,
+                            providerThreadId: input.providerThread.id,
+                            nativeGeneration,
+                            nativeThreadRef: input.providerThread.nativeThreadRef,
+                            cwd: input.runtimePolicy.cwd ?? null,
+                          })
+                          .pipe(
+                            Effect.mapError(
+                              (cause) =>
+                                new ProviderAdapter.ProviderAdapterTurnStartError({
+                                  driver: runtime.driver,
+                                  threadId: input.threadId,
+                                  providerThreadId: input.providerThread.id,
+                                  runId: input.runId,
+                                  cause,
+                                }),
+                            ),
+                            Effect.flatMap((host) =>
+                              runtime.startTurn({
+                                ...input,
+                                ...(host.identity === undefined
+                                  ? {}
+                                  : { hostExecutionIdentity: host.identity }),
+                                ...(host.instructions === undefined
+                                  ? {}
+                                  : { hostInstructions: host.instructions }),
+                                ...(executionHost.orchestrationInstructions === undefined
+                                  ? {}
+                                  : {
+                                      hostOrchestrationInstructions:
+                                        executionHost.orchestrationInstructions,
+                                    }),
+                              }),
+                            ),
+                            turnMetrics("send", input.modelSelection.model),
+                          ),
+                      (_, exit) =>
+                        Exit.isFailure(exit)
+                          ? observeActivity(
+                              providerSessionId,
+                              markIdle(
+                                providerSessionId,
+                                input.providerThread.id,
+                                input.runOrdinal,
+                              ),
+                            )
+                          : Effect.void,
                     ),
                   ),
-                  () =>
-                    executionHost
-                      .prepareTurn({
-                        projectId: input.appThread.projectId,
-                        threadId: input.threadId,
-                        runId: input.runId,
-                        attemptId: input.attemptId,
-                        providerInstanceId: runtime.instanceId,
-                        providerSessionId,
-                        providerThreadId: input.providerThread.id,
-                        nativeGeneration,
-                        nativeThreadRef: input.providerThread.nativeThreadRef,
-                        cwd: input.runtimePolicy.cwd ?? null,
-                      })
-                      .pipe(
-                        Effect.mapError(
-                          (cause) =>
-                            new ProviderAdapter.ProviderAdapterTurnStartError({
-                              driver: runtime.driver,
-                              threadId: input.threadId,
-                              providerThreadId: input.providerThread.id,
-                              runId: input.runId,
-                              cause,
-                            }),
-                        ),
-                        Effect.flatMap((host) =>
-                          runtime.startTurn({
-                            ...input,
-                            ...(host.instructions === undefined
-                              ? {}
-                              : { hostInstructions: host.instructions }),
-                            ...(executionHost.orchestrationInstructions === undefined
-                              ? {}
-                              : {
-                                  hostOrchestrationInstructions:
-                                    executionHost.orchestrationInstructions,
-                                }),
-                          }),
-                        ),
-                        turnMetrics("send", input.modelSelection.model),
-                      ),
-                  (_, exit) =>
-                    Exit.isFailure(exit)
-                      ? observeActivity(
-                          providerSessionId,
-                          markIdle(providerSessionId, input.providerThread.id, input.runOrdinal),
-                        )
-                      : Effect.void,
                 ),
-              ),
-            ),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+              Effect.andThen(requireCurrentRuntime),
               Effect.andThen(runtime.steerTurn(input).pipe(turnMetrics("steer"))),
             ),
           interruptTurn: (input) =>
-            observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
-              Effect.andThen(runtime.interruptTurn(input).pipe(turnMetrics("interrupt"))),
+            Effect.acquireUseRelease(
+              Deferred.make<void>().pipe(
+                Effect.flatMap((fresh) =>
+                  Ref.modify(terminalPublicationWaiters, (current) => {
+                    const existing = current.get(String(input.providerTurnId));
+                    if (existing !== undefined) return [existing, current] as const;
+                    return [
+                      fresh,
+                      new Map(current).set(String(input.providerTurnId), fresh),
+                    ] as const;
+                  }),
+                ),
+              ),
+              (terminalPublished) =>
+                observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+                  Effect.andThen(runtime.interruptTurn(input).pipe(turnMetrics("interrupt"))),
+                  Effect.onExit(() =>
+                    runtime.nativeSessionRetired === undefined
+                      ? Effect.void
+                      : runtime.nativeSessionRetired.pipe(
+                          Effect.flatMap((retired) =>
+                            retired
+                              ? sessionOpen
+                                  .withLock(
+                                    providerSessionId,
+                                    releaseEntry({
+                                      providerSessionId,
+                                      reason: "manual_shutdown",
+                                      expectedRuntime: runtime,
+                                      gracefulSubscribers: true,
+                                      terminalPublished,
+                                      detail:
+                                        "Native session cancelled; its incarnation was retired.",
+                                    }),
+                                  )
+                                  .pipe(
+                                    Effect.mapError(
+                                      (cause) =>
+                                        new ProviderAdapter.ProviderAdapterInterruptError({
+                                          driver: runtime.driver,
+                                          providerThreadId: input.providerThread.id,
+                                          providerTurnId: input.providerTurnId,
+                                          cause,
+                                        }),
+                                    ),
+                                  )
+                              : Effect.void,
+                          ),
+                        ),
+                  ),
+                ),
+              (terminalPublished) =>
+                Ref.update(terminalPublicationWaiters, (current) => {
+                  if (current.get(String(input.providerTurnId)) !== terminalPublished)
+                    return current;
+                  const updated = new Map(current);
+                  updated.delete(String(input.providerTurnId));
+                  return updated;
+                }),
             ),
           respondToRuntimeRequest: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
+              Effect.andThen(requireCurrentRuntime),
               Effect.andThen(
                 runtime
                   .respondToRuntimeRequest(input)
@@ -2020,6 +2210,12 @@ export const layerWithOptions = (
                     return;
                   }
                   yield* publishToSubscribers(entry.eventSubscribers, { type: "event", event });
+                  if (event.type === "turn.terminal") {
+                    const waiter = (yield* Ref.get(entry.terminalPublicationWaiters)).get(
+                      String(event.providerTurnId),
+                    );
+                    if (waiter !== undefined) yield* Deferred.succeed(waiter, undefined);
+                  }
                 }),
               ),
             );
@@ -2146,7 +2342,19 @@ export const layerWithOptions = (
               }
               const key = sessionKey(input.providerSessionId);
               const existing = (yield* Ref.get(sessions)).get(key);
-              if (existing !== undefined) {
+              const retired =
+                existing?.runtime.nativeSessionRetired === undefined
+                  ? false
+                  : yield* existing.runtime.nativeSessionRetired;
+              if (existing !== undefined && retired) {
+                yield* releaseEntry({
+                  providerSessionId: input.providerSessionId,
+                  reason: "manual_shutdown",
+                  expectedRuntime: existing.runtime,
+                  detail: "Native session incarnation ended before reuse.",
+                });
+              }
+              if (existing !== undefined && !retired) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
                 if (!attached && !existing.supportsMultipleProviderThreads) {
                   return yield* new ProviderSessionOpenError({
@@ -2193,6 +2401,7 @@ export const layerWithOptions = (
                 }
               });
               const sessionScope = yield* Scope.fork(sessionScopes);
+              const nativeBindingScope = yield* Scope.fork(sessionScope);
               const nativeGeneration = yield* Ref.updateAndGet(
                 nextNativeGeneration,
                 (current) => current + 1,
@@ -2207,7 +2416,7 @@ export const layerWithOptions = (
                     providerSessionId: input.providerSessionId,
                     nativeGeneration,
                   })
-                  .pipe(Effect.provideService(Scope.Scope, sessionScope));
+                  .pipe(Effect.provideService(Scope.Scope, nativeBindingScope));
               }
               // The previous session's agent scope must not explain this
               // session's failures, even when this provider runs without one.
@@ -2232,6 +2441,8 @@ export const layerWithOptions = (
                       }),
                 })
                 .pipe(
+                  // Keep lazy adapter acquisition on this manager's configured host.
+                  Effect.provideService(ExecutionHost.ExecutionHost, executionHost),
                   Effect.provideService(Scope.Scope, sessionScope),
                   // Any failure, including a Stop that interrupts a slow
                   // handshake, stops the provider process this open started.
@@ -2271,9 +2482,23 @@ export const layerWithOptions = (
                   }),
                 );
               const eventSubscribers = yield* Ref.make<
-                ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
+                ReadonlyMap<
+                  number,
+                  BoundedQueue.BoundedQueue<
+                    ProviderSessionEventSignal,
+                    ProviderAdapter.ProviderAdapterV2Error
+                  >
+                >
               >(new Map());
-              const exposedRuntime = decorateRuntime(runtime, nativeGeneration, eventSubscribers);
+              const terminalPublicationWaiters = yield* Ref.make<
+                ReadonlyMap<string, Deferred.Deferred<void>>
+              >(new Map());
+              const exposedRuntime = decorateRuntime(
+                runtime,
+                nativeGeneration,
+                eventSubscribers,
+                terminalPublicationWaiters,
+              );
               const now = yield* Clock.currentTimeMillis;
               const entry: LiveSessionEntry = {
                 attachedThreadIds: new Set([input.threadId]),
@@ -2288,8 +2513,10 @@ export const layerWithOptions = (
                 runtime,
                 exposedRuntime,
                 eventSubscribers,
+                terminalPublicationWaiters,
                 requestEventPermit: yield* Semaphore.make(1),
                 scope: sessionScope,
+                nativeBindingScope,
                 idleGeneration: 0,
                 busyTurns: new Set(),
                 lastActivityAtMs: now,
@@ -2448,7 +2675,7 @@ export const layerWithOptions = (
                 return [
                   Option.none<{
                     readonly entry: LiveSessionEntry;
-                    readonly idleUnloadFiber: Fiber.Fiber<void, never> | null;
+                    readonly idleUnloadFiber: Fiber.Fiber<void> | null;
                   }>(),
                   current,
                 ] as const;

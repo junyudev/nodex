@@ -9,6 +9,39 @@ import { residentConversationTurns } from "./codex-turn-mutation";
 export type CanonicalThreadSettingsPatch = Omit<ThreadSettingsUpdateParams, "threadId"> &
   Partial<Pick<ThreadSettings, "activePermissionProfile">>;
 
+export type CanonicalThreadSettingsControlPatch = Pick<
+  ThreadSettingsUpdateParams,
+  | "cwd"
+  | "model"
+  | "serviceTier"
+  | "effort"
+  | "summary"
+  | "collaborationMode"
+  | "disabledPluginIds"
+  | "multiAgentMode"
+  | "personality"
+>;
+
+const controlKeys = [
+  "cwd",
+  "model",
+  "serviceTier",
+  "effort",
+  "summary",
+  "collaborationMode",
+  "disabledPluginIds",
+  "multiAgentMode",
+  "personality",
+] as const satisfies readonly (keyof CanonicalThreadSettingsControlPatch)[];
+
+/** Controls never forward native policy fields supplied by a peer or historical snapshot. */
+export const selectCanonicalThreadSettingsControlPatch = (
+  patch: CanonicalThreadSettingsControlPatch,
+): CanonicalThreadSettingsControlPatch =>
+  Object.fromEntries(
+    controlKeys.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]]),
+  );
+
 /** Applies a partial owner setting without inventing unrelated permission or model defaults. */
 export function mutateCanonicalThreadSettingsPatch(
   state: Draft<CodexCanonicalConversationState>,
@@ -96,22 +129,16 @@ export interface CanonicalThreadSettingsClient {
   readonly setSupport: (support: "supported" | "unsupported") => void;
   readonly isUnsupported: (error: unknown) => boolean;
   readonly updateThread: (params: ThreadSettingsUpdateParams) => Promise<unknown>;
-  readonly updateTurnReviewer: (
-    threadId: string,
-    turnId: string,
-    reviewer: NonNullable<ThreadSettingsUpdateParams["approvalsReviewer"]>,
-  ) => Promise<unknown>;
-  readonly supportsTurnReviewer: () => boolean;
 }
 
 /** Caller serializes per conversation; notifications can replace the settings object during I/O. */
 export async function updateCanonicalThreadSettings(
   client: CanonicalThreadSettingsClient,
   id: string,
-  patch: CanonicalThreadSettingsPatch,
+  patch: CanonicalThreadSettingsControlPatch,
   condition?: CanonicalThreadSettingsCondition,
-  activeTurnId?: string | null,
 ): Promise<boolean> {
+  const control = selectCanonicalThreadSettingsControlPatch(patch);
   const before = client.getConversation(id);
   const settingsAtStart = before.latestThreadSettings;
   if (
@@ -122,7 +149,7 @@ export async function updateCanonicalThreadSettings(
     return false;
   if (client.getSupport() !== "unsupported") {
     try {
-      await client.updateThread({ threadId: id, ...patch });
+      await client.updateThread({ threadId: id, ...control });
       client.setSupport("supported");
     } catch (error) {
       if (!client.isUnsupported(error)) throw error;
@@ -133,10 +160,7 @@ export async function updateCanonicalThreadSettings(
     client.getSupport() === "unsupported" ||
     client.getConversation(id).latestThreadSettings === settingsAtStart
   ) {
-    client.updateConversation(id, (draft) => mutateCanonicalThreadSettingsPatch(draft, patch));
-  }
-  if (activeTurnId != null && patch.approvalsReviewer != null && client.supportsTurnReviewer()) {
-    await client.updateTurnReviewer(id, activeTurnId, patch.approvalsReviewer);
+    client.updateConversation(id, (draft) => mutateCanonicalThreadSettingsPatch(draft, control));
   }
   return true;
 }

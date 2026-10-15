@@ -105,10 +105,6 @@ class PerformanceSeedPort implements ScenarioSeedPort {
     throw new Error("Page Chat inspection is not part of this scenario");
   }
 
-  async setResourceProjectAccess(): Promise<never> {
-    throw new Error("Resource access changes are not part of this scenario");
-  }
-
   async createStandaloneCanvas(): Promise<never> {
     throw new Error("Canvas seeding is not part of this scenario");
   }

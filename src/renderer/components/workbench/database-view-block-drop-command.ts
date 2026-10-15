@@ -45,13 +45,9 @@ export const commitDatabaseViewBlockDrop = async (
 ): Promise<boolean> => {
   const { payload } = input.session;
   endLocalBlockDragSession({ sessionId: input.session.sessionId });
-  if (!input.projectId) {
-    toast.info("Blocks can only move into a Project Database View.");
-    return false;
-  }
   const projectId = input.projectId;
-  if (payload.projectId !== projectId || payload.storeEpoch !== input.storeEpoch) {
-    toast.danger("Block transfer belongs to another Project or store generation.");
+  if (payload.storeEpoch !== input.storeEpoch) {
+    toast.danger("Block transfer belongs to another store generation.");
     return false;
   }
   if (containsCanvasBlockDrag(payload)) {

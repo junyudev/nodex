@@ -486,6 +486,10 @@
     "./PtyAdapter": {
       "types": "./src/PtyAdapter.ts",
       "import": "./src/PtyAdapter.ts"
+    },
+    "./BoundedQueue": {
+      "types": "./src/BoundedQueue.ts",
+      "import": "./src/BoundedQueue.ts"
     }
   },
   "scripts": {

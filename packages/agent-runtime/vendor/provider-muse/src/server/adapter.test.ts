@@ -588,7 +588,7 @@ describe("MuseAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 
-  it.effect("settles partial messages and pending approvals before a provider failure", () =>
+  it.effect("settles partial messages and unanswered questions before a provider failure", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakeMuse();
       const harness = yield* makeHarness(fake);
@@ -604,7 +604,8 @@ describe("MuseAdapterV2", () => {
           text: "Partial answer",
         },
       });
-      yield* fake.emit("approval/requested", approval(nativeId));
+      yield* fake.emit("userInput/requested", { userInputId: "question-before-failure", turnId: nativeId,
+        questions: [{ id: "destination", header: "Destination", question: "Where should this go?", options: [], selection: { mode: "single" } }] });
       yield* harness.takeEvent(
         "runtime_request.updated",
         (event) => event.runtimeRequest.status === "pending",
@@ -667,7 +668,8 @@ describe("MuseAdapterV2", () => {
       const fake = yield* makeFakeMuse();
       const harness = yield* makeHarness(fake);
       const { nativeId } = yield* startConversation(harness, fake);
-      yield* fake.emit("approval/requested", approval(nativeId));
+      yield* fake.emit("userInput/requested", { userInputId: "question-before-disconnect", turnId: nativeId,
+        questions: [{ id: "destination", header: "Destination", question: "Where?", options: [], selection: { mode: "single" } }] });
       yield* harness.takeEvent(
         "runtime_request.updated",
         (event) => event.runtimeRequest.status === "pending",
@@ -714,83 +716,19 @@ describe("MuseAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 
-  it.effect("uses the latest native approval requirement and waits for its resolution event", () =>
+  it.effect("automatically answers each current native permission requirement", () =>
     Effect.gen(function* () {
-      const fake = yield* makeFakeMuse();
-      const harness = yield* makeHarness(fake);
+      const fake = yield* makeFakeMuse(); const harness = yield* makeHarness(fake);
       const { nativeId } = yield* startConversation(harness, fake);
       yield* fake.emit("approval/requested", approval(nativeId));
-      const first = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "pending",
-      );
-      yield* fake.emit("approval/updated", {
-        ...approval(nativeId),
-        currentRequirementId: { approvalId: "approval-1", sourceIndex: 1 },
-      });
-      const refreshed = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "pending",
-      );
-      assert.strictEqual(refreshed.runtimeRequest.id, first.runtimeRequest.id);
-      yield* harness.runtime.respondToRuntimeRequest({
-        requestId: first.runtimeRequest.id,
-        decision: "accept",
-      });
-      const decision = yield* fake.takeCall("approval/decide");
-      assert.deepStrictEqual(decision.params.requirementId, {
-        approvalId: "approval-1",
-        sourceIndex: 1,
-      });
-      assert.strictEqual(decision.params.choiceId, "once");
-      assert.isFalse(
-        harness.allEvents.some(
-          (event) =>
-            event.type === "runtime_request.updated" && event.runtimeRequest.status === "resolved",
-        ),
-      );
-      yield* fake.emit("approval/resolved", { approvalId: "approval-1", turnId: nativeId });
-      const resolved = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "resolved",
-      );
-      assert.strictEqual(resolved.runtimeRequest.id, first.runtimeRequest.id);
-      const repeated = yield* harness.runtime
-        .respondToRuntimeRequest({ requestId: first.runtimeRequest.id, decision: "accept" })
-        .pipe(Effect.exit);
-      assert.strictEqual(repeated._tag, "Failure");
-    }).pipe(Effect.scoped, Effect.provide(testLayer)),
-  );
-
-  it.effect("keeps the user's decision when Muse settles before acknowledging it", () =>
-    Effect.gen(function* () {
-      const fake = yield* makeFakeMuse();
-      const harness = yield* makeHarness(fake);
-      const { nativeId } = yield* startConversation(harness, fake);
-      yield* fake.emit("approval/requested", approval(nativeId));
-      const pending = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "pending",
-      );
-      const acknowledgement = pendingPromise<Record<string, unknown>>();
-      fake.queueResponse("approval/decide", acknowledgement.promise);
-      const responding = yield* harness.runtime
-        .respondToRuntimeRequest({ requestId: pending.runtimeRequest.id, decision: "decline" })
-        .pipe(Effect.forkScoped);
-      yield* fake.takeCall("approval/decide");
-      // Muse's native decision for this choice maps to decline too; "cancel" proves it was ours.
-      yield* fake.emit("approval/resolved", {
-        approvalId: "approval-1",
-        turnId: nativeId,
-        decision: "abort",
-      });
-      const resolved = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "resolved",
-      );
-      assert.strictEqual(resolved.runtimeRequest.decision, "decline");
-      acknowledgement.resolve({});
-      yield* Fiber.join(responding);
+      const first = yield* fake.takeCall("approval/decide");
+      assert.deepStrictEqual(first.params.requirementId, { approvalId: "approval-1", sourceIndex: 0 });
+      assert.strictEqual(first.params.choiceId, "once");
+      yield* fake.emit("approval/updated", { ...approval(nativeId), currentRequirementId: { approvalId: "approval-1", sourceIndex: 1 } });
+      const updated = yield* fake.takeCall("approval/decide");
+      assert.deepStrictEqual(updated.params.requirementId, { approvalId: "approval-1", sourceIndex: 1 });
+      assert.strictEqual(updated.params.choiceId, "once");
+      assert.isFalse(harness.allEvents.some((event) => event.type === "runtime_request.updated"));
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 
@@ -814,14 +752,6 @@ describe("MuseAdapterV2", () => {
       // The user sends a message first; Muse runs the report before it.
       const { nativeId } = yield* startConversation(harness, fake);
       yield* fake.emit("approval/requested", approval("report-1"));
-      const asked = yield* harness.takeEvent(
-        "runtime_request.updated",
-        (event) => event.runtimeRequest.status === "pending",
-      );
-      yield* harness.runtime.respondToRuntimeRequest({
-        requestId: asked.runtimeRequest.id,
-        decision: "accept",
-      });
       yield* fake.takeCall("approval/decide");
       yield* fake.emit("approval/resolved", { approvalId: "approval-1", turnId: "report-1" });
       yield* fake.emit("turn/completed", { turnId: "report-1", terminal: "completed" });
@@ -834,62 +764,16 @@ describe("MuseAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 
-  it.effect("approves a workflow child's approval in full access after its turn ended", () =>
+  it.effect("automatically answers a workflow child's permission after the root turn ended", () =>
     Effect.gen(function* () {
-      const fake = yield* makeFakeMuse();
-      const harness = yield* makeHarness(fake);
+      const fake = yield* makeFakeMuse(); const harness = yield* makeHarness(fake);
       const { nativeId } = yield* startConversation(harness, fake);
       yield* fake.emit("turn/completed", { turnId: nativeId, terminal: "completed" });
       yield* harness.takeEvent("turn.terminal");
-      // Muse runs workflow children without the session's allowAll mode.
-      const childApproval = { ...approval("child-run-1"), subagentOrigin: { subagentId: "a7" } };
-      yield* fake.emit("approval/requested", childApproval);
-      const asked = yield* harness.takeEvent("runtime_request.updated");
-      assert.strictEqual(asked.runtimeRequest.status, "pending");
-      assert.isNull(asked.runtimeRequest.providerTurnId);
+      yield* fake.emit("approval/requested", { ...approval("child-run-1"), subagentOrigin: { subagentId: "a7" } });
       const decision = yield* fake.takeCall("approval/decide");
       assert.strictEqual(decision.params.choiceId, "once");
-      yield* fake.emit("approval/resolved", childApproval);
-      const resolved = yield* harness.takeEvent("runtime_request.updated");
-      assert.strictEqual(resolved.runtimeRequest.status, "resolved");
-      assert.strictEqual(resolved.runtimeRequest.decision, "accept");
-    }).pipe(Effect.scoped, Effect.provide(testLayer)),
-  );
-
-  it.effect("keeps a workflow child's approval pending for the user past the turn's end", () =>
-    Effect.gen(function* () {
-      const fake = yield* makeFakeMuse();
-      const policy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-        ...runtimePolicy,
-        runtimeMode: "approval-required",
-      });
-      const harness = yield* makeHarness(
-        fake,
-        INSTANCE_ID,
-        undefined,
-        undefined,
-        undefined,
-        policy,
-      );
-      const { nativeId } = yield* startConversation(harness, fake);
-      const childApproval = { ...approval("child-run-1"), subagentOrigin: { subagentId: "a7" } };
-      yield* fake.emit("approval/requested", childApproval);
-      const asked = yield* harness.takeEvent("runtime_request.updated");
-      assert.isNull(asked.runtimeRequest.providerTurnId);
-      yield* fake.emit("turn/completed", { turnId: nativeId, terminal: "completed" });
-      yield* harness.takeEvent("turn.terminal");
-      assert.isFalse(
-        harness.allEvents.some(
-          (event) =>
-            event.type === "runtime_request.updated" && event.runtimeRequest.status !== "pending",
-        ),
-      );
-      yield* harness.runtime.respondToRuntimeRequest({
-        requestId: asked.runtimeRequest.id,
-        decision: "decline",
-      });
-      const decision = yield* fake.takeCall("approval/decide");
-      assert.strictEqual(decision.params.choiceId, "deny");
+      assert.isFalse(harness.allEvents.some((event) => event.type === "runtime_request.updated"));
     }).pipe(Effect.scoped, Effect.provide(testLayer)),
   );
 

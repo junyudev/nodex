@@ -21,7 +21,7 @@ import { plainTextToPortableRichText } from "../../../shared/block-documents/por
 import { MemoryCanvasSceneOutbox } from "@/lib/canvas-scene-outbox";
 import type { CanvasSceneSyncAdapter } from "@/lib/canvas-scene-provider";
 import { noOpLocalCommit } from "../../../shared/testing/local-commit";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import {
   readCanvasViewportPreference,
   writeCanvasViewportPreference,
@@ -64,7 +64,7 @@ let maintenanceEligible = false;
 let maintenanceReadCount = 0;
 let maintenanceApplyCount = 0;
 let openedCards: Array<{
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly title?: string;
 }> = [];
@@ -136,7 +136,7 @@ const syncResponse = (syncRequestId: string) => ({
   kind: "snapshot" as const,
   syncRequestId,
   libraryId: "library-1",
-  accessContext: { kind: "project" as const, projectId: "project-1" },
+  routingContext: { kind: "project" as const, projectId: "project-1" },
   documentId: descriptor.documentId,
   storeEpoch: descriptor.storeEpoch,
   generation: descriptor.generation,
@@ -190,7 +190,7 @@ const adapter: CanvasSceneSyncAdapter = {
       value: {
         mutationId: request.mutationId,
         libraryId: descriptor.libraryId,
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         documentId: request.documentId,
         storeEpoch: request.storeEpoch,
         generation: request.generation,
@@ -313,7 +313,7 @@ function MockExcalidraw(props: {
 
 const descriptor = {
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   ownerBlockId: "019f7399-7676-70ae-b2aa-168692b64d20",
   ownerType: "canvas",
   ownerLifecycle: "active",
@@ -376,7 +376,7 @@ vi.mock("./canvas-view-deps", () => ({
     return children(
       {
         status: "ydoc_primary",
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         ownerBlockId,
         descriptor: { ...descriptor, ownerBlockId },
       },
@@ -422,7 +422,7 @@ vi.mock("./canvas-view-deps", () => ({
 async function renderCanvas(strict = false) {
   const { CanvasDocumentSurface } = await import("../canvas/canvas-document-surface");
   const canvas = createElement(CanvasDocumentSurface, {
-    accessContext: descriptor.accessContext,
+    routingContext: descriptor.routingContext,
     canvasBlockId: descriptor.ownerBlockId,
     surfaceKey: "canvas:test",
     viewportPreferenceScope: "stage:test",
@@ -432,8 +432,8 @@ async function renderCanvas(strict = false) {
       board: mockBoard,
       createPage: async () => makeCardSummary("card-new", "New Card"),
     },
-    onOpenPage: ({ accessContext, pageId, titleSnapshot }) => {
-      openedCards.push({ accessContext, pageId, title: titleSnapshot });
+    onOpenPage: ({ routingContext, pageId, titleSnapshot }) => {
+      openedCards.push({ routingContext, pageId, title: titleSnapshot });
     },
     activePageId: undefined,
     onCloseActivePage: async () => undefined,
@@ -495,7 +495,7 @@ describe("CanvasDocumentSurface", () => {
     const canvasId = "019f7399-7676-70ae-b2aa-168692b64d21";
     const view = render(
       createElement(CanvasDocumentSurface, {
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         canvasBlockId: canvasId,
         surfaceKey: "canvas:standalone",
         viewportPreferenceScope: "stage:standalone",
@@ -585,7 +585,7 @@ describe("CanvasDocumentSurface", () => {
     fireEvent.click(view.getByRole("button", { name: "open first card" }));
     expect(openedCards).toEqual([
       {
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         pageId: "standalone-card",
         title: "Standalone",
       },
@@ -642,7 +642,7 @@ describe("CanvasDocumentSurface", () => {
       realtimeListener?.({
         type: "canvas_scene_resync_required",
         libraryId: descriptor.libraryId,
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         documentId: descriptor.documentId,
         storeEpoch: descriptor.storeEpoch,
         generation: descriptor.generation,
@@ -670,7 +670,7 @@ describe("CanvasDocumentSurface", () => {
       presenceListener?.({
         type: "canvas_presence_updated",
         libraryId: descriptor.libraryId,
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         presence: {
           engine: "canvas_scene",
           documentId: descriptor.documentId,

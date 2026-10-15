@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import type { WorkbenchDbViewSurfaceConfig } from "../../../shared/workbench-scene";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type {
@@ -27,10 +27,6 @@ import { mapWithConcurrency } from "../../lib/map-with-concurrency";
 import { queryKeys } from "../../lib/query-keys";
 import { useProjectionRegistration } from "../../lib/projection-invalidation-context";
 import type { ProjectionInvalidationCause } from "../../lib/projection-invalidation-registry";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "../../lib/resource-authority-query-cache";
 import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
 import type { Project } from "@/lib/types";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
@@ -55,23 +51,6 @@ interface ScopedWindow {
 
 const GROUP_WINDOW_READ_CONCURRENCY = 8;
 
-const resolveDatabaseSurfaceAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const snapshot = data as
-    | {
-        readonly groups: DatabaseViewGroupsSnapshot<string | null>;
-        readonly scopedWindows: readonly ScopedWindow[];
-      }
-    | undefined;
-  return snapshot
-    ? {
-        authorizations: [
-          snapshot.groups.authorization,
-          ...snapshot.scopedWindows.map((window) => window.snapshot.authorization),
-        ],
-      }
-    : null;
-};
-
 interface ContinuationState {
   readonly windows: readonly DatabaseViewWindowSnapshot<string | null>[];
   readonly loading: boolean;
@@ -79,7 +58,7 @@ interface ContinuationState {
 }
 
 const readDatabaseWindowForContext = async (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   target: DatabaseReadTarget,
   input: {
     readonly after?: string;
@@ -87,8 +66,8 @@ const readDatabaseWindowForContext = async (
     readonly minimumCommitSeq?: number;
   } = {},
 ): Promise<DatabaseViewWindowSnapshot<string | null>> => {
-  if (accessContext.kind === "project") {
-    return await readDatabaseViewWindow(accessContext.projectId, {
+  if (routingContext.kind === "project") {
+    return await readDatabaseViewWindow(routingContext.projectId, {
       ...target,
       ...input,
       first: 50,
@@ -102,12 +81,12 @@ const readDatabaseWindowForContext = async (
 };
 
 const readDatabaseGroupsForContext = async (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   target: DatabaseReadTarget,
   minimumCommitSeq = 0,
 ): Promise<DatabaseViewGroupsSnapshot<string | null>> => {
-  if (accessContext.kind === "project") {
-    return await readDatabaseViewGroups(accessContext.projectId, {
+  if (routingContext.kind === "project") {
+    return await readDatabaseViewGroups(routingContext.projectId, {
       ...target,
       ...(minimumCommitSeq > 0 ? { minimumCommitSeq } : {}),
     });
@@ -179,7 +158,7 @@ const mergeWindows = (
 
 export function WorkbenchDatabaseViewSurface({
   workbenchPresentation,
-  accessContext,
+  routingContext,
   target,
   onOpenPage,
   onPresentationChange,
@@ -190,7 +169,7 @@ export function WorkbenchDatabaseViewSurface({
   onSendPageToChat,
 }: {
   readonly workbenchPresentation?: WorkbenchDatabaseViewPresentationRegistration;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly target: DatabaseSurfaceTarget;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly onPresentationChange?: (presentation: {
@@ -212,21 +191,20 @@ export function WorkbenchDatabaseViewSurface({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const inFlightScopesRef = useRef(new Set<string>());
   const requiredMinimumCommitSeqRef = useRef(0);
-  const revocationRepairRef = useRef<Promise<void> | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [selectedPageIds, setSelectedPageIds] = useState<ReadonlySet<string>>(() => new Set());
   const [continuations, setContinuations] = useState<ReadonlyMap<string, ContinuationState>>(
     new Map(),
   );
-  const accessProjectId = accessContext.kind === "project" ? accessContext.projectId : undefined;
+  const projectId = routingContext.kind === "project" ? routingContext.projectId : undefined;
   const targetIdentity =
     target.kind === "database-default"
       ? `database:${target.databaseId}`
       : `view:${target.databaseViewId}`;
   const queryKey = useMemo(
-    () => queryKeys.libraryDatabases.view(accessProjectId, targetIdentity),
-    [accessProjectId, targetIdentity],
+    () => queryKeys.libraryDatabases.view(projectId, targetIdentity),
+    [projectId, targetIdentity],
   );
   // The floor is a monotonic read barrier, not semantic query identity.
   // Keeping it out of the key prevents one cache entry per LocalCommit while
@@ -237,8 +215,8 @@ export function WorkbenchDatabaseViewSurface({
     queryFn: async () => {
       const readTarget = readTargetFromIdentity(targetIdentity);
       const minimumCommitSeq = requiredMinimumCommitSeqRef.current;
-      const readContext: ContentAccessContext = accessProjectId
-        ? { kind: "project", projectId: accessProjectId }
+      const readContext: ContentRoutingContext = projectId
+        ? { kind: "project", projectId: projectId }
         : { kind: "library" };
       const groups = await readDatabaseGroupsForContext(readContext, readTarget, minimumCommitSeq);
       const scopedWindows = await mapWithConcurrency(
@@ -252,12 +230,8 @@ export function WorkbenchDatabaseViewSurface({
           }),
         }),
       );
-      return await admitResourceAuthorityQuery(
-        { groups, scopedWindows },
-        resolveDatabaseSurfaceAuthority,
-      );
+      return { groups, scopedWindows };
     },
-    meta: resourceAuthorityQueryMeta(resolveDatabaseSurfaceAuthority),
   });
 
   useEffect(() => {
@@ -350,11 +324,11 @@ export function WorkbenchDatabaseViewSurface({
   useProjectionRegistration(
     authority
       ? {
-          scope: accessProjectId
+          scope: projectId
             ? {
                 kind: "project",
                 libraryId: authority.libraryId,
-                projectId: accessProjectId,
+                projectId: projectId,
               }
             : { kind: "library", libraryId: authority.libraryId },
           consumerKey: hashKey(["projection", queryKey]),
@@ -375,26 +349,11 @@ export function WorkbenchDatabaseViewSurface({
               ...current.scopedWindows.map((window) => window.snapshot),
             ]);
           },
-          revoke: (cause) => {
-            requiredMinimumCommitSeqRef.current = Math.max(
-              requiredMinimumCommitSeqRef.current,
-              cause.stream.commitSeq,
-            );
-            revocationRepairRef.current = queryClient.resetQueries({
-              queryKey,
-              exact: true,
-            });
-          },
           invalidate: async (cause: ProjectionInvalidationCause) => {
             requiredMinimumCommitSeqRef.current = Math.max(
               requiredMinimumCommitSeqRef.current,
               cause.stream.commitSeq,
             );
-            if (cause.kind === "revocation") {
-              await revocationRepairRef.current;
-              revocationRepairRef.current = null;
-              return;
-            }
             await invalidateExactQuery(queryClient, queryKey);
           },
         }
@@ -420,7 +379,7 @@ export function WorkbenchDatabaseViewSurface({
       }),
     );
     try {
-      const next = await readDatabaseWindowForContext(accessContext, readTarget, {
+      const next = await readDatabaseWindowForContext(routingContext, readTarget, {
         after: cursor,
         ...(base.scope ? { groupScope: base.scope } : {}),
       });
@@ -463,25 +422,23 @@ export function WorkbenchDatabaseViewSurface({
     console.error("[database-view:read]", query.error);
   }, [query.error]);
 
-  const pageActionPort: DatabaseViewPageActionPort | undefined = accessProjectId
-    ? {
-        ...(onOpenPageInNewChat ? { openInNewChat: onOpenPageInNewChat } : {}),
-        ...(onOpenRelatedChat ? { openRelatedChat: onOpenRelatedChat } : {}),
-        ...(onSendPageToChat ? { sendToChat: onSendPageToChat } : {}),
-        deletePage: async ({ pageId }) => {
-          const committed = await commitPageLifecycleIntent({
-            kind: "delete",
-            projectId: accessProjectId,
-            pageId,
-            operationId: createUuidV7(),
-          });
-          if (committed.receipt.lifecycle !== "deleted") {
-            throw new Error(`Page ${pageId} delete did not commit`);
-          }
-          await query.refetch();
-        },
+  const pageActionPort: DatabaseViewPageActionPort = {
+    ...(onOpenPageInNewChat ? { openInNewChat: onOpenPageInNewChat } : {}),
+    ...(onOpenRelatedChat ? { openRelatedChat: onOpenRelatedChat } : {}),
+    ...(onSendPageToChat ? { sendToChat: onSendPageToChat } : {}),
+    deletePage: async ({ pageId }) => {
+      const committed = await commitPageLifecycleIntent({
+        kind: "delete",
+        projectId: projectId ?? null,
+        pageId,
+        operationId: createUuidV7(),
+      });
+      if (committed.receipt.lifecycle !== "deleted") {
+        throw new Error(`Page ${pageId} delete did not commit`);
       }
-    : undefined;
+      await query.refetch();
+    },
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">

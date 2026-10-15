@@ -97,10 +97,10 @@ it.effect(
 
       assert.strictEqual(synchronizeCount, 1);
       assert.deepEqual(scheduledEvents, [
-        { automationId: "daily-report", targetThreadId: null, reason: "upsert" },
+        { automationId: "daily-report", sessionId: null, reason: "upsert" },
       ]);
       assert.deepEqual(runEvents, [
-        { automationId: "daily-report", threadId: "thread:daily-report", reason: "settle" },
+        { automationId: "daily-report", runId: "thread:daily-report", reason: "settle" },
       ]);
 
       yield* runtime.publishResync({

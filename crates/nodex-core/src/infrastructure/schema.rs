@@ -182,7 +182,7 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", false)
             .unwrap();
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .unwrap();
@@ -219,7 +219,10 @@ mod tests {
 
     #[test]
     fn current_schema_artifact_matches_catalog() {
-        assert_eq!(CURRENT_STORE_REVISION, 178);
+        assert_eq!(
+            CURRENT_STORE_REVISION,
+            i64::from(nodex_store_format::CURRENT_STORE_VERSION)
+        );
         let mut artifact = Connection::open_in_memory().expect("artifact Store");
         install_current_schema(&mut artifact).expect("current schema artifact");
         let artifact_inventory = read_schema_inventory(&artifact).expect("artifact inventory");

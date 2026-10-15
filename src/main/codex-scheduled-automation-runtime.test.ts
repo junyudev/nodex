@@ -20,7 +20,6 @@ function makeAutomation(
     notificationPolicy: null,
     kind: "cron",
     status: "ACTIVE",
-    targetThreadId: null,
     name: "Daily report",
     prompt: "Summarize the repo.",
     rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",

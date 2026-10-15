@@ -151,7 +151,7 @@ impl OwnedDocumentModule {
                     RecoveryReadValue::Inspect { inspection: Box::new(inspect_selected(connection, context, summary, capture, PreviewSelection::None)?.metadata()) }
                 },
             };
-            Ok(ModuleReadSnapshot { contract_version: OWNED_DOCUMENT_CONTRACT_VERSION, store_epoch: StoreEpoch(read_store_epoch(connection)?), commit_head: read_local_commit_head(connection)?, authorization: None, value: OwnedDocumentReadValue::Recovery { value } })
+            Ok(ModuleReadSnapshot { contract_version: OWNED_DOCUMENT_CONTRACT_VERSION, store_epoch: StoreEpoch(read_store_epoch(connection)?), commit_head: read_local_commit_head(connection)?, value: OwnedDocumentReadValue::Recovery { value } })
         }).map_err(core_error)
     }
 
@@ -429,7 +429,7 @@ fn authorize_source(
             return Err(not_found("Recovery document was not found"));
         }
         if context.project_id.is_some() {
-            authorize_document_access(connection, context, authority, DocumentAccessKind::Read)?;
+            validate_document_owner(connection, context, authority, DocumentOperationKind::Read)?;
         }
         return Ok(Some(authority.clone()));
     }
@@ -882,7 +882,8 @@ fn analyse_content(
             result.can_restore = file_snapshot.is_some()
                 && !barrier
                 && capture.base_head_seq <= authority.head.head_seq
-                && authorize_yjs(connection, context, authority, DocumentAccessKind::Write).is_ok()
+                && validate_yjs_owner(connection, context, authority, DocumentOperationKind::Write)
+                    .is_ok()
                 && ownership_unchanged(&current_materialization, &materialization);
             if barrier && result.can_copy {
                 result.explanation = Some("The document structure changed after these edits. Save a copy to keep both versions.".to_owned());
@@ -997,8 +998,13 @@ fn analyse_content(
             result.already_saved = exact && restored == current && snapshot_covered;
             result.can_restore = exact
                 && !mutations.is_empty()
-                && authorize_canvas(connection, context, authority, DocumentAccessKind::Write)
-                    .is_ok();
+                && validate_canvas_owner(
+                    connection,
+                    context,
+                    authority,
+                    DocumentOperationKind::Write,
+                )
+                .is_ok();
             result.available[2] = true;
             let retained_from_restored = retained_scene.is_none() && exact;
             result.available[1] |= retained_from_restored;
@@ -1446,7 +1452,7 @@ impl OwnedDocumentModule {
                                 Some(scope.evidence()),
                                 &authority,
                                 actor_project_id,
-                                &document_access_context(&context),
+                                &document_routing_context(&context),
                                 &epoch.0,
                                 &operation_id,
                                 authority.head.head_seq,

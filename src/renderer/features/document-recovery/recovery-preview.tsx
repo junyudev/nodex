@@ -36,7 +36,7 @@ export function RecoveryPreview({
             ? {
                 libraryId: scope.libraryId,
                 storeEpoch,
-                contentAccessContext: scope.accessContext,
+                contentRoutingContext: scope.routingContext,
                 documentId,
                 bindings: value.files,
               }
@@ -58,13 +58,13 @@ export function RecoveryPreview({
             ? {
                 libraryId: scope.libraryId,
                 storeEpoch,
-                contentAccessContext: scope.accessContext,
+                contentRoutingContext: scope.routingContext,
                 bindings: value.files,
               }
             : null
         }
         content={value.nfm}
-        projectId={scope.accessContext.kind === "project" ? scope.accessContext.projectId : ""}
+        projectId={scope.routingContext.kind === "project" ? scope.routingContext.projectId : ""}
         pageId={documentId}
         historyId={draftId}
       />

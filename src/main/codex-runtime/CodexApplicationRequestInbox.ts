@@ -117,9 +117,28 @@ export interface CodexApplicationRequestGeneration {
 }
 
 export interface CodexApplicationRequestInboxService {
+  /** A native request retains its exact connection and cancellation lifetime. */
+  readonly captureNativeTurnSource: (
+    source: { readonly hostId: string; readonly generation: number },
+    threadId: string,
+    turnId: string,
+  ) => Effect.Effect<{ readonly isActive: () => boolean } | null>;
+  readonly cancelAppCalls: (
+    source: {
+      readonly hostId: string;
+      readonly generation: number;
+      readonly occurrenceId?: string;
+    },
+    threadId: string,
+    turnId: string,
+  ) => Effect.Effect<void>;
   /** Observe only canonical notifications after application Turn authority admission. */
   readonly observeAppCallNotification: (
-    source: { readonly hostId: string; readonly generation: number },
+    source: {
+      readonly hostId: string;
+      readonly generation: number;
+      readonly occurrenceId?: string;
+    },
     notification: CodexServerNotification,
   ) => Effect.Effect<void>;
   /** Execute a native MCP invocation only in the exact generation that launched its bridge. */
@@ -167,7 +186,7 @@ export interface CodexApplicationRequestInboxService {
   ) => Effect.Effect<boolean>;
   /** Fails only the exact physical generation that admitted the bad occurrence. */
   readonly failGeneration: (
-    occurrence: CodexApplicationProtocolOccurrence,
+    occurrence: Pick<CodexApplicationProtocolOccurrence, "hostId" | "generation" | "occurrenceId">,
     cause: unknown,
   ) => Effect.Effect<boolean>;
   /** Runs semantic interpretation only while the exact Endpoint generation remains alive. */
@@ -738,23 +757,59 @@ export const makeWithCapacities = (
       occurrence,
       cause,
     ) =>
-      SynchronizedRef.get(state).pipe(
-        Effect.flatMap((current) => {
-          const active = current.generations.get(
-            generationKey(occurrence.hostId, occurrence.generation),
+      SynchronizedRef.modifyEffect(state, (current) => {
+        const key = generationKey(occurrence.hostId, occurrence.generation);
+        const active = current.generations.get(key);
+        if (!active || active.failed) return Effect.succeed([false, current] as const);
+        const generations = new Map(current.generations);
+        generations.set(key, { ...active, failed: true });
+        return active.appCalls.retire().pipe(
+          Effect.andThen(
+            Deferred.fail(
+              active.termination,
+              new CodexApplicationConsequenceFailure({
+                hostId: occurrence.hostId,
+                generation: occurrence.generation,
+                occurrenceId: occurrence.occurrenceId,
+                cause,
+              }),
+            ),
+          ),
+          Effect.as([true, { ...current, generations }] as const),
+        );
+      });
+
+    const captureNativeTurnSource: CodexApplicationRequestInboxService["captureNativeTurnSource"] =
+      (source, threadId, turnId) =>
+        SynchronizedRef.get(state).pipe(
+          Effect.map((current) => {
+            const active = current.generations.get(generationKey(source.hostId, source.generation));
+            if (
+              current.closed ||
+              !active ||
+              active.failed ||
+              !active.appCalls.isTurnLive(threadId, turnId)
+            )
+              return null;
+            return { isActive: () => active.appCalls.isTurnLive(threadId, turnId) };
+          }),
+        );
+    const cancelAppCalls: CodexApplicationRequestInboxService["cancelAppCalls"] = (
+      source,
+      threadId,
+      turnId,
+    ) =>
+      Effect.gen(function* () {
+        const current = yield* SynchronizedRef.get(state);
+        const active = current.generations.get(generationKey(source.hostId, source.generation));
+        if (current.closed || !active || active.failed) return;
+        yield* active.appCalls.cancelTurn(threadId, turnId);
+        if (active.appCalls.overflowed())
+          yield* failGeneration(
+            { ...source, occurrenceId: source.occurrenceId ?? "native-turn-cancellation" },
+            new CodexAppCallRejected({ reason: "capacity" }),
           );
-          if (!active) return Effect.succeed(false);
-          return Deferred.fail(
-            active.termination,
-            new CodexApplicationConsequenceFailure({
-              hostId: occurrence.hostId,
-              generation: occurrence.generation,
-              occurrenceId: occurrence.occurrenceId,
-              cause,
-            }),
-          );
-        }),
-      );
+      });
 
     const interpretNotification: CodexApplicationRequestInboxService["interpretNotification"] = (
       occurrence,
@@ -782,22 +837,30 @@ export const makeWithCapacities = (
           const current = yield* SynchronizedRef.get(state);
           const active = current.generations.get(generationKey(source.hostId, source.generation));
           if (current.closed || !active || active.failed) return;
-          if (notification.method === "turn/started") {
-            yield* active.appCalls.startTurn(
+          if (
+            notification.method === "turn/completed" &&
+            notification.params.turn.status === "interrupted"
+          )
+            yield* active.appCalls.cancelTurn(
               notification.params.threadId,
               notification.params.turn.id,
             );
-            return;
-          }
-          if (notification.method === "turn/completed") {
-            yield* active.appCalls.endTurn(
+          if (
+            notification.method === "item/completed" &&
+            notification.params.item.type === "mcpToolCall"
+          )
+            yield* active.appCalls.completeCall(
               notification.params.threadId,
-              notification.params.turn.id,
+              notification.params.turnId,
+              notification.params.item.id,
             );
-            return;
-          }
           if (notification.method === "item/started")
             yield* active.appCalls.observe(notification.params);
+          if (active.appCalls.overflowed())
+            yield* failGeneration(
+              { ...source, occurrenceId: source.occurrenceId ?? "native-app-call-registration" },
+              new CodexAppCallRejected({ reason: "capacity" }),
+            );
         });
 
     const runAppCall: CodexApplicationRequestInboxService["runAppCall"] = (
@@ -906,6 +969,8 @@ export const makeWithCapacities = (
     );
 
     return CodexApplicationRequestInbox.of({
+      captureNativeTurnSource,
+      cancelAppCalls,
       observeAppCallNotification,
       runAppCall,
       occurrences: Stream.fromEffectRepeat(takeOccurrence),

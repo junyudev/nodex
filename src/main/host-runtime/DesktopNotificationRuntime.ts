@@ -172,10 +172,7 @@ export const layer = (
           notification.kind === "turn-complete" &&
           typeof notification.replyPlaceholder === "string" &&
           notification.replyPlaceholder.trim().length > 0;
-        const timeoutType =
-          notification.kind === "permission" || notification.kind === "question"
-            ? "never"
-            : undefined;
+        const timeoutType = notification.kind === "question" ? "never" : undefined;
         const occurrenceId = notification.occurrenceId ?? notification.id;
         remove(occurrenceId, true);
 

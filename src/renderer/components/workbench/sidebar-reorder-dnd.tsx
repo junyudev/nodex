@@ -243,7 +243,6 @@ export function SidebarReorderDndProvider({
   onThreadError = DEFAULT_THREAD_ERROR_REPORTER,
   onThreadDrop = DEFAULT_THREAD_DROP,
   onLibraryMove,
-  onLibraryGrant,
 }: {
   children: ReactNode;
   getThreadIdByThreadKey?: (threadKey: string) => string | null;
@@ -258,7 +257,6 @@ export function SidebarReorderDndProvider({
     resource: SidebarLibraryDragResource;
     parent: LibraryWriteParent;
   }) => void | Promise<void>;
-  onLibraryGrant?: (drop: { resource: SidebarLibraryDragResource; projectId: string }) => void;
 }) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -501,7 +499,6 @@ export function SidebarReorderDndProvider({
 
       const libraryResource = readSidebarLibraryDragResource(event.active.data.current);
       if (libraryResource) {
-        const overProject = readSidebarGroupDndPayload(event.over?.data.current);
         const overRect = event.over?.rect;
         const preferNest =
           pointerY !== null && overRect
@@ -510,19 +507,12 @@ export function SidebarReorderDndProvider({
         const decision = resolveSidebarLibraryDropDecision(
           event.active.data.current,
           event.over?.data.current,
-          overProject?.projectId ?? null,
           preferNest,
         );
         if (decision.kind === "move") {
           void onLibraryMove?.({
             resource: decision.resource,
             parent: decision.parent,
-          });
-        }
-        if (decision.kind === "grant") {
-          onLibraryGrant?.({
-            resource: decision.resource,
-            projectId: decision.projectId,
           });
         }
         return;
@@ -543,7 +533,6 @@ export function SidebarReorderDndProvider({
       getThreadIdByThreadKey,
       homeContainerIdByThreadId,
       onProjectDrop,
-      onLibraryGrant,
       onLibraryMove,
       onThreadDrop,
       onThreadError,

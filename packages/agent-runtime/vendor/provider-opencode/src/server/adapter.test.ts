@@ -42,9 +42,7 @@ import {
   advanceOpenCodePromptAdmission,
   cancelOpenCodePromptAdmission,
   openCodeBoundaryAfterProviderTurn,
-  openCodeChildPermissionRules,
-  openCodePermissionRules,
-  openCodePermissionRequestKind,
+  OPENCODE_EXECUTION_PERMISSIONS,
   openCodeToolProjectionKind,
   makeOpenCodeProtocolLogger,
   makeOpenCodeAdapterV2,
@@ -52,6 +50,7 @@ import {
   reconcileOpenCodePromptAdmissionStatus,
 } from "./adapter.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const OPEN_CODE_TEST_SETTINGS = Schema.decodeSync(OpenCodeSettings)({
@@ -118,7 +117,7 @@ function runtimePolicy(
   });
 }
 
-function permissionAction(rules: ReturnType<typeof openCodePermissionRules>, permission: string) {
+function permissionAction(rules: typeof OPENCODE_EXECUTION_PERMISSIONS, permission: string) {
   return rules.findLast((rule) => rule.permission === "*" || rule.permission === permission)
     ?.action;
 }
@@ -186,6 +185,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
   const startTurn = (
     text = "hello",
     startProviderThread: OrchestrationV2ProviderThread = providerThread,
+    source: Partial<Pick<ProviderAdapter.ProviderAdapterV2TurnInput, "hostExecutionIdentity" | "runId" | "attemptId">> = {},
   ) =>
     runtime.startTurn({
       appThread: {
@@ -227,6 +227,7 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
       },
       modelSelection,
       runtimePolicy: policy,
+      ...source,
     });
   return {
     nativeSessionId,
@@ -241,6 +242,80 @@ const makeOpenCodeRuntimeHarness = Effect.fn("makeOpenCodeRuntimeHarness")(funct
 });
 
 describe("OpenCodeAdapterV2", () => {
+  it.effect("keeps native calls on their original Run and releases them on completion and cancellation", () =>
+    Effect.gen(function* () {
+      const events = asyncEventStream();
+      const push = (event: unknown) => Effect.promise(() => events.push(event));
+      const captures: Array<{ identity: ExecutionHost.HostTurnIdentity; nativeCallId: string; nativeTurnId?: string }> = [];
+      const released: string[] = [];
+      const displayedInputs = yield* Queue.unbounded<unknown>();
+      let promptId = "";
+      const harness = yield* makeOpenCodeRuntimeHarness("native-source", "root", {
+        event: { subscribe: async () => ({ stream: events.stream }) },
+        mcp: { status: async () => ({ data: { "t3-code": { status: "connected" } } }) },
+        session: {
+          create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+          get: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
+          promptAsync: async (input: { messageID: string }) => { promptId = input.messageID; return { data: true }; },
+          abort: async () => ({ data: true }),
+          children: async () => ({ data: [] }),
+          messages: async () => ({ data: [] }),
+        },
+      }).pipe(Effect.provideService(ExecutionHost.ExecutionHost, {
+        prepareTurn: () => Effect.succeed({}),
+        captureNativeToolCall: (source) => Effect.sync(() => { captures.push(source); return `call:${captures.length}`; }),
+        releaseNativeToolCall: (token) => Effect.sync(() => { released.push(token); }),
+      }));
+      yield* harness.runtime.events.pipe(
+        Stream.runForEach((event) => event.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+          ? Queue.offer(displayedInputs, event.turnItem.input)
+          : Effect.void),
+        Effect.forkScoped,
+      );
+      const identity: ExecutionHost.HostTurnIdentity = {
+        nativeDriver: OPENCODE_PROVIDER, projectId: ProjectId.make("project:native-source"),
+        threadId: harness.threadId, runId: harness.runId, attemptId: RunAttemptId.make("attempt:A"),
+        providerInstanceId: harness.providerThread.providerInstanceId,
+        providerSessionId: harness.providerThread.providerSessionId!, providerThreadId: harness.providerThread.id,
+        nativeGeneration: 1, nativeThreadRef: harness.providerThread.nativeThreadRef, cwd: "/workspace",
+      };
+      const nativePart = (messageID: string, status: "pending" | "completed") => ({
+        type: "message.part.updated", properties: { part: {
+          id: `part:${messageID}`, sessionID: "root", messageID, type: "tool", tool: "t3-code_page-write", callID: "reused-call",
+          state: status === "pending" ? { status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, raw: "" } : {
+            status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, output: "done", title: "Write", metadata: {}, time: { start: 1, end: 2 },
+          },
+        } },
+      });
+      const admit = () => Effect.gen(function* () {
+        yield* push({ type: "message.updated", properties: { sessionID: "root", info: { id: promptId, sessionID: "root", role: "user", time: { created: 1 } } } });
+        yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "busy" } } });
+      });
+      yield* harness.startTurn("first", harness.providerThread, { hostExecutionIdentity: identity });
+      yield* admit();
+      yield* push(nativePart("message:A", "pending"));
+      yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "idle" } } });
+      assert.deepEqual(released, []);
+      const second = { ...identity, runId: RunId.make("run:B"), attemptId: RunAttemptId.make("attempt:B") };
+      yield* harness.startTurn("second", harness.providerThread, {
+        hostExecutionIdentity: second, runId: second.runId, attemptId: second.attemptId,
+      });
+      yield* admit();
+      yield* push(nativePart("message:B", "pending"));
+      assert.deepEqual(captures.map((source) => [source.identity.runId, source.nativeTurnId, source.nativeCallId]), [
+        [identity.runId, "message:A", "reused-call"], [second.runId, "message:B", "reused-call"],
+      ]);
+      yield* push(nativePart("message:A", "completed"));
+      assert.deepEqual(released, ["call:1"]);
+      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+      assert.deepEqual(yield* Queue.take(displayedInputs), { pageId: "page-1" });
+      const active = (yield* harness.runtime.readThreadSnapshot({ providerThread: harness.providerThread })).providerTurns.at(-1)!;
+      yield* harness.runtime.interruptTurn({ providerThread: harness.providerThread, providerTurnId: active.id });
+      yield* push({ type: "session.status", properties: { sessionID: "root", status: { type: "idle" } } });
+      assert.deepEqual(released, ["call:1", "call:2"]);
+    }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)), Effect.scoped),
+  );
   it.effect.each(["completed", "failed", "unresolved", "unavailable", "reconnect"] as const)(
     "normalizes OpenCode step usage for %s turns",
     (ending) =>
@@ -385,15 +460,15 @@ describe("OpenCodeAdapterV2", () => {
       ),
   );
 
-  it.effect.each(["permission", "question"] as const)(
-    "cancels an undelivered %s reply at its deadline",
-    (kind) =>
+  it.effect(
+    "cancels an undelivered question reply at its deadline",
+    () =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
         const called = promiseGate<void>();
         let signal: AbortSignal | undefined;
         let deliver = false;
-        const harness = yield* makeOpenCodeRuntimeHarness(`reply-${kind}`, "root", {
+        const harness = yield* makeOpenCodeRuntimeHarness("reply-question", "root", {
           event: { subscribe: async () => ({ stream: nativeEvents.stream }) },
           session: {
             create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
@@ -401,7 +476,7 @@ describe("OpenCodeAdapterV2", () => {
             abort: async () => ({ data: true }),
             children: async () => ({ data: [] }),
           },
-          [kind]: {
+          question: {
             reply: async (_input: unknown, options: { signal: AbortSignal }) => {
               if (deliver) return { data: true };
               signal = options.signal;
@@ -419,18 +494,8 @@ describe("OpenCodeAdapterV2", () => {
         );
         yield* Effect.promise(() =>
           nativeEvents.push({
-            type: `${kind}.asked`,
-            properties:
-              kind === "permission"
-                ? {
-                    id: "request",
-                    sessionID: "root",
-                    permission: "bash",
-                    patterns: ["*"],
-                    always: [],
-                    metadata: {},
-                  }
-                : {
+            type: "question.asked",
+            properties: {
                     id: "request",
                     sessionID: "root",
                     questions: [
@@ -446,9 +511,7 @@ describe("OpenCodeAdapterV2", () => {
         const request = (yield* Fiber.join(received))[0]!.runtimeRequest;
         const response = {
           requestId: request.id,
-          ...(kind === "permission"
-            ? { decision: "accept" as const }
-            : { answers: { Choice: "Yes" } }),
+          answers: { Choice: "Yes" },
         };
         const reply = yield* harness.runtime
           .respondToRuntimeRequest(response)
@@ -565,11 +628,12 @@ describe("OpenCodeAdapterV2", () => {
   );
 
   it.effect(
-    "preserves tool lifecycle, approval kinds, and late assistant text without cached tool payloads",
+    "preserves tool lifecycle, native auto-approval, and late assistant text without cached tool payloads",
     () =>
       Effect.gen(function* () {
         const nativeEvents = asyncEventStream();
         const nativeSessionId = "native-opencode-tool-lifecycle";
+        const permissionReplies: unknown[] = [];
         const harness = yield* makeOpenCodeRuntimeHarness("tool-lifecycle", nativeSessionId, {
           event: {
             subscribe: async (_input: unknown, options: { signal?: AbortSignal }) => {
@@ -583,6 +647,7 @@ describe("OpenCodeAdapterV2", () => {
             }),
             promptAsync: async () => ({ data: true }),
           },
+          permission: { reply: async (request: unknown) => { permissionReplies.push(request); return { data: true }; } },
         });
         yield* harness.startTurn();
         const received = yield* harness.runtime.events.pipe(
@@ -716,12 +781,7 @@ describe("OpenCodeAdapterV2", () => {
         );
         assert.equal(commands[2]?.output, "/repo\n");
         assert.equal(commands[3]?.output, "Command failed");
-        assert.isTrue(
-          events.some(
-            (event) =>
-              event.type === "runtime_request.updated" && event.runtimeRequest.kind === "file-read",
-          ),
-        );
+        assert.deepEqual(permissionReplies, [{ requestID: "read-permission", reply: "once" }]);
         const assistant = items.filter((item) => item.type === "assistant_message");
         assert.equal(assistant.at(-1)?.text, "Tool results received");
         assert.equal(assistant.at(-1)?.status, "completed");
@@ -741,6 +801,8 @@ describe("OpenCodeAdapterV2", () => {
       const root = "ses_root";
       const child = "ses_child";
       let promptId = "";
+      const captured: Array<{ identity: ExecutionHost.HostTurnIdentity; nativeThreadId?: string }> = [];
+      const nativeReplies: unknown[] = [];
       const harness = yield* makeOpenCodeRuntimeHarness("background-child", root, {
         event: { subscribe: async () => ({ stream: nativeEvents.stream }) },
         session: {
@@ -756,12 +818,25 @@ describe("OpenCodeAdapterV2", () => {
           abort: async () => ({ data: true }),
           children: async () => ({ data: [] }),
         },
-      });
+        permission: { reply: async (request: unknown) => { nativeReplies.push(request); return { data: true }; } },
+        question: { reply: async () => ({ data: true }) },
+      }).pipe(Effect.provideService(ExecutionHost.ExecutionHost, {
+        prepareTurn: () => Effect.succeed({}),
+        captureNativeToolCall: (source) => Effect.sync(() => { captured.push(source); return `call:${captured.length}`; }),
+        releaseNativeToolCall: () => Effect.void,
+      }));
       const hasPendingBackgroundWork = harness.runtime.hasPendingBackgroundWork;
       if (hasPendingBackgroundWork === undefined) {
         return yield* Effect.die("OpenCode runtime must expose hasPendingBackgroundWork.");
       }
-      yield* harness.startTurn();
+      const identity: ExecutionHost.HostTurnIdentity = {
+        nativeDriver: OPENCODE_PROVIDER, projectId: ProjectId.make("project:background-source"),
+        threadId: harness.threadId, runId: harness.runId, attemptId: RunAttemptId.make("attempt:A"),
+        providerInstanceId: harness.providerThread.providerInstanceId,
+        providerSessionId: harness.providerThread.providerSessionId!, providerThreadId: harness.providerThread.id,
+        nativeGeneration: 1, nativeThreadRef: harness.providerThread.nativeThreadRef, cwd: "/workspace",
+      };
+      yield* harness.startTurn("first", harness.providerThread, { hostExecutionIdentity: identity });
       const terminal = yield* harness.runtime.events.pipe(
         Stream.filter((event) => event.type === "turn.terminal"),
         Stream.runHead,
@@ -815,14 +890,50 @@ describe("OpenCodeAdapterV2", () => {
         },
       });
       yield* push(status(child, "busy"));
+      yield* push({ type: "message.updated", properties: {
+        sessionID: child, info: { id: "child-prompt", sessionID: child, role: "user", time: { created: 2 } },
+      } });
       yield* push(taskPart("completed"));
       yield* push(status(root, "idle"));
       assert.equal(Option.getOrUndefined(yield* Fiber.join(terminal))?.status, "completed");
       assert.isTrue(yield* hasPendingBackgroundWork, "the running child must pin idle release");
 
+      const second = { ...identity, runId: RunId.make("run:background:second"), attemptId: RunAttemptId.make("attempt:B") };
+      yield* harness.startTurn("second", harness.providerThread, {
+        hostExecutionIdentity: second, runId: second.runId, attemptId: second.attemptId,
+      });
+      yield* push({ type: "message.updated", properties: {
+        sessionID: root, info: { id: promptId, sessionID: root, role: "user", time: { created: 3 } },
+      } });
+      yield* push(status(root, "busy"));
+      yield* push({ type: "message.part.updated", properties: { part: {
+        id: "background-native-call", sessionID: child, messageID: "child-assistant", type: "tool", tool: "t3-code_page-write", callID: "child-call",
+        state: { status: "pending", input: {}, raw: "" },
+      } } });
+      assert.deepEqual(captured.map((source) => [source.identity.runId, source.nativeThreadId]), [[identity.runId, child]]);
+      yield* push({ type: "permission.asked", properties: {
+        id: "background-permission", sessionID: child, permission: "bash", patterns: ["*"], always: [], metadata: {},
+      } });
+      assert.deepEqual(nativeReplies, [{ requestID: "background-permission", reply: "once" }]);
+      const question = yield* harness.runtime.events.pipe(
+        Stream.filter((event) => event.type === "turn_item.updated" && event.turnItem.type === "user_input_request"),
+        Stream.runHead, Effect.forkScoped,
+      );
+      yield* push({ type: "question.asked", properties: {
+        id: "background-question", sessionID: child,
+        questions: [{ header: "Choice", question: "Which?", options: [{ label: "Yes", description: "Proceed" }] }],
+      } });
+      const asked = Option.getOrUndefined(yield* Fiber.join(question));
+      assert.isDefined(asked);
+      if (asked?.type !== "turn_item.updated" || asked.turnItem.type !== "user_input_request") return yield* Effect.die("Expected a native question");
+      assert.equal(asked.turnItem.runId, identity.runId);
+      yield* harness.runtime.respondToRuntimeRequest({ requestId: asked.turnItem.requestId, answers: { Choice: "Yes" } });
+      yield* push({ type: "question.replied", properties: { requestID: "background-question", sessionID: child } });
+
       yield* push(status(child, "idle"));
       yield* push({ type: "session.idle", properties: { sessionID: child } });
-      assert.isFalse(yield* hasPendingBackgroundWork, "an idle child must not pin idle release");
+      yield* push(status(root, "idle"));
+      assert.isFalse(yield* hasPendingBackgroundWork, "settled root and child work must release idle pinning");
     }).pipe(
       Effect.provide(Layer.merge(IdAllocator.layer, McpProviderSessions.layer)),
       Effect.scoped,
@@ -2591,17 +2702,6 @@ describe("OpenCodeAdapterV2", () => {
     ),
   );
 
-  it("maps native permission families to orchestration request kinds", () => {
-    assert.equal(openCodePermissionRequestKind("bash"), "command");
-    assert.equal(openCodePermissionRequestKind("read"), "file-read");
-    assert.equal(openCodePermissionRequestKind("grep"), "file-read");
-    assert.equal(openCodePermissionRequestKind("external_directory"), "file-read");
-    assert.equal(openCodePermissionRequestKind("external_directory", "edit"), "file-change");
-    assert.equal(openCodePermissionRequestKind("edit"), "file-change");
-    assert.equal(openCodePermissionRequestKind("apply_patch"), "file-change");
-    assert.equal(openCodePermissionRequestKind("todowrite"), "command");
-    assert.equal(openCodePermissionRequestKind("custom", "todowrite"), "command");
-  });
 
   it("maps OpenCode tools to semantic turn-item families", () => {
     assert.equal(openCodeToolProjectionKind("bash"), "command_execution");
@@ -2614,99 +2714,10 @@ describe("OpenCodeAdapterV2", () => {
     assert.equal(openCodeToolProjectionKind("custom_tool"), "dynamic_tool");
   });
 
-  it("maps runtime modes to safe OpenCode permission rules", () => {
-    const approvalRequired = openCodePermissionRules(runtimePolicy("approval-required"));
-    assert.equal(permissionAction(approvalRequired, "read"), "allow");
-    assert.equal(permissionAction(approvalRequired, "edit"), "ask");
-    assert.equal(permissionAction(approvalRequired, "bash"), "ask");
-    assert.equal(permissionAction(approvalRequired, "doom_loop"), "ask");
-    assert.equal(permissionAction(approvalRequired, "unknown_plugin_tool"), "ask");
-    assert.equal(permissionAction(approvalRequired, "question"), "allow");
-
-    const autoAcceptEdits = openCodePermissionRules(runtimePolicy("auto-accept-edits"));
-    assert.equal(permissionAction(autoAcceptEdits, "edit"), "allow");
-    assert.equal(permissionAction(autoAcceptEdits, "bash"), "ask");
-
-    const fullAccess = openCodePermissionRules(runtimePolicy("full-access"));
-    assert.equal(permissionAction(fullAccess, "bash"), "allow");
-    assert.equal(permissionAction(fullAccess, "edit"), "allow");
-
-    const granularApproval = openCodePermissionRules(
-      runtimePolicy("full-access", {
-        approvalPolicy: { granular: { request_permissions: true } },
-      }),
-    );
-    assert.equal(permissionAction(granularApproval, "bash"), "ask");
-    assert.equal(permissionAction(granularApproval, "read"), "allow");
-
-    const approvalRequiredWorkspaceWrite = openCodePermissionRules(
-      runtimePolicy("approval-required", {
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/tmp/opencode-workspace"],
-          networkAccess: false,
-        },
-      }),
-    );
-    assert.equal(permissionAction(approvalRequiredWorkspaceWrite, "edit"), "ask");
-  });
-
-  it("enforces non-interactive sandbox policy through OpenCode permissions", () => {
-    const readOnly = openCodePermissionRules(
-      runtimePolicy("full-access", {
-        approvalPolicy: "never",
-        sandboxPolicy: {
-          type: "readOnly",
-          access: { type: "fullAccess" },
-          networkAccess: false,
-        },
-      }),
-    );
-    assert.equal(permissionAction(readOnly, "read"), "allow");
-    assert.equal(permissionAction(readOnly, "edit"), "deny");
-    assert.equal(permissionAction(readOnly, "bash"), "deny");
-    assert.equal(permissionAction(readOnly, "webfetch"), "deny");
-    assert.equal(permissionAction(readOnly, "doom_loop"), "deny");
-    assert.equal(permissionAction(readOnly, "unknown_plugin_tool"), "deny");
-    assert.equal(permissionAction(readOnly, "external_directory"), "allow");
-
-    const workspaceWrite = openCodePermissionRules(
-      runtimePolicy("auto-accept-edits", {
-        approvalPolicy: "never",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/tmp/opencode-workspace"],
-          networkAccess: true,
-        },
-      }),
-    );
-    assert.equal(permissionAction(workspaceWrite, "edit"), "allow");
-    assert.equal(permissionAction(workspaceWrite, "bash"), "deny");
-    assert.equal(permissionAction(workspaceWrite, "webfetch"), "allow");
-    assert.deepInclude(workspaceWrite, {
-      permission: "external_directory",
-      pattern: "/tmp/opencode-workspace/*",
-      action: "allow",
-    });
-  });
-
-  it("preserves OpenCode's recursion guard on task-created child sessions", () => {
-    const childRules = openCodeChildPermissionRules(runtimePolicy("full-access"), [
-      { permission: "task", pattern: "*", action: "deny" },
-    ]);
-
-    assert.equal(permissionAction(childRules, "read"), "allow");
-    assert.equal(permissionAction(childRules, "bash"), "allow");
-    assert.equal(permissionAction(childRules, "task"), "deny");
-
-    const approvalRequiredPolicy = runtimePolicy("approval-required");
-    const parentRules = openCodePermissionRules(approvalRequiredPolicy);
-    const childApprovalRules = openCodeChildPermissionRules(approvalRequiredPolicy, [
-      ...parentRules.filter((rule) => rule.action === "deny"),
-      { permission: "task", pattern: "*", action: "deny" },
-    ]);
-    assert.equal(permissionAction(childApprovalRules, "bash"), "ask");
-    assert.equal(permissionAction(childApprovalRules, "task"), "deny");
+  it("uses full execution access for every native tool family", () => {
+    for (const permission of ["read", "edit", "bash", "webfetch", "external_directory", "task", "plugin_tool"]) {
+      assert.equal(permissionAction(OPENCODE_EXECUTION_PERMISSIONS, permission), "allow");
+    }
   });
 
   it("uses the next native user message as the exclusive fork and revert boundary", () => {

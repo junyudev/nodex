@@ -1,13 +1,12 @@
+import { live as realtimeVoiceLive } from "../codex-application/CodexRealtimeVoice";
+import { live as realtimeVoicePolicyLive } from "../codex-application/CodexRealtimeVoicePolicy";
 import { randomUUID } from "node:crypto";
 import {
   CodexComposerPrediction,
   make as makeCodexComposerPrediction,
   readCodexComposerPredictionEnvironment,
 } from "../codex-application/CodexComposerPrediction";
-import {
-  CodexRendererSessionLaunch,
-  make as makeRendererSessionLaunch,
-} from "../codex-application/CodexRendererSessionLaunch";
+
 import {
   CodexNativeThreadLookup,
   make as makeNativeThreadLookup,
@@ -67,11 +66,6 @@ import {
 import { CodexGitProbe, make as makeCodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import {
-  CodexHeartbeatTurnCompletion,
-  CodexHeartbeatTurnCompletionError,
-  make as makeCodexHeartbeatTurnCompletion,
-} from "../codex-application/CodexHeartbeatTurnCompletion";
-import {
   CodexInternalThreadRegistry,
   make as makeCodexInternalThreadRegistry,
 } from "../codex-application/CodexInternalThreadRegistry";
@@ -106,10 +100,6 @@ import {
   make as makeCodexAutoThreadTitle,
 } from "../codex-application/CodexAutoThreadTitle";
 import {
-  CodexThreadTitleAppTools,
-  make as makeCodexThreadTitleAppTools,
-} from "../codex-application/CodexThreadTitleAppTools";
-import {
   CodexThreadTitleReconsideration,
   make as makeCodexThreadTitleReconsideration,
 } from "../codex-application/CodexThreadTitleReconsideration";
@@ -139,10 +129,6 @@ import {
   make as makeCodexConversationMaterialization,
 } from "../codex-application/CodexConversationMaterialization";
 import {
-  CodexAutomationRunAcceptance,
-  make as makeCodexAutomationRunAcceptance,
-} from "../codex-application/CodexAutomationRunAcceptance";
-import {
   CodexTurnAuthority,
   make as makeCodexTurnAuthority,
 } from "../codex-application/CodexTurnAuthority";
@@ -171,10 +157,7 @@ import {
   CodexThreadLaunchCompletion,
   make as makeCodexThreadLaunchCompletion,
 } from "../codex-application/CodexThreadLaunchCompletion";
-import {
-  CodexFreshThreadLaunchRuntime,
-  make as makeCodexFreshThreadLaunchRuntime,
-} from "../codex-application/CodexFreshThreadLaunchRuntime";
+
 import {
   CodexConversationArchive,
   make as makeCodexConversationArchive,
@@ -222,7 +205,6 @@ import {
   make as makeCodexThreadHandoffRuntime,
 } from "../codex-application/CodexThreadHandoffRuntime";
 import { live as threadExecutionLive } from "../host-runtime/ThreadExecution";
-import { bindingLayer as nativeConversationBindingLive } from "../app-tools/NativeConversationExtension";
 import {
   AgentImportRuntime,
   make as makeAgentImportRuntime,
@@ -236,18 +218,13 @@ import {
   CodexSideChatCommands,
   make as makeCodexSideChatCommands,
 } from "../codex-application/CodexSideChatCommands";
-import {
-  CodexSessionThreadLaunch,
-  make as makeCodexSessionThreadLaunch,
-} from "../codex-application/CodexSessionThreadLaunch";
+
 import {
   CodexAppProtocolTools,
   make as makeCodexAppProtocolTools,
 } from "../codex-application/CodexAppProtocolTools";
-import { live as codexAutomationInboxLive } from "../codex-application/CodexAutomationInbox";
 import { live as codexOneShotServerRequestsLive } from "../codex-application/CodexOneShotServerRequests";
 import { live as codexProtocolNotificationProjectionLive } from "../codex-application/CodexProtocolNotificationProjection";
-import { live as codexAutomationTurnCompletionLive } from "../codex-application/CodexAutomationTurnCompletion";
 import {
   CodexConversationLifecycle,
   make as makeCodexConversationLifecycle,
@@ -274,11 +251,7 @@ import {
   make as makeThreadCreationRuntime,
 } from "../codex-application/ThreadCreationRuntime";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
-import {
-  CodexGateway,
-  CodexThreadHostResolver,
-  codexGatewayGenerationFence,
-} from "../codex-runtime/CodexGateway";
+import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { resolveCodexThreadHandoffJournalPath } from "../codex/codex-thread-handoff-journal";
 import { makeCodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
@@ -362,43 +335,6 @@ const externalAgentImport = Layer.effect(
   CodexExternalAgentImportRuntime,
   makeCodexExternalAgentImportRuntime(),
 );
-const heartbeatTurnCompletion = Layer.unwrap(
-  Effect.gen(function* () {
-    const gateway = yield* CodexGateway;
-    const hostResolver = yield* CodexThreadHostResolver;
-    return Layer.effect(
-      CodexHeartbeatTurnCompletion,
-      makeCodexHeartbeatTurnCompletion({
-        events: gateway.events,
-        resolveHost: (threadId) =>
-          hostResolver.resolve(threadId).pipe(
-            Effect.mapError(
-              (cause) =>
-                new CodexHeartbeatTurnCompletionError({
-                  reason: "request-failed",
-                  message: `Could not resolve the execution host for heartbeat thread ${threadId}`,
-                  cause,
-                  threadId,
-                }),
-            ),
-          ),
-        request: (hostId, params, fence) =>
-          gateway.requestOnHost(hostId, "turn/start", params, fence).pipe(
-            Effect.mapError(
-              (cause) =>
-                new CodexHeartbeatTurnCompletionError({
-                  reason: "request-failed",
-                  message: `Could not start the heartbeat turn on host ${hostId}`,
-                  cause,
-                  threadId: params.threadId,
-                }),
-            ),
-          ),
-      }),
-    );
-  }),
-);
-
 const structuredThreadTitle = Layer.unwrap(
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
@@ -507,12 +443,10 @@ const foundations = Layer.mergeAll(
   visualizations,
   conversationRelationships,
   externalAgentImport,
-  heartbeatTurnCompletion,
   historySearchAdapter,
   historyTimelineAdapterLive,
   sidebarSync,
   structuredThreadTitle,
-  composerPrediction,
   threadGoals,
   threadStartNotifications,
 );
@@ -530,9 +464,8 @@ const threadDescriptions = Layer.unwrap(
     );
   }),
 );
-const threadTitleAppTools = Layer.effect(CodexThreadTitleAppTools, makeCodexThreadTitleAppTools);
 const autoThreadTitle = Layer.effect(CodexAutoThreadTitle, makeCodexAutoThreadTitle).pipe(
-  Layer.provideMerge(Layer.mergeAll(titlePersistence, threadDescriptions, threadTitleAppTools)),
+  Layer.provideMerge(Layer.mergeAll(titlePersistence, threadDescriptions)),
 );
 const historyExport = Layer.effect(
   CodexConversationHistoryExport,
@@ -545,12 +478,8 @@ const materialization = Layer.effect(
   CodexConversationMaterialization,
   makeCodexConversationMaterialization,
 ).pipe(Layer.provideMerge(subagents));
-const automationAcceptance = Layer.effect(
-  CodexAutomationRunAcceptance,
-  makeCodexAutomationRunAcceptance,
-).pipe(Layer.provideMerge(materialization));
 const turnAuthority = Layer.effect(CodexTurnAuthority, makeCodexTurnAuthority).pipe(
-  Layer.provideMerge(automationAcceptance),
+  Layer.provideMerge(materialization),
 );
 const notificationAdmission = Layer.effect(
   CodexNotificationAdmission,
@@ -588,14 +517,10 @@ const launchCompletion = Layer.effect(
   CodexThreadLaunchCompletion,
   makeCodexThreadLaunchCompletion,
 ).pipe(Layer.provideMerge(turnCommands));
-const freshThreadLaunch = Layer.effect(
-  CodexFreshThreadLaunchRuntime,
-  makeCodexFreshThreadLaunchRuntime,
-).pipe(Layer.provideMerge(launchCompletion));
 const conversationArchive = Layer.effect(
   CodexConversationArchive,
   makeCodexConversationArchive,
-).pipe(Layer.provideMerge(Layer.merge(freshThreadLaunch, conversationLifecycle)));
+).pipe(Layer.provideMerge(Layer.merge(launchCompletion, conversationLifecycle)));
 const commands = conversationCommandsLive.pipe(Layer.provideMerge(conversationArchive));
 const threadExecution = codexThreadExecutionLive.pipe(Layer.provideMerge(commands));
 
@@ -655,10 +580,7 @@ const crossHostThreadHandoff = Layer.unwrap(
 const managedWorktreeHandoff = managedWorktreeHandoffLive.pipe(
   Layer.provideMerge(crossHostThreadHandoff),
 );
-const handoffExecution = threadExecutionLive.pipe(
-  Layer.provideMerge(nativeConversationBindingLive),
-  Layer.provideMerge(managedWorktreeHandoff),
-);
+const handoffExecution = threadExecutionLive.pipe(Layer.provideMerge(managedWorktreeHandoff));
 const threadHandoff = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;
@@ -704,16 +626,10 @@ const mainConversationActions = Layer.merge(
 const sideChatCommands = Layer.effect(CodexSideChatCommands, makeCodexSideChatCommands).pipe(
   Layer.provideMerge(mainConversationActions),
 );
-const sessionThreadLaunch = Layer.effect(
-  CodexSessionThreadLaunch,
-  makeCodexSessionThreadLaunch,
-).pipe(Layer.provideMerge(Layer.merge(sideChatCommands, autoThreadTitle)));
-const rendererSessionLaunch = Layer.effect(
-  CodexRendererSessionLaunch,
-  makeRendererSessionLaunch,
-).pipe(Layer.provideMerge(sessionThreadLaunch));
 const waitThreads = Layer.effect(CodexWaitThreads, makeWaitThreads).pipe(
-  Layer.provideMerge(Layer.mergeAll(rendererSessionLaunch, threadDescriptions, nativeThreadLookup)),
+  Layer.provideMerge(
+    Layer.mergeAll(sideChatCommands, autoThreadTitle, threadDescriptions, nativeThreadLookup),
+  ),
 );
 const delegatedMessages = Layer.effect(CodexDelegatedMessages, makeDelegatedMessages).pipe(
   Layer.provideMerge(Layer.merge(waitThreads, mainConversationResume)),
@@ -721,20 +637,14 @@ const delegatedMessages = Layer.effect(CodexDelegatedMessages, makeDelegatedMess
 const protocolTools = Layer.effect(CodexAppProtocolTools, makeCodexAppProtocolTools).pipe(
   Layer.provideMerge(Layer.merge(delegatedMessages, readThreadHistory)),
 );
-const automationInbox = codexAutomationInboxLive.pipe(Layer.provideMerge(protocolTools));
 const oneShotServerRequests = codexOneShotServerRequestsLive.pipe(
-  Layer.provideMerge(automationInbox),
+  Layer.provideMerge(protocolTools),
 );
 const protocolProjection = codexProtocolNotificationProjectionLive({
   supportsChatGptApps: CODEX_INTEGRATION_CAPABILITIES.chatGptApps,
 }).pipe(Layer.provideMerge(oneShotServerRequests));
-const automationTurnCompletion = codexAutomationTurnCompletionLive.pipe(
-  Layer.provideMerge(protocolProjection),
-);
 const durableProjection = codexThreadDurableProjectionLive.pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(conversationLifecycle, automationTurnCompletion, autoThreadTitle),
-  ),
+  Layer.provideMerge(Layer.mergeAll(conversationLifecycle, protocolProjection, autoThreadTitle)),
 );
 const threadTitleReconsideration = Layer.effect(
   CodexThreadTitleReconsideration,
@@ -770,4 +680,13 @@ const conversationResume = Layer.effect(
 ).pipe(Layer.provideMerge(connectionLifecycle));
 
 /** Canonical Conversation projections and semantic command capabilities. */
-export const live = conversationResume;
+export const live = nodexAgentProtocolTools;
+
+/** Native interaction owners are acquired only after the canonical execution facade exists. */
+export const interactions = Layer.mergeAll(
+  composerPrediction,
+  realtimeVoiceLive.pipe(Layer.provideMerge(realtimeVoicePolicyLive)),
+);
+
+/** Protocol observation depends on the single interaction owner, never the other way around. */
+export const protocol = conversationResume;

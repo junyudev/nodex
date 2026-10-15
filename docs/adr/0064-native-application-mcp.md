@@ -16,23 +16,23 @@ Expose application and content tools through the bundled `nodex_app` stdio MCP
 server. Its private local connection delegates to Main semantic services. The exact
 backend connection generation and canonical tool observations establish invocation
 identity; tool arguments and renderer presentation coordinates cannot grant authority.
-Core continues to validate frozen Turn policy and resource access for each operation.
+Core validates Profile and Store identity, execution lifetime and transactional
+preconditions. All authenticated Agents can use the current Profile's content.
 
-Claude Code connections acquire their own scoped private bridge. Main freezes the
-exact accepted foreground Turn from current Core Thread and Project authority;
-the bridge issues invocation claims from that record rather than accepting Thread,
-Turn or Agent coordinates from stdio requests. Settlement, admission failure,
-connection replacement and shutdown revoke those claims. Every operation verifies
-the current native identity, profile and execution location, then rereads the exact
-persisted authority before executing or replaying a receipt. A new input cannot reuse
-an already accepted Turn identity; operation retries return their original admission.
+Native connections acquire a scoped private bridge. Captured native call evidence
+identifies the original Session and, when the Provider supplies causal evidence,
+its Run. Standard ACP calls retain the actual Session and native incarnation with
+an unknown Run left null. A later foreground Run never substitutes for missing
+source evidence. Tool arguments cannot select the invocation's identity.
 
-A shared stdio connection cannot reliably distinguish a foreground Claude caller
-from a native background Agent or watcher. While any such task is live, all Claude
-application-tool claims are suspended, including foreground calls. Clearing the
-roster permits new claims only for a still-active foreground Turn; older claims
-remain invalid. Native background application tools stay unavailable until the
-transport establishes trusted actor correlation for every invocation.
+Parent, child and background calls share full Profile access, including in Plan
+mode. Ordinary Turn settlement does not invalidate live background work.
+Cancellation, native connection retirement and Session deletion invalidate the
+corresponding execution claims before replacement work is admitted. Each operation
+checks its captured execution identity before execution or receipt replay. Stable
+command identities and durable receipts make ordinary retries idempotent. See
+[ADR 0068](0068-agent-runtime-execution-authority.md) for execution ownership and
+native attribution.
 
 Keep the CLI as the default shell content Interface and share the existing content
 contracts and Core owners with MCP. Retire local dynamic execution while preserving
@@ -54,8 +54,8 @@ UI revisions and mutation validators remain distinct contracts.
 ## Consequences
 
 Agents can act on precise live application context without screen capture. Transport
-shutdown and Turn retirement cancel scoped application work. Durable mutations retain
-domain operation identities and recheck authorization before receipt replay.
+shutdown and cancellation invalidate scoped application work. Durable mutations retain
+domain operation identities and recheck execution lifetime before receipt replay.
 
 Backend and external-service availability remain explicit capability boundaries.
 Registering a tool or preserving its transcript does not establish execution support.

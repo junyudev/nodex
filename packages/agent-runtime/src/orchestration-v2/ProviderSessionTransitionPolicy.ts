@@ -3,7 +3,6 @@ import type {
   OrchestrationV2ProviderCapabilities,
   ProviderDriverKind,
   ProviderInteractionMode,
-  RuntimeMode,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 
@@ -21,7 +20,6 @@ export interface ProviderSessionTransitionState {
   readonly driver: ProviderDriverKind;
   readonly continuationIdentity: ProviderContinuationIdentity;
   readonly modelSelection: ModelSelection;
-  readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly workspace: string;
   readonly capabilities: OrchestrationV2ProviderCapabilities;
@@ -53,7 +51,6 @@ export function decideProviderSessionTransition(input: {
   }
 
   const instanceChanged = current.modelSelection.instanceId !== target.modelSelection.instanceId;
-  const runtimeChanged = current.runtimeMode !== target.runtimeMode;
   const workspaceChanged = current.workspace !== target.workspace;
   const selectionChanged = !modelSelectionsEqual(current.modelSelection, target.modelSelection);
   if (selectionChanged && !instanceChanged) {
@@ -72,7 +69,7 @@ export function decideProviderSessionTransition(input: {
         break;
     }
   }
-  if (instanceChanged || runtimeChanged || workspaceChanged) {
+  if (instanceChanged || workspaceChanged) {
     return { type: "restart_and_resume" };
   }
 

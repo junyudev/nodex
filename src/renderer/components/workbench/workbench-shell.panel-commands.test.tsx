@@ -27,6 +27,7 @@ import {
   openPanelMenu,
   pointerDownAndSettle,
   renderWorkbench,
+  rendererCommandPayload,
   sideChatConversations,
   startSideChatCalls,
   setInvokeCalls,
@@ -493,7 +494,11 @@ describe("workbench session shell / panel-commands", () => {
     });
     await settleAsyncRender();
 
-    expect(String(startSideChatCalls.length)).toBe("1");
+    expect(startSideChatCalls).toHaveLength(0);
+    const createdSideChat = rendererCommandPayload(
+      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
+    );
+    expect(createdSideChat?.input).toMatchObject({ projectId: "alpha", initialPageIds: [] });
     await waitFor(() => {
       expect(screen.queryAllByRole("tab", { name: "Side chat" }).length).toBe(1);
     });
@@ -656,7 +661,7 @@ describe("workbench session shell / panel-commands", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "browser-tab",
@@ -926,7 +931,7 @@ describe("workbench session shell / panel-commands", () => {
       title: "Card One",
       order: 0,
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "card-1",
         titleSnapshot: "Card One",
       },
@@ -939,7 +944,7 @@ describe("workbench session shell / panel-commands", () => {
       title: "Card Two",
       order: 1,
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "card-2",
         titleSnapshot: "Card Two",
       },
@@ -1302,7 +1307,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second",
@@ -1376,7 +1381,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-split-close",
@@ -1455,7 +1460,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-direct",
@@ -1636,7 +1641,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-middle",

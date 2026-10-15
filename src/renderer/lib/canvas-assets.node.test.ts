@@ -29,7 +29,7 @@ describe("Canvas managed asset bridge", () => {
     const authority = {
       libraryId: "library",
       storeEpoch: "epoch",
-      contentAccessContext: { kind: "project", projectId: "project" },
+      contentRoutingContext: { kind: "project", projectId: "project" },
     } as const;
     const bridge = createCanvasFileBridge(authority, (file) => ({
       kind: "canvas",

@@ -443,12 +443,12 @@ describe("UDS Core event replay boundaries", () => {
     expect(deliveries).toBe(0);
   });
 
-  test("rejects a packet without a Core-authored authorization scope", async () => {
+  test("rejects a packet without an exact delivery address", async () => {
     const event = structuredClone(committedEvent()) as unknown as {
       transport_version: number;
       packet: Record<string, unknown>;
     };
-    delete event.packet.authorization_scope;
+    delete event.packet.delivery_address;
     const transport = configureEventContract(
       new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
     );
@@ -506,42 +506,6 @@ describe("UDS Core event replay boundaries", () => {
     expect(deliveries).toBe(1);
   });
 
-  test("accepts a Canvas revocation through the generated transport boundary", async () => {
-    const event: CoreEventEnvelope = {
-      transport_version: 8,
-      packet: createCoreLocalCommitFixture({
-        authorizationScope: {
-          kind: "project",
-          library_id: "library-1",
-          project_id: "project-1",
-        },
-        commitSeq: 3,
-        revocations: [
-          {
-            authorization_scope: {
-              kind: "project",
-              library_id: "library-1",
-              project_id: "project-1",
-            },
-            resource_kind: "canvas",
-            resource_id: "canvas-1",
-            reason: "ownership_moved",
-          },
-        ],
-      }),
-    };
-    const transport = configureEventContract(
-      new UdsHttpTransport(await serveCommittedEvent(event), "test-capability"),
-    );
-    const delivered: CoreEventEnvelope[] = [];
-    const subscription = await transport.openEventStream(0, (envelope) => {
-      delivered.push(envelope);
-    });
-
-    await expect(subscription.done).resolves.toBeUndefined();
-    expect(delivered[0]?.packet.visibility_deltas).toEqual(event.packet.visibility_deltas);
-  });
-
   test("opens the scoped Projection broker only after its exact barrier", async () => {
     const barrier = {
       store_epoch: "epoch-1",
@@ -551,11 +515,6 @@ describe("UDS Core event replay boundaries", () => {
         {
           lease_id: "a".repeat(64),
           delivery_address: {
-            kind: "project",
-            library_id: "library-1",
-            project_id: "project-1",
-          },
-          authorization_scope: {
             kind: "project",
             library_id: "library-1",
             project_id: "project-1",
@@ -582,7 +541,7 @@ describe("UDS Core event replay boundaries", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  test("rejects a Projection barrier for a different authorization scope", async () => {
+  test("rejects a Projection barrier for a different delivery address", async () => {
     const barrier = {
       store_epoch: "epoch-1",
       core_generation: "generation-1",
@@ -591,11 +550,6 @@ describe("UDS Core event replay boundaries", () => {
         {
           lease_id: "a".repeat(64),
           delivery_address: {
-            kind: "project",
-            library_id: "library-1",
-            project_id: "project-other",
-          },
-          authorization_scope: {
             kind: "project",
             library_id: "library-1",
             project_id: "project-other",

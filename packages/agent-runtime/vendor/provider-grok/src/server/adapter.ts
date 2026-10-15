@@ -29,7 +29,6 @@ import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeL
 import {
   applyGrokAcpModelSelection,
   currentGrokModelIdFromSessionSetup,
-  grokApprovalOptions,
   makeGrokAcpRuntime,
   resolveGrokAcpBaseModelId,
 } from "./acpSupport.ts";
@@ -55,7 +54,6 @@ import {
   XAiExitPlanModeRequest,
 } from "./xaiAcpExtension.ts";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { acpPermissionDisposition } from "@t3tools/provider-acp/server/clientPolicy";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -85,7 +83,7 @@ export const GrokProviderCapabilitiesV2 = {
   sessions: {
     ...AcpProviderCapabilitiesV2.sessions,
     supportsModelSwitchInSession: true,
-    supportsRuntimeModeSwitchInSession: false,
+
   },
   threads: {
     ...AcpProviderCapabilitiesV2.threads,
@@ -197,6 +195,7 @@ const registerGrokAskUserQuestionExtensions = ({
           {
             nativeItemId: `${identity.sessionId}:xai-question:${identity.toolCallId}`,
             nativeRequestId: identity.toolCallId,
+            nativeSessionId: identity.sessionId,
             questions,
           },
           requestContext,
@@ -212,19 +211,6 @@ const registerGrokAskUserQuestionExtensions = ({
       }),
     { discard: true },
   );
-
-/**
- * Grok's permission mode is fixed at launch. Explicit approval or sandbox
- * overrides launch it asking, so every mutating prompt reaches T3's policy
- * check instead of being bypassed by always-approve or Grok's auto classifier.
- */
-export function grokLaunchRuntimeMode(
-  runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
-): RuntimeMode {
-  return runtimePolicy.approvalPolicy === undefined && runtimePolicy.sandboxPolicy === undefined
-    ? runtimePolicy.runtimeMode
-    : "approval-required";
-}
 
 /** The flavor runs Grok's launcher through the adapter's spawner. */
 export function makeGrokAcpAdapterFlavor(
@@ -246,10 +232,6 @@ export function makeGrokAcpAdapterFlavor(
     // remains available to the replacement turn.
     restartRuntimeAfterInterrupt: true,
     terminateRuntimeProcessGroupOnInterrupt: true,
-    // Steering restarts on a settled turn additionally skip session/cancel so
-    // fire-and-forget subagents survive the steer (E1 harness confirmed the
-    // Grok CLI accepts a concurrent session/prompt in that state).
-    preserveRuntimeOnSettledInterrupt: true,
     // Grok ACP initialize reports promptCapabilities.image:false but the agent
     // still accepts image content blocks (verified with real screenshots).
     supportsImagePrompts: true,
@@ -281,13 +263,7 @@ export function makeGrokAcpAdapterFlavor(
           interruptPromptOnCancel: input.interruptPromptOnCancel ?? false,
           grokSettings: options.settings,
           environment: options.environment,
-          runtimeMode: grokLaunchRuntimeMode(runtimePolicy),
         })),
-    // In its Auto mode Grok decides routine actions itself and only asks about
-    // what its classifier blocked, so every prompt it sends goes to the user.
-    permissionDisposition: (policy, request) =>
-      grokLaunchRuntimeMode(policy) === "auto" ? "ask" : acpPermissionDisposition(policy, request),
-    approvalOptions: grokApprovalOptions,
     promptFailure: (cause) =>
       makeProviderFailure({
         cause,

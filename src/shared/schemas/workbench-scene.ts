@@ -36,7 +36,7 @@ import {
   WorkbenchPanelStateSchema,
 } from "./workbench-session-view";
 import { parseDatabaseId } from "../database-identities";
-import type { ContentAccessContext } from "../content-access-context";
+import type { ContentRoutingContext } from "../content-routing-context";
 import type { LibraryPlacedResourceTarget } from "../library-module";
 
 const idSchema = z.string().min(1).max(512);
@@ -117,7 +117,7 @@ const WorkbenchConversationSurfaceConfigSchema = z
   })
   .strict();
 
-export const ContentAccessContextSchema = z.discriminatedUnion("kind", [
+export const ContentRoutingContextSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("library") }).strict(),
   z
     .object({
@@ -125,10 +125,10 @@ export const ContentAccessContextSchema = z.discriminatedUnion("kind", [
       projectId: idSchema,
     })
     .strict(),
-]) satisfies z.ZodType<ContentAccessContext>;
+]) satisfies z.ZodType<ContentRoutingContext>;
 
 const WorkbenchDbViewSurfaceConfigFields = {
-  accessContext: ContentAccessContextSchema,
+  routingContext: ContentRoutingContextSchema,
   target: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("project-default") }).strict(),
     z
@@ -154,7 +154,7 @@ export const WorkbenchDbViewSurfaceConfigSchema = z
 
 export const WorkbenchPageStageSurfaceConfigSchema = z
   .object({
-    accessContext: ContentAccessContextSchema,
+    routingContext: ContentRoutingContextSchema,
     pageId: idSchema,
     titleSnapshot: z.string().max(2_000).optional(),
   })
@@ -162,7 +162,7 @@ export const WorkbenchPageStageSurfaceConfigSchema = z
 
 export const WorkbenchCanvasStageSurfaceConfigSchema = z
   .object({
-    accessContext: ContentAccessContextSchema,
+    routingContext: ContentRoutingContextSchema,
     canvasBlockId: idSchema,
     titleSnapshot: z.string().max(2_000).optional(),
   })
@@ -552,15 +552,15 @@ function validateWorkbenchSceneV4(scene: WorkbenchSceneSnapshotV4, context: z.Re
   const primaryMatchesRoot =
     root.kind === "page"
       ? scene.primary.kind === "page_stage" &&
-        scene.primary.config.accessContext.kind === "library" &&
+        scene.primary.config.routingContext.kind === "library" &&
         scene.primary.config.pageId === root.pageId
       : root.kind === "database"
         ? scene.primary.kind === "db_view" &&
-          scene.primary.config.accessContext.kind === "library" &&
+          scene.primary.config.routingContext.kind === "library" &&
           scene.primary.config.target.kind === "database-default" &&
           scene.primary.config.target.databaseId === root.databaseId
         : scene.primary.kind === "canvas_stage" &&
-          scene.primary.config.accessContext.kind === "library" &&
+          scene.primary.config.routingContext.kind === "library" &&
           scene.primary.config.canvasBlockId === root.canvasId;
   if (!primaryMatchesRoot) {
     context.addIssue({
@@ -668,11 +668,11 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
   const configRecord = config as Record<string, unknown>;
-  const accessContext = configRecord.accessContext;
-  if (!accessContext || typeof accessContext !== "object" || Array.isArray(accessContext)) {
+  const routingContext = configRecord.routingContext;
+  if (!routingContext || typeof routingContext !== "object" || Array.isArray(routingContext)) {
     return false;
   }
-  if ((accessContext as Record<string, unknown>).kind !== "library") return false;
+  if ((routingContext as Record<string, unknown>).kind !== "library") return false;
   if (record.kind === "page_stage" || record.kind === "canvas_stage") return true;
   if (record.kind !== "db_view") return false;
   const target = configRecord.target;
@@ -834,8 +834,8 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
         if (
           !scene.primary ||
           scene.primary.kind !== "db_view" ||
-          scene.primary.config.accessContext.kind !== "project" ||
-          scene.primary.config.accessContext.projectId !== scene.owner.projectId ||
+          scene.primary.config.routingContext.kind !== "project" ||
+          scene.primary.config.routingContext.projectId !== scene.owner.projectId ||
           (scene.primary.config.target.kind !== "project-default" &&
             scene.primary.config.target.kind !== "database-view")
         ) {

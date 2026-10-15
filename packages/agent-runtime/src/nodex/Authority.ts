@@ -4,7 +4,7 @@ import * as Option from "effect/Option";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
 import { HostBridge } from "./HostBridge.ts";
-import type { AgentThreadAuthority } from "./Interface.ts";
+import type { AgentThreadAuthority, AgentNativeSessionAuthority } from "./Interface.ts";
 
 export const make = Effect.gen(function* () {
   const projections = yield* Projections.ProjectionStoreV2;
@@ -15,11 +15,12 @@ export const make = Effect.gen(function* () {
     readonly runId: RunId;
   }) {
     const shell = yield* projections.getThreadShell(input.threadId);
-    if (shell === null || shell.activeRunId !== input.runId) return null;
+    if (shell === null) return null;
     const state = yield* projections.getHostToolAuthorityContext(input.threadId, input.runId);
     const run = state.runs[0];
     if (
       run === undefined ||
+      ["cancelled", "interrupted", "rolled_back"].includes(run.status) ||
       run.id !== input.runId ||
       run.activeAttemptId === null ||
       state.thread.deletedAt !== null
@@ -29,16 +30,29 @@ export const make = Effect.gen(function* () {
       (candidate) => candidate.id === run.providerThreadId,
     );
     if (nativeThread?.providerSessionId == null) return null;
+    const prepared = yield* bridge.preparedRun(input.threadId, input.runId);
     const runtime = yield* sessions.get(ProviderSessionId.make(nativeThread.providerSessionId));
-    if (Option.isNone(runtime) || runtime.value.nativeGeneration === undefined) return null;
+    const nativeGeneration =
+      prepared?.nativeGeneration ??
+      (Option.isSome(runtime) ? runtime.value.nativeGeneration : undefined);
+    if (nativeGeneration === undefined) return null;
+    if (
+      prepared !== undefined &&
+      !(yield* bridge.nativeSessionLive({
+        providerSessionId: nativeThread.providerSessionId,
+        nativeGeneration,
+      }))
+    )
+      return null;
     const nativeTurn = state.providerTurns.find(
       (turn) => turn.runAttemptId === run.activeAttemptId,
     );
-    const liveBackground =
-      runtime.value.hasPendingBackgroundWorkForThread?.(nativeThread) ??
-      runtime.value.hasPendingBackgroundWork;
+    const liveBackground = Option.isSome(runtime)
+      ? (runtime.value.hasPendingBackgroundWorkForThread?.(nativeThread) ??
+        runtime.value.hasPendingBackgroundWork)
+      : undefined;
     const hasNativeBackgroundWork =
-      (nativeThread.pendingBackgroundTasks?.length ?? 0) > 0 ||
+      nativeThread.hasPendingBackgroundWork ||
       state.subagents.length > 0 ||
       (liveBackground === undefined ? false : yield* liveBackground);
     return {
@@ -47,27 +61,68 @@ export const make = Effect.gen(function* () {
       projectId: state.thread.projectId,
       threadId: state.thread.id,
       runId: run.id,
+      userMessageId: run.userMessageId,
       attemptId: run.activeAttemptId,
       rootThreadId: state.thread.lineage.rootThreadId,
-      parent:
-        state.directParent?.runId == null
-          ? null
-          : { threadId: state.directParent.threadId, runId: state.directParent.runId },
-      runtimeMode: state.thread.runtimeMode,
-      interactionMode: state.thread.interactionMode,
       status: run.status,
-      readOnly: state.thread.interactionMode === "plan",
       archived: state.thread.archivedAt !== null,
       providerInstanceId: run.providerInstanceId,
       providerSessionId: nativeThread.providerSessionId,
       providerThreadId: nativeThread.id,
-      nativeGeneration: runtime.value.nativeGeneration,
+      nativeGeneration,
       nativeThreadRef: nativeThread.nativeThreadRef,
       nativeTurnId: nativeTurn?.nativeTurnRef?.nativeId ?? null,
-      cwd: shell.worktreePath ?? runtime.value.providerSession.cwd,
+      cwd:
+        prepared?.cwd ??
+        shell.worktreePath ??
+        (Option.isSome(runtime) ? runtime.value.providerSession.cwd : null),
       branch: shell.branch,
       worktreePath: shell.worktreePath,
       hasNativeBackgroundWork,
     } satisfies AgentThreadAuthority;
+  });
+});
+
+/** Read the real native Session without choosing a causal Run. */
+export const makeNativeSession = Effect.gen(function* () {
+  const projections = yield* Projections.ProjectionStoreV2;
+  const bridge = yield* HostBridge;
+  return Effect.fn("AgentRuntime.readNativeSessionAuthority")(function* (input: {
+    readonly threadId: ThreadId;
+    readonly providerSessionId: string;
+    readonly nativeGeneration: number;
+    readonly incarnationId: string;
+  }) {
+    const actor = yield* bridge.nativeSessionActor(input.threadId, input);
+    if (actor === undefined) return null;
+    const shell = yield* projections.getThreadShell(input.threadId);
+    if (shell === null || shell.deletedAt !== null || shell.archivedAt !== null) return null;
+    const state = yield* projections.getHostToolAuthorityContext(
+      input.threadId,
+      null,
+      actor.providerThreadId,
+    );
+    const native = state.providerThreads.find(
+      (candidate) => candidate.id === actor.providerThreadId,
+    );
+    if (
+      native === undefined ||
+      native.providerSessionId !== actor.providerSessionId ||
+      native.providerInstanceId !== actor.providerInstanceId ||
+      native.nativeThreadRef?.nativeId !== actor.nativeThreadRef?.nativeId ||
+      native.nativeThreadRef?.driver !== actor.nativeThreadRef?.driver
+    )
+      return null;
+    return {
+      ...actor,
+      projectId: shell.projectId,
+      rootThreadId: state.thread.lineage.rootThreadId,
+      status: null,
+      archived: false,
+      nativeTurnId: null,
+      branch: shell.branch,
+      worktreePath: shell.worktreePath,
+      hasNativeBackgroundWork: native.hasPendingBackgroundWork || state.subagents.length > 0,
+    } satisfies AgentNativeSessionAuthority;
   });
 });

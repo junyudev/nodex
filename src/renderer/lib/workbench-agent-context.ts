@@ -29,7 +29,7 @@ import type { WorkbenchWindowPresentationState } from "./workbench-window-owner"
 import type { WorkbenchDatabaseViewReference } from "./workbench-database-view-presentation";
 
 export interface WorkbenchAgentContextOptions {
-  /** Exact Session metadata, when hydrated. Undefined stays unknown and grants no access. */
+  /** Exact Session metadata, when hydrated. Undefined stays unknown until metadata is loaded. */
   readonly resolveSessionProjectId?: (sessionId: string) => string | null | undefined;
   readonly resolveDatabaseView?: (
     sceneOwner: WorkbenchSceneOwner,

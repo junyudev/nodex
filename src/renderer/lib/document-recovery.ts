@@ -8,7 +8,7 @@ import type {
   RecoveryChoice,
 } from "../../shared/block-documents/document-recovery";
 import { createBoundedOperationId } from "../../shared/operation-identity";
-import { contentAccessIdentityKey } from "../../shared/content-access-context";
+import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import { IndexedDbDocumentLocalCheckpointStore } from "./document-local-checkpoint";
 import { IndexedDbCanvasSceneOutbox } from "./canvas-scene-outbox";
 import { CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
@@ -46,7 +46,7 @@ export const documentRecoveryPort = {
     if (!window.api) throw new Error("Recovery requires the desktop bridge");
     return subscribeElectronRendererLocalCommitAtoms(
       window.api,
-      { ...scope.accessContext, libraryId: scope.libraryId },
+      { ...scope.routingContext, libraryId: scope.libraryId },
       (_packet, atom) => {
         const payload = atom.payload;
         if (payload.module === "owned_document" && "document_id" in payload.event)
@@ -132,7 +132,7 @@ export class DocumentRecovery {
     private readonly port: DocumentRecoveryPort = documentRecoveryPort,
   ) {
     // Callers may pass a Document descriptor; transport owns only its access identity.
-    this.scope = { libraryId: scope.libraryId, accessContext: scope.accessContext };
+    this.scope = { libraryId: scope.libraryId, routingContext: scope.routingContext };
     this.canvas =
       typeof indexedDB === "undefined"
         ? null
@@ -380,7 +380,7 @@ export class DocumentRecovery {
   private async drain(epoch: string): Promise<boolean> {
     const journal = this.checkpoint?.staging;
     if (!journal) return false;
-    const key = `drain:${contentAccessIdentityKey(this.scope)}:${this.documentId ?? "library"}`;
+    const key = `drain:${contentRoutingIdentityKey(this.scope)}:${this.documentId ?? "library"}`;
     const saved = recoveryRecord(await journal.readOperation(key));
     const cursor: Record<RecoverySourceKind, string | null> = {
       yjs: typeof saved?.yjs === "string" ? saved.yjs : null,
@@ -547,7 +547,7 @@ export class DocumentRecovery {
   private pendingKey(draftId: string): string {
     return JSON.stringify([
       "resolve",
-      contentAccessIdentityKey(this.scope),
+      contentRoutingIdentityKey(this.scope),
       this.state.storeEpoch,
       draftId,
     ]);
@@ -638,7 +638,7 @@ export const getDocumentRecovery = (
   scope: DocumentRecoveryScope,
   documentId: string | null,
 ): DocumentRecovery => {
-  const key = JSON.stringify([contentAccessIdentityKey(scope), documentId]);
+  const key = JSON.stringify([contentRoutingIdentityKey(scope), documentId]);
   const existing = modules.get(key);
   if (existing) return existing;
   const module = new DocumentRecovery(scope, documentId);

@@ -653,7 +653,7 @@ pub(crate) fn resolve_content_selector(
         {
             Err(CliError::new(
                 CliErrorCode::ScopeNotFound,
-                format!("no authorized Database or Page matches '{selector}'"),
+                format!("no available Database or Page matches '{selector}'"),
             ))
         }
         (Err(error), _) if error.code != CliErrorCode::ScopeNotFound => Err(error),
@@ -669,7 +669,7 @@ fn resolve_database_selector(
     if selector == "database" {
         return Ok(project.database_id.clone());
     }
-    crate::data_source::resolve_database(client, project, Some(selector))
+    crate::data_source::resolve_database(client, Some(project), Some(selector))
 }
 
 pub(crate) fn looks_like_uuid(value: &str) -> bool {
@@ -916,6 +916,30 @@ pub(crate) fn selected_project(
     explicit_project: Option<&str>,
     cwd: &Path,
 ) -> Result<ProjectWorkspaceProject, CliError> {
+    if let Some(project_id) = explicit_project.filter(|selector| looks_like_uuid(selector)) {
+        let snapshot = unwrap_workspace(client.workspace_read(
+            None,
+            ProjectWorkspaceRead::Project {
+                project_id: project_id.to_owned(),
+            },
+        ))
+        .map_err(|mut error| {
+            if error.code == CliErrorCode::ScopeNotFound {
+                error.code = CliErrorCode::ProjectNotFound;
+            }
+            error
+        })?;
+        let ProjectWorkspaceReadValue::Project { project } = snapshot.value else {
+            return Err(internal("Core returned the wrong Project identity"));
+        };
+        if project.lifecycle == ProjectLifecycle::Archived {
+            return Err(CliError::new(
+                CliErrorCode::ProjectNotFound,
+                format!("no active Project has identity '{project_id}'"),
+            ));
+        }
+        return Ok(project);
+    }
     let projects = read_all_projects(client, false)?;
     resolve_project(client, projects, explicit_project, cwd).map(|resolved| resolved.project)
 }
@@ -1119,7 +1143,7 @@ fn resolve_page_title_selector(
             Err(error)
                 if matches!(
                     error.code,
-                    CliErrorCode::ScopeNotFound | CliErrorCode::ScopeUnauthorized
+                    CliErrorCode::ScopeNotFound | CliErrorCode::IdentityUnauthorized
                 ) =>
             {
                 continue;
@@ -1162,7 +1186,7 @@ fn resolve_page_title_selector(
     match matches.as_slice() {
         [] => Err(CliError::new(
             CliErrorCode::ScopeNotFound,
-            format!("no authorized Page matches title path '{selector}'"),
+            format!("no current Library Page matches title path '{selector}'"),
         )),
         [page_id] => Ok(page_id.clone()),
         _ => Err(CliError::new(
@@ -1546,7 +1570,7 @@ fn backup_create(
         operation_id,
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
         intent: StoreAdministrationIntent::CreateBackup {
-                        profile_snapshot: None,
+            profile_snapshot: None,
             label,
             include_assets: true,
             trigger: BackupTrigger::Manual,
@@ -1866,7 +1890,7 @@ pub(crate) fn map_core_error(error: CoreError) -> CliError {
     let code = match error.code {
         CoreErrorCode::NotFound => CliErrorCode::ScopeNotFound,
         CoreErrorCode::Ambiguous => CliErrorCode::ScopeAmbiguous,
-        CoreErrorCode::Unauthorized => CliErrorCode::ScopeUnauthorized,
+        CoreErrorCode::Unauthorized => CliErrorCode::IdentityUnauthorized,
         CoreErrorCode::ResourceExhausted => CliErrorCode::ScopeBudgetExceeded,
         CoreErrorCode::PatchNotFound => CliErrorCode::PatchNotFound,
         CoreErrorCode::PatchAmbiguous => CliErrorCode::PatchAmbiguous,

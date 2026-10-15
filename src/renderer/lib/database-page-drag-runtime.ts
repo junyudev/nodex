@@ -28,15 +28,14 @@ const defaultDependencies: DatabasePageDragRuntimeDependencies = {
 export const databaseViewRenderModelToDragSnapshot = (
   view: DatabaseViewRenderModel,
 ): DatabaseModuleReadSnapshotV2 => {
-  if (view.accessContext.kind !== "project") {
+  if (view.routingContext.kind !== "project") {
     throw new Error("Project Page drag requires Project Database authority");
   }
   return {
-    projectId: view.accessContext.projectId,
+    projectId: view.routingContext.projectId,
     libraryId: view.libraryId,
     storeEpoch: view.storeEpoch,
     commitSeq: view.commitSeq,
-    authorization: view.authorization,
     value: { kind: "query", value: view.query },
   };
 };

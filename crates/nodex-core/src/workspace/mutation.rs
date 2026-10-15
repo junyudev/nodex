@@ -5,7 +5,6 @@ use nodex_core_contracts::workspace::{
     ProjectAppearance, ProjectCatalogChangeKind, ProjectLifecycle, ProjectMarker,
     ProjectSessionInvalidationScope, ProjectWorkspaceCommitValue, ProjectWorkspaceIntent,
     ProjectWorkspaceReceipt, ProjectWorkspaceStarterPage,
-    ProjectWorkspaceThreadMoveProjectAccessGrant,
 };
 use nodex_core_contracts::{
     BoundModuleContext, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
@@ -16,7 +15,7 @@ use serde_json::json;
 
 use crate::database::{
     create_database_authority_records, create_page_key_namespace,
-    resolve_page_transfer_data_source_destination_prevalidated,
+    resolve_page_transfer_data_source_destination,
 };
 use crate::document::{
     PrimaryCanvasIdentity, create_primary_canvas, primary_canvas_block_id,
@@ -246,11 +245,8 @@ pub(super) fn apply(
                 ProjectWorkspaceIntent::AgentCommand { provenance, intent }
                     if matches!(
                         intent.as_ref(),
-                        ProjectWorkspaceIntent::AdmitSessionLaunch { .. }
-                            | ProjectWorkspaceIntent::CreateAgentRuntimeSession { .. }
-                            | ProjectWorkspaceIntent::AdmitSessionMessage { .. }
+                        ProjectWorkspaceIntent::CreateAgentRuntimeSession { .. }
                             | ProjectWorkspaceIntent::AdmitSessionHandoff { .. }
-                            | ProjectWorkspaceIntent::AdmitSessionFork { .. }
                     ) =>
                 {
                     MutationFingerprintIntent::SessionDispatch {
@@ -303,7 +299,6 @@ pub(super) fn apply(
             if !matches!(
                 &request.intent,
                 ProjectWorkspaceIntent::CreateInitialProject { .. }
-                    | ProjectWorkspaceIntent::SetProjectlessPermissionMode { .. }
             ) && project_catalog_is_empty(transaction, &library_id)?
             {
                 return Err(conflict(
@@ -774,45 +769,7 @@ pub(super) fn apply(
                     section_id,
                     host_id,
                 ),
-                ProjectWorkspaceIntent::AdmitSessionFork {
-                    source_session_id,
-                    source_thread_id,
-                    session_id,
-                    fork_request_hash,
-                } => {
-                    validate_id("source_session_id", source_session_id)?;
-                    validate_id("source_thread_id", source_thread_id)?;
-                    if fork_request_hash.len() != 64
-                        || !fork_request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    {
-                        return Err(invalid("Session fork requires a SHA-256 request hash"));
-                    }
-                    let source = session_mutation::require_session(
-                        transaction, &library_id, source_session_id,
-                    )?;
-                    if source.archived || source.thread_id.as_deref() != Some(source_thread_id.as_str()) {
-                        return Err(invalid("Session fork requires the current active Thread binding"));
-                    }
-                    session_lifecycle::create_session(
-                        transaction,
-                        &library_id,
-                        &context,
-                        &store_epoch,
-                        &request.operation_id,
-                        &request_hash,
-                        session_id,
-                        source.project_id.as_deref(),
-                        "New chat",
-                        &[],
-                        None,
-                    )
-                }
-                ProjectWorkspaceIntent::AdmitSessionMessage {
-                    session_id,
-                    thread_id,
-                    message_request_hash: dispatch_request_hash,
-                }
-                | ProjectWorkspaceIntent::AdmitSessionHandoff {
+                ProjectWorkspaceIntent::AdmitSessionHandoff {
                     session_id,
                     thread_id,
                     handoff_request_hash: dispatch_request_hash,
@@ -830,46 +787,16 @@ pub(super) fn apply(
                     if target.archived || target.thread_id.as_deref() != Some(thread_id.as_str()) {
                         return Err(invalid("Session dispatch requires the current active Thread binding"));
                     }
-                    let operation = if matches!(admitted_intent, ProjectWorkspaceIntent::AdmitSessionHandoff { .. }) {
-                        "admit_session_handoff"
-                    } else {
-                        "admit_session_message"
-                    };
                     finish_no_op(
                         transaction,
                         &context,
                         &store_epoch,
                         &request.operation_id,
                         &request_hash,
-                        operation,
+                        "admit_session_handoff",
                         target.project_id.into_iter().collect(),
                         vec![session_id.clone()],
                         &sqlite_now(transaction)?,
-                    )
-                }
-                ProjectWorkspaceIntent::AdmitSessionLaunch {
-                    session_id,
-                    project_id,
-                    title,
-                    launch_request_hash,
-                } => {
-                    if launch_request_hash.len() != 64
-                        || !launch_request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    {
-                        return Err(invalid("Session launch requires a SHA-256 request hash"));
-                    }
-                    session_lifecycle::create_session(
-                        transaction,
-                        &library_id,
-                        &context,
-                        &store_epoch,
-                        &request.operation_id,
-                        &request_hash,
-                        session_id,
-                        project_id.as_deref(),
-                        title,
-                        &[],
-                        None,
                     )
                 }
                 ProjectWorkspaceIntent::CreateSession {
@@ -899,7 +826,6 @@ pub(super) fn apply(
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
-                    launch_request_hash,
                 } => super::agent_runtime_binding::create_session(
                     transaction,
                     &library_id,
@@ -914,7 +840,6 @@ pub(super) fn apply(
                     runtime_id,
                     runtime_thread_id,
                     launch_request_id,
-                    launch_request_hash,
                     replacement_default_session_id,
                 ),
                 ProjectWorkspaceIntent::CreateSessionInSidebarSection {
@@ -1245,7 +1170,6 @@ pub(super) fn apply(
                     metadata,
                     workspace_transition,
                     runtime_workspace_roots,
-                    project_access_grant,
                 } => sidebar::move_thread(
                     transaction,
                     &library_id,
@@ -1274,7 +1198,6 @@ pub(super) fn apply(
                     metadata,
                     workspace_transition.as_ref(),
                     runtime_workspace_roots.as_deref(),
-                    project_access_grant.as_ref(),
                 ),
                 ProjectWorkspaceIntent::CommitThreadWorkspaceTransition {
                     thread_id,
@@ -1358,15 +1281,12 @@ pub(super) fn apply(
                         false,
                     )
                 }
-                ProjectWorkspaceIntent::FreezeTurnAuthority {
+                ProjectWorkspaceIntent::AdmitTurnAuthority {
                     thread_id,
                     turn_id,
                     root_thread_id,
                     actor_project_id,
-                    source,
-                    read_only,
-                    inherited_from,
-                } => execution::freeze_turn_authority(
+                } => execution::admit_turn_authority(
                     transaction,
                     &library_id,
                     &context,
@@ -1377,18 +1297,25 @@ pub(super) fn apply(
                     turn_id,
                     root_thread_id,
                     actor_project_id.as_deref(),
-                    *source,
-                    *read_only,
-                    inherited_from.as_ref().map(|coordinate| {
-                        (coordinate.thread_id.as_str(), coordinate.turn_id.as_str())
-                    }),
                 ),
+                ProjectWorkspaceIntent::AdmitAgentRuntimeNativeSessionAuthority { session_id, identity } => {
+                    super::agent_runtime_native_session::admit(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, session_id, identity,
+                    )
+                }
+                ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSessionAuthority { identity } => {
+                    super::agent_runtime_native_session::revoke(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, identity,
+                    )
+                }
                 ProjectWorkspaceIntent::AdmitAgentRuntimeTurnAuthority {
-                    session_id, identity, source, read_only, parent,
+                    session_id, identity, native_source, parent,
                 } => super::agent_runtime_authority::admit(
                     transaction, &library_id, &context, &store_epoch,
                     &request.operation_id, &request_hash, session_id, identity,
-                    *source, *read_only, parent.as_ref(),
+                    native_source, parent.as_ref(),
                 ),
                 ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity } => {
                     super::agent_runtime_authority::revoke(
@@ -1397,12 +1324,17 @@ pub(super) fn apply(
                         &identity.runtime_id, None, Some(identity),
                     )
                 }
+                ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSourceAuthorities { runtime_id, lease_id, native_source } => {
+                    super::agent_runtime_authority::revoke_native_source(transaction, &library_id, &context,
+                        &store_epoch, &request.operation_id, &request_hash, runtime_id, lease_id, native_source)
+                }
                 ProjectWorkspaceIntent::RevokeAgentRuntimeAuthorities { runtime_id, lease_id } => {
                     super::agent_runtime_authority::revoke(
                         transaction, &library_id, &context, &store_epoch,
                         &request.operation_id, &request_hash, runtime_id, lease_id.as_deref(), None,
                     )
                 }
+                ProjectWorkspaceIntent::AcknowledgeAgentRuntimeExecutionCleanup { cleanup_id,runtime_id,runtime_thread_id } => super::agent_runtime_cleanup::acknowledge(transaction,&library_id,&context,&store_epoch,&request.operation_id,&request_hash,cleanup_id,runtime_id,runtime_thread_id),
                 ProjectWorkspaceIntent::UpsertBackgroundProcess {
                     process,
                     preserve_started_at,
@@ -1416,29 +1348,6 @@ pub(super) fn apply(
                     process,
                     preserve_started_at.unwrap_or(true),
                 ),
-                ProjectWorkspaceIntent::SetProjectPermissionMode { project_id, mode } => {
-                    thread::set_project_permission_mode(
-                        transaction,
-                        &library_id,
-                        &context,
-                        &store_epoch,
-                        &request.operation_id,
-                        &request_hash,
-                        project_id,
-                        *mode,
-                    )
-                }
-                ProjectWorkspaceIntent::SetProjectlessPermissionMode { mode } => {
-                    thread::set_projectless_permission_mode(
-                        transaction,
-                        &library_id,
-                        &context,
-                        &store_epoch,
-                        &request.operation_id,
-                        &request_hash,
-                        *mode,
-                    )
-                }
                 ProjectWorkspaceIntent::MutateSession { session_id, intent } => {
                     session_mutation::mutate_session(
                         transaction,
@@ -1754,6 +1663,20 @@ fn seal_mutation(
 > {
     let connection = scope.connection();
     let store_epoch = scope.store_epoch();
+    let target_session_lifecycle = match effects.operation_kind {
+        "archive_session" => Some(crate::automation::TargetSessionLifecycle::Archived),
+        "delete_session" => Some(crate::automation::TargetSessionLifecycle::Deleted),
+        _ => None,
+    };
+    if let Some(lifecycle) = target_session_lifecycle {
+        crate::automation::on_target_session_lifecycle(
+            scope,
+            context,
+            operation_id,
+            &effects.session_ids,
+            lifecycle,
+        )?;
+    }
     let payload = json!({
         "module": MODULE_NAME,
         "operationKind": effects.operation_kind,
@@ -1776,13 +1699,11 @@ fn seal_mutation(
             document_heads: effects.document_heads.clone(),
         },
     )?;
-    let authorization_before = scope.authorization_before()?;
     crate::database::record_local_projection_delta(
         connection,
         scope.evidence(),
         &context.library_id.0,
         &projection_impact,
-        &authorization_before,
     )?;
     let payload_json =
         serde_json::to_string(&payload).map_err(|_| internal("Project Workspace event payload"))?;
@@ -2305,96 +2226,6 @@ fn require_project(
         .ok_or_else(|| not_found("Project is unavailable in this Library"))
 }
 
-pub(super) fn grant_project_sources_for_thread_move(
-    connection: &Connection,
-    library_id: &str,
-    source_project_id: &str,
-    target_project_id: &str,
-    grant: &ProjectWorkspaceThreadMoveProjectAccessGrant,
-) -> Result<(), StoreError> {
-    if grant.expected_target_binding_revision < 1 {
-        return Err(invalid("expected_target_binding_revision must be positive"));
-    }
-    if grant.missing_source_roots.is_empty() {
-        return Err(invalid("Project access grant must include source roots"));
-    }
-
-    let (source_lifecycle, _) = require_project(connection, library_id, source_project_id)?;
-    if source_lifecycle != "active" {
-        return Err(conflict("Source Project must be active during Thread move"));
-    }
-    let (target_lifecycle, target_binding_revision) =
-        require_project(connection, library_id, target_project_id)?;
-    if target_lifecycle != "active" {
-        return Err(conflict("Target Project must be active during Thread move"));
-    }
-    if target_binding_revision != grant.expected_target_binding_revision {
-        return Err(StoreError::new(
-            StoreErrorCode::RevisionConflict,
-            "Target Project binding revision changed",
-            true,
-        ));
-    }
-
-    let source_roots = connection
-        .prepare("SELECT root FROM project_sources WHERE project_id = ?1 ORDER BY \"order\"")?
-        .query_map([source_project_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let source_root_set = source_roots.into_iter().collect::<BTreeSet<_>>();
-    let requested = normalize_source_roots(&grant.missing_source_roots)?;
-    if requested.len() != grant.missing_source_roots.len() {
-        return Err(invalid(
-            "Project access grant source roots must be unique and non-empty",
-        ));
-    }
-    if requested
-        .iter()
-        .any(|source| !source_root_set.contains(&source.root))
-    {
-        return Err(invalid(
-            "Project access grant may only add roots from the source Project",
-        ));
-    }
-
-    let target_roots = connection
-        .prepare("SELECT root FROM project_sources WHERE project_id = ?1 ORDER BY \"order\"")?
-        .query_map([target_project_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut next_roots = target_roots.clone();
-    next_roots.extend(requested.iter().map(|source| source.root.clone()));
-    let next_sources = normalize_source_roots(&next_roots)?;
-    if next_sources.len() == target_roots.len() {
-        return Err(conflict(
-            "Target Project sources changed before the confirmed Thread move",
-        ));
-    }
-
-    let now = sqlite_now(connection)?;
-    let updated = connection.execute(
-        "UPDATE projects SET binding_revision = binding_revision + 1, updated = ?1 \
-         WHERE id = ?2 AND library_id = ?3 AND lifecycle = 'active' \
-           AND binding_revision = ?4",
-        params![
-            now,
-            target_project_id,
-            library_id,
-            grant.expected_target_binding_revision,
-        ],
-    )?;
-    if updated != 1 {
-        return Err(StoreError::new(
-            StoreErrorCode::RevisionConflict,
-            "Target Project binding revision changed",
-            true,
-        ));
-    }
-    connection.execute(
-        "DELETE FROM project_sources WHERE project_id = ?1",
-        [target_project_id],
-    )?;
-    insert_project_sources(connection, target_project_id, &next_sources, &now)
-}
-
 fn lifecycle_literal(lifecycle: ProjectLifecycle) -> &'static str {
     match lifecycle {
         ProjectLifecycle::Active => "active",
@@ -2512,7 +2343,7 @@ fn create_project_records(
     )?;
     let starter_page = starter_page
         .map(|request| {
-            let destination = resolve_page_transfer_data_source_destination_prevalidated(
+            let destination = resolve_page_transfer_data_source_destination(
                 connection,
                 library_id,
                 Some(project_id),
@@ -2528,7 +2359,6 @@ fn create_project_records(
                     commit_context,
                     library_id,
                     actor_project_id: Some(project_id),
-                    placement_access_project_id: None,
                     operation_id: identity_namespace,
                     store_epoch: request.store_epoch,
                     page_id: &request.page.page_id,
@@ -2549,14 +2379,7 @@ fn create_project_records(
         &now,
         assets_root,
     )?;
-    crate::library::insert_creator_resource_grant(
-        connection,
-        Some(project_id),
-        library_id,
-        "canvas",
-        &canvas.block_id,
-        &now,
-    )?;
+
     Ok(CreatedProjectAggregate {
         identities,
         canvas,
@@ -2779,7 +2602,6 @@ mod tests {
         ProjectSessionIntent, ProjectSessionInvalidationScope, ProjectWorkspaceBootstrapStatus,
         ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         ProjectWorkspaceStarterPage, ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadStatus,
-        ProjectWorkspaceTurnAuthoritySource,
     };
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, CoreErrorCode, CoreModuleEventPayload,
@@ -4035,16 +3857,6 @@ mod tests {
                 Ok(())
             })
             .expect("seed archived-owner Thread");
-        kernel
-            .writer()
-            .call(|connection| {
-                connection.execute(
-                    "DELETE FROM local_commit_visibility_context WHERE mode = 'maintenance'",
-                    [],
-                )?;
-                Ok(())
-            })
-            .expect("production visibility guard");
         module
             .apply(
                 &context(),
@@ -4153,8 +3965,12 @@ mod tests {
                     },
                 },
             )
-            .expect_err("reject turn authority resolution for archived Project");
-        assert_eq!(authority_read.code, CoreErrorCode::NotFound);
+            .expect("read inactive execution metadata for archived Project");
+        let ProjectWorkspaceReadValue::TurnAuthority { resolution } = authority_read.value else {
+            panic!("turn metadata")
+        };
+        assert!(resolution.authority.is_none());
+        assert!(!resolution.persisted);
 
         let mut archived_project_context = context();
         archived_project_context.project_id = Some(ProjectId("project-native".to_owned()));
@@ -4163,14 +3979,11 @@ mod tests {
                 &archived_project_context,
                 request(
                     "workspace-freeze-authority-archived-owner",
-                    ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: "thread-archived-owner".to_owned(),
                         turn_id: "turn-archived-owner".to_owned(),
                         root_thread_id: "thread-archived-owner".to_owned(),
                         actor_project_id: Some("project-native".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
                     },
                 ),
             )

@@ -7,12 +7,11 @@ import { buildPagePromptContext, materializePreparedPageDocument } from "./page-
 
 const descriptor = (): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-a" },
+  routingContext: { kind: "project", projectId: "project-a" },
   ownerBlockId: "page-1",
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "document-1",
-  authorization: null,
   storeEpoch: "epoch-1",
   generation: 1,
   headSeq: 1,
@@ -76,7 +75,7 @@ describe("page prompt context", () => {
 
     try {
       const materialized = await materializePreparedPageDocument({
-        accessContext: { kind: "project", projectId: "project-a" },
+        routingContext: { kind: "project", projectId: "project-a" },
         descriptor: descriptor(),
         createRuntime: () => runtime,
         createAdapter: () => ({}) as DocumentSyncAdapter,
@@ -111,7 +110,7 @@ describe("page prompt context", () => {
     try {
       await expect(
         materializePreparedPageDocument({
-          accessContext: { kind: "project", projectId: "project-a" },
+          routingContext: { kind: "project", projectId: "project-a" },
           descriptor: descriptor(),
           createRuntime: () => runtime,
           createAdapter: () => ({}) as DocumentSyncAdapter,

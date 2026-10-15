@@ -1,9 +1,8 @@
-import type { ContentAccessContext } from "./content-access-context";
-import type { AuthorizedReadStamp } from "./authorized-read-stamp";
+import type { ContentRoutingContext } from "./content-routing-context";
 
 export interface ResolvePageOwnershipPathInput {
-  /** Authority inherited from the Page surface requesting the breadcrumb. */
-  readonly accessContext: ContentAccessContext;
+  /** Presentation routing inherited from the Page surface requesting the breadcrumb. */
+  readonly routingContext: ContentRoutingContext;
   readonly targetPageId: string;
 }
 
@@ -14,7 +13,7 @@ export interface PageOwnershipPathAncestor {
 }
 
 /**
- * Authorization-scoped projection of the canonical Page ownership path.
+ * Canonical Page ownership path in the current Library, with presentation routing.
  * Ancestors are ordered from the highest visible parent to the direct parent.
  */
 export type PageOwnershipPathReadModel =
@@ -22,7 +21,6 @@ export type PageOwnershipPathReadModel =
       readonly libraryId: string;
       readonly storeEpoch: string;
       readonly commitSeq: number;
-      readonly authorization: AuthorizedReadStamp | null;
       readonly status: "missing";
       readonly targetPageId: string;
     }
@@ -30,7 +28,6 @@ export type PageOwnershipPathReadModel =
       readonly libraryId: string;
       readonly storeEpoch: string;
       readonly commitSeq: number;
-      readonly authorization: AuthorizedReadStamp | null;
       readonly status: "available";
       readonly targetPageId: string;
       readonly ancestors: readonly PageOwnershipPathAncestor[];

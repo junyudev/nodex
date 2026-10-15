@@ -99,7 +99,7 @@ disposable Codex home.
 The native home owns login, configuration, skills, plugins, and conversation persistence. Nodex
 owns its helper resources, import receipts, and desktop tool source copies under
 `${NODEX_HOME}/runtime/agent`. Startup supplies missing feature defaults as process options and
-leaves native configuration bytes intact. Permission presets remain Project/Profile choices;
+leaves native configuration bytes intact. Nodex tasks use full native execution access;
 only an explicit native configuration edit updates Codex settings. Nodex desktop plugins use a
 distinct namespace per Profile and are enabled only in its chats.
 
@@ -151,9 +151,9 @@ keys such as `MOONSHOT_API_KEY` or `OPENROUTER_API_KEY` as sensitive environment
 explicit secrets through system secure storage; it does not import another OpenCode account.
 Native project configuration remains active in the selected execution folder.
 
-OpenCode 1.15.13 is the tested native release. Nodex verifies the native model metadata and
-persisted session permission rules it requires. If the executable or server ignores a requested
-policy or returns unsupported metadata, the connection reports its version and an upgrade hint.
+OpenCode 1.15.13 is the tested native release. Nodex verifies the native model metadata it requires, fixes execution to full access,
+and automatically answers permission requests. Unsupported metadata produces a compatibility
+error with the native version and an upgrade hint.
 
 The composer's model menu searches models from every enabled instance. Selecting a model selects
 its instance and exposes only its native variants and primary agents. An optional Server
@@ -164,23 +164,8 @@ See [Agent Backend Behavior](product-specs/agent-backend-behavior.md#native-open
 
 ## ACP Agent instances
 
-ACP Agent instances are Profile-local, explicit local-code authorizations. The current Claude
+ACP Agent instances are Profile-local configurations of trusted local code. The current Claude
 Agent integration uses a user-managed package root and Node executable; both paths must be absolute.
-Before enabling an instance, the same compatibility and protocol path can be checked without a model
-request:
-
-```bash
-vp run agent:smoke:acp --package-root /absolute/path/to/claude-agent-acp
-```
-
-Adding `--prompt 'Reply with ACP_OK' --expect-text ACP_OK` is an explicit paid smoke and may consume
-the configured Agent account's quota. The command inherits the host credential profile and system
-proxy, reports only capabilities/event kinds plus whether the expected marker was observed, and
-never prints transcript content. Tool compatibility can be checked with `--workspace-tools
---approve-permissions`; this exposes the same workspace-scoped filesystem and supervised terminal
-callbacks as the product and selects only an Agent-offered allow-once option. Cancellation can be
-checked with `--cancel-after-ms <milliseconds> --expect-stop-reason cancelled`. Both permission and
-cancellation flags are explicit; the probe defaults to deny and never retries a failed prompt.
 Nodex canonicalizes them at launch and checks the supported package identity, package version,
 entrypoint containment, Node version, and executable-reported Agent version. This is a compatibility
 probe, not a package-integrity or dependency-provenance check. Enabling an instance means that the

@@ -3,10 +3,9 @@ import type { components } from "@nodex/core-protocol";
 import type { AuthorizedDeliveryPacket } from "./authorized-delivery-packet";
 import type { ProjectionScope } from "./projection-stream";
 
-export const RECIPIENT_DELIVERY_VERSION = 2 as const;
+export const RECIPIENT_DELIVERY_VERSION = 3 as const;
 
 export type DeliveryAddress = components["schemas"]["DeliveryAddress"];
-export type DeliveryAuthorizationScope = components["schemas"]["DeliveryAuthorizationScope"];
 export type AuthorizedRecipientLease = components["schemas"]["AuthorizedRecipientLease"];
 export type AddressReset = components["schemas"]["AddressReset"];
 export type AddressResetReason = components["schemas"]["AddressResetReason"];
@@ -48,7 +47,6 @@ export interface RecipientDeliveryEnvelope {
   readonly deliveryId: string;
   readonly recipientLeaseId: string;
   readonly deliveryAddress: DeliveryAddress;
-  readonly authorizationScope: DeliveryAuthorizationScope;
   readonly payload: RecipientDeliveryPayload;
 }
 

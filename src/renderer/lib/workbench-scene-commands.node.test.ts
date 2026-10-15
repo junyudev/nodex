@@ -66,7 +66,7 @@ function page(id: string): WorkbenchSurfaceDescriptor {
     titleSnapshot: id,
     stateKey: 0,
     state: null,
-    config: { accessContext: { kind: "library" }, pageId: `page:${id}` },
+    config: { routingContext: { kind: "library" }, pageId: `page:${id}` },
   };
 }
 function browser(id: string): WorkbenchSurfaceDescriptor {
@@ -298,18 +298,18 @@ describe("shared Workbench Scene executor", () => {
     {
       kind: "page_stage",
       titleSnapshot: "Library Page",
-      config: { accessContext: { kind: "library" }, pageId: "page-a" },
+      config: { routingContext: { kind: "library" }, pageId: "page-a" },
     },
     {
       kind: "canvas_stage",
       titleSnapshot: "Library Canvas",
-      config: { accessContext: { kind: "library" }, canvasBlockId: "canvas-a" },
+      config: { routingContext: { kind: "library" }, canvasBlockId: "canvas-a" },
     },
     {
       kind: "db_view",
       titleSnapshot: "Library View",
       config: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         target: { kind: "database-view", databaseViewId: "view-a" },
       },
     },
@@ -317,7 +317,7 @@ describe("shared Workbench Scene executor", () => {
       kind: "db_view",
       titleSnapshot: "Project default",
       config: {
-        accessContext: { kind: "project", projectId: "project-a" },
+        routingContext: { kind: "project", projectId: "project-a" },
         target: { kind: "project-default" },
       },
     },
@@ -553,7 +553,7 @@ describe("shared Workbench Scene executor", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "C",
-        config: { accessContext: { kind: "library" }, pageId: "page:c" },
+        config: { routingContext: { kind: "library" }, pageId: "page:c" },
       },
     };
     const opened = await subject.execute(open);
@@ -618,7 +618,7 @@ describe("shared Workbench Scene executor", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "Preview",
-        config: { accessContext: { kind: "library" }, pageId: "page:preview" },
+        config: { routingContext: { kind: "library" }, pageId: "page:preview" },
       },
     });
     expect(opened).toMatchObject({ tabId: "preview", applied: true, persisted: true, error: null });
@@ -708,7 +708,7 @@ describe("generation-local Workbench operation receipts", () => {
         surface: {
           kind: "page_stage",
           titleSnapshot: "B",
-          config: { accessContext: { kind: "library" }, pageId: "b" },
+          config: { routingContext: { kind: "library" }, pageId: "b" },
         },
       }),
       () => false,
@@ -880,7 +880,7 @@ describe("resource-preserving preview promotion", () => {
       surface: {
         kind: "page_stage",
         titleSnapshot: "Preview",
-        config: { accessContext: { kind: "library" }, pageId: "page:preview" },
+        config: { routingContext: { kind: "library" }, pageId: "page:preview" },
       },
     };
     subject.commit.mockRejectedValueOnce(new Error("disk unavailable"));

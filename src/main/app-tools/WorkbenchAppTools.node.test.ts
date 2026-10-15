@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type {
   PresentationAnchor,
   WorkbenchObservedTab,
@@ -11,26 +11,24 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
-import { WorkbenchContentAccess } from "./WorkbenchContentAccess";
+import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { WorkbenchObservation, type WorkbenchObservationRecord } from "./WorkbenchObservation";
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./WorkbenchAppTools";
+import { createHostedAppToolCaller } from "./AppToolCaller";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
 import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentApplication";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread",
   turnId: "turn",
   rootThreadId: "thread",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const tab: WorkbenchObservedTab = {
   tabId: "page:secret",
@@ -46,7 +44,7 @@ const tab: WorkbenchObservedTab = {
     id: "page:secret",
     kind: "page_stage",
     titleSnapshot: "Renderer secret",
-    config: { pageId: "page-A", accessContext: { kind: "library" } },
+    config: { pageId: "page-A", routingContext: { kind: "library" } },
   },
 };
 const anchor: PresentationAnchor = {
@@ -94,7 +92,7 @@ const input: AppToolInvocation = {
 
 const setup = (
   options: {
-    restricted?: boolean;
+    unavailable?: boolean;
     changed?: boolean;
     titleChanged?: boolean;
     withdraw?: () => void;
@@ -113,7 +111,12 @@ const setup = (
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Effect.provideService(ProjectWorkspace, {
       getThread: () =>
-        Effect.succeed({ sessionId: "session", projectId: "project", cwd: "/project" }),
+        Effect.succeed({
+          sessionId: "session",
+          projectId: "project",
+          cwd: "/project",
+          executionHostId: "local",
+        }),
     } as never),
     Effect.provideService(WorkbenchAgentBridge, {} as never),
     Effect.provideService(NodexAppToolAuthority, {
@@ -134,7 +137,7 @@ const setup = (
                       surface: {
                         ...tab.surface!,
                         kind: "page_stage",
-                        config: { pageId: "page-B", accessContext: { kind: "library" } },
+                        config: { pageId: "page-B", routingContext: { kind: "library" } },
                       },
                     },
                   ],
@@ -153,34 +156,35 @@ const setup = (
         ),
       resolve: () => Effect.succeed(record),
     } as never),
-    Effect.provideService(WorkbenchContentAccess, {
+    Effect.provideService(WorkbenchContentRouting, {
       describe: (request: { surface: { config: { pageId: string } } }) =>
         Effect.sync(() => {
           options.withdraw?.();
-          return options.restricted
-            ? { status: "restricted", reason: "consent_required" }
+          return options.unavailable
+            ? { status: "unavailable" }
             : {
-                status: "authorized",
+                status: "available",
                 kind: "page",
                 pageId: request.surface.config.pageId,
                 libraryId: "library",
                 title: "Canonical title",
-                displayedAccessContext: { kind: "library" },
+                displayedRoutingContext: { kind: "library" },
               };
         }),
     } as never),
   );
 
-it.effect("redacts restricted content identities and renderer titles from tab observations", () =>
+it.effect("describes missing content without a resource identity", () =>
   Effect.gen(function* () {
-    const execute = yield* setup({ restricted: true });
+    const execute = yield* setup({ unavailable: true });
     const result = yield* execute(input);
     assert.strictEqual(result.isError, undefined);
-    const json = JSON.stringify(result);
-    assert.strictEqual(json.includes("page:secret"), false);
-    assert.strictEqual(json.includes("page-A"), false);
-    assert.strictEqual(json.includes("Renderer secret"), false);
-    assert.strictEqual(json.includes("consent_required"), true);
+    const described = (
+      result.structuredContent?.presentation as { selectedTabs: Record<string, unknown>[] }
+    ).selectedTabs[0]!;
+    assert.equal(described.status, "unavailable");
+    assert.notProperty(described, "pageId");
+    assert.notProperty(described, "title");
   }),
 );
 
@@ -230,7 +234,7 @@ it.effect("does not resolve an unhydrated submitted default against a later defa
               kind: "db_view",
               titleSnapshot: "Default",
               config: {
-                accessContext: { kind: "project", projectId: "project" },
+                routingContext: { kind: "project", projectId: "project" },
                 target: { kind: "project-default" },
               },
             },
@@ -242,8 +246,7 @@ it.effect("does not resolve an unhydrated submitted default against a later defa
     const presentation = result.structuredContent!.presentation as {
       selectedTabs: Record<string, unknown>[];
     };
-    assert.strictEqual(presentation.selectedTabs[0]!.status, "restricted");
-    assert.strictEqual(presentation.selectedTabs[0]!.reason, "unavailable");
+    assert.strictEqual(presentation.selectedTabs[0]!.status, "unavailable");
     assert.strictEqual(Object.hasOwn(presentation.selectedTabs[0]!, "viewId"), false);
   }),
 );
@@ -260,5 +263,33 @@ it.effect("keeps a submitted target actionable after only its title changes", ()
     assert.equal(context.selectedTabs[0]?.targetState, "present");
     assert.isString(context.selectedTabs[0]?.tabId);
     assert.equal(context.selectedTabs[0]?.pageId, "page-A");
+  }),
+);
+
+it.effect("Session-only native actors expose Session context without a fabricated Turn focus", () =>
+  Effect.gen(function* () {
+    const execute = yield* setup();
+    const caller = createHostedAppToolCaller({
+      backend: "acp",
+      authority,
+      callId: "call",
+      generation: 1,
+      isActive: () => true,
+      capture: Effect.succeed(authority),
+      sessionContext: {
+        sessionId: "session",
+        projectId: "project",
+        runtimeId: "runtime",
+        rootThreadId: "root",
+        threadId: "thread",
+        runId: null,
+        cwd: "/worktree",
+      },
+    });
+    const result = yield* execute({ ...input, caller });
+    assert.isUndefined(result.isError);
+    assert.equal(result.structuredContent?.sessionId, "session");
+    assert.isNull(result.structuredContent?.runId);
+    assert.notProperty(result.structuredContent, "turnId");
   }),
 );

@@ -89,8 +89,8 @@ export const resolveAuthorizedDocumentEffect = async (
       return resyncEvent(
         effect,
         identity,
-        fetched.error.code === "unauthorized"
-          ? "access-revoked"
+        fetched.error.code === "invalid_session"
+          ? "identity-boundary-changed"
           : fetched.error.resetRequired
             ? "resource-integrity-failure"
             : "event-gap",

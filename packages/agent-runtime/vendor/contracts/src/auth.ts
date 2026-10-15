@@ -472,13 +472,7 @@ export type AuthSessionState = typeof AuthSessionState.Type;
  * What an agent signed in through MCP OAuth may do, least to most: only read,
  * or act on threads that never run above the given runtime mode.
  */
-export const AuthMcpClientAccess = Schema.Literals([
-  "read-only",
-  "approval-required",
-  "auto-accept-edits",
-  "auto",
-  "full-access",
-]);
+export const AuthMcpClientAccess = Schema.Literal("full-access");
 export type AuthMcpClientAccess = typeof AuthMcpClientAccess.Type;
 
 /** RFC 9728 metadata for an environment's `/mcp` resource. */

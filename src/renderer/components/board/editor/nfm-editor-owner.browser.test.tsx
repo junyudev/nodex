@@ -7,7 +7,7 @@ import { createPageDocumentGenesis } from "../../../../shared/block-documents/bl
 import type { OwnedDocumentDescriptor } from "../../../../shared/block-documents";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import { EditorSurfaceLease } from "@/lib/document-session-registry";
-import { libraryContentAccess } from "../../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { pressProseMirrorShortcut } from "@/test/prosemirror-shortcut";
 import { getNfmEditorInstanceKey } from "./nfm-editor-source";
 import {
@@ -40,12 +40,11 @@ function fixture(retained: boolean, nfm = "") {
   };
   const descriptor: OwnedDocumentDescriptor = {
     libraryId: "library:editor-owner",
-    accessContext: libraryContentAccess,
+    routingContext: libraryContentRoute,
     ownerBlockId: "page:editor-owner",
     ownerType: "page",
     ownerLifecycle: "active",
     documentId: document.guid,
-    authorization: null,
     storeEpoch: source.storeEpoch,
     generation: 1,
     headSeq: 1,
@@ -64,8 +63,8 @@ function fixture(retained: boolean, nfm = "") {
     : undefined;
   const input: NfmEditorOwnerInput = {
     source,
-    accessContext: libraryContentAccess,
-    editorInstanceKey: getNfmEditorInstanceKey({ source, accessContext: libraryContentAccess }),
+    routingContext: libraryContentRoute,
+    editorInstanceKey: getNfmEditorInstanceKey({ source, routingContext: libraryContentRoute }),
     editorSession,
   };
   return { document, input, editorSession };
@@ -107,7 +106,7 @@ for (const retained of [false, true]) {
     const content = (visible: boolean) => (
       <StrictMode>
         <Activity mode={visible ? "visible" : "hidden"}>
-          <NfmEditorOwnerBoundary input={{ ...input, accessContext: { kind: "library" } }}>
+          <NfmEditorOwnerBoundary input={{ ...input, routingContext: { kind: "library" } }}>
             {(owner) => <EditorView owner={owner} onBind={onBind} />}
           </NfmEditorOwnerBoundary>
         </Activity>
@@ -449,7 +448,7 @@ for (const replacement of ["scope", "epoch", "fragment"] as const)
       const changed: NfmEditorOwnerInput = {
         ...input,
         ...(replacement === "scope"
-          ? { accessContext: { kind: "project", projectId: "project:another" } }
+          ? { routingContext: { kind: "project", projectId: "project:another" } }
           : {}),
         source: {
           ...input.source,

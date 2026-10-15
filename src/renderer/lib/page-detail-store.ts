@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import type { AuthorityResource } from "../../shared/authorized-read-stamp";
+import type { ProjectionCursor } from "../../shared/projection-stream";
 import type { PageDetail } from "../../shared/page-detail";
 import { readPageDetail } from "./api";
-import {
-  rendererAuthorityFreshnessIndex,
-  StaleAuthorizedReadError,
-  type AuthorityRegistration,
-} from "./authority-freshness-index";
 import {
   pageDetailDataDependencies,
   pageDetailDocumentDependencies,
@@ -34,6 +29,7 @@ interface InFlightPageDetail {
 
 interface PageDetailEntry {
   snapshot: PageDetailSnapshot;
+  requiredCursor: ProjectionCursor | null;
   readonly listeners: Set<Listener>;
   generation: number;
   inFlight: InFlightPageDetail | null;
@@ -42,7 +38,6 @@ interface PageDetailEntry {
     readonly libraryId: string;
     readonly release: () => void;
   } | null;
-  freshnessAuthority: AuthorityRegistration | null;
   lastAccess: number;
 }
 
@@ -62,11 +57,11 @@ const detailKey = (projectId: string, pageId: string): string =>
 
 const createEntry = (): PageDetailEntry => ({
   snapshot: EMPTY_DETAIL,
+  requiredCursor: null,
   listeners: new Set(),
   generation: 0,
   inFlight: null,
   projectionAuthority: null,
-  freshnessAuthority: null,
   lastAccess: 0,
 });
 
@@ -90,8 +85,6 @@ const emit = (entry: PageDetailEntry): void => {
 const releaseAuthority = (entry: PageDetailEntry): void => {
   entry.projectionAuthority?.release();
   entry.projectionAuthority = null;
-  entry.freshnessAuthority?.release();
-  entry.freshnessAuthority = null;
 };
 
 const deleteInactiveEntry = (key: string, entry: PageDetailEntry): void => {
@@ -152,6 +145,12 @@ export const setPageDetail = (
 ): void => {
   const key = detailKey(detail.projectId, detail.page.pageId);
   const entry = entryFor(key);
+  const required = entry.requiredCursor;
+  if (
+    required &&
+    (detail.storeEpoch !== required.storeEpoch || detail.commitSeq < required.commitSeq)
+  )
+    return;
   const previous = entry.snapshot.detail;
   if (previous && compareDetailFreshness(detail, previous) < 0) return;
   if (previous && compareDetailFreshness(detail, previous) === 0 && !options.acceptEqualFreshness)
@@ -180,27 +179,15 @@ export const invalidatePageDetail = (projectId: string, pageId: string): void =>
   if (entry.listeners.size === 0 && !entry.inFlight) deleteInactiveEntry(key, entry);
 };
 
-export const revokePageDetail = (projectId: string, pageId: string): void => {
-  const key = detailKey(projectId, pageId);
-  const entry = entryFor(key);
-  entry.generation += 1;
-  entry.snapshot = { detail: null, loading: false, error: "Page not found" };
-  touch(entry);
-  emit(entry);
-  if (entry.listeners.size === 0 && !entry.inFlight) deleteInactiveEntry(key, entry);
-};
-
 export const pageDetailStoreDiagnostics = () => ({
   entries: entries.size,
   listeners: [...entries.values()].reduce((total, entry) => total + entry.listeners.size, 0),
   inFlight: [...entries.values()].filter((entry) => entry.inFlight).length,
   projectionRegistrations: [...entries.values()].filter((entry) => entry.projectionAuthority)
     .length,
-  freshnessRegistrations: [...entries.values()].filter((entry) => entry.freshnessAuthority).length,
 });
 
 export const resetPageDetailStoreForTests = (): void => {
-  rendererAuthorityFreshnessIndex.reset();
   storeGeneration += 1;
   accessSequence = 0;
   for (const [key, entry] of entries) {
@@ -208,13 +195,13 @@ export const resetPageDetailStoreForTests = (): void => {
     entry.generation += 1;
     entry.inFlight = null;
     entry.snapshot = EMPTY_DETAIL;
+    entry.requiredCursor = null;
     if (entry.listeners.size === 0) {
       entries.delete(key);
       continue;
     }
     emit(entry);
   }
-  rendererAuthorityFreshnessIndex.dispose();
 };
 
 export const fetchPageDetail = async (
@@ -245,17 +232,6 @@ export const fetchPageDetail = async (
     deleteInactiveEntry(key, entry);
     throw new Error("Page Detail read requires its Library delivery address");
   }
-  const authorityLease = rendererAuthorityFreshnessIndex.beginRead({
-    deliveryAddress: {
-      kind: "project",
-      library_id: libraryId,
-      project_id: projectId,
-    },
-    ...(startingSnapshot.detail ? { storeEpoch: startingSnapshot.detail.storeEpoch } : {}),
-    observedCommitSeq: Math.max(minimumCommitSeq, startingSnapshot.detail?.commitSeq ?? 0),
-    subject: { kind: "page", page_id: pageId },
-    requestDependencies: [{ kind: "page", page_id: pageId }],
-  });
   entry.snapshot = {
     detail: startingSnapshot.detail,
     loading: startingSnapshot.detail === null,
@@ -267,7 +243,6 @@ export const fetchPageDetail = async (
   const requestStoreGeneration = storeGeneration;
   const requestEntryGeneration = generation;
   const requestToken = {};
-  let staleRetryFloor: number | null = null;
   const request = (async (): Promise<PageDetail | null> => {
     try {
       const result = await readPageDetail(projectId, pageId, minimumCommitSeq);
@@ -284,40 +259,19 @@ export const fetchPageDetail = async (
       if (result.value.projectId !== projectId || result.value.page.pageId !== pageId) {
         throw new Error("Page Detail response does not match the requested Project and Page");
       }
-      const freshness = await rendererAuthorityFreshnessIndex.admitRead(
-        authorityLease,
-        result.value.authorization,
-        (fence) => {
-          const subjectRevoked =
-            fence.kind === "revoke" &&
-            fence.roots.some((root) => root.kind === "page" && root.page_id === pageId);
-          if (subjectRevoked) {
-            revokePageDetail(projectId, pageId);
-            return;
-          }
-          invalidatePageDetail(projectId, pageId);
-          void fetchPageDetail(projectId, pageId, {
-            minimumCommitSeq: fence.commitSeq,
-            libraryId,
-          }).catch(() => undefined);
-        },
-      );
-      entry.freshnessAuthority?.release();
-      entry.freshnessAuthority = freshness;
+      if (requestEntryGeneration !== entry.generation) return null;
+      if (result.value.libraryId !== libraryId) {
+        throw new Error("Page Detail response escaped its Library identity");
+      }
+      const required = entry.requiredCursor;
+      if (required && result.value.storeEpoch !== required.storeEpoch) return null;
+      if (result.value.commitSeq < Math.max(minimumCommitSeq, required?.commitSeq ?? 0))
+        return null;
       setPageDetail(result.value, { acceptEqualFreshness: true });
       return result.value;
     } catch (error) {
-      rendererAuthorityFreshnessIndex.releaseRead(authorityLease);
       if (requestStoreGeneration !== storeGeneration || requestEntryGeneration !== entry.generation)
         return null;
-      if (error instanceof StaleAuthorizedReadError) {
-        staleRetryFloor = Math.max(minimumCommitSeq, error.requiredCommitSeq);
-        entry.freshnessAuthority?.release();
-        entry.freshnessAuthority = null;
-        entry.snapshot = { detail: null, loading: false, error: null };
-        emit(entry);
-        return null;
-      }
       entry.snapshot = {
         detail: startingSnapshot.detail,
         loading: false,
@@ -329,18 +283,6 @@ export const fetchPageDetail = async (
       if (entry.inFlight?.token === requestToken) entry.inFlight = null;
       if (entry.listeners.size === 0 && entry.snapshot.detail === null) {
         deleteInactiveEntry(key, entry);
-      }
-      if (
-        staleRetryFloor !== null &&
-        requestStoreGeneration === storeGeneration &&
-        entries.get(key) === entry &&
-        requestEntryGeneration === entry.generation &&
-        entry.listeners.size > 0
-      ) {
-        void fetchPageDetail(projectId, pageId, {
-          minimumCommitSeq: staleRetryFloor,
-          libraryId,
-        }).catch(() => undefined);
       }
     }
   })();
@@ -356,7 +298,6 @@ const requestPageDetailRefresh = (
   (async () => {
     const key = detailKey(projectId, pageId);
     const entry = entries.get(key);
-    if (cause.kind === "revocation" && cause.delivery.revocation.resource_kind === "page") return;
     if (entry?.inFlight) await entry.inFlight.promise;
     if (!entry || entry.listeners.size === 0) {
       invalidatePageDetail(projectId, pageId);
@@ -374,33 +315,6 @@ const requestPageDetailRefresh = (
       libraryId: cause.scope.libraryId,
     });
   })();
-
-const revokedResource = (
-  revocation: Extract<
-    ProjectionInvalidationCause,
-    { readonly kind: "revocation" }
-  >["delivery"]["revocation"],
-): AuthorityResource => {
-  switch (revocation.resource_kind) {
-    case "page":
-      return { kind: "page", page_id: revocation.resource_id };
-    case "document":
-      return { kind: "document", document_id: revocation.resource_id };
-    case "database":
-      return { kind: "database", database_id: revocation.resource_id };
-    case "data_source":
-      return {
-        kind: "data_source",
-        data_source_id: revocation.resource_id,
-      };
-    case "view":
-      return { kind: "view", view_id: revocation.resource_id };
-    case "canvas":
-      return { kind: "canvas", canvas_id: revocation.resource_id };
-    case "file":
-      return { kind: "file", file_id: revocation.resource_id };
-  }
-};
 
 const retainPageDetailAuthority = (
   libraryId: string,
@@ -430,34 +344,16 @@ const retainPageDetailAuthority = (
       const detail = entry.snapshot.detail;
       return detail ? { storeEpoch: detail.storeEpoch, commitSeq: detail.commitSeq } : null;
     },
-    revoke: (cause) => {
-      rendererAuthorityFreshnessIndex.admitVisibility({
-        deliveryAddress: {
-          kind: "project",
-          library_id: libraryId,
-          project_id: projectId,
-        },
-        storeEpoch: cause.stream.storeEpoch,
-        commitSeq: cause.stream.commitSeq,
-        change: "revoke",
-        roots: [revokedResource(cause.delivery.revocation)],
-      });
-      if (cause.delivery.revocation.resource_kind === "page") {
-        revokePageDetail(projectId, pageId);
-        return;
-      }
-      invalidatePageDetail(projectId, pageId);
-    },
     fence: (cause) => {
-      rendererAuthorityFreshnessIndex.observeAddress({
-        deliveryAddress: {
-          kind: "project",
-          library_id: libraryId,
-          project_id: projectId,
-        },
-        storeEpoch: cause.stream.storeEpoch,
-        commitSeq: cause.stream.commitSeq,
-      });
+      const previous = entry.requiredCursor;
+      entry.requiredCursor =
+        previous?.storeEpoch === cause.stream.storeEpoch
+          ? {
+              storeEpoch: previous.storeEpoch,
+              commitSeq: Math.max(previous.commitSeq, cause.stream.commitSeq),
+            }
+          : cause.stream;
+      if (cause.kind === "checkpoint" && entry.inFlight) return;
       invalidatePageDetail(projectId, pageId);
     },
     invalidate: (cause) => requestPageDetailRefresh(projectId, pageId, cause),

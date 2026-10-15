@@ -1,5 +1,4 @@
 import { ProviderDriverKind } from "@t3tools/contracts";
-
 import { claudeBackgroundSubagentAfterRootInput } from "./claude_background_subagent_after_root/input.ts";
 import { assertClaudeBackgroundSubagentAfterRootOutput } from "./claude_background_subagent_after_root/output.ts";
 import { claudeBackgroundTaskAfterRootInput } from "./claude_background_task_after_root/input.ts";
@@ -36,8 +35,8 @@ import { claudeMcpToolPresentationInput } from "./claude_mcp_tool_presentation/i
 import { assertClaudeMcpToolPresentationOutput } from "./claude_mcp_tool_presentation/output.ts";
 import { claudeResultIsErrorInput } from "./claude_result_is_error/input.ts";
 import { assertClaudeResultIsErrorOutput } from "./claude_result_is_error/output.ts";
-import { grokAutoBlockedCommandInput } from "./grok_auto_blocked_command/input.ts";
-import { assertGrokAutoBlockedCommandOutput } from "./grok_auto_blocked_command/output.ts";
+
+
 import { grokBackgroundBashInput } from "./grok_background_bash/input.ts";
 import { assertGrokBackgroundBashOutput } from "./grok_background_bash/output.ts";
 import { grokBackgroundBashFastWakeInput } from "./grok_background_bash_fast_wake/input.ts";
@@ -56,8 +55,8 @@ import { assertCursorMessageSteeringOutput } from "./message_steering/cursor_out
 import { assertGrokMessageSteeringOutput } from "./message_steering/grok_output.ts";
 import { messageSteeringInput } from "./message_steering/input.ts";
 import { assertPiMessageSteeringOutput } from "./message_steering/pi_output.ts";
-import { MUSE_PERMISSION_DECLINED_FILE, musePermissionInput } from "./muse_permission/input.ts";
-import { assertMusePermissionOutput } from "./muse_permission/output.ts";
+
+
 import { museSubagentApprovalInput } from "./muse_subagent_approval/input.ts";
 import { assertMuseSubagentApprovalOutput } from "./muse_subagent_approval/output.ts";
 import { museSubagentInterruptInput } from "./muse_subagent_interrupt/input.ts";
@@ -90,8 +89,8 @@ import { openCode2CompactionInput } from "./opencode2_compaction/input.ts";
 import { assertOpenCode2CompactionOutput } from "./opencode2_compaction/output.ts";
 import { openCode2InterruptInput } from "./opencode2_interrupt/input.ts";
 import { assertOpenCode2InterruptOutput } from "./opencode2_interrupt/output.ts";
-import { openCode2PermissionInput } from "./opencode2_permission/input.ts";
-import { assertOpenCode2PermissionOutput } from "./opencode2_permission/output.ts";
+
+
 import { openCode2QuestionInput } from "./opencode2_question/input.ts";
 import { assertOpenCode2QuestionOutput } from "./opencode2_question/output.ts";
 import { openCode2BackgroundInput } from "./opencode2_background/input.ts";
@@ -138,7 +137,6 @@ import { assertSubagentV2Output } from "./subagent_v2/codex_output.ts";
 import { subagentV2Input, subagentV2NestedInput } from "./subagent_v2/input.ts";
 import { assertSubagentV2ApprovalOutput } from "./subagent_v2_approval/codex_output.ts";
 import {
-  SUBAGENT_V2_APPROVAL_POLICY,
   subagentV2ApprovalInput,
 } from "./subagent_v2_approval/input.ts";
 import { assertSubagentV2NestedOutput } from "./subagent_v2_nested/codex_output.ts";
@@ -158,28 +156,14 @@ import { assertTodoListOutput } from "./todo_list/codex_output.ts";
 import { assertTodoListCursorOutput } from "./todo_list/cursor_output.ts";
 import { assertTodoListGrokOutput } from "./todo_list/grok_output.ts";
 import { todoListInput } from "./todo_list/input.ts";
-import { assertToolCallDeniedWriteClaudeOutput } from "./tool_call_denied_write/claude_output.ts";
-import {
-  DENIED_WRITE_POLICY,
-  TOOL_CALL_DENIED_WRITE_TARGET,
-  toolCallDeniedWriteInput,
-} from "./tool_call_denied_write/input.ts";
 import { assertToolCallReadOnlyClaudeOutput } from "./tool_call_read_only/claude_output.ts";
 import { assertToolCallReadOnlyCursorOutput } from "./tool_call_read_only/cursor_output.ts";
 import { toolCallReadOnlyInput } from "./tool_call_read_only/input.ts";
-import {
-  assertToolCallReadOnlyOnRequestGrokOutput,
-  assertToolCallReadOnlyOnRequestOutput,
-} from "./tool_call_read_only_on_request/output.ts";
-import { toolCallReadOnlyOnRequestInput } from "./tool_call_read_only_on_request/input.ts";
 import {
   stopBackgroundWorkAfterFailedTurnInput,
   stopBackgroundWorkAfterReleaseInput,
 } from "./stop_background_work_after_failed_turn/input.ts";
 import { assertStopBackgroundWorkAfterFailedTurnOutput } from "./stop_background_work_after_failed_turn/output.ts";
-import { assertToolCallRestrictedGranularClaudeOutput } from "./tool_call_restricted_granular/claude_output.ts";
-import { assertToolCallRestrictedGranularOutput } from "./tool_call_restricted_granular/codex_output.ts";
-import { toolCallRestrictedGranularInput } from "./tool_call_restricted_granular/input.ts";
 import { assertToolCallWorkspaceNeverClaudeOutput } from "./tool_call_workspace_never/claude_output.ts";
 import { assertToolCallWorkspaceNeverOutput } from "./tool_call_workspace_never/codex_output.ts";
 import { toolCallWorkspaceNeverInput } from "./tool_call_workspace_never/input.ts";
@@ -206,11 +190,7 @@ import {
   OPENCODE_MODEL_SELECTION,
   OPENCODE2_MODEL_SELECTION,
   PI_MODEL_SELECTION,
-  READ_ONLY_NEVER_POLICY,
-  READ_ONLY_ON_REQUEST_POLICY,
-  RESTRICTED_GRANULAR_POLICY,
   type OrchestratorReplayFixture,
-  WORKSPACE_NEVER_POLICY,
 } from "./shared.ts";
 
 export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixture> = [
@@ -477,21 +457,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
       },
     ],
   },
-  {
-    name: "grok_auto_blocked_command",
-    buildInput: grokAutoBlockedCommandInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("grok"),
-        transcriptFile: new URL(
-          "./grok_auto_blocked_command/grok_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: { ...GROK_MODEL_SELECTION, model: "grok-4.7-build-fast" },
-        assertOutput: assertGrokAutoBlockedCommandOutput,
-      },
-    ],
-  },
+
   {
     name: "grok_background_bash",
     buildInput: grokBackgroundBashInput,
@@ -589,7 +555,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("acpRegistry"),
         transcriptFile: new URL("./acp_elicitation/registry_transcript.ndjson", import.meta.url),
         modelSelection: ACP_REGISTRY_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertPlanQuestionsOutput,
       },
     ],
@@ -661,23 +626,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
     ],
   },
   {
-    name: "tool_call_denied_write",
-    buildInput: toolCallDeniedWriteInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("claudeAgent"),
-        transcriptFile: new URL(
-          "./tool_call_denied_write/claude_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: DENIED_WRITE_POLICY,
-        expectedAbsentWorkspacePaths: [TOOL_CALL_DENIED_WRITE_TARGET],
-        assertOutput: assertToolCallDeniedWriteClaudeOutput,
-      },
-    ],
-  },
-  {
     name: "tool_call_read_only",
     buildInput: toolCallReadOnlyInput,
     providers: [
@@ -685,21 +633,18 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("claudeAgent"),
         transcriptFile: new URL("./tool_call_read_only/claude_transcript.ndjson", import.meta.url),
         modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertToolCallReadOnlyClaudeOutput,
       },
       {
         driver: ProviderDriverKind.make("cursor"),
         transcriptFile: new URL("./tool_call_read_only/cursor_transcript.ndjson", import.meta.url),
         modelSelection: CURSOR_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertToolCallReadOnlyCursorOutput,
       },
       {
         driver: ProviderDriverKind.make("grok"),
         transcriptFile: new URL("./tool_call_read_only/grok_transcript.ndjson", import.meta.url),
         modelSelection: GROK_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertToolCallReadOnlyCursorOutput,
       },
       {
@@ -709,55 +654,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: ACP_REGISTRY_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertToolCallReadOnlyCursorOutput,
-      },
-    ],
-  },
-  {
-    name: "tool_call_read_only_on_request",
-    buildInput: toolCallReadOnlyOnRequestInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("codex"),
-        transcriptFile: new URL(
-          "./tool_call_read_only_on_request/codex_transcript.ndjson",
-          import.meta.url,
-        ),
-        // gpt-6-luna declines the write under a read-only sandbox, so nothing asks for approval.
-        modelSelection: { ...CODEX_MODEL_SELECTION, model: "gpt-6-sol" },
-        runtimePolicyOverride: READ_ONLY_ON_REQUEST_POLICY,
-        assertOutput: assertToolCallReadOnlyOnRequestOutput,
-      },
-      {
-        driver: ProviderDriverKind.make("claudeAgent"),
-        transcriptFile: new URL(
-          "./tool_call_read_only_on_request/claude_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_ON_REQUEST_POLICY,
-        assertOutput: assertToolCallReadOnlyOnRequestOutput,
-      },
-      {
-        driver: ProviderDriverKind.make("grok"),
-        transcriptFile: new URL(
-          "./tool_call_read_only_on_request/grok_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: GROK_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_ON_REQUEST_POLICY,
-        assertOutput: assertToolCallReadOnlyOnRequestGrokOutput,
-      },
-      {
-        driver: ProviderDriverKind.make("acpRegistry"),
-        transcriptFile: new URL(
-          "./tool_call_read_only_on_request/registry_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: ACP_REGISTRY_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_ON_REQUEST_POLICY,
-        assertOutput: assertToolCallReadOnlyOnRequestOutput,
       },
     ],
   },
@@ -772,7 +669,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertToolCallWorkspaceNeverOutput,
       },
       {
@@ -782,36 +678,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertToolCallWorkspaceNeverClaudeOutput,
-      },
-    ],
-  },
-  {
-    name: "tool_call_restricted_granular",
-    buildInput: toolCallRestrictedGranularInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("codex"),
-        transcriptFile: new URL(
-          "./tool_call_restricted_granular/codex_transcript.ndjson",
-          import.meta.url,
-        ),
-        // gpt-6 models write through the shell; gpt-5.6-terra's apply_patch raises the
-        // file-change approval this fixture covers.
-        modelSelection: { ...CODEX_MODEL_SELECTION, model: "gpt-5.6-terra" },
-        runtimePolicyOverride: RESTRICTED_GRANULAR_POLICY,
-        assertOutput: assertToolCallRestrictedGranularOutput,
-      },
-      {
-        driver: ProviderDriverKind.make("claudeAgent"),
-        transcriptFile: new URL(
-          "./tool_call_restricted_granular/claude_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: RESTRICTED_GRANULAR_POLICY,
-        assertOutput: assertToolCallRestrictedGranularClaudeOutput,
       },
     ],
   },
@@ -824,7 +691,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         transcriptFile: new URL("./subagent/codex_transcript.ndjson", import.meta.url),
         // gpt-5.6-luna still runs multi-agent v1 (collabAgentToolCall); subagent_v2 covers v2.
         modelSelection: { ...CODEX_MODEL_SELECTION, model: "gpt-5.6-luna" },
-        runtimePolicyOverride: READ_ONLY_ON_REQUEST_POLICY,
         assertOutput: assertSubagentOutput,
       },
       {
@@ -837,7 +703,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("cursor"),
         transcriptFile: new URL("./subagent/cursor_transcript.ndjson", import.meta.url),
         modelSelection: CURSOR_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertCursorSubagentOutput,
       },
     ],
@@ -881,7 +746,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("codex"),
         transcriptFile: new URL("./subagent_v2_approval/codex_transcript.ndjson", import.meta.url),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: SUBAGENT_V2_APPROVAL_POLICY,
         assertOutput: assertSubagentV2ApprovalOutput,
       },
     ],
@@ -909,7 +773,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: SUBAGENT_V2_APPROVAL_POLICY,
         assertOutput: assertSubagentV2NestedApprovalOutput,
       },
     ],
@@ -1005,24 +868,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
       },
     ],
   },
-  {
-    name: "opencode2_permission",
-    buildInput: openCode2PermissionInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("opencode"),
-        transcriptFile: new URL(
-          "./opencode2_permission/opencode_transcript.ndjson",
-          import.meta.url,
-        ),
-        modelSelection: {
-          instanceId: OPENCODE2_MODEL_SELECTION.instanceId,
-          model: "opencode/big-pickle",
-        },
-        assertOutput: assertOpenCode2PermissionOutput,
-      },
-    ],
-  },
+
   {
     name: "opencode2_question",
     buildInput: openCode2QuestionInput,
@@ -1225,19 +1071,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
       },
     ],
   },
-  {
-    name: "muse_permission",
-    buildInput: musePermissionInput,
-    providers: [
-      {
-        driver: ProviderDriverKind.make("muse"),
-        transcriptFile: new URL("./muse_permission/muse_transcript.ndjson", import.meta.url),
-        modelSelection: MUSE_MODEL_SELECTION,
-        expectedAbsentWorkspacePaths: [MUSE_PERMISSION_DECLINED_FILE],
-        assertOutput: assertMusePermissionOutput,
-      },
-    ],
-  },
+
   {
     name: "muse_subagent_approval",
     buildInput: museSubagentApprovalInput,
@@ -1372,14 +1206,12 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("codex"),
         transcriptFile: new URL("./todo_list/codex_transcript.ndjson", import.meta.url),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertTodoListOutput,
       },
       {
         driver: ProviderDriverKind.make("cursor"),
         transcriptFile: new URL("./todo_list/cursor_transcript.ndjson", import.meta.url),
         modelSelection: CURSOR_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertTodoListCursorOutput,
       },
       {
@@ -1422,21 +1254,18 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("codex"),
         transcriptFile: new URL("./plan_questions/codex_transcript.ndjson", import.meta.url),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertCodexPlanQuestionsOutput,
       },
       {
         driver: ProviderDriverKind.make("grok"),
         transcriptFile: new URL("./plan_questions/grok_transcript.ndjson", import.meta.url),
         modelSelection: GROK_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertPlanQuestionsOutput,
       },
       {
         driver: ProviderDriverKind.make("opencode"),
         transcriptFile: new URL("./plan_questions/opencode_transcript.ndjson", import.meta.url),
         modelSelection: OPENCODE_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertOpenCodePlanQuestionsOutput,
       },
     ],
@@ -1449,14 +1278,12 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("codex"),
         transcriptFile: new URL("./proposed_plan/codex_transcript.ndjson", import.meta.url),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertProposedPlanOutput,
       },
       {
         driver: ProviderDriverKind.make("cursor"),
         transcriptFile: new URL("./proposed_plan/cursor_transcript.ndjson", import.meta.url),
         modelSelection: CURSOR_MODEL_SELECTION,
-        runtimePolicyOverride: READ_ONLY_NEVER_POLICY,
         assertOutput: assertProposedPlanCursorOutput,
       },
     ],
@@ -1511,35 +1338,30 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         driver: ProviderDriverKind.make("codex"),
         transcriptFile: new URL("./turn_interrupt/codex_transcript.ndjson", import.meta.url),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptOutput,
       },
       {
         driver: ProviderDriverKind.make("claudeAgent"),
         transcriptFile: new URL("./turn_interrupt/claude_transcript.ndjson", import.meta.url),
         modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptClaudeOutput,
       },
       {
         driver: ProviderDriverKind.make("grok"),
         transcriptFile: new URL("./turn_interrupt/grok_transcript.ndjson", import.meta.url),
         modelSelection: GROK_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptOutput,
       },
       {
         driver: ProviderDriverKind.make("acpRegistry"),
         transcriptFile: new URL("./turn_interrupt/registry_transcript.ndjson", import.meta.url),
         modelSelection: ACP_REGISTRY_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptOutput,
       },
       {
         driver: ProviderDriverKind.make("opencode"),
         transcriptFile: new URL("./turn_interrupt/opencode_transcript.ndjson", import.meta.url),
         modelSelection: OPENCODE_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptOutput,
       },
       {
@@ -1561,7 +1383,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptMidToolCodexOutput,
       },
       {
@@ -1571,7 +1392,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptMidToolClaudeOutput,
       },
       {
@@ -1581,7 +1401,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CURSOR_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptMidToolCursorOutput,
       },
       {
@@ -1603,7 +1422,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CLAUDE_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertTurnInterruptRestartClaudeOutput,
       },
     ],
@@ -1673,7 +1491,6 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
           import.meta.url,
         ),
         modelSelection: CODEX_MODEL_SELECTION,
-        runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertThreadRollbackToStoppedTurnOutput,
       },
     ],

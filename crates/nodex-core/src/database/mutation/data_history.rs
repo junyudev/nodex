@@ -52,7 +52,7 @@ impl<'a> DataEditTargets<'a> {
         self,
         connection: &Connection,
         library_id: &str,
-        authority: &DatabaseMutationAuthority,
+        _authority: &DatabaseMutationRoute,
     ) -> Result<(), StoreError> {
         let mut databases = BTreeSet::new();
         for source_id in self.sources {
@@ -72,15 +72,7 @@ impl<'a> DataEditTargets<'a> {
             databases.insert(database_id);
             databases.insert(source.database_id);
         }
-        for database_id in databases {
-            authorize_write(
-                connection,
-                authority.actor_project_id.as_deref(),
-                &database_id,
-                DatabaseWriteAction::Write,
-                authority.is_library(),
-            )?;
-        }
+        for _database_id in databases {}
         Ok(())
     }
 }
@@ -90,7 +82,7 @@ impl<'a> DataEditTargets<'a> {
 pub(super) fn authorize_replays(
     connection: &Connection,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     intents: &[DatabaseIntent],
 ) -> Result<(), StoreError> {
     let mut targets = DataEditTargets::default();
@@ -109,7 +101,7 @@ pub(super) fn authorize_replays(
 pub(super) fn authorize_list_recipe(
     connection: &Connection,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     recipe: &DatabaseListMoveUndoRecipe,
 ) -> Result<(), StoreError> {
     let mut targets = DataEditTargets::default();
@@ -152,7 +144,7 @@ fn position_state(
 pub(super) fn capture(
     connection: &Connection,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     intents: &[DatabaseIntent],
 ) -> Result<Option<DatabaseDataEditUndoRecipe>, StoreError> {
     let mut properties = BTreeMap::new();
@@ -396,7 +388,7 @@ pub(super) fn reverse(
     connection: &Connection,
     profile_id: &str,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     recipe: &DatabaseDataEditUndoRecipe,
     operation_index: u32,
     now: &str,
@@ -485,7 +477,6 @@ pub(super) fn reverse(
             &runs,
             now,
             effects,
-            authority.is_library(),
         )?;
     }
     let mut inverse = recipe.clone();

@@ -3,8 +3,6 @@ import {
   CommandId,
   OrchestratorMcpFailure,
   type ProjectId,
-  type ProviderInteractionMode,
-  type RuntimeMode,
   type ThreadId,
   type OrchestrationV2ThreadShell,
 } from "@t3tools/contracts";
@@ -14,7 +12,6 @@ import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 
 import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
-import * as OrchestrationMcp from "./OrchestratorMcpService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 
 export const unavailable = () =>
@@ -39,22 +36,11 @@ export const dispatchFailure = (
         })
       : unavailable();
 
-/**
- * The most a caller may hand to the threads it targets. A thread caller is
- * capped by its own thread's modes; an OAuth client by the ceiling chosen
- * when it was approved.
- */
-export interface CallerLimits {
-  readonly runtimeMode: RuntimeMode;
-  readonly interactionMode: ProviderInteractionMode;
-}
-
 export interface Caller {
   readonly scope: McpInvocationContext.McpInvocationScope;
   readonly threads: ThreadManagement.ThreadManagementService["Service"];
   /** The calling thread, absent for a client signed in from outside T3. */
   readonly caller: OrchestrationV2ThreadShell | undefined;
-  readonly limits: CallerLimits;
 }
 
 export const readCaller = Effect.fn("mcp.readCaller")(function* () {
@@ -68,10 +54,7 @@ export const readCaller = Effect.fn("mcp.readCaller")(function* () {
   return yield* loadCaller();
 });
 
-/**
- * The caller and its limits, whichever tools its credential grants. Tools
- * check their own capability; `McpToolAccess` uses this for every tool.
- */
+/** Resolve the authenticated calling Session. */
 export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
   const scope = yield* McpInvocationContext.McpInvocationContext;
   const threads = yield* ThreadManagement.ThreadManagementService;
@@ -80,10 +63,6 @@ export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
       scope,
       threads,
       caller: undefined,
-      limits: {
-        runtimeMode: McpInvocationContext.clientRuntimeModeCeiling(scope.client),
-        interactionMode: "default",
-      },
     } satisfies Caller;
   }
   const caller = yield* threads
@@ -99,57 +78,22 @@ export const loadCaller = Effect.fn("mcp.loadCaller")(function* () {
     scope,
     threads,
     caller,
-    limits: { runtimeMode: caller.runtimeMode, interactionMode: caller.interactionMode },
   } satisfies Caller;
 });
 
-/**
- * A caller may change another thread only if that thread runs within the
- * caller's own modes. Its own thread is always within them.
- */
-export const assertTargetWithinLimits = (
-  limits: CallerLimits,
-  target: { readonly runtimeMode: RuntimeMode; readonly interactionMode: ProviderInteractionMode },
-) =>
-  OrchestrationMcp.resolveRuntimeMode(limits.runtimeMode, target.runtimeMode).pipe(
-    Effect.andThen(
-      OrchestrationMcp.resolveInteractionMode(limits.interactionMode, target.interactionMode),
-    ),
-    Effect.asVoid,
-  );
-
-/**
- * A thread caller acts only while it owns a live run of a thread that is not
- * archived, so a provider token that outlived its session cannot act. An
- * OAuth client has no run; its session and ceiling are its authority.
- */
-export function assertLiveCaller({ caller, scope }: Caller) {
-  if (caller === undefined) return Effect.void;
-  return caller.archivedAt !== null ||
-    caller.activeRunId === null ||
-    caller.providerInstanceId !== scope.thread?.providerInstanceId
-    ? Effect.fail(
-        new OrchestratorMcpFailure({
-          code: "parent_not_active",
-          message: "The calling provider no longer owns an active thread run.",
-        }),
-      )
-    : Effect.gen(function* () {
-        const admission = yield* ExecutionHost.McpTurnAdmission;
-        if (admission === undefined) return;
-        yield* admission.assertCurrent().pipe(Effect.mapError((error) => new OrchestratorMcpFailure({ code: "parent_not_active", message: error.message })));
-      });
-}
-
-/**
- * Actions that change the environment itself (projects, preferences) need full
- * access: a thread caller in full-access/default mode, or a client approved
- * with a full-access ceiling.
- */
-export const assertFullAccess = (context: Caller, message: string) =>
-  context.limits.runtimeMode === "full-access" && context.limits.interactionMode === "default"
-    ? Effect.void
-    : Effect.fail(new OrchestratorMcpFailure({ code: "capability_denied", message }));
+/** Fence the captured native execution; completion does not retire a live background process. */
+export const assertCallerLifetime = Effect.fn("mcp.assertCallerLifetime")(function* () {
+  const admission = yield* ExecutionHost.McpTurnAdmission;
+  if (admission === undefined) return;
+  yield* admission
+    .assertCurrent()
+    .pipe(
+      Effect.mapError(
+        (error) =>
+          new OrchestratorMcpFailure({ code: "parent_not_active", message: error.message }),
+      ),
+    );
+});
 
 /** A target project: the one passed, else the calling thread's. */
 export const resolveProjectId = (context: Caller, projectId: ProjectId | undefined) =>

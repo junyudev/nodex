@@ -1,6 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type { ThreadRevertResponse, ConfigReadResponse } from "@nodex/codex-app-server-protocol/v2";
+import type { ThreadRevertResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
@@ -15,10 +15,7 @@ import {
   editCanonicalLastUserTurn,
   type CanonicalEditOptions,
 } from "../../shared/codex-conversation-state/codex-owner-edit";
-import {
-  canonicalPermissionsForMode,
-  nativePermissionRequestFields,
-} from "../../shared/codex-conversation-state/codex-native-permissions";
+
 import { mutateCodexCanonicalRevert } from "../../shared/codex-conversation-state/codex-revert-state";
 
 export class CodexMainConversationEdit extends Context.Service<
@@ -62,34 +59,6 @@ export const make = Effect.gen(function* () {
                 },
                 awaitSettings: () => callbacks.runPromise(settings.awaitCurrent(hostId, id)),
                 supportsRevert: () => capability.flags.threadRevert,
-                readPermissionOverrides: (_id, state, edit) =>
-                  callbacks.runPromise(
-                    Effect.gen(function* () {
-                      const response = yield* gateway.requestOnHost(
-                        hostId,
-                        "config/read",
-                        { includeLayers: false, cwd: state.cwd ?? null },
-                        nativeOptions,
-                      );
-                      return (cwd: string | undefined) => {
-                        const resolved = canonicalPermissionsForMode(
-                          edit.agentMode,
-                          cwd === undefined ? [] : [cwd],
-                          response.config as ConfigReadResponse["config"],
-                        );
-                        if (!resolved) return null;
-                        const profile =
-                          state.latestThreadSettings?.activePermissionProfile === undefined
-                            ? state.currentPermissions?.activePermissionProfile
-                            : state.latestThreadSettings.activePermissionProfile;
-                        return nativePermissionRequestFields(
-                          profile === undefined
-                            ? resolved
-                            : { ...resolved, activePermissionProfile: profile },
-                        );
-                      };
-                    }),
-                  ),
                 revert: (_id, beforeTurnId) =>
                   callbacks
                     .runPromise(
@@ -118,7 +87,7 @@ export const make = Effect.gen(function* () {
                       Date.now(),
                     );
                 },
-                start: (request, original, inheritPermissionDefaults) =>
+                start: (request, original) =>
                   callbacks.runPromise(
                     Effect.gen(function* () {
                       const prepared = yield* turns.prepareNativeStart(
@@ -129,7 +98,7 @@ export const make = Effect.gen(function* () {
                         {
                           attachments: original.params.attachments,
                           commentAttachments: original.params.commentAttachments,
-                          useAppServerPermissionDefault: inheritPermissionDefaults,
+
                           writingBlockContextPrepared: options.writingBlockContextPrepared,
                           mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
                         },

@@ -21,7 +21,7 @@ import type {
   DocumentRecoveryCommand,
 } from "../../shared/block-documents/document-recovery";
 
-const scope = { libraryId: "library:one", accessContext: { kind: "library" as const } };
+const scope = { libraryId: "library:one", routingContext: { kind: "library" as const } };
 const snapshot = (): DocumentRecoverySnapshot => {
   const { document } = createPageDocument({ documentId: "document:one", initialTitle: "Retained" });
   const state = Y.encodeStateAsUpdate(document);
@@ -274,7 +274,7 @@ test("a persisted cursor reaches the package after 257 permanent failures withou
   const outbox = new IndexedDbCanvasSceneOutbox(indexedDB, scope.libraryId);
   for (let index = 0; index < 258; index += 1) {
     const intent = {
-      accessContext: scope.accessContext,
+      routingContext: scope.routingContext,
       documentId: `canvas:${index}`,
       mutationId: `mutation:${index}`,
       storeEpoch: "epoch:one",

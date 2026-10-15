@@ -13,6 +13,7 @@ import {
   type OrchestrationV2ProviderThread,
   type OrchestrationV2ProviderTurnTokenUsage,
   ProjectId,
+  RunId,
   ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
@@ -392,6 +393,203 @@ const waitForIdle = Effect.fn("ProviderSwitchTest.waitForIdle")(function* (
 });
 
 describe("orchestration v2 provider switching", () => {
+  it.live(
+    "starts a portable provider handoff over large history without hydrating old prompts or oversized items",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("handoff-sql-pressure");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const injectedHistory = yield* Ref.make<ReadonlyArray<unknown>>([]);
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: { 1: "Keep the original constraints." },
+              capturedTurns,
+            }),
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: { 1002: "Portable work completed." },
+              capturedTurns,
+              injectedHistory,
+            }),
+          ]);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            const sql = yield* SqlClient.SqlClient;
+            const dispatch = (identity: string, selection: ModelSelection) =>
+              orchestrator.dispatch({
+                type: "message.dispatch",
+                commandId: CommandId.make(identity),
+                threadId,
+                messageId: MessageId.make(identity),
+                createdBy: "user",
+                creationSource: "web",
+                text:
+                  identity === "pressure:first"
+                    ? "Keep the original constraints."
+                    : "Continue portable work.",
+                attachments: [],
+                modelSelection: selection,
+                dispatchMode: { type: "start_immediately" },
+              });
+            const wait = (ordinal: number) =>
+              orchestrator.streamStoredEvents.pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "run.updated" &&
+                    event.payload.ordinal === ordinal &&
+                    (event.payload.status === "completed" || event.payload.status === "failed"),
+                ),
+                Stream.runHead,
+                Effect.andThen(worker.drain()),
+              );
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("pressure:create"),
+              threadId,
+              projectId,
+              createdBy: "user",
+              creationSource: "web",
+              title: "Portable pressure",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+            });
+            yield* dispatch("pressure:first", CODEX_MODEL_SELECTION);
+            yield* wait(1);
+            // These rows explicitly model scale; the initial execution above owns the canonical behavior path.
+            const oversized = "cold-provider-history:" + "x".repeat(64_000);
+            yield* sql`WITH RECURSIVE numbers(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM numbers WHERE value < 1000)
+          INSERT INTO orchestration_v2_projection_runs
+            (run_id,thread_id,ordinal,provider,provider_instance_id,provider_thread_id,status,requested_at,completed_at,payload_json)
+          SELECT 'run:pressure:cold:' || value, ${threadId}, value + 1, source.provider, source.provider_instance_id, source.provider_thread_id,
+            'completed', source.requested_at, source.completed_at,
+            json_set(source.payload_json, '$.id', 'run:pressure:cold:' || value, '$.ordinal', value + 1,
+              '$.userMessageId', 'message:pressure:cold:' || value, '$.activeAttemptId', NULL, '$.rootNodeId', NULL)
+          FROM numbers CROSS JOIN orchestration_v2_projection_runs AS source WHERE source.thread_id = ${threadId} AND source.ordinal = 1`;
+            yield* sql`WITH RECURSIVE numbers(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM numbers WHERE value < 1000)
+          INSERT INTO orchestration_v2_projection_messages
+            (message_id,thread_id,run_id,node_id,role,streaming,created_at,updated_at,payload_json)
+          SELECT 'message:pressure:cold:' || value, ${threadId}, 'run:pressure:cold:' || value, NULL, 'user', 0, source.created_at, source.updated_at,
+            json_set(source.payload_json, '$.id', 'message:pressure:cold:' || value, '$.runId', 'run:pressure:cold:' || value,
+              '$.text', ${oversized}, '$.nodeId', NULL)
+          FROM numbers CROSS JOIN orchestration_v2_projection_messages AS source
+          WHERE source.thread_id = ${threadId} AND source.message_id = 'pressure:first'`;
+            yield* sql`WITH RECURSIVE numbers(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM numbers WHERE value < 1000)
+          INSERT INTO orchestration_v2_projection_turn_items
+            (turn_item_id,thread_id,run_id,node_id,provider_thread_id,provider_turn_id,parent_item_id,ordinal,type,status,updated_at,payload_json)
+          SELECT 'item:pressure:cold:' || value, ${threadId}, 'run:pressure:cold:' || value, NULL, source.provider_thread_id,
+            NULL,NULL,value * 100 + 101,'assistant_message','completed',source.updated_at,
+            json_object('text',${oversized},'streaming',0)
+          FROM numbers CROSS JOIN orchestration_v2_projection_runs AS run
+          CROSS JOIN orchestration_v2_projection_turn_items AS source
+          WHERE run.thread_id = ${threadId} AND run.ordinal = 1 AND source.thread_id = ${threadId} AND source.type = 'user_message'`;
+            const sourceLast = (yield* sql<{ id: string }>`SELECT turn_item_id AS id
+              FROM orchestration_v2_projection_turn_items WHERE thread_id = ${threadId}
+              ORDER BY ordinal DESC, turn_item_id DESC LIMIT 1`)[0]!.id;
+            const originalParse = JSON.parse;
+            let coldBodies = 0;
+            let runBodies = 0;
+            const parse = vi.spyOn(JSON, "parse").mockImplementation((value: string, reviver) => {
+              if (value.includes("cold-provider-history:")) coldBodies += 1;
+              if (value.includes('"userMessageId"') && value.includes('"ordinal"')) runBodies += 1;
+              return originalParse(value, reviver);
+            });
+            try {
+              yield* dispatch("pressure:switch", CLAUDE_MODEL_SELECTION);
+              yield* wait(1002);
+              assert.equal(coldBodies, 0);
+              assert.isAtMost(runBodies, 40);
+              const sourceRunId = (yield* sql<{
+                id: string;
+              }>`SELECT run_id AS id FROM orchestration_v2_projection_runs
+                WHERE thread_id = ${threadId} AND ordinal = 1`)[0]!.id;
+              const forkThreadId = ThreadId.make("thread:portable-handoff-pressure-fork");
+              yield* orchestrator.dispatch({
+                type: "thread.fork",
+                commandId: CommandId.make("pressure:fork"),
+                sourceThreadId: threadId,
+                targetThreadId: forkThreadId,
+                sourcePoint: { type: "run", runId: RunId.make(sourceRunId) },
+                createdBy: "user",
+                creationSource: "web",
+              });
+              yield* orchestrator.dispatch({
+                type: "message.dispatch",
+                commandId: CommandId.make("pressure:fork-message"),
+                threadId: forkThreadId,
+                messageId: MessageId.make("pressure:fork-message"),
+                text: "Continue the captured first Run.",
+                attachments: [],
+                modelSelection: CLAUDE_MODEL_SELECTION,
+                dispatchMode: { type: "start_immediately" },
+                createdBy: "user",
+                creationSource: "web",
+              });
+              yield* orchestrator.streamStoredEvents.pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "run.updated" &&
+                    event.threadId === forkThreadId &&
+                    (event.payload.status === "completed" || event.payload.status === "failed"),
+                ),
+                Stream.runHead,
+                Effect.andThen(worker.drain()),
+              );
+              assert.equal(coldBodies, 0);
+              assert.isAtMost(runBodies, 80);
+              assert.isTrue(
+                (yield* Ref.get(capturedTurns)).some(
+                  (turn) => turn.text === "Continue portable work.",
+                ),
+              );
+              assert.equal(
+                (yield* Ref.get(capturedTurns)).at(-1)?.text,
+                "Continue the captured first Run.",
+              );
+              assert.include(
+                yield* encodeJson(yield* Ref.get(injectedHistory)),
+                "Keep the original constraints.",
+              );
+            } finally {
+              parse.mockRestore();
+            }
+            const handoffs = yield* sql<{
+              payload_json: string;
+            }>`SELECT payload_json FROM orchestration_v2_projection_context_handoffs
+          WHERE thread_id = ${threadId} ORDER BY updated_at DESC LIMIT 1`;
+            const handoff = JSON.parse(handoffs[0]!.payload_json) as {
+              history: { omittedItems: number; omittedItemIds?: unknown[]; coverage: string };
+            };
+            assert.equal(handoff.history.omittedItems, 1000);
+            assert.isUndefined(handoff.history.omittedItemIds);
+            assert.include(handoff.history.coverage, "Covered app runs: 1-1001");
+            assert.include(handoff.history.coverage, `through ${sourceLast}.`);
+          }).pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                SqlitePersistence.layerMemory,
+                ProviderReplayHarness.layerWithRegistry(
+                  { name: "handoff-sql-pressure", runtimePolicyOverride: { cwd } },
+                  registry,
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+  );
+
   it.live.each([
     "compact-native",
     "compact-fallback",
@@ -895,8 +1093,6 @@ describe("orchestration v2 provider switching", () => {
                 name: `handoff-${scenario}`,
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: { type: "readOnly" },
                 },
               },
               layerRegistry,
@@ -1057,8 +1253,6 @@ describe("orchestration v2 provider switching", () => {
                   name: `handoff-retry-${failure}`,
                   runtimePolicyOverride: {
                     cwd,
-                    approvalPolicy: "never",
-                    sandboxPolicy: { type: "readOnly" },
                   },
                 },
                 layerRegistry,
@@ -1186,8 +1380,6 @@ describe("orchestration v2 provider switching", () => {
                   name: "resume-fallback-native-turns",
                   runtimePolicyOverride: {
                     cwd,
-                    approvalPolicy: "never",
-                    sandboxPolicy: { type: "readOnly" },
                   },
                 },
                 layerRegistry,
@@ -1281,8 +1473,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "refused-start-keeps-native",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: { type: "readOnly" },
                 },
               },
               registry,
@@ -1464,12 +1654,6 @@ describe("orchestration v2 provider switching", () => {
                 name: `handoff-${status}-${queued}-${returning}`,
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -1587,12 +1771,6 @@ describe("orchestration v2 provider switching", () => {
                   name: `queued-capability-${key}`,
                   runtimePolicyOverride: {
                     cwd,
-                    approvalPolicy: "never",
-                    sandboxPolicy: {
-                      type: "readOnly",
-                      access: { type: "fullAccess" },
-                      networkAccess: false,
-                    },
                   },
                 },
                 layerRegistry,
@@ -1780,12 +1958,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "queued-steer-provider-switch",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -1971,12 +2143,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "queued-account-switch",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -2182,12 +2348,6 @@ describe("orchestration v2 provider switching", () => {
                   name: "queued-provider-switch",
                   runtimePolicyOverride: {
                     cwd,
-                    approvalPolicy: "never",
-                    sandboxPolicy: {
-                      type: "readOnly",
-                      access: { type: "fullAccess" },
-                      networkAccess: false,
-                    },
                   },
                 },
                 layerRegistry,
@@ -2409,12 +2569,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "queued-handoff-rejection",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -2505,12 +2659,6 @@ describe("orchestration v2 provider switching", () => {
             name: "provider-switch-legacy-import",
             runtimePolicyOverride: {
               cwd,
-              approvalPolicy: "never",
-              sandboxPolicy: {
-                type: "readOnly",
-                access: { type: "fullAccess" },
-                networkAccess: false,
-              },
             },
           },
           layerRegistry,
@@ -2865,12 +3013,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "provider-switch",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -2952,6 +3094,133 @@ describe("orchestration v2 provider switching", () => {
         assert.equal(turns[0]?.providerThreadId, turns[2]?.providerThreadId);
       }),
     ),
+  );
+
+  it.live(
+    "forks an old Run portably after its provider row is rebound to a new native incarnation",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const sourceThreadId = ThreadId.make("thread:rebound-fork:source");
+          const targetThreadId = ThreadId.make("thread:rebound-fork:target");
+          const cwd = yield* checkpointWorkspace("rebound-native-fork");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const injectedHistory = yield* Ref.make<ReadonlyArray<unknown>>([]);
+          const failResumeOnce = yield* Ref.make(false);
+          const generation = yield* Ref.make(0);
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              responseByThreadId: {
+                [sourceThreadId]: { 1: "Native A answer.", 2: "Native B answer." },
+                [targetThreadId]: { 1: "Fork completed." },
+              },
+              capturedTurns,
+              injectedHistory,
+              failResumeOnce,
+              nativeThreadGeneration: generation,
+            }),
+          ]);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("rebound:source:create"),
+              threadId: sourceThreadId,
+              projectId,
+              title: "Rebound source",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const send = (ordinal: number, text: string) =>
+              orchestrator.dispatch({
+                type: "message.dispatch",
+                commandId: CommandId.make(`rebound:source:${ordinal}`),
+                threadId: sourceThreadId,
+                messageId: MessageId.make(`rebound:source:${ordinal}`),
+                text,
+                attachments: [],
+                modelSelection: CODEX_MODEL_SELECTION,
+                dispatchMode: { type: "start_immediately" },
+                createdBy: "user",
+                creationSource: "web",
+              });
+            yield* send(1, "Native A original constraint.");
+            const original = yield* waitForIdle(sourceThreadId);
+            const sourceRun = original.runs[0]!;
+            const oldNativeId = original.providerThreads[0]!.nativeThreadRef!.nativeId;
+            yield* orchestrator.dispatch({
+              type: "provider-session.detach",
+              commandId: CommandId.make("rebound:source:detach"),
+              threadId: sourceThreadId,
+              providerSessionId: original.providerSessions[0]!.id,
+            });
+            yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+            yield* Ref.set(failResumeOnce, true);
+            yield* send(2, "Native B later context must stay outside the fork.");
+            const rebound = yield* waitForIdle(sourceThreadId);
+            assert.equal(rebound.providerThreads[0]!.id, original.providerThreads[0]!.id);
+            assert.notEqual(rebound.providerThreads[0]!.nativeThreadRef!.nativeId, oldNativeId);
+            assert.equal(
+              rebound.attempts.find((attempt) => attempt.runId === sourceRun.id)?.nativeThreadId,
+              oldNativeId,
+            );
+            yield* orchestrator.dispatch({
+              type: "thread.fork",
+              commandId: CommandId.make("rebound:fork"),
+              sourceThreadId,
+              targetThreadId,
+              sourcePoint: { type: "run", runId: sourceRun.id },
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const historyBeforeFork = (yield* Ref.get(injectedHistory)).length;
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make("rebound:fork:message"),
+              threadId: targetThreadId,
+              messageId: MessageId.make("rebound:fork:message"),
+              text: "Continue captured Native A work.",
+              attachments: [],
+              modelSelection: CODEX_MODEL_SELECTION,
+              dispatchMode: { type: "start_immediately" },
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const forked = yield* waitForIdle(targetThreadId);
+            assert.equal(forked.runs[0]?.status, "completed");
+            assert.equal(forked.contextTransfers[0]?.resolution?.strategy, "portable_context");
+            assert.equal(
+              forked.contextTransfers[0]?.sourcePoint.providerThreadRef?.nativeId,
+              oldNativeId,
+            );
+            assert.isNull(forked.providerThreads[0]?.forkedFrom);
+            const forkHistory = yield* encodeJson(
+              (yield* Ref.get(injectedHistory)).slice(historyBeforeFork),
+            );
+            assert.include(forkHistory, "Native A original constraint.");
+            assert.include(forkHistory, "Native A answer.");
+            assert.notInclude(forkHistory, "Native B later context");
+            assert.notInclude(forkHistory, "Native B answer.");
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                { name: "rebound-native-fork", runtimePolicyOverride: { cwd } },
+                registry,
+              ),
+            ),
+          );
+        }),
+      ),
   );
 
   it.live("resolves a Claude fork into portable Codex context on first dispatch", () =>
@@ -3047,12 +3316,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "cross-provider-fork",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -3183,12 +3446,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "cursor-portable-fork",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,
@@ -3395,12 +3652,6 @@ describe("orchestration v2 provider switching", () => {
                   name: "cross-provider-merge",
                   runtimePolicyOverride: {
                     cwd,
-                    approvalPolicy: "never",
-                    sandboxPolicy: {
-                      type: "readOnly",
-                      access: { type: "fullAccess" },
-                      networkAccess: false,
-                    },
                   },
                 },
                 layerRegistry,
@@ -3525,12 +3776,6 @@ describe("orchestration v2 provider switching", () => {
                 name: "custom-codex-instances",
                 runtimePolicyOverride: {
                   cwd,
-                  approvalPolicy: "never",
-                  sandboxPolicy: {
-                    type: "readOnly",
-                    access: { type: "fullAccess" },
-                    networkAccess: false,
-                  },
                 },
               },
               layerRegistry,

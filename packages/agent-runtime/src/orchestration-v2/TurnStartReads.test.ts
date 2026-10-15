@@ -1,4 +1,4 @@
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
 import {
   CheckpointScopeId,
   NodeId,
@@ -6,11 +6,19 @@ import {
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
+  ProviderThreadId,
+  ProviderTurnId,
+  ProviderSessionId,
+  RunAttemptId,
+  ContextHandoffId,
   RunId,
   ThreadId,
   TurnItemId,
   type OrchestrationV2AppThread,
   type OrchestrationV2Run,
+  type OrchestrationV2ProviderThread,
+  type OrchestrationV2ProviderTurn,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -281,10 +289,24 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.equal(context.messages.find((m) => m.id === messageId)?.text, "Continue");
       assert.isTrue(context.hasConversation);
       assert.deepEqual(context.turnItems, []);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId), [item]);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, [oldRunId]), [item]);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, [runId]), []);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, []), []);
+      const history = yield* store.getHandoffHistory({
+        threadId,
+        budget: 16000,
+        runIds: [oldRunId],
+      });
+      assert.deepEqual(
+        history.history.messages.map((m) => m.itemId),
+        [item.id],
+      );
+      assert.equal(
+        (yield* store.getHandoffHistory({ threadId, budget: 16000, runIds: [runId] }))
+          .sourceItemCount,
+        0,
+      );
+      assert.equal(
+        (yield* store.getHandoffHistory({ threadId, budget: 16000, runIds: [] })).sourceItemCount,
+        0,
+      );
       // Pairing depends on IDs, not payload decoding or item status.
       const resultId = TurnItemId.make("interrupt-result");
       assert.isTrue(yield* store.hasUnpairedRunInterruptRequest(threadId, item.id, resultId));
@@ -346,19 +368,467 @@ it.effect.each(["sqlite", "memory"] as const)(
         occurredAt: now,
         payload: marker,
       });
-      assert.include(
-        (yield* store.getTurnStartContext(threadId, runId)).messages.map((m) => m.id),
-        marker.id,
-      );
+      assert.isFalse((yield* store.getTurnStartContext(threadId, runId)).hasConversation);
       const other = ThreadId.make("other");
       yield* putThread({ ...thread, id: other });
       assert.deepEqual((yield* store.getTurnStartContext(other, runId)).messages, []);
-      assert.deepEqual(yield* store.getTurnStartHistory(other, [oldRunId]), []);
+      assert.equal(
+        (yield* store.getHandoffHistory({ threadId: other, budget: 16000, runIds: [oldRunId] }))
+          .sourceItemCount,
+        0,
+      );
       assert.isFalse((yield* store.getTurnStartContext(other, runId)).hasConversation);
       assert.instanceOf(
         yield* store.getTurnStartContext(ThreadId.make("missing"), runId).pipe(Effect.flip),
         ProjectionStore.ProjectionStoreThreadNotFoundError,
       );
+
+      // Same-native acceptance, restart delivery and missing-input proofs survive
+      // sparse startup cohorts; previous attempts remain authoritative after steer.
+      yield* store.apply({
+        id: EventId.make("native-proof:input"),
+        type: "message.updated",
+        threadId,
+        occurredAt: now,
+        payload: message,
+      });
+      const providerId = ProviderThreadId.make("startup:provider");
+      const sourceAttemptId = RunAttemptId.make("startup:accepted");
+      const missingAttemptId = RunAttemptId.make("startup:unaccepted");
+      const work = Array.from({ length: 25 }, (_, index) => ({
+        kind: "shell" as const,
+        label: `sleep ${index}`,
+      }));
+      const source = {
+        ...run,
+        id: oldRunId,
+        ordinal: 1,
+        providerThreadId: providerId,
+        status: "completed" as const,
+        activeAttemptId: sourceAttemptId,
+        completedAt: now,
+        restartCancelledBackgroundWork: work,
+      };
+      const current = { ...run, providerThreadId: providerId, status: "starting" as const };
+      yield* putRun(source);
+      yield* putRun(current);
+      const note = (yield* store.getTurnStartContext(threadId, runId)).restartNoteState;
+      assert.equal(note.totalWork, 25);
+      assert.deepEqual(note.work, work.slice(0, 10));
+      yield* putRun({ ...current, restartContinuationOfRunId: source.id });
+      assert.isTrue(
+        (yield* store.getTurnStartContext(threadId, runId)).restartNoteState.continuation,
+      );
+      yield* putRun(current);
+      const sourceAttempt = {
+        id: sourceAttemptId,
+        runId: oldRunId,
+        attemptOrdinal: 1,
+        rootNodeId: run.rootNodeId!,
+        providerInstanceId: instanceId,
+        providerThreadId: providerId,
+        providerTurnId: null,
+        reason: "initial" as const,
+        status: "completed" as const,
+        startedAt: now,
+        completedAt: now,
+      };
+      yield* store.apply({
+        id: EventId.make("native-proof:attempt"),
+        type: "run-attempt.updated",
+        threadId,
+        occurredAt: now,
+        payload: sourceAttempt,
+      });
+      yield* store.apply({
+        id: EventId.make("native-proof:turn"),
+        type: "provider-turn.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: ProviderTurnId.make("startup:turn"),
+          providerThreadId: providerId,
+          nodeId: run.rootNodeId!,
+          runAttemptId: sourceAttemptId,
+          nativeTurnRef: null,
+          ordinal: 1,
+          status: "completed",
+          startedAt: now,
+          completedAt: now,
+        },
+      });
+      const nativeProof = {
+        threadId,
+        providerThreadId: providerId,
+        nativeThreadId: "native:old",
+        sameNativeThread: true,
+      };
+      assert.isTrue(yield* store.hasNativeTurns(nativeProof));
+      assert.isFalse(yield* store.hasNativeTurns({ ...nativeProof, sameNativeThread: false }));
+      yield* store.apply({
+        id: EventId.make("native-proof:identified"),
+        type: "run-attempt.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...sourceAttempt, nativeThreadId: "native:old" },
+      });
+      assert.isTrue(yield* store.hasNativeTurns({ ...nativeProof, sameNativeThread: false }));
+      assert.isFalse(yield* store.hasNativeTurns({ ...nativeProof, nativeThreadId: "native:new" }));
+      const nativeItem = { ...item, providerThreadId: providerId };
+      yield* store.apply({
+        id: EventId.make("native-proof:item"),
+        type: "turn-item.updated",
+        threadId,
+        occurredAt: now,
+        payload: nativeItem,
+      });
+      const estimateInput = {
+        threadId,
+        runId,
+        providerThreadId: providerId,
+        nativeThreadId: "native:old",
+      };
+      const textBytes = Buffer.byteLength(
+        "Command: echo history\nExit code: unknown\nhistorical result",
+      );
+      assert.equal(yield* store.getNativeContextEstimate(estimateInput), textBytes);
+      yield* putRun({ ...source, status: "failed", activeAttemptId: missingAttemptId });
+      assert.equal(yield* store.getNativeContextEstimate(estimateInput), 0);
+      const retryInput = {
+        threadId,
+        budget: 16000,
+        runStatuses: ["failed"] as const,
+        missingFromProviderThreadId: providerId,
+      };
+      assert.deepEqual(
+        (yield* store.getHandoffHistory(retryInput)).history.messages
+          .map((m) => m.itemId)
+          .toSorted(),
+        [item.id, resultId].toSorted(),
+      );
+      const handoff = {
+        id: ContextHandoffId.make("startup:delivered"),
+        threadId,
+        targetRunId: oldRunId,
+        fromProviderThreadIds: [providerId],
+        toProviderThreadId: providerId,
+        coveredRunOrdinals: { from: 1, to: 1 },
+        strategy: "full_thread_summary" as const,
+        status: "ready" as const,
+        summaryMessageId: null,
+        summaryText: "Delivered context",
+        createdByProviderInstanceId: instanceId,
+        createdAt: now,
+        updatedAt: now,
+        delivery: { nativeThreadId: "native:old", status: "inline" as const, itemIds: [item.id] },
+      };
+      yield* store.apply({
+        id: EventId.make("native-proof:handoff"),
+        type: "context-handoff.updated",
+        threadId,
+        occurredAt: now,
+        payload: handoff,
+      });
+      assert.equal(yield* store.getNativeContextEstimate(estimateInput), textBytes);
+      assert.deepEqual(
+        yield* store.getDeliveredHandoffItemIds({
+          ...nativeProof,
+          itemIds: [item.id, TurnItemId.make("foreign")],
+        }),
+        [item.id],
+      );
+      assert.deepEqual(
+        (yield* store.getHandoffHistory({
+          ...retryInput,
+          excludeDelivered: { providerThreadId: providerId, nativeThreadId: "native:old" },
+        })).history.messages.map((m) => m.itemId),
+        [resultId],
+      );
+      const nativeChild = {
+        id: NodeId.make("startup:child-task"),
+        threadId,
+        runId: oldRunId,
+        parentNodeId: run.rootNodeId!,
+        origin: "provider_native" as const,
+        createdBy: "agent" as const,
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: instanceId,
+        providerThreadId: null,
+        childThreadId: ThreadId.make("startup:child"),
+        nativeTaskRef: null,
+        prompt: "Earlier native work",
+        title: null,
+        model: null,
+        status: "completed" as const,
+        result: "Done",
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+      };
+      yield* store.apply({
+        id: EventId.make("native-proof:child"),
+        type: "subagent.updated",
+        threadId,
+        occurredAt: now,
+        payload: nativeChild,
+      });
+      const childRoute = {
+        ...nativeProof,
+        providerSessionId: ProviderSessionId.make("startup:session"),
+        address: { threadId: nativeChild.childThreadId },
+      };
+      assert.deepEqual(yield* store.getRelatedNativeThread(childRoute), {
+        subagentId: nativeChild.id,
+        threadId: nativeChild.childThreadId,
+        providerThreadId: null,
+        sourceRunId: oldRunId,
+      });
+      assert.isNull(
+        yield* store.getRelatedNativeThread({ ...childRoute, nativeThreadId: "native:new" }),
+      );
+      yield* store.apply({
+        id: EventId.make("native-proof:resume-child"),
+        type: "subagent.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...nativeChild, status: "running", completedAt: null },
+      });
+      assert.isNull(yield* store.getRelatedNativeThread(childRoute));
+      assert.deepEqual(
+        yield* store.getRelatedNativeThread({
+          ...childRoute,
+          address: { subagentId: nativeChild.id },
+        }),
+        {
+          subagentId: nativeChild.id,
+          threadId: nativeChild.childThreadId,
+          providerThreadId: null,
+          sourceRunId: oldRunId,
+        },
+      );
+      assert.isNull(
+        yield* store.getRelatedNativeThread({
+          ...childRoute,
+          nativeThreadId: "native:new",
+          address: { subagentId: nativeChild.id },
+        }),
+      );
+      yield* store.apply({
+        id: EventId.make("native-proof:app-child"),
+        type: "subagent.updated",
+        threadId,
+        occurredAt: now,
+        payload: { ...nativeChild, origin: "app_owned" },
+      });
+      assert.isNull(yield* store.getRelatedNativeThread(childRoute));
+      assert.isNull(
+        yield* store.getRelatedNativeThread({
+          ...childRoute,
+          address: { subagentId: nativeChild.id },
+        }),
+      );
+      if (storage === "sqlite") {
+        // Explicit storage pressure accompanies the public worker integration case.
+        const sql = yield* SqlClient.SqlClient;
+        const coldText = "cold-handoff:" + "x".repeat(32768);
+        yield* sql`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<1000)
+          INSERT INTO orchestration_v2_projection_context_handoffs
+          (context_handoff_id,thread_id,target_run_id,to_provider_thread_id,strategy,status,updated_at,payload_json)
+          SELECT 'cold-handoff:'||value,${threadId},${oldRunId},${providerId},'full_thread_summary','ready',${DateTime.formatIso(now)},
+            json_remove(json_set(payload_json,'$.id','cold-handoff:'||value,'$.summaryText',${coldText}),'$.delivery')
+            FROM n,orchestration_v2_projection_context_handoffs WHERE context_handoff_id=${handoff.id}`;
+        yield* sql`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<1000)
+          INSERT INTO orchestration_v2_projection_subagents
+          (subagent_id,thread_id,run_id,parent_node_id,provider,provider_thread_id,child_thread_id,origin,status,started_at,completed_at,updated_at,payload_json)
+          SELECT 'cold-child:'||value,${threadId},${oldRunId},${run.rootNodeId},'codex',NULL,'cold-child-thread:'||value,'app_owned','completed',NULL,NULL,${DateTime.formatIso(now)},
+            json_set(payload_json,'$.id','cold-child:'||value,'$.prompt',${"x".repeat(65536)},'$.result',${"x".repeat(65536)})
+            FROM n,orchestration_v2_projection_subagents WHERE subagent_id=${nativeChild.id}`;
+        let coldBodies = 0;
+        let coldBytes = 0;
+        let conversationBodies = 0;
+        let conversationBytes = 0;
+        const originalParse = JSON.parse;
+        const parse = vi.spyOn(JSON, "parse").mockImplementation((text, ...rest) => {
+          if (typeof text === "string" && text.includes('"summaryText":"cold-handoff:')) {
+            coldBodies++;
+            coldBytes += Buffer.byteLength(text);
+          }
+          if (typeof text === "string" && text.startsWith('{"label":"Assistant","body":')) {
+            conversationBodies++;
+            conversationBytes += Buffer.byteLength(text);
+          }
+          return originalParse(text, ...rest);
+        });
+        try {
+          const startup = yield* store.getTurnStartContext(threadId, runId);
+          assert.deepEqual(startup.subagents, []);
+          assert.isAtMost(coldBodies, 8);
+          assert.isAtMost(coldBytes, 262144);
+          assert.equal(startup.omittedHandoffCount, 1001 - startup.contextHandoffs.length);
+          assert.isAtMost(startup.runs.length, 10);
+          yield* sql`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<1000)
+            INSERT INTO orchestration_v2_projection_turn_items
+            (turn_item_id,thread_id,run_id,node_id,provider_thread_id,provider_turn_id,parent_item_id,ordinal,type,status,updated_at,historical_text_bytes,native_attachment_allowance,payload_json)
+            SELECT 'cold-summary:'||value,${threadId},NULL,NULL,NULL,NULL,NULL,10000+value,'assistant_message','completed',${DateTime.formatIso(now)},65568,0,
+              json_set(payload_json,'$.id','cold-summary:'||value,'$.runId',NULL,'$.text',${"EARLIEST_SUMMARY_MARKER " + "x".repeat(65536)}||' LATEST_SUMMARY_MARKER:'||value)
+              FROM n,orchestration_v2_projection_turn_items WHERE turn_item_id=${item.id}`;
+          const summary = yield* store.getHandoffHistory({
+            threadId,
+            runIds: [],
+            includeImported: true,
+            includeConversationSummary: true,
+            budget: 16000,
+          });
+          assert.lengthOf(summary.conversationSummary?.sections ?? [], 1);
+          assert.include(
+            summary.conversationSummary!.sections[0]!.body,
+            "LATEST_SUMMARY_MARKER:1000",
+          );
+          assert.notInclude(
+            summary.conversationSummary!.sections[0]!.body,
+            "EARLIEST_SUMMARY_MARKER",
+          );
+          assert.equal(summary.conversationSummary?.omittedItems, 999);
+          assert.equal(summary.conversationSummary?.truncatedItems, 1);
+          assert.lengthOf(summary.history.messages, 0);
+          assert.equal(summary.history.omittedItems, 1000);
+          assert.include(summary.history.coverage, "cold-summary:1 through cold-summary:1000");
+          assert.equal(conversationBodies, 1);
+          assert.isAtMost(conversationBytes, 262144);
+        } finally {
+          parse.mockRestore();
+        }
+      }
+      yield* putRun(source);
+      const sourceProvider: OrchestrationV2ProviderThread = {
+        id: providerId,
+        driver: ProviderDriverKind.make("codex"),
+        providerInstanceId: instanceId,
+        providerSessionId: ProviderSessionId.make("startup:session"),
+        appThreadId: threadId,
+        ownerNodeId: null,
+        nativeThreadRef: {
+          driver: ProviderDriverKind.make("codex"),
+          nativeId: "native:old",
+          strength: "strong",
+        },
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: 1,
+        lastRunOrdinal: 2,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const putProvider = (payload: OrchestrationV2ProviderThread) =>
+        store.apply({
+          id: EventId.make("fork-proof:provider"),
+          type: "provider-thread.updated",
+          threadId,
+          occurredAt: now,
+          payload,
+        });
+      yield* putProvider(sourceProvider);
+      const sourceTurn: OrchestrationV2ProviderTurn = {
+        id: ProviderTurnId.make("startup:turn"),
+        providerThreadId: providerId,
+        nodeId: run.rootNodeId!,
+        runAttemptId: sourceAttemptId,
+        nativeTurnRef: {
+          driver: sourceProvider.driver,
+          nativeId: "msg_source",
+          strength: "strong",
+        },
+        ordinal: 1,
+        status: "completed",
+        startedAt: now,
+        completedAt: now,
+      };
+      const putTurn = (payload: OrchestrationV2ProviderTurn) =>
+        store.apply({
+          id: EventId.make(`fork-proof:${payload.id}`),
+          type: "provider-turn.updated",
+          threadId,
+          occurredAt: now,
+          payload,
+        });
+      yield* putTurn(sourceTurn);
+      for (const [ordinal, nativeId] of [
+        [2, "msg_rejected"],
+        [3, "native:old:wake:continuation"],
+        [4, "msg_present"],
+      ] as const) {
+        yield* putTurn({
+          ...sourceTurn,
+          id: ProviderTurnId.make(`fork:later:${ordinal}`),
+          runAttemptId: null,
+          ordinal,
+          nativeTurnRef: { ...sourceTurn.nativeTurnRef!, nativeId },
+        });
+      }
+      const selector = {
+        nativeTurnIds: ["msg_source", "msg_present"],
+        promptPrefix: "msg_",
+        continuationMarker: ":wake:",
+      };
+      assert.deepEqual(
+        (yield* store.getNativeForkBoundary(
+          threadId,
+          oldRunId,
+          selector,
+        )).followingProviderTurns.map((t) => t.id),
+        ["fork:later:4"],
+      );
+      yield* putTurn({
+        ...sourceTurn,
+        id: ProviderTurnId.make("fork:legacy"),
+        runAttemptId: null,
+        ordinal: 5,
+        nativeTurnRef: { ...sourceTurn.nativeTurnRef!, nativeId: "native:legacy:attempt" },
+      });
+      assert.deepEqual(
+        (yield* store.getNativeForkBoundary(
+          threadId,
+          oldRunId,
+          selector,
+        )).followingProviderTurns.map((t) => t.id),
+        ["fork:later:4", "fork:legacy"],
+      );
+      if (storage === "sqlite") {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<1000)
+          INSERT INTO orchestration_v2_projection_provider_turns
+          (provider_turn_id,thread_id,provider_thread_id,node_id,run_attempt_id,ordinal,status,payload_json)
+          SELECT 'fork:cold:'||value,${threadId},${providerId},${run.rootNodeId},NULL,100+value,'completed',
+            json_set(payload_json,'$.id','fork:cold:'||value,'$.runAttemptId',NULL,'$.ordinal',100+value,'$.nativeTurnRef.nativeId','msg_cold:'||value)
+          FROM n,orchestration_v2_projection_provider_turns WHERE provider_turn_id=${sourceTurn.id}`;
+        let decodedTurns = 0;
+        const originalParse = JSON.parse;
+        const parse = vi.spyOn(JSON, "parse").mockImplementation((text, ...rest) => {
+          if (typeof text === "string" && text.includes('"nativeTurnRef"')) {
+            decodedTurns++;
+            assert.notInclude(text, "fork:cold:");
+          }
+          return originalParse(text, ...rest);
+        });
+        try {
+          const boundary = yield* store.getNativeForkBoundary(threadId, oldRunId, selector);
+          assert.lengthOf(boundary.followingProviderTurns, 2);
+          assert.isAtMost(decodedTurns, 3);
+          assert.equal(boundary.rollbackTurnCount, 1004);
+        } finally {
+          parse.mockRestore();
+        }
+      }
+      yield* putProvider({
+        ...sourceProvider,
+        nativeThreadRef: { ...sourceProvider.nativeThreadRef!, nativeId: "native:new" },
+      });
+      const reboundBoundary = yield* store.getNativeForkBoundary(threadId, oldRunId, selector);
+      assert.isFalse(reboundBoundary.nativeIncarnationMatches);
+      assert.isNull(reboundBoundary.providerThread);
+      assert.deepEqual(reboundBoundary.followingProviderTurns, []);
     }).pipe(
       Effect.provide(
         storage === "sqlite"

@@ -67,8 +67,7 @@ const request = (): Extract<
     cwd: "/source",
     fileAttachments: [],
     addedFiles: [],
-    agentMode: "auto",
-    shouldSendPermissionOverrides: true,
+
     model: null,
     serviceTier: null,
     reasoningEffort: null,
@@ -99,14 +98,38 @@ const request = (): Extract<
 });
 
 it.effect.each([
-  { withProfile: true, pinned: false, withOrigin: false, targetHostId: "local" },
-  { withProfile: false, pinned: false, withOrigin: false, targetHostId: "local" },
-  { withProfile: true, pinned: true, withOrigin: false, targetHostId: "local" },
-  { withProfile: true, pinned: false, withOrigin: true, targetHostId: "local" },
-  { withProfile: true, pinned: false, withOrigin: false, targetHostId: "ssh:remote" },
+  {
+    withProfile: true,
+    pinned: false,
+    withOrigin: false,
+    targetHostId: "ssh:remote",
+    passive: false,
+  },
+  {
+    withProfile: false,
+    pinned: false,
+    withOrigin: false,
+    targetHostId: "ssh:remote",
+    passive: false,
+  },
+  {
+    withProfile: true,
+    pinned: true,
+    withOrigin: false,
+    targetHostId: "ssh:remote",
+    passive: false,
+  },
+  {
+    withProfile: true,
+    pinned: false,
+    withOrigin: true,
+    targetHostId: "ssh:remote",
+    passive: false,
+  },
+  { withProfile: true, pinned: false, withOrigin: false, targetHostId: "local", passive: true },
 ])(
   "preserves the model, accepted first Turn, and Session pin during pending launch (%j)",
-  ({ withProfile, pinned, withOrigin, targetHostId }) =>
+  ({ withProfile, pinned, withOrigin, targetHostId, passive }) =>
     Effect.scoped(
       Effect.gen(function* () {
         const presentation = yield* makeTestTurnPresentation;
@@ -312,6 +335,17 @@ it.effect.each([
         );
 
         const pending = request();
+        if (passive) {
+          const failure = yield* service
+            .launchPending(pending, "/worktree", false)
+            .pipe(Effect.flip);
+          assert.equal(failure.operation, "launch");
+          assert.deepEqual(requests, []);
+          assert.deepEqual(firstTurnOverrides, []);
+          assert.deepEqual(launchEvents, []);
+          return;
+        }
+
         const target = {
           kind: "session",
           sessionId: "session-pending",

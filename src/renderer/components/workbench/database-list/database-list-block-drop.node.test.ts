@@ -31,11 +31,9 @@ const page = (
 });
 
 describe("Database List external Block drop", () => {
-  test("fails closed for search, read-only, and incomplete projection states", () => {
+  test("keeps search and incomplete projection states from accepting a transfer", () => {
     const ready = {
       pageDragActive: false,
-      readOnly: false,
-      projectScoped: true,
       searchActive: false,
       projectionReady: true,
     };
@@ -46,12 +44,6 @@ describe("Database List external Block drop", () => {
         searchActive: true,
       }),
     ).toBe("Clear search to add Blocks as Pages");
-    expect(
-      resolveDatabaseListBlockDropRejection({
-        ...ready,
-        readOnly: true,
-      }),
-    ).toBe("This Database View is read-only");
     expect(
       resolveDatabaseListBlockDropRejection({
         ...ready,

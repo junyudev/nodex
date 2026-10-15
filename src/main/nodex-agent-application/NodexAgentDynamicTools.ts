@@ -6,13 +6,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { ToolFailure } from "../../shared/nodex-agent-tools/base-schemas";
 import { NODEX_APP_TOOL_NAMESPACE } from "../../shared/nodex-agent-tools/identity";
-import type { NodexAgentAccess } from "../../shared/nodex-agent-tools/read-runtime";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import type { NodexAgentResourceAccessOverlay } from "../../shared/nodex-agent-resource-access";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import {
   NodexAgentDynamicToolFailure,
   type NodexAgentDynamicExecutionContext,
-} from "./NodexAgentDynamicPolicy";
+} from "./NodexAgentDynamicExecutionContext";
 import { executeNodexAgentV3Tool } from "./NodexAgentDynamicExecution";
 import { NodexAgentApplication } from "./NodexAgentApplication";
 import { DynamicToolRegistryError } from "../codex/dynamic-tool-registry";
@@ -84,12 +82,7 @@ export const nodexDynamicToolsDisabledResponse = (): DynamicToolCallResponse =>
 
 export interface NodexAgentDynamicToolCallContext {
   readonly toolsetRevision: number | null;
-  readonly authority: FrozenNodexAgentTurnAuthority | null;
-  readonly access: NodexAgentAccess;
-  readonly resourceAccess?: NodexAgentResourceAccessOverlay;
-  readonly resolveResourceAccess: NodexAgentDynamicExecutionContext["resolveResourceAccess"];
-  readonly recordTaskResourceAccess?: NodexAgentDynamicExecutionContext["recordTaskResourceAccess"];
-  readonly authorize: NodexAgentDynamicExecutionContext["authorize"];
+  readonly authority: NodexAgentTurnContext | null;
 }
 
 export class NodexAgentDynamicTools extends Context.Service<
@@ -143,7 +136,7 @@ const execute = (
       threadId: params.threadId,
       callId: params.callId,
       operationId: input.authority
-        ? createStableOperationId(`nodex-agent.${params.tool}`, input.authority.frozenAtMs, [
+        ? createStableOperationId(`nodex-agent.${params.tool}`, input.authority.admittedAtMs, [
             params.threadId,
             params.turnId,
             params.callId,
@@ -151,13 +144,6 @@ const execute = (
           ])
         : createOperationId(`nodex-agent.${params.tool}`),
       authority: input.authority,
-      access: input.access,
-      ...(input.resourceAccess ? { resourceAccess: input.resourceAccess } : {}),
-      ...(input.recordTaskResourceAccess
-        ? { recordTaskResourceAccess: input.recordTaskResourceAccess }
-        : {}),
-      resolveResourceAccess: input.resolveResourceAccess,
-      authorize: input.authorize,
     });
     return serializeSuccess(
       yield* Effect.sync(() =>

@@ -12,7 +12,6 @@ import {
   DownloadIcon,
   EditIcon,
   FileIcon,
-  ProjectAccessIcon,
   PlusIcon,
   ReplaceIcon,
   UndoIcon,
@@ -35,9 +34,9 @@ import {
   useFileReadSnapshot,
 } from "@/components/board/editor/file-runtime";
 import {
-  libraryContentAccess,
-  type ContentAccessContext,
-} from "../../../shared/content-access-context";
+  libraryContentRoute,
+  type ContentRoutingContext,
+} from "../../../shared/content-routing-context";
 import type { LibraryFile, LibraryPageFileEntryReceipt } from "../../../shared/library-files";
 import { fileSource } from "../../../shared/file-resources";
 import {
@@ -60,7 +59,6 @@ import {
 } from "@/lib/use-library-files";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { readPageFileInventoryPage, saveAuthorizedFile } from "@/lib/library-file-resources";
-import { LibraryResourceAccessModal } from "./library-resource-action-modals";
 import { cn } from "@/lib/utils";
 import { useFileLocationNavigator } from "@/lib/file-location-navigation";
 
@@ -71,7 +69,7 @@ export interface LibraryFilesPageTarget {
 }
 
 export interface LibraryFilesDialogProps extends ModalCloseProps {
-  readonly accessContext?: ContentAccessContext;
+  readonly routingContext?: ContentRoutingContext;
   readonly pageTarget?: LibraryFilesPageTarget;
   readonly initialFileId?: string;
 }
@@ -152,7 +150,7 @@ export function LibraryFilesDialog(props: LibraryFilesDialogProps) {
   return (
     <LibraryFilesDialogContent
       key={JSON.stringify([
-        props.accessContext ?? libraryContentAccess,
+        props.routingContext ?? libraryContentRoute,
         props.initialFileId ?? null,
         props.pageTarget?.pageId ?? null,
       ])}
@@ -162,7 +160,7 @@ export function LibraryFilesDialog(props: LibraryFilesDialogProps) {
 }
 
 function LibraryFilesDialogContent({
-  accessContext = libraryContentAccess,
+  routingContext = libraryContentRoute,
   pageTarget,
   initialFileId,
   onClose,
@@ -187,15 +185,15 @@ function LibraryFilesDialogContent({
   );
   const importInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const catalog = useLibraryFileCatalog(accessContext, {
+  const catalog = useLibraryFileCatalog(routingContext, {
     lifecycle: filter === "trash" ? "trashed" : "live",
     usage: filter === "unused" ? "unused" : "all",
     query,
   });
-  const identity = useLibraryFile(accessContext, selectedFileId);
+  const identity = useLibraryFile(routingContext, selectedFileId);
   const selected = identity.file;
   const detail = useLibraryFileDetail(
-    accessContext,
+    routingContext,
     pageTarget ? null : (selected?.file_id ?? null),
   );
   const previewVersion = selectedVersion ?? selected?.head_version ?? null;
@@ -215,7 +213,7 @@ function LibraryFilesDialogContent({
 
   const authority = metadata.data
     ? {
-        contentAccessContext: accessContext,
+        contentRoutingContext: routingContext,
         libraryId: metadata.data.libraryId,
         storeEpoch: metadata.data.storeEpoch,
       }
@@ -239,7 +237,7 @@ function LibraryFilesDialogContent({
         const current = await identity.refresh();
         if (current) setNameRevision(current.revision);
         if (pageTarget) {
-          const inventory = await readPageFileInventoryPage(accessContext, pageTarget.pageId, {
+          const inventory = await readPageFileInventoryPage(routingContext, pageTarget.pageId, {
             limit: 1,
           });
           setPageManifestRevision(inventory.revision);
@@ -608,18 +606,6 @@ function LibraryFilesDialogContent({
                               });
                               setSelectedFileId(copy.file_id);
                             }, "Independent copy created")
-                          }
-                        />
-                      ) : null}
-                      {accessContext.kind === "library" ? (
-                        <NodexIconButton
-                          icon={ProjectAccessIcon}
-                          ariaLabel="Project access"
-                          onClick={() =>
-                            openModal(appHandle, LibraryResourceAccessModal, {
-                              target: { kind: "file", fileId: selected.file_id },
-                              title: selected.default_name,
-                            })
                           }
                         />
                       ) : null}

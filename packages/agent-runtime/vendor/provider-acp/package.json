@@ -11,10 +11,6 @@
       "types": "./src/server/adapter.ts",
       "import": "./src/server/adapter.ts"
     },
-    "./server/clientPolicy": {
-      "types": "./src/server/clientPolicy.ts",
-      "import": "./src/server/clientPolicy.ts"
-    },
     "./server/clientTerminals": {
       "types": "./src/server/clientTerminals.ts",
       "import": "./src/server/clientTerminals.ts"

@@ -278,7 +278,7 @@ This post-removal contract must stay identical across:
   restores the source occurrences and removes the generated Page while preserving
   unrelated source edits, shared File heads, and unrelated Page entries. Any conflicting relationship or placement change leaves both
   sides unchanged.
-- Every causal Document head is a freshness fence resolved through current Library ownership and the bound Project's effective read access. A Project is an access context, never the physical owner encoded by the causal-head check.
+- Every causal Document head is a freshness fence resolved through current Library ownership, Store identity and Document generation. A Project is a presentation route, never a content permission boundary or physical owner encoded by the causal-head check.
 - The side-menu selection that starts the gesture is authoritative. Container-level `dragstart` listeners may manage visual cleanup but must never infer or replace the selected Block IDs.
 
 ## Non-Goals

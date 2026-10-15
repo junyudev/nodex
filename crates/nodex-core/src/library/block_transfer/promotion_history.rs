@@ -121,7 +121,6 @@ struct MovedPromotionDocument {
     materialization: DocumentMaterialization,
     placeholder_block_id: String,
     properties: Vec<BlockTransferUndoBlockPropertyV1>,
-    revoked_grants: Vec<(String, i64)>,
     page_created_at: String,
     file_manifest_clocks: (i64, i64),
 }
@@ -325,7 +324,6 @@ pub(super) fn capture(
                 materialization,
                 placeholder_block_id,
                 properties: read_properties(connection, &root.result_page_id)?,
-                revoked_grants: Vec::new(),
                 page_created_at,
                 file_manifest_clocks: file_manifest_clocks(connection, &root.result_page_id)?,
             })
@@ -445,7 +443,7 @@ fn retire_moved_document(
                 .collect::<Vec<_>>();
         commits.push(persist_prepared_update(
             connection,
-            Some(&recipe.project_id),
+            recipe.project_id.as_deref(),
             &parent.authority,
             &parent.base_materialization,
             &mut parent.engine,
@@ -478,19 +476,6 @@ fn retire_moved_document(
         }
         return Ok(());
     }
-    moved.revoked_grants =
-        super::super::structural_edit::revoke_page_grants(connection, &root.result_page_id)?
-            .into_iter()
-            .map(|id| {
-                connection
-                    .query_row(
-                        "SELECT revision FROM project_resource_grants WHERE id = ?1",
-                        [&id],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .map(|revision| (id, revision))
-            })
-            .collect::<rusqlite::Result<Vec<_>>>()?;
     moved.file_manifest_clocks = file_manifest_clocks(connection, &root.result_page_id)?;
     super::super::structural_edit::retire_page_capability(connection, &root.result_page_id)?;
     super::super::structural_edit::clear_dormant_document_projections(
@@ -725,37 +710,17 @@ pub(super) fn persist_ledger(
 
 fn authorize_restore(connection: &Connection, state: &PromotionRestore) -> Result<(), StoreError> {
     let recipe = &state.undo;
-    require_project_in_library(connection, &recipe.project_id, &recipe.library_id)?;
     if recipe.mode == LibraryBlockTransferMode::Move {
         require_transfer_authority(
             connection,
             &recipe.library_id,
-            &recipe.project_id,
             &recipe.source_document_id,
             None,
-            TransferDocumentAccess::Write,
+            TransferDocumentOperation::Write,
         )?;
     }
-    for (page, root) in state.pages.iter().zip(&recipe.roots) {
+    for (page, _root) in state.pages.iter().zip(&recipe.roots) {
         page.placement.authorize(connection, recipe)?;
-        // A retired row has no active membership to grant Page access. Its
-        // destination Data Source's current write authority governs restoration.
-        if page.placement.data_source_id().is_some() {
-            continue;
-        }
-        if recipe.mode == LibraryBlockTransferMode::Move && page.page_id == root.source_root_id {
-            continue;
-        }
-        if super::super::page_grant_ownership_proof(
-            connection,
-            &recipe.project_id,
-            &page.page_id,
-            true,
-        )?
-        .is_none()
-        {
-            return Err(not_found("Page is not available to the bound Project"));
-        }
     }
     Ok(())
 }
@@ -931,7 +896,7 @@ fn remove_restored_source(
         .collect::<Vec<_>>();
     let persisted = persist_prepared_update(
         connection,
-        Some(&recipe.project_id),
+        recipe.project_id.as_deref(),
         &parent.authority,
         &parent.base_materialization,
         &mut parent.engine,
@@ -997,12 +962,7 @@ fn restore_page_capability(
         &root.source_root_properties,
         now,
     )?;
-    for (id, revision) in &moved.revoked_grants {
-        let changed = connection.execute("UPDATE project_resource_grants SET lifecycle = 'active', revision = revision + 1, updated_at = ?1 WHERE id = ?2 AND root_kind = 'page' AND root_id = ?3 AND lifecycle = 'revoked' AND revision = ?4", params![now, id, root.result_page_id, revision])?;
-        if changed != 1 {
-            return Err(conflict("Promotion Page access changed before restoration"));
-        }
-    }
+
     Ok(())
 }
 
@@ -1084,7 +1044,7 @@ fn restore_moved_document(
         .collect::<Vec<_>>();
     persist_prepared_update(
         connection,
-        Some(&recipe.project_id),
+        recipe.project_id.as_deref(),
         &parent.authority,
         &parent.base_materialization,
         &mut parent.engine,
@@ -1221,7 +1181,7 @@ pub(super) fn restore(
                 page_file_entries: Vec::new(),
                 file_revisions: BTreeMap::new(),
                 file_mutation: Default::default(),
-                project_id: Some(state.undo.project_id.clone()),
+                project_id: state.undo.project_id.clone(),
                 operation_kind: "reverse_structural_edit",
                 change_kind: "block_mutation",
                 did_mutate: true,
@@ -1283,7 +1243,7 @@ pub(super) fn restore(
                         recipe_hash: token.recipe_hash.clone(),
                         store_epoch: token.store_epoch.clone(),
                     },
-                    Some(&state.undo.project_id),
+                    state.undo.project_id.as_deref(),
                     &now,
                     scope.evidence(),
                 )

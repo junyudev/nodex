@@ -3,10 +3,10 @@
 
 mod codex;
 mod control;
-mod files;
-mod goals;
 mod execution;
 mod execution_relocation;
+mod files;
+mod goals;
 mod snapshot;
 pub use snapshot::ExecutionProfileSnapshotParticipant;
 
@@ -71,9 +71,19 @@ pub fn materialize_profile_clone(
 ) -> Result<ProfileCloneReceipt> {
     let source = request.source_profile_home.canonicalize()?;
     let lease = control::SnapshotLease::acquire(&source)?;
-    let offline = if lease.is_none() { Some(execution::OfflineLease::acquire(&source)?) } else { None };
+    let offline = if lease.is_none() {
+        Some(execution::OfflineLease::acquire(&source)?)
+    } else {
+        None
+    };
     let prepared = prepare_profile_clone(request)?;
-    let (execution, mut native) = execution::capture(prepared.source_home(), prepared.staging_home(), prepared.target_home(), prepared.executions(), lease.as_ref().and_then(control::SnapshotLease::execution))?;
+    let (execution, mut native) = execution::capture(
+        prepared.source_home(),
+        prepared.staging_home(),
+        prepared.target_home(),
+        prepared.executions(),
+        lease.as_ref().and_then(control::SnapshotLease::execution),
+    )?;
     native.extend_from_slice(prepared.threads());
     let conversations = codex::capture(
         prepared.source_home(),
@@ -94,7 +104,9 @@ pub fn materialize_profile_clone(
         execution,
     };
     drop(offline);
-    if let Some(lease) = lease { lease.finish()?; }
+    if let Some(lease) = lease {
+        lease.finish()?;
+    }
     prepared.publish(&receipt)?;
     Ok(receipt)
 }

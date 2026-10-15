@@ -56,13 +56,12 @@ const state: HostToolAuthorityView = {
       providerSessionId,
       providerInstanceId,
       nativeThreadRef,
-      pendingBackgroundTasks: [],
     },
   ],
   subagents: [],
 };
 
-describe("foreground host tool authority", () => {
+describe("captured native execution identity", () => {
   it("admits the exact running attempt and app-owned delegated child", () => {
     expect(hostToolAuthorityRefusal(state, identity, 4)).toBeUndefined();
     expect(
@@ -77,7 +76,7 @@ describe("foreground host tool authority", () => {
     ).toBeUndefined();
   });
 
-  it("rejects a previous Run even if a provider reports it running after the next Run starts", () => {
+  it("admits a live earlier Run when another Run starts", () => {
     expect(
       hostToolAuthorityRefusal(
         {
@@ -95,7 +94,7 @@ describe("foreground host tool authority", () => {
         identity,
         4,
       ),
-    ).toMatch(/foreground Run/);
+    ).toBeUndefined();
   });
 
   it("rejects session replacement and interrupted attempts", () => {
@@ -109,22 +108,14 @@ describe("foreground host tool authority", () => {
     ).toBeDefined();
   });
 
-  it("never grants a new Run authority to provider-owned background work", () => {
+  it("admits provider background work under its original identity", () => {
     expect(
       hostToolAuthorityRefusal(
-        {
-          ...state,
-          providerThreads: [
-            {
-              ...state.providerThreads[0]!,
-              pendingBackgroundTasks: [{ kind: "command", taskId: "older-command" }],
-            },
-          ],
-        },
+        { ...state, runs: [{ ...state.runs[0]!, status: "completed" }] },
         identity,
         4,
       ),
-    ).toMatch(/ambiguous/);
+    ).toBeUndefined();
     expect(
       hostToolAuthorityRefusal(
         {
@@ -140,6 +131,21 @@ describe("foreground host tool authority", () => {
         identity,
         4,
       ),
-    ).toMatch(/ambiguous/);
+    ).toBeUndefined();
+  });
+  it("refuses cancelled calls without borrowing the next Run", () => {
+    expect(
+      hostToolAuthorityRefusal(
+        {
+          ...state,
+          runs: [
+            { ...state.runs[0]!, status: "cancelled" },
+            { ...state.runs[0]!, id: RunId.make("run:next"), ordinal: 2 },
+          ],
+        },
+        identity,
+        4,
+      ),
+    ).toBeDefined();
   });
 });

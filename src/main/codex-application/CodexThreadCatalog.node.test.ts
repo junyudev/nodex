@@ -130,6 +130,7 @@ const catalog = (input: {
   readonly read: (request: { readonly kind: string }) => Effect.Effect<unknown>;
   readonly apply?: (request: unknown) => Effect.Effect<unknown>;
   readonly sidebar?: Partial<CodexSidebarSyncRuntime["Service"]>;
+  readonly awaitReady?: Effect.Effect<void>;
   readonly requestLocal?: (
     method: string,
     params: Record<string, unknown>,
@@ -142,6 +143,7 @@ const catalog = (input: {
       CodexGateway.of({
         localHostId: "local",
         events: Stream.empty,
+        awaitReady: () => input.awaitReady ?? Effect.void,
         connection: () => Effect.succeed({ kind: "ready", hostId: "local", generation: 1 }),
         requestLocal: (method: string, params: Record<string, unknown>, scheduling?: unknown) =>
           input.requestLocal?.(method, params, scheduling) ??
@@ -171,7 +173,7 @@ const catalog = (input: {
     ),
   );
 
-it.effect("stages a cross-Project workspace without relocating the live Thread", () =>
+it.effect("moves a Thread across Projects while preserving its physical workspace", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const applied: Array<{ intent: Record<string, unknown> }> = [];
@@ -183,7 +185,7 @@ it.effect("stages a cross-Project workspace without relocating the live Thread",
         pinned_order: null,
         has_unread_turn: false,
       };
-      const targetThread = { ...sourceThread, project_id: "project-b" } as never;
+      const targetThread = { ...sourceThread, project_id: "project-b" };
       const service = yield* catalog({
         read: ({ kind }) => {
           if (kind === "thread") {
@@ -234,26 +236,13 @@ it.effect("stages a cross-Project workspace without relocating the live Thread",
       });
 
       assert.strictEqual(result.status, "moved");
-      const moveIntent = applied[0]?.intent as {
-        metadata?: unknown;
-        runtime_workspace_roots?: unknown;
-        workspace_transition?: {
-          revision: string;
-          pending: {
-            project_sources: string[];
-            cwd: string;
-            runtime_workspace_roots: string[];
-          };
-        };
-      };
+      const moveIntent = applied[0]?.intent;
+      assert.isDefined(moveIntent);
       assert.deepEqual(moveIntent.metadata, {});
       assert.isUndefined(moveIntent.runtime_workspace_roots);
-      assert.match(moveIntent.workspace_transition?.revision ?? "", /^[0-9a-f-]{36}$/);
-      assert.deepEqual(moveIntent.workspace_transition?.pending, {
-        project_sources: ["/workspace"],
-        cwd: "/workspace",
-        runtime_workspace_roots: ["/workspace"],
-      });
+      assert.isUndefined(moveIntent.workspace_transition);
+      assert.strictEqual(sourceThread.cwd, "/workspace/a");
+      assert.strictEqual(targetThread.project_id, "project-b");
     }),
   ),
 );
@@ -398,4 +387,35 @@ it.effect("stops a unique-cursor empty Thread search at its page budget", () =>
       );
     }),
   ),
+);
+
+it.effect(
+  "explicit native history search acquires a cold endpoint before generation-fenced reads",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const steps: string[] = [];
+        const service = yield* catalog({
+          read: ({ kind }) => Effect.succeed(emptyCoreWindow(kind as never)),
+          awaitReady: Effect.sync(() => {
+            steps.push("ready");
+          }),
+          requestLocal: (method, _params, options) =>
+            Effect.sync(() => {
+              assert.equal(method, "thread/search");
+              assert.deepEqual(options, {
+                expectedHostId: "local",
+                expectedGeneration: 1,
+                priority: "interactive",
+                source: "thread_catalog",
+                timeoutMs: 3000,
+              });
+              steps.push("search");
+              return { data: [], nextCursor: null };
+            }),
+        });
+        assert.deepEqual(yield* service.searchPalette({ query: "needle", limit: 1 }), []);
+        assert.deepEqual(steps, ["ready", "search"]);
+      }),
+    ),
 );

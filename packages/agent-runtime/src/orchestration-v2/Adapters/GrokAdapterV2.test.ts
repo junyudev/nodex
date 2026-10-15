@@ -29,7 +29,6 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as RuntimePolicy from "../RuntimePolicy.ts";
-import { acpPermissionDisposition } from "@t3tools/provider-acp/server/clientPolicy";
 import {
   AcpProviderCapabilitiesV2,
   acpCompletedTurnShouldTerminalizeTool,
@@ -45,38 +44,6 @@ import {
 const LAUNCH_TEST_GROK_SETTINGS = Schema.decodeSync(GrokSettings)({
   binaryPath: "grok-launch-test",
 });
-
-function permissionRequest(
-  kind: EffectAcpSchema.ToolKind,
-): EffectAcpSchema.RequestPermissionRequest {
-  return {
-    sessionId: "session-1",
-    options: [
-      { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
-      { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
-      { optionId: "reject-once", name: "Reject", kind: "reject_once" },
-    ],
-    toolCall: {
-      toolCallId: "tool-1",
-      title: "Test tool",
-      kind,
-    },
-  };
-}
-
-function runtimePolicy(input: {
-  readonly runtimeMode: RuntimeMode;
-  readonly approvalPolicy?: unknown;
-  readonly sandboxPolicy?: unknown;
-}) {
-  return ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-    runtimeMode: input.runtimeMode,
-    interactionMode: "default",
-    cwd: "/workspace",
-    ...(input.approvalPolicy === undefined ? {} : { approvalPolicy: input.approvalPolicy }),
-    ...(input.sandboxPolicy === undefined ? {} : { sandboxPolicy: input.sandboxPolicy }),
-  });
-}
 
 describe("acpSubagentStatusBlocksTurnSettlement", () => {
   it("blocks settlement for pending and running subagents", () => {
@@ -141,7 +108,6 @@ describe("GrokAdapterV2 capabilities", () => {
     // Non-Stop interrupts (steering, restart_active) reuse the process and
     // session; the cancelled work backgrounds and the model decides its fate.
     assert.isUndefined(flavor.restartRuntimeOnEveryInterrupt);
-    assert.isTrue(flavor.preserveRuntimeOnSettledInterrupt);
   });
 
   it("terminalizes only foreground tools under the actual Grok flavor", () => {
@@ -192,7 +158,6 @@ describe("GrokAdapterV2 capabilities", () => {
 
   it("keeps optional protocol features conservative until a flavor or handshake confirms them", () => {
     assert.isFalse(AcpProviderCapabilitiesV2.sessions.supportsModelSwitchInSession);
-    assert.isFalse(AcpProviderCapabilitiesV2.sessions.supportsRuntimeModeSwitchInSession);
     assert.isFalse(AcpProviderCapabilitiesV2.threads.canReadThreadSnapshot);
     assert.isFalse(AcpProviderCapabilitiesV2.tools.supportsMcpTools);
   });
@@ -234,89 +199,6 @@ describe("GrokAdapterV2 capabilities", () => {
     assert.isTrue(GrokProviderCapabilitiesV2.threads.canReadThreadSnapshot);
     assert.isTrue(GrokProviderCapabilitiesV2.tools.supportsMcpTools);
     assert.isTrue(GrokProviderCapabilitiesV2.checkpointing.providerCanReadConversationSnapshot);
-  });
-});
-
-describe("ACP permission policy", () => {
-  it("honors explicit on-request approval over full-access runtime mode", () => {
-    assert.equal(
-      acpPermissionDisposition(
-        runtimePolicy({
-          runtimeMode: "full-access",
-          approvalPolicy: "on-request",
-          sandboxPolicy: { type: "readOnly" },
-        }),
-        permissionRequest("execute"),
-      ),
-      "ask",
-    );
-  });
-
-  it("rejects mutating escalation under a non-interactive read-only policy", () => {
-    const policy = runtimePolicy({
-      runtimeMode: "full-access",
-      approvalPolicy: "never",
-      sandboxPolicy: { type: "readOnly" },
-    });
-    assert.equal(acpPermissionDisposition(policy, permissionRequest("execute")), "deny");
-    assert.equal(acpPermissionDisposition(policy, permissionRequest("edit")), "deny");
-    assert.equal(acpPermissionDisposition(policy, permissionRequest("read")), "allow");
-  });
-
-  it("auto-approves requests only when the resolved policy permits them", () => {
-    assert.equal(
-      acpPermissionDisposition(
-        runtimePolicy({
-          runtimeMode: "full-access",
-          approvalPolicy: "never",
-          sandboxPolicy: { type: "dangerFullAccess" },
-        }),
-        permissionRequest("execute"),
-      ),
-      "allow",
-    );
-    assert.equal(
-      acpPermissionDisposition(
-        runtimePolicy({ runtimeMode: "approval-required" }),
-        permissionRequest("edit"),
-      ),
-      "ask",
-    );
-    assert.equal(
-      acpPermissionDisposition(
-        runtimePolicy({ runtimeMode: "approval-required" }),
-        permissionRequest("read"),
-      ),
-      "allow",
-    );
-  });
-});
-
-describe("Grok permission prompts", () => {
-  const disposition = makeGrokAcpAdapterFlavor(
-    {
-      makeRuntime: () => Effect.never,
-    } as unknown as Parameters<typeof makeGrokAcpAdapterFlavor>[0],
-    "/home/ada",
-  ).permissionDisposition;
-
-  // grok_auto_blocked_command replays Auto end to end. When an explicit policy
-  // launches Grok asking instead, T3's policy still answers its prompts.
-  it("leaves Auto prompts to the user unless an explicit policy launched Grok asking", () => {
-    assert.equal(
-      disposition?.(runtimePolicy({ runtimeMode: "auto" }), permissionRequest("read")),
-      "ask",
-    );
-    const readOnly = runtimePolicy({
-      runtimeMode: "auto",
-      approvalPolicy: "never",
-      sandboxPolicy: { type: "readOnly" },
-    });
-    assert.equal(disposition?.(readOnly, permissionRequest("execute")), "deny");
-    assert.equal(
-      disposition?.(runtimePolicy({ runtimeMode: "approval-required" }), permissionRequest("edit")),
-      "ask",
-    );
   });
 });
 
@@ -380,13 +262,9 @@ describe("Grok launch permission mode", () => {
     });
 
   it.effect.each(
-    (
-      [
-        ["approval-required", ["--permission-mode", "default", "agent", "stdio"]],
-        ["auto", ["--permission-mode", "auto", "agent", "stdio"]],
-        ["full-access", ["agent", "--always-approve", "stdio"]],
-      ] as const
-    ).map(([runtimeMode, args]) => [runtimeMode, args.join(" "), args] as const),
+    ([["full-access", ["agent", "--always-approve", "stdio"]]] as const).map(
+      ([runtimeMode, args]) => [runtimeMode, args.join(" "), args] as const,
+    ),
   )("launches %s threads with %s", ([runtimeMode, , args]) =>
     Effect.gen(function* () {
       assert.deepEqual(yield* launchArgs(policy(runtimeMode)), [args]);
@@ -402,8 +280,7 @@ describe("Grok launch permission mode", () => {
       const threadId = ThreadId.make("grok-launch-test");
       const modelSelection = { instanceId, model: "grok-build" } as const;
       const resolved = yield* Effect.gen(function* () {
-        const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
-        return yield* runtimePolicy.resolve({
+        return yield* (yield* RuntimePolicy.RuntimePolicyV2).resolve({
           thread: {
             createdBy: "user",
             creationSource: "web",
@@ -412,7 +289,7 @@ describe("Grok launch permission mode", () => {
             title: "Grok launch test",
             providerInstanceId: instanceId,
             modelSelection,
-            runtimeMode: "auto-accept-edits",
+            runtimeMode: "full-access",
             interactionMode: "default",
             branch: null,
             worktreePath: process.cwd(),
@@ -448,29 +325,8 @@ describe("Grok launch permission mode", () => {
           ),
         ),
       );
-      assert.equal(resolved.runtimeMode, "approval-required");
-      assert.deepEqual(yield* launchArgs(resolved), [
-        ["--permission-mode", "default", "agent", "stdio"],
-      ]);
-    }),
-  );
-
-  it.effect("launches asking when an explicit approval or sandbox policy governs the thread", () =>
-    Effect.gen(function* () {
-      const asking = [["--permission-mode", "default", "agent", "stdio"]];
-      assert.deepEqual(
-        yield* launchArgs(
-          policy("full-access", {
-            approvalPolicy: "never",
-            sandboxPolicy: { type: "workspaceWrite", writableRoots: [], networkAccess: false },
-          }),
-        ),
-        asking,
-      );
-      assert.deepEqual(
-        yield* launchArgs(policy("full-access", { approvalPolicy: "on-request" })),
-        asking,
-      );
+      assert.equal(resolved.runtimeMode, "full-access");
+      assert.deepEqual(yield* launchArgs(resolved), [["agent", "--always-approve", "stdio"]]);
     }),
   );
 });

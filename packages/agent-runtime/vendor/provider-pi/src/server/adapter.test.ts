@@ -357,6 +357,8 @@ const makeAdapter = Effect.fnUntraced(function* (
   }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
 });
 
+const confirmationQuestionIds = new Map<string, string>();
+
 const openRuntime = Effect.fnUntraced(function* (
   fake: FakePi,
   model = "default",
@@ -374,7 +376,10 @@ const openRuntime = Effect.fnUntraced(function* (
   });
   const emitted = yield* Queue.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
   yield* runtime.events.pipe(
-    Stream.runForEach((event) => Queue.offer(emitted, event)),
+    Stream.runForEach((event) => {
+      if (event.type === "runtime_request.updated" && event.runtimeRequest.nativeRequestRef?.nativeId != null) confirmationQuestionIds.set(String(event.runtimeRequest.id), event.runtimeRequest.nativeRequestRef.nativeId);
+      return Queue.offer(emitted, event);
+    }),
     Effect.forkScoped,
   );
   const takeEvent = (predicate: (event: ProviderAdapter.ProviderAdapterV2Event) => boolean) =>
@@ -561,7 +566,7 @@ describe("PiAdapterV2", () => {
         assert.isNull(forkDialog.runtimeRequest.providerTurnId);
         yield* runtime.respondToRuntimeRequest({
           requestId: forkDialog.runtimeRequest.id,
-          decision: "accept",
+          answers: { [confirmationQuestionIds.get(String(forkDialog.runtimeRequest.id)) ?? "missing-question"]: "Yes" },
         });
         yield* fake.takeRequest("extension_ui_response");
         if (nativeWake) {
@@ -669,7 +674,7 @@ describe("PiAdapterV2", () => {
         assert.isNotNull(dialog.runtimeRequest.providerTurnId);
         yield* runtime.respondToRuntimeRequest({
           requestId: dialog.runtimeRequest.id,
-          decision: "accept",
+          answers: { [confirmationQuestionIds.get(String(dialog.runtimeRequest.id)) ?? "missing-question"]: "Yes" },
         });
         yield* fake.takeRequest("extension_ui_response");
         if (aborted) {
@@ -851,7 +856,7 @@ describe("PiAdapterV2", () => {
       assert.isDefined(dialog, "Pi buffered the dialog needed to finish model selection");
       assert.equal(requests[0]?.threadId, THREAD_ID);
       assert.isNull(dialog!.providerTurnId);
-      yield* runtime.respondToRuntimeRequest({ requestId: dialog!.id, decision: "accept" });
+      yield* runtime.respondToRuntimeRequest({ requestId: dialog!.id, answers: { [confirmationQuestionIds.get(String(dialog!.id)) ?? "missing-question"]: "Yes" } });
       const response = yield* fake.takeRequest("extension_ui_response");
       assert.equal(response["id"], "model-selection-dialog");
       assert.isTrue(response["confirmed"]);
@@ -1015,7 +1020,7 @@ describe("PiAdapterV2", () => {
         yield* offer.clearIfCurrent!();
         yield* runtime.respondToRuntimeRequest({
           requestId: dialog.runtimeRequest.id,
-          decision: "accept",
+          answers: { [confirmationQuestionIds.get(String(dialog.runtimeRequest.id)) ?? "missing-question"]: "Yes" },
         });
         const response = yield* fake.takeRequest("extension_ui_response");
         assert.isTrue(response["confirmed"]);
@@ -1329,7 +1334,6 @@ describe("PiAdapterV2", () => {
       assert.isTrue(extensions.some((path) => path?.endsWith("pi-t3-mcp-extension.ts")));
       assert.equal(spawn.env.T3_MCP_URL, "http://127.0.0.1:43123/mcp");
       assert.equal(spawn.env.T3_MCP_BEARER_TOKEN, "secret-pi-token");
-      assert.equal(spawn.env.T3_PI_RUNTIME_MODE, "full-access");
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
@@ -2891,13 +2895,13 @@ describe("PiAdapterV2", () => {
         modelSelection: modelSelection("default"),
         runtimePolicy,
       });
-      // Project-trust style prompt before any turn exists.
+      // A real extension question can arrive before a Turn exists.
       yield* fake.emit({
         type: "extension_ui_request",
         id: "ui-trust",
         method: "confirm",
-        title: "Run project extensions?",
-        message: "This project has .pi/extensions.",
+        title: "Use this project naming convention?",
+        message: "The project uses snake_case.",
       });
       const pending = yield* takeEvent(
         (event) =>
@@ -2905,14 +2909,14 @@ describe("PiAdapterV2", () => {
       );
       const requestId =
         pending.type === "runtime_request.updated" ? pending.runtimeRequest.id : undefined;
-      yield* runtime.respondToRuntimeRequest({ requestId: requestId!, decision: "accept" });
+      yield* runtime.respondToRuntimeRequest({ requestId: requestId!, answers: { [confirmationQuestionIds.get(String(requestId!)) ?? "missing-question"]: "Yes" } });
       const uiResponse = yield* fake.takeRequest("extension_ui_response");
       assert.equal(uiResponse["id"], "ui-trust");
       assert.equal(uiResponse["confirmed"], true);
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect("expires native dialogs and rejects stale answers without caching approval", () =>
+  it.effect("expires native dialogs and rejects stale answers", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;
       const { runtime, takeEvent } = yield* openRuntime(fake);
@@ -2929,12 +2933,12 @@ describe("PiAdapterV2", () => {
       };
       yield* fake.emit({ ...dialog, id: "timed-dialog", timeout: 1000 });
       const pending = yield* takeEvent(
-        (event) => event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
+        (event) => event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
       );
       assert.isTrue(
-        pending.type === "turn_item.updated" && pending.turnItem.type === "approval_request",
+        pending.type === "turn_item.updated" && pending.turnItem.type === "user_input_request",
       );
-      if (pending.type !== "turn_item.updated" || pending.turnItem.type !== "approval_request")
+      if (pending.type !== "turn_item.updated" || pending.turnItem.type !== "user_input_request")
         return;
       const requestId = pending.turnItem.requestId;
       yield* TestClock.adjust(Duration.seconds(1));
@@ -2948,7 +2952,7 @@ describe("PiAdapterV2", () => {
       const late = yield* Effect.result(
         runtime.respondToRuntimeRequest({
           requestId: pending.turnItem.requestId,
-          decision: "acceptForSession",
+          answers: { [confirmationQuestionIds.get(String(pending.turnItem.requestId)) ?? "missing-question"]: "Yes" },
         }),
       );
       assert.equal(late._tag, "Failure");
@@ -2962,7 +2966,7 @@ describe("PiAdapterV2", () => {
       if (fresh.type !== "runtime_request.updated") return;
       yield* runtime.respondToRuntimeRequest({
         requestId: fresh.runtimeRequest.id,
-        decision: "accept",
+        answers: { [confirmationQuestionIds.get(String(fresh.runtimeRequest.id)) ?? "missing-question"]: "Yes" },
       });
       assert.equal((yield* fake.takeRequest("extension_ui_response"))["id"], "fresh-dialog");
       // The old expiry must not cancel an already answered request, and zero disables expiry.
@@ -2977,7 +2981,7 @@ describe("PiAdapterV2", () => {
       if (zero.type !== "runtime_request.updated") return;
       yield* runtime.respondToRuntimeRequest({
         requestId: zero.runtimeRequest.id,
-        decision: "decline",
+        answers: { [confirmationQuestionIds.get(String(zero.runtimeRequest.id)) ?? "missing-question"]: "No" },
       });
       const response = yield* fake.takeRequest("extension_ui_response");
       assert.equal(response["id"], "zero-timeout");
@@ -3016,61 +3020,6 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect("remembers session approvals only for identical confirmation content", () =>
-    Effect.gen(function* () {
-      const fake = yield* makeFakePi;
-      const { runtime, takeEvent } = yield* openRuntime(fake);
-      yield* runtime.ensureThread({
-        threadId: THREAD_ID,
-        modelSelection: modelSelection("default"),
-        runtimePolicy,
-      });
-      // Project-trust style prompt before any turn exists.
-      yield* fake.emit({
-        type: "extension_ui_request",
-        id: "ui-trust",
-        method: "confirm",
-        title: "Run project extensions?",
-        message: "This project has .pi/extensions.",
-      });
-      const pending = yield* takeEvent(
-        (event) =>
-          event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
-      );
-      const requestId =
-        pending.type === "runtime_request.updated" ? pending.runtimeRequest.id : undefined;
-      yield* runtime.respondToRuntimeRequest({
-        requestId: requestId!,
-        decision: "acceptForSession",
-      });
-      const uiResponse = yield* fake.takeRequest("extension_ui_response");
-      assert.equal(uiResponse["id"], "ui-trust");
-      assert.equal(uiResponse["confirmed"], true);
-      yield* fake.emit({
-        type: "extension_ui_request",
-        id: "ui-trust-again",
-        method: "confirm",
-        title: "Run project extensions?",
-        message: "This project has .pi/extensions.",
-      });
-      assert.equal((yield* fake.takeRequest("extension_ui_response"))["id"], "ui-trust-again");
-      yield* fake.emit({
-        type: "extension_ui_request",
-        id: "ui-other",
-        method: "confirm",
-        title: "Run project extensions?",
-        message: "A different project.",
-      });
-      const other = yield* takeEvent(
-        (event) =>
-          event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
-      );
-      assert.isTrue(
-        other.type === "runtime_request.updated" &&
-          other.runtimeRequest.nativeRequestRef?.nativeId === "ui-other",
-      );
-    }).pipe(Effect.scoped, Effect.provide(layerTest)),
-  );
 
   it.effect("offers an explicit empty value for extension input dialogs", () =>
     Effect.gen(function* () {
@@ -3166,36 +3115,6 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
-  it.effect("raises bridge edit confirmations as file-change approvals", () =>
-    Effect.gen(function* () {
-      const fake = yield* makeFakePi;
-      const { runtime, takeEvent } = yield* openRuntime(fake);
-      const providerThread = yield* runtime.ensureThread({
-        threadId: THREAD_ID,
-        modelSelection: modelSelection("default"),
-        runtimePolicy,
-      });
-      yield* startTurn(runtime, providerThread);
-      yield* fake.takeRequest("prompt");
-      for (const [id, title, requestKind] of [
-        ["ui-edit", "Allow edit?", "file-change"],
-        ["ui-bash", "Allow bash?", "command"],
-        ["ui-ext", "Deploy to staging?", "command"],
-      ] as const) {
-        yield* fake.emit({ type: "extension_ui_request", id, method: "confirm", title });
-        const item = yield* takeEvent(
-          (event) =>
-            event.type === "turn_item.updated" && event.turnItem.type === "approval_request",
-        );
-        assert.isTrue(
-          item.type === "turn_item.updated" &&
-            item.turnItem.type === "approval_request" &&
-            item.turnItem.requestKind === requestKind,
-          `${title} should be ${requestKind}`,
-        );
-      }
-    }).pipe(Effect.scoped, Effect.provide(layerTest)),
-  );
 
   it.effect("reads a thread snapshot from pi's active branch", () =>
     Effect.gen(function* () {

@@ -1,14 +1,13 @@
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
 import { ConversationTaskDialog } from "./conversation-task-dialog";
 import { ConversationRuntimeContext } from "../conversation-runtime";
+import { useCodexConversationTranscriptStructure } from "../normalized-transcript-hooks";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { RouteScope } from "@/lib/workbench-ui-scopes";
 import { openModal } from "@/lib/modal-registry";
 import { useBackgroundSubagentRows } from "../use-background-subagent-rows";
 import { supportsConversationProviderControl } from "../conversation-provider-controls";
 import { isLocalConversationWriterConflict } from "../conversation-attachment-state";
-import { collectCodexSubagentInteractionReferences } from "../../../../shared/codex-subagent-interaction";
-import { conversationTurnsWithOverlay } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import {
@@ -70,7 +69,6 @@ import {
   useConversationTurns,
   useCodexDictationState,
   useCodexAppServerManagerForConversationId,
-  useCodexPermissionState,
   useConversationParentThreadId,
   useLocalConversationAccount,
   useLocalConversationConnection,
@@ -181,6 +179,8 @@ function usePresentedConversationIds(
 }
 
 interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
+  /** Imported native history has no Nodex execution owner. Read capabilities remain available. */
+  executionAvailable?: boolean;
   visualizationSurfaceId?: string;
   actions: ThreadStageActions;
   composerScopeIdentity?: string | null;
@@ -337,6 +337,8 @@ function ConnectedThreadStageBody({
   const bodyPresentation = useConversationBodyPresentation(activeThreadId, parentTurns);
   const canonicalTurns = bodyPresentation.turns;
   const turns = presentedTurns ?? canonicalTurns;
+  const { structure: transcriptStructure } =
+    useCodexConversationTranscriptStructure(activeThreadId);
   useAcknowledgeSessionFirstSubmission(
     {
       projectId: input.projectId,
@@ -345,6 +347,7 @@ function ConnectedThreadStageBody({
     },
     canonicalTurns,
     activeThreadId !== null && !input.isNewThreadTab,
+    transcriptStructure?.turns,
   );
   const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
   const runtime = useConversationRuntime(activeThreadId, preferredHostId);
@@ -419,6 +422,7 @@ function ConnectedThreadStageBody({
 
   const model = useMemo<ThreadBodySurfaceModel>(
     () => ({
+      skills: input.provider?.skills,
       projectId: input.projectId,
       hostId,
       composerScopeIdentity,
@@ -471,6 +475,7 @@ function ConnectedThreadStageBody({
       bodyPresentation.canonicalRequests,
       cwd,
       input.projectId,
+      input.provider?.skills,
       input.sessionId,
       hostId,
       input.projectWorkspacePath,
@@ -499,7 +504,7 @@ function ConnectedThreadStageBody({
       footer={footer}
       leadingContent={
         <>
-          {input.provider?.history?.hasOlder && !readOnly ? (
+          {input.provider?.history?.hasOlder ? (
             <button
               type="button"
               className="mx-auto my-2 cursor-interaction px-3 py-1 text-sm text-token-description-foreground hover:text-token-foreground disabled:opacity-50"
@@ -525,6 +530,7 @@ function ConnectedThreadStageBody({
         </>
       }
       resolveHistoryImage={input.provider?.resolveHistoryImage}
+      resolveRuntimeAttachment={input.provider?.resolveRuntimeAttachment}
       readToolOutput={input.provider?.readToolOutput}
       initialUiState={initialUiState}
       transcriptVisible={transcriptVisible}
@@ -600,7 +606,7 @@ export function ConnectedThreadStageFooter({
   const liveThreadSettings = useConversationThreadSettings(activeThreadId);
   const account = useLocalConversationAccount();
   const dictation = useCodexDictationState();
-  const permissionState = useCodexPermissionState(input.projectId);
+
   const workspaceSearchContext = useMemo(
     () =>
       resolveWorkspaceSearchContext({
@@ -880,8 +886,7 @@ export function ConnectedThreadStageFooter({
       selectedPersonality:
         liveThreadSettings?.personality ?? input.selectedPersonality ?? "friendly",
       reasoningEffortOptions: input.reasoningEffortOptions,
-      permissionMode: input.permissionMode,
-      permissionState,
+
       isQueueingEnabled: input.isQueueingEnabled,
       composerEnterBehavior: input.composerEnterBehavior,
       composerIntent,
@@ -952,8 +957,6 @@ export function ConnectedThreadStageFooter({
       input.newThreadStartBlockedReason,
       input.newThreadStartInSelector,
       input.newThreadTarget,
-      input.permissionMode,
-      permissionState,
       input.projectId,
       input.projectWorkspacePath,
       workspaceSearchContext,
@@ -1051,17 +1054,6 @@ export function ConnectedThreadComposerDock({
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);
   const archived = input.activeThreadSummary?.archived === true || summaryFields.archived;
-  const parentThreadId =
-    useConversationParentThreadId(activeThreadId) ??
-    input.activeThreadSummary?.source?.parentThreadId ??
-    null;
-  const parent = useConversation(parentThreadId);
-  const childReadOnly =
-    parentThreadId !== null &&
-    (!activeThreadId ||
-      collectCodexSubagentInteractionReferences(
-        conversationTurnsWithOverlay(parent?.canonicalState),
-      ).get(activeThreadId)?.canInteract !== true);
 
   const childMemberships = useConversationChildMemberships(activeThreadId);
   const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
@@ -1113,7 +1105,7 @@ export function ConnectedThreadComposerDock({
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab || archived) return;
     if (connection.status !== "connected") return;
-    if (firstSubmission || childReadOnly) return;
+    if (firstSubmission) return;
     if (!lifecycleActive || attachmentState.status === "attaching") return;
     if (attachmentState.status === "failed") return;
     if (resumeState === "resumed" && (streamRole === "owner" || streamRole === "follower")) {
@@ -1124,7 +1116,6 @@ export function ConnectedThreadComposerDock({
     archived,
     connection.status,
     attachmentState,
-    childReadOnly,
     firstSubmission,
     input.activeThreadId,
     input.isNewThreadTab,
@@ -1134,8 +1125,6 @@ export function ConnectedThreadComposerDock({
     resumeState,
     streamRole,
   ]);
-
-  if (childReadOnly) return null;
 
   return (
     <EnsureLocalConversationThreadScrollController>
@@ -1183,6 +1172,7 @@ function ConnectedThreadStageContent({
   initialUiState,
   backgroundAgentDetail = false,
   backgroundAgentCanInteract = false,
+  executionAvailable = true,
   rightPanelComposerOverlayEnabled = false,
   rightPanelComposerOverlayCompact = false,
   rightPanelComposerOverlayTarget = null,
@@ -1207,6 +1197,7 @@ function ConnectedThreadStageContent({
     if (
       !activeThreadId ||
       backgroundAgentDetail ||
+      runtime.sessionId !== undefined ||
       input.provider?.controls?.nativeTaskDetails !== true
     )
       return providedActions;
@@ -1292,22 +1283,13 @@ function ConnectedThreadStageContent({
   const residentParentThreadId = useConversationParentThreadId(activeThreadId);
   const parentThreadId =
     residentParentThreadId ?? input.activeThreadSummary?.source?.parentThreadId ?? null;
-  const parentConversation = useConversation(parentThreadId);
-  const parentAllowsInteraction = useMemo(
-    () =>
-      activeThreadId !== null &&
-      collectCodexSubagentInteractionReferences(
-        conversationTurnsWithOverlay(parentConversation?.canonicalState),
-      ).get(activeThreadId)?.canInteract === true,
-    [activeThreadId, parentConversation?.canonicalState],
-  );
   const isActiveThreadArchived =
     input.activeThreadSummary?.archived === true || summaryFields.archived;
-  const subagentReadOnly = backgroundAgentDetail
-    ? !backgroundAgentCanInteract || isActiveThreadArchived
-    : !isSideChat &&
-      parentThreadId !== null &&
-      (!parentAllowsInteraction || isActiveThreadArchived);
+  const childControlsUnavailable =
+    !executionAvailable ||
+    (backgroundAgentDetail
+      ? !backgroundAgentCanInteract || isActiveThreadArchived
+      : isActiveThreadArchived);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
   const childMemberships = useConversationChildMemberships(activeThreadId);
@@ -1426,7 +1408,10 @@ function ConnectedThreadStageContent({
             threadId: activeThreadId,
             kind: activeThreadIsManagedWorktree ? ("worktree" as const) : ("local" as const),
             canMove:
-              !activeThreadProjectless && runtime.kind !== "acp" && runtime.hostId === "local",
+              executionAvailable &&
+              !activeThreadProjectless &&
+              runtime.kind !== "acp" &&
+              runtime.hostId === "local",
           }
         : null,
       actions,
@@ -1443,6 +1428,7 @@ function ConnectedThreadStageContent({
       activeThreadTitle,
       activeThreadIsManagedWorktree,
       activeThreadProjectless,
+      executionAvailable,
       backgroundTerminalRows,
       backgroundAgentRows,
       childMemberships,
@@ -1489,7 +1475,7 @@ function ConnectedThreadStageContent({
     if (!input.activeThreadId || input.isNewThreadTab) {
       return;
     }
-    if (hasFirstSubmission || subagentReadOnly) return;
+    if (hasFirstSubmission || childControlsUnavailable) return;
     if (connection.status !== "connected") return;
     if (isActiveThreadArchived) {
       return;
@@ -1513,7 +1499,7 @@ function ConnectedThreadStageContent({
     connection.status,
     attachmentState,
     hasFirstSubmission,
-    subagentReadOnly,
+    childControlsUnavailable,
     resumeState,
     streamRole,
     input.activeThreadId,
@@ -1526,7 +1512,7 @@ function ConnectedThreadStageContent({
 
   useEffect(() => {
     if (!activeThreadId || !threadLifecycleActive || connection.status !== "connected") return;
-    if (!subagentReadOnly && !writerConflict) return;
+    if (!childControlsUnavailable && !writerConflict) return;
     if (runtime.kind !== "codex") return;
     const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
     void Promise.all(historyIds.map((id) => historyManager.hydrateReadOnlyHistory(id))).catch(
@@ -1538,7 +1524,7 @@ function ConnectedThreadStageContent({
     parentThreadId,
     threadLifecycleActive,
     connection.status,
-    subagentReadOnly,
+    childControlsUnavailable,
     writerConflict,
     historyManager,
     runtime.kind,
@@ -1667,7 +1653,7 @@ function ConnectedThreadStageContent({
                     Retry
                   </button>
                 </div>
-              ) : subagentReadOnly ? null : (
+              ) : childControlsUnavailable ? null : (
                 <ConnectedThreadStageFooter
                   activeThreadId={activeThreadId}
                   input={input}
@@ -1690,7 +1676,7 @@ function ConnectedThreadStageContent({
             presentedTurns={presentedTurns}
             firstSubmissionTurn={firstSubmissionProjection.presentationTurn}
             firstSubmissionActive={hasFirstSubmission}
-            readOnly={subagentReadOnly || writerConflict}
+            readOnly={childControlsUnavailable || writerConflict}
           />
         }
         floatingContent={

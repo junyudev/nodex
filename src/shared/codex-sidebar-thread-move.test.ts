@@ -109,29 +109,6 @@ describe("Codex sidebar thread move contract", () => {
     ).toBe(false);
   });
 
-  test("accepts only a bounded, revision-fenced Project access grant", () => {
-    expect(
-      CodexSidebarThreadMoveInputSchema.safeParse({
-        ...makeMove({ beforeThreadId: null }),
-        projectAccessGrant: {
-          targetProjectId: "beta",
-          expectedBindingRevision: 3,
-          missingProjectSources: ["/repo/alpha"],
-        },
-      }).success,
-    ).toBe(true);
-    expect(
-      CodexSidebarThreadMoveInputSchema.safeParse({
-        ...makeMove({ beforeThreadId: null }),
-        projectAccessGrant: {
-          targetProjectId: "beta",
-          expectedBindingRevision: 0,
-          missingProjectSources: [],
-        },
-      }).success,
-    ).toBe(false);
-  });
-
   test("projects every local container onto orthogonal membership and pin lanes", () => {
     expect(isCodexSidebarThreadContainerId("project:alpha")).toBe(true);
     expect(isCodexSidebarThreadContainerId("project-pinned:alpha")).toBe(true);

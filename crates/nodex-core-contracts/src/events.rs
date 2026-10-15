@@ -271,8 +271,7 @@ pub struct LocalCommitReceiptRef {
     pub result_hash: String,
 }
 
-/// Exact authorization vocabulary used by semantic delivery. Scope resources
-/// are explicit requirements rather than ambient packet metadata.
+/// Exact resource vocabulary used for delivery routing and projection invalidation.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ResourceKey {
@@ -370,8 +369,6 @@ pub struct CommitManifest {
     pub delivery_atoms: Vec<DeliveryAtomDescriptor>,
     pub document_effects: Vec<DocumentEffectRef>,
     pub projection_effects: Vec<ProjectionEffect>,
-    #[serde(default)]
-    pub revocations: Vec<ResourceRevocation>,
     pub receipt: LocalCommitReceiptRef,
     pub routing_claims: Vec<RoutingClaim>,
     pub physical_evidence: PhysicalEvidenceDigest,
@@ -402,48 +399,6 @@ pub struct AuthorizedDocumentEffect {
     pub history_fence: Option<crate::document::DocumentHistoryFence>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum RevokedResourceKind {
-    Page,
-    Document,
-    Database,
-    DataSource,
-    View,
-    Canvas,
-    File,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ResourceRevocationReason {
-    OwnershipMoved,
-    AccessRevoked,
-    Archived,
-    Deleted,
-}
-
-/// Core-authored authorization boundary for one delivery artifact. This is
-/// part of packet integrity and must never be reconstructed by an Adapter.
-#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum DeliveryAuthorizationScope {
-    Library {
-        library_id: String,
-    },
-    Project {
-        library_id: String,
-        project_id: String,
-    },
-    Document {
-        library_id: String,
-        project_id: Option<String>,
-        document_id: String,
-    },
-}
-
-/// Logical destination selected by the authenticated Host broker. Routing is
-/// distinct from authorization even when both identities are equal today.
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DeliveryAddress {
@@ -461,37 +416,10 @@ pub enum DeliveryAddress {
     },
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ConservativeResetReason {
-    AuthorizationClosureExceeded,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum VisibilityDeltaKind {
-    Grant,
-    Revoke { reason: ResourceRevocationReason },
-    ConservativeReset { reason: ConservativeResetReason },
-}
-
-/// Manifest-bound authorization change. Exact deltas carry one or more roots;
-/// conservative resets intentionally carry none and fence the whole address.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct VisibilityDelta {
-    pub authorization_scope: DeliveryAuthorizationScope,
-    pub change: VisibilityDeltaKind,
-    pub roots: Vec<ResourceKey>,
-    pub delta_hash: String,
-}
-
-/// Core-issued identity for one active broker recipient. Main may route with
-/// this lease but cannot construct or broaden its authorization scope.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AuthorizedRecipientLease {
     pub lease_id: String,
     pub delivery_address: DeliveryAddress,
-    pub authorization_scope: DeliveryAuthorizationScope,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -511,29 +439,8 @@ pub struct AddressReset {
     pub store_epoch: StoreEpoch,
     pub recipient_lease_id: String,
     pub delivery_address: DeliveryAddress,
-    pub authorization_scope: DeliveryAuthorizationScope,
     pub required_commit_seq: i64,
     pub reason: AddressResetReason,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct AuthorizedReadStamp {
-    pub store_epoch: StoreEpoch,
-    pub delivery_address: DeliveryAddress,
-    pub authorization_scope: DeliveryAuthorizationScope,
-    pub subject: ResourceKey,
-    pub request_dependencies: Vec<ResourceKey>,
-    pub authorization_dependencies: Vec<ResourceKey>,
-    pub covered_commit_seq: i64,
-    pub stamp_hash: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ResourceRevocation {
-    pub authorization_scope: DeliveryAuthorizationScope,
-    pub resource_kind: RevokedResourceKind,
-    pub resource_id: String,
-    pub reason: ResourceRevocationReason,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -544,19 +451,17 @@ pub struct DeliveryCoverage {
     pub projection_scope_keys: Vec<String>,
 }
 
-/// Post-state-authorized transport artifact. Packets for the apply response
+/// Authenticated connection transport artifact. Packets for the apply response
 /// and durable stream may have different coverage but always reference the
 /// same immutable manifest identity.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AuthorizedDeliveryPacket {
     pub packet_version: u32,
     pub delivery_address: DeliveryAddress,
-    pub authorization_scope: DeliveryAuthorizationScope,
     pub manifest: CommitManifestHeader,
     pub atoms: Vec<AuthorizedDeliveryAtom>,
     pub document_effects: Vec<AuthorizedDocumentEffect>,
     pub projection_effects: Vec<ProjectionEffect>,
-    pub visibility_deltas: Vec<VisibilityDelta>,
     pub coverage: DeliveryCoverage,
     pub packet_hash: String,
 }

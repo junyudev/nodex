@@ -3,6 +3,8 @@ import {
   ProviderInstanceId,
   ProviderDriverKind,
   type ProviderInstanceConfigMap,
+  ProjectId,
+  resolveProjectProviderInstanceEnabled,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Ref from "effect/Ref";
@@ -11,7 +13,56 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as Exit from "effect/Exit";
-import { makeWithPorts } from "./ProviderConfiguration.ts";
+import { effectiveSettings, makePolicy, makeWithPorts } from "./ProviderConfiguration.ts";
+import * as ServerSettings from "../serverSettings.ts";
+
+it.effect(
+  "named provider enablement follows the applied map and defers policy changes with native ownership",
+  () =>
+    Effect.gen(function* () {
+      const id = ProviderInstanceId.make("claude_named");
+      const projectId = ProjectId.make("project");
+      const initial = {
+        [id]: {
+          driver: ProviderDriverKind.make("claude-code"),
+          enabled: true,
+          config: { binaryPath: "private-cli", env: { PRIVATE_TOKEN: "private-value" } },
+        },
+      };
+      const policy = yield* makePolicy(initial);
+      const stored = yield* ServerSettings.ServerSettingsService.pipe(
+        Effect.provide(ServerSettings.layerTest()),
+      );
+      const settings = effectiveSettings(stored, policy);
+      const busy = yield* Ref.make<ReadonlySet<ProviderInstanceId>>(new Set([id]));
+      const configuration = yield* makeWithPorts(initial, {
+        busyInstances: Ref.get(busy),
+        closeIdleInstance: () => Effect.void,
+        reconcile: policy.replace,
+      });
+      expect(
+        resolveProjectProviderInstanceEnabled(yield* settings.getSettings, projectId, id),
+      ).toBe(true);
+      expect((yield* stored.getSettings).providerInstances[id]).toBeUndefined();
+      expect(yield* configuration.configure({ [id]: { ...initial[id]!, enabled: false } })).toEqual(
+        { applied: false, deferredInstanceIds: [id] },
+      );
+      expect(
+        resolveProjectProviderInstanceEnabled(yield* settings.getSettings, projectId, id),
+      ).toBe(true);
+      yield* Ref.set(busy, new Set());
+      yield* TestClock.adjust("1 second");
+      expect(
+        resolveProjectProviderInstanceEnabled(yield* settings.getSettings, projectId, id),
+      ).toBe(false);
+      expect(
+        yield* settings.withSettingsSnapshot((snapshot) =>
+          Effect.succeed(snapshot.providerInstances[id]?.enabled),
+        ),
+      ).toBe(false);
+      expect((yield* stored.getSettings).providerInstances[id]).toBeUndefined();
+    }),
+);
 
 it.effect(
   "updates idle instances while preserving active and native background configuration",

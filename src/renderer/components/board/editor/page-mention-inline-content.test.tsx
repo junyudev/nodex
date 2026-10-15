@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { BlockReferenceRuntimeProvider } from "@/components/block-documents/block-reference-runtime-context";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { render, settleAsyncRender, textContent } from "@/test/dom";
-import { projectContentAccess } from "../../../../shared/content-access-context";
+import { projectContentRoute } from "../../../../shared/content-routing-context";
 import type { PageDetail } from "../../../../shared/page-detail";
 import type { PageTargetReadModel } from "../../../../shared/page-targets";
 import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
@@ -53,7 +53,6 @@ const availableTarget = (
   libraryId: "library-1",
   storeEpoch: "epoch-1",
   commitSeq: 7,
-  authorization: null,
   status: "available",
   targetPageId: "page-1",
   page: {
@@ -150,7 +149,7 @@ describe("Page mention inline content", () => {
       <NodexTooltipProvider>
         <BlockReferenceRuntimeProvider
           value={{
-            contentAccessContext: projectContentAccess("project-1"),
+            contentRoutingContext: projectContentRoute("project-1"),
             projectName: "Product",
             projectWorkspacePath: "/tmp/product",
             hostPageId: "host-page",

@@ -18,7 +18,6 @@ import type {
   CodexComposerAppshotContext,
   CodexComposerAppshotTarget,
   CodexComposerIntent,
-  CodexPermissionState,
   CodexPromptDocumentInput,
   CodexPromptInput,
   CodexReviewDiffCommentAttachment,
@@ -101,9 +100,7 @@ import {
   captureComposerAppshot,
   invokeBrowserSidebarCommand,
   NodexTooltip,
-  PermissionModeDropdown,
   pickComposerFiles,
-  readComposerPermissionState,
 } from "./local-conversation-thread-composer-deps";
 import {
   shouldShowThreadComposerStatusStrip,
@@ -1319,7 +1316,7 @@ function HydratedThreadComposer({
   const threadScopePath = useScopeHandle(ThreadScope).path;
   const canStartNewThread = canStartNewThreadTarget(model);
   const [busyAction, setBusyAction] = useState<StageThreadsBusyAction>(null);
-  const [permissionState, setPermissionState] = useState<CodexPermissionState | null>(null);
+
   const [fileAttachments, setFileAttachments] = useScopedAtom(composerFileAttachmentsAtom);
   const [addedFiles, setAddedFiles] = useScopedAtom(composerAddedFilesAtom);
   const [imageAttachments, setImageAttachments] = useScopedAtom(composerImageAttachmentsAtom);
@@ -2926,28 +2923,6 @@ function HydratedThreadComposer({
     };
   }, [commandKeymapQuery.data, composerVisible, isDictationSupported, isRealtimeVoiceActive]);
 
-  useEffect(() => {
-    if (model.provider?.kind && model.provider.kind !== "codex") {
-      setPermissionState(null);
-      return;
-    }
-    let cancelled = false;
-
-    void readComposerPermissionState(model.projectId)
-      .then((result) => {
-        if (cancelled) return;
-        setPermissionState(result);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPermissionState(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [model.provider?.kind, model.permissionMode, model.permissionState, model.projectId]);
-
   const handleInterrupt = useCallback(async () => {
     if (!model.conversation || !model.isThreadRunning) return;
     setBusyAction("interrupt");
@@ -3918,23 +3893,7 @@ function HydratedThreadComposer({
       <ActiveComposerModeChip model={model} onToggle={togglePlanMode} />
       <ActiveGoalModeChip active={hasFooterGoalChip} onClear={clearFooterGoal} />
       <div className="flex min-w-0 items-center gap-1">{intelligenceControls}</div>
-      {supportsConversationProviderControl(model.provider, "permissionMode") ? (
-        <PermissionModeDropdown
-          selectedMode={model.permissionMode}
-          availableModes={
-            model.provider?.kind === "claude"
-              ? ["auto", "guardian-approvals", "full-access"]
-              : permissionState?.availableModes
-          }
-          autoReviewAvailable={
-            model.provider?.kind === "claude" || (permissionState?.autoReviewAvailable ?? false)
-          }
-          nativePermissions={model.provider?.kind === "claude"}
-          triggerVariant="icon"
-          onSelect={actions.onPermissionModeChange}
-        />
-      ) : null}
-      <RealtimeVoiceControls voice={realtimeVoice} />
+
       {dictationControl}
       {primaryActionControl}
     </div>
@@ -3942,21 +3901,7 @@ function HydratedThreadComposer({
   const standardLeadingControls = (
     <div className="flex min-w-0 items-center gap-[5px]">
       {addContextControl}
-      {supportsConversationProviderControl(model.provider, "permissionMode") ? (
-        <PermissionModeDropdown
-          selectedMode={model.permissionMode}
-          availableModes={
-            model.provider?.kind === "claude"
-              ? ["auto", "guardian-approvals", "full-access"]
-              : permissionState?.availableModes
-          }
-          autoReviewAvailable={
-            model.provider?.kind === "claude" || (permissionState?.autoReviewAvailable ?? false)
-          }
-          nativePermissions={model.provider?.kind === "claude"}
-          onSelect={actions.onPermissionModeChange}
-        />
-      ) : null}
+
       {model.selectedCollaborationMode === "plan" || goalModeActive ? (
         <ComposerFooterAccessoryDivider />
       ) : null}

@@ -16,7 +16,7 @@ batch preparation silently discards the conditions originally observed.
 
 Give public SQL its own read-only Query Module. It owns one pinned reader
 transaction, execution limits and cancellation. Library and Database provide
-internal authorized projections against that reader; their domain rules remain
+internal current-Library projections against that reader; their domain rules remain
 authoritative. Evaluate SQL in an isolated SQLite instance through lazy virtual
 relations. Keep SQLite callback machinery in a narrow adapter crate so Core
 continues to forbid unsafe code.

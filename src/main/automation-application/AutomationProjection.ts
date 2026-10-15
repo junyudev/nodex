@@ -80,7 +80,6 @@ export const projectAutomationDefinition = (
     status: definition.status,
     projectId: definition.project_id ?? null,
     targetSessionId: definition.target_session_id ?? null,
-    targetThreadId: definition.target_thread_id ?? null,
     notificationPolicy: definition.notification_policy ?? null,
     name: definition.name,
     prompt: definition.prompt,
@@ -100,11 +99,12 @@ export const projectAutomationDefinition = (
 };
 
 export const projectAutomationRun = (run: CoreAutomationRun): CodexAutomationRun => ({
-  threadId: run.thread_id,
+  runId: run.run_id,
+  sessionId: run.session_id ?? null,
   automationId: run.automation_id,
   status: run.status,
   readAt: run.read_at_ms ?? null,
-  threadTitle: run.thread_title ?? null,
+  sessionTitle: run.session_title ?? null,
   sourceCwd: run.source_cwd ?? null,
   inboxTitle: run.inbox_title ?? null,
   inboxSummary: run.inbox_summary ?? null,
@@ -118,7 +118,7 @@ export const projectAutomationRun = (run: CoreAutomationRun): CodexAutomationRun
 export const projectAutomationInboxItem = (
   item: CoreAutomationInboxItem,
 ): CodexAutomationInboxItem => ({
-  id: item.thread_id,
+  id: item.run_id,
   automationId: item.automation_id,
   automationName: item.automation_name ?? null,
   title: item.title ?? null,
@@ -127,7 +127,8 @@ export const projectAutomationInboxItem = (
   archivedUserMessage: item.archived_user_message ?? null,
   archivedReason: item.archived_reason ?? null,
   sourceCwd: item.source_cwd ?? null,
-  threadId: item.thread_id,
+  runId: item.run_id,
+  sessionId: item.session_id ?? null,
   readAt: item.read_at_ms ?? null,
   createdAt: item.created_at_ms,
   status: item.status,
@@ -301,9 +302,9 @@ export const requireAutomationDefinition = (
 
 export const requireAutomationRun = (
   committed: AutomationApplyResult,
-  threadId: string,
+  runId: string,
 ): CoreAutomationRun => {
-  const run = committed.outcome.runs.find((candidate) => candidate.thread_id === threadId);
+  const run = committed.outcome.runs.find((candidate) => candidate.run_id === runId);
   if (run) return run;
   throw new Error("Core Automation commit omitted its Run result");
 };

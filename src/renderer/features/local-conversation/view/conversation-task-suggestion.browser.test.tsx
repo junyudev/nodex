@@ -35,7 +35,6 @@ describe("task suggestion Composer handoff", () => {
         for (const listener of listeners) listener(event);
         return event;
       }
-      if (channel === "codex:permission:state:get") return base.permissionState;
       if (channel === "branch-metadata")
         return { currentBranch: "main", defaultBranch: "main", branches: ["main"] };
       throw new Error(`Unsupported Task fixture request: ${channel}`);

@@ -5,8 +5,7 @@ import {
 } from "../../shared/block-documents";
 import type { PageTargetReadModel } from "../../shared/page-targets";
 import type { Page } from "../../shared/page";
-import { projectContentAccess } from "../../shared/content-access-context";
-import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../shared/testing/authorized-read-stamp-example";
+import { projectContentRoute } from "../../shared/content-routing-context";
 import {
   pageOutlinerInlineStateLabel,
   pageOutlinerPlainTitle,
@@ -36,7 +35,6 @@ const available: Extract<PageTargetReadModel, { readonly status: "available" }> 
   libraryId: "library:target",
   storeEpoch: "epoch:test",
   commitSeq: 1,
-  authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
   status: "available",
   targetPageId: page.pageId,
   page,
@@ -53,7 +51,7 @@ const input = (overrides: Partial<PageOutlinerTargetInput> = {}): PageOutlinerTa
   model: available,
   loading: false,
   error: null,
-  contentAccessContext: projectContentAccess("host-project"),
+  contentRoutingContext: projectContentRoute("host-project"),
   hostPageId: "host-page",
   ancestorPageIds: ["host-page"],
   ...overrides,
@@ -65,7 +63,7 @@ describe("resolvePageOutlinerTarget", () => {
       status: "available",
       relationship: "reference",
       targetBlockId: "page-target",
-      contentAccessContext: projectContentAccess("host-project"),
+      contentRoutingContext: projectContentRoute("host-project"),
       page: { title: "Canonical title" },
       inlineMode: "editable",
     });

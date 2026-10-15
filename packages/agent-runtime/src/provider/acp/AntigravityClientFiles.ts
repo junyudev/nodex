@@ -4,73 +4,20 @@ import type * as Path from "effect/Path";
 import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-/**
- * Workspace file access requested through the ACP client `fs` capability.
- * The agent gates each write behind `session/request_permission`, so only
- * path containment is checked here.
- */
+/** Native client text reads retain a bounded response size. */
 const CLIENT_FILE_MAX_BYTES = 8 * 1024 * 1024;
-
-function isInsideRoot(path: Path.Path, root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-/**
- * Resolves an agent-supplied path and rejects anything outside the session
- * roots. Symlinks resolve before the check, including the final component, so
- * a link inside the workspace cannot read or write through to a file outside
- * it. An entry that exists but cannot be resolved, like a dangling link, is
- * rejected rather than written through.
- */
-const resolveClientFilePath = Effect.fn("AntigravityClientFiles.resolveClientFilePath")(
-  function* (input: {
-    readonly fileSystem: FileSystem.FileSystem;
-    readonly path: Path.Path;
-    readonly allowedRoots: ReadonlyArray<string>;
-    readonly requestPath: string;
-  }) {
-    const { path } = input;
-    const resolved = path.resolve(input.requestPath);
-    const outside = EffectAcpErrors.AcpRequestError.invalidParams(
-      `Path '${input.requestPath}' is outside the session workspace.`,
-    );
-    const real = yield* input.fileSystem.realPath(resolved).pipe(
-      Effect.catch(() =>
-        Effect.gen(function* () {
-          // Only a missing file (a new write) falls back to its parent; a
-          // dangling or unreadable link must not be followed on write.
-          const entryExists = yield* input.fileSystem.readLink(resolved).pipe(
-            Effect.as(true),
-            Effect.catch(() => input.fileSystem.exists(resolved)),
-            Effect.orElseSucceed(() => true),
-          );
-          if (entryExists) return yield* outside;
-          const parent = yield* input.fileSystem
-            .realPath(path.dirname(resolved))
-            .pipe(Effect.orElseSucceed(() => path.dirname(resolved)));
-          return path.join(parent, path.basename(resolved));
-        }),
-      ),
-    );
-    const roots = yield* Effect.forEach(input.allowedRoots, (root) =>
-      input.fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root)),
-    );
-    if (!roots.some((root) => isInsideRoot(path, root, real))) {
-      return yield* outside;
-    }
-    return real;
-  },
-);
 
 export const readAntigravityClientTextFile = Effect.fn("AntigravityClientFiles.readTextFile")(
   function* (input: {
     readonly fileSystem: FileSystem.FileSystem;
     readonly path: Path.Path;
-    readonly allowedRoots: ReadonlyArray<string>;
     readonly request: EffectAcpSchema.ReadTextFileRequest;
   }): Effect.fn.Return<EffectAcpSchema.ReadTextFileResponse, EffectAcpErrors.AcpError> {
-    const filePath = yield* resolveClientFilePath({ ...input, requestPath: input.request.path });
+    if (!input.path.isAbsolute(input.request.path))
+      return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+        "An absolute file path is required.",
+      );
+    const filePath = input.path.resolve(input.request.path);
     const info = yield* input.fileSystem
       .stat(filePath)
       .pipe(
@@ -109,10 +56,13 @@ export const writeAntigravityClientTextFile = Effect.fn("AntigravityClientFiles.
   function* (input: {
     readonly fileSystem: FileSystem.FileSystem;
     readonly path: Path.Path;
-    readonly allowedRoots: ReadonlyArray<string>;
     readonly request: EffectAcpSchema.WriteTextFileRequest;
   }): Effect.fn.Return<EffectAcpSchema.WriteTextFileResponse, EffectAcpErrors.AcpError> {
-    const filePath = yield* resolveClientFilePath({ ...input, requestPath: input.request.path });
+    if (!input.path.isAbsolute(input.request.path))
+      return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+        "An absolute file path is required.",
+      );
+    const filePath = input.path.resolve(input.request.path);
     yield* input.fileSystem.makeDirectory(input.path.dirname(filePath), { recursive: true }).pipe(
       Effect.andThen(input.fileSystem.writeFileString(filePath, input.request.content)),
       Effect.mapError(() =>

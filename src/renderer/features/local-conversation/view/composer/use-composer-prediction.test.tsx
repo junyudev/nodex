@@ -6,6 +6,7 @@ import type { CodexComposerPredictionResult } from "../../../../../shared/codex-
 import { writeComposerPredictionsEnabled } from "../../composer-prediction-settings";
 import { predictionResult } from "./composer-prediction.test-fixtures";
 import { useComposerPrediction } from "./use-composer-prediction";
+import { ConversationRuntimeContext, type ConversationRuntime } from "../../conversation-runtime";
 
 const mocks = vi.hoisted(() => ({
   operation: vi.fn(),
@@ -45,19 +46,39 @@ function mount(
     eligible: true,
     connected: true,
   },
+  runtime?: ConversationRuntime,
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
   return renderHook((input) => useComposerPrediction(input), {
     initialProps: props,
     wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <QueryClientProvider client={client}>
+        <ConversationRuntimeContext value={runtime ?? null}>{children}</ConversationRuntimeContext>
+      </QueryClientProvider>
     ),
   });
 }
 
 const requests = () =>
   mocks.operation.mock.calls.filter(([channel]) => channel === "codex:composer-prediction:request");
+
+it.each(["codex", "claude"] as const)(
+  "routes %s Runtime prediction eligibility through its actual driver",
+  async (kind) => {
+    mocks.available = true;
+    const hook = mount(undefined, { kind } as ConversationRuntime);
+    if (kind === "codex") {
+      await waitFor(() => expect(requests()).toHaveLength(1));
+      expect(hook.result.current.prediction?.sourceTurnId).toBe("source-turn");
+      return;
+    }
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.operation).not.toHaveBeenCalled();
+  },
+);
 
 it("requires explicit enabled availability before any catch-up inference", async () => {
   const hook = mount();

@@ -29,7 +29,6 @@ const MAX_ACTIVITY_PAGE_IDS: usize = 200;
 pub(super) fn validate_initial_page_ids(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
     page_ids: &[String],
 ) -> Result<(), StoreError> {
     if page_ids.len() > MAX_INITIAL_PAGE_IDS {
@@ -40,14 +39,9 @@ pub(super) fn validate_initial_page_ids(
     if page_ids.is_empty() {
         return Ok(());
     }
-    let Some(project_id) = project_id else {
-        return Err(invalid(
-            "Initial Linked chat Pages require a Project-owned Session",
-        ));
-    };
     validate_page_ids(page_ids, MAX_INITIAL_PAGE_IDS)?;
     for page_id in page_ids {
-        crate::library::require_page_read_access(connection, library_id, project_id, page_id)?;
+        crate::library::require_page_read_access(connection, library_id, page_id)?;
     }
     Ok(())
 }
@@ -82,9 +76,8 @@ pub(super) fn link_page(
     session_id: &str,
     authority: &SessionAuthority,
     page_id: &str,
-    page_access_project_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_page_access(connection, library_id, page_access_project_id, page_id)?;
+    require_page_access(connection, library_id, page_id)?;
     if authority.archived {
         return Err(StoreError::new(
             StoreErrorCode::Conflict,
@@ -149,9 +142,8 @@ pub(super) fn unlink_page(
     session_id: &str,
     authority: &SessionAuthority,
     page_id: &str,
-    page_access_project_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_page_access(connection, library_id, page_access_project_id, page_id)?;
+    require_page_access(connection, library_id, page_id)?;
     let now = sqlite_now(connection)?;
     let changed = connection.execute(
         "DELETE FROM project_session_pages WHERE session_id = ?1 AND page_id = ?2",
@@ -192,10 +184,8 @@ pub(super) fn unlink_page(
 pub(super) fn read_page_chat_activity_summaries(
     connection: &Connection,
     library_id: &str,
-    page_access_project_id: &str,
     page_ids: &[String],
 ) -> Result<Vec<ProjectWorkspacePageChatActivitySummary>, StoreError> {
-    validate_id("page_access_project_id", page_access_project_id)?;
     if page_ids.len() > MAX_ACTIVITY_PAGE_IDS {
         return Err(resource_exhausted(
             "Page Chat activity request exceeds the fixed bound",
@@ -205,14 +195,8 @@ pub(super) fn read_page_chat_activity_summaries(
     if page_ids.is_empty() {
         return Ok(Vec::new());
     }
-    require_page_access_project(connection, library_id, page_access_project_id)?;
     for page_id in page_ids {
-        crate::library::require_page_read_access(
-            connection,
-            library_id,
-            page_access_project_id,
-            page_id,
-        )?;
+        crate::library::require_page_read_access(connection, library_id, page_id)?;
     }
 
     let mut parameters = vec![SqlValue::Text(library_id.to_owned())];
@@ -312,19 +296,14 @@ pub(super) fn read_page_chat_window(
     connection: &Connection,
     library_id: &str,
     commit_head: i64,
-    page_access_project_id: &str,
     page_id: &str,
     include_archived: bool,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspacePageChatItem>, StoreError> {
-    require_page_access(connection, library_id, page_access_project_id, page_id)?;
+    require_page_access(connection, library_id, page_id)?;
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&(
-        "workspace_page_chat_window_v1",
-        page_access_project_id,
-        page_id,
-        include_archived,
-    ))?;
+    let fingerprint =
+        cursor::query_fingerprint(&("workspace_page_chat_window_v2", page_id, include_archived))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_page_chats",
         library_id,
@@ -502,32 +481,10 @@ fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
 fn require_page_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     page_id: &str,
 ) -> Result<(), StoreError> {
-    validate_id("page_access_project_id", project_id)?;
     validate_id("page_id", page_id)?;
-    crate::library::require_page_read_access(connection, library_id, project_id, page_id)
-}
-
-fn require_page_access_project(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-) -> Result<(), StoreError> {
-    validate_id("page_access_project_id", project_id)?;
-    let exists = connection
-        .query_row(
-            "SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2",
-            params![project_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some();
-    if exists {
-        return Ok(());
-    }
-    Err(not_found("Page access Project is unavailable"))
+    crate::library::require_page_read_access(connection, library_id, page_id)
 }
 
 fn validate_page_ids(page_ids: &[String], maximum: usize) -> Result<(), StoreError> {
@@ -578,8 +535,7 @@ mod tests {
 
     use super::MAX_ACTIVITY_PAGE_IDS;
     use crate::workspace::test_support::{
-        apply, context, create_page_with_project_access, create_project, read, request,
-        seeded_workspace,
+        apply, context, create_library_page, create_project, read, request, seeded_workspace,
     };
 
     fn create_page_session(
@@ -603,7 +559,7 @@ mod tests {
     #[test]
     fn creates_session_and_initial_page_edges_atomically() {
         let workspace = seeded_workspace();
-        create_page_with_project_access(&workspace, "page:related", "project:default");
+        create_library_page(&workspace, "page:related", "project:default");
 
         let outcome = workspace
             .module
@@ -643,7 +599,21 @@ mod tests {
         assert_eq!(stored, (1, 1));
 
         create_project(&workspace.module, "create-other-project", "project:other");
-        create_page_with_project_access(&workspace, "page:other", "project:other");
+        create_library_page(&workspace, "page:other", "project:other");
+        apply(
+            &workspace.module,
+            "create-cross-project-page-chat",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:cross-project".to_owned(),
+                project_id: Some("project:default".to_owned()),
+                title: "Cross Project Pages".to_owned(),
+                initial_page_ids: vec!["page:related".to_owned(), "page:other".to_owned()],
+            },
+        );
+        let cross_project_edges = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT count(*) FROM project_session_pages WHERE session_id = 'session:cross-project'", [], |row| row.get::<_, i64>(0))?)
+        }).expect("cross Project edges");
+        assert_eq!(cross_project_edges, 2);
         let error = workspace
             .module
             .apply(
@@ -654,11 +624,14 @@ mod tests {
                         session_id: "session:must-rollback".to_owned(),
                         project_id: Some("project:default".to_owned()),
                         title: "Must roll back".to_owned(),
-                        initial_page_ids: vec!["page:related".to_owned(), "page:other".to_owned()],
+                        initial_page_ids: vec![
+                            "page:related".to_owned(),
+                            "page:missing".to_owned(),
+                        ],
                     },
                 ),
             )
-            .expect_err("reject inaccessible initial Page");
+            .expect_err("reject missing initial Page");
         assert_eq!(error.code, CoreErrorCode::NotFound);
         let rolled_back = workspace
             .kernel
@@ -686,7 +659,7 @@ mod tests {
     #[test]
     fn projects_orthogonal_execution_unread_and_windowed_related_chats() {
         let workspace = seeded_workspace();
-        create_page_with_project_access(&workspace, "page:activity", "project:default");
+        create_library_page(&workspace, "page:activity", "project:default");
         create_page_session(
             &workspace,
             "create-working-chat",
@@ -748,7 +721,6 @@ mod tests {
         } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatActivitySummaries {
-                page_access_project_id: "project:default".to_owned(),
                 page_ids: vec!["page:activity".to_owned()],
             },
         )
@@ -764,7 +736,6 @@ mod tests {
         let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatWindow {
-                page_access_project_id: "project:default".to_owned(),
                 page_id: "page:activity".to_owned(),
                 include_archived: Some(false),
                 window: CollectionWindowRequest {
@@ -783,7 +754,6 @@ mod tests {
         let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatWindow {
-                page_access_project_id: "project:default".to_owned(),
                 page_id: "page:activity".to_owned(),
                 include_archived: Some(false),
                 window: CollectionWindowRequest {
@@ -818,7 +788,6 @@ mod tests {
         let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatActivitySummaries {
-                page_access_project_id: "project:default".to_owned(),
                 page_ids: vec!["page:activity".to_owned()],
             },
         ) else {
@@ -842,7 +811,6 @@ mod tests {
         let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatActivitySummaries {
-                page_access_project_id: "project:default".to_owned(),
                 page_ids: vec!["page:activity".to_owned()],
             },
         ) else {
@@ -878,7 +846,6 @@ mod tests {
                         session_id: "session:working".to_owned(),
                         intent: ProjectSessionIntent::LinkPage {
                             page_id: "page:activity".to_owned(),
-                            page_access_project_id: "project:default".to_owned(),
                         },
                     },
                 ),
@@ -916,14 +883,12 @@ mod tests {
                 session_id: "session:threadless".to_owned(),
                 intent: ProjectSessionIntent::UnlinkPage {
                     page_id: "page:activity".to_owned(),
-                    page_access_project_id: "project:default".to_owned(),
                 },
             },
         );
         let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatActivitySummaries {
-                page_access_project_id: "project:default".to_owned(),
                 page_ids: vec!["page:activity".to_owned()],
             },
         ) else {
@@ -937,13 +902,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ambiguous_unbounded_or_unauthorized_page_reads() {
+    fn rejects_ambiguous_unbounded_or_missing_page_reads() {
         let workspace = seeded_workspace();
-        create_page_with_project_access(&workspace, "page:bounded", "project:default");
+        create_library_page(&workspace, "page:bounded", "project:default");
         let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
             &workspace.module,
             ProjectWorkspaceRead::PageChatActivitySummaries {
-                page_access_project_id: "project:missing".to_owned(),
                 page_ids: Vec::new(),
             },
         ) else {
@@ -960,10 +924,7 @@ mod tests {
                     &context(),
                     ModuleReadRequest {
                         contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                        read: ProjectWorkspaceRead::PageChatActivitySummaries {
-                            page_access_project_id: "project:default".to_owned(),
-                            page_ids,
-                        },
+                        read: ProjectWorkspaceRead::PageChatActivitySummaries { page_ids },
                     },
                 )
                 .expect_err("invalid Page Chat batch");
@@ -976,7 +937,6 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     read: ProjectWorkspaceRead::PageChatActivitySummaries {
-                        page_access_project_id: "project:default".to_owned(),
                         page_ids: (0..=MAX_ACTIVITY_PAGE_IDS)
                             .map(|index| format!("page:{index}"))
                             .collect(),
@@ -992,14 +952,13 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     read: ProjectWorkspaceRead::PageChatWindow {
-                        page_access_project_id: "project:missing".to_owned(),
-                        page_id: "page:bounded".to_owned(),
+                        page_id: "page:missing".to_owned(),
                         include_archived: Some(false),
                         window: CollectionWindowRequest::default(),
                     },
                 },
             )
-            .expect_err("unauthorized Page Chat window");
+            .expect_err("missing Page Chat window");
         assert_eq!(error.code, CoreErrorCode::NotFound);
     }
 }

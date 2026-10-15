@@ -196,14 +196,6 @@ fn authorize_change(
     {
         return Err(conflict("History belongs to another Document authority"));
     }
-    if let Some(project_id) = &context.project_id {
-        super::super::history::require_page_write_access(
-            connection,
-            &context.library_id.0,
-            &project_id.0,
-            &authority.owner_block_id,
-        )?;
-    }
     for id in adding {
         let row = connection.query_row(
             "SELECT b.library_id, i.document_id, t.document_id, t.document_generation FROM blocks b LEFT JOIN document_block_index i ON i.block_id = b.id LEFT JOIN document_block_tombstones t ON t.block_id = b.id WHERE b.id = ?1",

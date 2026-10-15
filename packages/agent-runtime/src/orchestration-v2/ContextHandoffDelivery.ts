@@ -20,6 +20,8 @@ import {
 export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextHandoffs")(
   function* <InjectError = never, PersistError = never, BudgetError = never>(input: {
     readonly handoffs: ReadonlyArray<OrchestrationV2ContextHandoff>;
+    /** Earlier durable markers excluded by the database read budget remain retrievable. */
+    readonly omittedHandoffCount?: number;
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly budget: number | Effect.Effect<number, BudgetError>;
     readonly deferInline?: boolean;
@@ -36,7 +38,11 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
         handoff.delivery?.nativeThreadId !== nativeThreadId ||
         handoff.delivery.status === "pending",
     );
-    if (pending.length === 0 || (input.deferInline && input.inject === undefined))
+    const omittedHandoffCount = input.omittedHandoffCount ?? 0;
+    if (
+      (pending.length === 0 && omittedHandoffCount === 0) ||
+      (input.deferInline && input.inject === undefined)
+    )
       return { context: "", delivered: Effect.void, unsent: Effect.void };
     const budget = typeof input.budget === "number" ? input.budget : yield* input.budget;
     let coverage = pending
@@ -48,12 +54,14 @@ export const deliverContextHandoffs = Effect.fn("orchestrationV2.deliverContextH
           }`,
       )
       .join("\n");
+    if (omittedHandoffCount > 0)
+      coverage += `\nEarlier handoff records omitted by the read budget: ${omittedHandoffCount}. Recover them using t3_thread_read({threadId:"${input.providerThread.appThreadId ?? pending[0]?.threadId}",view:"activity",limit:20,maxCharsPerItem:4000}); follow source references and paginate with afterPosition=nextPosition.`;
     // Repeated failures can accumulate many recovery markers. Keep a single
     // thread-level entry point when detailed coverage would crowd out history;
     // its activity includes the original handoff/fork source references.
     if (historyCost([], coverage) > Math.min(4_000, budget / 2)) {
       const strategies = Array.from(new Set(pending.map((handoff) => handoff.strategy)));
-      coverage = `Context handoff (${strategies.join(", ")}). ${pending.length} handoff records; detailed coverage references omitted. Recover history with t3_thread_read({threadId:"${input.providerThread.appThreadId ?? pending[0]!.threadId}",view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. Follow fork/handoff source references in activity. For long items use itemId and textOffset=nextTextOffset until null.`;
+      coverage = `Context handoff (${strategies.join(", ")}). ${pending.length + omittedHandoffCount} handoff records;${omittedHandoffCount > 0 ? ` ${omittedHandoffCount} records omitted by the read budget;` : ""} detailed coverage references omitted. Recover history with t3_thread_read({threadId:"${input.providerThread.appThreadId ?? pending[0]?.threadId}",view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. Follow fork/handoff source references in activity. For long items use itemId and textOffset=nextTextOffset until null.`;
     }
     const seen = new Set(input.alreadyDeliveredItemIds);
     const messages = pending

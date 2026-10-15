@@ -64,8 +64,9 @@ describe("nodex_app@4 contracts", () => {
     expect(
       GetContextV3OutputSchema.safeParse({
         data: {
+          libraryId: "library",
           project: null,
-          access: { read: "allowed", write: "consent_required", domains: [] },
+
           markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE,
         },
       }).success,

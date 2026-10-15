@@ -3,7 +3,7 @@ import type {
   CodexComposerAppshotContext,
 } from "../../../shared/types";
 import type { ComposerPickedFile } from "../../../shared/ipc-api";
-import type { CodexPermissionState } from "@/lib/types";
+import type {} from "@/lib/types";
 import {
   defineRendererCommand,
   invokePlainCommand,
@@ -45,11 +45,6 @@ export const captureComposerAppshot = async (
 ): Promise<CodexComposerAppshotContext> =>
   await invokePlainCommand(captureComposerAppshotCommand, input);
 
-export const readComposerPermissionState = async (
-  projectId: string | null,
-): Promise<CodexPermissionState> =>
-  await invokeRendererQuery("codex:permission:state:get", projectId);
-
 /** Owns the typed transport used to discover and activate composer context sources. */
 export const composerContextOperations = {
   reloadSkills: async (hostId: string, cwds: readonly string[]) =>
@@ -70,6 +65,4 @@ export const composerContextOperations = {
   pickFiles: pickComposerFiles,
 
   captureAppshot: captureComposerAppshot,
-
-  readPermissionState: readComposerPermissionState,
 };

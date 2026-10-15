@@ -17,8 +17,7 @@
  * that signal unwinds, so the adapter confirms Pi is idle before terminalizing.
  *
  * Extension UI: Pi extensions raise dialogs through `extension_ui_request`.
- * Dialog methods become v2 runtime requests (`confirm` → approval_request,
- * `select`/`input`/`editor` → user_input_request); answers travel back as
+ * Dialog methods become user input requests; answers travel back as
  * `extension_ui_response`. `notify` becomes a completed activity item.
  * Terminal-only decoration such as status, widget, title, and editor-text
  * updates has no matching T3 surface and is ignored.
@@ -44,7 +43,6 @@ import {
   type OrchestrationV2RuntimeRequest,
   type OrchestrationV2TurnItem,
   type OrchestrationV2UserInputQuestion,
-  type ProviderApprovalDecision,
   type ProviderInstanceId,
   type OrchestrationV2ProviderTurnTokenUsage,
 } from "@t3tools/contracts";
@@ -96,7 +94,6 @@ import {
   materializePiT3McpExtension,
   resolvePiLaunchArgs,
 } from "./mcpInjection.ts";
-import { PI_FILE_CHANGE_TOOLS } from "./mcpExtensionSource.ts";
 
 export const PI_PROVIDER = ProviderDriverKind.make("pi");
 const PI_DRIVER_KIND = PI_PROVIDER;
@@ -124,9 +121,6 @@ const PiProviderCapabilitiesV2 = {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: true,
     supportsProviderSwitchingViaHandoff: true,
-    // Mode changes restart this process so the injected permission hook gets
-    // one immutable policy for its whole lifetime.
-    supportsRuntimeModeSwitchInSession: false,
     pendingRequestsSurviveRestart: false,
   },
   threads: {
@@ -164,12 +158,9 @@ const PiProviderCapabilitiesV2 = {
     supportsDynamicToolCallbacks: false,
   },
   approvals: {
-    // Pi exposes a blocking tool_call extension hook. The T3 bridge uses it
-    // for supervised and auto-accept modes and forwards its confirmations
-    // through the same extension UI protocol as user-installed extensions.
-    supportsCommandApproval: true,
+    supportsCommandApproval: false,
     supportsFileReadApproval: false,
-    supportsFileChangeApproval: true,
+    supportsFileChangeApproval: false,
     supportsApplyPatchApproval: false,
     approvalsHaveNativeRequestIds: true,
     approvalCallbacksAreLiveOnly: true,
@@ -233,7 +224,7 @@ export interface PiAdapterV2Options {
   readonly continuationRequests?: {
     readonly offer: (
       request: ProviderContinuationRequests.ProviderContinuationRequest,
-    ) => Effect.Effect<void>;
+    ) => Effect.Effect<void, ProviderContinuationRequests.ProviderContinuationQueueFull>;
   };
 }
 
@@ -456,25 +447,11 @@ interface PendingPiPrompt {
   readonly nativeRequestId: string;
   readonly method: "select" | "confirm" | "input" | "editor";
   readonly questionId: string;
-  readonly approvalKey: string;
   readonly expiresAt: number | null;
   expirationFiber: Fiber.Fiber<void> | null;
   runtimeRequest: OrchestrationV2RuntimeRequest;
   readonly node: OrchestrationV2ExecutionNode;
   readonly turnItem: OrchestrationV2TurnItem;
-}
-
-/**
- * The T3 bridge confirms tool calls as `Allow <tool>?`. Edits surface as
- * file-change approvals so clients render them like other providers' edits;
- * every other confirmation, including ones from user extensions, is a command.
- */
-function piApprovalRequestKind(title: string): "command" | "file-change" {
-  const toolName = /^Allow (\S+)\?$/.exec(title)?.[1];
-  return toolName !== undefined &&
-    (PI_FILE_CHANGE_TOOLS as ReadonlyArray<string>).includes(toolName)
-    ? "file-change"
-    : "command";
 }
 
 interface PiThreadState {
@@ -545,7 +522,6 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         environment: options.environment,
         mcpSession,
         extensionPath,
-        runtimeMode: input.runtimePolicy.runtimeMode,
       });
       const scopedLaunch = yield* agentScope.wrap({
         command: options.settings.binaryPath || "pi",
@@ -588,7 +564,6 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
         ProviderAdapter.ProviderAdapterV2Error | Cause.Done
       >();
       const pendingPrompts = new Map<string, PendingPiPrompt>();
-      const sessionApprovals = new Set<string>();
       // Answering a dialog and terminalizing a turn both publish lifecycle
       // events. Pi can settle immediately after `extension_ui_response`, so
       // serialize the two paths to stop `turn.terminal` from overtaking the
@@ -1359,16 +1334,6 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           return;
         }
         if (nativeRequestId === undefined) return;
-        const approvalTitle = recordString(event, "title") ?? "";
-        const approvalKey = `${approvalTitle.length}:${approvalTitle}${recordString(event, "message") ?? ""}`;
-        if (method === "confirm" && sessionApprovals.has(approvalKey)) {
-          yield* connection.send({
-            type: "extension_ui_response",
-            id: nativeRequestId,
-            confirmed: true,
-          });
-          return;
-        }
         const state = threadState;
         const turn = state?.activeTurn ?? null;
         const createdAt = yield* DateTime.now;
@@ -1394,7 +1359,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           nodeId,
           providerTurnId,
           nativeRequestRef: providerRef(nativeRequestId),
-          kind: method === "confirm" ? "command" : "user_input",
+          kind: "user_input",
           status: "pending",
           responseCapability: { type: "live", providerSessionId: input.providerSessionId },
           createdAt,
@@ -1406,7 +1371,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           runId: turn?.turnInput.runId ?? null,
           parentNodeId: turn?.turnInput.rootNodeId ?? null,
           rootNodeId: turn?.turnInput.rootNodeId ?? nodeId,
-          kind: method === "confirm" ? "approval_request" : "user_input_request",
+          kind: "user_input_request",
           status: "waiting",
           countsForRun: false,
           providerThreadId,
@@ -1435,26 +1400,12 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
           completedAt: null,
           updatedAt: createdAt,
         };
-        const turnItem: OrchestrationV2TurnItem =
-          method === "confirm"
-            ? {
-                ...itemBase,
-                type: "approval_request",
-                requestId,
-                requestKind: piApprovalRequestKind(title),
-                prompt: recordString(event, "message") ?? title,
-              }
-            : {
-                ...itemBase,
-                type: "user_input_request",
-                requestId,
-                questions: [piQuestion(nativeRequestId, method, title, event)],
-              };
+        const turnItem: OrchestrationV2TurnItem = { ...itemBase, type: "user_input_request", requestId,
+          questions: [piQuestion(nativeRequestId, method, title, event)] };
         const pending: PendingPiPrompt = {
           nativeRequestId,
           method,
           questionId: nativeRequestId,
-          approvalKey,
           expiresAt,
           expirationFiber: null,
           runtimeRequest,
@@ -2892,7 +2843,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                 `Pi extension request ${requestInput.requestId} has expired`,
               );
             }
-            const response = piUiResponse(pending, requestInput.decision, requestInput.answers);
+            const response = piUiResponse(pending, requestInput.answers);
             yield* connection.send({
               type: "extension_ui_response",
               id: pending.nativeRequestId,
@@ -2902,9 +2853,6 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             // request retryable and still cancellable during teardown.
             pendingPrompts.delete(String(requestInput.requestId));
             if (pending.expirationFiber !== null) yield* Fiber.interrupt(pending.expirationFiber);
-            if (pending.method === "confirm" && requestInput.decision === "acceptForSession") {
-              sessionApprovals.add(pending.approvalKey);
-            }
             const resolvedAt = yield* DateTime.now;
             pending.runtimeRequest = {
               ...pending.runtimeRequest,
@@ -3375,11 +3323,12 @@ function piThreadSnapshot(
 
 function piQuestion(
   questionId: string,
-  method: "select" | "input" | "editor",
+  method: "select" | "confirm" | "input" | "editor",
   title: string,
   event: PiRpcRecord,
 ): OrchestrationV2UserInputQuestion {
   const options =
+    method === "confirm" ? [{ label: "Yes", description: "Yes", value: "Yes" }, { label: "No", description: "No", value: "No" }] :
     method === "select" && Array.isArray(event["options"])
       ? event["options"]
           .filter((option): option is string => typeof option === "string")
@@ -3405,12 +3354,12 @@ function piQuestion(
 
 function piUiResponse(
   pending: PendingPiPrompt,
-  decision: ProviderApprovalDecision | undefined,
   answers: Record<string, unknown> | undefined,
 ): PiRpcRecord {
   if (pending.method === "confirm") {
-    if (decision === "accept" || decision === "acceptForSession") return { confirmed: true };
-    if (decision === "decline") return { confirmed: false };
+    const answer = answers?.[pending.questionId];
+    if (answer === true || answer === "Yes") return { confirmed: true };
+    if (answer === false || answer === "No") return { confirmed: false };
     return { cancelled: true };
   }
   const answer = answers?.[pending.questionId];

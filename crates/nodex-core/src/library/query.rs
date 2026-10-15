@@ -1,4 +1,4 @@
-//! Authorized Library relations evaluated inside the caller's SQLite observation.
+//! Canonical Profile Library relations evaluated inside the caller's SQLite observation.
 use std::collections::BTreeMap;
 
 use nodex_core_contracts::BoundModuleContext;
@@ -148,37 +148,26 @@ impl QueryContext<'_> {
                 "search_hits K must be between 1 and 100",
             ));
         }
-        let project = self.project_id().ok_or_else(|| {
-            error(
-                StoreErrorCode::Unauthorized,
-                "Search requires a bound Project",
-            )
-        })?;
         let index = self.page_search.snapshot(
             self.connection,
             self.library_id,
             self.store_epoch,
             self.commit_head,
         )?;
-        let hits = page_search::search_projects(
+        let hits = page_search::search_library(
             self.connection,
             &index,
             self.library_id,
-            page_search::ProjectSearchRequest {
-                project_ids: &[project.to_owned()],
-                query,
-                filters: None,
-                preferred_project_id: Some(project),
-                recent_page_ids: &[],
-                limit: Some(k),
-            },
+            query,
+            Some(k),
+            None,
         )?;
         Ok(hits
             .into_iter()
             .enumerate()
             .map(|(ordinal, hit)| {
                 json!({
-                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.excerpt.unwrap_or_default(),"ordinal":ordinal,
+                    "page_id":hit.page_id,"title":hit.title,"snippet":hit.match_excerpt.unwrap_or_default(),"ordinal":ordinal,
                 })
             })
             .collect())
@@ -206,15 +195,7 @@ impl QueryContext<'_> {
         self.context.project_id.as_ref().map(|id| id.0.as_str())
     }
     fn require_page(&self, id: &str) -> Result<(), StoreError> {
-        if let Some(project) = self.project_id() {
-            return history::require_page_read_access(
-                self.connection,
-                self.library_id,
-                project,
-                id,
-            );
-        }
-        super::require_trusted_library_authority(self.context)
+        history::require_page_read_access(self.connection, self.library_id, id)
     }
     fn page_visible(&self, id: &str) -> Result<bool, StoreError> {
         visible(self.require_page(id))
@@ -436,21 +417,7 @@ impl QueryContext<'_> {
         Ok(ids)
     }
     fn database_visible(&self, id: &str) -> Result<bool, StoreError> {
-        let Some(project) = self.project_id() else {
-            super::require_trusted_library_authority(self.context)?;
-            return Ok(true);
-        };
-        let primary = crate::database::authorization::project_primary_database(
-            self.connection,
-            self.library_id,
-            project,
-        )?;
-        crate::database::authorization::authorize_database(
-            self.connection,
-            project,
-            primary.as_deref(),
-            id,
-        )
+        Ok(self.connection.query_row("SELECT 1 FROM database_containers WHERE block_id = ?1 AND library_id = ?2 AND lifecycle <> 'deleted'", rusqlite::params![id, self.library_id], |_| Ok(())).optional()?.is_some())
     }
     fn node_visible(&self, node: &LibraryNavigationNode) -> Result<bool, StoreError> {
         match node {

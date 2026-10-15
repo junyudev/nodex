@@ -34,9 +34,6 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
       seed,
       harness.profile.initialProjectsDirectory,
     );
-    expect(
-      await invokeIpc(page, "codex:permission:mode:set", manifest.projectId, "full-access"),
-    ).toMatchObject({ mode: "full-access" });
     await page
       .getByRole("button", { name: "Start new chat in Agent CLI Lab", exact: true })
       .click();

@@ -85,6 +85,25 @@ describe("Effect architecture boundaries", () => {
     );
   });
 
+  test("keeps the standalone execution platform separate from Nodex integration", () => {
+    expect(
+      codes("packages/agent-runtime/src/persistence/Sqlite.ts", "deep-area-imports.ts"),
+    ).toEqual([]);
+    expect(codes("packages/agent-runtime/src/nodex/NewOwner.ts", "run-promise.ts")).toEqual([
+      "run-outside-boundary",
+    ]);
+    expect(
+      analyzeEffectBoundaries({
+        path: "packages/agent-runtime/src/nodex/NewOwner.ts",
+        sourceText: 'import * as Queue from "effect/Queue"; Queue.unbounded();',
+      }).map((diagnostic) => diagnostic.code),
+    ).toEqual(["production-unbounded-channel"]);
+    expect(codes("packages/agent-runtime/src/nodex/entry.ts", "node-runtime.ts")).toEqual([]);
+    expect(
+      codes("src/main/agent-runtime/AgentRuntimeHost.ts", "application-unstructured-async.ts"),
+    ).toHaveLength(5);
+  });
+
   test("allows Main lifecycle primitives and the managed testing entrypoint", () => {
     const sourceText = `
       import * as Schema from "effect/Schema";
@@ -176,10 +195,7 @@ describe("Effect architecture boundaries", () => {
   });
 
   test("limits probe execution to registered standalone entrypoints", () => {
-    for (const path of [
-      "scripts/probe-acp-agent.ts",
-      "scripts/testing/probe-agent-cli-bootstrap.ts",
-    ]) {
+    for (const path of ["scripts/testing/probe-agent-cli-bootstrap.ts"]) {
       expect(codes(path, "run-promise.ts"), path).toEqual([]);
     }
     expect(codes("scripts/testing/probe-agent-cli-helper.ts", "run-promise.ts")).toEqual([

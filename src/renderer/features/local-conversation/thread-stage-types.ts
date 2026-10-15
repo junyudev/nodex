@@ -12,12 +12,10 @@ import type {
   DatabasePage,
   PageRunInTarget,
   CodexAccountSnapshot,
-  CodexApprovalResponse,
   CodexBackgroundTerminalRow,
   CodexCanonicalOptionPickerResponse,
   CodexCanonicalSetupCodexStepResponse,
   CodexCollaborationModeKind,
-  CodexPermissionState,
   CodexComposerChatGptConversation,
   CodexComposerIntent,
   CodexComposerPlugin,
@@ -40,16 +38,14 @@ import type {
   CodexConversationTurn,
   CodexConversationTurnPagination,
   AgentModelOption,
-  CodexPermissionMode,
   CodexPersonality,
-  CodexPermissionRequestResponse,
-  NodexAgentAuthorizationResponse,
   CodexProtocolRequestId,
   CodexPromptInput,
   CodexSteerTurnInput,
   CodexThreadGoalDraftInput,
   CodexThreadGoalMaterializedDraft,
   CodexThreadGoalSetActionInput,
+  ProjectSession,
   CodexThreadStatusType,
   CodexThreadSummary,
   CodexReasoningEffort,
@@ -73,6 +69,24 @@ import type { CodexExecutionProfile } from "../../../shared/codex-execution-prof
 import type { ComposerIntelligenceSelection } from "./view/composer/composer-intelligence-types";
 import type { CommandShortcutPresentation } from "../../../shared/command-keybindings";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
+
+export interface SessionThreadCommands {
+  readonly onMaterializeProjectDraft?: (input: {
+    readonly projectId: string;
+    readonly draftId: string;
+  }) => Promise<ProjectSession>;
+  readonly onCommitMaterializedProjectDraft?: (input: {
+    readonly projectId: string;
+    readonly draftId: string;
+    readonly sessionId: string;
+  }) => void;
+  readonly onForkSessionFromTurn?: (input: {
+    readonly threadId: string;
+    readonly turnId: string;
+    readonly message: string;
+    readonly collaborationMode: CodexCollaborationModeKind;
+  }) => Promise<void>;
+}
 
 export interface NewChatProjectSelectorModel {
   projects: NewChatProjectSelectorOption[];
@@ -214,6 +228,7 @@ export interface ThreadOpenSubagentPayload {
 }
 
 export interface ThreadOpenThreadContext {
+  readonly runtimeSessionId?: string;
   readonly hostId?: string;
   readonly createdTarget?: import("../../../shared/codex-created-thread-result").CodexCreatedThreadResult;
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
@@ -233,6 +248,9 @@ export interface ConversationProviderPresentation {
   readonly resolveHistoryImage?: (
     reference: import("../../../shared/agent-history-images").AgentHistoryImageReference,
   ) => Promise<string>;
+  readonly resolveRuntimeAttachment?: (
+    reference: import("../../../shared/agent-runtime-attachments").AgentRuntimeAttachmentReference,
+  ) => Promise<string>;
   readonly readToolOutput?: (
     reference: import("../../../shared/agent-tool-output").AgentToolOutputReference,
   ) => Promise<import("../../../shared/agent-tool-output").AgentToolOutput>;
@@ -244,7 +262,7 @@ export interface ConversationProviderPresentation {
   };
   readonly controls?: {
     readonly steer?: boolean;
-    readonly permissionMode?: boolean;
+
     readonly skills?: boolean;
     readonly nativeTaskDetails?: boolean;
     readonly images?: boolean;
@@ -314,7 +332,7 @@ export interface ThreadStageRouteInput {
   selectedReasoningEffort: CodexReasoningEffort;
   selectedPersonality?: CodexPersonality;
   reasoningEffortOptions: CodexReasoningEffortOption[];
-  permissionMode: CodexPermissionMode;
+
   isQueueingEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   searchOpenTick: number;
@@ -333,6 +351,8 @@ export interface ThreadStageRouteInput {
 }
 
 export interface ThreadStageActions {
+  onNextQueuedFollowUpPage?: () => Promise<void>;
+  onPreviousQueuedFollowUpPage?: () => Promise<void>;
   onCollaborationModeChange: (mode: CodexCollaborationModeKind) => void | Promise<void>;
   onModelChange: (model: string) => void | Promise<void>;
   onReasoningEffortChange: (reasoningEffort: CodexReasoningEffort) => void | Promise<void>;
@@ -341,14 +361,18 @@ export interface ThreadStageActions {
     options?: { collaborationMode?: CodexCollaborationModeKind },
   ) => Promise<void>;
   onPersonalityChange?: (personality: CodexPersonality) => void | Promise<void>;
-  onPermissionModeChange: (mode: CodexPermissionMode) => void | Promise<void>;
+
   onQueueingEnabledChange: (enabled: boolean) => void;
   onOpenSubagentsPanel?: () => void | Promise<void>;
   /** Native task identities select observations without entering Thread navigation. */
   onOpenTaskObservation?: (observationId: string) => void;
   onCaptureSubmissionPresentation?: () => WorkbenchSubmitPresentation;
   onStartThreadForSession?: (input: {
+    submissionIdentity?: import("../conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
+      readonly acceptedAt: number;
+    };
     submittedPresentation?: WorkbenchSubmitPresentation;
+    presentationTicket?: import("../../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
     projectId: string | null;
     sessionId: string;
     projectDraftId?: string;
@@ -413,11 +437,6 @@ export interface ThreadStageActions {
   onSteerPrompt: (input: Omit<CodexSteerTurnInput, "threadId">) => Promise<void>;
   onInterruptTurn: (turnId?: string) => Promise<void>;
   onResumeInterruptedTurn?: () => Promise<void>;
-  onRespondApproval: (
-    requestId: CodexProtocolRequestId,
-    response: CodexApprovalResponse,
-    context?: ThreadRequestResponseContext,
-  ) => Promise<void>;
   onRespondUserInput: (
     requestId: CodexProtocolRequestId,
     answers: Record<string, string[]>,
@@ -426,16 +445,6 @@ export interface ThreadStageActions {
   onRespondMcpElicitation: (
     requestId: CodexProtocolRequestId,
     response: CodexMcpServerElicitationAction | CodexMcpServerElicitationResponse,
-    context?: ThreadRequestResponseContext,
-  ) => Promise<void>;
-  onRespondPermissionRequest?: (
-    requestId: CodexProtocolRequestId,
-    response: CodexPermissionRequestResponse,
-    context?: ThreadRequestResponseContext,
-  ) => Promise<void>;
-  onRespondNodexAgentAuthorization?: (
-    requestId: string,
-    response: NodexAgentAuthorizationResponse,
     context?: ThreadRequestResponseContext,
   ) => Promise<void>;
   onRespondOptionPicker?: (
@@ -1083,7 +1092,7 @@ export interface ThreadBodyModel {
 }
 
 export interface ThreadComposerShellPendingRequestModel {
-  request: CodexConversationLiveRequest;
+  request: Exclude<CodexConversationLiveRequest, { type: "approval" | "permissionRequest" }>;
   conversationId: string;
   surface: "activeThread" | "backgroundThread";
   actorName?: string | null;
@@ -1124,12 +1133,13 @@ export interface ThreadComposerShellModel {
   queuedFollowUpStatus?: "loading" | "ready" | "error";
   queuedFollowUpLedgerRevision?: number;
   queuedFollowUpError?: string | null;
+  queuedFollowUpHasPreviousPage?: boolean;
+  queuedFollowUpHasNextPage?: boolean;
   hasInterruptedQueuedFollowUps?: boolean;
   backgroundAgentRows: ThreadComposerShellBackgroundAgentRowModel[];
   backgroundTerminalRows: CodexBackgroundTerminalRow[];
   showRequestCards: boolean;
   showComposer: boolean;
-  showApprovalMode: boolean;
 }
 
 export interface ThreadStageHeaderModel {
@@ -1152,6 +1162,7 @@ export interface ThreadStageHeaderModel {
 export type ThreadSummaryPanelMode = "hidden" | "pinned" | "popover";
 
 export interface ThreadBodySurfaceModel {
+  readonly skills?: readonly CodexComposerSkill[];
   parentModel?: string | null;
   projectId: string | null;
   hostId: string;
@@ -1231,8 +1242,7 @@ export interface ThreadFooterModel {
   selectedReasoningEffort: CodexReasoningEffort;
   selectedPersonality?: CodexPersonality;
   reasoningEffortOptions: CodexReasoningEffortOption[];
-  permissionMode: CodexPermissionMode;
-  permissionState?: CodexPermissionState;
+
   isQueueingEnabled: boolean;
   composerEnterBehavior: ComposerEnterBehavior;
   composerIntent: CodexComposerIntent | null;

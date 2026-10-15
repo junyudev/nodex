@@ -1,6 +1,6 @@
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { ProtocolMcpResourceReadParams } from "../../shared/types";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceFileMetadataInput,
@@ -52,53 +52,49 @@ export const queryKeys = {
   },
   blockDocuments: {
     all: () => ["blockDocuments"] as const,
-    owned: (accessContext: ContentAccessContext, ownerBlockId: string) =>
-      ["blockDocuments", "owned", accessContext, ownerBlockId] as const,
+    owned: (routingContext: ContentRoutingContext, ownerBlockId: string) =>
+      ["blockDocuments", "owned", routingContext, ownerBlockId] as const,
   },
   pageTargets: {
-    byId: (accessContext: ContentAccessContext, targetBlockId: string) =>
-      ["pageTargets", accessContext, targetBlockId] as const,
+    byId: (routingContext: ContentRoutingContext, targetBlockId: string) =>
+      ["pageTargets", routingContext, targetBlockId] as const,
   },
   pageOwnershipPaths: {
     all: () => ["pageOwnershipPaths"] as const,
-    byScope: (accessContext: ContentAccessContext) =>
-      ["pageOwnershipPaths", accessContext] as const,
-    byPage: (accessContext: ContentAccessContext, targetPageId: string) =>
-      ["pageOwnershipPaths", accessContext, targetPageId] as const,
+    byScope: (routingContext: ContentRoutingContext) =>
+      ["pageOwnershipPaths", routingContext] as const,
+    byPage: (routingContext: ContentRoutingContext, targetPageId: string) =>
+      ["pageOwnershipPaths", routingContext, targetPageId] as const,
   },
   blockReferences: {
     databaseView: (
-      accessContext: ContentAccessContext,
+      routingContext: ContentRoutingContext,
       databaseViewId: string,
       hostBlockId?: string,
     ) =>
       [
         "blockReferences",
         "databaseView",
-        accessContext,
+        routingContext,
         databaseViewId,
         normalizeNullable(hostBlockId),
       ] as const,
   },
   libraryDatabases: {
     all: () => ["libraryDatabases"] as const,
-    descriptor: (
-      accessProjectId: string | undefined,
-      databaseId: string | null,
-      viewId: string | null,
-    ) =>
+    descriptor: (projectId: string | undefined, databaseId: string | null, viewId: string | null) =>
       [
         "libraryDatabases",
         "descriptor",
-        normalizeNullable(accessProjectId),
+        normalizeNullable(projectId),
         normalizeNullable(databaseId),
         normalizeNullable(viewId),
       ] as const,
-    view: (accessProjectId: string | undefined, viewId: string | null) =>
+    view: (projectId: string | undefined, viewId: string | null) =>
       [
         "libraryDatabases",
         "view",
-        normalizeNullable(accessProjectId),
+        normalizeNullable(projectId),
         normalizeNullable(viewId),
       ] as const,
   },
@@ -122,27 +118,25 @@ export const queryKeys = {
       ["libraryNavigation", "pageRelocationDestinations", pageId, input] as const,
     path: (target: unknown) => ["libraryNavigation", "path", target] as const,
     canvasTarget: (canvasId: string) => ["libraryNavigation", "canvasTarget", canvasId] as const,
-    resourceProjectAccess: (target: unknown) =>
-      ["libraryNavigation", "resourceProjectAccess", target] as const,
     pageDetail: (pageId: string) => ["libraryPages", "detail", pageId] as const,
     pageDocument: (pageId: string) => ["libraryPages", "document", pageId] as const,
-    pageBacklinks: (accessContext: unknown, pageId: string) =>
-      ["libraryPages", "backlinks", accessContext, pageId] as const,
-    pageFiles: (accessContext: unknown, pageId: string) =>
-      ["libraryPages", "files", accessContext, pageId] as const,
-    pageFilesWindow: (accessContext: unknown, pageId: string, query: string) =>
-      ["libraryPages", "files", accessContext, pageId, query] as const,
+    pageBacklinks: (routingContext: unknown, pageId: string) =>
+      ["libraryPages", "backlinks", routingContext, pageId] as const,
+    pageFiles: (routingContext: unknown, pageId: string) =>
+      ["libraryPages", "files", routingContext, pageId] as const,
+    pageFilesWindow: (routingContext: unknown, pageId: string, query: string) =>
+      ["libraryPages", "files", routingContext, pageId, query] as const,
   },
   libraryFiles: {
-    file: (accessContext: unknown, fileId: string) =>
-      ["libraryFiles", "file", accessContext, fileId] as const,
+    file: (routingContext: unknown, fileId: string) =>
+      ["libraryFiles", "file", routingContext, fileId] as const,
     all: () => ["libraryFiles"] as const,
-    catalog: (accessContext: unknown, lifecycle: string, usage: string, query: string) =>
-      ["libraryFiles", "catalog", accessContext, lifecycle, usage, query] as const,
-    usages: (accessContext: unknown, fileId: string) =>
-      ["libraryFiles", "usages", accessContext, fileId] as const,
-    versions: (accessContext: unknown, fileId: string) =>
-      ["libraryFiles", "versions", accessContext, fileId] as const,
+    catalog: (routingContext: unknown, lifecycle: string, usage: string, query: string) =>
+      ["libraryFiles", "catalog", routingContext, lifecycle, usage, query] as const,
+    usages: (routingContext: unknown, fileId: string) =>
+      ["libraryFiles", "usages", routingContext, fileId] as const,
+    versions: (routingContext: unknown, fileId: string) =>
+      ["libraryFiles", "versions", routingContext, fileId] as const,
   },
   projectSessions: {
     all: () => ["projectSessions"] as const,

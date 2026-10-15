@@ -28,7 +28,6 @@ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderS
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import {
   cursorMcpServers,
-  cursorRuntimeAgentPolicy,
   cursorSdkModelSelection,
   makeCursorAgentOptions,
   makeCursorAdapterV2,
@@ -800,71 +799,10 @@ describe("CursorAdapterV2", () => {
     );
   });
 
-  it("maps runtime modes to the SDK sandbox and auto-review controls", () => {
-    const base = {
-      interactionMode: "default" as const,
-      cwd: "/tmp/cursor-adapter",
-    };
-    assert.deepEqual(
-      cursorRuntimeAgentPolicy({
-        ...base,
-        runtimeMode: "full-access",
-      }),
-      {
-        autoReview: false,
-        sandboxEnabled: false,
-      },
-    );
-    assert.deepEqual(
-      cursorRuntimeAgentPolicy({
-        ...base,
-        runtimeMode: "auto-accept-edits",
-      }),
-      {
-        autoReview: false,
-        sandboxEnabled: true,
-      },
-    );
-    assert.deepEqual(
-      cursorRuntimeAgentPolicy({
-        ...base,
-        runtimeMode: "approval-required",
-      }),
-      {
-        autoReview: true,
-        sandboxEnabled: true,
-      },
-    );
-    assert.deepEqual(
-      cursorRuntimeAgentPolicy({
-        ...base,
-        runtimeMode: "full-access",
-        approvalPolicy: "never",
-        sandboxPolicy: { type: "readOnly" },
-      }),
-      {
-        autoReview: false,
-        sandboxEnabled: true,
-      },
-    );
-    assert.deepEqual(
-      cursorRuntimeAgentPolicy({
-        ...base,
-        runtimeMode: "approval-required",
-        approvalPolicy: "never",
-        sandboxPolicy: { type: "dangerFullAccess" },
-      }),
-      {
-        autoReview: false,
-        sandboxEnabled: false,
-      },
-    );
-  });
-
   it("loads the user's Cursor settings layers in every runtime mode", () => {
     // The SDK loads no rules, skills, hooks, or MCP config from disk unless
     // settingSources names them, so an omitted list silently drops AGENTS.md.
-    for (const runtimeMode of ["full-access", "auto-accept-edits", "approval-required"] as const) {
+    for (const runtimeMode of ["full-access"] as const) {
       const options = makeCursorAgentOptions({
         modelSelection: {
           instanceId: ProviderInstanceId.make("cursor"),

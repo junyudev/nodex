@@ -33,7 +33,6 @@ const querySnapshot = (
     name: "Work",
     lifecycle: "active" as const,
     defaultViewId: parseDatabaseViewId("view-1"),
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -195,7 +194,6 @@ const querySnapshot = (
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 8,
-    authorization: null,
     value: { kind: "query", value: query },
   };
 };

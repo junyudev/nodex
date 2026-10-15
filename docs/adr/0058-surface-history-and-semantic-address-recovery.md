@@ -57,7 +57,7 @@ instead of being cleared or replayed against detached content.
   replacement. Unregistered IDs are only retention references, not reservations
   or permission to bypass canonical identity registration.
 - Recipe lifecycle is Core authority, not a renderer-global index. A dedicated
-  authorized projection invalidates history state; bounded capability-checked
+  current projection invalidates history state; bounded capability-checked
   reads reconcile reachable tokens after delivery gaps and before replay.
   Only proven supersession removes an entry automatically. A consumed or
   unavailable token blocks earlier history unless its original uncertain

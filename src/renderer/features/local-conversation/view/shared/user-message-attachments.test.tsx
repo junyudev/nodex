@@ -1,5 +1,6 @@
 import { buildCodexUserAttachmentsFromContent } from "../../../../../shared/codex-user-attachment-projection";
 import { buildAgentHistoryImageSource } from "../../../../../shared/agent-history-images";
+import { buildAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
 import { act } from "react";
 import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -14,6 +15,39 @@ import {
 } from "@/features/user-attachment-image-editor";
 
 describe("UserAttachmentStrip", () => {
+  test("a mounted Runtime image resolves only its exact descriptor and displays the lazy filesystem URL", async () => {
+    const invoke = vi.fn(async () => {
+      throw new Error("Unexpected byte read");
+    });
+    installWindowApi({ invoke, on: () => () => {} });
+    const reference = {
+      sourceThreadId: "fork-source",
+      itemId: "original-user-item",
+      attachmentId: "image-asset",
+    };
+    const resolveRuntimeAttachment = vi.fn(async () => "/managed/runtime/attachments/image.png");
+    const view = render(
+      <TestQueryProvider>
+        <ConversationImageAssetProvider
+          conversationId="selected-child"
+          hostId="local"
+          resolveRuntimeAttachment={resolveRuntimeAttachment}
+        >
+          <UserAttachmentStrip
+            attachments={buildCodexUserAttachmentsFromContent(
+              [{ type: "image", url: buildAgentRuntimeAttachmentSource(reference) }],
+              reference.itemId,
+            )}
+          />
+        </ConversationImageAssetProvider>
+      </TestQueryProvider>,
+    );
+    await view.findByRole("button", { name: "Open image preview" });
+    expect(resolveRuntimeAttachment).toHaveBeenCalledExactlyOnceWith(reference);
+    expect(invoke).not.toHaveBeenCalled();
+    expect(view.container.querySelector("img")?.getAttribute("src")).toContain("image.png");
+    view.unmount();
+  });
   test("resolves native file-ID images through the hosted-image boundary", async () => {
     const invoke = vi.fn(async () => ({
       ok: true,

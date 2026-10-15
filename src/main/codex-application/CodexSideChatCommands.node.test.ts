@@ -1,4 +1,3 @@
-import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -42,7 +41,7 @@ import {
   live as conversationRuntimeMapLive,
 } from "./internal/ConversationEntityMap";
 import { make as makeCommands } from "./CodexSideChatCommands";
-import { SIDE_CHAT_BOUNDARY_TEXT, SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatPolicy";
+import { SIDE_CHAT_BOUNDARY_TEXT, SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatBoundary";
 
 const parentThreadId = "parent-a";
 const sideThreadId = "side-a";
@@ -127,6 +126,7 @@ interface SideChatHarnessOptions {
   readonly parentCanonical?: Partial<CodexCanonicalConversationState>;
   readonly directoryRead?: Effect.Effect<void>;
   readonly parentBackend?: "codex" | "acp";
+  readonly directoryHost?: () => string;
   readonly parentSideConversation?: boolean;
   readonly capabilityCurrent?: boolean;
   readonly capabilityVersion?: string;
@@ -227,7 +227,6 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
           yield* options.initialTurn ?? Effect.void;
           return null;
         }),
-      startAutomation: () => Effect.die("unused"),
       steer: () => Effect.die("unused"),
     } satisfies CodexTurnCommandsService);
     const parentSnapshot = {
@@ -302,7 +301,9 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
               }
             : { kind: "codex" },
         executionProfile: parentSnapshot.executionProfile,
-        executionHostId: remoteHostId,
+        get executionHostId() {
+          return options.directoryHost?.() ?? remoteHostId;
+        },
       },
       summary: durableSummary,
       canonical: options.parentProjection === "released" ? null : parentCanonical,
@@ -479,62 +480,51 @@ it.effect(
     }),
 );
 
-it.effect.each([true, false])(
-  "forks from durable parent context without requesting history (native bridge: %s)",
-  (nativeMcp) =>
-    Effect.gen(function* () {
-      const scope = yield* Scope.make();
-      const harness = yield* makeHarness(scope, {
-        localHostId: nativeMcp ? remoteHostId : "local",
-      });
+it.effect("forks from an exact remote parent without requesting history", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope);
 
-      const result = yield* harness.commands.start({ parentThreadId });
-      const fork = harness.requests.find((request) => request.method === "thread/fork");
-      assert.isDefined(fork);
-      const params = fork.params as unknown as ThreadForkParams;
+    const result = yield* harness.commands.start({ parentThreadId });
+    const fork = harness.requests.find((request) => request.method === "thread/fork");
+    assert.isDefined(fork);
+    const params = fork.params as unknown as ThreadForkParams;
 
-      assert.strictEqual(result.threadId, sideThreadId);
-      assert.deepEqual(harness.directoryFidelities, ["durable"]);
-      assert.strictEqual(harness.parentHistoryRequestCount(), 0);
-      assert.strictEqual(fork.hostId, remoteHostId);
-      assert.strictEqual(params.threadId, parentThreadId);
-      assert.strictEqual(params.cwd, "/workspace");
-      assert.isUndefined(params.model);
-      assert.isUndefined(params.modelProvider);
-      assert.isUndefined(params.serviceTier);
-      assert.strictEqual(params.ephemeral, true);
-      assert.strictEqual(params.excludeTurns, true);
-      assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
-      assert.isUndefined(params.approvalPolicy);
-      assert.isUndefined(params.approvalsReviewer);
-      assert.isUndefined(params.permissions);
-      assert.isUndefined(params.sandbox);
-      assert.include(params.developerInstructions ?? "", "<app-context>");
-      assert.isTrue(
-        (params.developerInstructions ?? "").endsWith(`\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`),
-      );
-      if (nativeMcp) {
-        assert.deepEqual(params.config, {
-          "mcp_servers.node_repl": { command: "/runtime/node" },
-          "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
-        });
-      } else {
-        assert.isUndefined(params.config);
-      }
-      assert.deepEqual(
-        harness.requests.map((request) => request.method),
-        ["experimentalFeature/list", "thread/fork", "thread/inject_items"],
-      );
-      assert.deepEqual(
-        harness.requests.map((request) => request.scheduling),
-        [
-          { expectedHostId: remoteHostId, expectedGeneration: 1 },
-          { expectedHostId: remoteHostId, expectedGeneration: 1 },
-          { expectedHostId: remoteHostId, expectedGeneration: 1 },
-        ],
-      );
-      yield* Scope.close(scope, Exit.void);
-    }),
+    assert.strictEqual(result.threadId, sideThreadId);
+    assert.isTrue(harness.directoryFidelities.every((fidelity) => fidelity === "durable"));
+    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+    assert.strictEqual(fork.hostId, remoteHostId);
+    assert.strictEqual(params.threadId, parentThreadId);
+    assert.strictEqual(params.cwd, "/workspace");
+    assert.isUndefined(params.model);
+    assert.isUndefined(params.modelProvider);
+    assert.isUndefined(params.serviceTier);
+    assert.strictEqual(params.ephemeral, true);
+    assert.strictEqual(params.excludeTurns, true);
+    assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
+    assert.isUndefined(params.approvalPolicy);
+    assert.isUndefined(params.approvalsReviewer);
+    assert.isUndefined(params.permissions);
+    assert.isUndefined(params.sandbox);
+    assert.include(params.developerInstructions ?? "", "<app-context>");
+    assert.isTrue(
+      (params.developerInstructions ?? "").endsWith(`\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`),
+    );
+    assert.isUndefined(params.config);
+    assert.deepEqual(
+      harness.requests.map((request) => request.method),
+      ["experimentalFeature/list", "thread/fork", "thread/inject_items"],
+    );
+    assert.deepEqual(
+      harness.requests.map((request) => request.scheduling),
+      [
+        { expectedHostId: remoteHostId, expectedGeneration: 1 },
+        { expectedHostId: remoteHostId, expectedGeneration: 1 },
+        { expectedHostId: remoteHostId, expectedGeneration: 1 },
+      ],
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
 );
 
 it.effect("rejects an ACP parent before any Codex side-chat request", () =>
@@ -620,50 +610,6 @@ it.effect(
       assert.isNull(result.conversation.projectId);
       yield* Scope.close(scope, Exit.void);
     }),
-);
-
-it.effect("rejects a canonical-only nested side chat before resolving the directory", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const harness = yield* makeHarness(scope, {
-      parentProjection: "canonical",
-      parentCanonical: { ephemeral: true, sideConversation: true, forkedFromId: "root-a" },
-    });
-
-    const result = yield* Effect.exit(harness.commands.start({ parentThreadId }));
-    assert.isTrue(Exit.isFailure(result));
-    assert.deepEqual(harness.directoryFidelities, []);
-    assert.deepEqual(harness.requests, []);
-    assert.isNull(harness.conversations.current(parentThreadId)?.readSnapshot());
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("rechecks the current canonical side-chat marker after the directory read", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const entered = yield* Deferred.make<void>();
-    const release = yield* Deferred.make<void>();
-    const harness = yield* makeHarness(scope, {
-      parentProjection: "canonical",
-      directoryRead: Deferred.succeed(entered, undefined).pipe(
-        Effect.andThen(Deferred.await(release)),
-      ),
-    });
-    const pending = yield* harness.commands.start({ parentThreadId }).pipe(Effect.forkIn(scope));
-    yield* Deferred.await(entered);
-    harness.conversations.entity(parentThreadId).installFollowerCanonicalState({
-      ...harness.parentCanonical,
-      ephemeral: true,
-      sideConversation: true,
-      forkedFromId: "root-a",
-    });
-    yield* Deferred.succeed(release, undefined);
-
-    assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
-    assert.deepEqual(harness.requests, []);
-    yield* Scope.close(scope, Exit.void);
-  }),
 );
 
 it.effect("rejects a parent generation retired while resolving side-chat context", () =>
@@ -801,39 +747,6 @@ it.effect("accepts the runtime profile selected by the fork response", () =>
       harness.requests.map((request) => request.method),
       ["experimentalFeature/list", "thread/fork", "thread/inject_items"],
     );
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("rejects a nested side chat before resolving or loading its parent", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const harness = yield* makeHarness(scope, { parentSideConversation: true });
-
-    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
-
-    assert.isTrue(Exit.isFailure(exit));
-    assert.deepEqual(harness.directoryFidelities, []);
-    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
-    assert.deepEqual(harness.requests, []);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("rejects a durable nested side chat after its bounded projection was released", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const harness = yield* makeHarness(scope, {
-      parentProjection: "released",
-      parentSideConversation: true,
-    });
-
-    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
-
-    assert.isTrue(Exit.isFailure(exit));
-    assert.deepEqual(harness.directoryFidelities, ["durable"]);
-    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
-    assert.deepEqual(harness.requests, []);
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -1006,4 +919,56 @@ it.effect("rolls back an in-flight fork when the Main Scope closes", () =>
       `request:${remoteHostId}:thread/unsubscribe:${sideThreadId}`,
     ]);
   }),
+);
+
+it.effect(
+  "does not turn local retained history or a changed remote owner into a native side chat",
+  () =>
+    Effect.gen(function* () {
+      for (const options of [
+        { localHostId: remoteHostId },
+        { hostResolution: Effect.succeed("remote-b") },
+      ]) {
+        const scope = yield* Scope.make();
+        const harness = yield* makeHarness(scope, options);
+        const failure = yield* harness.commands
+          .start({ parentThreadId, prompt: "Continue" })
+          .pipe(Effect.flip);
+        assert.equal(failure._tag, "CodexSideChatProjectionError");
+        if (failure._tag === "CodexSideChatProjectionError")
+          assert.equal(failure.operation, "prepare");
+        assert.deepEqual(harness.requests, []);
+        assert.deepEqual(harness.startedTurns, []);
+        yield* Scope.close(scope, Exit.void);
+      }
+    }),
+);
+
+it.effect(
+  "compensates a returned remote fork when its source owner moves during native dispatch",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      let currentHost = remoteHostId;
+      const harness = yield* makeHarness(scope, {
+        directoryHost: () => currentHost,
+        forkResponseGate: Deferred.succeed(entered, undefined).pipe(
+          Effect.andThen(Deferred.await(release)),
+        ),
+      });
+      const pending = yield* harness.commands.start({ parentThreadId }).pipe(Effect.forkIn(scope));
+      yield* Deferred.await(entered);
+      currentHost = "remote-b";
+      yield* Deferred.succeed(release, undefined);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+      assert.deepEqual(
+        harness.requests.map((request) => request.method),
+        ["experimentalFeature/list", "thread/fork", "thread/unsubscribe"],
+      );
+      assert.deepEqual(harness.startedTurns, []);
+      assert.isNull(yield* harness.routing.resolve(sideThreadId));
+      yield* Scope.close(scope, Exit.void);
+    }),
 );

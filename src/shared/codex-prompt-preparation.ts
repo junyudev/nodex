@@ -66,7 +66,6 @@ function parsePromptAgentConfigLine(line: string): CodexPromptAgentConfigInput |
     ...(item.model ? { model: item.model } : {}),
     ...(item.reasoning ? { reasoning: item.reasoning } : {}),
     ...(item.speed ? { speed: item.speed } : {}),
-    ...(item.permission ? { permission: item.permission } : {}),
     ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
   };
 }
@@ -176,9 +175,8 @@ function buildApplicationAdditionalContext(input: {
 
 /**
  * Compiles one app-owned prompt into the exact app-server input used by both the
- * optimistic mutation and the transport request. Environment and permission
- * policy remain outside this function and are resolved by the main-process
- * command boundary.
+ * optimistic mutation and the transport request. Workspace preparation stays
+ * at the main-process command boundary.
  */
 export async function prepareCodexPrompt(
   prompt: string,

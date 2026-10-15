@@ -1,5 +1,4 @@
 import {
-  ProviderApprovalDecision,
   ProviderSessionId,
   ProviderUserInputAnswers,
   RuntimeRequestId,
@@ -53,7 +52,7 @@ export interface RuntimeRequestServiceV2Shape {
     readonly threadId: ThreadId;
     readonly providerSessionId: ProviderSessionId;
     readonly requestId: RuntimeRequestId;
-    readonly decision?: ProviderApprovalDecision;
+    readonly decision?: "accept" | "decline" | "cancel";
     readonly answers?: ProviderUserInputAnswers;
   }) => Effect.Effect<void, RuntimeRequestResponseExecutionError>;
 }
@@ -96,6 +95,7 @@ export const layer: Layer.Layer<
             });
           }
           if (
+            (request.kind !== "user_input" && request.kind !== "mcp-elicitation") ||
             request.responseCapability.type !== "live" ||
             request.responseCapability.providerSessionId !== input.providerSessionId
           ) {

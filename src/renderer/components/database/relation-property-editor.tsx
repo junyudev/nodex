@@ -123,7 +123,7 @@ export function RelationPropertyEditor({
     valueRevision: 0,
     totalCount: 0,
     targets: [],
-    restrictedCount: 0,
+    unavailableCount: 0,
     hasMore: false,
   };
   const [open, setOpen] = useState(false);
@@ -174,12 +174,15 @@ export function RelationPropertyEditor({
   const visibleTargets = (expandedTargets ?? preview.targets).filter(
     (target): target is RelationTargetPreview => target.kind === "visible",
   );
-  const restrictedTargets =
+  const unavailableTargets =
     expandedTargets?.filter(
-      (target): target is Extract<RelationTargetWindowItem, { readonly kind: "restricted" }> =>
-        target.kind === "restricted",
+      (target): target is Extract<RelationTargetWindowItem, { readonly kind: "unavailable" }> =>
+        target.kind === "unavailable",
     ) ?? [];
-  const unloadedRestrictedCount = Math.max(0, preview.restrictedCount - restrictedTargets.length);
+  const unloadedUnavailableCount = Math.max(
+    0,
+    preview.unavailableCount - unavailableTargets.length,
+  );
   const selectedIds = new Set(visibleTargets.map((target) => target.pageId));
   const normalizedQuery = foldDataSourceRelationSearchText(query.trim());
   const metadataSearch = useInteractivePageSearch({
@@ -470,14 +473,14 @@ export function RelationPropertyEditor({
                 <span className="truncate">{target.title || "Untitled"}</span>
               </span>
             ))}
-            {preview.restrictedCount > 0 ? (
+            {preview.unavailableCount > 0 ? (
               <span className="text-token-description-foreground">
-                {preview.restrictedCount} restricted
+                {preview.unavailableCount} unavailable
               </span>
             ) : null}
-            {preview.totalCount > visibleTargets.slice(0, 3).length + preview.restrictedCount ? (
+            {preview.totalCount > visibleTargets.slice(0, 3).length + preview.unavailableCount ? (
               <span className="text-token-description-foreground">
-                +{preview.totalCount - visibleTargets.slice(0, 3).length - preview.restrictedCount}
+                +{preview.totalCount - visibleTargets.slice(0, 3).length - preview.unavailableCount}
               </span>
             ) : null}
             {invalidPreview ? (
@@ -561,7 +564,7 @@ export function RelationPropertyEditor({
         <div className="h-px bg-token-foreground/8" />
         <div className="max-h-[320px] overflow-y-auto p-1">
           {visibleTargets.length > 0 ||
-          preview.restrictedCount > 0 ||
+          preview.unavailableCount > 0 ||
           (expandedTargets === null ? preview.hasMore : targetCursor !== null) ? (
             <section aria-labelledby={selectedHeadingId}>
               <h3
@@ -612,18 +615,18 @@ export function RelationPropertyEditor({
                   </button>
                 </div>
               ))}
-              {restrictedTargets.map((target, index) => (
+              {unavailableTargets.map((target, index) => (
                 <div
                   key={target.edgeId}
                   className="group flex min-h-8 items-center gap-2 rounded-lg px-2 hover:bg-token-list-hover-background"
                 >
                   <PageIcon className="icon-xs shrink-0 text-token-description-foreground" />
                   <span className="min-w-0 flex-1 truncate text-sm text-token-description-foreground">
-                    Restricted page
+                    Unavailable page
                   </span>
                   <button
                     type="button"
-                    aria-label={`Remove restricted page ${index + 1}`}
+                    aria-label={`Remove unavailable page ${index + 1}`}
                     disabled={actionDisabled}
                     onClick={() => {
                       if (actionDisabled) return;
@@ -640,10 +643,10 @@ export function RelationPropertyEditor({
                   </button>
                 </div>
               ))}
-              {unloadedRestrictedCount > 0 ? (
+              {unloadedUnavailableCount > 0 ? (
                 <p className="px-2 py-1 text-xs text-token-description-foreground">
-                  {unloadedRestrictedCount} more restricted{" "}
-                  {unloadedRestrictedCount === 1 ? "page" : "pages"}
+                  {unloadedUnavailableCount} more unavailable{" "}
+                  {unloadedUnavailableCount === 1 ? "page" : "pages"}
                 </p>
               ) : null}
               {(expandedTargets === null ? preview.hasMore : targetCursor !== null) &&
@@ -754,7 +757,7 @@ export function RelationPropertyEditor({
             {confirmingClear ? (
               <div className="rounded-lg bg-token-error-background/20 p-2">
                 <p className="text-xs text-token-text-secondary">
-                  Clear all {preview.totalCount} relations, including restricted or unloaded pages?
+                  Clear all {preview.totalCount} relations, including unavailable or unloaded pages?
                 </p>
                 <div className="mt-1 flex justify-end gap-1">
                   <button

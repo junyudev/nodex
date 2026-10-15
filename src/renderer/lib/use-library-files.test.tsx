@@ -17,7 +17,6 @@ const envelope = (value: unknown) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 4,
-    authorization: null,
     value,
   },
 });

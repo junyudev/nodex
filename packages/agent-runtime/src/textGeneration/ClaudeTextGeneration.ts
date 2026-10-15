@@ -40,23 +40,6 @@ import {
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
-/** The tools an investigation can see. `--tools` takes bare names; patterns go in the allow list. */
-const CLAUDE_INVESTIGATION_TOOLS = "Read,Grep,Glob,Bash";
-/** What it may run without asking. In dontAsk mode every other call, Bash included, is refused. */
-const CLAUDE_INVESTIGATION_ALLOWED = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(git diff:*)",
-  "Bash(git log:*)",
-  "Bash(git show:*)",
-].join(",");
-/**
- * The allowed git commands accept any trailing arguments, and `--output` makes each of them write
- * a file anywhere. Deny rules win over allow rules, so this keeps the investigation read-only.
- */
-const CLAUDE_INVESTIGATION_DENIED = ["Bash(git * --output*)", "Bash(git * -o *)"].join(",");
-
 /**
  * Schema for the wrapper JSON returned by `claude -p --output-format json`.
  * Verbose mode wraps the result in an array of conversation messages.
@@ -93,9 +76,17 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
   ): Effect.Effect<string, TextGenerationError> =>
     stream.pipe(
       Stream.decodeText(),
-      Stream.runFold(
+      Stream.runFoldEffect(
         () => "",
-        (acc, chunk) => acc + chunk,
+        (acc, chunk) =>
+          Buffer.byteLength(acc) + Buffer.byteLength(chunk) > 1024 * 1024
+            ? Effect.fail(
+                new TextGenerationError({
+                  operation,
+                  detail: "Utility output exceeded its transport budget.",
+                }),
+              )
+            : Effect.succeed(acc + chunk),
       ),
       Effect.mapError((cause) =>
         normalizeCliError("claude", operation, cause, "Failed to collect process output"),
@@ -129,6 +120,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     outputSchema: outputSchemaJson,
     modelSelection,
     investigate,
+    jsonSchema,
+    maxOutputBytes,
+    timeoutMs,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -141,7 +135,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     };
     const jsonSchemaStr = yield* encodeJsonForOperation(
       operation,
-      toJsonSchemaObject(outputSchemaJson),
+      jsonSchema ?? toJsonSchemaObject(outputSchemaJson),
       "Failed to encode structured output schema.",
     );
     const caps = getClaudeCatalogModelCapabilities(catalog, resolvedModelSelection.model);
@@ -205,23 +199,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
           settingsJson,
-          // Metadata prompts need no executable capabilities, even when they contain a skill name.
-          // An investigation gets the read-only file tools and Git's read commands, and nothing
-          // that writes: in dontAsk mode anything not allowed here is refused.
-          ...(investigate
-            ? [
-                "--tools",
-                CLAUDE_INVESTIGATION_TOOLS,
-                "--allowedTools",
-                CLAUDE_INVESTIGATION_ALLOWED,
-                "--disallowedTools",
-                CLAUDE_INVESTIGATION_DENIED,
-              ]
-            : ["--tools", ""]),
-          "--disable-slash-commands",
-          "--strict-mcp-config",
-          "--permission-mode",
-          "dontAsk",
+          "--dangerously-skip-permissions",
         ],
         { env: claudeEnvironment },
       );
@@ -273,7 +251,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
 
     const rawStdout = yield* runClaudeCommand().pipe(
       Effect.scoped,
-      Effect.timeoutOption(investigate?.timeoutMs ?? CLAUDE_TIMEOUT_MS),
+      Effect.timeoutOption(timeoutMs ?? investigate?.timeoutMs ?? CLAUDE_TIMEOUT_MS),
       Effect.flatMap(
         Option.match({
           onNone: () =>
@@ -301,6 +279,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       ? output
       : output.findLast((message) => message.type === "result");
 
+    if (
+      Buffer.byteLength(JSON.stringify(envelope?.structured_output) ?? "") >
+      (maxOutputBytes ?? 1024 * 1024)
+    )
+      return yield* new TextGenerationError({
+        operation,
+        detail: "Structured output exceeded its byte budget.",
+      });
     const decodeOutput = Schema.decodeEffect(outputSchemaJson);
     return yield* decodeOutput(envelope?.structured_output).pipe(
       Effect.catchTags({

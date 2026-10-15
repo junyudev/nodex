@@ -6,7 +6,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 8;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 10;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -90,8 +90,6 @@ pub struct AutomationDefinition {
     pub status: AutomationDefinitionStatus,
     pub project_id: Option<String>,
     pub target_session_id: Option<String>,
-    /// Current backend attachment, projected from the target Session.
-    pub target_thread_id: Option<String>,
     #[serde(default)]
     pub notification_policy: Option<AutomationNotificationPolicy>,
     pub name: String,
@@ -122,6 +120,8 @@ pub enum AutomationLeaseStatus {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationLease {
     pub lease_id: String,
+    pub dispatch_id: String,
+    pub definition_revision: i64,
     pub automation_id: String,
     pub scheduled_for_ms: i64,
     pub attempt: u32,
@@ -144,12 +144,13 @@ pub enum AutomationRunStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationRun {
-    pub thread_id: String,
+    pub run_id: String,
+    pub session_id: Option<String>,
     pub automation_id: String,
     pub run_revision: i64,
     pub status: AutomationRunStatus,
     pub read_at_ms: Option<i64>,
-    pub thread_title: Option<String>,
+    pub session_title: Option<String>,
     pub source_cwd: Option<String>,
     pub inbox_title: Option<String>,
     pub inbox_summary: Option<String>,
@@ -170,7 +171,8 @@ pub struct AutomationInboxItem {
     pub archived_user_message: Option<String>,
     pub archived_reason: Option<String>,
     pub source_cwd: Option<String>,
-    pub thread_id: String,
+    pub run_id: String,
+    pub session_id: Option<String>,
     pub read_at_ms: Option<i64>,
     pub created_at_ms: i64,
     pub status: AutomationRunStatus,
@@ -346,7 +348,6 @@ pub enum PageOccurrenceMutationCode {
     PageNotFound,
     PageNotScheduled,
     PageNotRecurring,
-    AuthorizationDenied,
     InvalidOccurrenceRequest,
 }
 
@@ -393,7 +394,7 @@ pub enum AutomationRead {
         window: CollectionWindowRequest,
     },
     Run {
-        thread_id: String,
+        run_id: String,
     },
     Runs {
         automation_id: Option<String>,
@@ -500,56 +501,57 @@ pub enum AutomationIntent {
         reason_code: String,
     },
     BeginRun {
-        thread_id: String,
+        run_id: String,
         automation_id: String,
-        thread_title: Option<String>,
+        session_id: Option<String>,
+        session_title: Option<String>,
         source_cwd: Option<String>,
     },
-    ReplacePendingRunThread {
-        pending_thread_id: String,
-        thread_id: String,
+    BindRunSession {
+        run_id: String,
+        session_id: String,
         expected_revision: i64,
     },
-    SetRunThreadTitle {
-        thread_id: String,
+    SetRunSessionTitle {
+        run_id: String,
         expected_revision: i64,
-        thread_title: Option<String>,
+        session_title: Option<String>,
     },
     CompleteRunForReview {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
         inbox_title: Option<String>,
         inbox_summary: Option<String>,
     },
     SetRunInboxItem {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
         inbox_title: Option<String>,
         inbox_summary: Option<String>,
     },
     AcceptRun {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
     },
     SetRunReadState {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
         read: bool,
     },
     MarkAllRunsRead,
     ArchiveRun {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
         archived_user_message: Option<String>,
         archived_assistant_message: Option<String>,
         archived_reason: Option<String>,
     },
     UnarchiveRun {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
     },
     DeleteRun {
-        thread_id: String,
+        run_id: String,
         expected_revision: i64,
     },
     SettleInterruptedRuns,
@@ -670,7 +672,7 @@ mod tests {
         assert!(complete.get("completed_at").is_none());
 
         let read = serde_json::to_value(AutomationIntent::SetRunReadState {
-            thread_id: "thread-1".to_owned(),
+            run_id: "run-1".to_owned(),
             expected_revision: 3,
             read: true,
         })

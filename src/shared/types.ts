@@ -64,10 +64,7 @@ import type {
   WorkbenchCanvasStageSurfaceConfig,
 } from "./workbench-scene";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
-import type {
-  BrowserSidebarDeviceToolbarState,
-  BrowserUsePresentationOrigin,
-} from "./browser-sidebar";
+import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type {
   CollaborationMode as CodexAppServerCollaborationMode,
   ModeKind as CodexAppServerModeKind,
@@ -83,16 +80,10 @@ import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
 } from "./clipboard-paste";
-import type { CodexPendingWorktreeStartingState } from "./codex-pending-worktree";
 import type { PortableRichText } from "./block-documents/portable-rich-text";
 import type { ProjectLifecycle } from "./library";
 import type { ProjectAppearance } from "./project-appearance";
-import type { CodexApprovalResponse } from "./codex-approval-response";
-import type { NodexAgentAuthorizationRequest } from "./nodex-agent-tools";
-export type {
-  NodexAgentAuthorizationRequest,
-  NodexAgentAuthorizationResponse,
-} from "./nodex-agent-tools";
+
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalServerRequest,
@@ -159,12 +150,6 @@ export type {
   CreateCodexCanonicalConversationStateOptions,
   CreateCodexCanonicalHydratedConversationStateOptions,
 } from "./codex-conversation-state/codex-conversation-state";
-export type {
-  CodexApprovalResponse,
-  CodexCommandApprovalDecision,
-  CodexFileApprovalDecision,
-} from "./codex-approval-response";
-
 export type { Priority } from "./priority";
 import type { Priority } from "./priority";
 
@@ -395,7 +380,7 @@ export type PageUpdateResult =
     };
 
 export interface PageSearchInput {
-  /** Project access contexts whose effective grants define the search scope. */
+  /** Explicit Project placement filter; empty searches the current Library. */
   projectIds: string[];
   query: string;
   filters?: PageSearchFilters;
@@ -464,8 +449,8 @@ export interface PageSearchFacets {
 }
 
 export interface PageSearchResult {
-  /** Project access context that authorized this result. */
-  projectId: string;
+  /** Existing Project association for presentation; standalone Library Pages have none. */
+  projectId: string | null;
   pageId: string;
   pageKey: string | null;
   title: string;
@@ -511,7 +496,7 @@ export interface PageSearchMetadataDocument {
   locationLabel: string;
   updatedAt: string;
   properties: PageSearchMetadataProperty[];
-  authorizedProjectIds: string[];
+  projectIds: string[];
   dataSourceIds: string[];
 }
 
@@ -519,12 +504,6 @@ export interface PageSearchMetadataSnapshot {
   libraryId: string;
   storeEpoch: string;
   commitSeq: number;
-  authorization: {
-    libraryId: string;
-    storeEpoch: string;
-    coveredCommitSeq: number;
-    projectIds: string[];
-  };
   documents: PageSearchMetadataDocument[];
 }
 
@@ -1489,6 +1468,7 @@ export interface BackupRecord {
   includesAssets: boolean;
   dbBytes: number;
   assetsBytes: number;
+  executionBytes: number;
   totalBytes: number;
 }
 
@@ -1861,22 +1841,20 @@ export type ThreadNotificationTurnMode = "off" | "unfocused" | "always";
 
 export interface ThreadNotificationSettings {
   turnMode: ThreadNotificationTurnMode;
-  permissionsEnabled: boolean;
   questionsEnabled: boolean;
 }
 
 export interface UpdateThreadNotificationSettingsInput {
   turnMode: ThreadNotificationTurnMode;
-  permissionsEnabled: boolean;
   questionsEnabled: boolean;
 }
 
-export type DesktopNotificationKind = "turn-complete" | "permission" | "question";
+export type DesktopNotificationKind = "turn-complete" | "question";
 
 export interface DesktopNotificationAction {
   id: string;
   title: string;
-  actionType: "approve" | "approve-for-session" | "decline";
+  actionType: "open";
 }
 
 export interface DesktopNotificationPayload {
@@ -1919,7 +1897,7 @@ export type DesktopNotificationHideSelector =
 export interface DesktopNotificationActionPayload {
   notificationId: string;
   actionId: string | null;
-  actionType: "open" | "reply" | "approve" | "approve-for-session" | "decline";
+  actionType: "open" | "reply";
   reply?: string;
 }
 
@@ -2165,7 +2143,6 @@ export interface CodexScheduledAutomation {
   status: CodexScheduledAutomationStatus;
   projectId: string | null;
   targetSessionId: string | null;
-  targetThreadId: string | null;
   notificationPolicy: CodexScheduledAutomationNotificationPolicy | null;
   name: string;
   prompt: string;
@@ -2187,7 +2164,6 @@ export interface CodexScheduledAutomationCreateInput {
   kind: CodexScheduledAutomationKind;
   projectId?: string | null;
   targetSessionId?: string | null;
-  targetThreadId?: string | null;
   notificationPolicy?: CodexScheduledAutomationNotificationPolicy | null;
   name: string;
   prompt?: string | null;
@@ -2240,7 +2216,6 @@ export interface CodexScheduledAutomationMutationResponse {
 export interface CodexScheduledAutomationRunNowInput {
   id: string;
   collaborationMode?: CodexHeartbeatAutomationCollaborationMode | null;
-  permissions?: CodexHeartbeatAutomationPermissions | null;
 }
 
 export interface CodexScheduledAutomationRunNowResponse {
@@ -2252,27 +2227,26 @@ export interface CodexHeartbeatAutomationsEnabledChangedInput {
 }
 
 export interface CodexHeartbeatAutomationThreadStateChangedInput {
-  threadId: string;
+  sessionId: string;
   streamRole: "owner" | "follower" | null;
   isEligible: boolean;
   reason?: string | null;
   collaborationMode?: CodexHeartbeatAutomationCollaborationMode | null;
-  permissions?: CodexHeartbeatAutomationPermissions | null;
 }
 
 export interface CodexAutomationRunArchiveInput {
-  threadId: string;
+  runId: string;
   archivedAssistantMessage?: string | null;
   archivedUserMessage?: string | null;
   archivedReason?: string | null;
 }
 
 export interface CodexAutomationRunDeleteInput {
-  threadId: string;
+  runId: string;
 }
 
 export interface CodexAutomationRunUnarchiveInput {
-  threadId: string;
+  runId: string;
 }
 
 export interface CodexAutomationRunMutationResponse {
@@ -2282,11 +2256,12 @@ export interface CodexAutomationRunMutationResponse {
 export type CodexAutomationRunStatus = "IN_PROGRESS" | "PENDING_REVIEW" | "ACCEPTED" | "ARCHIVED";
 
 export interface CodexAutomationRun {
-  threadId: string;
+  runId: string;
+  sessionId: string | null;
   automationId: string;
   status: CodexAutomationRunStatus;
   readAt: number | null;
-  threadTitle: string | null;
+  sessionTitle: string | null;
   sourceCwd: string | null;
   inboxTitle: string | null;
   inboxSummary: string | null;
@@ -2307,7 +2282,8 @@ export interface CodexAutomationInboxItem {
   archivedUserMessage: string | null;
   archivedReason: string | null;
   sourceCwd: string | null;
-  threadId: string;
+  runId: string;
+  sessionId: string | null;
   readAt: number | null;
   createdAt: number;
   status: CodexAutomationRunStatus;
@@ -2318,7 +2294,7 @@ export interface CodexAutomationRunUnreadCounts {
   automationIds: string[];
   unreadRuns: Array<{
     automationId: string;
-    threadId: string;
+    runId: string;
   }>;
 }
 
@@ -2328,7 +2304,7 @@ export interface CodexAutomationRunsInboxResponse {
 }
 
 export interface CodexAutomationRunReadStateInput {
-  threadId: string;
+  runId: string;
   readAt: number | null;
 }
 
@@ -2342,13 +2318,14 @@ export interface CodexAutomationRunMarkAllReadResponse {
 
 export interface CodexScheduledAutomationChangedEvent {
   automationId: string;
-  targetThreadId: string | null;
+  sessionId: string | null;
   reason: "upsert" | "delete";
 }
 
 export interface CodexAutomationRunsUpdatedEvent {
   automationId?: string | null;
-  threadId?: string | null;
+  runId?: string | null;
+  sessionId?: string | null;
   reason:
     | "archive"
     | "accepted"
@@ -2411,12 +2388,6 @@ export interface CodexCollaborationModePreset {
 export type CodexHeartbeatAutomationCollaborationMode =
   | CodexCollaborationModeKind
   | CodexCollaborationModeState;
-
-export interface CodexHeartbeatAutomationPermissions {
-  approvalPolicy?: CodexApprovalPolicy | null;
-  approvalsReviewer?: CodexApprovalsReviewer | null;
-  sandboxPolicy?: CodexSandboxPolicy | null;
-}
 
 export interface CodexConversationThreadSettings {
   model: CodexAppServerThreadSettings["model"];
@@ -2498,12 +2469,6 @@ export interface CodexThreadGoalMaterializedDraft {
   readonly attachmentDirectory: string | null;
 }
 
-export interface CodexThreadStartHeartbeatAutomationInput {
-  name: string;
-  prompt: string;
-  rrule: string;
-}
-
 export interface CodexThreadStartMemoryPreferences {
   generateMemories: boolean;
   useMemories: boolean;
@@ -2527,63 +2492,6 @@ export interface CodexProjectlessThreadCwdInput {
   createSplitDirectories?: boolean;
 }
 
-export interface CodexThreadStartForSessionInput {
-  presentationTicket?: CodexTurnPresentationTicket;
-  firstSubmission: ConversationFirstSubmissionIdentity;
-  /** Execution host selected by the owning caller for Thread creation and pending worktree setup. */
-  executionHostId?: string;
-  projectId: string | null;
-  sessionId: string;
-  prompt: string;
-  projectlessWorkspace?: CodexProjectlessWorkspace;
-  promptInput?: CodexPromptInput;
-  threadGoalDraft?: CodexThreadGoalDraftInput;
-  threadGoalMaterializedDraft?: CodexThreadGoalMaterializedDraft;
-  threadName?: string;
-  skipAutoTitleGeneration?: boolean;
-  model?: string;
-  executionProfile?: CodexExecutionProfile;
-  serviceTier?: CodexServiceTier;
-  permissionMode?: CodexPermissionMode;
-  permissionProfileId?: string;
-  reasoningEffort?: CodexReasoningEffort;
-  summary?: CodexAppServerReasoningSummary | null;
-  collaborationMode?: CodexCollaborationModeKind;
-  memoryPreferences?: CodexThreadStartMemoryPreferences | null;
-  mode?: string;
-  threadStartKind?: string;
-  baseInstructions?: string | null;
-  additionalDeveloperInstructions?: string | null;
-  runInTarget?: PageRunInTarget;
-  runInEnvironmentPath?: string | null;
-  worktreeStartingState?: CodexPendingWorktreeStartingState;
-  heartbeatAutomation?: CodexThreadStartHeartbeatAutomationInput | null;
-  /** Classifies the new Thread's origin without coupling launch to its caller. */
-  threadSource?: CodexAppServerThreadSource;
-  /** Surface that must own Browser Use before the first turn can start. */
-  browserUsePresentationOrigin?: BrowserUsePresentationOrigin;
-}
-
-export interface CodexFreshThreadLaunch {
-  readonly launchId: string;
-  readonly threadId: string;
-  readonly clientUserMessageId: string;
-}
-
-export type CodexThreadStartForSessionResult =
-  | {
-      kind: "started";
-      hostId: string;
-      detail: CodexThreadDetail;
-      freshLaunch?: CodexFreshThreadLaunch;
-    }
-  | {
-      kind: "pending";
-      hostId: string;
-      pendingWorktreeId: string;
-      clientThreadId: string;
-    };
-
 export interface CodexSideChatStartInput {
   presentationTicket?: CodexTurnPresentationTicket;
   clientUserMessageId?: string;
@@ -2593,7 +2501,7 @@ export interface CodexSideChatStartInput {
   promptInput?: CodexPromptInput;
   model?: string;
   serviceTier?: CodexServiceTier;
-  permissionMode?: CodexPermissionMode;
+
   reasoningEffort?: CodexReasoningEffort;
   collaborationMode?: CodexCollaborationModeKind;
 }
@@ -2610,7 +2518,7 @@ export interface CodexTurnStartOptions {
   serviceTier?: CodexServiceTier;
   reasoningEffort?: CodexReasoningEffort;
   summary?: CodexAppServerReasoningSummary | null;
-  permissionMode?: CodexPermissionMode;
+
   collaborationMode?: CodexCollaborationModeKind;
   promptInput?: CodexPromptInput;
 }
@@ -2821,7 +2729,6 @@ export interface CodexPromptAgentConfigInput {
   model?: string;
   reasoning?: string;
   speed?: string;
-  permission?: string;
   unknownAttributes?: string[];
 }
 
@@ -2907,33 +2814,6 @@ export interface CodexThreadActionResult {
   threadId: string;
   composerIntent?: CodexComposerIntent;
   streamRevision?: number;
-}
-
-export type CodexPermissionPreset = "read-only" | "auto" | "guardian-approvals" | "full-access";
-export type CodexPermissionMode = "auto" | "guardian-approvals" | "full-access" | "custom";
-export type CodexAgentMode =
-  | "read-only"
-  | "auto"
-  | "granular"
-  | "guardian-approvals"
-  | "full-access"
-  | "custom";
-
-export interface CodexPermissionConfigTarget {
-  source: "user" | "project" | "none";
-  filePath: string | null;
-}
-
-export interface CodexPermissionState {
-  mode: CodexPermissionMode;
-  effectivePreset: CodexPermissionPreset | "custom";
-  availableModes: CodexPermissionMode[];
-  approvalPolicy: CodexApprovalPolicy | null;
-  approvalsReviewer: CodexApprovalsReviewer;
-  sandboxMode: CodexSandboxMode | null;
-  sandbox: CodexSandboxPolicy | null;
-  autoReviewAvailable: boolean;
-  configTarget: CodexPermissionConfigTarget;
 }
 
 export type CodexTurnStatus = CodexAppServerTurnStatus;
@@ -3486,12 +3366,10 @@ export interface CodexConversationTurnPagination {
   itemsView: CodexAppServerTurnItemsView;
 }
 
-export type CodexApprovalKind = CodexApprovalResponse["kind"];
+export type CodexApprovalKind = "command" | "file";
 export type CodexNetworkApprovalContext = ProtocolNetworkApprovalContext;
 
 export type CodexNetworkPolicyAmendment = CodexAppServerNetworkPolicyAmendment;
-
-export type CodexApprovalDecision = CodexApprovalResponse["decision"];
 
 export interface CodexApprovalRequest {
   type: "approval";
@@ -3536,10 +3414,13 @@ export interface CodexUserInputQuestion {
 
 export interface CodexUserInputRequest {
   type: "userInput";
+  /** The execution owner determines which request controls may be used. */
+  executionOwner?: "agent-runtime";
   requestId: CodexAppServerRequestId;
   projectId: string | null;
   threadId: string;
-  turnId: string;
+  /** Session-origin questions retain unknown Turn attribution. */
+  turnId: string | null;
   itemId: string;
   questions: CodexUserInputQuestion[];
   isBlocking: boolean;
@@ -3640,8 +3521,6 @@ export interface CodexPermissionRequest {
   completed: boolean;
   createdAt: number;
 }
-
-export type CodexPermissionRequestResponse = CodexAppServerPermissionsRequestApprovalResponse;
 
 export interface CodexPendingSteer {
   steerId: string;
@@ -4511,7 +4390,6 @@ export type CodexConversationServerRequest =
   | CodexUserInputRequest
   | CodexMcpServerElicitationRequest
   | CodexPermissionRequest
-  | NodexAgentAuthorizationRequest
   | CodexPlanImplementationServerRequest;
 
 export type CodexConversationLiveRequest =
@@ -4618,6 +4496,7 @@ export interface CodexSubagentOverviewRow {
     linesRemoved: number;
   } | null;
   canOpen: boolean;
+  canStop?: boolean;
   canInteract: boolean;
 }
 
@@ -4710,11 +4589,6 @@ export type CodexEvent =
     }
   | { type: "turn"; turn: CodexTurnSummary }
   | { type: "approvalRequested"; request: CodexApprovalRequest }
-  | {
-      type: "approvalResolved";
-      requestId: CodexAppServerRequestId;
-      decision: CodexApprovalDecision;
-    }
   | { type: "userInputRequested"; request: CodexUserInputRequest }
   | { type: "userInputResolved"; requestId: CodexAppServerRequestId }
   | {
@@ -4783,24 +4657,6 @@ export type CodexSharedObject =
         clearOutput?: boolean;
         updatedAt: number;
       };
-    };
-
-export interface CodexRendererClientRequestMessage {
-  requestId: string;
-  method: string;
-  params: unknown;
-}
-
-export type CodexRendererClientResponseMessage =
-  | {
-      type: "success";
-      requestId: string;
-      result: unknown;
-    }
-  | {
-      type: "error";
-      requestId: string;
-      error: string;
     };
 
 export const CODEX_THREAD_OWNER_NOTIFICATION_METHODS = [

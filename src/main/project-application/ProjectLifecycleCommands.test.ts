@@ -1,5 +1,3 @@
-import { inactiveOpenCodeSessions } from "../agent-backend/opencode/OpenCodeSessionManager.test-fixtures";
-import { inactiveClaudeSessions } from "../agent-backend/claude/ClaudeSessionManager.test-fixtures";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -7,7 +5,7 @@ import { vi } from "vite-plus/test";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
 import type { Project, ProjectArchiveBlocker, ProjectSessionSummary } from "../../shared/types";
-import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { live as projectRuntimeLifecycleLive } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
@@ -16,10 +14,7 @@ import { ProjectArchiveBlockers } from "./ProjectArchiveBlockers";
 import { ProjectLifecycleCommands, live as productionLive } from "./ProjectLifecycleCommands";
 import { ProjectWorkspace, type ProjectWorkspaceService } from "./ProjectWorkspace";
 
-const live = productionLive.pipe(
-  Layer.provide(inactiveClaudeSessions),
-  Layer.provide(inactiveOpenCodeSessions),
-);
+const live = productionLive;
 
 const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
   id: "project-1",
@@ -40,7 +35,7 @@ const makeProject = (lifecycle: Project["lifecycle"] = "active"): Project => ({
 });
 
 const session = (
-  backendBinding: AgentBackendBinding = { kind: "codex" },
+  _backendBinding: AgentBackendBinding = { kind: "codex" },
   identity: { readonly sessionId: string; readonly threadId: string } = {
     sessionId: "session-1",
     threadId: "thread-1",
@@ -56,20 +51,8 @@ const session = (
   archived: false,
   archivedAt: null,
   unread: false,
-  thread: {
-    sessionId: identity.sessionId,
-    projectId: "project-1",
-    threadId: identity.threadId,
-    threadPreview: "",
-    backendBinding,
-    executionHostId: "local",
-    statusType: "idle",
-    statusActiveFlags: [],
-    archived: false,
-    createdAt: 1,
-    updatedAt: 1,
-    linkedAt: "2026-01-01T00:00:00.000Z",
-  },
+  executionRef: { runtimeId: "engine", threadId: identity.threadId },
+  thread: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
@@ -119,7 +102,7 @@ const testRuntime = (
   const closeBrowserConversation = vi.fn(() => Effect.void);
   const closeBrowserProject = vi.fn(() => Effect.void);
   const discardExitedSessionsForOwners = vi.fn(() => Effect.succeed<readonly string[]>([]));
-  const closeAgentSession = vi.fn(() => Effect.void);
+  const closeAgentSession = vi.fn(() => Effect.succeed({ closedBindings: 2 }));
   const workspace = ProjectWorkspace.of({
     getProject: () => Effect.succeed(project),
     listProjectSessionSummaryWindow: () =>
@@ -135,10 +118,10 @@ const testRuntime = (
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(
-          AcpBackendSessionManager,
-          AcpBackendSessionManager.of({
-            close: closeAgentSession,
-          } as unknown as AcpBackendSessionManager["Service"]),
+          AgentRuntimeApplication,
+          AgentRuntimeApplication.of({
+            closeProjectExecution: closeAgentSession,
+          } as unknown as AgentRuntimeApplication["Service"]),
         ),
         Layer.succeed(
           BrowserApplication,
@@ -243,7 +226,7 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
     assert.strictEqual(runtime.closeBrowserConversation.mock.calls.length, 2);
     assert.strictEqual(runtime.closeBrowserProject.mock.calls.length, 1);
     assert.strictEqual(runtime.discardExitedSessionsForOwners.mock.calls.length, 1);
-    assert.deepStrictEqual(runtime.closeAgentSession.mock.calls, [["thread-2"]]);
+    assert.deepStrictEqual(runtime.closeAgentSession.mock.calls, [["project-1"]]);
 
     const restored = yield* commands.setLifecycle(lifecycleCommand("active"));
     assert.strictEqual(restored.kind, "committed");
@@ -252,5 +235,14 @@ it.effect("archives, cleans Project-owned runtimes, and restores through one com
     assert.strictEqual(restored.result.value.project.lifecycle, "active");
     assert.strictEqual(runtime.setProjectLifecycle.mock.calls.length, 2);
     // this test owns the complete ProjectLifecycleCommands application layer.
+  }).pipe(Effect.provide(runtime.layer));
+});
+
+it.effect("archives an empty Project without activating execution", () => {
+  const runtime = testRuntime([[], []], []);
+  return Effect.gen(function* () {
+    const commands = yield* ProjectLifecycleCommands;
+    assert.equal((yield* commands.setLifecycle(lifecycleCommand("archived"))).kind, "committed");
+    assert.equal(runtime.closeAgentSession.mock.calls.length, 0);
   }).pipe(Effect.provide(runtime.layer));
 });

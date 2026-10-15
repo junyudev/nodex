@@ -8,7 +8,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-
 import {
   type LibraryApplyOperation,
   type LibraryModuleReadRequest,
@@ -16,45 +15,30 @@ import {
   type LibraryPageRelocationDestinationScope,
   type LibraryPageRelocationUndoToken,
   type LibraryReadValue,
-  type LibraryResourceTarget,
   type LibraryPlacedResourceTarget,
   type LibraryRouteTarget,
 } from "../../shared/library-module";
-import { libraryContentAccess } from "../../shared/content-access-context";
+import { libraryContentRoute } from "../../shared/content-routing-context";
 import { applyLibraryModule, readLibraryModule, subscribeLibraryChanges } from "./api";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { queryKeys } from "./query-keys";
 import { invalidateQueryFamilyExactly, queryFamilyProjectionCursor } from "./query-invalidation";
 import { useProjectionRegistration } from "./projection-invalidation-context";
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
 import { libraryCommandFor } from "./core-projection-commands";
 import { beginRendererOwnerTrace, recordRendererOwnerTrace } from "./renderer-causal-trace";
 
 export const libraryModuleQueryKey = queryKeys.library.all();
 
-const resolveLibraryReadAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const authorization = (data as { readonly authorization?: AuthorizedReadStamp | null } | null)
-    ?.authorization;
-  return authorization ? { authorizations: [authorization] } : null;
-};
-
-const libraryReadAuthorityMeta = resourceAuthorityQueryMeta(resolveLibraryReadAuthority);
-
 export const libraryMetadataQueryOptions = () =>
   queryOptions({
     queryKey: queryKeys.library.metadata(),
     queryFn: async () => {
-      const result = await readLibraryModule(libraryContentAccess, {
+      const result = await readLibraryModule(libraryContentRoute, {
         read: { mode: "metadata" },
       });
       if (!result.ok) throw new Error(result.error.message);
-      return await admitResourceAuthorityQuery(result.value, resolveLibraryReadAuthority);
+      return result.value;
     },
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -66,29 +50,23 @@ const requireReadValue = async <Kind extends LibraryReadValue["kind"]>(
     readonly libraryId: string;
     readonly storeEpoch: string;
     readonly commitSeq: number;
-    readonly authorization: AuthorizedReadStamp | null;
   }
 > => {
-  const result = await readLibraryModule(libraryContentAccess, request);
+  const result = await readLibraryModule(libraryContentRoute, request);
   if (!result.ok) throw new Error(result.error.message);
   if (result.value.value.kind !== kind) {
     throw new Error(`Library read returned ${result.value.value.kind}, expected ${kind}`);
   }
-  return await admitResourceAuthorityQuery(
-    {
-      ...result.value.value,
-      libraryId: result.value.libraryId,
-      storeEpoch: result.value.storeEpoch,
-      commitSeq: result.value.commitSeq,
-      authorization: result.value.authorization,
-    } as Extract<LibraryReadValue, { kind: Kind }> & {
-      readonly libraryId: string;
-      readonly storeEpoch: string;
-      readonly commitSeq: number;
-      readonly authorization: AuthorizedReadStamp | null;
-    },
-    resolveLibraryReadAuthority,
-  );
+  return {
+    ...result.value.value,
+    libraryId: result.value.libraryId,
+    storeEpoch: result.value.storeEpoch,
+    commitSeq: result.value.commitSeq,
+  } as Extract<LibraryReadValue, { kind: Kind }> & {
+    readonly libraryId: string;
+    readonly storeEpoch: string;
+    readonly commitSeq: number;
+  };
 };
 
 const parentKey = (parent: LibraryNavigationParent): string => {
@@ -121,7 +99,6 @@ export const libraryChildrenQueryOptions = (
         },
         "children",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -137,7 +114,6 @@ export const libraryStandaloneRootsQueryOptions = (
         },
         "standalone_roots",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -153,7 +129,6 @@ export const libraryCatalogQueryOptions = (
         },
         "catalog",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -173,7 +148,6 @@ export const libraryMoveDestinationsQueryOptions = (
         },
         "move_destinations",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -198,7 +172,6 @@ export const libraryPageRelocationDestinationsQueryOptions = (
         },
         "page_relocation_destinations",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -212,7 +185,6 @@ export const libraryPathQueryOptions = (target: LibraryRouteTarget) =>
         },
         "path",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
   });
 
@@ -226,28 +198,7 @@ export const libraryCanvasTargetQueryOptions = (canvasId: string) =>
         },
         "canvas_target",
       ),
-    meta: libraryReadAuthorityMeta,
     staleTime: 30_000,
-  });
-
-export const libraryResourceProjectAccessQueryOptions = (target: LibraryResourceTarget) =>
-  queryOptions({
-    queryKey: queryKeys.library.resourceProjectAccess(target),
-    queryFn: () =>
-      requireReadValue(
-        {
-          read: { mode: "resource_project_access", target },
-        },
-        "resource_project_access",
-      ),
-    meta: libraryReadAuthorityMeta,
-    staleTime: 30_000,
-  });
-
-export const useLibraryResourceProjectAccess = (target: LibraryResourceTarget, enabled = true) =>
-  useQuery({
-    ...libraryResourceProjectAccessQueryOptions(target),
-    enabled,
   });
 
 export const useLibraryNavigationInvalidation = (): string | null => {
@@ -306,7 +257,7 @@ export const useApplyLibraryOperation = () => {
         scopeKind: "library",
       });
       recordRendererOwnerTrace(trace, { kind: "local_intent", reason: "local_intent" });
-      const result = await applyLibraryModule(libraryContentAccess, request);
+      const result = await applyLibraryModule(libraryContentRoute, request);
       if (!result.ok) throw new Error(result.error.message);
       await queryClient.invalidateQueries({ queryKey: libraryModuleQueryKey });
       recordRendererOwnerTrace(trace, { kind: "result", reason: "terminal_result" });
@@ -340,7 +291,7 @@ export const useUndoLibraryPageRelocation = () => {
       scopeKind: "library",
     });
     recordRendererOwnerTrace(trace, { kind: "local_intent", reason: "local_intent" });
-    const result = await applyLibraryModule(libraryContentAccess, request);
+    const result = await applyLibraryModule(libraryContentRoute, request);
     if (!result.ok) throw new Error(result.error.message);
     await queryClient.invalidateQueries({ queryKey: libraryModuleQueryKey });
     recordRendererOwnerTrace(trace, { kind: "result", reason: "terminal_result" });
@@ -379,7 +330,6 @@ export const useInfiniteLibraryChildren = (
         },
         "children",
       ),
-    meta: libraryReadAuthorityMeta,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 30_000,
     enabled,
@@ -403,7 +353,6 @@ export const useInfiniteLibraryStandaloneRoots = (
         },
         "standalone_roots",
       ),
-    meta: libraryReadAuthorityMeta,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 30_000,
     enabled,
@@ -450,7 +399,6 @@ export const useInfiniteLibraryMoveDestinations = (
         },
         "move_destinations",
       ),
-    meta: libraryReadAuthorityMeta,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     staleTime: 30_000,
     enabled,

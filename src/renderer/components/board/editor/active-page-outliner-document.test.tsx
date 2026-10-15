@@ -8,7 +8,7 @@ import {
   restoreRichTitleDomSelection,
 } from "@/lib/rich-title-editor-dom";
 import { render } from "@/test/dom";
-import { projectContentAccess } from "../../../../shared/content-access-context";
+import { projectContentRoute } from "../../../../shared/content-routing-context";
 import type { OwnedDocumentDescriptor } from "../../../../shared/block-documents/contracts";
 import { ActivePageOutlinerDocument } from "./active-page-outliner-document";
 
@@ -77,7 +77,7 @@ const target: AvailablePageOutlinerTarget = {
   status: "available",
   relationship: "child",
   targetBlockId: "nested-page",
-  contentAccessContext: projectContentAccess("project-a"),
+  contentRoutingContext: projectContentRoute("project-a"),
   lifecycle: "active",
   inlineMode: "editable",
   fallbackTitle: "Nested Page",
@@ -108,7 +108,7 @@ const rowProps = (expanded: boolean): PageOutlinerRowChromeProps => ({
 });
 
 const hostRuntime = {
-  contentAccessContext: { kind: "project", projectId: "project-a" } as const,
+  contentRoutingContext: { kind: "project", projectId: "project-a" } as const,
   projectName: "Project A",
   projectWorkspacePath: null,
   hostPageId: "host-page",
@@ -129,7 +129,7 @@ function createSurface() {
       documentId: "document:nested",
       descriptor: {
         libraryId: "library:a",
-        accessContext: projectContentAccess("project-a"),
+        routingContext: projectContentRoute("project-a"),
         documentId: "document:nested",
         ownerBlockId: "nested-page",
         ownerType: "page",
@@ -139,7 +139,6 @@ function createSurface() {
         headSeq: 0,
         schemaKey: "nfm",
         schemaVersion: 1,
-        authorization: null,
         readiness: "ready",
         sync: { kind: "yjs", stateVector: Y.encodeStateVector(document) },
       } satisfies OwnedDocumentDescriptor,

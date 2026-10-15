@@ -94,6 +94,27 @@ it.live("Host callbacks may re-enter the process without blocking their command 
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.live("admits private provider authentication separately from Turn tool identity", () =>
+  Effect.gen(function* () {
+    let calls = 0;
+    const connection = yield* acquire((request) =>
+      Effect.sync(() => {
+        calls += 1;
+        assert.strictEqual(request.operation, "provider.auth");
+        if (request.operation !== "provider.auth")
+          return assert.fail("expected provider auth callback");
+        assert.strictEqual(request.identity.runtimeId, "fixture-runtime");
+        assert.strictEqual(request.identity.providerInstanceId, "codex");
+        assert.strictEqual(request.refresh, true);
+        assert.strictEqual(request.previousAccountId, "account");
+        return null;
+      }),
+    );
+    assert.isNull(yield* connection.request("project.read", { projectId: "host-auth" }));
+    assert.strictEqual(calls, 1);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live("unexpected process exit rejects pending work and Scope close reaps the child", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -112,41 +133,122 @@ it.live("unexpected process exit rejects pending work and Scope close reaps the 
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.live("transcript bursts cannot evict lifecycle metadata from its independent delivery budget", () =>
-  Effect.gen(function* () {
-    const connection = yield* acquire();
-    const metadata = yield* connection.subscribeExecutionNotifications;
-    yield* connection.request("execution.observe", {});
-    yield* connection.request("events.observe", {});
-    yield* connection.request("thread.read", { threadId: "thread" });
-    const delivered = yield* metadata.pipe(Stream.take(2), Stream.runCollect, Effect.timeout("2 seconds"));
-    assert.deepEqual(delivered.map((entry) => entry.delivery), [1, 2]);
-    assert.deepEqual(delivered.map((entry) => entry.notification.type), ["execution.lifecycle", "execution.lifecycle"]);
-  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+it.live(
+  "transcript bursts cannot evict lifecycle metadata from its independent delivery budget",
+  () =>
+    Effect.gen(function* () {
+      const connection = yield* acquire();
+      const metadata = yield* connection.subscribeExecutionNotifications;
+      yield* connection.request("execution.observe", {});
+      yield* connection.request("events.observe", {});
+      yield* connection.request("thread.read", { threadId: "thread" });
+      const delivered = yield* metadata.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.timeout("2 seconds"),
+      );
+      assert.deepEqual(
+        delivered.map((entry) => entry.delivery),
+        [1, 2],
+      );
+      assert.deepEqual(
+        delivered.map((entry) => entry.notification.type),
+        ["execution.lifecycle", "execution.lifecycle"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("snapshot release remains admitted with every normal request slot occupied", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
     const notifications = yield* connection.subscribeNotifications;
-    const pending = yield* Effect.forEach(Array.from({ length: 64 }, (_, index) => index), (index) =>
-      connection.request("project.read", { projectId: `blocked:${index}` }).pipe(Effect.forkScoped({ startImmediately: true })),
+    const pending = yield* Effect.forEach(
+      Array.from({ length: 64 }, (_, index) => index),
+      (index) =>
+        connection
+          .request("project.read", { projectId: `blocked:${index}` })
+          .pipe(Effect.forkScoped({ startImmediately: true })),
     );
     yield* Stream.runHead(notifications).pipe(Effect.timeout("2 seconds"));
     const refused = yield* connection.request("runtime.identity", {}).pipe(Effect.flip);
     assert.isTrue(Schema.is(AgentRuntimeProcessError)(refused));
     assert.strictEqual(refused.reason, "pressure");
-    assert.deepEqual(yield* connection.request("storage.snapshot.release", { leaseId: "lease" }), { released: true });
+    assert.deepEqual(yield* connection.request("storage.snapshot.release", { leaseId: "lease" }), {
+      released: true,
+    });
     yield* Effect.forEach(pending, Fiber.join);
-    assert.strictEqual((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
+    assert.strictEqual(
+      (yield* connection.request("runtime.identity", {})).runtimeId,
+      "fixture-runtime",
+    );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.live("distinguishes a known remote refusal from an uncertain transport timeout", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();
-    const rejected = yield* connection.request("project.read", { projectId: "reject" }).pipe(Effect.flip);
+    const rejected = yield* connection
+      .request("project.read", { projectId: "reject" })
+      .pipe(Effect.flip);
     assert.strictEqual(rejected.reason, "rejected");
-    assert.strictEqual((yield* connection.request("runtime.identity", {})).runtimeId, "fixture-runtime");
+    assert.strictEqual(
+      (yield* connection.request("runtime.identity", {})).runtimeId,
+      "fixture-runtime",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live(
+  "Session-only tool calls preserve null Run and native retirement reaches the lifecycle channel",
+  () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const connection = yield* acquire((request) =>
+        Effect.sync(() => {
+          calls++;
+          assert.equal(request.operation, "tool.call");
+          if (request.operation !== "tool.call" || request.identity.runId !== null)
+            return assert.fail("Expected native Session identity");
+          assert.equal(request.identity.incarnationId, "incarnation");
+          assert.isNull(request.identity.attemptId);
+          return null;
+        }),
+      );
+      assert.isNull(
+        yield* connection.request("project.read", { projectId: "host-native-session" }),
+      );
+      assert.equal(calls, 1);
+      const lifecycle = yield* connection.subscribeExecutionNotifications;
+      yield* connection.request("project.read", { projectId: "native-session-closed" });
+      const retired = yield* lifecycle.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.timeout("2 seconds"),
+      );
+      assert.deepEqual(retired[0]?.notification, {
+        type: "execution.native-session.closed",
+        runtimeId: connection.identity.runtimeId,
+        runtimeGeneration: connection.identity.runtimeGeneration,
+        providerSessionId: "acp-session",
+        nativeGeneration: 1,
+        incarnationId: "incarnation",
+      });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.live("a native Session source cannot masquerade as Run preparation", () =>
+  Effect.gen(function* () {
+    let called = false;
+    const connection = yield* acquire(() =>
+      Effect.sync(() => {
+        called = true;
+        return null;
+      }),
+    );
+    const failure = yield* connection
+      .request("project.read", { projectId: "invalid-native-prepare" })
+      .pipe(Effect.flip);
+    assert.equal(failure.reason, "protocol");
+    assert.isFalse(called);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

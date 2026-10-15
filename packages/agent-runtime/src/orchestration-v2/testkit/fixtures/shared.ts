@@ -301,7 +301,6 @@ export type OrchestratorFixtureInputStep =
 
 export interface OrchestratorFixtureInput {
   readonly interactionMode?: ProviderInteractionMode;
-  /** The thread's permission mode; fixtures default to full access. */
   readonly runtimeMode?: RuntimeMode;
   /**
    * Files committed into the replay workspace before the scenario runs, keyed
@@ -399,55 +398,6 @@ export const ACP_REGISTRY_MODEL_SELECTION = {
   instanceId: ProviderInstanceId.make("acpRegistry"),
   model: "default",
 } satisfies ModelSelection;
-
-export const READ_ONLY_ON_REQUEST_POLICY = {
-  approvalPolicy: "on-request",
-  sandboxPolicy: {
-    type: "readOnly",
-    access: { type: "fullAccess" },
-    networkAccess: false,
-  },
-} as const satisfies RuntimePolicyV2Override;
-
-export const READ_ONLY_NEVER_POLICY = {
-  approvalPolicy: "never",
-  sandboxPolicy: {
-    type: "readOnly",
-    access: { type: "fullAccess" },
-    networkAccess: false,
-  },
-} as const satisfies RuntimePolicyV2Override;
-
-export const WORKSPACE_NEVER_POLICY = {
-  approvalPolicy: "never",
-  sandboxPolicy: {
-    type: "workspaceWrite",
-    writableRoots: [],
-    readOnlyAccess: { type: "fullAccess" },
-    networkAccess: false,
-  },
-} as const satisfies RuntimePolicyV2Override;
-
-export const RESTRICTED_GRANULAR_POLICY = {
-  approvalPolicy: {
-    granular: {
-      mcp_elicitations: true,
-      request_permissions: true,
-      rules: true,
-      sandbox_approval: true,
-      skill_approval: true,
-    },
-  },
-  sandboxPolicy: {
-    type: "readOnly",
-    access: {
-      type: "restricted",
-      includePlatformDefaults: false,
-      readableRoots: [],
-    },
-    networkAccess: false,
-  },
-} as const satisfies RuntimePolicyV2Override;
 
 function createThreadCommand(input: {
   readonly commandId: CommandId;
@@ -992,6 +942,7 @@ export function assertBaseProjection(input: {
     assert.deepEqual(
       projection.runs.map((run) => run.status),
       input.runStatuses,
+      projection.turnItems.filter((item) => item.type === "error").map((item) => item.failure.message).join("; "),
     );
   }
 }

@@ -15,6 +15,150 @@ type Surface = readonly [
  */
 const VERSION_SURFACES: readonly Surface[] = [
   [
+    "packages/agent-runtime/src/cloud/serviceProtocol.ts:EXACT_SERVICE_VERSION",
+    "algorithmIdentity",
+    "Agent service version grammar",
+    "reject invalid remote service identities",
+  ],
+  [
+    "packages/agent-runtime/src/device/DeviceToolchain.ts:AGENT_DEVICE_VERSION",
+    "runtimeCompatibility",
+    "Agent device tooling",
+    "install the pinned device tool",
+  ],
+  [
+    "packages/agent-runtime/src/device/DeviceToolchain.ts:DEVICE_HUB_VERSION",
+    "runtimeCompatibility",
+    "Device hub tooling",
+    "install the pinned device hub",
+  ],
+  [
+    "packages/agent-runtime/src/mcp/AcpMcpStdioBridge.ts:MCP_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Agent MCP stdio bridge",
+    "negotiate the native MCP protocol",
+  ],
+  [
+    "packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts:ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION",
+    "durableFormat",
+    "Agent projection store",
+    "rebuild projections with the current schema",
+  ],
+  [
+    "packages/agent-runtime/src/provider/antigravityRelease.ts:ANTIGRAVITY_RELEASE_VERSION",
+    "runtimeCompatibility",
+    "Antigravity installation",
+    "select the supported provider release",
+  ],
+  [
+    "packages/agent-runtime/src/usage/usageScanCache.ts:SPEED_COMPATIBLE_SINCE_VERSION",
+    "durableFormat",
+    "Agent usage scan cache",
+    "decode compatible service-tier cache rows",
+  ],
+  [
+    "packages/agent-runtime/src/usage/usageScanCache.ts:USAGE_SCAN_CACHE_VERSION",
+    "durableFormat",
+    "Agent usage scan cache",
+    "decode or rebuild persisted scan results",
+  ],
+  [
+    "packages/agent-runtime/vendor/contracts/src/desktopAppActivation.ts:DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Agent desktop activation protocol",
+    "validate independent desktop activation peers",
+  ],
+  [
+    "packages/agent-runtime/vendor/contracts/src/environment.ts:ORCHESTRATION_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Agent orchestration protocol",
+    "negotiate orchestration messages with independent peers",
+  ],
+  [
+    "packages/agent-runtime/vendor/contracts/src/resourceTelemetry.ts:RESOURCE_MONITOR_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Agent resource telemetry protocol",
+    "validate independent resource telemetry peers",
+  ],
+  [
+    "packages/agent-runtime/vendor/contracts/src/usage.ts:USAGE_CONTRACT_VERSION",
+    "runtimeCompatibility",
+    "Agent usage reporting protocol",
+    "merge compatible external usage summaries",
+  ],
+  [
+    "packages/agent-runtime/vendor/effect-acp/src/_generated/meta.gen.ts:PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Native ACP protocol",
+    "advertise generated native protocol requirements",
+  ],
+  [
+    "packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts:EXACT_RUNNER_VERSION",
+    "algorithmIdentity",
+    "ACP runner version grammar",
+    "require a pinned runner package identity",
+  ],
+  [
+    "packages/agent-runtime/vendor/provider-cursor/src/server/accountCache.ts:CURSOR_ACCOUNT_CACHE_VERSION",
+    "durableFormat",
+    "Cursor account cache",
+    "decode or replace persisted account rows",
+  ],
+  [
+    "packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts:MINIMUM_OPENCODE_VERSION",
+    "runtimeCompatibility",
+    "OpenCode runtime",
+    "reject unsupported native provider versions",
+  ],
+  [
+    "packages/agent-runtime/vendor/provider-pi/src/server/status.ts:MINIMUM_PI_VERSION",
+    "runtimeCompatibility",
+    "Pi runtime",
+    "require native history and terminalization support",
+  ],
+  [
+    "packages/agent-runtime/vendor/shared/src/mcpApp.ts:MCP_APP_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Agent MCP Apps protocol",
+    "negotiate the MCP Apps extension",
+  ],
+  [
+    "packages/agent-runtime/vendor/shared/src/relayClient.ts:CLOUDFLARED_MIN_VERSION",
+    "runtimeCompatibility",
+    "Agent relay connector",
+    "reject binaries without the required connector flags",
+  ],
+  [
+    "packages/agent-runtime/vendor/shared/src/relayClient.ts:CLOUDFLARED_VERSION",
+    "runtimeCompatibility",
+    "Agent relay installation",
+    "install the supported relay release",
+  ],
+  [
+    "packages/agent-runtime/vendor/source-control-azure-devops/src/server/AzureDevOpsPullRequestCli.ts:REST_API_VERSION",
+    "runtimeCompatibility",
+    "Azure DevOps REST adapter",
+    "request the pinned remote API format",
+  ],
+  [
+    "packages/agent-runtime/vendor/source-control-github/src/server/GitHubApi.ts:API_VERSION",
+    "runtimeCompatibility",
+    "GitHub REST adapter",
+    "request the pinned remote API format",
+  ],
+  [
+    "packages/agent-runtime/vendor/ssh/src/tunnel.ts:EXACT_ARCHIVE_VERSION",
+    "algorithmIdentity",
+    "Agent SSH archive version grammar",
+    "reject unsafe archive identities",
+  ],
+  [
+    "src/shared/codex-app-server-version.ts:CODEX_THREAD_TIMELINE_MINIMUM_VERSION",
+    "runtimeCompatibility",
+    "Codex thread timeline",
+    "use timeline queries only for supported native versions",
+  ],
+  [
     "crates/nodex-browser-profile-helper/src/main.rs:SCHEMA_VERSION",
     "runtimeCompatibility",
     "browser Profile helper protocol",
@@ -387,12 +531,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "pin the reference input",
   ],
   [
-    "src/main/agent-backend/acp/ClaudeAcpAgentDefinition.ts:CLAUDE_ACP_PACKAGE_VERSION",
-    "runtimeCompatibility",
-    "Claude ACP installation",
-    "verify the installed package against the pinned agent definition",
-  ],
-  [
     "src/main/browser-use/chrome/ChromeNativeHostInstaller.ts:APP_SERVER_PROTOCOL_VERSION",
     "runtimeCompatibility",
     "Chrome native host registry app-server protocol",
@@ -639,12 +777,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "reject unsupported frames",
   ],
   [
-    "src/shared/nodex-agent-authority.ts:NODEX_AGENT_AUTHORITY_PROVENANCE_VERSION",
-    "durableFormat",
-    "Agent authority provenance",
-    "decode durable evidence",
-  ],
-  [
     "src/shared/recipient-delivery.ts:RECIPIENT_DELIVERY_VERSION",
     "durableFormat",
     "recipient delivery",
@@ -714,7 +846,9 @@ const failures = [
     .filter(
       (key) =>
         key.slice(key.lastIndexOf(":") + 1).endsWith("CONTRACT_VERSION") &&
-        !key.startsWith("crates/nodex-core-contracts/src/"),
+        !key.startsWith("crates/nodex-core-contracts/src/") &&
+        // This is an external usage wire contract, never a Core Module requirement.
+        key !== "packages/agent-runtime/vendor/contracts/src/usage.ts:USAGE_CONTRACT_VERSION",
     )
     .map(
       (key) => `shadow *_CONTRACT_VERSION is forbidden outside generated Core requirements: ${key}`,

@@ -994,7 +994,7 @@ const isIdentity = (value: unknown): value is string =>
 const isNonNegativeSafeInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
-const isDeliveryAuthorizationScope = (value: unknown, expectedLibraryId: string): boolean => {
+const isDeliveryAddress = (value: unknown, expectedLibraryId: string): boolean => {
   if (typeof value !== "object" || value === null || !("kind" in value)) {
     return false;
   }
@@ -1056,16 +1056,13 @@ const parseProjectionLiveBarrier = (
       (lease) =>
         typeof lease === "object" &&
         lease !== null &&
-        hasExactKeys(lease, ["authorization_scope", "delivery_address", "lease_id"]) &&
+        hasExactKeys(lease, ["delivery_address", "lease_id"]) &&
         "lease_id" in lease &&
         typeof lease.lease_id === "string" &&
         /^[a-f0-9]{64}$/u.test(lease.lease_id) &&
-        "authorization_scope" in lease &&
-        isDeliveryAuthorizationScope(lease.authorization_scope, contract.libraryId) &&
-        lease.authorization_scope.kind !== "document" &&
         "delivery_address" in lease &&
-        isDeliveryAuthorizationScope(lease.delivery_address, contract.libraryId) &&
-        JSON.stringify(lease.delivery_address) === JSON.stringify(lease.authorization_scope),
+        isDeliveryAddress(lease.delivery_address, contract.libraryId) &&
+        lease.delivery_address.kind !== "document",
     ) ||
     new Set(value.recipient_leases.map((lease) => JSON.stringify(lease.delivery_address))).size !==
       value.recipient_leases.length
@@ -1181,7 +1178,6 @@ const parseDocumentLiveRepair = (json: string, contract: CoreEventContract): Doc
     "receiver_lagged",
     "payload_unavailable",
     "identity_changed",
-    "access_revoked",
     "event_gap",
   ]);
   if (

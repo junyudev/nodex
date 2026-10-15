@@ -75,7 +75,7 @@ describe("createElectronDocumentSyncAdapter", () => {
   test("admits a committed delivery before resolving the document ACK", async () => {
     const bridge = new FakeBridge();
     const delivery = createCoreLocalCommitFixture({
-      authorizationScope: {
+      deliveryAddress: {
         kind: "project",
         library_id: "library-1",
         project_id: "project-1",

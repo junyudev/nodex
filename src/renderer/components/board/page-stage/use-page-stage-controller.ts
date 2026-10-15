@@ -13,9 +13,9 @@ import {
 } from "@/lib/page-stage-properties";
 import { useScheduleState, type PageScheduleSource } from "@/lib/use-schedule-state";
 import {
-  projectIdFromContentAccessContext,
-  type ContentAccessContext,
-} from "../../../../shared/content-access-context";
+  projectIdFromContentRoutingContext,
+  type ContentRoutingContext,
+} from "../../../../shared/content-routing-context";
 import type {
   PageStageMetadataMutationResult,
   PageStageProps,
@@ -28,7 +28,7 @@ import {
 
 interface UsePageStageControllerResult {
   page: PageStageCorePage | null;
-  contentAccessContext: ContentAccessContext;
+  contentRoutingContext: ContentRoutingContext;
   storeEpoch: string;
   hasDatabaseProperties: boolean;
   propertyControls: PageStagePropertyControls;
@@ -140,7 +140,7 @@ export function usePageStageController(
     persistRef,
     sessionSnapshotRef,
     page: pageModel,
-    contentAccessContext,
+    contentRoutingContext,
     onUpdate,
     onDelete,
     onCompleteOccurrence,
@@ -161,7 +161,7 @@ export function usePageStageController(
     historyPanelActive = false,
     isActivePanelTab = true,
   } = props;
-  const executionProjectId = projectIdFromContentAccessContext(contentAccessContext);
+  const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
   const page = pageModel?.page ?? null;
   const databaseSemantic =
     pageModel?.databaseContext.kind === "member"
@@ -198,7 +198,7 @@ export function usePageStageController(
 
   const propertyControls = usePageStageProperties({
     pageModel,
-    contentAccessContext,
+    contentRoutingContext,
     onUpdateProperty: props.onUpdateProperty,
     onOpenPage: props.onOpenPage,
     onRefreshProperties: props.onRefreshProperties,
@@ -400,7 +400,7 @@ export function usePageStageController(
 
   return {
     page,
-    contentAccessContext,
+    contentRoutingContext,
     storeEpoch: props.documentAuthority.descriptor.storeEpoch,
     hasDatabaseProperties: propertyControls.properties.length > 0,
     propertyControls,

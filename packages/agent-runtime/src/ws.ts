@@ -151,7 +151,6 @@ import {
   THREAD_RESUME_MAX_REPLAY_EVENTS,
 } from "./orchestration-v2/ThreadStream.ts";
 import {
-  buildBoundedThreadProjection,
   THREAD_HISTORY_PAGE_POLICY,
   THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
 } from "./orchestration-v2/threadHistoryPaging.ts";
@@ -1488,7 +1487,7 @@ const layerWsRpc = (
                   projectId: input.projectId,
                   title: input.title ?? "Imported ACP session",
                   modelSelection: { instanceId: input.instanceId, model },
-                  runtimeMode: "approval-required",
+                  runtimeMode: "full-access",
                   interactionMode: "default",
                   workspaceStrategy: { type: "root" },
                   importedNativeThread: {
@@ -1931,14 +1930,7 @@ const layerWsRpc = (
                   rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
                 })
                 .pipe(
-                  Effect.map((snapshot) =>
-                    projectThreadProjectionForWire(
-                      buildBoundedThreadProjection({
-                        projection: snapshot.projection,
-                        snapshotSequence: snapshot.snapshotSequence,
-                      }).projection,
-                    ),
-                  ),
+                  Effect.map((snapshot) => buildBoundedThreadStreamSnapshot(snapshot).projection),
                   Effect.mapError(
                     (cause) =>
                       new OrchestrationV2GetThreadProjectionError({

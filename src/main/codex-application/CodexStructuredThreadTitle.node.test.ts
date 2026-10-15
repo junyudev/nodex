@@ -194,7 +194,8 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
     assert.strictEqual(threadStartRequests[0]?.dynamicTools, null);
     assert.strictEqual(threadStartRequests[0]?.config?.["model_reasoning_effort"], "low");
     assert.strictEqual(threadStartRequests[0]?.config?.["features.enable_fanout"], false);
-    assert.strictEqual(threadStartRequests[0]?.config?.["features.apps"], false);
+    assert.isUndefined(threadStartRequests[0]?.config?.["apps"]);
+    assert.isUndefined(threadStartRequests[0]?.config?.["features.apps"]);
     assert.deepEqual(threadStartRequests[0]?.config?.["mcp_servers.codex_app"], {
       enabled: false,
       command: "",
@@ -202,7 +203,7 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
     assert.strictEqual(threadStartRequests[0]?.serviceName, "source-service");
     assert.strictEqual(turnStartRequests[0]?.threadId, "thread-title-1");
     assert.strictEqual(turnStartRequests[0]?.turnTrigger, "thread_title");
-    assert.strictEqual(turnStartRequests[0]?.permissions, ":read-only");
+    assert.strictEqual(turnStartRequests[0]?.permissions, ":danger-full-access");
     assert.deepEqual(lifecycle, [
       "register:thread-title-1",
       "unsubscribe:thread-title-1",
@@ -572,7 +573,7 @@ it.effect("reconsiders a generated title in an exclude-turns fork of the source 
     assert.strictEqual(forkRequests[0]?.serviceTier, null);
     assert.strictEqual(forkRequests[0]?.cwd, "/repo");
     assert.strictEqual(forkRequests[0]?.approvalPolicy, "never");
-    assert.strictEqual(forkRequests[0]?.permissions, ":read-only");
+    assert.strictEqual(forkRequests[0]?.permissions, ":danger-full-access");
     assert.deepEqual(forkRequests[0]?.runtimeWorkspaceRoots, []);
     assert.strictEqual(forkRequests[0]?.ephemeral, true);
     assert.strictEqual(forkRequests[0]?.excludeTurns, true);

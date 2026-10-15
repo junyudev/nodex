@@ -28,7 +28,7 @@ import {
   pointerDownAndSettle,
   renderWorkbench,
   rendererCommandPayload,
-  startThreadForSessionCalls,
+  agentRuntimeLaunchCalls,
   startTurnCalls,
   setInvokeCalls,
   setPageChatItems,
@@ -42,7 +42,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           id: "calendar-db",
           title: "Calendar",
           kind: "db_view",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         }),
       ],
     });
@@ -78,7 +78,6 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
 
     expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
-    expect(startThreadForSessionCalls).toHaveLength(0);
     expect(screen.getByRole("tab", { name: "Card One" }) !== null).toBe(true);
     expect(screen.container.querySelector('[data-app-shell-tab-preview="true"]') !== null).toBe(
       true,
@@ -374,7 +373,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       expect(input?.title).toBe("Card One");
       expect(JSON.stringify(input?.config)).toBe(
         JSON.stringify({
-          accessContext: { kind: "project", projectId: "alpha" },
+          routingContext: { kind: "project", projectId: "alpha" },
           pageId: "card-1",
           titleSnapshot: "Card One",
         }),
@@ -571,7 +570,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "card-tab",
@@ -581,7 +580,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Beta Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "beta" },
+            routingContext: { kind: "project", projectId: "beta" },
             pageId: "card-beta",
             titleSnapshot: "Beta Card",
           },
@@ -610,14 +609,14 @@ describe("workbench session shell / pages-shell-navigation", () => {
       | {
           kind?: string;
           descriptor?: {
-            accessContext?: { kind: string; projectId?: string };
+            routingContext?: { kind: string; projectId?: string };
             ownerBlockId?: string;
           };
         }
       | undefined;
     expect(pageModel?.page?.id).toBe("card-beta");
     expect(documentAuthority?.kind).toBe("yjs");
-    expect(documentAuthority?.descriptor?.accessContext).toEqual({
+    expect(documentAuthority?.descriptor?.routingContext).toEqual({
       kind: "project",
       projectId: "beta",
     });
@@ -636,7 +635,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -682,11 +681,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
 
     expect(JSON.stringify(result)).toBe(
       JSON.stringify({
-        threadId: "thread-started",
+        threadId: "engine:session:alpha:card-empty",
         sessionId: "session:alpha:card-empty",
       }),
     );
-    expect(startThreadForSessionCalls.length).toBe(1);
+    expect(agentRuntimeLaunchCalls).toHaveLength(1);
     expect(
       invokeCalls.some(
         (call) =>
@@ -696,19 +695,14 @@ describe("workbench session shell / pages-shell-navigation", () => {
             JSON.stringify({ pageAccessProjectId: "alpha", pageId: "card-1" }),
       ),
     ).toBe(true);
-    const startInput = startThreadForSessionCalls[0] as {
-      readonly firstSubmission?: {
-        readonly launchId?: string;
-        readonly clientUserMessageId?: string;
-      };
-    };
-    expect(isUuidV7(startInput.firstSubmission?.launchId ?? "")).toBe(true);
-    expect(isUuidV7(startInput.firstSubmission?.clientUserMessageId ?? "")).toBe(true);
+    const startInput = agentRuntimeLaunchCalls[0]!;
+    expect(isUuidV7(startInput.launchId)).toBe(true);
+    expect(isUuidV7(startInput.message.messageId)).toBe(true);
     expect(startInput).toMatchObject({
       projectId: "alpha",
       sessionId: "session:alpha:card-empty",
-      prompt: "Send selected blocks",
-      skipAutoTitleGeneration: false,
+      message: { text: "Send selected blocks" },
+      initialPageIds: ["card-1"],
       runInTarget: "localProject",
     });
     expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
@@ -726,7 +720,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -758,9 +752,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
-      .__lastPageStageProps;
     await waitFor(() => {
+      const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
+        .__lastPageStageProps;
       expect(pageStageProps?.relatedChats).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -770,6 +764,8 @@ describe("workbench session shell / pages-shell-navigation", () => {
         ]),
       );
     });
+    const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
+      .__lastPageStageProps;
     const remove = pageStageProps?.onRemoveRelatedChat as
       | ((sessionId: string) => Promise<void>)
       | undefined;
@@ -790,6 +786,8 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const session = makeAttachedSession({
       id: "session:alpha:card-thread-section",
       threadId: "thread-section-target",
+      thread: null,
+      executionRef: { runtimeId: "runtime:test", threadId: "thread-section-target" },
       tabs: [
         {
           id: "card-tab",
@@ -799,7 +797,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -834,19 +832,21 @@ describe("workbench session shell / pages-shell-navigation", () => {
       await Promise.resolve();
     });
 
-    expect(invokeCalls[0]).toEqual([
+    const linkIndex = invokeCalls.findIndex((call) => call[0] === "page-chats:link");
+    const sendIndex = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:message");
+    expect(linkIndex).toBeGreaterThanOrEqual(0);
+    expect(sendIndex).toBeGreaterThan(linkIndex);
+    expect(invokeCalls[linkIndex]).toEqual([
       "page-chats:link",
       "session:alpha:card-thread-section",
       { pageAccessProjectId: "alpha", pageId: "card-1" },
     ]);
-    expect(startTurnCalls).toEqual([
-      [
-        "thread-section-target",
-        "Run this section",
-        { projectId: "alpha", promptInput: { text: "Run this section" } },
-        expect.objectContaining({ rendererGeneration: "test-generation" }),
-      ],
-    ]);
+    expect(invokeCalls[sendIndex]![1]).toMatchObject({
+      sessionId: "session:alpha:card-thread-section",
+      threadId: "thread-section-target",
+      message: { text: "Run this section" },
+    });
+    expect(startTurnCalls).toHaveLength(0);
   });
 
   test("page-stage editor can open a mentioned thread session", async () => {
@@ -862,7 +862,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -917,7 +917,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "card-tab",
@@ -927,7 +927,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Stale Beta Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "beta" },
+            routingContext: { kind: "project", projectId: "beta" },
             pageId: "card-beta",
             titleSnapshot: "Stale Beta Card",
           },
@@ -1025,7 +1025,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1038,7 +1038,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Stale duplicate",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Stale duplicate",
           },
@@ -1102,7 +1102,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "page-tab",
@@ -1112,7 +1112,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1173,7 +1173,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1224,7 +1224,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Beta Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "beta" },
+            routingContext: { kind: "project", projectId: "beta" },
             pageId: "card-beta",
             titleSnapshot: "Beta Card",
           },
@@ -1288,7 +1288,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1352,7 +1352,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Nested Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "nested-card",
             titleSnapshot: "Nested Card",
           },
@@ -1405,7 +1405,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Nested Page",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "nested-page",
             titleSnapshot: "Nested Page",
           },
@@ -1479,7 +1479,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Parent Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "parent-card",
             titleSnapshot: "Parent Card",
           },
@@ -1522,7 +1522,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     ).__mockPageStagePropsByPageId?.["parent-card"];
     const onOpenPage = props?.onOpenPage as
       | ((input: {
-          accessContext: { kind: "project"; projectId: string };
+          routingContext: { kind: "project"; projectId: string };
           pageId: string;
           titleSnapshot?: string;
         }) => void)
@@ -1532,7 +1532,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     setInvokeCalls([]);
     await act(async () => {
       onOpenPage?.({
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "nested-card",
         titleSnapshot: "Nested Card",
       });
@@ -1544,7 +1544,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const input = createCall?.[1] as
       | {
           config?: {
-            accessContext?: {
+            routingContext?: {
               kind: "project";
               projectId: string;
             };
@@ -1554,7 +1554,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         }
       | undefined;
     expect(input?.config).toEqual({
-      accessContext: { kind: "project", projectId: "alpha" },
+      routingContext: { kind: "project", projectId: "alpha" },
       pageId: "nested-card",
       titleSnapshot: "Nested Card",
     });
@@ -1589,7 +1589,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Canvas",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             canvasBlockId: "canvas-1",
             titleSnapshot: "Canvas",
           },
@@ -1645,7 +1645,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1680,7 +1680,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Missing Beta Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "beta" },
+            routingContext: { kind: "project", projectId: "beta" },
             pageId: "missing-card",
             titleSnapshot: "Missing Beta Card",
           },
@@ -1710,7 +1710,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Beta Card",
           panelId: "right",
           config: {
-            accessContext: { kind: "project", projectId: "beta" },
+            routingContext: { kind: "project", projectId: "beta" },
             pageId: "card-beta",
             titleSnapshot: "Beta Card",
           },
@@ -1764,7 +1764,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { accessContext: { kind: "project", projectId: "alpha" } },
+                config: { routingContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1774,7 +1774,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 title: "Card One",
                 panelId: "right",
                 config: {
-                  accessContext: { kind: "project", projectId: "alpha" },
+                  routingContext: { kind: "project", projectId: "alpha" },
                   pageId: "card-1",
                   titleSnapshot: "Card One",
                 },
@@ -1829,7 +1829,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { accessContext: { kind: "project", projectId: "alpha" } },
+                config: { routingContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "browser-tab",
@@ -1891,7 +1891,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { accessContext: { kind: "project", projectId: "alpha" } },
+                config: { routingContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1901,7 +1901,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 title: "Card One",
                 panelId: "bottom",
                 config: {
-                  accessContext: { kind: "project", projectId: "alpha" },
+                  routingContext: { kind: "project", projectId: "alpha" },
                   pageId: "card-1",
                   titleSnapshot: "Card One",
                 },
@@ -1933,7 +1933,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { accessContext: { kind: "project", projectId: "alpha" } },
+                config: { routingContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1943,7 +1943,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 title: "Card One",
                 panelId: "right",
                 config: {
-                  accessContext: { kind: "project", projectId: "alpha" },
+                  routingContext: { kind: "project", projectId: "alpha" },
                   pageId: "card-1",
                   titleSnapshot: "Card One",
                 },
@@ -2027,7 +2027,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { accessContext: { kind: "project", projectId: "alpha" } },
+                config: { routingContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "browser-tab",
@@ -2082,7 +2082,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           order: 0,
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
           createdAt: "2026-06-07T00:00:00.000Z",
           updatedAt: "2026-06-07T00:00:00.000Z",
         },
@@ -2136,7 +2136,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           order: 0,
-          config: { accessContext: { kind: "project", projectId: "beta" } },
+          config: { routingContext: { kind: "project", projectId: "beta" } },
           createdAt: "2026-06-07T00:00:00.000Z",
           updatedAt: "2026-06-07T00:00:00.000Z",
         },
@@ -2547,7 +2547,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),
@@ -2655,7 +2655,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),

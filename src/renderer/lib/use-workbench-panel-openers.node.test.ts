@@ -22,7 +22,7 @@ function makeSession(): Pick<WorkbenchSessionRenderProjection, "tabs"> {
         title: "Canvas A",
         order: 0,
         config: {
-          accessContext: { kind: "project", projectId: "project-1" },
+          routingContext: { kind: "project", projectId: "project-1" },
           canvasBlockId: "canvas-1",
         },
         browserTabId: null,
@@ -40,7 +40,7 @@ function makeSession(): Pick<WorkbenchSessionRenderProjection, "tabs"> {
         title: "Canvas B",
         order: 0,
         config: {
-          accessContext: { kind: "project", projectId: "project-1" },
+          routingContext: { kind: "project", projectId: "project-1" },
           canvasBlockId: "canvas-2",
         },
         browserTabId: null,

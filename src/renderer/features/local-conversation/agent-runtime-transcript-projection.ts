@@ -1,0 +1,431 @@
+import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type { CommandAction, UserInput } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  CodexCanonicalItem,
+  CodexConversationServerRequest,
+  CodexItemStatus,
+  CodexConversationTurn,
+} from "../../../shared/types";
+import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-item-projector";
+import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
+import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
+
+export type AgentRuntimeThread = AgentSnapshot["projection"]["thread"];
+export type AgentRuntimeRun = AgentSnapshot["projection"]["runs"][number];
+export type AgentRuntimeProjectedItem = AgentSnapshot["projection"]["visibleTurnItems"][number];
+type JsonValue = Extract<CodexCanonicalItem, { type: "dynamicToolCall" }>["arguments"];
+const emptyCommandActions: CommandAction[] = [];
+const emptyTextElements: Extract<UserInput, { type: "text" }>["text_elements"] = [];
+
+export function agentRuntimeTime(value: string | null | undefined): number | null {
+  if (value == null) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+export function agentRuntimeItemStatus(status: AgentTurnItem["status"]): CodexItemStatus {
+  if (status === "failed") return "failed";
+  if (status === "cancelled" || status === "interrupted") return "interrupted";
+  if (status === "completed" || status === "idle") return "completed";
+  return "inProgress";
+}
+
+export function agentRuntimeTurnStatus(
+  status: AgentRuntimeRun["status"] | undefined,
+): CodexTranscriptTurnDetails["status"] {
+  if (status === "failed") return "failed";
+  if (status === "cancelled" || status === "interrupted" || status === "rolled_back")
+    return "interrupted";
+  if (status === undefined || status === "completed") return "completed";
+  return "inProgress";
+}
+
+/** Explicit export uses the same item projection without installing another transcript owner. */
+export function projectAgentRuntimeExportTurns(
+  thread: AgentRuntimeThread,
+  rows: readonly AgentRuntimeProjectedItem[],
+  runs: readonly AgentRuntimeRun[],
+): CodexConversationTurn[] {
+  const groups = new Map<string, AgentRuntimeProjectedItem[]>();
+  let runlessKey = "";
+  for (const row of rows) {
+    const item = row.item;
+    if (item.runId === null && (item.type === "user_message" || !runlessKey))
+      runlessKey = JSON.stringify([row.sourceThreadId, "native-history", item.id]);
+    const key = item.runId === null ? runlessKey : JSON.stringify([row.sourceThreadId, item.runId]);
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+  return [...groups].map(([entityKey, group]) => {
+    const first = group[0]!;
+    const openingItem = group.find((row) => row.item.type === "user_message")?.item;
+    const run = runs.find((entry) => entry.id === first.item.runId);
+    const details = projectAgentRuntimeTurnDetails({
+      thread,
+      entityKey,
+      run,
+      ...(openingItem?.type === "user_message" ? { openingItem } : {}),
+    });
+    const canonical = {
+      ...details,
+      turnId: first.item.runId ?? entityKey,
+      items: group.map((row) => projectAgentRuntimeItem(row.item, thread.worktreePath ?? "")),
+    };
+    const items = projectCodexCanonicalTurnViews({
+      threadId: first.sourceThreadId,
+      turn: canonical,
+      turnKey: entityKey,
+      observedAtMs: details.turnStartedAtMs ?? 0,
+    }).map((view, sequence) => projectCodexItemViewToTranscriptEntry(view, "replay", sequence));
+    return {
+      threadId: first.sourceThreadId,
+      entityKey,
+      turnId: canonical.turnId,
+      status: details.status,
+      clientUserMessageId: details.params.clientUserMessageId,
+      items,
+      itemIds: items.map((item) => item.itemId),
+    };
+  });
+}
+
+function jsonValue(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (Array.isArray(value)) return value.map(jsonValue);
+  if (typeof value !== "object" || value === null) return null;
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
+}
+
+const notice = (item: AgentTurnItem, message: string): CodexCanonicalItem => ({
+  type: "runtimeNotice",
+  id: item.id,
+  message,
+});
+
+/** A presentation conversion only. Provider requests and execution remain engine-owned. */
+export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCanonicalItem {
+  const id = item.id;
+  const status = agentRuntimeItemStatus(item.status);
+  const durationMs =
+    item.startedAt && item.completedAt
+      ? Math.max(
+          0,
+          (agentRuntimeTime(item.completedAt) ?? 0) - (agentRuntimeTime(item.startedAt) ?? 0),
+        )
+      : null;
+  switch (item.type) {
+    case "user_message":
+      return {
+        type: "userMessage",
+        id,
+        clientId: item.messageId,
+        content: [
+          { type: "text", text: item.text, text_elements: emptyTextElements },
+          ...item.attachments
+            .filter((attachment) => attachment.type === "image")
+            .map((attachment): UserInput => ({
+              type: "image",
+              url: buildAgentRuntimeAttachmentSource({
+                sourceThreadId: item.threadId,
+                itemId: item.id,
+                attachmentId: attachment.id,
+              }),
+            })),
+        ],
+      };
+    case "assistant_message":
+      return {
+        type: "agentMessage",
+        id,
+        text: item.text,
+        phase: null,
+        memoryCitation: null,
+        delivery: null,
+        questions: null,
+      };
+    case "reasoning":
+      return { type: "reasoning", id, summary: [item.text], content: [] };
+    case "proposed_plan":
+      return { type: "plan", id, text: item.markdown };
+    case "command_execution":
+      return {
+        type: "commandExecution",
+        id,
+        pluginId: null,
+        scriptPath: null,
+        command: item.input,
+        cwd,
+        processId: null,
+        source: "agent",
+        status: status === "interrupted" ? "declined" : status,
+        commandActions: emptyCommandActions,
+        aggregatedOutput: item.output ?? null,
+        exitCode: item.exitCode ?? null,
+        durationMs,
+      };
+    case "file_change":
+      return {
+        type: "fileChange",
+        id,
+        status: status === "interrupted" ? "declined" : status,
+        changes: (item.changes?.length
+          ? item.changes.map((change) => change.path)
+          : [item.fileName]
+        ).map((path) => ({
+          path,
+          kind: { type: "update", move_path: null },
+          diff: item.diffStr ?? "",
+        })),
+      };
+    case "web_search":
+      return {
+        type: "webSearch",
+        id,
+        query: item.patterns?.join(" ") ?? "",
+        action: {
+          type: "search",
+          query: item.patterns?.[0] ?? null,
+          queries: item.patterns ? [...item.patterns] : null,
+        },
+        results: item.results ? item.results.map(jsonValue) : null,
+      };
+    case "file_search":
+      return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
+    case "dynamic_tool":
+      return {
+        type: "dynamicToolCall",
+        id,
+        namespace: null,
+        tool: item.toolName ?? "Tool",
+        arguments: jsonValue(item.input),
+        status: status === "inProgress" || status === "completed" ? status : "failed",
+        contentItems:
+          item.output === undefined
+            ? null
+            : [
+                {
+                  type: "inputText",
+                  text: typeof item.output === "string" ? item.output : JSON.stringify(item.output),
+                },
+              ],
+        success: status === "inProgress" ? null : status === "completed",
+        durationMs,
+      };
+    case "subagent": {
+      const child = item.childThreadId ?? item.subagentId;
+      return {
+        type: "collabAgentToolCall",
+        id,
+        tool: "spawnAgent",
+        status:
+          status === "inProgress" ? "inProgress" : status === "completed" ? "completed" : "failed",
+        senderThreadId: item.threadId,
+        receiverThreadIds: [child],
+        prompt: item.prompt,
+        model: null,
+        reasoningEffort: null,
+        agentsStates: {
+          [child]: {
+            status:
+              status === "inProgress"
+                ? "running"
+                : status === "completed"
+                  ? "completed"
+                  : status === "failed"
+                    ? "errored"
+                    : "interrupted",
+            message: item.result ?? item.progress ?? null,
+          },
+        },
+        receiverThreads: [{ threadId: child, thread: null }],
+      };
+    }
+    case "thread_created":
+      return {
+        type: "subAgentActivity",
+        id,
+        kind: "started",
+        agentThreadId: item.targetThreadId,
+        agentPath: item.targetThreadId,
+      };
+    case "fork":
+      return {
+        type: "forkedFromConversation",
+        id,
+        sourceConversationId: item.source.type === "run" ? item.source.threadId : item.threadId,
+        sourceConversationTitle: null,
+      };
+    case "compaction":
+      return {
+        type: "contextCompaction",
+        id,
+        completed: status === "completed",
+        source: "automatic",
+      };
+    case "todo_list":
+      return {
+        type: "todo-list",
+        id,
+        explanation: item.explanation ?? null,
+        plan: item.steps.map((step) => ({
+          step: step.text,
+          status: step.status === "running" ? "inProgress" : step.status,
+        })),
+      };
+    case "error":
+      return {
+        type: "error",
+        id,
+        message: item.failure.message,
+        willRetry: item.retry !== undefined,
+        errorInfo: null,
+        additionalDetails: null,
+      };
+    case "notification":
+      return notice(item, item.summary);
+    case "run_interrupt_request":
+    case "run_interrupt_result":
+    case "system_notice":
+      return notice(item, item.message);
+    case "handoff":
+      return notice(
+        item,
+        item.summary ?? `Continue with ${item.toModel ?? item.toProviderInstanceId}`,
+      );
+    case "checkpoint":
+      return notice(item, "Checkpoint saved");
+    case "approval_request":
+      return notice(item, item.prompt ?? "Approval requested");
+    case "user_input_request":
+      return notice(item, item.questions.map((question) => question.question).join("\n"));
+    case "secret_request":
+      return notice(item, item.reason);
+  }
+}
+
+export function projectAgentRuntimeTurnDetails(input: {
+  readonly thread: AgentRuntimeThread;
+  readonly entityKey: string;
+  readonly run?: AgentRuntimeRun | undefined;
+  readonly openingItem?: Extract<AgentTurnItem, { type: "user_message" }> | undefined;
+  readonly previous?: CodexTranscriptTurnDetails | undefined;
+}): CodexTranscriptTurnDetails {
+  const { thread, run, previous, openingItem } = input;
+  const startedAt = agentRuntimeTime(
+    run?.workStartedAt ?? run?.startedAt ?? run?.requestedAt ?? openingItem?.startedAt,
+  );
+  const completedAt = agentRuntimeTime(run?.completedAt);
+  return {
+    entityKey: input.entityKey,
+    turnId: run?.id ?? previous?.turnId ?? null,
+    rootTurnId: null,
+    itemsView: "full",
+    status: run ? agentRuntimeTurnStatus(run.status) : (previous?.status ?? "completed"),
+    error: previous?.error ?? null,
+    durationMs:
+      startedAt !== null && completedAt !== null ? Math.max(0, completedAt - startedAt) : null,
+    diff: null,
+    turnStartedAtMs: startedAt ?? previous?.turnStartedAtMs ?? null,
+    completedAtMs: completedAt,
+    finalAssistantStartedAtMs: previous?.finalAssistantStartedAtMs ?? null,
+    lifecycleStatusByItemId: previous?.lifecycleStatusByItemId,
+    params: openingItem
+      ? {
+          threadId: thread.id,
+          input: [
+            { type: "text", text: openingItem.text, text_elements: emptyTextElements },
+            ...openingItem.attachments
+              .filter((attachment) => attachment.type === "image")
+              .map((attachment): UserInput => ({
+                type: "image",
+                url: buildAgentRuntimeAttachmentSource({
+                  sourceThreadId: openingItem.threadId,
+                  itemId: openingItem.id,
+                  attachmentId: attachment.id,
+                }),
+              })),
+          ],
+          clientUserMessageId: openingItem.messageId,
+          cwd: thread.worktreePath ?? null,
+          approvalPolicy: "never",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "dangerFullAccess" },
+          model: run?.modelSelection.model ?? thread.modelSelection.model,
+          effort: null,
+          summary: "none",
+          personality: null,
+          outputSchema: null,
+          collaborationMode: null,
+          attachments: [],
+        }
+      : (previous?.params ?? {
+          threadId: thread.id,
+          input: [],
+          cwd: thread.worktreePath ?? null,
+          approvalPolicy: "never",
+          approvalsReviewer: "user",
+          sandboxPolicy: { type: "dangerFullAccess" },
+          model: run?.modelSelection.model ?? thread.modelSelection.model,
+          effort: null,
+          summary: "none",
+          personality: null,
+          outputSchema: null,
+          collaborationMode: null,
+          attachments: [],
+        }),
+  };
+}
+
+/** Live request views use engine IDs; they do not manufacture raw provider request authority. */
+export function projectAgentRuntimeRequest(
+  item: AgentTurnItem,
+  projectId: string | null,
+  turnId: string | null,
+): CodexConversationServerRequest | null {
+  if (
+    item.status === "completed" ||
+    item.status === "cancelled" ||
+    item.status === "failed" ||
+    item.status === "interrupted"
+  )
+    return null;
+  const base = {
+    projectId,
+    threadId: item.threadId,
+    turnId,
+    itemId: item.id,
+    createdAt: agentRuntimeTime(item.startedAt ?? item.updatedAt) ?? 0,
+  };
+  if (item.type === "approval_request" && turnId !== null)
+    return {
+      ...base,
+      turnId,
+      type: "approval",
+      requestId: item.requestId,
+      kind: item.requestKind === "file-change" ? "file" : "command",
+      reason: item.prompt,
+      availableDecisions: item.options?.map((option) => option.decision) ?? null,
+    };
+  if (item.type !== "user_input_request") return null;
+  return {
+    ...base,
+    type: "userInput",
+    executionOwner: "agent-runtime",
+    requestId: item.requestId,
+    isBlocking: true,
+    questions: item.questions.map((question) => ({
+      id: question.id,
+      header: question.header,
+      question: question.question,
+      multiSelect: question.multiSelect,
+      isOther: question.allowCustomAnswer !== false,
+      options: question.options.map((option) => ({
+        label: option.label,
+        description: option.description,
+      })),
+    })),
+  };
+}

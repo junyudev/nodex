@@ -19,7 +19,9 @@ import {
   type UserInputAttachments,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { createPendingAttachmentId, resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -817,4 +819,93 @@ it.effect("releases claimed copies when a project disables the message's provide
     ).toEqual([]);
     expect(NodeFS.existsSync(NodePath.join(config.attachmentsDir, `${pendingId}.png`))).toBe(true);
   }).pipe(Effect.provide(layerIntakeTest)),
+);
+
+it.effect(
+  "serializes pending upload admission so a refused request cannot erase a concurrent accepted copy",
+  () =>
+    Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      const threadId = ThreadId.make("thread-concurrent-intake");
+      const pendingId = ChatAttachmentId.make(createPendingAttachmentId()!);
+      NodeFS.writeFileSync(
+        NodePath.join(config.attachmentsDir, `${pendingId}.png`),
+        new Uint8Array([1, 2, 3]),
+      );
+      const entered = yield* Deferred.make<void>();
+      const finishFirst = yield* Deferred.make<void>();
+      let dispatches = 0;
+      const request = (id: string): OrchestrationV2Command => ({
+        type: "runtime-request.respond",
+        commandId: CommandId.make(id),
+        threadId,
+        requestId: RuntimeRequestId.make(id),
+        answers: { q: ["answer"] },
+        attachmentsByQuestionId: {
+          q: [
+            {
+              type: "image",
+              id: pendingId,
+              name: "screen.png",
+              mimeType: "image/png",
+              sizeBytes: 3,
+            },
+          ],
+        },
+      });
+      yield* Effect.gen(function* () {
+        const first = yield* dispatchCommand(request("refused")).pipe(
+          Effect.result,
+          Effect.forkChild,
+        );
+        yield* Deferred.await(entered);
+        const second = yield* dispatchCommand(request("accepted")).pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        expect(dispatches).toBe(1);
+        yield* Deferred.succeed(finishFirst, undefined);
+        expect((yield* Fiber.join(first))._tag).toBe("Failure");
+        const accepted = yield* Fiber.join(second);
+        const item = accepted.storedEvents[0]!.event;
+        expect(item.type).toBe("turn-item.updated");
+        if (item.type !== "turn-item.updated" || item.payload.type !== "user_input_request") return;
+        const attachment = item.payload.questionAnswer!.attachmentsByQuestionId.q![0]!;
+        const retained = resolveAttachmentPath({
+          attachmentsDir: config.attachmentsDir,
+          attachment,
+        });
+        expect(NodeFS.readFileSync(retained!)).toEqual(Buffer.from([1, 2, 3]));
+        expect(
+          NodeFS.readdirSync(config.attachmentsDir).filter((name) => !name.startsWith("pending-"))
+            .length,
+        ).toBe(1);
+      }).pipe(
+        Effect.provide(
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            dispatch: (command) =>
+              Effect.gen(function* () {
+                dispatches += 1;
+                if (command.commandId === "refused") {
+                  yield* Deferred.succeed(entered, undefined);
+                  yield* Deferred.await(finishFirst);
+                  return yield* new OrchestratorCommandPreviouslyRejectedError({
+                    commandId: command.commandId,
+                    commandType: command.type,
+                    detail: "refused",
+                  });
+                }
+                if (command.type !== "runtime-request.respond")
+                  return yield* Effect.die("unexpected command");
+                return {
+                  sequence: 1,
+                  storedEvents: answeredRespondEvents({
+                    threadId,
+                    requestId: command.requestId,
+                    attachmentsByQuestionId: command.attachmentsByQuestionId!,
+                  }),
+                };
+              }),
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(layerIntakeTest)),
 );

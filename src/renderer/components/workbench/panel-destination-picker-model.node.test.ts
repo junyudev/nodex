@@ -116,7 +116,6 @@ function makeDescriptor(
       defaultViewId: views.find((view) => view.primary)
         ? parseDatabaseViewId(views.find((view) => view.primary)!.id)
         : null,
-      accessRevision: 1,
       metadataRevision: 1,
       createdAt: TEST_DATE.toISOString(),
       updatedAt: TEST_DATE.toISOString(),

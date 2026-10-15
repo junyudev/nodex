@@ -17,7 +17,7 @@ import type {
   CodexPermissionRequest,
   CodexUserInputRequest,
 } from "../../shared/types";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { CodexRequestTraceContext } from "../../shared/codex-request-lifecycle";
 import type { CodexServerRequest } from "../codex-runtime/CodexApplicationProtocol";
 
@@ -69,7 +69,7 @@ export interface CodexPendingDynamicToolCall extends PendingServerRequestBase<"d
     readonly method: "item/tool/call";
     readonly params: DynamicToolCallParams;
   };
-  readonly nodexAuthority: FrozenNodexAgentTurnAuthority | null;
+  readonly nodexAuthority: NodexAgentTurnContext | null;
   readonly disposition: "stored" | "dispatched";
 }
 
@@ -117,7 +117,7 @@ export type CodexPendingServerRequestRegistration = {
       readonly kind: "dynamic-tool";
       readonly occurrenceToken: number | undefined;
       readonly request: CodexPendingDynamicToolCall["request"];
-      readonly nodexAuthority: FrozenNodexAgentTurnAuthority | null;
+      readonly nodexAuthority: NodexAgentTurnContext | null;
       readonly disposition: CodexPendingDynamicToolCall["disposition"];
     }
   | {
@@ -282,6 +282,8 @@ const requestIdentity = (
     };
   }
   const request = registration.request;
+  if (request.turnId === null)
+    throw new Error("Native Codex requests require their original Turn identity");
   return {
     hostId: registration.hostId,
     generation: registration.generation,

@@ -15,16 +15,13 @@ import {
   completeCodexCanonicalPlanImplementationRequest,
   createCodexCanonicalPlanImplementationRequest,
   normalizeCodexCanonicalMcpElicitation,
-  reduceCodexConversationApprovalResponse,
   reduceCodexConversationMcpElicitationResponse,
   reduceCodexConversationOnboardingInputResponse,
   reduceCodexConversationOptionPickerResponse,
-  reduceCodexConversationPermissionResponse,
   reduceCodexConversationServerRequest,
   reduceCodexConversationServerRequestResolved,
   reduceCodexConversationSetupContextPickerResponse,
   reduceCodexConversationUserInputResponse,
-  reduceCodexServerRequestApprovalResponseRawState,
   reduceCodexServerRequestOptionPickerResponseRawState,
   reduceCodexServerRequestSetupCodexStepResponseRawState,
   reduceCodexServerRequestSetupContextPickerResponseRawState,
@@ -39,7 +36,6 @@ import {
 } from "./test-fixtures/agent-activity-v2-corpus-provenance";
 import {
   agentActivityV2CommandApprovalRequest,
-  agentActivityV2FileApprovalRequest,
   agentActivityV2DynamicOptionPickerRequest,
   agentActivityV2DynamicToolRequest,
   agentActivityV2McpElicitationRequest,
@@ -1329,72 +1325,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     );
   });
 
-  test("blocks both approval routes when the first ordinary same-id envelope has the other method", () => {
-    const requestId = "shared-approval-route";
-    const commandRequest = {
-      ...agentActivityV2CommandApprovalRequest,
-      id: requestId,
-    };
-    const fileRequest = {
-      ...agentActivityV2FileApprovalRequest,
-      id: requestId,
-    };
-    const rawState = (
-      requests: CodexServerRequestRawState["requests"],
-    ): CodexServerRequestRawState => ({
-      threadId: THREAD_ID,
-      turns: [],
-      requests,
-      hasUnreadTurn: false,
-    });
-
-    const commandBlockedByFile = reduceCodexServerRequestApprovalResponseRawState(
-      rawState([fileRequest, commandRequest]),
-      requestId,
-      "item/commandExecution/requestApproval",
-    );
-    const fileBlockedByCommand = reduceCodexServerRequestApprovalResponseRawState(
-      rawState([commandRequest, fileRequest]),
-      requestId,
-      "item/fileChange/requestApproval",
-    );
-
-    expect(commandBlockedByFile.disposition).toBe("ignored");
-    expect(commandBlockedByFile.stateChanged).toBe(false);
-    expect(commandBlockedByFile.state.requests.length).toBe(2);
-    expect(fileBlockedByCommand.disposition).toBe("ignored");
-    expect(fileBlockedByCommand.stateChanged).toBe(false);
-    expect(fileBlockedByCommand.state.requests.length).toBe(2);
-  });
-
-  test("applies actual approval, permission, and user replies while exposing raw transport selection", () => {
-    const approvalPending = reduceCodexConversationServerRequest(
-      buildState(),
-      agentActivityV2CommandApprovalRequest,
-      context(),
-    ).state;
-    const approval = reduceCodexConversationApprovalResponse(
-      approvalPending,
-      agentActivityV2CommandApprovalRequest.id,
-      "item/commandExecution/requestApproval",
-    );
-    const permissionPending = reduceCodexConversationServerRequest(
-      buildState(),
-      agentActivityV2PermissionRequest,
-      context(),
-    ).state;
-    const permissionResponse = {
-      permissions: { network: { enabled: true } },
-      scope: "turn" as const,
-      strictAutoReview: true,
-    };
-    const permission = reduceCodexConversationPermissionResponse(
-      permissionPending,
-      agentActivityV2PermissionRequest.id,
-      permissionResponse,
-      context(),
-    );
-    const permissionItem = permission.state.turns[0]?.items[0];
+  test("applies user replies while exposing raw transport selection", () => {
     const userPending = reduceCodexConversationServerRequest(
       buildState(),
       agentActivityV2UserInputRequest,
@@ -1408,19 +1339,6 @@ describe("Codex 30751 server-request lifecycle", () => {
     );
     const userItem = user.state.turns[0]?.items[0];
 
-    expect(approval.state.requests.length).toBe(0);
-    expect(approval.state.turns[0]?.items.length).toBe(0);
-    expect(approval.selectedRequests[0] === agentActivityV2CommandApprovalRequest).toBe(true);
-    expect(approval.selectedRequestIds[0]).toBe(agentActivityV2CommandApprovalRequest.id);
-    expect(permission.state.requests.length).toBe(0);
-    expect(
-      permissionItem && "response" in permissionItem
-        ? permissionItem.response === permissionResponse
-        : false,
-    ).toBe(true);
-    expect(permissionItem && "completed" in permissionItem ? permissionItem.completed : false).toBe(
-      true,
-    );
     expect(user.state.requests.length).toBe(0);
     expect(userItem && "answers" in userItem ? userItem.answers.choice?.[0] : null).toBe(
       "Continue",
@@ -1432,7 +1350,7 @@ describe("Codex 30751 server-request lifecycle", () => {
     ).toBe(false);
   });
 
-  test("ignores a reply whose first strict-ID request belongs to another family", () => {
+  test("resolves a strict-ID collision using its first native request family", () => {
     const sharedId = "shared-family-id";
     const commandRequest = {
       ...agentActivityV2CommandApprovalRequest,
@@ -1452,16 +1370,6 @@ describe("Codex 30751 server-request lifecycle", () => {
       permissionRequest,
       context(),
     );
-    const wrongFamily = reduceCodexConversationPermissionResponse(
-      bothPending.state,
-      sharedId,
-      {
-        permissions: { network: { enabled: true } },
-        scope: "turn",
-        strictAutoReview: true,
-      },
-      context(),
-    );
     const resolvedCollision = reduceCodexConversationServerRequestResolved(
       bothPending.state,
       resolved(sharedId),
@@ -1469,9 +1377,6 @@ describe("Codex 30751 server-request lifecycle", () => {
     );
     const synthetic = resolvedCollision.state.turns[0]?.items[0];
 
-    expect(wrongFamily.disposition).toBe("ignored");
-    expect(wrongFamily.state === bothPending.state).toBe(true);
-    expect(wrongFamily.state.requests.length).toBe(2);
     expect(resolvedCollision.state.requests.length).toBe(0);
     expect(resolvedCollision.selectedRequests[0] === commandRequest).toBe(true);
     expect(synthetic?.type).toBe("permissionRequest");
@@ -1489,38 +1394,34 @@ describe("Codex 30751 server-request lifecycle", () => {
         planContent: "Implement the verified plan",
       },
     } satisfies CodexCanonicalPlanImplementationRequest;
-    const permissionRequest = {
-      ...agentActivityV2PermissionRequest,
+    const userRequest = {
+      ...agentActivityV2UserInputRequest,
       id: sharedId,
     } satisfies ServerRequest;
     const commandRequest = {
       ...agentActivityV2CommandApprovalRequest,
       id: sharedId,
     } satisfies ServerRequest;
-    const response = {
-      permissions: { network: { enabled: true } },
-      scope: "turn" as const,
-      strictAutoReview: true,
-    };
+    const response = { choice: ["Continue"] };
     const state = buildState();
 
-    const planThenPermission = reduceCodexConversationPermissionResponse(
+    const planThenUser = reduceCodexConversationUserInputResponse(
       {
         ...state,
-        requests: [planRequest, permissionRequest],
+        requests: [planRequest, userRequest],
       },
       sharedId,
       response,
       context(),
     );
-    expect(planThenPermission.disposition).toBe("resolved");
-    expect(planThenPermission.selectedRequests[0] === permissionRequest).toBe(true);
-    expect(planThenPermission.state.requests.length).toBe(0);
+    expect(planThenUser.disposition).toBe("resolved");
+    expect(planThenUser.selectedRequests[0] === userRequest).toBe(true);
+    expect(planThenUser.state.requests.length).toBe(0);
 
-    const wrongNonPlanFirst = reduceCodexConversationPermissionResponse(
+    const wrongNonPlanFirst = reduceCodexConversationUserInputResponse(
       {
         ...state,
-        requests: [planRequest, commandRequest, permissionRequest],
+        requests: [planRequest, commandRequest, userRequest],
       },
       sharedId,
       response,

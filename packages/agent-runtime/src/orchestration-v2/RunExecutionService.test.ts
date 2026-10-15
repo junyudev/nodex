@@ -560,54 +560,198 @@ it("selects only live background items from non-completed settled prior runs", (
   ]);
 });
 
-it("does not carry interrupted or still-running child ownership into later attempts", () => {
-  assert.isFalse(RunExecutionService.canRouteRelatedSubagent("interrupted"));
-  assert.isFalse(RunExecutionService.canRouteRelatedSubagent("failed"));
-  assert.isFalse(RunExecutionService.canRouteRelatedSubagent("cancelled"));
-  assert.isTrue(RunExecutionService.canRouteRelatedSubagent("completed"));
-  // The launching run still ingests a running subagent's child thread.
-  assert.isFalse(RunExecutionService.canRouteRelatedSubagent("running"));
+it.effect(
+  "resolves a resumed native child's exact address on its first event rather than loading historical ownership",
+  () =>
+    Effect.gen(function* () {
+      const threadId = ThreadId.make("thread:related-child:next-attempt");
+      const childThreadId = ThreadId.make("thread:related-child:interrupted");
+      const identity: RunExecutionService.ProviderEventRouteIdentity = {
+        threadId,
+        runId: RunId.make("run:related-child:next-attempt"),
+        attemptId: RunAttemptId.make("attempt:related-child:next-attempt"),
+        providerThreadId: ProviderThreadId.make("provider-thread:related-child:next-attempt"),
+      };
+      const state = RunExecutionService.makeProviderEventRoutingState({
+        identity,
+        providerTurnId: null,
+      });
+      const childNodeId = NodeId.make("node:related-child:interrupted");
+      const nativeTaskId = NodeId.make("node:related-child:task");
+      const lateChildNode = {
+        type: "node.updated",
+        driver,
+        node: {
+          id: childNodeId,
+          threadId: childThreadId,
+          runId: null,
+          parentNodeId: null,
+          rootNodeId: childNodeId,
+          kind: "root_turn",
+          status: "completed",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          runtimeRequestId: null,
+          checkpointScopeId: null,
+          startedAt: null,
+          completedAt: null,
+        },
+      } satisfies ProviderAdapter.ProviderAdapterV2Event;
 
-  const threadId = ThreadId.make("thread:related-child:next-attempt");
-  const childThreadId = ThreadId.make("thread:related-child:interrupted");
-  const identity: RunExecutionService.ProviderEventRouteIdentity = {
-    threadId,
-    runId: RunId.make("run:related-child:next-attempt"),
-    attemptId: RunAttemptId.make("attempt:related-child:next-attempt"),
-    providerThreadId: ProviderThreadId.make("provider-thread:related-child:next-attempt"),
-  };
-  const state = RunExecutionService.makeProviderEventRoutingState({
-    identity,
-    providerTurnId: null,
-    relatedThreadIds: RunExecutionService.canRouteRelatedSubagent("interrupted")
-      ? [childThreadId]
-      : [],
-  });
-  const childNodeId = NodeId.make("node:related-child:interrupted");
-  const lateChildNode = {
-    type: "node.updated",
-    driver,
-    node: {
-      id: childNodeId,
-      threadId: childThreadId,
-      runId: null,
-      parentNodeId: null,
-      rootNodeId: childNodeId,
-      kind: "root_turn",
-      status: "completed",
-      countsForRun: false,
-      providerThreadId: null,
-      providerTurnId: null,
-      nativeItemRef: null,
-      runtimeRequestId: null,
-      checkpointScopeId: null,
-      startedAt: null,
-      completedAt: null,
-    },
-  } satisfies ProviderAdapter.ProviderAdapterV2Event;
+      assert.isFalse(RunExecutionService.routeProviderEvent(lateChildNode, identity, state)[0]);
+      const lookup = vi.fn((address: RunExecutionService.RelatedNativeThreadAddress) => {
+        assert.deepEqual(address, { threadId: childThreadId });
+        return Effect.succeed({
+          subagentId: nativeTaskId,
+          threadId: childThreadId,
+          providerThreadId: null,
+          sourceRunId: identity.runId,
+        });
+      });
+      const [accepted, resumed] = yield* RunExecutionService.routeProviderEventWithLookup(
+        lateChildNode,
+        identity,
+        state,
+        lookup,
+      );
+      assert.isTrue(accepted);
+      assert.isTrue(resumed.ownedThreadIds.has(childThreadId));
+      yield* RunExecutionService.routeProviderEventWithLookup(
+        lateChildNode,
+        identity,
+        resumed,
+        lookup,
+      );
+      assert.equal(lookup.mock.calls.length, 1);
 
-  assert.isFalse(RunExecutionService.routeProviderEvent(lateChildNode, identity, state)[0]);
-});
+      const nextIdentity = {
+        ...identity,
+        runId: RunId.make("run:related-child:later-foreground"),
+        attemptId: RunAttemptId.make("attempt:related-child:later-foreground"),
+      };
+      const nextState = RunExecutionService.makeProviderEventRoutingState({
+        identity: nextIdentity,
+        providerTurnId: null,
+      });
+      const [claimedByNext, unclaimed] = yield* RunExecutionService.routeProviderEventWithLookup(
+        lateChildNode,
+        nextIdentity,
+        nextState,
+        lookup,
+      );
+      assert.isFalse(claimedByNext);
+      assert.strictEqual(unclaimed, nextState);
+
+      const backgroundProgress = {
+        ...lateChildNode,
+        node: { ...lateChildNode.node, status: "running" as const },
+      };
+      const originalBackground = { ...resumed, rootTurnEnded: true };
+      assert.isTrue(
+        (yield* RunExecutionService.routeProviderEventWithLookup(
+          backgroundProgress,
+          identity,
+          originalBackground,
+          () => Effect.die("Known original background routing must not reacquire history."),
+        ))[0],
+      );
+
+      const root = {
+        ...lateChildNode,
+        node: { ...lateChildNode.node, threadId, runId: identity.runId },
+      };
+      assert.isTrue(
+        (yield* RunExecutionService.routeProviderEventWithLookup(root, identity, state, lookup))[0],
+      );
+      assert.equal(lookup.mock.calls.length, 2);
+      for (const resolved of [
+        null,
+        {
+          subagentId: nativeTaskId,
+          threadId: ThreadId.make("thread:another"),
+          providerThreadId: null,
+          sourceRunId: identity.runId,
+        },
+      ]) {
+        const [admitted, unchanged] = yield* RunExecutionService.routeProviderEventWithLookup(
+          lateChildNode,
+          identity,
+          state,
+          () => Effect.succeed(resolved),
+        );
+        assert.isFalse(admitted);
+        assert.strictEqual(unchanged, state);
+      }
+
+      const resumeCue = {
+        ...backgroundProgress,
+        node: {
+          ...backgroundProgress.node,
+          id: nativeTaskId,
+          threadId,
+          runId: nextIdentity.runId,
+          kind: "subagent" as const,
+        },
+      };
+      const causalLookup = vi.fn((address: RunExecutionService.RelatedNativeThreadAddress) => {
+        assert.deepEqual(address, { subagentId: nativeTaskId });
+        return Effect.succeed({
+          subagentId: nativeTaskId,
+          threadId: childThreadId,
+          providerThreadId: null,
+          // The persisted task update follows this actual native resume node.
+          sourceRunId: identity.runId,
+        });
+      });
+      const [newSourceAccepted, continued] =
+        yield* RunExecutionService.routeProviderEventWithLookup(
+          resumeCue,
+          nextIdentity,
+          nextState,
+          causalLookup,
+        );
+      assert.isTrue(newSourceAccepted);
+      const [oldSourceAccepted, handedOff] =
+        yield* RunExecutionService.routeProviderEventWithLookup(
+          resumeCue,
+          identity,
+          originalBackground,
+          causalLookup,
+        );
+      assert.isFalse(oldSourceAccepted);
+      assert.isFalse(handedOff.ownedThreadIds.has(childThreadId));
+      assert.isTrue(handedOff.handedOffThreadIds.has(childThreadId));
+      const resumedProgress = {
+        ...backgroundProgress,
+        node: {
+          ...backgroundProgress.node,
+          id: NodeId.make("node:related-child:continued"),
+          rootNodeId: NodeId.make("node:related-child:continued"),
+        },
+      };
+      const noHistoricalReclaim = () =>
+        Effect.die("A causal handoff must not race the stale task row or reopen history.");
+      assert.isFalse(
+        (yield* RunExecutionService.routeProviderEventWithLookup(
+          resumedProgress,
+          identity,
+          handedOff,
+          noHistoricalReclaim,
+        ))[0],
+      );
+      assert.isTrue(
+        (yield* RunExecutionService.routeProviderEventWithLookup(
+          resumedProgress,
+          nextIdentity,
+          continued,
+          noHistoricalReclaim,
+        ))[0],
+      );
+      assert.equal(causalLookup.mock.calls.length, 2);
+    }),
+);
 
 it.effect("rechecks run ownership immediately before calling the provider", () =>
   Effect.gen(function* () {
@@ -669,12 +813,6 @@ it.effect("rechecks run ownership immediately before calling the provider", () =
         runtimeMode: "full-access",
         interactionMode: "default",
         cwd: process.cwd(),
-        approvalPolicy: "never",
-        sandboxPolicy: {
-          type: "readOnly",
-          access: { type: "fullAccess" },
-          networkAccess: false,
-        },
       },
     });
 
@@ -856,12 +994,6 @@ it.effect("fails the run when its ownership check cannot be read before calling 
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -943,12 +1075,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }
@@ -1016,12 +1142,6 @@ it.effect("refreshes MCP credential liveness before calling the provider", () =>
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       })
       .pipe(Effect.ensuring(Effect.sync(() => touchActiveMcpThread.mockRestore())));
@@ -1121,12 +1241,6 @@ it.effect("starts the provider when checkpoint baseline capture fails", () =>
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -1264,12 +1378,6 @@ it.effect.each(["failure", "interruption", "stale-attempt", "start-guard"] as co
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest), Effect.exit);
@@ -1538,12 +1646,6 @@ it.effect("ingests new member threads of an owned child after the root turn term
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -1671,8 +1773,6 @@ it.effect("ends a nested native subagent and its thread when the root run is int
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: { type: "readOnly", access: { type: "fullAccess" }, networkAccess: false },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -2083,12 +2183,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest));
@@ -2300,12 +2394,6 @@ it.effect("drops late root provider-thread writes from a superseded attempt", ()
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -2484,12 +2572,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest));
@@ -2655,12 +2737,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest));
@@ -2918,7 +2994,17 @@ it.effect(
             providerTurnId: ids.rootProviderTurnId,
           } as OrchestrationV2RunAttempt,
           attemptId: ids.attemptId,
-          relatedThreadIds: [unrelatedChildThreadId, memberThreadId],
+          resolveRelatedNativeThread: ({ threadId }) =>
+            Effect.succeed(
+              threadId === unrelatedChildThreadId || threadId === memberThreadId
+                ? {
+                    subagentId: NodeId.make(`subagent:${threadId}`),
+                    threadId,
+                    providerThreadId: null,
+                    sourceRunId: ids.runId,
+                  }
+                : null,
+            ),
           providerTurnOrdinal: 1,
           message: {
             messageId: MessageId.make("message:subagent-interrupt-cascade:user"),
@@ -2932,12 +3018,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest));
@@ -3280,7 +3360,17 @@ it.effect(
             providerTurnId: ids.rootProviderTurnId,
           } as OrchestrationV2RunAttempt,
           attemptId: ids.attemptId,
-          relatedThreadIds: [unrelatedChildThreadId],
+          resolveRelatedNativeThread: ({ threadId }) =>
+            Effect.succeed(
+              threadId === unrelatedChildThreadId
+                ? {
+                    subagentId: NodeId.make(`subagent:${threadId}`),
+                    threadId,
+                    providerThreadId: null,
+                    sourceRunId: ids.runId,
+                  }
+                : null,
+            ),
           providerTurnOrdinal: 1,
           message: {
             messageId: MessageId.make("message:subagent-link-survives-terminal:user"),
@@ -3294,12 +3384,6 @@ it.effect(
             runtimeMode: "full-access",
             interactionMode: "default",
             cwd: process.cwd(),
-            approvalPolicy: "never",
-            sandboxPolicy: {
-              type: "readOnly",
-              access: { type: "fullAccess" },
-              networkAccess: false,
-            },
           },
         });
       }).pipe(Effect.provide(layerTest));
@@ -3818,7 +3902,7 @@ function captureRootRunTermination(input: {
   readonly key: string;
   readonly shouldFinalizeRun: () => Effect.Effect<boolean, ProjectionStore.ProjectionStoreV2Error>;
   readonly rejectTerminalWrite?: boolean;
-  readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean, never>;
+  readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
   readonly seedOpenSubagent?: boolean;
   readonly events?: (
     ids: BackgroundScenarioIds,
@@ -3987,12 +4071,6 @@ function captureRootRunTermination(input: {
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));
@@ -4441,12 +4519,6 @@ function runBackgroundItemScenario(
           runtimeMode: "full-access",
           interactionMode: "default",
           cwd: process.cwd(),
-          approvalPolicy: "never",
-          sandboxPolicy: {
-            type: "readOnly",
-            access: { type: "fullAccess" },
-            networkAccess: false,
-          },
         },
       });
     }).pipe(Effect.provide(layerTest));

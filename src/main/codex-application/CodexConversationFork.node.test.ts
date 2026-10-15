@@ -1,7 +1,6 @@
 import { produce } from "immer";
 import { CodexMainConversationResume } from "./CodexMainConversationResume";
 import type { CodexCanonicalTurnHeader } from "../../shared/types";
-import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -153,7 +152,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     },
   } as unknown as CoreModuleClients);
   const gateway = CodexGateway.of({
-    localHostId: options.localHostId ?? "host-a",
+    localHostId: options.localHostId ?? "local",
     events: Stream.empty,
     requestOnHost: ((hostId: string, method: string, params: unknown, scheduling: unknown) =>
       Effect.gen(function* () {
@@ -234,7 +233,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     hostId: "host-a",
     generation: 7,
     userAgent: `Codex Desktop/${options.appServerVersion ?? "0.147.0"}`,
-    nativeAppTools: (options.localHostId ?? "host-a") === "host-a",
+    nativeAppTools: (options.localHostId ?? "local") === "host-a",
   });
   const capability = make.pipe(
     Effect.provideService(CoreModules, core),
@@ -355,10 +354,6 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
           runtimeWorkspaceRoots: ["/workspace", "/shared"],
           threadSource: "user",
           excludeTurns: true,
-          config: {
-            "mcp_servers.node_repl": { command: "/runtime/node" },
-            "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
-          },
         },
         scheduling: {
           conversationId: sourceThreadId,
@@ -598,4 +593,17 @@ it.effect(
       const late = yield* forks.acceptRenderer(prepared.receiptId).pipe(Effect.exit);
       assert.strictEqual(late._tag, "Failure");
     }),
+);
+
+it.effect("requires an actual remote native owner before direct or renderer fork dispatch", () =>
+  Effect.gen(function* () {
+    const fixture = makeHarness({ localHostId: "host-a" });
+    const forks = yield* fixture.capability;
+    const input = { sourceThreadId, threadSource: "user" as const };
+    const direct = yield* forks.fork(input).pipe(Effect.flip);
+    const prepared = yield* forks.prepareRenderer(input).pipe(Effect.flip);
+    assert.equal(direct.operation, "admit");
+    assert.equal(prepared.operation, "admit");
+    assert.deepEqual(fixture.requests, []);
+  }),
 );

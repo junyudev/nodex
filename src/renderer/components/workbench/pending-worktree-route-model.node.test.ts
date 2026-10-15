@@ -35,9 +35,7 @@ function makeEntry(overrides: Partial<StartConversationEntry> = {}): StartConver
       cwd: "/repo",
       fileAttachments: [],
       addedFiles: [],
-      agentMode: "auto",
-      permissionProfileId: undefined,
-      shouldSendPermissionOverrides: true,
+
       model: null,
       serviceTier: null,
       reasoningEffort: null,

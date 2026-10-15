@@ -1802,12 +1802,6 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         .pipe(Effect.flip);
       assert.instanceOf(stalePullRequestSync, Orchestrator.OrchestratorDispatchError);
       yield* orchestrator.dispatch({
-        type: "thread.runtime-mode.set",
-        commandId: CommandId.make("runtime-layer-lifecycle-runtime"),
-        threadId,
-        runtimeMode: "approval-required",
-      });
-      yield* orchestrator.dispatch({
         type: "thread.interaction-mode.set",
         commandId: CommandId.make("runtime-layer-lifecycle-interaction"),
         threadId,
@@ -1962,7 +1956,7 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       assert.equal(projection.thread.title, "Renamed lifecycle thread");
       assert.equal(projection.thread.branch, "feature/v2");
       assert.equal(projection.thread.worktreePath, "/tmp/t3-v2-worktree");
-      assert.equal(projection.thread.runtimeMode, "approval-required");
+      assert.equal(projection.thread.runtimeMode, "full-access");
       assert.equal(projection.thread.interactionMode, "plan");
       assert.equal(projection.thread.modelSelection.model, "gpt-5.5");
       assert.isNotNull(projection.thread.archivedAt);

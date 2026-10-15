@@ -26,7 +26,7 @@ const MUSE_PRESENTATION = {
   reportsContextWindow: true,
   // Muse has no native "accept edits" or reviewer-backed mode, so T3 offers only
   // the two it maps directly: promptUnmatched and allowAll.
-  supportedRuntimeModes: ["approval-required", "full-access"],
+
 } as const;
 
 const FALLBACK_CAPABILITIES = museModelCapabilities();

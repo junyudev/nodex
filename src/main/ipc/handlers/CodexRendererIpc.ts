@@ -84,13 +84,6 @@ export const live: Layer.Layer<
         catch: (cause) => new CodexRendererIpcError({ operation: "authorize-renderer", cause }),
       });
     yield* handleQuery("codex:renderer-client:id", (event) => authorize(event));
-    yield* handleControl("codex:renderer-client:response", (event, response) =>
-      authorize(event).pipe(
-        Effect.flatMap(() =>
-          rendererClients.handleResponse(event.sender as RendererClientWebContents, response),
-        ),
-      ),
-    );
     yield* ipc.on(CODEX_HOST_CHUNK_ACK_CHANNEL, (event, transferId: unknown, sequence: unknown) =>
       authorize(event).pipe(
         Effect.andThen(

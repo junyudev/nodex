@@ -10,7 +10,7 @@ import type {
   RegisteredOwnedBlockDocumentModel,
 } from "@/lib/owned-block-document";
 import { queryKeys } from "@/lib/query-keys";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 
 export interface OwnedBlockDocumentBoundaryControls {
   /**
@@ -21,7 +21,7 @@ export interface OwnedBlockDocumentBoundaryControls {
 }
 
 export interface OwnedBlockDocumentBoundaryProps {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly ownerBlockId: string;
   readonly dependencies?: OwnedBlockDocumentQueryDependencies;
   readonly children: (
@@ -46,17 +46,17 @@ export interface RegisteredOwnedBlockDocumentBoundaryProps extends Omit<
  * inferred document ID or legacy fallback hidden inside this component.
  */
 export function OwnedBlockDocumentBoundary({
-  accessContext,
+  routingContext,
   ownerBlockId,
   dependencies,
   children,
 }: OwnedBlockDocumentBoundaryProps) {
   const queryClient = useQueryClient();
-  const model = useOwnedBlockDocument({ accessContext, ownerBlockId }, dependencies);
+  const model = useOwnedBlockDocument({ routingContext, ownerBlockId }, dependencies);
 
   const reload = async (): Promise<void> => {
     await queryClient.resetQueries({
-      queryKey: queryKeys.blockDocuments.owned(accessContext, ownerBlockId),
+      queryKey: queryKeys.blockDocuments.owned(routingContext, ownerBlockId),
       exact: true,
     });
   };
@@ -66,17 +66,17 @@ export function OwnedBlockDocumentBoundary({
 
 /** Registry-dispatched boundary for every supported document-bearing Block. */
 export function RegisteredOwnedBlockDocumentBoundary({
-  accessContext,
+  routingContext,
   ownerBlockId,
   dependencies,
   children,
 }: RegisteredOwnedBlockDocumentBoundaryProps) {
   const queryClient = useQueryClient();
-  const model = useRegisteredOwnedBlockDocument({ accessContext, ownerBlockId }, dependencies);
+  const model = useRegisteredOwnedBlockDocument({ routingContext, ownerBlockId }, dependencies);
 
   const reload = async (): Promise<void> => {
     await queryClient.resetQueries({
-      queryKey: queryKeys.blockDocuments.owned(accessContext, ownerBlockId),
+      queryKey: queryKeys.blockDocuments.owned(routingContext, ownerBlockId),
       exact: true,
     });
   };

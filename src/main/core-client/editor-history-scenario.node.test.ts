@@ -117,7 +117,7 @@ test.each(cases.flatMap((entry) => ["project", "library"].map((access) => ({ ...
       };
       const request = (operation: LibraryApplyOperation, replay: boolean): NfmHistoryRequest => ({
         kind: "library",
-        accessContext:
+        routingContext:
           access === "library"
             ? { kind: "library" }
             : { kind: "project", projectId: ctx.manifest.projectId },
@@ -146,7 +146,7 @@ test.each(cases.flatMap((entry) => ["project", "library"].map((access) => ({ ...
         const journal = new NfmTextHistoryJournal(body, manager);
         retention = new NfmLocalHistoryRetention(document, journal, {
           scope: () => ({
-            accessContext:
+            routingContext:
               access === "library"
                 ? { kind: "library" }
                 : { kind: "project", projectId: ctx.manifest.projectId },

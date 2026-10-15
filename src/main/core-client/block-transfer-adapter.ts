@@ -22,7 +22,7 @@ import type { CoreClientPort, LibraryIntent, LibraryApplyResult } from "./types"
 export interface CoreBlockTransferAdapterInput {
   readonly client: CoreClientPort;
   readonly libraryId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly editorHistoryOwnerId?: string;
 }
@@ -141,7 +141,7 @@ const assertIntentScope = (
   if (intent.projectId !== input.projectId) {
     return blockTransferFailure(
       "invalid_transfer_request",
-      "Block transfer belongs to another Project",
+      "Block transfer does not match its presentation route",
       { operationId: intent.operationId },
     );
   }
@@ -496,7 +496,7 @@ export const createCoreBlockTransferAdapter = (
             intent.storeEpoch === input.storeEpoch
               ? "invalid_transfer_request"
               : "store_epoch_mismatch",
-            "Block transfer Undo belongs to another Project or store epoch",
+            "Block transfer Undo belongs to another presentation route or store epoch",
             { operationId: intent.operationId },
           ),
         };

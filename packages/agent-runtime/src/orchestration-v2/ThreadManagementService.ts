@@ -39,15 +39,15 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
+import { derive } from "@t3tools/provider-core/server/IdAllocator";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
-import { DispatchModeLimit, exceededDispatchModeLimit } from "./DispatchModeLimit.ts";
 import { projectTurnItemForDetail } from "./WireProjection.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -120,6 +120,7 @@ export interface ThreadManagementSendInput {
   readonly messageId: MessageId;
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
+  readonly senderRunId?: RunId | null;
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
@@ -209,18 +210,6 @@ export class ThreadManagementThreadArchivedError extends Schema.TaggedError<Thre
   }
 }
 
-export class ThreadManagementNoSteerableRunError extends Schema.TaggedError<ThreadManagementNoSteerableRunError>()(
-  "ThreadManagementNoSteerableRunError",
-  {
-    threadId: ThreadId,
-    mode: Schema.Literals(["steer", "restart"]),
-  },
-) {
-  override get message(): string {
-    return `Thread ${this.threadId} has no running turn that can be ${this.mode === "steer" ? "steered" : "restarted"}.`;
-  }
-}
-
 export class ThreadManagementThreadNotInterruptibleError extends Schema.TaggedError<ThreadManagementThreadNotInterruptibleError>()(
   "ThreadManagementThreadNotInterruptibleError",
   {
@@ -286,7 +275,6 @@ export const ThreadManagementError = Schema.Union([
   ThreadManagementThreadNotFoundError,
   ThreadManagementRunNotFoundError,
   ThreadManagementThreadArchivedError,
-  ThreadManagementNoSteerableRunError,
   ThreadManagementThreadNotInterruptibleError,
   ThreadManagementProjectionLoadError,
   ThreadManagementProjectThreadsListError,
@@ -358,6 +346,8 @@ export interface ThreadManagementServiceShape {
     Effect.Effect<OrchestrationV2ThreadShellSnapshot, Orchestrator.OrchestratorV2Error>,
     Orchestrator.OrchestratorV2Error
   >;
+  readonly getTaskOwner: Orchestrator.OrchestratorV2["Service"]["getTaskOwner"];
+  readonly getThreadCounts: Orchestrator.OrchestratorV2["Service"]["getThreadCounts"];
   readonly getThreadShell: Orchestrator.OrchestratorV2["Service"]["getThreadShell"];
   readonly listProjectThreads: (input: {
     readonly projectId: ProjectId;
@@ -391,6 +381,9 @@ export interface ThreadManagementServiceShape {
    * result, never start anything new, so the filter would just refuse a
    * retry the project's settings no longer allow fresh.
    */
+  readonly getReceipt: (
+    commandId: CommandId,
+  ) => ReturnType<CommandReceiptStore.CommandReceiptStoreV2Shape["getByCommandId"]>;
   readonly hasReceipt: (commandId: CommandId) => Effect.Effect<boolean>;
   readonly waitForThread: (
     input: ThreadManagementWaitInput,
@@ -491,21 +484,6 @@ export function latestActiveRun(
 ): OrchestrationV2Run | undefined {
   return projection.runs
     .filter(isActiveRun)
-    .toSorted((left, right) => right.ordinal - left.ordinal)[0];
-}
-
-function latestSteerableRun(
-  projection: Pick<OrchestrationV2ThreadProjection, "runs" | "providerTurns">,
-): OrchestrationV2Run | undefined {
-  return projection.runs
-    .filter(
-      (run) =>
-        run.status === "running" &&
-        run.activeAttemptId !== null &&
-        projection.providerTurns.some(
-          (turn) => turn.runAttemptId === run.activeAttemptId && turn.status === "running",
-        ),
-    )
     .toSorted((left, right) => right.ordinal - left.ordinal)[0];
 }
 
@@ -654,6 +632,22 @@ const make = Effect.gen(function* () {
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
       Effect.andThen(assertDispatchTargetEnabled(command)),
+      Effect.andThen(
+        Effect.gen(function* () {
+          const admission = yield* ExecutionHost.McpTurnAdmission;
+          if (admission === undefined) return;
+          yield* admission.assertCurrent().pipe(
+            Effect.mapError(
+              (cause) =>
+                new Orchestrator.OrchestratorDispatchError({
+                  commandId: command.commandId,
+                  commandType: command.type,
+                  cause,
+                }),
+            ),
+          );
+        }),
+      ),
       Effect.andThen(orchestrator.dispatch(command)),
     );
 
@@ -732,36 +726,12 @@ const make = Effect.gen(function* () {
 
   const sendToThread: ThreadManagementServiceShape["sendToThread"] = (input) =>
     Effect.gen(function* () {
-      const target = yield* getProjectThreadRecords(input, ["runs", "providerTurns"]);
-      if (target.thread.archivedAt !== null) {
+      const target = yield* getProjectThreadRecords(input, []);
+      if (target.thread.archivedAt !== null && !(yield* hasReceipt(input.commandId))) {
         return yield* new ThreadManagementThreadArchivedError({
           threadId: input.threadId,
         });
       }
-      const steerableRun = latestSteerableRun(target);
-      let dispatchMode: Extract<
-        OrchestrationV2Command,
-        { readonly type: "message.dispatch" }
-      >["dispatchMode"];
-      if (input.mode === "steer" || input.mode === "restart") {
-        if (steerableRun === undefined) {
-          return yield* new ThreadManagementNoSteerableRunError({
-            threadId: input.threadId,
-            mode: input.mode,
-          });
-        }
-        dispatchMode = {
-          type: input.mode === "steer" ? "steer_active" : "restart_active",
-          targetRunId: steerableRun.id,
-        };
-      } else if (input.mode === "auto" && steerableRun !== undefined) {
-        dispatchMode = { type: "steer_active", targetRunId: steerableRun.id };
-      } else {
-        dispatchMode = {
-          type: input.mode === "queue" ? "queue_after_active" : "start_immediately",
-        };
-      }
-
       const dispatched = yield* dispatch({
         type: "message.dispatch",
         commandId: input.commandId,
@@ -769,22 +739,43 @@ const make = Effect.gen(function* () {
         messageId: input.messageId,
         ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
         ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
+        ...(input.senderRunId === undefined ? {} : { senderRunId: input.senderRunId }),
         text: input.text,
         attachments: input.attachments,
         ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
-        dispatchMode,
+        dispatchMode: {
+          type: input.mode === "queue" ? "queue_after_active" : "start_immediately",
+        },
+        ...(input.mode === "queue" ? {} : { deliveryIntent: input.mode }),
         createdBy: input.createdBy,
         creationSource: input.creationSource,
       });
-      const projection = yield* getProjectThreadRecords(input, ["runs", "messages", "turnItems"], {
+      // Receipt replay precedes delivery decisions; its response reads only this input's identities.
+      const messageRecords = yield* getProjectThreadRecords(input, ["messages"], {
         messageIds: [input.messageId],
-        turnItemTypes: ["user_message"],
       });
-      const message = projection.messages.find((candidate) => candidate.id === input.messageId);
-      const run =
-        message?.runId === null || message?.runId === undefined
-          ? undefined
-          : projection.runs.find((candidate) => candidate.id === message.runId);
+      const message = messageRecords.messages[0];
+      if (message?.runId == null)
+        return yield* new ThreadManagementDurableRunProjectionError({
+          threadId: input.threadId,
+          messageId: input.messageId,
+        });
+      const records = yield* getProjectThreadRecords(input, ["runs", "turnItems"], {
+        runIds: [message.runId],
+        turnItemIds: [
+          dispatched.storedEvents
+            .flatMap(({ event }) =>
+              event.type === "turn-item.updated" &&
+              event.payload.type === "user_message" &&
+              event.payload.messageId === input.messageId
+                ? [event.payload.id]
+                : [],
+            )
+            .at(-1) ?? derive.userTurnItem({ messageId: input.messageId }),
+        ],
+      });
+      const projection = { ...records, messages: messageRecords.messages };
+      const run = records.runs[0];
       const turnItem =
         projection.turnItems.find(
           (
@@ -998,23 +989,6 @@ const make = Effect.gen(function* () {
       if (records.thread.deletedAt !== null) {
         return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "unavailable" });
       }
-      // A limited caller (an agent over MCP) may not stop work on a thread
-      // running above its own modes. Checked under the thread lock, where the
-      // thread's user cannot raise the modes between this read and the stop.
-      const limit = yield* DispatchModeLimit;
-      const exceeded =
-        limit === undefined ? undefined : exceededDispatchModeLimit(limit, records.thread);
-      if (limit !== undefined && exceeded !== undefined) {
-        if (limit.refused !== undefined) {
-          yield* Ref.set(limit.refused, {
-            threadId: input.threadId,
-            runtimeMode: records.thread.runtimeMode,
-            interactionMode: records.thread.interactionMode,
-            mode: exceeded,
-          });
-        }
-        return yield* new OrchestrationV2StopWorkflowError({ ...input, reason: "unavailable" });
-      }
       const task = records.subagents.find((candidate) => candidate.id === input.subagentId);
       if (
         task === undefined ||
@@ -1142,11 +1116,14 @@ const make = Effect.gen(function* () {
     getShellSnapshot: orchestrator.getShellSnapshot,
     readShellSnapshot: orchestrator.readShellSnapshot,
     getThreadShell: orchestrator.getThreadShell,
+    getTaskOwner: orchestrator.getTaskOwner,
+    getThreadCounts: orchestrator.getThreadCounts,
     listProjectThreads,
     sendToThread,
     assertProviderInstanceEnabled,
     isProviderInstanceEnabledForProject,
     hasReceipt,
+    getReceipt: receipts.getByCommandId,
     waitForThread,
     settleAfterRun,
     settleThread,

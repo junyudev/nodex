@@ -9,7 +9,7 @@ import type {
   CodexForkBrowserSidePanelSnapshot,
   CodexForkBrowserTransferConsumeInput,
 } from "../../shared/codex-fork-browser-transfer";
-import type { CodexAgentMode } from "../../shared/types";
+
 import { subscribeCodexPendingWorktreesChanged } from "./api";
 import {
   defineRendererCommand,
@@ -165,11 +165,7 @@ export function consumeForkSidePanelTransfer(
 export interface PendingWorktreeRouteTransport {
   list: () => Promise<readonly CodexPendingWorktreeEntry[]>;
   resolveThread: (clientThreadId: string) => Promise<CodexPendingWorktreeThreadResolution | null>;
-  autoFix: (
-    hostId: string,
-    pendingWorktreeId: string,
-    agentMode: CodexAgentMode,
-  ) => Promise<CodexPendingWorktreeCreateResult>;
+  autoFix: (hostId: string, pendingWorktreeId: string) => Promise<CodexPendingWorktreeCreateResult>;
   retry: (hostId: string, pendingWorktreeId: string) => Promise<void>;
   workLocally: (
     hostId: string,
@@ -188,8 +184,8 @@ export const pendingWorktreeRouteTransport: PendingWorktreeRouteTransport = {
   list: listPendingWorktrees,
   resolveThread: async (clientThreadId) =>
     await invokePlainCommand(resolvePendingWorktreeThreadCommand, clientThreadId),
-  autoFix: async (hostId, pendingWorktreeId, agentMode) =>
-    await invokePlainCommand(autoFixPendingWorktreeCommand, hostId, pendingWorktreeId, agentMode),
+  autoFix: async (hostId, pendingWorktreeId) =>
+    await invokePlainCommand(autoFixPendingWorktreeCommand, hostId, pendingWorktreeId),
   retry: async (hostId, pendingWorktreeId) =>
     await invokePlainCommand(retryPendingWorktreeCommand, hostId, pendingWorktreeId),
   workLocally: async (hostId, pendingWorktreeId) =>

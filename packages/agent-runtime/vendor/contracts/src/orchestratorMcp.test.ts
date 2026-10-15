@@ -116,7 +116,7 @@ describe("orchestrator MCP contracts", () => {
         {
           prompt: "Review the API.",
           target: { driverKind: "claudeAgent" },
-          runtimeMode: "approval-required",
+          runtimeMode: "full-access",
         },
       ],
     });

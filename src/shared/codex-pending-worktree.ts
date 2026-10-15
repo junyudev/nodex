@@ -4,14 +4,12 @@ import type { Config } from "@nodex/codex-app-server-protocol/v2/Config";
 import type { ThreadStartParams } from "@nodex/codex-app-server-protocol/v2/ThreadStartParams";
 import type { CodexCanonicalWorktreeInitItem } from "./codex-conversation-state/codex-conversation-state";
 import type {
-  CodexAgentMode,
   ConversationFirstSubmissionIdentity,
   CodexLiveFileAttachment,
   CodexPromptTextAttachmentInput,
   CodexReviewDiffCommentAttachment,
   CodexReasoningEffort,
   CodexThreadGoalFrozenDraft,
-  CodexThreadStartHeartbeatAutomationInput,
   CodexThreadStartMemoryPreferences,
 } from "./types";
 import type { CodexExecutionProfile } from "./codex-execution-profile";
@@ -81,7 +79,6 @@ export interface CodexPendingStartConversationRequest extends CodexPendingWorktr
   readonly projectSessionId?: string | null;
   readonly threadStartHostId?: string | null;
   readonly threadGoalDraft?: CodexThreadGoalFrozenDraft | null;
-  readonly heartbeatAutomation?: CodexThreadStartHeartbeatAutomationInput | null;
   readonly skipAutoTitleGeneration?: boolean;
   readonly browserUsePresentationOrigin?: BrowserUsePresentationOrigin;
   readonly sourceConversationId: null;
@@ -97,11 +94,9 @@ export interface CodexPendingStartConversationParamsInput {
   readonly fileAttachments: readonly CodexLiveFileAttachment[];
   readonly addedFiles: readonly CodexLiveFileAttachment[];
   readonly pastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
-  readonly agentMode: CodexAgentMode;
+
   /** Keeps content-origin permission checks active after the NFM sidecar is consumed. */
-  readonly agentConfigPermissionMode?: boolean;
-  readonly permissionProfileId?: string | undefined;
-  readonly shouldSendPermissionOverrides: boolean;
+
   readonly model: string | null;
   readonly executionProfile?: CodexExecutionProfile | null;
   readonly serviceTier: string | null;

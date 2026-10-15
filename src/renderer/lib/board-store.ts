@@ -27,7 +27,6 @@ import {
   applyBoardChangeEventToBoard,
   boardSummariesEqual,
   rebuildBoardFromRankedRows,
-  removePageSummaryFromBoard,
   upsertCardSummaryInBoard,
 } from "./board-summary-events";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
@@ -42,7 +41,6 @@ import { getRendererProjectionInvalidationRegistry } from "./projection-invalida
 import type {
   ProjectionInvalidationCause,
   ProjectionInvalidationRegistry,
-  ProjectionRevocationMessage,
 } from "./projection-invalidation-registry";
 import {
   projectionCoordinateFromSnapshot,
@@ -51,10 +49,7 @@ import {
 } from "../../shared/projection-stream";
 import { CausalProjectionRuntime, type ProjectionRepairRequest } from "./causal-projection-runtime";
 import { projectCoreDatabaseQueryRow } from "../../shared/core-database-row-projection";
-import {
-  fenceDatabaseRowDetailsForProject,
-  revokeDatabaseRowDetail,
-} from "./database-row-detail-store";
+import { fenceDatabaseRowDetailsForProject } from "./database-row-detail-store";
 import { mapWithConcurrency } from "./map-with-concurrency";
 import { databaseViewPrimaryManualOrderDirection } from "../../shared/database-view-presentation";
 import {
@@ -518,7 +513,7 @@ class BoardProjectStore {
 
   private basePresentationGeneration = 0;
 
-  private revocationGeneration = 0;
+  private projectionGeneration = 0;
 
   /** Invalidates commands queued against authority from a replaced Store. */
   private authorityGeneration = 0;
@@ -535,7 +530,7 @@ class BoardProjectStore {
     if (JSON.stringify(this.preferencesOverride) === JSON.stringify(preferencesOverride)) return;
     this.preferencesOverride = preferencesOverride;
     this.presentationGeneration += 1;
-    this.revocationGeneration += 1;
+    this.projectionGeneration += 1;
     this.requiredRefreshGeneration += 1;
     this.stale = true;
     // A presentation can select a different projection coordinate. Rebind the
@@ -547,7 +542,7 @@ class BoardProjectStore {
     this.releaseRetainedProjectionInvalidation = null;
     this.disposeCausalProjectionRuntime();
     // A personal presentation edit is a background replacement, not a
-    // revocation. Keep the last readable snapshot until all first windows for
+    // projection reset. Keep the last readable snapshot until all first windows for
     // the new presentation can replace it atomically.
     this.recomputeSnapshot({ loading: false, error: null });
     if (this.listeners.size > 0) void this.fetchBoard();
@@ -608,7 +603,7 @@ class BoardProjectStore {
 
   private clearInactiveAuthority(): void {
     this.authorityGeneration += 1;
-    this.revocationGeneration += 1;
+    this.projectionGeneration += 1;
     this.baseBoard = null;
     this.baseBoardAuthority = null;
     this.baseDatabaseView = null;
@@ -822,7 +817,7 @@ class BoardProjectStore {
     minimumStoreEpoch: string | null,
     refreshGeneration: number,
   ): Promise<boolean> => {
-    const revocationGeneration = this.revocationGeneration;
+    const projectionGeneration = this.projectionGeneration;
     const presentationGeneration = this.presentationGeneration;
     let succeeded = false;
     const hasReadableBase = this.databaseViewId
@@ -841,7 +836,7 @@ class BoardProjectStore {
         minimumCommitSeq,
         minimumStoreEpoch,
       );
-      if (revocationGeneration !== this.revocationGeneration) {
+      if (projectionGeneration !== this.projectionGeneration) {
         succeeded = true;
         return true;
       }
@@ -1646,12 +1641,6 @@ class BoardProjectStore {
     this.journal.revoke(reason);
   }
 
-  private removeEntriesForPage(pageId: string): boolean {
-    return this.journal.removeWhere((keys) =>
-      keys.some((key) => key.startsWith(`card:${pageId}:`)),
-    );
-  }
-
   private setSnapshot(next: BoardStoreSnapshot): void {
     const previous = this.snapshot;
     if (
@@ -1686,88 +1675,6 @@ class BoardProjectStore {
     void this.fetchBoard(minimum);
   }
 
-  private evictRevokedPage(pageId: string, commitSeq: number): void {
-    revokeDatabaseRowDetail(this.projectId, pageId);
-    const removedOptimisticEntry = this.removeEntriesForPage(pageId);
-    const currentAuthority = this.baseBoardAuthority;
-    const authorityRow = currentAuthority?.rows.find((row) => row.page.id === pageId);
-    const baseContainsPage =
-      this.baseBoard?.columns.some((column) => column.cards.some((card) => card.id === pageId)) ??
-      false;
-    if (!currentAuthority || (!authorityRow && !baseContainsPage)) {
-      if (removedOptimisticEntry) this.recomputeSnapshot({ error: null });
-      return;
-    }
-    const groupKey = authorityRow?.groupKey ?? null;
-    const evictFromWindow = (snapshot: DatabaseViewWindowSnapshot): DatabaseViewWindowSnapshot => ({
-      ...snapshot,
-      commitSeq: Math.max(snapshot.commitSeq, commitSeq),
-      board: removePageSummaryFromBoard(snapshot.board, pageId),
-      rows: snapshot.rows.filter((row) => row.page.id !== pageId),
-      query: {
-        ...snapshot.query,
-        rows: snapshot.query.rows.filter((row) => row.page.pageId !== pageId),
-      },
-    });
-    const nextAuthority = evictFromWindow(currentAuthority);
-    this.baseBoardAuthority = nextAuthority;
-    this.baseBoard = nextAuthority.board;
-    this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority, {
-      boundedRead: this.baseDatabaseView?.boundedRead ?? null,
-    });
-    this.groupWindows = new Map(
-      [...this.groupWindows].map(([scopeKey, state]) => [
-        scopeKey,
-        {
-          ...state,
-          snapshot: evictFromWindow(state.snapshot),
-        },
-      ]),
-    );
-    if (this.groupsSnapshot && authorityRow) {
-      this.groupsSnapshot = {
-        ...this.groupsSnapshot,
-        commitSeq: Math.max(this.groupsSnapshot.commitSeq, commitSeq),
-        totalRows: Math.max(0, this.groupsSnapshot.totalRows - 1),
-        groups: this.groupsSnapshot.groups
-          .map((group) =>
-            group.groupKey === groupKey
-              ? { ...group, totalRows: Math.max(0, group.totalRows - 1) }
-              : group,
-          )
-          .filter((group) => group.totalRows > 0),
-      };
-    }
-    this.recomputeSnapshot({ error: null });
-  }
-
-  private clearRevokedAggregate(): void {
-    this.baseBoard = null;
-    this.baseBoardAuthority = null;
-    this.baseDatabaseView = null;
-    this.groupWindows.clear();
-    this.groupsSnapshot = null;
-    this.revokeEntries("authority_revoked");
-    // Keep the causal runtime paired with its still-live registration. The
-    // canonical repair below advances its dynamically read coordinate.
-    this.recomputeSnapshot({
-      loading: false,
-      error: "Database View is unavailable",
-    });
-  }
-
-  private revokeFromProjection = (cause: ProjectionRevocationMessage): void => {
-    this.stale = true;
-    this.revocationGeneration += 1;
-    this.requiredRefreshGeneration += 1;
-    this.requireMinimumCursor(cause.stream);
-    if (cause.delivery.revocation.resource_kind === "page") {
-      this.evictRevokedPage(cause.delivery.revocation.resource_id, cause.stream.commitSeq);
-      return;
-    }
-    this.clearRevokedAggregate();
-  };
-
   private fenceProjectionAuthority = (
     cause: Extract<
       ProjectionInvalidationCause,
@@ -1777,7 +1684,7 @@ class BoardProjectStore {
     >,
   ): void => {
     this.stale = true;
-    this.revocationGeneration += 1;
+    this.projectionGeneration += 1;
     this.requiredRefreshGeneration += 1;
     if (cause.kind === "reset") {
       this.requiredMinimumStoreEpoch = cause.stream.storeEpoch;
@@ -1913,10 +1820,6 @@ class BoardProjectStore {
               commitSeq: current.projection.coveredCommitSeq,
             }
           : null;
-      },
-      revoke: (cause) => {
-        if (!isCurrentPresentation()) return;
-        this.revokeFromProjection(cause);
       },
       fence: (cause) => {
         if (!isCurrentPresentation()) return;

@@ -7,13 +7,6 @@ import * as Schema from "effect/Schema";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type { CodexThreadSummary } from "../../shared/types";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
-import {
-  hasCompleteAutomationArchiveExchange,
-  readBoundedAutomationArchiveExcerpt,
-  resolveAutomationArchiveMessagesFromTranscript,
-  type AutomationArchiveMessages,
-} from "../automation-application/AutomationArchiveExcerpt";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import {
   normalizeWorktreePathForIdentity,
@@ -22,7 +15,6 @@ import {
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import {
   ProjectWorkspace,
   type DesktopProjectWorkspaceThread,
@@ -30,12 +22,9 @@ import {
 } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
-import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
-import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexVisualizationState } from "./CodexVisualizationState";
 
@@ -76,34 +65,24 @@ const isPathWithinOrEqual = (parentPath: string, candidatePath: string): boolean
 export const make: Effect.Effect<
   CodexConversationArchive["Service"],
   never,
-  | AutomationApplication
-  | AutomationRoutingIndex
   | CodexApplicationEventHub
   | CodexAppServerCapabilities
   | CodexConversationLifecycle
   | CodexGateway
-  | CodexHistoryPageAdapter
   | CodexMainConversationManagers
   | CodexThreadDirectory
-  | ConversationEntityMap
   | ManagedWorktreeRuntime
-  | NodexAgentAuthorizationRuntime
   | ProjectWorkspace
   | RemoteHostedPipRuntime
   | CodexVisualizationState
 > = Effect.gen(function* () {
-  const automation = yield* AutomationApplication;
-  const automationRouting = yield* AutomationRoutingIndex;
   const events = yield* CodexApplicationEventHub;
   const capabilities = yield* CodexAppServerCapabilities;
   const conversationLifecycle = yield* CodexConversationLifecycle;
   const gateway = yield* CodexGateway;
-  const historyPages = yield* CodexHistoryPageAdapter;
   const mainManagers = yield* CodexMainConversationManagers;
   const threadDirectory = yield* CodexThreadDirectory;
-  const conversations = yield* ConversationEntityMap;
   const managedWorktrees = yield* ManagedWorktreeRuntime;
-  const authorizations = yield* NodexAgentAuthorizationRuntime;
   const workspace = yield* ProjectWorkspace;
   const remoteHostedPip = yield* RemoteHostedPipRuntime;
   const visualizations = yield* CodexVisualizationState;
@@ -227,7 +206,7 @@ export const make: Effect.Effect<
    */
   const prepareManagedWorktreeArchive = Effect.fn(
     "CodexConversationArchive.prepareManagedWorktreeArchive",
-  )(function* (thread: DesktopProjectWorkspaceThread, reason: "archive" | "automation-archive") {
+  )(function* (thread: DesktopProjectWorkspaceThread, reason: "archive") {
     const worktreeGitRoot = thread.managedWorktreePath?.trim();
     if (!worktreeGitRoot) return;
 
@@ -290,84 +269,6 @@ export const make: Effect.Effect<
       .pipe(Effect.mapError((cause) => fail("archive-worktree", thread.threadId, cause)));
   });
 
-  const resolveAutomationMessages = (
-    threadId: string,
-  ): Effect.Effect<AutomationArchiveMessages> => {
-    const snapshot = conversations.current(threadId)?.readSnapshot() ?? null;
-    const local = snapshot
-      ? resolveAutomationArchiveMessagesFromTranscript(snapshot.turns.flatMap((turn) => turn.items))
-      : { archivedUserMessage: null, archivedAssistantMessage: null };
-    if (hasCompleteAutomationArchiveExchange(local)) return Effect.succeed(local);
-    return readBoundedAutomationArchiveExcerpt(historyPages, capabilities, threadId, local).pipe(
-      Effect.tap((excerpt) =>
-        excerpt.resolution === "truncated"
-          ? Effect.logWarning("Automation archive excerpt reached its bounded read limit").pipe(
-              Effect.annotateLogs({
-                threadId,
-                truncationReason: excerpt.truncationReason,
-                inspectedTurnCount: excerpt.inspectedTurnCount,
-                inspectedItemCount: excerpt.inspectedItemCount,
-                approximateProjectedBytes: excerpt.approximateProjectedBytes,
-              }),
-            )
-          : Effect.void,
-      ),
-      Effect.map((excerpt) => excerpt.messages),
-      Effect.catch((cause) =>
-        Effect.logWarning("Could not read bounded Thread excerpt for Automation archive").pipe(
-          Effect.annotateLogs({ threadId, cause }),
-          Effect.as(local),
-        ),
-      ),
-    );
-  };
-
-  const finishAutomationArchive = (
-    threadId: string,
-    automationId: string,
-    messages: AutomationArchiveMessages,
-  ) =>
-    Effect.gen(function* () {
-      const archived = yield* automation.runs.archive({
-        threadId,
-        archivedReason: "auto",
-        ...messages,
-      });
-      if (archived) {
-        events.publish({
-          kind: "codex",
-          value: {
-            type: "automationRunsUpdated",
-            event: { automationId, threadId, reason: "archive" },
-          },
-        });
-      }
-      const thread = yield* workspace.getThread(threadId);
-      const heartbeatAutomationId = thread?.sessionId
-        ? automationRouting.activeHeartbeatAutomationId(thread.sessionId)
-        : null;
-      if (!heartbeatAutomationId) return;
-      const deleted = yield* automation.definitions.delete(heartbeatAutomationId);
-      if (!deleted.success) return;
-      events.publish({
-        kind: "codex",
-        value: {
-          type: "scheduledAutomationChanged",
-          event: {
-            automationId: heartbeatAutomationId,
-            targetThreadId: threadId,
-            reason: "delete",
-          },
-        },
-      });
-    }).pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning("Archived Thread with incomplete Automation metadata cleanup").pipe(
-          Effect.annotateLogs({ threadId, automationId, cause }),
-        ),
-      ),
-    );
-
   return CodexConversationArchive.of({
     archive: (threadId) => {
       const normalizedThreadId = threadId.trim();
@@ -387,23 +288,7 @@ export const make: Effect.Effect<
         }
 
         const rootThreadId = yield* resolveRootThreadId(thread);
-        const automationRun = yield* automation.runs
-          .get(normalizedThreadId)
-          .pipe(
-            Effect.catch((cause) =>
-              Effect.logWarning(
-                "Could not inspect Automation metadata before archiving Thread",
-              ).pipe(Effect.annotateLogs({ threadId: normalizedThreadId, cause }), Effect.as(null)),
-            ),
-          );
-        const automationMessages = automationRun
-          ? yield* resolveAutomationMessages(normalizedThreadId)
-          : null;
-
-        yield* prepareManagedWorktreeArchive(
-          thread,
-          automationRun ? "automation-archive" : "archive",
-        );
+        yield* prepareManagedWorktreeArchive(thread, "archive");
         const threadMissing = yield* gateway
           .requestForThread(normalizedThreadId, "thread/archive", {
             threadId: normalizedThreadId,
@@ -412,7 +297,6 @@ export const make: Effect.Effect<
             Effect.as(false),
             Effect.catch((cause) => recoverInactiveArchive(thread, cause)),
           );
-        yield* authorizations.revokeRoot(rootThreadId);
         yield* project(
           "archive",
           normalizedThreadId,
@@ -446,13 +330,6 @@ export const make: Effect.Effect<
               }
             : { type: "threadArchivedState", threadId: normalizedThreadId, archived: true },
         });
-        if (automationRun && automationMessages) {
-          yield* finishAutomationArchive(
-            normalizedThreadId,
-            automationRun.automationId,
-            automationMessages,
-          );
-        }
         return true;
       });
     },
@@ -535,10 +412,6 @@ export const make: Effect.Effect<
             ),
             Effect.ignore,
           );
-        yield* automation.runs
-          .delete(normalizedThreadId)
-          .pipe(Effect.mapError((cause) => fail("delete", normalizedThreadId, cause)));
-        yield* authorizations.revokeRoot(normalizedThreadId);
         yield* project("delete", normalizedThreadId, workspace.deleteThread(normalizedThreadId));
         yield* retireRemoteHostedPip("delete", [normalizedThreadId]);
         yield* conversationLifecycle.close(

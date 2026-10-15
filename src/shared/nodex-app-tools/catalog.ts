@@ -44,21 +44,20 @@ export const appToolCatalog: readonly Tool[] = [
   {
     name: "query_content",
     description:
-      "Requires a task bound to a Project. Run complete-or-fail read-only SQL over content authorized by your calling Project's durable grants. Use describe_content_schema for relations. Temporary resource consent and Library scope do not expand this query. There is no SQL cursor; narrow large results with SQL.",
+      "Run complete-or-fail read-only SQL over the current Profile's Library content. Use describe_content_schema for relations and explicit filters for a selected Project. There is no SQL cursor; narrow large results with SQL.",
     inputSchema: queryContentInputSchema,
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "describe_content_schema",
     description:
-      "Requires a task bound to a Project. Describe public content relations and bound Data Source columns within your calling Project's durable resource grants.",
+      "Describe public content relations and bound Data Source columns in the current Profile's Library.",
     inputSchema: { ...describeContentInputSchema, type: "object" },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "list_projects",
-    description:
-      "List available Nodex Projects and their local workspace Git capabilities. Project discovery does not grant access to Page or Database content.",
+    description: "List Nodex Projects and their local workspace Git capabilities.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },

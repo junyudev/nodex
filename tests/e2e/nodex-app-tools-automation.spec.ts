@@ -225,7 +225,6 @@ test("manages durable Automation definitions through native MCP across a restart
         );
         callerSessionId = draft.projectSessionId;
         callerProjectId = draft.projectId;
-        await invokeIpc(page, "codex:permission:mode:set", callerProjectId, "full-access");
         requireCoreValue(
           await invokeIpc(page, "projects:create", {
             operationId: createBoundedOperationId("e2e.app-tools.automation.project"),

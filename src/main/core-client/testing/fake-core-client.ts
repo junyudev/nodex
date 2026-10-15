@@ -56,7 +56,7 @@ import type {
   CanvasSceneSyncRequest,
   CanvasSceneSyncResponse,
 } from "../../../shared/block-documents/canvas-scene-sync";
-import type { ProjectionImpact, ProjectionScope } from "../../../shared/projection-stream";
+import type { ProjectionScope } from "../../../shared/projection-stream";
 
 type ApplyOutcome<Result> = Result extends { readonly outcome: infer Outcome } ? Outcome : never;
 type ApplyReceipt<Result> = Result extends { readonly receipt: infer Receipt } ? Receipt : never;
@@ -236,21 +236,6 @@ export class FakeCoreClient implements CoreClientPort {
 
   enqueueRead(result: LibraryReadSnapshot): void {
     this.#readResults.push(result);
-  }
-
-  async filterProjectionImpactForProject(
-    projectId: string,
-    impact: ProjectionImpact,
-  ): Promise<ProjectionImpact> {
-    const snapshot = await this.libraryRead({
-      kind: "filter_projection_impact_for_project",
-      project_id: projectId,
-      impact,
-    });
-    if (snapshot.value.kind !== "projection_impact") {
-      throw new Error("Fake Core returned the wrong Projection impact read");
-    }
-    return snapshot.value.impact;
   }
 
   enqueueAutomationRead(result: AutomationReadSnapshot): void {
@@ -642,7 +627,6 @@ export class FakeCoreClient implements CoreClientPort {
               .padStart(64, "a")
               .slice(-64),
             delivery_address: address,
-            authorization_scope: address,
           };
         }),
       },

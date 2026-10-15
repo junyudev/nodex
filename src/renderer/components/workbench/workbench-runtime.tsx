@@ -25,7 +25,7 @@ import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header"
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
 import { contentEditIssues, type ContentEditLocation } from "@/lib/content-edit-issues";
-import type { ContentAccessIdentity } from "../../../shared/content-access-context";
+import type { ContentRoutingIdentity } from "../../../shared/content-routing-context";
 import { ContentRecoveryObserver } from "@/features/document-recovery/recovery-entry";
 import {
   PageStageSessionTab,
@@ -76,7 +76,7 @@ import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
-import { libraryContentAccess, projectContentAccess } from "../../../shared/content-access-context";
+import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import { requestPageCreateFromContext } from "@/lib/page-create-workflow";
 import { useProjectPageCreateTarget } from "@/lib/use-project-page-create-target";
 import { useMutationAuditSessionId } from "@/lib/mutation-audit-session";
@@ -1414,7 +1414,6 @@ export function WorkbenchRuntime({
   );
   const processManagerConversationsById = useConversationSubset(processManagerThreadIds);
   const workbenchCodexControl = useCodexAppServerControl(
-    activeProject?.id ?? activeProjectId,
     activeSession?.thread?.threadId ?? null,
     activeSession?.thread?.executionHostId ?? null,
   );
@@ -1802,7 +1801,7 @@ export function WorkbenchRuntime({
     (pendingWorktreeId: string) => {
       openModal(appHandle, StableWorktreeStatusDialog, {
         pendingWorktreeId,
-        agentMode: workbenchCodexControl.permissionMode,
+
         transport: ELECTRON_STABLE_WORKTREE_STATUS_TRANSPORT,
         onEditEnvironment: (entry) => {
           const sourceProject =
@@ -1835,7 +1834,6 @@ export function WorkbenchRuntime({
       setAutomationsPath,
       setPendingWorktreeClientThreadId,
       setSettingsPath,
-      workbenchCodexControl.permissionMode,
     ],
   );
 
@@ -1939,7 +1937,7 @@ export function WorkbenchRuntime({
         request: {
           kind: "db_view",
           config: {
-            accessContext: { kind: "project", projectId },
+            routingContext: { kind: "project", projectId },
             target: { kind: "database-view", databaseViewId },
           },
         },
@@ -1970,7 +1968,7 @@ export function WorkbenchRuntime({
             ? {
                 kind: "page_stage",
                 config: {
-                  accessContext: { kind: "library" },
+                  routingContext: { kind: "library" },
                   pageId: target.pageId,
                   ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                 },
@@ -1980,7 +1978,7 @@ export function WorkbenchRuntime({
               ? {
                   kind: "canvas_stage",
                   config: {
-                    accessContext: { kind: "library" },
+                    routingContext: { kind: "library" },
                     canvasBlockId: target.canvasId,
                     ...(options.titleSnapshot ? { titleSnapshot: options.titleSnapshot } : {}),
                   },
@@ -1990,7 +1988,7 @@ export function WorkbenchRuntime({
                 ? {
                     kind: "db_view",
                     config: {
-                      accessContext: { kind: "library" },
+                      routingContext: { kind: "library" },
                       target: {
                         kind: "database-default",
                         databaseId: target.databaseId,
@@ -2001,7 +1999,7 @@ export function WorkbenchRuntime({
                 : {
                     kind: "db_view",
                     config: {
-                      accessContext: { kind: "library" },
+                      routingContext: { kind: "library" },
                       target: {
                         kind: "database-view",
                         databaseViewId: target.viewId,
@@ -2178,7 +2176,7 @@ export function WorkbenchRuntime({
         {
           kind: "page_stage",
           config: {
-            accessContext: { kind: "project", projectId },
+            routingContext: { kind: "project", projectId },
             pageId,
             ...(titleSnapshot ? { titleSnapshot } : {}),
           },
@@ -2199,7 +2197,7 @@ export function WorkbenchRuntime({
         {
           kind: "canvas_stage",
           config: {
-            accessContext: { kind: "project", projectId },
+            routingContext: { kind: "project", projectId },
             canvasBlockId,
             ...(titleSnapshot ? { titleSnapshot } : {}),
           },
@@ -2371,7 +2369,7 @@ export function WorkbenchRuntime({
     openAttachedThreadSession,
     openAttachedThreadSessionById,
     openResolvedPendingThreadSession,
-    openAutomationHistoryThreadSessionById,
+    openAutomationHistorySessionById,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
@@ -2716,7 +2714,8 @@ export function WorkbenchRuntime({
       onTogglePinnedOpen={toggleThreadSummaryPanel}
       summary={threadSummary}
       onOpenSubagentsPanel={() => {
-        const rootThreadId = activeSession?.thread?.threadId;
+        const rootThreadId =
+          activeSession?.executionRef?.threadId ?? activeSession?.thread?.threadId;
         if (rootThreadId) void openSubagentsPanelTab(rootThreadId);
       }}
     />
@@ -3172,17 +3171,17 @@ export function WorkbenchRuntime({
     [openProjectScenePage, presentExistingDatabaseView, selectProject],
   );
   const openContentIssueLocation = async (
-    scope: ContentAccessIdentity,
+    scope: ContentRoutingIdentity,
     location: ContentEditLocation,
   ) => {
     if (scope.libraryId !== currentLibraryId) return;
     const { target, label } = location;
     try {
-      if (scope.accessContext.kind === "library") {
+      if (scope.routingContext.kind === "library") {
         await presentLibraryTarget(target, { titleSnapshot: label });
         return;
       }
-      const projectId = scope.accessContext.projectId;
+      const projectId = scope.routingContext.projectId;
       if (!projects.some((project) => project.id === projectId)) {
         toast.danger("This Project is no longer available.");
         return;
@@ -3248,7 +3247,7 @@ export function WorkbenchRuntime({
           detailRailPortalTarget: automationsDetailRailPortalElement,
           onDetailRailOpenChange: setAutomationsDetailRailOpen,
           onPathChange: setAutomationsPath,
-          onOpenThread: openAutomationHistoryThreadSessionById,
+          onOpenSession: openAutomationHistorySessionById,
           onCreateWithChat: openScheduledAutomationChatCreate,
           onPersonalizeTemplate: startScheduledAutomationTemplateChat,
           onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
@@ -3257,7 +3256,6 @@ export function WorkbenchRuntime({
       pendingWorktree: {
         clientThreadId: pendingWorktreeClientThreadId,
         props: {
-          agentMode: workbenchCodexControl.permissionMode,
           expectedHostId:
             workbenchWindow.location.kind === "pending-worktree"
               ? workbenchWindow.location.expectedHostId
@@ -3341,7 +3339,7 @@ export function WorkbenchRuntime({
       openLibraryFiles={() => {
         const projectId = activeProject?.id ?? activeProjectId;
         openModal(appHandle, LibraryFilesDialog, {
-          accessContext: projectId ? projectContentAccess(projectId) : libraryContentAccess,
+          routingContext: projectId ? projectContentRoute(projectId) : libraryContentRoute,
         });
       }}
       openProcessManager={() => setProcessManagerOpen(true)}
@@ -3392,7 +3390,7 @@ export function WorkbenchRuntime({
         (surface.kind === "db_view" ||
           surface.kind === "page_stage" ||
           surface.kind === "canvas_stage") &&
-        surface.config.accessContext.kind === "library"
+        surface.config.routingContext.kind === "library"
       ) {
         return (
           <WorkbenchLibraryResourceSurface
@@ -3421,8 +3419,8 @@ export function WorkbenchRuntime({
       }
 
       if (surface.kind === "db_view") {
-        if (surface.config.accessContext.kind !== "project") return null;
-        const accessContext = surface.config.accessContext;
+        if (surface.config.routingContext.kind !== "project") return null;
+        const routingContext = surface.config.routingContext;
         if (surface.config.target.kind === "database-default")
           return (
             <WorkbenchDatabaseViewSurface
@@ -3431,11 +3429,11 @@ export function WorkbenchRuntime({
                 sceneOwner: activeProjectScene.owner,
                 surface,
               }}
-              accessContext={accessContext}
+              routingContext={routingContext}
               target={surface.config.target}
               presentedPageIds={projectScenePresentedPageIds}
               onOpenPage={(pageId, titleSnapshot, openMode) => {
-                void openProjectScenePage(accessContext.projectId, pageId, titleSnapshot, {
+                void openProjectScenePage(routingContext.projectId, pageId, titleSnapshot, {
                   openMode,
                   placement: { kind: "same-group", sourceSurfaceId: surface.id },
                 });
@@ -3444,7 +3442,7 @@ export function WorkbenchRuntime({
           );
         const databaseViewId =
           surface.config.target.kind === "project-default"
-            ? projects.find((project) => project.id === accessContext.projectId)
+            ? projects.find((project) => project.id === routingContext.projectId)
                 ?.defaultDatabaseViewId
             : surface.config.target.kind === "database-view"
               ? surface.config.target.databaseViewId
@@ -3460,7 +3458,7 @@ export function WorkbenchRuntime({
           ...common,
           kind: "db_view",
           config: {
-            accessContext,
+            routingContext,
             target: { kind: "database-view", databaseViewId },
           },
         };
@@ -3501,8 +3499,8 @@ export function WorkbenchRuntime({
       }
 
       if (surface.kind === "canvas_stage") {
-        if (surface.config.accessContext.kind !== "project") return null;
-        const projectId = surface.config.accessContext.projectId;
+        if (surface.config.routingContext.kind !== "project") return null;
+        const projectId = surface.config.routingContext.projectId;
         return (
           <WorkbenchCanvasStagePanel
             surface={surface}
@@ -3527,8 +3525,8 @@ export function WorkbenchRuntime({
       }
 
       if (surface.kind === "page_stage") {
-        if (surface.config.accessContext.kind !== "project") return null;
-        const pageAccessProjectId = surface.config.accessContext.projectId;
+        if (surface.config.routingContext.kind !== "project") return null;
+        const pageAccessProjectId = surface.config.routingContext.projectId;
         const tab: WorkbenchTabProjection = {
           ...common,
           kind: "page_stage",
@@ -3785,7 +3783,7 @@ export function WorkbenchRuntime({
               sceneOwner: pagesSceneOwner,
               surface,
             }}
-            accessContext={surface.config.accessContext}
+            routingContext={surface.config.routingContext}
             target={surface.config.target}
             keyboardSurface={{
               surfaceId: surface.id,
@@ -3977,7 +3975,7 @@ export function WorkbenchRuntime({
               {
                 kind: "db_view",
                 config: {
-                  accessContext: {
+                  routingContext: {
                     kind: "project",
                     projectId: activeProject.id,
                   },
@@ -3994,7 +3992,7 @@ export function WorkbenchRuntime({
                 {
                   kind: "page_stage",
                   config: {
-                    accessContext: {
+                    routingContext: {
                       kind: "project",
                       projectId: destination.projectId,
                     },
@@ -4014,7 +4012,7 @@ export function WorkbenchRuntime({
               {
                 kind: "db_view",
                 config: {
-                  accessContext: {
+                  routingContext: {
                     kind: "project",
                     projectId: destination.projectId,
                   },
@@ -4376,7 +4374,8 @@ export function WorkbenchRuntime({
           onQueueingEnabledChange: handleThreadQueueFollowUpsEnabledChange,
           onOpenThread: openAttachedThreadSession,
           onOpenSubagentsPanel: () => {
-            const rootThreadId = activeRenderSession.thread?.threadId;
+            const rootThreadId =
+              activeRenderSession.executionRef?.threadId ?? activeRenderSession.thread?.threadId;
             if (!rootThreadId) return;
             void openSubagentsPanelTab(rootThreadId);
           },
@@ -4412,7 +4411,9 @@ export function WorkbenchRuntime({
               kind: "session",
               backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
               projectId: activeRenderSession.projectId,
-              hasAttachedThread: Boolean(activeRenderSession.thread),
+              hasAttachedThread: Boolean(
+                activeRenderSession.executionRef || activeRenderSession.thread,
+              ),
               cwd: activeRenderSession.thread?.cwd,
               projectWorkspaceRoot: projectWorkspaceRootOrNull(activeSessionProject),
             },
@@ -4744,8 +4745,8 @@ export function WorkbenchRuntime({
                           <InboxRoute
                             projects={projects}
                             focusComposerToken={inboxFocusToken}
-                            onOpenThread={(threadId) =>
-                              void openAttachedThreadSessionById(threadId)
+                            onOpenSession={(sessionId) =>
+                              void sessionCommands.openProjectSessionById(sessionId)
                             }
                             onOpenPage={(pageId) =>
                               void openResourceTarget({ kind: "page", pageId })

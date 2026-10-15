@@ -1,5 +1,5 @@
 import { recoveryReviewEntries } from "./document-recovery-entries";
-import { contentAccessIdentityKey } from "../../shared/content-access-context";
+import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import type { DocumentRecovery } from "./document-recovery";
 import {
   contentRecoveryIssueId,
@@ -67,7 +67,7 @@ export function createDocumentRecoveryIssueSource(
       if (remaining > 0 || moreLocal > 0 || state.error || state.localError)
         entries.push({
           kind: "draft",
-          id: `${contentAccessIdentityKey(module.scope)}\0${module.documentId ?? "library"}\0recovery-list`,
+          id: `${contentRoutingIdentityKey(module.scope)}\0${module.documentId ?? "library"}\0recovery-list`,
           scope: module.scope,
           location: null,
           title: state.localError

@@ -1,6 +1,6 @@
 # ADR 0066: Model selections retain their native runtime owner
 
-- Status: Accepted
+- Status: Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md)
 - Date: 2026-10-03
 - Owners: Nodex maintainers
 - Refines: [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md), [ADR 0065](0065-native-claude-code-backend.md)

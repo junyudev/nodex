@@ -44,31 +44,8 @@ describe("resolveGrokAcpBaseModelId", () => {
 });
 
 describe("grokAcpSpawnArgs", () => {
-  it("inherits the Grok CLI config when no T3 runtime mode is set", () => {
-    expect(grokAcpSpawnArgs()).toEqual(["agent", "stdio"]);
-  });
-
-  it("forces Grok to ask when T3 is Supervised", () => {
-    expect(grokAcpSpawnArgs("approval-required")).toEqual([
-      "--permission-mode",
-      "default",
-      "agent",
-      "stdio",
-    ]);
-  });
-
-  it("maps Full access to Grok always-approve", () => {
-    expect(grokAcpSpawnArgs("full-access")).toEqual(["agent", "--always-approve", "stdio"]);
-  });
-
-  it("launches Auto on Grok's classifier and a mode Grok does not offer asking", () => {
-    expect(grokAcpSpawnArgs("auto")).toEqual(["--permission-mode", "auto", "agent", "stdio"]);
-    expect(grokAcpSpawnArgs("auto-accept-edits")).toEqual([
-      "--permission-mode",
-      "default",
-      "agent",
-      "stdio",
-    ]);
+  it("launches native execution with automatic approval", () => {
+    expect(grokAcpSpawnArgs()).toEqual(["agent", "--always-approve", "stdio"]);
   });
 });
 
@@ -81,7 +58,7 @@ describe("buildGrokAcpSpawnInput", () => {
 
     expect(spawn).toEqual({
       command: "/usr/local/bin/grok",
-      args: ["agent", "stdio"],
+      args: ["agent", "--always-approve", "stdio"],
       cwd: "/tmp/project",
       env: {
         XAI_API_KEY: "secret",
@@ -90,15 +67,7 @@ describe("buildGrokAcpSpawnInput", () => {
     });
   });
 
-  it("puts Supervised on the Grok argv so config always-approve cannot win", () => {
-    const spawn = buildGrokAcpSpawnInput(
-      { binaryPath: "/usr/local/bin/grok" },
-      "/tmp/project",
-      undefined,
-      "approval-required",
-    );
-    expect(spawn.args).toEqual(["--permission-mode", "default", "agent", "stdio"]);
-  });
+
 });
 
 describe("isValidGrokReasoningEffortToken", () => {

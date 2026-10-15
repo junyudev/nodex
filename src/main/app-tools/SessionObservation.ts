@@ -4,13 +4,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { components } from "@nodex/core-protocol";
-import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
 import {
   hasPendingConversationTurnStart,
   latestConversationTurn,
 } from "../../shared/codex-conversation-state/codex-turn-selectors";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
-import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
 import {
   CodexReadThreadHistory,
   type CodexReadThreadHistoryResult,
@@ -147,81 +145,6 @@ export class SessionObservation extends Context.Service<
   }
 >()("nodex/main/app-tools/SessionObservation") {}
 
-const truncate = (value: string | null, maximum: number) => {
-  if (value === null) return null;
-  if (maximum <= 0) return "";
-  return value.length <= maximum ? value : `${value.slice(0, maximum - 1)}…`;
-};
-
-/** ACP cursors are tied to one retained snapshot; changed or evicted history never shifts a page silently. */
-export const readAcpHistoryPage = (
-  snapshot: AgentConversationSnapshot,
-  input: SessionHistoryInput,
-): AvailableHistory | null => {
-  const prefix = `${snapshot.backend}:${snapshot.sessionId}:${snapshot.revision}:`;
-  const encodedIndex = input.cursor?.startsWith(prefix) ? input.cursor.slice(prefix.length) : null;
-  const end = input.cursor
-    ? encodedIndex && /^\d+$/.test(encodedIndex)
-      ? Number(encodedIndex)
-      : -1
-    : snapshot.turns.length;
-  if (!Number.isSafeInteger(end) || end < 0 || end > snapshot.turns.length) return null;
-  const start = Math.max(0, end - input.turnLimit);
-  const turns = snapshot.turns
-    .slice(start, end)
-    .reverse()
-    .map((turn) => ({
-      sequence: turn.sequence,
-      prompt: truncate(turn.promptText, input.maxOutputCharsPerItem),
-      stopReason: turn.stopReason,
-      items: turn.updates.flatMap((update): Record<string, unknown>[] => {
-        if (update.kind === "message")
-          return [
-            {
-              kind: update.kind,
-              role: update.role,
-              text: truncate(update.text, input.maxOutputCharsPerItem),
-            },
-          ];
-        if (update.kind === "tool-call")
-          return [
-            {
-              kind: update.kind,
-              id: update.toolCallId,
-              title: truncate(update.title, input.maxOutputCharsPerItem),
-              status: update.status,
-              ...(input.includeOutputs
-                ? { output: truncate(update.detail, input.maxOutputCharsPerItem) }
-                : {}),
-            },
-          ];
-        if (update.kind === "plan")
-          return [
-            {
-              kind: update.kind,
-              state: update.state,
-              entries: update.entries.map((entry) => ({
-                ...entry,
-                content: truncate(entry.content, input.maxOutputCharsPerItem),
-              })),
-            },
-          ];
-        return [];
-      }),
-    }));
-  return {
-    availability: "available",
-    coverage: "retained",
-    page: {
-      order: "newest_first",
-      limit: input.turnLimit,
-      hasMore: start > 0,
-      nextCursor: start > 0 ? `${prefix}${start}` : null,
-    },
-    turns,
-  };
-};
-
 const bindingKey = ({ session, thread }: AuthorizedSession): string =>
   JSON.stringify({
     projectId: session.project_id,
@@ -233,7 +156,6 @@ export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
   const codex = yield* CodexReadThreadHistory;
   const directory = yield* CodexThreadDirectory;
-  const backends = yield* AgentBackendApplication;
   const authorize = Effect.fn("SessionObservation.authorize")(function* (
     sessionId: string,
     provenance: Provenance,
@@ -284,21 +206,7 @@ export const make = Effect.gen(function* () {
         turns: result.turns,
       };
     }
-    const presentation = yield* backends
-      .readAgentSession(session.thread.thread_id)
-      .pipe(
-        Effect.mapError(
-          (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
-        ),
-      );
-    if (!presentation) return { availability: "unavailable", reason: "backend_not_loaded" };
-    const result = readAcpHistoryPage(presentation.snapshot, input);
-    if (!result)
-      return yield* new SessionObservationError({
-        reason: "invalid_cursor",
-        cause: new Error("ACP history changed or the cursor is invalid"),
-      });
-    return result;
+    return { availability: "unavailable", reason: "backend_not_loaded" };
   });
 
   return SessionObservation.of({
@@ -315,16 +223,6 @@ export const make = Effect.gen(function* () {
                 ),
               )
           : null;
-      const agent =
-        thread && thread.backend_binding.kind !== "codex"
-          ? yield* backends
-              .readAgentSession(thread.thread_id)
-              .pipe(
-                Effect.mapError(
-                  (cause) => new SessionObservationError({ reason: "history_unavailable", cause }),
-                ),
-              )
-          : null;
       const after = yield* authorize(sessionId, provenance);
       if (bindingKey(before) !== bindingKey(after))
         return yield* new SessionObservationError({
@@ -334,12 +232,7 @@ export const make = Effect.gen(function* () {
       const snapshot = retained?.snapshot;
       const canonicalStatus = retained?.canonical?.threadRuntimeStatus;
       const status =
-        thread && thread.backend_binding.kind !== "codex"
-          ? (agent?.snapshot.status ?? "notLoaded")
-          : (canonicalStatus?.type ??
-            snapshot?.statusType ??
-            after.thread?.status.status_type ??
-            "idle");
+        canonicalStatus?.type ?? snapshot?.statusType ?? after.thread?.status.status_type ?? "idle";
       const canonicalActiveFlags =
         canonicalStatus?.type === "active" ? canonicalStatus.activeFlags : undefined;
       const activeFlags =
@@ -374,7 +267,6 @@ export const make = Effect.gen(function* () {
                 submission.stage,
               ]),
               requestIds: snapshot?.requests.map((request) => request.requestId),
-              agentRevision: agent?.snapshot.revision,
             }),
           )
           .digest("base64url");

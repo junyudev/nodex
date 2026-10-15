@@ -94,11 +94,10 @@ export function makeScheduledAutomation(
     id: "automation-alpha",
     definitionRevision: 1,
     projectId: null,
-    targetSessionId: null,
     notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
-    targetThreadId: "thread-alpha",
+    targetSessionId: "session:alpha:attached",
     name: "Alpha standup",
     prompt: "Check the alpha standup thread.",
     rrule: "FREQ=DAILY",
@@ -130,7 +129,8 @@ export function makeAutomationInboxItem(
     archivedUserMessage: null,
     archivedReason: null,
     sourceCwd: "/Users/asc/repo/nodex",
-    threadId: "thread-run-alpha",
+    runId: "run-alpha",
+    sessionId: "session:run:alpha",
     readAt: null,
     createdAt: 10,
     status: "PENDING_REVIEW",
@@ -289,13 +289,13 @@ export function fillDbViewFixtureConfig(
   },
 ): WorkbenchProjectionDbViewTabConfig {
   if (config.target) return { ...config, target: config.target };
-  if (config.accessContext.kind === "library")
+  if (config.routingContext.kind === "library")
     throw new Error("Library View fixture requires a target");
   return {
     ...config,
     target: {
       kind: "database-view",
-      databaseViewId: `database-view:${config.accessContext.projectId}:primary-board`,
+      databaseViewId: `database-view:${config.routingContext.projectId}:primary-board`,
     },
   };
 }
@@ -444,7 +444,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
             projectId,
             kind: "db_view",
             title: "DB View",
-            config: { accessContext: { kind: "project", projectId: projectId } },
+            config: { routingContext: { kind: "project", projectId: projectId } },
           }),
         ];
   const tabs = (rawTabs ?? defaultTabs).map((tab, index) =>
@@ -487,6 +487,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
     order: 0,
     panels,
     thread,
+    executionRef: thread ? { runtimeId: "runtime:test", threadId: thread.threadId } : null,
     tabs,
     createdAt: "2026-06-07T00:00:00.000Z",
     updatedAt: "2026-06-07T00:00:00.000Z",

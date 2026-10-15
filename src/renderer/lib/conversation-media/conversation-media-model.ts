@@ -60,6 +60,7 @@ export interface ConversationMediaSource {
   readonly threadId: string;
   readonly sourceIdentity: string;
   readonly authority: object | null;
+  readonly executionSource?: import("../../features/local-conversation/conversation-runtime").ConversationContentSource;
   readonly nativeConnection:
     | { readonly sourceEpoch: string; readonly generation: number }
     | undefined;
@@ -96,7 +97,7 @@ export function resolveConversationMediaTarget(
   }
   if (
     !scope?.authority ||
-    !scope.nativeConnection ||
+    (!scope.nativeConnection && !scope.executionSource?.isCurrent()) ||
     !scope.hostId ||
     !scope.threadId ||
     !scope.isResourceCurrent()

@@ -32,7 +32,6 @@ vi.mock("@/lib/maitai", async (importOriginal) => ({
   useScopeHandle: () => ({}),
 }));
 vi.mock("@/lib/modal-registry", () => ({ openModal: vi.fn() }));
-vi.mock("./library-resource-action-modals", () => ({ LibraryResourceAccessModal: () => null }));
 vi.mock("@/lib/file-location-navigation", () => ({ useFileLocationNavigator: () => mocks.open }));
 vi.mock("@/lib/use-library-navigation", () => ({
   useLibraryMetadata: () => ({ data: { libraryId: "library", storeEpoch: "epoch" } }),
@@ -190,7 +189,7 @@ test("read-only Page permits saving but exposes no path mutation", async () => {
   const { PageFilesDialog } = await import("../board/page-stage/page-files-row");
   render(
     <PageFilesDialog
-      accessContext={{ kind: "project", projectId: "p" }}
+      routingContext={{ kind: "project", projectId: "p" }}
       pageId="page-a"
       initialFileId="target"
       onChanged={mocks.refresh}

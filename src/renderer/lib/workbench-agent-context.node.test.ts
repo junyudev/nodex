@@ -84,13 +84,13 @@ describe("Workbench Agent presentation observation", () => {
         titleSnapshot: "First page",
         stateKey: 0,
         state: null,
-        config: { accessContext: { kind: "library" }, pageId: "page-first" },
+        config: { routingContext: { kind: "library" }, pageId: "page-first" },
       },
     });
     const state = stateFor([scene], { kind: "pages" });
     const submission = readWorkbenchSubmitPresentation(state, "generation-a");
     const next = updateWorkbenchSceneSurface(scene, "page-tab", {
-      config: { accessContext: { kind: "library" }, pageId: "page-second" },
+      config: { routingContext: { kind: "library" }, pageId: "page-second" },
     });
     const after = readWorkbenchSubmitPresentation(
       stateFor([next], { kind: "pages" }),
@@ -113,7 +113,7 @@ describe("Workbench Agent presentation observation", () => {
       id: "preview-page",
       kind: "page_stage",
       titleSnapshot: "Preview page",
-      config: { accessContext: { kind: "project", projectId: "project-a" }, pageId: "page-a" },
+      config: { routingContext: { kind: "project", projectId: "project-a" }, pageId: "page-a" },
       stateKey: 3,
       state: { selectedBlock: "private-block" },
     };

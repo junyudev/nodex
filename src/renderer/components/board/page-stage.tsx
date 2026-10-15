@@ -48,7 +48,7 @@ import {
   PageStageViewportSession,
   type PageStageViewportLease,
 } from "@/lib/page-stage-viewport-session";
-import { contentAccessContextKey } from "../../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../../shared/content-routing-context";
 
 export type { PageStageProps } from "./page-stage/types";
 
@@ -70,7 +70,7 @@ async function copyPageDeeplink(pageId: string): Promise<void> {
 }
 
 interface PageStageDescriptionEditorProps {
-  readonly contentAccessContext: PageStageProps["contentAccessContext"];
+  readonly contentRoutingContext: PageStageProps["contentRoutingContext"];
   readonly projectName?: string | null;
   readonly projectWorkspacePath?: string | null;
   readonly pageId: string;
@@ -116,7 +116,7 @@ function CollaborativePageStageRawContent({ document }: { readonly document: Y.D
 }
 
 const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
-  contentAccessContext,
+  contentRoutingContext,
   projectName,
   projectWorkspacePath,
   pageId,
@@ -148,7 +148,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   const consumedFocusIntentRef = useRef<number | null>(null);
   const rawContentRootRef = useRef<HTMLDivElement | null>(null);
   const viewportLeaseRef = useRef<PageStageViewportLease | null>(null);
-  const documentScopeKey = contentAccessContextKey(contentAccessContext);
+  const documentScopeKey = contentRoutingContextKey(contentRoutingContext);
   const viewportSession = useMemo(
     () =>
       editorSession?.getOrCreateRetainedResource(
@@ -255,7 +255,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
 
   return (
     <NfmEditor
-      contentAccessContext={contentAccessContext}
+      contentRoutingContext={contentRoutingContext}
       projectName={projectName}
       projectWorkspacePath={projectWorkspacePath}
       source={{
@@ -386,7 +386,7 @@ export function PageStage(props: PageStageProps) {
     persistViewport,
   });
   const focusIntent = usePageBlockFocusIntent(
-    props.contentAccessContext.kind === "project" ? props.contentAccessContext.projectId : null,
+    props.contentRoutingContext.kind === "project" ? props.contentRoutingContext.projectId : null,
     controller.page?.id ?? "",
   );
   const handleToggleHistoryPanel = useCallback(() => {
@@ -428,7 +428,7 @@ export function PageStage(props: PageStageProps) {
       }
       description={
         <PageStageDescriptionEditor
-          contentAccessContext={props.contentAccessContext}
+          contentRoutingContext={props.contentRoutingContext}
           projectName={props.projectName}
           projectWorkspacePath={props.projectWorkspacePath}
           pageId={page.id}
@@ -459,7 +459,7 @@ export function PageStage(props: PageStageProps) {
       }
       referencedBy={
         <PageStageReferencedBy
-          accessContext={props.contentAccessContext}
+          routingContext={props.contentRoutingContext}
           pageId={page.id}
           onOpenPage={props.onOpenPage}
         />

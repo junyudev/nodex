@@ -399,42 +399,6 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
     }),
   );
 
-  it.effect("keeps only recent raw notifications after their callbacks run", () =>
-    Effect.gen(function* () {
-      const { stdio, input } = yield* makeInMemoryStdio();
-      const handled = yield* Deferred.make<void>();
-      let handledCount = 0;
-      const transport = yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
-        stdio,
-        onNotification: () =>
-          Effect.sync(() => ++handledCount).pipe(
-            Effect.flatMap((count) =>
-              count === 64 ? Deferred.succeed(handled, undefined).pipe(Effect.asVoid) : Effect.void,
-            ),
-          ),
-      });
-
-      const messages = Array.from({ length: 64 }, (_, index) =>
-        encodeUnknownJsonString({
-          method: "item/agentMessage/delta",
-          params: { index },
-        }),
-      );
-      yield* Queue.offer(input, encoder.encode(`${messages.join("\n")}\n`));
-      yield* Deferred.await(handled);
-
-      const retained = yield* transport.incomingNotifications.pipe(
-        Stream.take(32),
-        Stream.runCollect,
-      );
-
-      assert.equal(handledCount, 64);
-      assert.equal(retained.length, 32);
-      assert.deepEqual(retained[0]?.params, { index: 32 });
-      assert.deepEqual(retained[31]?.params, { index: 63 });
-    }),
-  );
-
   it.effect("keeps processing protocol messages while an approval is pending", () =>
     Effect.gen(function* () {
       const { stdio, input, output } = yield* makeInMemoryStdio();
@@ -475,26 +439,21 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
     }),
   );
 
-  it.effect("rejects incoming requests after the active handler limit is reached", () =>
+  it.effect("retires and interrupts native handlers when their intake limit is reached", () =>
     Effect.gen(function* () {
-      const { stdio, input, output } = yield* makeInMemoryStdio();
-      const handlersStarted = yield* Deferred.make<void>();
-      const releaseHandlers = yield* Deferred.make<void>();
+      const { stdio, input } = yield* makeInMemoryStdio();
+      const terminated = yield* Deferred.make<CodexError.CodexAppServerError>();
       let activeHandlers = 0;
+      let interruptedHandlers = 0;
       yield* CodexProtocol.makeCodexAppServerPatchedProtocol({
         stdio,
+        onTermination: (error) => Deferred.succeed(terminated, error).pipe(Effect.asVoid),
         onRequest: () =>
           Effect.sync(() => ++activeHandlers).pipe(
-            Effect.flatMap((count) =>
-              count === 32
-                ? Deferred.succeed(handlersStarted, undefined).pipe(Effect.asVoid)
-                : Effect.void,
-            ),
-            Effect.andThen(Deferred.await(releaseHandlers)),
-            Effect.as({ decision: "accept" }),
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() => Effect.sync(() => ++interruptedHandlers)),
           ),
       });
-
       const requests = Array.from({ length: 33 }, (_, index) =>
         encodeUnknownJsonString({
           id: index + 1,
@@ -503,21 +462,10 @@ it.layer(NodeServices.layer)("effect-codex-app-server protocol", (it) => {
         }),
       );
       yield* Queue.offer(input, encoder.encode(`${requests.join("\n")}\n`));
-      yield* Deferred.await(handlersStarted);
-
-      assert.deepEqual(yield* decodeJson(yield* Queue.take(output)), {
-        id: 33,
-        error: {
-          code: -32001,
-          message: "Too many Codex requests are already active.",
-        },
-      });
+      assert.instanceOf(yield* Deferred.await(terminated), CodexError.CodexAppServerTransportError);
+      for (let i = 0; i < 10; i++) yield* Effect.yieldNow;
       assert.equal(activeHandlers, 32);
-
-      yield* Deferred.succeed(releaseHandlers, undefined);
-      yield* Effect.forEach(Array.from({ length: 32 }), () => Queue.take(output), {
-        discard: true,
-      });
+      assert.equal(interruptedHandlers, 32);
     }),
   );
 

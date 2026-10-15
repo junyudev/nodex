@@ -60,6 +60,8 @@ export interface ProviderEventRoutingState {
   /** Member thread id to the coordinator child thread that spawned it. */
   readonly workflowMemberParents: ReadonlyMap<ThreadId, ThreadId>;
   readonly ownedProviderThreadIds: ReadonlySet<ProviderThreadId>;
+  readonly handedOffThreadIds: ReadonlySet<ThreadId>;
+  readonly handedOffProviderThreadIds: ReadonlySet<ProviderThreadId>;
   readonly ownedProviderTurnIds: ReadonlySet<ProviderTurnId>;
   readonly inheritedBackgroundTurnItems: ReadonlyMap<TurnItemId, OrchestrationV2Run["id"]>;
   readonly rootProviderTurnId: ProviderTurnId | null;
@@ -173,16 +175,6 @@ function isRunOwnedSubagentTerminalStatus(
   status: ProviderTerminalEvent["status"],
 ): status is RunOwnedSubagentTerminalStatus {
   return status === "interrupted" || status === "failed" || status === "cancelled";
-}
-
-/**
- * Whether a new run takes over a subagent's child thread, so a later message
- * can resume it there. A running subagent stays with the run that launched it,
- * which keeps ingesting until it ends; taking it over too would store its
- * events twice. An interrupted, failed or cancelled one is never resumed.
- */
-export function canRouteRelatedSubagent(status: OrchestrationV2Subagent["status"]): boolean {
-  return status === "completed";
 }
 
 function emptyOpenRunOwnedSubagentProjection(): OpenRunOwnedSubagentProjection {
@@ -332,23 +324,67 @@ export function makeProviderEventRoutingState(input: {
   readonly identity: ProviderEventRouteIdentity;
   readonly inheritedBackgroundTurnItems?: ReadonlyArray<InheritedBackgroundTurnItemRoute>;
   readonly providerTurnId: ProviderTurnId | null;
-  readonly relatedThreadIds?: ReadonlyArray<ThreadId>;
-  readonly relatedProviderThreadIds?: ReadonlyArray<ProviderThreadId>;
 }): ProviderEventRoutingState {
   return {
-    ownedThreadIds: new Set([input.identity.threadId, ...(input.relatedThreadIds ?? [])]),
+    ownedThreadIds: new Set([input.identity.threadId]),
     rootTurnEnded: false,
     workflowMemberParents: new Map(),
-    ownedProviderThreadIds: new Set([
-      input.identity.providerThreadId,
-      ...(input.relatedProviderThreadIds ?? []),
-    ]),
+    ownedProviderThreadIds: new Set([input.identity.providerThreadId]),
+    handedOffThreadIds: new Set(),
+    handedOffProviderThreadIds: new Set(),
     ownedProviderTurnIds:
       input.providerTurnId === null ? new Set() : new Set([input.providerTurnId]),
     inheritedBackgroundTurnItems: new Map(
       (input.inheritedBackgroundTurnItems ?? []).map((item) => [item.id, item.runId]),
     ),
     rootProviderTurnId: input.providerTurnId,
+  };
+}
+
+function followRelatedNativeThread(
+  state: ProviderEventRoutingState,
+  identity: ProviderEventRouteIdentity,
+  related: { readonly threadId: ThreadId; readonly providerThreadId: ProviderThreadId | null },
+  follow: boolean,
+): ProviderEventRoutingState {
+  const changeThread =
+    related.threadId !== identity.threadId &&
+    (state.ownedThreadIds.has(related.threadId) !== follow ||
+      state.handedOffThreadIds.has(related.threadId) === follow);
+  const changeProvider =
+    related.providerThreadId !== null &&
+    related.providerThreadId !== identity.providerThreadId &&
+    (state.ownedProviderThreadIds.has(related.providerThreadId) !== follow ||
+      state.handedOffProviderThreadIds.has(related.providerThreadId) === follow);
+  if (!changeThread && !changeProvider) return state;
+  const ownedThreadIds = new Set(state.ownedThreadIds);
+  const ownedProviderThreadIds = new Set(state.ownedProviderThreadIds);
+  const handedOffThreadIds = new Set(state.handedOffThreadIds);
+  const handedOffProviderThreadIds = new Set(state.handedOffProviderThreadIds);
+  if (changeThread) {
+    if (follow) {
+      ownedThreadIds.add(related.threadId);
+      handedOffThreadIds.delete(related.threadId);
+    } else {
+      ownedThreadIds.delete(related.threadId);
+      handedOffThreadIds.add(related.threadId);
+    }
+  }
+  if (changeProvider && related.providerThreadId !== null) {
+    if (follow) {
+      ownedProviderThreadIds.add(related.providerThreadId);
+      handedOffProviderThreadIds.delete(related.providerThreadId);
+    } else {
+      ownedProviderThreadIds.delete(related.providerThreadId);
+      handedOffProviderThreadIds.add(related.providerThreadId);
+    }
+  }
+  return {
+    ...state,
+    ownedThreadIds,
+    ownedProviderThreadIds,
+    handedOffThreadIds,
+    handedOffProviderThreadIds,
   };
 }
 
@@ -427,20 +463,40 @@ export function routeProviderEvent(
     case "subagent.updated": {
       const belongs = ownsRun(event.subagent.runId) || ownsChildThread(event.subagent.threadId);
       const coordinator = event.subagent;
+      const next =
+        coordinator.origin === "provider_native" &&
+        coordinator.threadId === input.threadId &&
+        coordinator.runId !== null &&
+        coordinator.childThreadId !== null &&
+        (ownsRun(coordinator.runId) ||
+          ownsChildThread(coordinator.childThreadId) ||
+          (coordinator.providerThreadId !== null &&
+            state.ownedProviderThreadIds.has(coordinator.providerThreadId))) &&
+        isOrchestrationV2WorkActive(coordinator.status)
+          ? followRelatedNativeThread(
+              state,
+              input,
+              {
+                threadId: coordinator.childThreadId,
+                providerThreadId: coordinator.providerThreadId,
+              },
+              ownsRun(coordinator.runId),
+            )
+          : state;
       if (
         !ownsRun(coordinator.runId) ||
         coordinator.workflow === undefined ||
         coordinator.childThreadId === null
       ) {
-        return [belongs, state];
+        return [belongs, next];
       }
-      const workflowMemberParents = new Map(state.workflowMemberParents);
+      const workflowMemberParents = new Map(next.workflowMemberParents);
       for (const member of coordinator.workflow.agents) {
         if (member.childThreadId !== undefined) {
           workflowMemberParents.set(member.childThreadId, coordinator.childThreadId);
         }
       }
-      return [true, { ...state, workflowMemberParents }];
+      return [true, { ...next, workflowMemberParents }];
     }
     case "message.updated":
       return [ownsRun(event.message.runId) || ownsChildThread(event.message.threadId), state];
@@ -481,6 +537,133 @@ export function routeProviderEvent(
         : [false, state];
   }
 }
+
+export interface RelatedNativeThreadAddress {
+  readonly subagentId?: NodeId;
+  readonly threadId?: ThreadId;
+  readonly providerThreadId?: ProviderThreadId;
+}
+
+export type ResolveRelatedNativeThread = (address: RelatedNativeThreadAddress) => Effect.Effect<
+  {
+    readonly subagentId: NodeId;
+    readonly threadId: ThreadId;
+    readonly providerThreadId: ProviderThreadId | null;
+    readonly sourceRunId: OrchestrationV2Run["id"];
+  } | null,
+  ProjectionStoreV2Error
+>;
+
+function relatedNativeAddress(
+  event: ProviderAdapter.ProviderAdapterV2Event,
+  identity: ProviderEventRouteIdentity,
+): RelatedNativeThreadAddress | null {
+  let threadId: ThreadId | null | undefined;
+  let providerThreadId: ProviderThreadId | null | undefined;
+  switch (event.type) {
+    case "provider_thread.updated":
+      threadId = event.providerThread.appThreadId;
+      providerThreadId = event.providerThread.id;
+      break;
+    case "provider_turn.updated":
+      threadId = event.threadId;
+      providerThreadId = event.providerTurn.providerThreadId;
+      break;
+    case "node.updated":
+      threadId = event.node.threadId;
+      providerThreadId = event.node.providerThreadId;
+      break;
+    case "subagent.updated":
+      threadId = event.subagent.threadId;
+      providerThreadId = event.subagent.providerThreadId;
+      break;
+    case "message.updated":
+      threadId = event.message.threadId;
+      break;
+    case "turn_item.updated":
+      threadId = event.turnItem.threadId;
+      providerThreadId = event.turnItem.providerThreadId;
+      break;
+    case "plan.updated":
+      threadId = event.plan.threadId;
+      break;
+    case "runtime_request.updated":
+      threadId = event.threadId;
+      break;
+    default:
+      return null;
+  }
+  const childThread = threadId && threadId !== identity.threadId ? threadId : undefined;
+  const childProviderThread =
+    providerThreadId && providerThreadId !== identity.providerThreadId
+      ? providerThreadId
+      : undefined;
+  if (!childThread && !childProviderThread) return null;
+  return {
+    ...(childThread === undefined ? {} : { threadId: childThread }),
+    ...(childProviderThread === undefined ? {} : { providerThreadId: childProviderThread }),
+  };
+}
+
+/** A resumed native child is resolved only when its actual event arrives. */
+export const routeProviderEventWithLookup = Effect.fnUntraced(function* (
+  event: ProviderAdapter.ProviderAdapterV2Event,
+  identity: ProviderEventRouteIdentity,
+  state: ProviderEventRoutingState,
+  resolveRelatedNativeThread?: ResolveRelatedNativeThread,
+): Effect.fn.Return<readonly [boolean, ProviderEventRoutingState], ProjectionStoreV2Error> {
+  const routed = routeProviderEvent(event, identity, state);
+  // An actual native resume names its new source before it emits runless child frames.
+  // Its exact parent task node can precede the persisted subagent update.
+  if (
+    resolveRelatedNativeThread !== undefined &&
+    event.type === "node.updated" &&
+    event.node.kind === "subagent" &&
+    event.node.threadId === identity.threadId &&
+    event.node.runId !== null &&
+    isOrchestrationV2WorkActive(event.node.status)
+  ) {
+    const related = yield* resolveRelatedNativeThread({ subagentId: event.node.id });
+    if (related?.subagentId !== event.node.id) return routed;
+    if (
+      event.node.runId !== identity.runId &&
+      related.sourceRunId !== identity.runId &&
+      !state.ownedThreadIds.has(related.threadId) &&
+      (related.providerThreadId === null ||
+        !state.ownedProviderThreadIds.has(related.providerThreadId))
+    )
+      return routed;
+    return [
+      routed[0],
+      followRelatedNativeThread(routed[1], identity, related, event.node.runId === identity.runId),
+    ];
+  }
+  if (routed[0] || resolveRelatedNativeThread === undefined) return routed;
+  const address = relatedNativeAddress(event, identity);
+  if (address === null) return routed;
+  if (
+    (address.threadId !== undefined && state.handedOffThreadIds.has(address.threadId)) ||
+    (address.providerThreadId !== undefined &&
+      state.handedOffProviderThreadIds.has(address.providerThreadId))
+  )
+    return routed;
+  const related = yield* resolveRelatedNativeThread(address);
+  // A native session broadcasts to successive Run listeners. Only the original Run
+  // may recover an unknown child; known background children keep their existing route.
+  if (
+    related === null ||
+    related.sourceRunId !== identity.runId ||
+    (address.threadId !== undefined && related.threadId !== address.threadId) ||
+    (address.providerThreadId !== undefined &&
+      related.providerThreadId !== address.providerThreadId)
+  )
+    return routed;
+  return routeProviderEvent(
+    event,
+    identity,
+    followRelatedNativeThread(routed[1], identity, related, true),
+  );
+});
 
 /**
  * ERRORS
@@ -536,11 +719,10 @@ export interface RunExecutionServiceV2StartRootRunInput {
     ReadonlyArray<InheritedBackgroundTurnItemRoute>,
     unknown
   >;
-  readonly relatedThreadIds?: ReadonlyArray<ThreadId>;
-  readonly relatedProviderThreadIds?: ReadonlyArray<ProviderThreadId>;
+  readonly resolveRelatedNativeThread?: ResolveRelatedNativeThread;
   readonly shouldStartProviderTurn?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
   readonly shouldFinalizeRun?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
-  readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean, never>;
+  readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
   readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
@@ -587,7 +769,7 @@ export const layer: Layer.Layer<
       readonly providerThread: OrchestrationV2ProviderThread;
       readonly attempt: OrchestrationV2RunAttempt;
       readonly shouldFinalizeRun?: () => Effect.Effect<boolean, ProjectionStoreV2Error>;
-      readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean, never>;
+      readonly hasUnpairedRunInterruptRequest?: () => Effect.Effect<boolean>;
       readonly openRunOwnedSubagents?: OpenRunOwnedSubagentProjection;
       readonly terminal: ProviderTerminalEvent;
       readonly failureItemPersisted: boolean;
@@ -965,12 +1147,6 @@ export const layer: Layer.Layer<
               identity: routeIdentity,
               inheritedBackgroundTurnItems,
               providerTurnId: input.attempt.providerTurnId,
-              ...(input.relatedThreadIds === undefined
-                ? {}
-                : { relatedThreadIds: input.relatedThreadIds }),
-              ...(input.relatedProviderThreadIds === undefined
-                ? {}
-                : { relatedProviderThreadIds: input.relatedProviderThreadIds }),
             }),
           );
           const rootTerminalSeen = yield* Ref.make(false);
@@ -1226,7 +1402,17 @@ export const layer: Layer.Layer<
           const filterAssistantEvent = makeAssistantStreamingFilter(responseStreamingMode);
           const providerEventFiber = yield* eventSubscription.events.pipe(
             Stream.filterEffect((event) =>
-              Ref.modify(eventRouting, (state) => routeProviderEvent(event, routeIdentity, state)),
+              Effect.gen(function* () {
+                const state = yield* Ref.get(eventRouting);
+                const [accepted, next] = yield* routeProviderEventWithLookup(
+                  event,
+                  routeIdentity,
+                  state,
+                  input.resolveRelatedNativeThread,
+                );
+                yield* Ref.set(eventRouting, next);
+                return accepted;
+              }),
             ),
             Stream.tap((event) =>
               Effect.gen(function* () {
@@ -1418,6 +1604,7 @@ export const layer: Layer.Layer<
             appThread: input.appThread,
             threadId: input.run.threadId,
             runId: input.run.id,
+            ...(input.run.nativeInput === undefined ? {} : { nativeInput: input.run.nativeInput }),
             runOrdinal: input.run.ordinal,
             providerTurnOrdinal: input.providerTurnOrdinal,
             ...(input.nativeThreadHasTurns === undefined

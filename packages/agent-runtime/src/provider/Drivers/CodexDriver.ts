@@ -78,6 +78,7 @@ import * as CodexInstallation from "../CodexInstallation.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("codex");
@@ -156,6 +157,20 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
       const modelCatalog = yield* ModelCatalog.ModelCatalog;
       const currentCatalog = modelCatalog.current(DRIVER_KIND);
       const processEnv = yield* mergeProviderInstanceEnvironment(environment);
+      const executionHost = yield* ExecutionHost.ExecutionHost;
+      const authentication = config.hostAuthentication
+        ? (executionHost.readProviderAuth?.({
+            providerInstanceId: instanceId,
+            refresh: false,
+            previousAccountId: null,
+          }) ??
+          Effect.fail(
+            new ExecutionHost.ExecutionHostError({
+              operation: "provider.auth",
+              message: "Configured Codex authentication is unavailable.",
+            }),
+          ))
+        : undefined;
       const homeLayout = yield* resolveCodexHomeLayout(config);
       const continuationIdentity = codexContinuationIdentity(homeLayout);
       const stampIdentity = withInstanceIdentity({
@@ -228,7 +243,13 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv, Path.Pat
       const checkProvider = modelCatalog.refreshInBackground.pipe(
         Effect.andThen(
           Effect.zipWith(
-            checkCodexProviderStatus(effectiveConfig, undefined, processEnv),
+            checkCodexProviderStatus(
+              effectiveConfig,
+              undefined,
+              processEnv,
+              undefined,
+              authentication,
+            ),
             currentCatalog,
             (draft, catalog) => stampIdentity(applyCodexModelCatalog(draft, catalog)),
             { concurrent: true },

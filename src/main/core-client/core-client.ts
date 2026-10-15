@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 
 import { CORE_CLIENT_REQUIREMENTS, CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
 import type { components } from "@nodex/core-protocol";
-import type { ProjectionImpact, ProjectionScope } from "../../shared/projection-stream";
+import type { ProjectionScope } from "../../shared/projection-stream";
 import {
   decodeCanvasSceneSyncHttpResponse,
   decodeDocumentApplyHttpAck,
@@ -369,21 +369,6 @@ export class CoreClient implements CoreClientPort {
       mimeType: response.contentType,
       etag: response.etag.replace(/^"|"$/gu, ""),
     };
-  }
-
-  async filterProjectionImpactForProject(
-    projectId: string,
-    impact: ProjectionImpact,
-  ): Promise<ProjectionImpact> {
-    const snapshot = await this.forProject(projectId).libraryRead({
-      kind: "filter_projection_impact_for_project",
-      project_id: projectId,
-      impact,
-    });
-    if (snapshot.value.kind === "projection_impact") {
-      return snapshot.value.impact;
-    }
-    throw new Error("Core returned an invalid Projection impact authorization result");
   }
 
   async queryRead(read: QueryRead, options: CoreRequestOptions = {}): Promise<QueryReadSnapshot> {

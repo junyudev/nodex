@@ -126,7 +126,7 @@ pub(super) fn prepare_promotion_restore(
     let mut prepared = prepare(
         operation_id,
         state,
-        Some(&state.undo.project_id),
+        state.undo.project_id.as_deref(),
         &state.undo.library_id,
         &state.undo.store_epoch,
         roots,
@@ -164,7 +164,7 @@ pub(super) fn prepare_promotion(
     let mut prepared = prepare(
         operation_id,
         recipe,
-        Some(&recipe.project_id),
+        recipe.project_id.as_deref(),
         &recipe.library_id,
         &recipe.store_epoch,
         promotion_retention(recipe),
@@ -225,7 +225,7 @@ fn retention(
 ) -> Result<Retention, StoreError> {
     if let Ok(recipe) = serde_json::from_str::<BlockTransferUndoRecipeV4>(json) {
         if ![3, BLOCK_TRANSFER_UNDO_RECIPE_VERSION].contains(&recipe.version)
-            || Some(recipe.project_id.as_str()) != project
+            || recipe.project_id.as_deref() != project
             || recipe.library_id != library
             || recipe.store_epoch != epoch
         {
@@ -330,7 +330,6 @@ pub(super) fn persist(
 
 pub(super) fn read(
     connection: &Connection,
-    context: &BoundModuleContext,
     library: &str,
     value: &LibraryBlockTransferUndoToken,
 ) -> Result<(String, Option<String>), StoreError> {
@@ -339,14 +338,12 @@ pub(super) fn read(
     let legacy = connection
         .query_row(
             "SELECT consumed_at FROM block_transfer_undo_recipes WHERE transfer_operation_id = ?1 \
-         AND library_id = ?2 AND store_epoch = ?3 AND recipe_hash = ?4 \
-         AND (?5 IS NULL OR project_id = ?5)",
+         AND library_id = ?2 AND store_epoch = ?3 AND recipe_hash = ?4",
             params![
                 value.transfer_operation_id,
                 library,
                 value.store_epoch,
-                value.recipe_hash,
-                context.project_id.as_ref().map(|id| id.0.as_str())
+                value.recipe_hash
             ],
             |row| row.get::<_, Option<String>>(0),
         )
@@ -357,13 +354,7 @@ pub(super) fn read(
         }
         import(connection, &value.transfer_operation_id)?;
     }
-    structural_edit::read_history_payload(
-        connection,
-        library,
-        context.project_id.as_ref().map(|id| id.0.as_str()),
-        &value.store_epoch,
-        &token(value),
-    )
+    structural_edit::read_history_payload(connection, library, &value.store_epoch, &token(value))
 }
 
 pub(super) fn consume(
@@ -480,7 +471,7 @@ mod tests {
             version: 3,
             footprint: None,
             mode: LibraryBlockTransferMode::Copy,
-            project_id: "project".into(),
+            project_id: Some("project".into()),
             library_id: "library".into(),
             store_epoch: "epoch".into(),
             source_document_id: "source-document".into(),

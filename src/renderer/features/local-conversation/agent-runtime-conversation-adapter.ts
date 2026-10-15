@@ -1,0 +1,968 @@
+import { agentRuntimeDraftOwner } from "./agent-runtime-draft-owner";
+import { nativeIntelligenceIntentOwner } from "../../lib/native-intelligence-intent-owner";
+import { isClaudeEffortLevel, type ClaudeModelSelection } from "../../../shared/claude-models";
+import {
+  applyRuntimeClaudeIntent,
+  readRuntimeClaudeSelection,
+  resolveRuntimeClaudeIntent,
+  runtimeClaudeModelOption,
+} from "./agent-runtime-model-intent";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { AgentBackendBinding } from "../../../shared/agent-backend";
+import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
+import type { AgentRuntimeSessionTarget } from "../../../shared/agent-runtime-api";
+import {
+  agentRuntimeModelSelection,
+  agentRuntimeProviderId,
+} from "../../../shared/agent-runtime-provider";
+import { prepareAgentPrompt } from "../../../shared/agent-prompt";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import type {
+  CodexCollaborationModePreset,
+  CodexThreadSummary,
+  CodexPromptInput,
+} from "../../../shared/types";
+import { readPastedTextAttachment } from "../../lib/api";
+import {
+  agentRuntimeRuntime,
+  type AgentRuntimeRendererTransport,
+} from "../../lib/agent-runtime-runtime";
+import { agentRuntimePromptImages } from "../../lib/agent-runtime-prompt";
+import { workspaceSessionCommands } from "../../lib/workspace-catalog-commands";
+import {
+  acquireAgentRuntimeConversationOwner,
+  type AgentRuntimeConversationOwner,
+  type AgentRuntimeConversationOwnerSnapshot,
+} from "./agent-runtime-conversation-owner";
+import type { ConversationRuntime } from "./conversation-runtime";
+import type { ThreadStageActions, ConversationProviderPresentation } from "./thread-stage-types";
+import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
+import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
+import { setLocalConversationComposerIntent } from "./local-conversation-store";
+import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
+import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
+import {
+  captureCodexTurnPresentation,
+  readCodexSubmissionPresentation,
+} from "../../lib/codex-turn-presentation";
+import type {
+  CodexTurnPresentationTarget,
+  CodexTurnPresentationTicket,
+} from "../../../shared/nodex-app-tools/turn-presentation";
+import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
+
+export type AgentRuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
+const emptyState: AgentRuntimeConversationOwnerSnapshot = {
+  conversation: null,
+  view: null,
+  connection: "connecting",
+  error: null,
+  historyLoading: false,
+};
+const emptySubscribe = () => () => {};
+const emptyRead = () => emptyState;
+const connected = { status: "connected", retries: 0 } as const;
+const emptyChildren = [] as const;
+const runtimePorts = new WeakMap<
+  AgentRuntimeConversationOwner,
+  Map<AgentBackendBinding["kind"], ConversationRuntime>
+>();
+
+/** A product view over the engine read owner. Session identity remains the command boundary. */
+export function createAgentRuntimeConversationRuntime(
+  kind: AgentBackendBinding["kind"],
+  target: AgentRuntimeSessionTarget | null,
+  owner: AgentRuntimeConversationOwner | null,
+): ConversationRuntime {
+  const ports = owner
+    ? (runtimePorts.get(owner) ?? new Map<AgentBackendBinding["kind"], ConversationRuntime>())
+    : null;
+  const previous = ports?.get(kind);
+  if (previous) return previous;
+  const matches = (id: string | null) => owner !== null && id === owner.threadId;
+  const runtime: ConversationRuntime = {
+    kind,
+    hostId: "local",
+    sessionId: target?.sessionId,
+    read: (id) => (matches(id) ? owner!.getSnapshot().view : null),
+    subscribe: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
+    subscribeChildObservations: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
+    transcriptReadOwner: (id) => (matches(id) ? owner!.readOwner : null),
+    contentSource: (id) => (matches(id) ? owner!.contentSource() : null),
+    attachment: (id) => {
+      if (!matches(id)) return { status: "idle" };
+      const state = owner!.getSnapshot();
+      if (state.connection === "failed")
+        return { status: "failed", message: state.error ?? "Could not open conversation" };
+      return state.connection === "ready" ? { status: "attached" } : { status: "attaching" };
+    },
+    connection: () => connected,
+    role: (id) => (matches(id) ? "follower" : null),
+    primaryRequest: (id) => (matches(id) ? (owner!.getSnapshot().view?.requests[0] ?? null) : null),
+    children: (id) => (matches(id) ? owner!.children() : emptyChildren),
+    retain: () => owner?.retain() ?? (() => {}),
+    resume: async () => {
+      await owner?.resume();
+    },
+    markRead: async () => {
+      if (target) await workspaceSessionCommands.markUnread(target.sessionId, { unread: false });
+    },
+    setPresented: async () => {},
+  };
+  if (owner && ports) {
+    ports.set(kind, runtime);
+    runtimePorts.set(owner, ports);
+  }
+  return runtime;
+}
+
+export function projectAgentRuntimeModel(
+  provider: AgentRuntimeProvider,
+  model: AgentRuntimeProvider["models"][number],
+): AgentModelPickerEntry["model"] {
+  const effort = model.capabilities?.optionDescriptors?.find(
+    (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
+  );
+  const choices = effort?.type === "select" ? effort.options : [];
+  return {
+    id: model.slug,
+    model: model.slug,
+    displayName: model.name,
+    description: model.name,
+    hidden: false,
+    supportedReasoningEfforts: choices.map((option) => ({
+      reasoningEffort: option.id,
+      description: option.description ?? option.label,
+    })),
+    defaultReasoningEffort:
+      effort?.type === "select"
+        ? (effort.currentValue ?? choices.find((option) => option.isDefault)?.id ?? "default")
+        : "default",
+    inputModalities: ["text", "image"],
+    isDefault: model.isDefault ?? false,
+  };
+}
+
+/** Shared editor controls address the exact Session/Thread/Run observed by the read owner. */
+export function createAgentRuntimeStageActions(input: {
+  readonly target: () => AgentRuntimeSessionTarget | null;
+  readonly owner: () =>
+    | (Pick<
+        AgentRuntimeConversationOwner,
+        "getSnapshot" | "nextQueuePage" | "previousQueuePage" | "queueBoundary" | "readQueuedInput"
+      > &
+        Partial<Pick<AgentRuntimeConversationOwner, "contentSource">>)
+    | null;
+  readonly transport?: AgentRuntimeRendererTransport;
+  readonly prepare: (
+    text: string,
+    promptInput?: CodexPromptInput,
+    appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+  ) => Promise<string>;
+  readonly capturePresentation?: (
+    target: CodexTurnPresentationTarget,
+    submitted?: WorkbenchSubmitPresentation,
+  ) => Promise<CodexTurnPresentationTicket | undefined>;
+  readonly readPresentation?: () => WorkbenchSubmitPresentation;
+  readonly openFork?: (
+    result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
+  ) => Promise<void>;
+}): Partial<ThreadStageActions> {
+  const transport = input.transport ?? agentRuntimeRuntime;
+  const requireTarget = () => {
+    const target = input.target();
+    if (!target) throw new Error("Open a conversation before sending a message");
+    return target;
+  };
+  const dispatch = async (
+    text: string,
+    promptInput?: CodexPromptInput,
+    intent?: "steer",
+    submitted?: WorkbenchSubmitPresentation,
+    appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+  ) => {
+    const target = requireTarget();
+    const messageId = createUuidV7();
+    const presentationTicket = target.threadId
+      ? await input.capturePresentation?.({ kind: "thread", threadId: target.threadId }, submitted)
+      : undefined;
+    const prepared = await input.prepare(text, promptInput, appMessage);
+    await transport.message({
+      ...target,
+      presentationTicket,
+      message: {
+        messageId,
+        text: prepared,
+        images: agentRuntimePromptImages(promptInput, appMessage),
+        ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
+      },
+      ...(intent ? { intent } : {}),
+    });
+  };
+  const respond = async (
+    requestId: string | number,
+    response: Pick<Parameters<AgentRuntimeRendererTransport["respond"]>[0], "decision" | "answers">,
+  ) => {
+    const target = requireTarget();
+    const request = input
+      .owner()
+      ?.getSnapshot()
+      .view?.requests.find((entry) => String(entry.requestId) === String(requestId));
+    if (!request) throw new Error("This request is no longer pending");
+    await transport.respond({
+      ...target,
+      requestId: String(requestId),
+      runId: request.turnId,
+      ...response,
+    });
+  };
+  const exactTarget = (threadId: string) => {
+    const target = requireTarget();
+    if (target.threadId !== undefined && target.threadId !== threadId)
+      throw new Error("Conversation identity changed");
+    return target;
+  };
+  const queuedMessage = async (
+    threadId: string,
+    prompt: string,
+    promptInput?: CodexPromptInput,
+    appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+  ) => {
+    const target = exactTarget(threadId);
+    const owner = input.owner();
+    const lease = owner?.contentSource?.();
+    const assertCurrent = () => {
+      const current = exactTarget(threadId);
+      if (
+        current.sessionId !== target.sessionId ||
+        input.owner() !== owner ||
+        (lease && !lease.isCurrent())
+      )
+        throw new Error("Conversation source changed");
+    };
+    const messageId = createUuidV7();
+    const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
+    const text = await input.prepare(prompt, promptInput, appMessage);
+    assertCurrent();
+    await transport.queueMessage({
+      ...target,
+      presentationTicket,
+      message: {
+        messageId,
+        text,
+        images: agentRuntimePromptImages(promptInput, appMessage),
+        ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
+      },
+    });
+  };
+  const editQueuedMessage = async (
+    threadId: string,
+    runId: string,
+    prompt: string,
+    promptInput?: CodexPromptInput,
+  ) => {
+    const target = exactTarget(threadId);
+    const queued = input
+      .owner()
+      ?.getSnapshot()
+      .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === runId);
+    if (!queued) throw new Error("This queued message is no longer pending");
+    const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
+    await transport.queue({
+      ...target,
+      requestId: createUuidV7(),
+      action: "edit",
+      presentationTicket,
+      runId,
+      message: {
+        messageId: queued.clientUserMessageId,
+        text: await input.prepare(prompt, promptInput),
+        images: agentRuntimePromptImages(promptInput),
+        ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
+      },
+    });
+  };
+  return {
+    onCopyConversationMarkdown: async () => {
+      const view = input.owner()?.getSnapshot().view;
+      await copyAgentRuntimeConversationMarkdown(
+        requireTarget(),
+        view?.threadName ?? "Nodex conversation",
+        view?.cwd ?? null,
+        transport,
+      );
+    },
+    onNextQueuedFollowUpPage: async () => {
+      await input.owner()?.nextQueuePage();
+    },
+    onPreviousQueuedFollowUpPage: async () => {
+      await input.owner()?.previousQueuePage();
+    },
+    onCompactThread: async (threadId) => {
+      const target = requireTarget();
+      if (target.threadId !== undefined && target.threadId !== threadId)
+        throw new Error("Conversation identity changed");
+      await transport.compact({ ...target, requestId: createUuidV7() });
+    },
+    onSendPrompt: (text, options) =>
+      dispatch(
+        text,
+        options?.promptInput,
+        undefined,
+        options?.submittedPresentation,
+        options?.untrustedAppMessage,
+      ),
+    onEditLastUserTurn: async (request) => {
+      const target = exactTarget(request.threadId);
+      await transport.rollback({ ...target, requestId: createUuidV7(), runId: request.turnId });
+      await dispatch(request.message);
+    },
+    onEnqueueQueuedFollowUp: (threadId, prompt, options) =>
+      queuedMessage(threadId, prompt, options?.promptInput, options?.untrustedAppMessage),
+    onSendCapturedFollowUp: (threadId, prompt, options) =>
+      queuedMessage(threadId, prompt, options?.promptInput, options?.untrustedAppMessage),
+    onRemoveQueuedFollowUp: async (threadId, runId) => {
+      await transport.queue({
+        ...exactTarget(threadId),
+        requestId: createUuidV7(),
+        action: "cancel",
+        runId,
+      });
+    },
+    onReorderQueuedFollowUps: async (threadId, orderedRunIds) => {
+      await transport.queue({
+        ...exactTarget(threadId),
+        requestId: createUuidV7(),
+        action: "reorder",
+        orderedRunIds,
+        beforeRunId: input.owner()?.queueBoundary() ?? null,
+      });
+    },
+    onResumeQueuedFollowUps: async (threadId) => {
+      await transport.queue({
+        ...exactTarget(threadId),
+        requestId: createUuidV7(),
+        action: "resume",
+      });
+    },
+    onReplaceQueuedFollowUp: async (threadId, runId, _revision, prompt, options) => {
+      await editQueuedMessage(threadId, runId, prompt, options?.promptInput);
+      return true;
+    },
+    onEditQueuedFollowUp: async (request) => {
+      exactTarget(request.threadId);
+      const queued = input
+        .owner()
+        ?.getSnapshot()
+        .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === request.followUpId);
+      if (!queued) throw new Error("This queued message is no longer pending");
+      const owner = input.owner();
+      if (!owner) throw new Error("Open the conversation before editing this message");
+      const queuedInput = await owner.readQueuedInput(request.followUpId);
+      setLocalConversationComposerIntent(request.threadId, {
+        prompt: queuedInput.text,
+        promptInput: { ...request.promptInput, ...queuedInput },
+        queuedFollowUpEdit: {
+          followUpId: request.followUpId,
+          ledgerRevision: request.ledgerRevision ?? 0,
+        },
+        focusNonce: Date.now(),
+      });
+    },
+    onSendQueuedFollowUpNow: async (threadId, runId) => {
+      const target = exactTarget(threadId);
+      const activeRun = input
+        .owner()
+        ?.getSnapshot()
+        .conversation?.snapshot.projection.runs.findLast((run) =>
+          ["preparing", "starting", "running", "waiting"].includes(run.status),
+        );
+      if (!activeRun) {
+        await transport.queue({ ...target, requestId: createUuidV7(), action: "resume" });
+        return;
+      }
+      await transport.queue({
+        ...target,
+        requestId: createUuidV7(),
+        action: "steer",
+        runId,
+        targetRunId: activeRun.id,
+      });
+    },
+    ...(input.openFork
+      ? {
+          onForkFromTurn: async (request: {
+            threadId: string;
+            turnId: string;
+            message: string;
+          }) => {
+            const source = exactTarget(request.threadId);
+            const submittedPresentation = input.readPresentation?.();
+            const result = await transport.fork({
+              source,
+              sessionId: createUuidV7(),
+              requestId: createUuidV7(),
+              acceptedAt: Date.now(),
+              environment: "same-directory",
+              sourceRunId: request.turnId,
+            });
+            if (request.message.trim()) {
+              const presentationTicket = await input.capturePresentation?.(
+                { kind: "thread", threadId: result.threadId },
+                submittedPresentation,
+              );
+              await transport.message({
+                sessionId: result.sessionId,
+                threadId: result.threadId,
+                presentationTicket,
+                message: { messageId: createUuidV7(), text: request.message },
+              });
+            }
+            await input.openFork!(result);
+          },
+        }
+      : {}),
+    onSteerPrompt: ({ prompt, promptInput }) => dispatch(prompt, promptInput, "steer"),
+    onInterruptTurn: async (runId) => {
+      const target = requireTarget();
+      const runs = input.owner()?.getSnapshot().conversation?.snapshot.projection.runs ?? [];
+      const run = runs
+        .filter((value) => ["preparing", "starting", "running", "waiting"].includes(value.status))
+        .sort((a, b) => b.ordinal - a.ordinal)[0];
+      const selected = runId ?? run?.id;
+      if (selected) await transport.stop({ ...target, runId: selected });
+    },
+    onRespondUserInput: (id, answers) =>
+      respond(id, {
+        answers: Object.fromEntries(
+          Object.entries(answers).map(([key, values]) => [key, values.join("\n")]),
+        ),
+      }),
+  };
+}
+
+export function useAgentRuntimeConversationAdapter(input: {
+  readonly sessionId: string;
+  readonly sessionTitle?: string;
+  readonly workspaceRoot?: string | null;
+  readonly executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
+  /** A child uses its root Session binding and a distinct engine Thread. */
+  readonly threadId?: string;
+  readonly projectId: string | null;
+  readonly modelProjectId: string | null;
+  readonly instances: readonly {
+    readonly binding: AgentBackendBinding;
+    readonly label: string;
+    readonly enabled: boolean;
+  }[];
+  readonly onRefresh: (projectId: string | null) => Promise<unknown>;
+  readonly onOpenThread: ThreadStageActions["onOpenThread"];
+  readonly onLaunched?: (
+    result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
+  ) => Promise<void>;
+  readonly ensureDraft: (projectId: string | null) => Promise<{ readonly id: string }>;
+  readonly materializeDraft?: import("./thread-stage-types").SessionThreadCommands["onMaterializeProjectDraft"];
+  readonly commitDraft?: import("./thread-stage-types").SessionThreadCommands["onCommitMaterializedProjectDraft"];
+}) {
+  const workbenchOwner = useWorkbenchWindowOwner();
+  const [catalogState, setCatalogState] = useState<{
+    providers: readonly AgentRuntimeProvider[];
+    loading: boolean;
+    error: string | null;
+  }>({ providers: [], loading: true, error: null });
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const refreshCatalog = () => setCatalogRevision((value) => value + 1);
+  useEffect(() => {
+    let active = true;
+    void agentRuntimeRuntime
+      .catalog({ refresh: catalogRevision > 0 })
+      .then((providers) => {
+        if (active)
+          setCatalogState({
+            providers: providers.filter(
+              (provider) =>
+                provider.instanceId === "codex" ||
+                input.instances.some(
+                  (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
+                ),
+            ),
+            loading: false,
+            error: null,
+          });
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setCatalogState({
+            providers: [],
+            loading: false,
+            error: cause instanceof Error ? cause.message : String(cause),
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [catalogRevision, input.instances]);
+  const draftKey = JSON.stringify([input.sessionId, input.modelProjectId]);
+  const draft = useSyncExternalStore(
+    (listener) => agentRuntimeDraftOwner.subscribe(draftKey, listener),
+    () => agentRuntimeDraftOwner.read(draftKey),
+  );
+  const draftMode = draft.interactionMode;
+  const [createdTarget, setCreatedTarget] = useState<
+    (AgentRuntimeSessionTarget & { threadId: string }) | null
+  >(null);
+  const target = input.executionRef
+    ? { sessionId: input.sessionId, threadId: input.threadId ?? input.executionRef.threadId }
+    : createdTarget?.sessionId === input.sessionId
+      ? createdTarget
+      : null;
+  const targetSessionId = target?.sessionId ?? null;
+  const targetThreadId = target?.threadId ?? null;
+  const acquired = useMemo(
+    () =>
+      targetSessionId && targetThreadId
+        ? acquireAgentRuntimeConversationOwner({
+            sessionId: targetSessionId,
+            threadId: targetThreadId,
+          })
+        : null,
+    [targetSessionId, targetThreadId],
+  );
+  const owner = acquired?.owner ?? null;
+  const state = useSyncExternalStore(
+    owner?.subscribe ?? emptySubscribe,
+    owner?.getSnapshot ?? emptyRead,
+  );
+  useEffect(() => acquired?.retain(), [acquired]);
+  const observed = state.conversation?.snapshot.projection.thread;
+  const entries: readonly AgentModelPickerEntry[] = catalogState.providers.flatMap((provider) => {
+    const binding =
+      provider.instanceId === "codex"
+        ? { kind: "codex" as const }
+        : input.instances.find(
+            (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
+          )?.binding;
+    if (
+      !binding ||
+      !provider.enabled ||
+      !provider.installed ||
+      provider.status === "error" ||
+      provider.status === "disabled"
+    )
+      return [];
+    return provider.models.map((model) => ({
+      binding,
+      label:
+        provider.displayName ??
+        input.instances.find(
+          (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
+        )?.label ??
+        "Codex",
+      model: projectAgentRuntimeModel(provider, model),
+      selection: { binding, model: model.slug },
+    }));
+  });
+  const observedBinding = observed
+    ? observed.modelSelection.instanceId === "codex"
+      ? { kind: "codex" as const }
+      : input.instances.find(
+          (entry) => agentRuntimeProviderId(entry.binding) === observed.modelSelection.instanceId,
+        )?.binding
+    : undefined;
+  const selection = observed
+    ? {
+        binding: observedBinding ?? { kind: "codex" as const },
+        model: observed.modelSelection.model,
+        options: observed.modelSelection.options,
+      }
+    : (draft.selection ??
+      entries.find((entry) => entry.model.isDefault && entry.binding.kind === "codex")?.selection ??
+      entries[0]?.selection ?? { binding: { kind: "codex" as const }, model: "" });
+  const provider = catalogState.providers.find(
+    (entry) => entry.instanceId === agentRuntimeProviderId(selection.binding),
+  );
+  const canRollback = provider?.supportsConversationRollback === true;
+  useEffect(() => {
+    owner?.setCapabilities({ canEditLastUserTurn: canRollback });
+  }, [owner, canRollback]);
+  const intentKey =
+    targetThreadId ??
+    JSON.stringify(["draft", draftKey, agentRuntimeProviderId(selection.binding)]);
+  const storedIntent = useSyncExternalStore(
+    (listener) => nativeIntelligenceIntentOwner.subscribe(intentKey, listener),
+    () => nativeIntelligenceIntentOwner.read(intentKey),
+  );
+  const currentModel = provider?.models.find((model) => model.slug === selection.model);
+  const claudeIntent = resolveRuntimeClaudeIntent(selection, storedIntent, currentModel);
+  const chooseModel = async (
+    chosen: AgentModelSelection,
+    explicitIntent?: ClaudeModelSelection,
+  ) => {
+    const chosenModel = catalogState.providers
+      .find((entry) => entry.instanceId === agentRuntimeProviderId(chosen.binding))
+      ?.models.find((model) => model.slug === chosen.model);
+    const nextIntent =
+      explicitIntent ??
+      (selection.binding.kind === "claude" &&
+      chosen.binding.kind === "claude" &&
+      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(chosen.binding) &&
+      chosen.model !== selection.model
+        ? { ...claudeIntent, model: chosen.model }
+        : readRuntimeClaudeSelection(chosen));
+    const fitted =
+      chosen.binding.kind === "claude"
+        ? applyRuntimeClaudeIntent(chosen, nextIntent, chosenModel)
+        : chosen;
+    const modelSelection = agentRuntimeModelSelection(fitted.binding, fitted.model, fitted.options);
+    if (!modelSelection || !chosenModel) throw new Error("Choose an available model");
+    if (target && observed && modelSelection.instanceId !== observed.modelSelection.instanceId)
+      throw new Error("Start a new conversation to change Agent");
+    if (chosen.binding.kind === "claude")
+      nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
+    if (!target) {
+      agentRuntimeDraftOwner.write(draftKey, { selection: fitted });
+      return;
+    }
+    await agentRuntimeRuntime.setModel({ ...target, requestId: createUuidV7(), modelSelection });
+  };
+  const prepare = (
+    text: string,
+    promptInput?: CodexPromptInput,
+    untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+  ) =>
+    prepareAgentPrompt(text, promptInput, (file) => readPastedTextAttachment({ file }), {
+      images: true,
+      agentConfigs: true,
+      nativeSkills: selection.binding.kind === "claude",
+      untrustedAppMessage,
+    });
+  const actions: Partial<ThreadStageActions> = {
+    onCaptureSubmissionPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
+    ...createAgentRuntimeStageActions({
+      target: () => target,
+      owner: () => owner,
+      prepare,
+      readPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
+      capturePresentation: (target, submitted) =>
+        captureCodexTurnPresentation(workbenchOwner, target, submitted),
+      openFork: async (result) => {
+        await input.onRefresh(result.projectId);
+        await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
+      },
+    }),
+    onOpenThread: (threadId, context) =>
+      input.onOpenThread(threadId, {
+        ...context,
+        runtimeSessionId: context?.runtimeSessionId ?? input.sessionId,
+      }),
+    onStartThreadForSession: async (request) => {
+      const submittedPresentation =
+        request.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
+      const modelSelection = agentRuntimeModelSelection(
+        selection.binding,
+        selection.model,
+        selection.options,
+      );
+      if (!modelSelection) throw new Error("Choose a configured Agent and model");
+      if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
+      const submission = sessionFirstSubmissionOwner.begin({
+        backend: selection.binding.kind,
+        originProjectId: request.projectId,
+        originSessionId: request.sessionId,
+        prompt: request.prompt,
+        promptInput: request.promptInput,
+        identity: request.submissionIdentity,
+      });
+      const sessionId =
+        request.projectDraftId && request.projectId && input.materializeDraft
+          ? (
+              await input.materializeDraft({
+                projectId: request.projectId,
+                draftId: request.projectDraftId,
+              })
+            ).id
+          : request.projectId === input.projectId
+            ? request.sessionId
+            : (await input.ensureDraft(request.projectId)).id;
+      if (request.projectDraftId && !input.materializeDraft)
+        throw new Error("Project draft materialization is unavailable");
+      sessionFirstSubmissionOwner.update(submission.launchId, {
+        targetSessionId: sessionId,
+        targetProjectId: request.projectId,
+        phase: "startingThread",
+      });
+      try {
+        const presentationTicket =
+          request.presentationTicket ??
+          (await captureCodexTurnPresentation(
+            workbenchOwner,
+            { kind: "session", sessionId, launchId: submission.launchId },
+            submittedPresentation,
+          ));
+        const text = await prepare(request.prompt, request.promptInput);
+        const result = await agentRuntimeRuntime.launch({
+          sessionId,
+          projectId: request.projectId,
+          launchId: submission.launchId,
+          acceptedAt: Math.floor(submission.acceptedAt),
+          presentationTicket,
+          title: request.prompt.slice(0, 120) || "New chat",
+          modelSelection,
+          interactionMode: draftMode,
+          runInTarget: request.runInTarget === "newWorktree" ? "newWorktree" : "localProject",
+          runInEnvironmentPath: request.runInEnvironmentPath,
+          worktreeStartingState: request.worktreeStartingState,
+          message: {
+            messageId: submission.clientUserMessageId,
+            text,
+            images: agentRuntimePromptImages(request.promptInput),
+            ...(request.promptInput
+              ? { agentConfigs: request.promptInput.agentConfigs ?? [] }
+              : {}),
+          },
+        });
+        if (request.projectDraftId && request.projectId)
+          input.commitDraft?.({
+            projectId: request.projectId,
+            draftId: request.projectDraftId,
+            sessionId: result.sessionId,
+          });
+        setCreatedTarget({ sessionId: result.sessionId, threadId: result.threadId });
+        sessionFirstSubmissionOwner.update(submission.launchId, {
+          threadId: result.threadId,
+          phase: "startingTurn",
+        });
+        await input.onRefresh(request.projectId);
+        if (input.onLaunched) await input.onLaunched(result);
+        else await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
+      } catch (cause) {
+        sessionFirstSubmissionOwner.fail(submission.launchId, {
+          stage: "startingThread",
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+        throw cause;
+      }
+    },
+    onModelChange: (model) => chooseModel({ ...selection, model }),
+    onReasoningEffortChange: (effort) =>
+      selection.binding.kind === "claude" && isClaudeEffortLevel(effort)
+        ? chooseModel(selection, { ...claudeIntent, effort, thinking: true })
+        : chooseModel({
+            ...selection,
+            options: [
+              ...(selection.options ?? []).filter((option) => option.id !== "effort"),
+              { id: "effort", value: effort },
+            ],
+          }),
+    onCollaborationModeChange: async (interactionMode) => {
+      if (!target) {
+        agentRuntimeDraftOwner.write(draftKey, { interactionMode });
+        return;
+      }
+      await agentRuntimeRuntime.setModes({ ...target, requestId: createUuidV7(), interactionMode });
+    },
+    onUnarchiveThread: async () => {
+      if (target) await workspaceSessionCommands.unarchive(target.sessionId);
+      await input.onRefresh(input.projectId);
+    },
+  };
+  const kind = selection.binding.kind;
+  const runtime = createAgentRuntimeConversationRuntime(
+    kind,
+    targetSessionId
+      ? { sessionId: targetSessionId, ...(targetThreadId ? { threadId: targetThreadId } : {}) }
+      : null,
+    owner,
+  );
+  // Mount the keyed transcript reader before the first query completes; unknown execution is notLoaded.
+  const summary: CodexThreadSummary | null =
+    state.view ??
+    (targetThreadId
+      ? {
+          threadId: targetThreadId,
+          projectId: input.projectId,
+          executionHostId: "local",
+          source: null,
+          threadName: input.sessionTitle ?? "Chat",
+          threadPreview: "",
+          cwd: input.workspaceRoot ?? null,
+          statusType: "notLoaded",
+          statusActiveFlags: [],
+          archived: false,
+          createdAt: 0,
+          updatedAt: 0,
+          linkedAt: "",
+        }
+      : null);
+  const models = provider?.models.map((model) => projectAgentRuntimeModel(provider, model)) ?? [];
+  const selectedModel = selection.model;
+  const selectedEffort = selection.options?.find((option) =>
+    /effort|reasoning/i.test(option.id),
+  )?.value;
+  const modelOptions =
+    provider?.models.find((model) => model.slug === selectedModel)?.capabilities
+      ?.optionDescriptors ?? [];
+  const configOptions: import("../../../shared/agent-conversation").AgentSessionConfigOption[] =
+    modelOptions.map((option) => {
+      const chosen = selection.options?.find((value) => value.id === option.id)?.value;
+      const common = {
+        id: option.id,
+        name: option.label,
+        description: option.description ?? null,
+        category: /effort|reasoning/i.test(option.id) ? "thought_level" : null,
+      };
+      if (option.type === "boolean")
+        return {
+          ...common,
+          type: "boolean",
+          currentValue: typeof chosen === "boolean" ? chosen : (option.currentValue ?? false),
+        };
+      return {
+        ...common,
+        type: "select",
+        currentValue:
+          typeof chosen === "string"
+            ? chosen
+            : (option.currentValue ??
+              option.options.find((value) => value.isDefault)?.id ??
+              option.options[0]?.id ??
+              ""),
+        options: option.options.map((value) => ({
+          value: value.id,
+          name: value.label,
+          description: value.description ?? null,
+        })),
+      };
+    });
+  const changeConfig = async (id: string, value: string | boolean) => {
+    const option = modelOptions.find((candidate) => candidate.id === id);
+    if (
+      !option ||
+      (option.type === "boolean"
+        ? typeof value !== "boolean"
+        : !option.options.some((candidate) => candidate.id === value))
+    )
+      throw new Error("Choose an available model option");
+    await chooseModel({
+      ...selection,
+      options: [
+        ...(selection.options ?? []).filter((candidate) => candidate.id !== id),
+        { id, value },
+      ],
+    });
+  };
+  const presentation: ConversationProviderPresentation = {
+    resolveRuntimeAttachment: async (reference) => {
+      if (!target) throw new Error("Open the conversation before reading its attachment");
+      const result = await agentRuntimeRuntime.attachment({ ...target, ...reference });
+      if (!result) throw new Error("Image unavailable");
+      return result.path;
+    },
+    nativeIntelligence:
+      selection.binding.kind === "claude"
+        ? {
+            selected: {
+              fast: readRuntimeClaudeSelection(selection).fast ?? false,
+              thinking: readRuntimeClaudeSelection(selection).thinking,
+              context: readRuntimeClaudeSelection(selection).context,
+              contextInherited: readRuntimeClaudeSelection(selection).context === undefined,
+            },
+            capabilities: currentModel ? runtimeClaudeModelOption(currentModel) : {},
+            change: async (patch) => {
+              const next = { ...claudeIntent };
+              for (const key of ["fast", "thinking", "context"] as const)
+                if (patch[key] === null) delete next[key];
+              await chooseModel(selection, {
+                ...next,
+                ...(patch.effort ? { effort: patch.effort } : {}),
+                ...(typeof patch.fast === "boolean" ? { fast: patch.fast } : {}),
+                ...(typeof patch.thinking === "boolean" ? { thinking: patch.thinking } : {}),
+                ...(typeof patch.context === "string" ? { context: patch.context } : {}),
+              });
+            },
+          }
+        : undefined,
+    kind: selection.binding.kind,
+    label: provider?.displayName ?? (selection.binding.kind === "codex" ? "Codex" : "Agent"),
+    selection: agentRuntimeProviderId(selection.binding) ?? "",
+    options: [],
+    select: () => {},
+    modelCatalog: {
+      entries,
+      selected: selection,
+      loading: catalogState.loading,
+      error: catalogState.error,
+      choose: chooseModel,
+      refresh: refreshCatalog,
+      configOptions,
+      changeConfig,
+      runtimeOptions: [],
+      chooseRuntime: () => {},
+      manage: () => {},
+    },
+    commands:
+      provider?.slashCommands.map((command) => ({
+        name: command.name,
+        description: command.description ?? "",
+        inputHint: command.input?.hint ?? null,
+      })) ?? [],
+    controls: {
+      steer: true,
+
+      images: true,
+      skills: true,
+      nativeTaskDetails: true,
+    },
+    skills:
+      provider?.skills
+        .filter((skill) => skill.enabled)
+        .map((skill) => ({
+          name: skill.name,
+          displayName: skill.displayName ?? skill.name,
+          description: skill.description ?? "",
+          iconUrl: null,
+          brandColor: null,
+          path: skill.path,
+          scope: "user" as const,
+        })) ?? [],
+    refreshSkills: async () => {
+      refreshCatalog();
+    },
+    history: {
+      hasOlder: Boolean(state.view?.turnPagination?.olderCursor),
+      loading: state.historyLoading,
+      loadOlder: async () => {
+        await owner?.loadOlder();
+      },
+    },
+    error: state.error ?? catalogState.error ?? provider?.message ?? null,
+  };
+  return {
+    runtime,
+    owner,
+    state,
+    summary,
+    actions,
+    provider: presentation,
+    models,
+    selectedModel,
+    selectedEffort:
+      typeof selectedEffort === "string"
+        ? selectedEffort
+        : (models.find((model) => model.id === selectedModel)?.defaultReasoningEffort ?? "default"),
+    reasoningEffortOptions: modelOptions.flatMap((option) =>
+      option.type === "select" && /effort|reasoning/i.test(option.id)
+        ? option.options.map((choice) => ({
+            reasoningEffort: choice.id,
+            description: choice.description ?? choice.label,
+          }))
+        : [],
+    ),
+    selectedMode: observed?.interactionMode ?? draftMode,
+    modes: [
+      { name: "Code", mode: "default", model: null },
+      { name: "Plan", mode: "plan", model: null },
+    ] as CodexCollaborationModePreset[],
+  };
+}

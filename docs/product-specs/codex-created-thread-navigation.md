@@ -1,6 +1,13 @@
 # Created conversation targets
 
-Created conversation cards carry an explicit execution host and either a native Thread id or a pending client Thread id. Unsupported targets remain noninteractive. Opening a root conversation always validates its current Core binding, including a previously cached Session.
+Runtime conversation targets carry an explicit product Session id and engine Thread id. Session summaries retain the immutable execution reference even when no native Thread is attached. Opening a root or descendant first reads the current Core Session, then performs one bounded metadata inspection of that exact Session and Thread. A cached draft cannot replace a newly admitted binding.
+
+- Root navigation selects the bound product Session. Child and grandchild panels retain that same Session and their own engine Thread identity; they do not manufacture a native Core Thread.
+- The captured inspection is reused within the same navigation request. A later navigation intent wins over delayed Core or engine replies, and failed or changed bindings do not select a different target.
+- Controls inspect metadata before mounting the transcript owner. Navigation does not load conversation bodies. Subsequent commands independently validate current execution and native lifetime.
+- An explicit target Session supplied by a card is preserved rather than overwritten by the conversation that rendered it.
+
+Native conversation cards carry an explicit execution host and either a native Thread id or a pending client Thread id. Unsupported targets remain noninteractive. Opening a native root conversation validates its current Core binding, including a previously cached Session.
 
 - An existing root Session on the requested host opens without a native request or Core mutation, including offline conversations created with a subagent source.
 - Sidebar discovery, palette search and notification admission preserve that live root link. A subagent source label cannot hide the Session or discard its streaming replies. Real parents, ephemeral helpers, system sources and structured-title leases retain their own exclusion rules.

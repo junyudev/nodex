@@ -50,7 +50,7 @@ export function WorkbenchCanvasStagePanel({
       .retireOwner(
         {
           libraryId: targetLibraryId,
-          accessContext: surface.config.accessContext,
+          routingContext: surface.config.routingContext,
         },
         surface.config.canvasBlockId,
       )
@@ -93,7 +93,7 @@ export function WorkbenchCanvasStagePanel({
   return (
     <Suspense fallback={<CanvasDocumentState status="loading" label="Opening Canvas…" />}>
       <CanvasDocumentSurface
-        accessContext={surface.config.accessContext}
+        routingContext={surface.config.routingContext}
         canvasBlockId={surface.config.canvasBlockId}
         surfaceKey={makeCanvasSceneSurfaceKey(windowSessionId, presentationOwnerId, surface.id)}
         viewportPreferenceScope={makeCanvasViewportPreferenceScope({

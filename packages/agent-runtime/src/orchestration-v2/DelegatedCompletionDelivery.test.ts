@@ -915,6 +915,8 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
       "restarted",
       "stopped",
       "overlapping",
+      "late-source",
+      "unknown-source",
     ] as const;
     it.effect.each(outcomes)(
       "delivers a %s follow-up independently of the original task",
@@ -978,6 +980,39 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
               },
             ],
           });
+          if (outcome === "late-source" || outcome === "unknown-source") {
+            const runB = {
+              ...parentRun,
+              id: RunId.make(`run:foreground-B-${outcome}`),
+              ordinal: parentRun.ordinal + 1,
+              userMessageId: MessageId.make(`message:foreground-B-${outcome}`),
+              rootNodeId: NodeId.make(`node:foreground-B-${outcome}`),
+              status: "running" as const,
+              activeAttemptId: null,
+              startedAt: now,
+              completedAt: null,
+            };
+            yield* eventSink.write({
+              commandId: reconcileCommandId(`foreground-B-${outcome}`),
+              events: [
+                {
+                  id: EventId.make(`event:foreground-B-${outcome}`),
+                  type: "run.created",
+                  threadId: parentThreadId,
+                  runId: runB.id,
+                  occurredAt: now,
+                  payload: runB,
+                },
+              ],
+            });
+          }
+          const terminalOutcome: OrchestrationV2Run["status"] =
+            outcome === "failed"
+              ? "failed"
+              : outcome === "interrupted" || outcome === "stopped"
+                ? "interrupted"
+                : "completed";
+
           const messageId = MessageId.make(`message:followup-${outcome}`);
           yield* orchestrator.dispatch({
             type: "message.dispatch",
@@ -986,6 +1021,7 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
             commandId: CommandId.make(`command:followup-send-${outcome}`),
             threadId: child.childThreadId,
             senderThreadId: parentThreadId,
+            senderRunId: outcome === "unknown-source" ? null : parentRunId,
             messageId,
             text: "Check the same work again.",
             attachments: [],
@@ -994,11 +1030,18 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
           const childProjection = yield* orchestrator.getThreadProjection(child.childThreadId);
           let run = childProjection.runs.find((row) => row.userMessageId === messageId)!;
           assert.isDefined(run.delegatedTaskId);
+          assert.equal(
+            (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
+              (task) => task.id === run.delegatedTaskId,
+            )?.runId,
+            parentRunId,
+          );
           const workingParent = yield* orchestrator.getShellSnapshot();
           const backgroundTask = workingParent.threads
             .find((thread) => thread.id === parentThreadId)
             ?.pendingBackgroundTasks?.find((task) => task.kind === "subagent");
-          assert.equal(backgroundTask?.childThreadId, child.childThreadId);
+          if (outcome !== "late-source" && outcome !== "unknown-source")
+            assert.equal(backgroundTask?.childThreadId, child.childThreadId);
           if (outcome === "overlapping") {
             yield* orchestrator.dispatch({
               type: "message.dispatch",
@@ -1085,7 +1128,7 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
                       ? "interrupted"
                       : outcome === "restarted" || outcome === "overlapping"
                         ? "completed"
-                        : outcome,
+                        : terminalOutcome,
                   startedAt: now,
                   completedAt: now,
                 },
@@ -1115,7 +1158,7 @@ it.layer(Layer.merge(layerTest, ProviderContinuationRequests.layer))(
               ? "interrupted"
               : outcome === "restarted" || outcome === "overlapping"
                 ? "completed"
-                : outcome,
+                : terminalOutcome,
           );
           assert.equal(
             followup.completionDelivery?.state,

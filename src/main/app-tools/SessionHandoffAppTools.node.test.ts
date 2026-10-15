@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import {
   CodexThreadHandoffRuntime,
@@ -13,17 +13,14 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./SessionHandoffAppTools";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "caller",
   turnId: "turn",
   rootThreadId: "caller",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: Date.now(),
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: Date.now(),
 };
 const input: AppToolInvocation = {
   name: "handoff_session",
@@ -58,7 +55,7 @@ const setup = (
     execute: make.pipe(
       Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
       Effect.provideService(CodexTurnAuthority, {
-        capture: () => Effect.succeed({ ...authority, readOnly: options.readOnly ?? false }),
+        capture: () => Effect.succeed({ ...authority }),
       } as never),
       Effect.provideService(CoreModules, {
         workspace: {
@@ -146,7 +143,6 @@ it.effect("does not dispatch denied, inactive, unsupported or self-targeted hand
   Effect.gen(function* () {
     for (const options of [
       { denied: true },
-      { readOnly: true },
       { archived: true },
       { backend: "acp" },
       { threadId: null },

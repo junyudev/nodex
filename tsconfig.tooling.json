@@ -11,6 +11,7 @@
     "scripts/testing/**/*",
     "scripts/**/*.test.*",
     "vitest.*.config.ts",
+    "packages/agent-runtime/vite.config.ts",
     "playwright*.config.ts",
     "src/renderer/*.d.ts"
   ],

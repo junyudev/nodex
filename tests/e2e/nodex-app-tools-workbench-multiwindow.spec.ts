@@ -326,7 +326,6 @@ test("native Workbench observations keep two windows independent and preserve th
             nfm: `Content owned by ${title}.`,
           });
         }
-        await invokeIpc(first, "codex:permission:mode:set", draft.projectId, "full-access");
         threadId = await sendAgentPrompt(first, sessionId, BOOT_PROMPT);
         await waitForFinalMarker(first, "WORKBENCH_MULTIWINDOW_BOOT_OK");
         await waitForCompletedAgentTurn(first, threadId, 30_000);

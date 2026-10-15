@@ -13,7 +13,11 @@ import type { CodexHistoryTimelineReadInput } from "../../../shared/codex-histor
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { residentConversationTurns } from "../../../shared/codex-conversation-state/codex-turn-mutation";
 import type { CodexAppServerManager } from "./local-conversation-store";
-import type { ConversationResumePreparationOptions } from "../../../shared/codex-conversation-state/codex-resume-request";
+import {
+  buildConversationResumeRequest,
+  type ConversationResumePreparationOptions,
+} from "../../../shared/codex-conversation-state/codex-resume-request";
+import type { CanonicalResumeOverrides } from "../../../shared/codex-conversation-state/codex-resume-permissions";
 import {
   projectNormalizedTimelineEntries,
   isCodexRealtimeTimelineEntry,
@@ -65,7 +69,6 @@ vi.mock("./local-conversation-deps", () => ({
   },
   subscribeCodexEvents: () => () => {},
   subscribeCodexHostMessages: () => () => {},
-  subscribeCodexRendererClientRequests: () => () => {},
   runConversationOperation: async (channel: string, ...args: unknown[]) => {
     if (channel === "codex:composer-prediction:availability")
       return { enabled: false, source: null, scope: fixture.hostId };
@@ -197,8 +200,6 @@ vi.mock("./local-conversation-deps", () => ({
     if (channel === "codex:thread:resume:prepare") {
       fixture.resumeOptions.push(args[3] as ConversationResumePreparationOptions | undefined);
       const metadata = args[1] as ThreadResumeResponse["thread"] | null;
-      const legacyHistory =
-        (metadata?.historyMode ?? fixture.response?.thread.historyMode) === "legacy";
       const prepared = {
         receiptId: "resume",
         nativeRequestId: "resume-native",
@@ -207,14 +208,16 @@ vi.mock("./local-conversation-deps", () => ({
         supportsPaginatedHistory: true,
         requestedCwd:
           (args[2] as { cwd?: string | null } | undefined)?.cwd ?? metadata?.cwd ?? null,
-        params: {
-          threadId: args[0],
-          excludeTurns: fixture.hostId !== "durable",
-          ...(args[2] as object),
-          ...(legacyHistory && fixture.hostId !== "durable"
-            ? { initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" } }
-            : {}),
-        },
+        params: buildConversationResumeRequest({
+          ...(args[3] as ConversationResumePreparationOptions | undefined),
+          hostId: fixture.hostId,
+          threadId: args[0] as string,
+          metadata,
+          historyMode: fixture.response?.thread.historyMode,
+          supportsPaginatedHistory: true,
+          overrides: (args[2] as CanonicalResumeOverrides | undefined) ?? {},
+          config: {},
+        }),
         summary: { ...fixture.summary, threadId: args[0] },
       };
       fixture.resumePreparations += 1;
@@ -1005,50 +1008,6 @@ test("executor acquisition reads live window activity instead of a stale view re
     activity[Symbol.dispose]();
   }
 });
-
-test.each(
-  ["local", "durable"].flatMap((hostId) =>
-    ["selected-profile", ":danger-full-access"].map((profileId) => ({ hostId, profileId })),
-  ),
-)(
-  "renderer resume retains caller permission provenance on $hostId/$profileId",
-  async ({ hostId, profileId }) => {
-    const { owner, follower, threadId } = await connectedManagers([], hostId);
-    follower.destroy();
-    fixture.follower = null;
-    owner.retireNativeHostContext();
-    const options: ConversationResumePreparationOptions = {
-      permissions: {
-        activePermissionProfile: { id: profileId, extends: null },
-        runtimeWorkspaceRoots: [fixture.response!.cwd, "/selected"],
-        approvalPolicy: "never",
-        approvalsReviewer: "user",
-        sandboxPolicy: { type: "dangerFullAccess" },
-      },
-      serviceTier: null,
-      useAppServerPermissionDefault: true,
-      preserveServerConfiguration: hostId === "durable",
-    };
-    const resumed = await owner.requestThreadStreamResume(threadId, options);
-    expect(resumed?.threadId).toBe(threadId);
-    expect(fixture.resumeOptions.at(-1)).toEqual(options);
-    expect(resumed?.canonicalState?.currentPermissions?.activePermissionProfile).toEqual(
-      options.permissions?.activePermissionProfile,
-    );
-    expect(
-      resumed?.canonicalState?.hydrationContext?.latestThreadSettings?.activePermissionProfile,
-    ).toEqual(options.permissions?.activePermissionProfile);
-    if (profileId === ":danger-full-access") {
-      expect(resumed?.canonicalState?.currentPermissions?.sandboxPolicy.type).toBe(
-        "dangerFullAccess",
-      );
-      for (const turn of residentConversationTurns(resumed?.canonicalState)) {
-        expect(turn.params.sandboxPolicy).toEqual(fixture.response!.sandbox);
-        expect(turn.params.approvalPolicy).toBe(fixture.response!.approvalPolicy);
-      }
-    }
-  },
-);
 
 test("automatic queued preparation retains its tier while resuming and defers while its native turn is active", async () => {
   Object.defineProperty(navigator, "locks", {
@@ -2796,17 +2755,17 @@ test("retirement rejects settings already sent and settings waiting for their pr
     new Promise<void>((resolve) => {
       release = resolve;
     });
-  const update = (approvalPolicy: "never" | "on-request") =>
+  const update = (model: string) =>
     owner.handleThreadFollowerRequest(
       conversationFollowerRequest("thread-follower-update-thread-settings", {
         conversationId: threadId,
-        threadSettings: { approvalPolicy },
+        threadSettings: { model },
       }),
     );
-  const first = update("never");
+  const first = update("first-model");
   const firstRejected = expect(first).rejects.toThrow(/lifetime/);
   await waitFor(() => expect(release).toBeDefined());
-  const second = update("on-request");
+  const second = update("second-model");
   const secondRejected = expect(second).rejects.toThrow(/lifetime/);
   owner.retireNativeHostContext();
   release();
@@ -2814,14 +2773,20 @@ test("retirement rejects settings already sent and settings waiting for their pr
   expect(fixture.calls.filter((call) => call.method === "thread/settings/update")).toHaveLength(1);
 });
 
-test("resume materializes explicit owner settings into the actual native request", async () => {
+test("resume preserves owner preferences and fixes full access despite historical policy", async () => {
   const { owner, threadId } = await connectedManagers();
   const first = fixture.calls.find((call) => call.method === "thread/resume")!.params;
-  expect(first).not.toHaveProperty("approvalPolicy");
+  expect(first).toMatchObject({
+    approvalPolicy: "never",
+    approvalsReviewer: "user",
+    permissions: ":danger-full-access",
+  });
+  expect(first).not.toHaveProperty("sandbox");
+  expect(fixture.response?.approvalPolicy).toBe("on-request");
   await owner.handleThreadFollowerRequest(
     conversationFollowerRequest("thread-follower-update-thread-settings", {
       conversationId: threadId,
-      threadSettings: { approvalPolicy: "never", approvalsReviewer: "guardian_subagent" },
+      threadSettings: { serviceTier: "priority", personality: "pragmatic" },
     }),
   );
   fixture.calls.length = 0;
@@ -2830,7 +2795,9 @@ test("resume materializes explicit owner settings into the actual native request
   expect(fixture.calls.find((call) => call.method === "thread/resume")?.params).toMatchObject({
     threadId,
     approvalPolicy: "never",
-    approvalsReviewer: "guardian_subagent",
-    sandbox: "read-only",
+    approvalsReviewer: "user",
+    permissions: ":danger-full-access",
+    serviceTier: "priority",
+    personality: "pragmatic",
   });
 });

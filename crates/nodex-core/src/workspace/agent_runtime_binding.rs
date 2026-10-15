@@ -1,5 +1,12 @@
-//! Session identity and content authorization remain in Core; execution belongs to the runtime.
+//! Session identity and execution routing remain in Core; native execution belongs to the runtime.
 
+use crate::infrastructure::{
+    collection_window::{WindowCandidate, assemble, normalize_request},
+    cursor::{self, CollectionCursorSubject, CursorDirection, KeysetCoordinate},
+};
+use nodex_core_contracts::collection::{
+    CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
+};
 use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeSessionBinding;
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -29,7 +36,6 @@ pub(super) fn create_session(
     runtime_id: &str,
     runtime_thread_id: &str,
     launch_request_id: &str,
-    launch_request_hash: &str,
     replacement_default_session_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     // Agent adapters reach this function only after AgentCommand has verified Turn provenance.
@@ -39,16 +45,44 @@ pub(super) fn create_session(
     validate_id("runtime_id", runtime_id)?;
     validate_id("runtime_thread_id", runtime_thread_id)?;
     validate_id("launch_request_id", launch_request_id)?;
-    if launch_request_hash.len() != 64
-        || !launch_request_hash
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    {
-        return Err(StoreError::new(
-            StoreErrorCode::InvalidInput,
-            "Agent Runtime launch requires a lowercase SHA-256 request hash",
-            false,
-        ));
+    if is_runtime_bound(connection, session_id)? {
+        let binding =
+            read_binding(connection, context, library_id, session_id)?.ok_or_else(|| {
+                StoreError::new(
+                    StoreErrorCode::StoreCorrupt,
+                    "Session binding vanished",
+                    false,
+                )
+            })?;
+        if binding.runtime_id != runtime_id
+            || binding.runtime_thread_id != runtime_thread_id
+            || binding.launch_request_id != launch_request_id
+        {
+            return Err(StoreError::new(
+                StoreErrorCode::Conflict,
+                "Session execution binding is immutable",
+                false,
+            ));
+        }
+        let session = require_session(connection, library_id, session_id)?;
+        if session.archived {
+            return Err(StoreError::new(
+                StoreErrorCode::Conflict,
+                "Archived Session execution cannot be relaunched",
+                false,
+            ));
+        }
+        return super::mutation::finish_no_op(
+            connection,
+            context,
+            store_epoch,
+            operation_id,
+            request_hash,
+            "create_agent_runtime_session",
+            project_id.into_iter().map(str::to_owned).collect(),
+            vec![session_id.to_owned()],
+            &sqlite_now(connection)?,
+        );
     }
     let conflicting_binding = connection
         .query_row(
@@ -58,7 +92,8 @@ pub(super) fn create_session(
             |row| row.get::<_, String>(0),
         )
         .optional()?;
-    if conflicting_binding.is_some() {
+    let deleted_execution: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM nodex_agent_runtime_execution_cleanups WHERE runtime_id=?1 AND runtime_thread_id=?2)", params![runtime_id,runtime_thread_id], |row| row.get(0))?;
+    if conflicting_binding.is_some() || deleted_execution {
         return Err(StoreError::new(
             StoreErrorCode::Conflict,
             "Agent Runtime Thread or launch identity already belongs to a Session",
@@ -101,12 +136,7 @@ pub(super) fn create_session(
         if let Some(project_id) = project_id {
             require_project(connection, library_id, project_id, true)?;
         }
-        super::page_chat::validate_initial_page_ids(
-            connection,
-            library_id,
-            project_id,
-            initial_page_ids,
-        )?;
+        super::page_chat::validate_initial_page_ids(connection, library_id, initial_page_ids)?;
         let title = normalize_session_title(title)?;
         let now = sqlite_now(connection)?;
         connection.execute("UPDATE project_sessions SET is_default_draft = 0, no_thread_fallback_title = ?1, updated_at = ?2 WHERE id = ?3", params![title, now, session_id])?;
@@ -137,14 +167,13 @@ pub(super) fn create_session(
     };
     connection.execute(
         "INSERT INTO project_session_execution_bindings(\
-           session_id, runtime_id, runtime_thread_id, launch_request_id, launch_request_hash, bound_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+           session_id, runtime_id, runtime_thread_id, launch_request_id, bound_at\
+         ) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![
             session_id,
             runtime_id,
             runtime_thread_id,
             launch_request_id,
-            launch_request_hash,
             now
         ],
     )?;
@@ -186,7 +215,7 @@ pub(super) fn read_binding(
         .ok_or_else(|| StoreError::new(StoreErrorCode::NotFound, "Session is unavailable in this Library", false))?;
     connection
         .query_row(
-            "SELECT runtime_id, runtime_thread_id, launch_request_id, launch_request_hash, bound_at \
+            "SELECT runtime_id, runtime_thread_id, launch_request_id, bound_at \
              FROM project_session_execution_bindings WHERE session_id = ?1",
             [session_id],
             |row| {
@@ -196,8 +225,7 @@ pub(super) fn read_binding(
                     runtime_id: row.get(0)?,
                     runtime_thread_id: row.get(1)?,
                     launch_request_id: row.get(2)?,
-                    launch_request_hash: row.get(3)?,
-                    bound_at: row.get(4)?,
+                    bound_at: row.get(3)?,
                 })
             },
         )
@@ -253,6 +281,75 @@ pub(super) fn is_runtime_bound(
         .map_err(Into::into)
 }
 
+pub(super) fn read_binding_window(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    commit_head: i64,
+    runtime_id: &str,
+    project_id: Option<&str>,
+    request: &CollectionWindowRequest,
+) -> Result<CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
+    require_host(context)?;
+    validate_id("runtime_id", runtime_id)?;
+    if let Some(project_id) = project_id {
+        validate_id("project_id", project_id)?;
+    }
+    let normalized = normalize_request(request)?;
+    let fingerprint =
+        cursor::query_fingerprint(&("agent_runtime_session_binding_v1", runtime_id, project_id))?;
+    let subject = CollectionCursorSubject {
+        kind: "agent_runtime_session_binding",
+        library_id,
+        query_fingerprint: &fingerprint,
+    };
+    let after = normalized
+        .after
+        .map(|encoded| cursor::decode(connection, encoded, subject))
+        .transpose()?
+        .map(|(direction, coordinate)| {
+            if direction != CursorDirection::Forward || !coordinate.values.is_empty() {
+                return Err(StoreError::new(
+                    StoreErrorCode::InvalidInput,
+                    "Execution binding cursor is incompatible",
+                    false,
+                ));
+            }
+            Ok(coordinate.stable_id)
+        })
+        .transpose()?;
+    let rows = connection.prepare(
+        "SELECT session.id, session.project_id, binding.runtime_id, binding.runtime_thread_id, binding.launch_request_id, binding.bound_at \
+         FROM project_sessions session JOIN project_session_execution_bindings binding ON binding.session_id = session.id \
+         WHERE session.project_id IS ?1 AND binding.runtime_id = ?2 AND session.id > ?3 \
+           AND (session.project_id IS NULL OR EXISTS(SELECT 1 FROM projects project WHERE project.id = session.project_id AND project.library_id = ?4)) \
+         ORDER BY session.id LIMIT ?5"
+    )?.query_map(params![project_id, runtime_id, after.as_deref().unwrap_or(""), library_id, (normalized.first + 1) as i64], |row| Ok(ProjectWorkspaceAgentRuntimeSessionBinding {
+        session_id: row.get(0)?, project_id: row.get(1)?, runtime_id: row.get(2)?, runtime_thread_id: row.get(3)?, launch_request_id: row.get(4)?, bound_at: row.get(5)?,
+    }))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    assemble(
+        rows.into_iter().map(|item| WindowCandidate {
+            coordinate: KeysetCoordinate {
+                values: Vec::new(),
+                stable_id: item.session_id.clone(),
+            },
+            item,
+        }),
+        normalized.first,
+        CollectionWindowAuthority {
+            projection_revision: commit_head,
+        },
+        |coordinate| {
+            cursor::mint(
+                connection,
+                subject,
+                CursorDirection::Forward,
+                coordinate.clone(),
+            )
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use nodex_core_contracts::CoreErrorCode;
@@ -261,8 +358,7 @@ mod tests {
     };
 
     use super::super::test_support::{
-        apply, context, create_page_with_project_access, create_project, read, request,
-        seeded_workspace,
+        apply, context, create_library_page, create_project, read, request, seeded_workspace,
     };
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
@@ -274,14 +370,13 @@ mod tests {
             runtime_id: "runtime:primary".into(),
             runtime_thread_id: format!("thread:{session_id}"),
             launch_request_id: format!("launch:{session_id}"),
-            launch_request_hash: "a".repeat(64),
         }
     }
 
     #[test]
     fn default_draft_promotion_keeps_links_and_replaces_default_atomically() {
         let workspace = seeded_workspace();
-        create_page_with_project_access(&workspace, "page:linked", "project:default");
+        create_library_page(&workspace, "page:linked", "project:default");
         apply(
             &workspace.module,
             "draft",
@@ -315,13 +410,18 @@ mod tests {
             connection.query_row("SELECT count(*) FROM codex_threads", [], |row| row.get::<_, i64>(0))?,
         ))).unwrap();
         assert_eq!(state, (0, "replacement:session:draft".into(), 1, 0));
+        let mut replacement = create_intent("session:draft");
+        let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            runtime_thread_id, ..
+        } = &mut replacement
+        else {
+            unreachable!()
+        };
+        *runtime_thread_id = "replacement-thread".into();
         assert_eq!(
             workspace
                 .module
-                .apply(
-                    &context(),
-                    request("rebind", create_intent("session:draft"))
-                )
+                .apply(&context(), request("rebind", replacement))
                 .unwrap_err()
                 .code,
             CoreErrorCode::Conflict
@@ -379,7 +479,7 @@ mod tests {
     #[test]
     fn session_creation_commits_links_and_launch_identity_once_without_execution_projections() {
         let workspace = seeded_workspace();
-        create_page_with_project_access(&workspace, "page:context", "project:default");
+        create_library_page(&workspace, "page:context", "project:default");
         let mut intent = create_intent("session:task");
         let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             initial_page_ids, ..
@@ -453,14 +553,10 @@ mod tests {
             ))
         }).unwrap();
         assert_eq!(counts, (1, 0));
-        let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
-            launch_request_hash,
-            ..
-        } = &mut intent
-        else {
+        let ProjectWorkspaceIntent::CreateAgentRuntimeSession { title, .. } = &mut intent else {
             unreachable!()
         };
-        *launch_request_hash = "b".repeat(64);
+        *title = "Changed request".into();
         assert_eq!(
             workspace
                 .module
@@ -472,10 +568,10 @@ mod tests {
     }
 
     #[test]
-    fn unauthorized_pages_and_failed_binding_insert_roll_back_the_whole_session() {
+    fn missing_pages_and_failed_binding_insert_roll_back_the_whole_session() {
         let workspace = seeded_workspace();
         create_project(&workspace.module, "other-project", "project:other");
-        create_page_with_project_access(&workspace, "page:private", "project:other");
+        create_library_page(&workspace, "page:private", "project:other");
         let mut denied_intent = create_intent("session:denied");
         let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             initial_page_ids, ..
@@ -483,7 +579,7 @@ mod tests {
         else {
             unreachable!()
         };
-        initial_page_ids.push("page:private".into());
+        initial_page_ids.push("page:missing".into());
         assert_eq!(
             workspace
                 .module
@@ -492,7 +588,7 @@ mod tests {
                 .code,
             CoreErrorCode::NotFound
         );
-        create_page_with_project_access(&workspace, "page:allowed", "project:default");
+        create_library_page(&workspace, "page:allowed", "project:default");
         apply(
             &workspace.module,
             "prior-session",
@@ -576,27 +672,166 @@ mod tests {
             assert_eq!(binding.session_id, expected_session);
         }
         create_project(&workspace.module, "other-project", "project:other");
-        assert_eq!(
-            workspace
-                .module
-                .apply(
-                    &context(),
-                    request(
-                        "move",
-                        ProjectWorkspaceIntent::MoveSession {
-                            session_id: "session:first".into(),
-                            project_id: Some("project:other".into())
-                        }
-                    )
-                )
-                .unwrap_err()
-                .code,
-            CoreErrorCode::Conflict
+        apply(
+            &workspace.module,
+            "move",
+            ProjectWorkspaceIntent::MoveSession {
+                session_id: "session:first".into(),
+                project_id: Some("project:other".into()),
+            },
         );
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+            binding: Some(moved),
+        } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBinding {
+                session_id: "session:first".into(),
+            },
+        )
+        else {
+            panic!("moved binding")
+        };
+        assert_eq!(moved.project_id.as_deref(), Some("project:other"));
+        assert_eq!(moved.runtime_thread_id, "thread:session:first");
         workspace.kernel.writer().call(|connection| {
-            assert!(connection.execute("UPDATE project_session_execution_bindings SET launch_request_hash = ?1 WHERE session_id='session:first'", ["b".repeat(64)]).is_err());
+            assert!(connection.execute("UPDATE project_session_execution_bindings SET runtime_thread_id = ?1 WHERE session_id='session:first'", ["b".repeat(64)]).is_err());
             assert!(connection.execute("INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES ('session:first','native','today')", []).is_err());
             Ok(())
         }).unwrap();
+    }
+    #[test]
+    fn a_new_epoch_retries_the_stable_launch_binding_without_creating_another_session() {
+        let w = seeded_workspace();
+        let intent = create_intent("session:stable");
+        apply(&w.module, "stable-launch", intent.clone());
+        w.kernel
+            .writer()
+            .call(|c| {
+                c.execute_batch("DELETE FROM core_module_receipts; DELETE FROM module_receipt_retention_metadata")?;
+                c.execute(
+                    "UPDATE block_store_metadata SET store_epoch='epoch:new' WHERE id=1",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            w.module
+                .apply(&context(), request("stable-launch", intent.clone()))
+                .unwrap_err()
+                .code,
+            CoreErrorCode::StaleStoreEpoch
+        );
+        let mut current = request("stable-launch", intent);
+        current.store_epoch = nodex_core_contracts::StoreEpoch("epoch:new".into());
+        let first = w.module.apply(&context(), current.clone()).unwrap();
+        assert!(first.event.is_none());
+        assert!(
+            w.module
+                .apply(&context(), current)
+                .unwrap()
+                .committed
+                .receipt
+                .mutation
+                .duplicate
+        );
+        let counts=w.kernel.writer().call(|c|Ok((c.query_row("SELECT count(*) FROM project_sessions WHERE id='session:stable'",[],|r|r.get::<_,i64>(0))?,c.query_row("SELECT count(*) FROM project_session_execution_bindings WHERE session_id='session:stable' AND runtime_thread_id='thread:session:stable'",[],|r|r.get::<_,i64>(0))?))).unwrap();
+        assert_eq!(counts, (1, 1));
+    }
+
+    #[test]
+    fn binding_windows_follow_current_placement_and_isolate_cursor_routes() {
+        use nodex_core_contracts::collection::CollectionWindowRequest;
+        use nodex_core_contracts::workspace::ProjectSessionIntent;
+        use nodex_core_contracts::{ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION};
+        let workspace = seeded_workspace();
+        create_project(&workspace.module, "other-project", "project:other");
+        for id in ["a", "b", "c"] {
+            apply(
+                &workspace.module,
+                &format!("create:{id}"),
+                create_intent(id),
+            );
+        }
+        apply(
+            &workspace.module,
+            "move:b",
+            ProjectWorkspaceIntent::MoveSession {
+                session_id: "b".into(),
+                project_id: Some("project:other".into()),
+            },
+        );
+        apply(
+            &workspace.module,
+            "archive:c",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "c".into(),
+                intent: ProjectSessionIntent::SetArchived { archived: true },
+            },
+        );
+        let query = |project_id: Option<&str>, after: Option<String>| {
+            ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+                runtime_id: "runtime:primary".into(),
+                project_id: project_id.map(str::to_owned),
+                window: CollectionWindowRequest {
+                    first: Some(1),
+                    after,
+                },
+            }
+        };
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings: first } =
+            read(&workspace.module, query(Some("project:default"), None))
+        else {
+            panic!("window")
+        };
+        assert_eq!(
+            first
+                .items
+                .iter()
+                .map(|b| b.session_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a"]
+        );
+        let cursor = first.next_cursor.expect("second bound Session");
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings: second } = read(
+            &workspace.module,
+            query(Some("project:default"), Some(cursor.clone())),
+        ) else {
+            panic!("window")
+        };
+        assert_eq!(second.items[0].session_id, "c");
+        assert!(second.next_cursor.is_none());
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings: moved } =
+            read(&workspace.module, query(Some("project:other"), None))
+        else {
+            panic!("window")
+        };
+        assert_eq!(moved.items[0].session_id, "b");
+        assert_eq!(moved.items[0].runtime_thread_id, "thread:b");
+        let error = workspace
+            .module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: query(Some("project:other"), Some(cursor)),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(error.code, CoreErrorCode::InvalidInput);
+        apply(
+            &workspace.module,
+            "rootless:a",
+            ProjectWorkspaceIntent::MoveSession {
+                session_id: "a".into(),
+                project_id: None,
+            },
+        );
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow { bindings: rootless } =
+            read(&workspace.module, query(None, None))
+        else {
+            panic!("window")
+        };
+        assert_eq!(rootless.items[0].session_id, "a");
     }
 }

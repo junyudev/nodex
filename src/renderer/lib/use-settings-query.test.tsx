@@ -50,7 +50,6 @@ describe("settings query hooks", () => {
         if (channel === "settings:thread-notifications:get") {
           return {
             turnMode: threadMode,
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         }

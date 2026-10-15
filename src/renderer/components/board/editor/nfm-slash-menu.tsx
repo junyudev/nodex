@@ -93,7 +93,7 @@ import {
 } from "@/lib/command-palette-highlight";
 import { StatusIcon } from "@/lib/status-presentation";
 import { WORKFLOW_STATUS_LABELS } from "../../../../shared/workflow-status";
-import { contentAccessContextKey } from "../../../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import { NFM_TURN_INTO_DEFINITIONS } from "@/lib/nfm-turn-into-targets";
 import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
 import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "./nfm-turn-into-block-icon";
@@ -1292,7 +1292,7 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
   const beforeSelectRef = useRef(beforeSelect);
   const requestScopeKey = hostRuntime
     ? JSON.stringify([
-        contentAccessContextKey(hostRuntime.contentAccessContext),
+        contentRoutingContextKey(hostRuntime.contentRoutingContext),
         hostRuntime.hostPageId,
         ...hostRuntime.ancestorPageIds,
       ])
@@ -1306,7 +1306,7 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
       if (!currentHostRuntime) return [];
       try {
         const result = await controllerRef.current.search({
-          accessContext: currentHostRuntime.contentAccessContext,
+          routingContext: currentHostRuntime.contentRoutingContext,
           hostPageId: currentHostRuntime.hostPageId,
           ancestorPageIds: currentHostRuntime.ancestorPageIds,
           intent,
@@ -1333,7 +1333,7 @@ function usePageReferenceGetItems(intent: PageReferenceIntent, beforeSelect?: ()
       return buildPageReferenceCandidateSuggestionItems(
         editorRef.current,
         loadPageReferenceCandidatesSync({
-          accessContext: currentHostRuntime.contentAccessContext,
+          routingContext: currentHostRuntime.contentRoutingContext,
           hostPageId: currentHostRuntime.hostPageId,
           ancestorPageIds: currentHostRuntime.ancestorPageIds,
           intent,

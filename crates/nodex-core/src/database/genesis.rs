@@ -16,9 +16,9 @@ pub(crate) fn create_database_authority_records(
 ) -> Result<(), StoreError> {
     connection.execute(
         "INSERT INTO database_containers(\
-           block_id, library_id, name, lifecycle, default_view_id, access_revision, \
+           block_id, library_id, name, lifecycle, default_view_id, \
            metadata_revision, created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, 'active', NULL, 1, 1, ?4, ?4)",
+         ) VALUES (?1, ?2, ?3, 'active', NULL, 1, ?4, ?4)",
         params![database_id, library_id, name, now],
     )?;
     connection.execute(

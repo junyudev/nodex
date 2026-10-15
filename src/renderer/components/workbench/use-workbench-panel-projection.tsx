@@ -203,8 +203,8 @@ function resolveProjectTargetTabChromeContext(
   )
     return {};
   if (tab.kind !== "db_view" && tab.kind !== "page_stage" && tab.kind !== "canvas_stage") return {};
-  if (tab.config.accessContext.kind === "library") return { contextLabel: "Library" };
-  const targetProjectId = tab.config.accessContext.projectId;
+  if (tab.config.routingContext.kind === "library") return { contextLabel: "Library" };
+  const targetProjectId = tab.config.routingContext.projectId;
   if (targetProjectId === activeSession.projectId) return {};
 
   const targetProject = projects.find((project) => project.id === targetProjectId);
@@ -326,8 +326,8 @@ export function useWorkbenchPanelProjection({
           !transientPanelTab && tab.kind === "page_stage"
             ? projects.find(
                 (project) =>
-                  tab.config.accessContext.kind === "project" &&
-                  project.id === tab.config.accessContext.projectId,
+                  tab.config.routingContext.kind === "project" &&
+                  project.id === tab.config.routingContext.projectId,
               )
             : undefined;
         const pageStageTitleSource =

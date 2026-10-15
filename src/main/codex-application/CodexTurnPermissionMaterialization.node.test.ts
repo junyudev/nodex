@@ -21,7 +21,7 @@ import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexInputAssets } from "./CodexInputAssets";
-import { CodexPermissions } from "./CodexPermissions";
+
 import { CodexPreferences } from "./CodexPreferences";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
 import { make, type CodexTurnStartPreparationInput } from "./CodexTurnPreparation";
@@ -29,7 +29,6 @@ import { conversationFixture, turnFixture } from "./conversation-test-fixture";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalLiveTurnParams,
-  CodexPermissionState,
 } from "../../shared/types";
 
 vi.mock("../platform/node/NodexCliBootstrap", () => ({
@@ -54,17 +53,6 @@ const current = {
 const state = produce(conversationFixture(threadId, [turnFixture("assigned")]), (draft) => {
   draft.currentPermissions = current;
 });
-const permissionState: CodexPermissionState = {
-  mode: "auto",
-  effectivePreset: "auto",
-  availableModes: ["auto", "full-access", "custom"],
-  approvalPolicy: "on-request",
-  approvalsReviewer: "user",
-  sandboxMode: "workspace-write",
-  sandbox: workspace,
-  autoReviewAvailable: false,
-  configTarget: { source: "none", filePath: null },
-};
 
 const disabledFastMode: ConfigRequirementsReadResponse = {
   supportsIndependentSpeedModes: false,
@@ -110,7 +98,7 @@ interface PreparationFixture {
   readonly defaultPersonality?: TurnStartParams["personality"];
   readonly config?: Partial<ConfigReadResponse["config"]>;
   readonly configFailure?: CodexRuntimeError;
-  readonly permissionState?: CodexPermissionState;
+
   readonly writableRoots?: readonly string[];
   readonly requirements?: Effect.Effect<ConfigRequirementsReadResponse, CodexRuntimeError>;
   readonly requests?: Array<{
@@ -146,13 +134,7 @@ const prepare = (
     Effect.provideService(CodexConversationProjection, {
       read: () => Effect.succeed({ canonical: fixture.canonical ?? state, snapshot: null }),
     } as unknown as CodexConversationProjection["Service"]),
-    Effect.provideService(CodexPermissions, {
-      resolve: () =>
-        Effect.succeed({
-          state: fixture.permissionState ?? permissionState,
-          verifiedBuiltinFullAccess: false,
-        }),
-    } as unknown as CodexPermissions["Service"]),
+
     Effect.provideService(CodexPreferences, {
       current: () => fixture.defaultPersonality ?? null,
     } as unknown as CodexPreferences["Service"]),
@@ -192,24 +174,6 @@ const prepare = (
     ),
   );
 
-it.effect(
-  "preserves server defaults in the native request and server provenance in current state",
-  () =>
-    Effect.gen(function* () {
-      const plan = yield* prepare({
-        originalRequest: { threadId, input: [] },
-        originalContext: { useAppServerPermissionDefault: true },
-      });
-      assert.strictEqual(plan.request.approvalPolicy, null);
-      assert.strictEqual(plan.request.approvalsReviewer, null);
-      assert.strictEqual(plan.request.sandboxPolicy, null);
-      assert.strictEqual(plan.request.permissions, null);
-      assert.strictEqual(plan.canonicalParams?.useAppServerPermissionDefault, true);
-      assert.strictEqual(plan.canonicalParams?.permissions, null);
-      assert.deepEqual(plan.permissions, current);
-    }),
-);
-
 const liveParams = (
   overrides: Partial<CodexCanonicalLiveTurnParams> = {},
 ): CodexCanonicalLiveTurnParams => ({
@@ -218,7 +182,7 @@ const liveParams = (
   sandboxPolicy: workspace,
   permissions: "team-profile",
   runtimeWorkspaceRoots: ["/workspace/project"],
-  useAppServerPermissionDefault: true,
+
   ...overrides,
 });
 
@@ -465,126 +429,10 @@ const inheritedDefaults: CodexCanonicalConversationState = {
     {
       ...state.turns[0]!,
       turnId: null,
-      params: liveParams({ useAppServerPermissionDefault: false }),
+      params: liveParams({}),
     },
   ],
 };
-
-it.effect.each([
-  {
-    name: "assigned default despite an optimistic successor",
-    request: {},
-    context: {},
-    defaults: true,
-  },
-  {
-    name: "explicit false",
-    request: {},
-    context: { useAppServerPermissionDefault: false },
-    defaults: false,
-  },
-  {
-    name: "disabled inheritance",
-    request: {},
-    context: { inheritThreadSettings: false },
-    defaults: false,
-  },
-  { name: "explicit null profile", request: { permissions: null }, context: {}, defaults: false },
-  {
-    name: "roots without a permission selection",
-    request: { runtimeWorkspaceRoots: ["/workspace/captured"] },
-    context: {},
-    defaults: true,
-  },
-  {
-    name: "selection overrides false",
-    request: {},
-    context: { usePermissionSelection: true, useAppServerPermissionDefault: false },
-    defaults: true,
-  },
-] satisfies Array<{
-  name: string;
-  request: Partial<TurnStartParams>;
-  context: NonNullable<CodexTurnStartPreparationInput["originalContext"]>;
-  defaults: boolean;
-}>)("materializes permission intent: $name", ({ request, context, defaults }) =>
-  Effect.gen(function* () {
-    const plan = yield* prepare(
-      { originalRequest: { threadId, input: [], ...request }, originalContext: context },
-      { canonical: inheritedDefaults },
-    );
-    assert.strictEqual(plan.canonicalParams?.useAppServerPermissionDefault, defaults);
-    assert.strictEqual(plan.request.approvalsReviewer, defaults ? null : "user");
-    if ("permissions" in request) {
-      assert.strictEqual(plan.request.permissions, null);
-      assert.strictEqual(plan.permissions?.activePermissionProfile, null);
-    }
-  }),
-);
-
-it.effect(
-  "uses complete next-turn permission settings while retaining missing profile provenance",
-  () =>
-    Effect.gen(function* () {
-      const canonical = produce(state, (draft) => {
-        draft.latestThreadSettings = {
-          model: "next-model",
-          effort: null,
-          collaborationMode: state.latestCollaborationMode,
-          approvalPolicy: "never",
-          approvalsReviewer: "auto_review",
-          sandboxPolicy: workspace,
-        };
-      });
-      const plan = yield* prepare(
-        {
-          originalRequest: { threadId, input: [] },
-          originalContext: { usePermissionSelection: true },
-        },
-        { canonical },
-      );
-      assert.strictEqual(plan.request.permissions, null);
-      assert.strictEqual(plan.request.approvalPolicy, null);
-      assert.strictEqual(plan.permissions?.approvalPolicy, "never");
-      assert.strictEqual(plan.permissions?.approvalsReviewer, "auto_review");
-      assert.strictEqual(plan.permissions?.activePermissionProfile, undefined);
-    }),
-);
-
-it.effect(
-  "rejects permission selection when neither next-turn settings nor current context exists",
-  () =>
-    Effect.gen(function* () {
-      const canonical = produce(state, (draft) => {
-        draft.hydrationContext = null;
-        delete draft.currentPermissions;
-      });
-      const result = yield* prepare(
-        {
-          originalRequest: { threadId, input: [] },
-          originalContext: { usePermissionSelection: true },
-        },
-        { canonical },
-      ).pipe(Effect.result);
-      assert.strictEqual(result._tag, "Failure");
-      if (result._tag === "Failure")
-        assert.match(String(result.failure.cause), /Missing permission settings for the next turn/);
-    }),
-);
-
-it.effect("does not turn a custom Project mode into permission-default intent", () =>
-  Effect.gen(function* () {
-    const plan = yield* prepare(
-      { originalRequest: { threadId, input: [] }, overrides: { permissionMode: "custom" } },
-      {
-        permissionState: { ...permissionState, mode: "custom", effectivePreset: "custom" },
-      },
-    );
-    assert.strictEqual(plan.canonicalParams?.useAppServerPermissionDefault, false);
-    assert.deepEqual(plan.request.sandboxPolicy, workspace);
-    assert.strictEqual(plan.request.permissions, null);
-  }),
-);
 
 it.effect("uses the committed cwd and retains requested roots from the same path family", () =>
   Effect.gen(function* () {
@@ -604,25 +452,9 @@ it.effect("uses the committed cwd and retains requested roots from the same path
       "/workspace/project",
     ]);
     assert.deepEqual(plan.permissions?.activePermissionProfile, {
-      id: "other-profile",
+      id: ":danger-full-access",
       extends: null,
     });
-  }),
-);
-
-it.effect("keeps absent current roots distinct from an observed empty list", () =>
-  Effect.gen(function* () {
-    const canonical = produce(state, (draft) => {
-      draft.hydrationContext = null;
-      delete draft.currentPermissions;
-      draft.turns = [];
-    });
-    const plan = yield* prepare(
-      { originalRequest: { threadId, input: [], sandboxPolicy: workspace } },
-      { canonical },
-    );
-    assert.strictEqual(plan.request.runtimeWorkspaceRoots, null);
-    assert.strictEqual(plan.permissions?.runtimeWorkspaceRoots, undefined);
   }),
 );
 
@@ -696,33 +528,5 @@ it.effect.each(["managed-disabled", "requirements-failed"] as const)(
       );
       assert.strictEqual(plan.request.serviceTier, null);
       assert.strictEqual(plan.canonicalParams?.serviceTier, null);
-    }),
-);
-
-it.effect(
-  "retains an explicit named profile without combining it with a native sandbox override",
-  () =>
-    Effect.gen(function* () {
-      const plan = yield* prepare({
-        originalRequest: { threadId, input: [], permissions: "team-profile" },
-      });
-      assert.strictEqual(plan.request.permissions, "team-profile");
-      assert.strictEqual(plan.request.sandboxPolicy, null);
-      assert.strictEqual(plan.canonicalParams?.permissions, "team-profile");
-      assert.deepEqual(plan.permissions?.activePermissionProfile, current.activePermissionProfile);
-    }),
-);
-
-it.effect(
-  "honors an explicit sandbox and clears profile provenance through owner materialization",
-  () =>
-    Effect.gen(function* () {
-      const sandboxPolicy = { type: "readOnly" as const, networkAccess: false };
-      const plan = yield* prepare({ originalRequest: { threadId, input: [], sandboxPolicy } });
-      assert.deepEqual(plan.request.sandboxPolicy, sandboxPolicy);
-      assert.strictEqual(plan.request.permissions, null);
-      assert.strictEqual(plan.canonicalParams?.permissions, null);
-      assert.strictEqual(plan.permissions?.activePermissionProfile, null);
-      assert.deepEqual(plan.permissions?.sandboxPolicy, sandboxPolicy);
     }),
 );

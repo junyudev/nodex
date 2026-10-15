@@ -35,7 +35,6 @@ const metadata = (commitSeq: number) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq,
-    authorization: null,
     value: { kind: "metadata" as const },
   },
 });
@@ -65,7 +64,6 @@ describe("Library navigation invalidation", () => {
     );
     const registry = new ProjectionInvalidationRegistry({
       subscribeProjection,
-      subscribeRevocations: () => () => undefined,
     });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity } },

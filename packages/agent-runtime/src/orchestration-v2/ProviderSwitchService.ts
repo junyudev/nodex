@@ -138,7 +138,6 @@ export const layer: Layer.Layer<
                             continuationKey: currentInstance.value.continuationKey,
                           },
                           modelSelection: current,
-                          runtimeMode: projection.thread.runtimeMode,
                           interactionMode: projection.thread.interactionMode,
                           workspace:
                             currentSession?.cwd ??
@@ -154,7 +153,6 @@ export const layer: Layer.Layer<
                       continuationKey: targetInstance.value.continuationKey,
                     },
                     modelSelection: targetModelSelection,
-                    runtimeMode: projection.thread.runtimeMode,
                     interactionMode: projection.thread.interactionMode,
                     workspace:
                       projection.thread.worktreePath ??

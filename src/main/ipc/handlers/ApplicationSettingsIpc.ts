@@ -28,6 +28,7 @@ import type {
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
+import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
 import { readActionableErrorMessage } from "../../actionable-error-message";
 import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
 import { resolveCodexHome } from "../../codex/codex-home";
@@ -127,7 +128,6 @@ const TelemetryUpdate = z
 const ThreadNotificationUpdate = z
   .object({
     turnMode: z.enum(["off", "unfocused", "always"]),
-    permissionsEnabled: z.boolean(),
     questionsEnabled: z.boolean(),
   })
   .strict() satisfies z.ZodType<UpdateThreadNotificationSettingsInput>;
@@ -166,6 +166,7 @@ export const live: Layer.Layer<
   never,
   | ApplicationMenuRuntime
   | ApplicationSettings
+  | AgentRuntimeProviderConfiguration
   | CodexHomeContinuity
   | DictationRuntime
   | StoreAdministrationSchedulerRuntime
@@ -175,6 +176,7 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const applicationSettings = yield* ApplicationSettings;
+    const runtimeProviders = yield* AgentRuntimeProviderConfiguration;
     const codexHomeContinuity = yield* CodexHomeContinuity;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
@@ -212,9 +214,23 @@ export const live: Layer.Layer<
       command: ApplicationSettingsCommand,
       select: (snapshot: ApplicationSettingsSnapshot) => A,
     ) =>
-      applicationSettings
-        .update(command)
-        .pipe(Effect.map(select), Effect.mapError(settingsError(operation)));
+      applicationSettings.update(command).pipe(
+        Effect.tap(() =>
+          command.type === "update-acp-agents" ||
+          command.type === "update-claude-agents" ||
+          command.type === "update-opencode-agents"
+            ? runtimeProviders.refresh.pipe(
+                Effect.catch(() =>
+                  Effect.logWarning(
+                    "Provider settings were saved; execution configuration could not refresh",
+                  ),
+                ),
+              )
+            : Effect.void,
+        ),
+        Effect.map(select),
+        Effect.mapError(settingsError(operation)),
+      );
     const handleRead = <Channel extends SettingsReadChannel>(
       channel: Channel,
       capability: string,

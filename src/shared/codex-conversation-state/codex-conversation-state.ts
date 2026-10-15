@@ -397,6 +397,13 @@ export interface CodexCanonicalTurnErrorItem {
   readonly additionalDetails: string | null;
 }
 
+/** Read-only execution history that has no native provider item equivalent. */
+export interface CodexCanonicalRuntimeNoticeItem {
+  readonly type: "runtimeNotice";
+  readonly id: string;
+  readonly message: string;
+}
+
 export interface CodexCanonicalTodoListItem {
   readonly type: "todo-list";
   readonly id: string;
@@ -513,6 +520,7 @@ export type CodexCanonicalLifecycleSyntheticItem =
   | CodexCanonicalForkedFromConversationItem
   | CodexCanonicalWorktreeInitItem
   | CodexCanonicalTurnErrorItem
+  | CodexCanonicalRuntimeNoticeItem
   | CodexCanonicalTodoListItem
   | CodexCanonicalModelReroutedItem
   | CodexCanonicalAutomaticApprovalReviewItem
@@ -666,7 +674,6 @@ export type CodexCanonicalHydratedProfileTurnParams<
   readonly permissions: string;
   readonly sandboxPolicy?: never;
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]>;
-  readonly useAppServerPermissionDefault?: never;
 };
 
 export type CodexCanonicalHydratedSandboxTurnParams<
@@ -676,7 +683,6 @@ export type CodexCanonicalHydratedSandboxTurnParams<
   readonly permissions?: never;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
   readonly runtimeWorkspaceRoots?: never;
-  readonly useAppServerPermissionDefault?: never;
 };
 
 /** Exact paged-resume overlay can retain a profile while adding response sandbox. */
@@ -687,7 +693,6 @@ export type CodexCanonicalResumedProfileTurnParams<
   readonly permissions: string;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]>;
-  readonly useAppServerPermissionDefault?: never;
 };
 
 /** Exact live `X1` stored state, which is richer than its outgoing request. */
@@ -698,7 +703,6 @@ export type CodexCanonicalLiveTurnParams<
   readonly permissions: string | null;
   readonly sandboxPolicy: NonNullable<TurnStartParams["sandboxPolicy"]>;
   readonly runtimeWorkspaceRoots: NonNullable<TurnStartParams["runtimeWorkspaceRoots"]> | null;
-  readonly useAppServerPermissionDefault: boolean;
 };
 
 export type CodexCanonicalTurnParams<TAttachment = unknown, TCommentAttachment = unknown> =

@@ -58,6 +58,8 @@ export interface AutomationDefinitionDeleteResult extends CodexScheduledAutomati
 
 export interface AutomationDefinitionClaim {
   readonly leaseId: string;
+  readonly dispatchId: string;
+  readonly definitionRevision: number;
   readonly scheduledFor: number;
   readonly attempt: number;
   readonly expiresAt: number;
@@ -71,9 +73,10 @@ export interface AutomationDueWork {
 }
 
 export interface AutomationRunMutationInput {
-  readonly threadId: string;
+  readonly runId: string;
   readonly automationId: string;
-  readonly threadTitle?: string | null;
+  readonly sessionTitle?: string | null;
+  readonly sessionId?: string | null;
   readonly sourceCwd?: string | null;
 }
 
@@ -174,30 +177,30 @@ export interface AutomationRuns {
     readonly archivedPendingCount: number;
     readonly pendingReviewCount: number;
   }>;
-  readonly get: (threadId: string) => AutomationEffect<CodexAutomationRun | null>;
+  readonly get: (runId: string) => AutomationEffect<CodexAutomationRun | null>;
   readonly begin: (input: AutomationRunMutationInput) => AutomationEffect<boolean>;
-  readonly replacePendingThread: (input: {
-    readonly pendingThreadId: string;
-    readonly threadId: string;
+  readonly bindSession: (input: {
+    readonly runId: string;
+    readonly sessionId: string;
   }) => AutomationEffect<boolean>;
-  readonly setThreadTitle: (
-    threadId: string,
-    threadTitle: string | null,
+  readonly setSessionTitle: (
+    runId: string,
+    sessionTitle: string | null,
   ) => AutomationEffect<boolean>;
   readonly completeForReview: (input: {
-    readonly threadId: string;
+    readonly runId: string;
     readonly inboxTitle?: string | null;
     readonly inboxSummary?: string | null;
   }) => AutomationEffect<boolean>;
   readonly setInboxItem: (input: {
-    readonly threadId: string;
+    readonly runId: string;
     readonly inboxTitle?: string | null;
     readonly inboxSummary?: string | null;
   }) => AutomationEffect<boolean>;
-  readonly accept: (threadId: string) => AutomationEffect<boolean>;
+  readonly accept: (runId: string) => AutomationEffect<boolean>;
   readonly archive: (input: CodexAutomationRunArchiveInput) => AutomationEffect<boolean>;
-  readonly delete: (threadId: string) => AutomationEffect<boolean>;
-  readonly unarchive: (threadId: string) => AutomationEffect<boolean>;
+  readonly delete: (runId: string) => AutomationEffect<boolean>;
+  readonly unarchive: (runId: string) => AutomationEffect<boolean>;
 }
 
 export interface AutomationInbox {
@@ -320,21 +323,7 @@ export const make: Effect.Effect<
       if (input.kind !== "heartbeat" || input.targetSessionId) {
         return yield* evaluate(operation, () => toCoreAutomationDefinitionInput(input));
       }
-      if (!input.targetThreadId)
-        return yield* error(operation, new Error("Heartbeat target Session is required"));
-      const snapshot = yield* core.workspace
-        .read({ kind: "thread", thread_id: input.targetThreadId })
-        .pipe(Effect.mapError((cause) => error(operation, cause)));
-      if (snapshot.value.kind !== "thread" || !snapshot.value.thread.session_id) {
-        return yield* error(
-          operation,
-          new Error("Heartbeat target Thread is not attached to a Session"),
-        );
-      }
-      const targetSessionId = snapshot.value.thread.session_id;
-      return yield* evaluate(operation, () =>
-        toCoreAutomationDefinitionInput({ ...input, targetSessionId }),
-      );
+      return yield* error(operation, new Error("Heartbeat target Session is required"));
     },
   );
 
@@ -352,14 +341,14 @@ export const make: Effect.Effect<
     committed: AutomationApplyResult,
     removals: {
       readonly definitionIds?: readonly string[];
-      readonly threadIds?: readonly string[];
+      readonly runIds?: readonly string[];
     } = {},
   ): void => {
     const definitionIds = removals.definitionIds ?? [];
-    const threadIds = [...(removals.threadIds ?? []), ...committed.outcome.deleted_run_ids];
+    const runIds = [...(removals.runIds ?? []), ...committed.outcome.deleted_run_ids];
     if (
       definitionIds.length === 0 &&
-      threadIds.length === 0 &&
+      runIds.length === 0 &&
       committed.outcome.definitions.length === 0 &&
       committed.outcome.runs.length === 0
     ) {
@@ -371,7 +360,7 @@ export const make: Effect.Effect<
         upsert: committed.outcome.definitions,
       },
       runs: {
-        removeThreadIds: threadIds,
+        removeRunIds: runIds,
         upsert: committed.outcome.runs,
       },
     });
@@ -384,7 +373,7 @@ export const make: Effect.Effect<
     projectId?: string,
     removals?: {
       readonly definitionIds?: readonly string[];
-      readonly threadIds?: readonly string[];
+      readonly runIds?: readonly string[];
     },
   ) {
     const committed = yield* core.automation
@@ -433,10 +422,10 @@ export const make: Effect.Effect<
   });
 
   const readRun = Effect.fn("AutomationApplication.readRun")(function* (
-    threadId: string,
+    runId: string,
     options?: CoreRequestOptions,
   ) {
-    const snapshot = yield* read("runs.get", { kind: "run", thread_id: threadId }, options);
+    const snapshot = yield* read("runs.get", { kind: "run", run_id: runId }, options);
     if (snapshot.value.kind !== "run") {
       return yield* error("runs.get", new Error("Core returned a non-Run Automation read"));
     }
@@ -453,9 +442,9 @@ export const make: Effect.Effect<
   const requireRun = (
     operation: string,
     committed: AutomationApplyResult,
-    threadId: string,
+    runId: string,
   ): AutomationEffect<CoreAutomationRun> =>
-    evaluate(operation, () => requireAutomationRun(committed, threadId));
+    evaluate(operation, () => requireAutomationRun(committed, runId));
 
   const allocateDefinitionId = Effect.fn("AutomationApplication.allocateDefinitionId")(function* (
     name: string,
@@ -708,6 +697,8 @@ export const make: Effect.Effect<
       return projectDefinition("definitions.claimDue", definition).pipe(
         Effect.map((projectedDefinition) => ({
           leaseId: lease.lease_id,
+          dispatchId: lease.dispatch_id,
+          definitionRevision: lease.definition_revision,
           scheduledFor: lease.scheduled_for_ms,
           attempt: lease.attempt,
           expiresAt: lease.expires_at_ms,
@@ -719,22 +710,22 @@ export const make: Effect.Effect<
 
   const applyRun = Effect.fn("AutomationApplication.applyRun")(function* (
     operation: string,
-    threadId: string,
+    runId: string,
     intent: (run: CoreAutomationRun) => AutomationIntent,
     options?: CoreRequestOptions,
   ) {
-    const current = yield* readRun(threadId, options);
+    const current = yield* readRun(runId, options);
     if (!current) return null;
     const requestedIntent = intent(current);
     const committed = yield* apply(
       operation,
       {
-        operationId: operationId(`run:${threadId}`),
+        operationId: operationId(`run:${runId}`),
         intent: requestedIntent,
       },
       options,
     );
-    return yield* requireRun(operation, committed, threadId);
+    return yield* requireRun(operation, committed, runId);
   });
 
   const readInboxItems = Effect.fn("AutomationApplication.inbox.readItems")(function* (
@@ -814,55 +805,56 @@ export const make: Effect.Effect<
     return { success: true as const, commitCursor };
   });
 
-  const replacePendingRunThread = Effect.fn("AutomationApplication.runs.replacePendingThread")(
-    function* (input: { readonly pendingThreadId: string; readonly threadId: string }) {
-      const pending = yield* readRun(input.pendingThreadId, BACKGROUND_CORE_REQUEST);
-      if (!pending) return false;
-      const committed = yield* apply(
-        "runs.replacePendingThread",
-        {
-          operationId: operationId(`replace-run:${input.pendingThreadId}:${input.threadId}`),
-          intent: {
-            kind: "replace_pending_run_thread",
-            pending_thread_id: input.pendingThreadId,
-            thread_id: input.threadId,
-            expected_revision: pending.run_revision,
-          },
+  const bindRunSession = Effect.fn("AutomationApplication.runs.bindSession")(function* (input: {
+    readonly runId: string;
+    readonly sessionId: string;
+  }) {
+    const current = yield* readRun(input.runId, BACKGROUND_CORE_REQUEST);
+    if (!current) return false;
+    const committed = yield* apply(
+      "runs.bindSession",
+      {
+        operationId: operationId(`bind-run:${input.runId}:${input.sessionId}`),
+        intent: {
+          kind: "bind_run_session",
+          run_id: input.runId,
+          session_id: input.sessionId,
+          expected_revision: current.run_revision,
         },
-        BACKGROUND_CORE_REQUEST,
-        undefined,
-        { threadIds: [input.pendingThreadId] },
-      );
-      return committed.outcome.runs.some((run) => run.thread_id === input.threadId);
-    },
-  );
+      },
+      BACKGROUND_CORE_REQUEST,
+    );
+    return committed.outcome.runs.some(
+      (run) => run.run_id === input.runId && run.session_id === input.sessionId,
+    );
+  });
 
-  const deleteRun = Effect.fn("AutomationApplication.runs.delete")(function* (threadId: string) {
-    const current = yield* readRun(threadId);
+  const deleteRun = Effect.fn("AutomationApplication.runs.delete")(function* (runId: string) {
+    const current = yield* readRun(runId);
     if (!current) return false;
     const committed = yield* apply(
       "runs.delete",
       {
-        operationId: operationId(`delete-run:${threadId}`),
+        operationId: operationId(`delete-run:${runId}`),
         intent: {
           kind: "delete_run",
-          thread_id: threadId,
+          run_id: runId,
           expected_revision: current.run_revision,
         },
       },
       undefined,
       undefined,
-      { threadIds: [threadId] },
+      { runIds: [runId] },
     );
-    return committed.outcome.deleted_run_ids.includes(threadId);
+    return committed.outcome.deleted_run_ids.includes(runId);
   });
 
   const setInboxReadState = Effect.fn("AutomationApplication.inbox.setReadState")(function* (
     input: CodexAutomationRunReadStateInput,
   ) {
-    const run = yield* applyRun("inbox.setReadState", input.threadId, (current) => ({
+    const run = yield* applyRun("inbox.setReadState", input.runId, (current) => ({
       kind: "set_run_read_state",
-      thread_id: input.threadId,
+      run_id: input.runId,
       expected_revision: current.run_revision,
       read: input.readAt !== null,
     }));
@@ -877,9 +869,7 @@ export const make: Effect.Effect<
         new Error("Core returned a non-Inbox Automation read"),
       );
     }
-    const item = snapshot.value.window.items.find(
-      (candidate) => candidate.thread_id === input.threadId,
-    );
+    const item = snapshot.value.window.items.find((candidate) => candidate.run_id === input.runId);
     return item ? projectAutomationInboxItem(item) : null;
   });
 
@@ -1037,42 +1027,43 @@ export const make: Effect.Effect<
           })),
         ),
       ),
-      get: (threadId) =>
-        readRun(threadId).pipe(Effect.map((item) => (item ? projectAutomationRun(item) : null))),
+      get: (runId) =>
+        readRun(runId).pipe(Effect.map((item) => (item ? projectAutomationRun(item) : null))),
       begin: (input) =>
         apply(
           "runs.begin",
           {
-            operationId: operationId(`begin-run:${input.threadId}`),
+            operationId: operationId(`begin-run:${input.runId}`),
             intent: {
               kind: "begin_run",
-              thread_id: input.threadId,
+              run_id: input.runId,
               automation_id: input.automationId,
-              thread_title: input.threadTitle ?? null,
+              session_id: input.sessionId ?? null,
+              session_title: input.sessionTitle ?? null,
               source_cwd: input.sourceCwd ?? null,
             },
           },
           BACKGROUND_CORE_REQUEST,
         ).pipe(
           Effect.map((committed) =>
-            committed.outcome.runs.some((run) => run.thread_id === input.threadId),
+            committed.outcome.runs.some((run) => run.run_id === input.runId),
           ),
         ),
-      replacePendingThread: replacePendingRunThread,
-      setThreadTitle: (threadId, threadTitle) =>
-        applyRun("runs.setThreadTitle", threadId, (current) => ({
-          kind: "set_run_thread_title",
-          thread_id: threadId,
+      bindSession: bindRunSession,
+      setSessionTitle: (runId, sessionTitle) =>
+        applyRun("runs.setSessionTitle", runId, (current) => ({
+          kind: "set_run_session_title",
+          run_id: runId,
           expected_revision: current.run_revision,
-          thread_title: threadTitle,
+          session_title: sessionTitle,
         })).pipe(Effect.map((run) => run !== null)),
       completeForReview: (input) =>
         applyRun(
           "runs.completeForReview",
-          input.threadId,
+          input.runId,
           (current) => ({
             kind: "complete_run_for_review",
-            thread_id: input.threadId,
+            run_id: input.runId,
             expected_revision: current.run_revision,
             inbox_title: input.inboxTitle ?? null,
             inbox_summary: input.inboxSummary ?? null,
@@ -1080,33 +1071,33 @@ export const make: Effect.Effect<
           BACKGROUND_CORE_REQUEST,
         ).pipe(Effect.map((run) => run !== null)),
       setInboxItem: (input) =>
-        applyRun("runs.setInboxItem", input.threadId, (current) => ({
+        applyRun("runs.setInboxItem", input.runId, (current) => ({
           kind: "set_run_inbox_item",
-          thread_id: input.threadId,
+          run_id: input.runId,
           expected_revision: current.run_revision,
           inbox_title: input.inboxTitle ?? null,
           inbox_summary: input.inboxSummary ?? null,
         })).pipe(Effect.map((run) => run !== null)),
-      accept: (threadId) =>
-        applyRun("runs.accept", threadId, (current) => ({
+      accept: (runId) =>
+        applyRun("runs.accept", runId, (current) => ({
           kind: "accept_run",
-          thread_id: threadId,
+          run_id: runId,
           expected_revision: current.run_revision,
         })).pipe(Effect.map((run) => run !== null)),
       archive: (input) =>
-        applyRun("runs.archive", input.threadId, (current) => ({
+        applyRun("runs.archive", input.runId, (current) => ({
           kind: "archive_run",
-          thread_id: input.threadId,
+          run_id: input.runId,
           expected_revision: current.run_revision,
           archived_user_message: input.archivedUserMessage ?? null,
           archived_assistant_message: input.archivedAssistantMessage ?? null,
           archived_reason: input.archivedReason ?? null,
         })).pipe(Effect.map((run) => run !== null)),
       delete: deleteRun,
-      unarchive: (threadId) =>
-        applyRun("runs.unarchive", threadId, (current) => ({
+      unarchive: (runId) =>
+        applyRun("runs.unarchive", runId, (current) => ({
           kind: "unarchive_run",
-          thread_id: threadId,
+          run_id: runId,
           expected_revision: current.run_revision,
         })).pipe(Effect.map((run) => run !== null)),
     },
@@ -1127,7 +1118,7 @@ export const make: Effect.Effect<
                 automationIds: [...new Set(unreadItems.map((item) => item.automationId))],
                 unreadRuns: unreadItems.map((item) => ({
                   automationId: item.automationId,
-                  threadId: item.threadId,
+                  runId: item.runId,
                 })),
               },
             };

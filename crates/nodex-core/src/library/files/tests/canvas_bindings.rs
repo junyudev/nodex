@@ -4,10 +4,7 @@ use nodex_core_contracts::OWNED_DOCUMENT_CONTRACT_VERSION;
 use nodex_core_contracts::document::{
     OwnedDocumentIntent, RecoveryDraftCapture, RecoveryDraftContent,
 };
-use nodex_core_contracts::library::{
-    LibraryCanvasDestination, LibraryFileChange, LibraryFileReadSource, LibraryProjectAccessChange,
-    LibraryResourceTarget,
-};
+use nodex_core_contracts::library::{LibraryCanvasDestination, LibraryFileReadSource};
 use serde_json::{Value, json};
 
 const CANVAS_ID: &str = "01990000-0000-7000-8000-000000000001";
@@ -89,29 +86,6 @@ fn move_image(fixture: &Fixture) {
     );
 }
 
-fn revoke_direct_access(fixture: &Fixture) {
-    crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel)
-        .apply(
-            &bound_context(None),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: "revoke-file".to_owned(),
-                store_epoch: StoreEpoch("epoch-1".to_owned()),
-                intent: LibraryIntent::SetProjectAccess {
-                    target: LibraryResourceTarget::File {
-                        file_id: "file-a".to_owned(),
-                    },
-                    changes: vec![LibraryProjectAccessChange {
-                        project_id: "project-1".to_owned(),
-                        access: None,
-                        expected_revision: Some(1),
-                    }],
-                },
-            },
-        )
-        .unwrap();
-}
-
 fn canvas_source(slot: &str) -> LibraryFileReadSource {
     LibraryFileReadSource::Canvas {
         canvas_id: CANVAS_ID.to_owned(),
@@ -162,7 +136,6 @@ fn canvas_binding_reuse_survives_edits_without_direct_file_access() {
     let fixture = fixture();
     seed_canvas(&fixture);
     move_image(&fixture);
-    revoke_direct_access(&fixture);
     mutate(
         &fixture,
         "reuse-image",
@@ -176,18 +149,15 @@ fn canvas_binding_reuse_survives_edits_without_direct_file_access() {
         assert_image_read(&fixture, &canvas_source(slot));
     }
     let library = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
-    assert_eq!(
-        library
-            .resolve_file_blob(
-                &bound_context(Some("project-1")),
-                "file-a",
-                &LibraryFileReadSource::Direct,
-                None
-            )
-            .unwrap_err()
-            .code,
-        CoreErrorCode::Unauthorized
-    );
+    let direct = library
+        .resolve_file_blob(
+            &bound_context(Some("project-1")),
+            "file-a",
+            &LibraryFileReadSource::Direct,
+            None,
+        )
+        .unwrap();
+    assert_eq!(std::fs::read(direct.physical_path).unwrap(), b"alpha");
 }
 
 #[test]
@@ -195,7 +165,6 @@ fn canvas_recovery_captures_unchanged_bindings_without_direct_file_access() {
     let fixture = fixture();
     seed_canvas(&fixture);
     move_image(&fixture);
-    revoke_direct_access(&fixture);
     let scene = fixture
         .kernel
         .readers()
@@ -228,47 +197,6 @@ fn canvas_recovery_captures_unchanged_bindings_without_direct_file_access() {
             scene_file_id: "slot".to_owned(),
         },
     );
-}
-
-#[test]
-fn canvas_binding_reuse_rejects_a_version_forged_only_in_the_projection() {
-    let fixture = fixture();
-    seed_canvas(&fixture);
-    let library = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
-    prepare(&fixture, "replace-image", "replace-receipt", b"beta");
-    apply_intent(
-        &library,
-        "replace-image",
-        LibraryIntent::ApplyFileChange {
-            change: LibraryFileChange::ReplaceContent {
-                file_id: "file-a".to_owned(),
-                expected_revision: 1,
-                expected_head_version: 1,
-                mime_type: "image/png".to_owned(),
-                prepared_blob_receipt_id: "replace-receipt".to_owned(),
-            },
-            turn_id: None,
-        },
-    );
-    revoke_direct_access(&fixture);
-    fixture.kernel.writer().call(|connection| {
-        // Version two exists, but only version one is canonically bound to this Canvas.
-        connection.execute(
-            "UPDATE canvas_scene_file_refs SET file_version = 2,
-             asset_hash = (SELECT blob_hash FROM file_versions WHERE file_id = 'file-a' AND version = 2),
-             byte_length = (SELECT byte_length FROM file_versions WHERE file_id = 'file-a' AND version = 2)",
-            [],
-        )?;
-        Ok(())
-    }).unwrap();
-    let mut unbound = binding("unbound");
-    unbound["fileVersion"] = json!(2);
-    let error = crate::document::OwnedDocumentModule::new("profile-1", "library-1", &fixture.kernel)
-        .apply(&bound_context(Some("project-1")), document_request("reuse-unbound", OwnedDocumentIntent::ApplyCanvasMutation {
-            document_id: DOCUMENT_ID.to_owned(), generation: 1, expected_head_seq: 1,
-            mutation: json!({"elementCandidates": [image("unbound", 1)], "appStateIntents": {}, "fileAdditions": {"unbound": unbound}}),
-        })).unwrap_err();
-    assert_eq!(error.code, CoreErrorCode::Unauthorized);
 }
 
 #[test]

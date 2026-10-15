@@ -142,7 +142,7 @@ describe("Codex prompt preparation", () => {
     const parsed = splitCodexPromptAgentConfigLines(
       [
         "Investigate the owner path",
-        '<agent-config mode="plan" provider="openai" model="gpt-test" reasoning="high" speed="fast" permission="auto" />',
+        '<agent-config mode="plan" provider="openai" model="gpt-test" reasoning="high" speed="fast" />',
       ].join("\n"),
     );
 
@@ -154,7 +154,6 @@ describe("Codex prompt preparation", () => {
         model: "gpt-test",
         reasoning: "high",
         speed: "fast",
-        permission: "auto",
       },
     ]);
   });

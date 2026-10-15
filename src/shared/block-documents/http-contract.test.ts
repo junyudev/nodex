@@ -32,14 +32,8 @@ import type { AuthorizedDeliveryPacket } from "../authorized-delivery-packet";
 const bytes = (...values: number[]): Uint8Array => Uint8Array.from(values);
 
 const documentDelivery = (): AuthorizedDeliveryPacket => ({
-  packet_version: 4,
+  packet_version: 5,
   delivery_address: {
-    kind: "document",
-    library_id: "library-1",
-    project_id: "project-1",
-    document_id: "document-1",
-  },
-  authorization_scope: {
     kind: "document",
     library_id: "library-1",
     project_id: "project-1",
@@ -74,7 +68,6 @@ const documentDelivery = (): AuthorizedDeliveryPacket => ({
     },
   ],
   projection_effects: [],
-  visibility_deltas: [],
   coverage: {
     atom_ids: [],
     document_effect_orders: [0],
@@ -89,7 +82,7 @@ describe("Document HTTP contract", () => {
     const descriptor = decodeLibraryAccessedDocumentDescriptorHttp(
       encodeLibraryAccessedDocumentDescriptorHttp({
         libraryId: "library-1",
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         ownerBlockId: "page-1",
         ownerType: "page",
         ownerLifecycle: "active",
@@ -100,11 +93,10 @@ describe("Document HTTP contract", () => {
         schemaKey: "nodex.page",
         schemaVersion: PAGE_DOCUMENT_SCHEMA_VERSION,
         readiness: "ready",
-        authorization: null,
         sync: { kind: "yjs", stateVector: bytes(1, 2, 3) },
       }),
     );
-    expect(descriptor.accessContext).toEqual({ kind: "library" });
+    expect(descriptor.routingContext).toEqual({ kind: "library" });
     expect(descriptor.libraryId).toBe("library-1");
     expect("projectId" in descriptor).toBe(false);
     expect(() =>
@@ -120,14 +112,13 @@ describe("Document HTTP contract", () => {
   test("round-trips engine-neutral Yjs and Canvas descriptors", () => {
     const common = {
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       ownerLifecycle: "active",
       storeEpoch: "store-1",
       generation: 2,
       headSeq: 7,
       schemaVersion: 1,
       readiness: "ready",
-      authorization: null,
     } as const;
     const yjs = decodeOwnedDocumentDescriptorHttp(
       encodeOwnedDocumentDescriptorHttp({
@@ -160,9 +151,9 @@ describe("Document HTTP contract", () => {
 
   test("rejects Yjs fields on a Canvas engine descriptor", () => {
     const serialized = JSON.stringify({
-      version: 3,
+      version: 4,
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       ownerBlockId: "canvas-1",
       ownerType: "canvas",
       ownerLifecycle: "active",
@@ -173,7 +164,6 @@ describe("Document HTTP contract", () => {
       schemaKey: "nodex.canvas",
       schemaVersion: 1,
       readiness: "ready",
-      authorization: null,
       sync: { kind: "canvas_scene", stateVector: "AA==" },
     });
     expect(() => decodeOwnedDocumentDescriptorHttp(serialized)).toThrow(
@@ -272,7 +262,7 @@ describe("Document HTTP contract", () => {
     }
     expect(decodedAck.committedSeq).toBe(5);
     expect(decodedAck.commit.commit_seq).toBe(5);
-    expect(decodedAck.delivery?.packet_version).toBe(4);
+    expect(decodedAck.delivery?.packet_version).toBe(5);
     expect(decodedAck.delivery?.document_effects).toHaveLength(1);
     expect(Array.from(decodedAck.stateVector).join(",")).toBe("8,9");
 
@@ -300,7 +290,7 @@ describe("Document HTTP contract", () => {
     const scene = materializePortableCanvasScene({ elements: [] });
     const request = {
       syncRequestId: "sync-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       documentId: "canvas-1",
       clientSessionId: "client-1",
       knownStoreEpoch: "store-1",
@@ -311,7 +301,7 @@ describe("Document HTTP contract", () => {
     expect(
       decodeCanvasSceneSyncHttpRequest(
         request.documentId,
-        request.accessContext,
+        request.routingContext,
         encodeCanvasSceneSyncHttpRequest(request),
       ),
     ).toEqual(request);
@@ -320,7 +310,7 @@ describe("Document HTTP contract", () => {
       kind: "snapshot",
       syncRequestId: request.syncRequestId,
       libraryId: "library-1",
-      accessContext: request.accessContext,
+      routingContext: request.routingContext,
       documentId: request.documentId,
       storeEpoch: request.knownStoreEpoch,
       generation: request.knownGeneration,
@@ -338,7 +328,7 @@ describe("Document HTTP contract", () => {
       kind: "snapshot",
       syncRequestId: request.syncRequestId,
       libraryId: "library-1",
-      accessContext: request.accessContext,
+      routingContext: request.routingContext,
       documentId: request.documentId,
       storeEpoch: request.knownStoreEpoch,
       generation: request.knownGeneration,
@@ -351,7 +341,7 @@ describe("Document HTTP contract", () => {
       kind: "up_to_date",
       syncRequestId: "sync-2",
       libraryId: "library-1",
-      accessContext: request.accessContext,
+      routingContext: request.routingContext,
       documentId: request.documentId,
       storeEpoch: request.knownStoreEpoch,
       generation: request.knownGeneration,
@@ -375,7 +365,7 @@ describe("Document HTTP contract", () => {
       kind: "snapshot",
       syncRequestId: "sync-1",
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       documentId: "canvas-1",
       storeEpoch: "store-1",
       generation: 1,
@@ -421,7 +411,7 @@ describe("Document HTTP contract", () => {
       kind: "snapshot",
       syncRequestId: "sync-rust-numbers",
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       documentId: "canvas-1",
       storeEpoch: "store-1",
       generation: 1,

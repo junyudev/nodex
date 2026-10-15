@@ -140,7 +140,6 @@ test("real Shell output survives delayed batching and preserves repeated lines a
           harness.profile.initialProjectsDirectory,
           "Shell output",
         );
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         const fixture = await createConvergencePage(
           page,
           { ...project, projectId: draft.projectId },

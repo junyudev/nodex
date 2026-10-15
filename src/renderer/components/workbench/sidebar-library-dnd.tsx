@@ -24,11 +24,6 @@ export type SidebarLibraryDropDecision =
       readonly resource: SidebarLibraryDragResource;
       readonly parent: LibraryWriteParent;
     }
-  | {
-      readonly kind: "grant";
-      readonly resource: SidebarLibraryDragResource;
-      readonly projectId: string;
-    }
   | { readonly kind: "reject" };
 
 export const readSidebarLibraryDragResource = (
@@ -51,7 +46,6 @@ export const readSidebarLibraryOwnershipDropTarget = (
 export const resolveSidebarLibraryDropDecision = (
   activeData: Data | undefined,
   overData: Data | undefined,
-  projectId: string | null,
   preferNest = false,
 ): SidebarLibraryDropDecision => {
   const resource = readSidebarLibraryDragResource(activeData);
@@ -68,7 +62,6 @@ export const resolveSidebarLibraryDropDecision = (
     }
     return { kind: "move", resource, parent };
   }
-  if (projectId) return { kind: "grant", resource, projectId };
   return { kind: "reject" };
 };
 

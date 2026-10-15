@@ -1679,14 +1679,10 @@
           "store_epoch",
           "recipient_lease_id",
           "delivery_address",
-          "authorization_scope",
           "required_commit_seq",
           "reason"
         ],
         "properties": {
-          "authorization_scope": {
-            "$ref": "#/components/schemas/DeliveryAuthorizationScope"
-          },
           "delivery_address": {
             "$ref": "#/components/schemas/DeliveryAddress"
           },
@@ -1717,118 +1713,6 @@
           "queue_overflow",
           "integrity_failure",
           "store_epoch_replacement"
-        ]
-      },
-      "AgentAuthorizationTarget": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "database_id",
-              "kind"
-            ],
-            "properties": {
-              "database_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "database"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "data_source_id",
-              "kind"
-            ],
-            "properties": {
-              "data_source_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "data_source"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "view_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "view"
-                ]
-              },
-              "view_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "library_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              },
-              "library_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "id",
-              "kind"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page_or_block"
-                ]
-              }
-            }
-          }
         ]
       },
       "AgentBackendBinding": {
@@ -1909,13 +1793,6 @@
           }
         ],
         "description": "Durable identity of the runtime family that owns an Agent conversation.\nBackend-specific settings live behind their own stable identifiers instead\nof accumulating nullable fields on Threads and Automations."
-      },
-      "AgentConsentRequirement": {
-        "type": "string",
-        "enum": [
-          "none",
-          "resource"
-        ]
       },
       "AgentDocumentBlockGuard": {
         "type": "object",
@@ -2106,16 +1983,6 @@
           },
           "provenance": {
             "$ref": "#/components/schemas/AgentTurnProvenance"
-          },
-          "resource_access": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/AgentResourceAccessOverlay"
-              }
-            ]
           }
         }
       },
@@ -2177,13 +2044,9 @@
         "type": "object",
         "required": [
           "state",
-          "consent",
           "footprint"
         ],
         "properties": {
-          "consent": {
-            "$ref": "#/components/schemas/AgentConsentRequirement"
-          },
           "expires_at_unix_ms": {
             "type": [
               "integer",
@@ -2256,314 +2119,6 @@
               "null"
             ],
             "description": "Exact receipt replay may omit a token. A new mutation cannot."
-          }
-        }
-      },
-      "AgentProjectResourceAccess": {
-        "type": "string",
-        "enum": [
-          "read",
-          "read_write"
-        ]
-      },
-      "AgentProjectResourceAction": {
-        "type": "string",
-        "enum": [
-          "read",
-          "write",
-          "create_child",
-          "move",
-          "manage_schema",
-          "manage_views",
-          "manage_database"
-        ]
-      },
-      "AgentResourceAccessOverlay": {
-        "type": "object",
-        "required": [
-          "kind",
-          "scope",
-          "root_thread_id",
-          "actor_project_id",
-          "library_id",
-          "store_epoch",
-          "grants"
-        ],
-        "properties": {
-          "actor_project_id": {
-            "type": "string"
-          },
-          "call_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "grants": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentResourceGrantSpec"
-            }
-          },
-          "kind": {
-            "$ref": "#/components/schemas/AgentResourceAccessOverlayKind"
-          },
-          "library_id": {
-            "type": "string"
-          },
-          "persist_resulting_page_grants": {
-            "type": "boolean"
-          },
-          "root_thread_id": {
-            "type": "string"
-          },
-          "scope": {
-            "$ref": "#/components/schemas/AgentResourceAccessOverlayScope"
-          },
-          "store_epoch": {
-            "type": "string"
-          },
-          "thread_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "turn_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "AgentResourceAccessOverlayKind": {
-        "type": "string",
-        "enum": [
-          "inspection",
-          "consent"
-        ]
-      },
-      "AgentResourceAccessOverlayScope": {
-        "type": "string",
-        "enum": [
-          "call",
-          "task"
-        ]
-      },
-      "AgentResourceAccessPlan": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "authorized"
-                ]
-              },
-              "resource_access": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/AgentResourceAccessOverlay"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "requirements",
-              "inspection_access",
-              "kind"
-            ],
-            "properties": {
-              "inspection_access": {
-                "$ref": "#/components/schemas/AgentResourceAccessOverlay"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "consent_required"
-                ]
-              },
-              "requirements": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AgentResourceConsentRequirement"
-                }
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "intent",
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "intent": {
-                "$ref": "#/components/schemas/AgentResourceIntent"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "denied"
-                ]
-              },
-              "reason": {
-                "$ref": "#/components/schemas/AgentResourceAuthorizationReason"
-              }
-            }
-          }
-        ]
-      },
-      "AgentResourceAuthorizationReason": {
-        "type": "string",
-        "enum": [
-          "allowed",
-          "project_not_found",
-          "resource_not_found",
-          "resource_hierarchy_corrupt",
-          "library_mismatch",
-          "authority_stale",
-          "grant_missing",
-          "project_read_only",
-          "turn_read_only",
-          "grant_read_only",
-          "structural_capability_required"
-        ]
-      },
-      "AgentResourceConsentReason": {
-        "type": "string",
-        "enum": [
-          "grant_missing",
-          "grant_read_only",
-          "library_consent_required"
-        ]
-      },
-      "AgentResourceConsentRequirement": {
-        "type": "object",
-        "required": [
-          "intent",
-          "grant",
-          "reason",
-          "persistable"
-        ],
-        "properties": {
-          "grant": {
-            "$ref": "#/components/schemas/AgentResourceGrantSpec"
-          },
-          "intent": {
-            "$ref": "#/components/schemas/AgentResourceIntent"
-          },
-          "persistable": {
-            "type": "boolean"
-          },
-          "reason": {
-            "$ref": "#/components/schemas/AgentResourceConsentReason"
-          }
-        }
-      },
-      "AgentResourceGrantRoot": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "database_id",
-              "kind"
-            ],
-            "properties": {
-              "database_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "database"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "library_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              },
-              "library_id": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
-      "AgentResourceGrantSpec": {
-        "type": "object",
-        "required": [
-          "root",
-          "access"
-        ],
-        "properties": {
-          "access": {
-            "$ref": "#/components/schemas/AgentProjectResourceAccess"
-          },
-          "library_actions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AgentProjectResourceAction"
-            }
-          },
-          "root": {
-            "$ref": "#/components/schemas/AgentResourceGrantRoot"
-          }
-        }
-      },
-      "AgentResourceIntent": {
-        "type": "object",
-        "required": [
-          "target",
-          "action"
-        ],
-        "properties": {
-          "action": {
-            "$ref": "#/components/schemas/AgentProjectResourceAction"
-          },
-          "target": {
-            "$ref": "#/components/schemas/AgentAuthorizationTarget"
           }
         }
       },
@@ -3500,16 +3055,14 @@
       },
       "AuthorizedDeliveryPacket": {
         "type": "object",
-        "description": "Post-state-authorized transport artifact. Packets for the apply response\nand durable stream may have different coverage but always reference the\nsame immutable manifest identity.",
+        "description": "Authenticated connection transport artifact. Packets for the apply response\nand durable stream may have different coverage but always reference the\nsame immutable manifest identity.",
         "required": [
           "packet_version",
           "delivery_address",
-          "authorization_scope",
           "manifest",
           "atoms",
           "document_effects",
           "projection_effects",
-          "visibility_deltas",
           "coverage",
           "packet_hash"
         ],
@@ -3519,9 +3072,6 @@
             "items": {
               "$ref": "#/components/schemas/AuthorizedDeliveryAtom"
             }
-          },
-          "authorization_scope": {
-            "$ref": "#/components/schemas/DeliveryAuthorizationScope"
           },
           "coverage": {
             "$ref": "#/components/schemas/DeliveryCoverage"
@@ -3550,12 +3100,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectionEffect"
-            }
-          },
-          "visibility_deltas": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VisibilityDelta"
             }
           }
         }
@@ -3789,64 +3333,13 @@
           }
         ]
       },
-      "AuthorizedReadStamp": {
-        "type": "object",
-        "required": [
-          "store_epoch",
-          "delivery_address",
-          "authorization_scope",
-          "subject",
-          "request_dependencies",
-          "authorization_dependencies",
-          "covered_commit_seq",
-          "stamp_hash"
-        ],
-        "properties": {
-          "authorization_dependencies": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ResourceKey"
-            }
-          },
-          "authorization_scope": {
-            "$ref": "#/components/schemas/DeliveryAuthorizationScope"
-          },
-          "covered_commit_seq": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "delivery_address": {
-            "$ref": "#/components/schemas/DeliveryAddress"
-          },
-          "request_dependencies": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ResourceKey"
-            }
-          },
-          "stamp_hash": {
-            "type": "string"
-          },
-          "store_epoch": {
-            "$ref": "#/components/schemas/StoreEpoch"
-          },
-          "subject": {
-            "$ref": "#/components/schemas/ResourceKey"
-          }
-        }
-      },
       "AuthorizedRecipientLease": {
         "type": "object",
-        "description": "Core-issued identity for one active broker recipient. Main may route with\nthis lease but cannot construct or broaden its authorization scope.",
         "required": [
           "lease_id",
-          "delivery_address",
-          "authorization_scope"
+          "delivery_address"
         ],
         "properties": {
-          "authorization_scope": {
-            "$ref": "#/components/schemas/DeliveryAuthorizationScope"
-          },
           "delivery_address": {
             "$ref": "#/components/schemas/DeliveryAddress"
           },
@@ -3975,13 +3468,6 @@
               "string",
               "null"
             ]
-          },
-          "target_thread_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Current backend attachment, projected from the target Session."
           },
           "updated_at_ms": {
             "type": "integer",
@@ -4442,7 +3928,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "automation_id",
               "kind"
             ],
@@ -4456,28 +3942,34 @@
                   "begin_run"
                 ]
               },
+              "run_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "source_cwd": {
                 "type": [
                   "string",
                   "null"
                 ]
-              },
-              "thread_id": {
-                "type": "string"
-              },
-              "thread_title": {
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             }
           },
           {
             "type": "object",
             "required": [
-              "pending_thread_id",
-              "thread_id",
+              "run_id",
+              "session_id",
               "expected_revision",
               "kind"
             ],
@@ -4489,13 +3981,13 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "replace_pending_run_thread"
+                  "bind_run_session"
                 ]
               },
-              "pending_thread_id": {
+              "run_id": {
                 "type": "string"
               },
-              "thread_id": {
+              "session_id": {
                 "type": "string"
               }
             }
@@ -4503,7 +3995,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4515,13 +4007,13 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "set_run_thread_title"
+                  "set_run_session_title"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               },
-              "thread_title": {
+              "session_title": {
                 "type": [
                   "string",
                   "null"
@@ -4532,7 +4024,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4559,7 +4051,7 @@
                   "complete_run_for_review"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4567,7 +4059,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4594,7 +4086,7 @@
                   "set_run_inbox_item"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4602,7 +4094,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4617,7 +4109,7 @@
                   "accept_run"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4625,7 +4117,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "read",
               "kind"
@@ -4644,7 +4136,7 @@
               "read": {
                 "type": "boolean"
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4666,7 +4158,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4699,7 +4191,7 @@
                   "archive_run"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4707,7 +4199,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4722,7 +4214,7 @@
                   "unarchive_run"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4730,7 +4222,7 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
+              "run_id",
               "expected_revision",
               "kind"
             ],
@@ -4745,7 +4237,7 @@
                   "delete_run"
                 ]
               },
-              "thread_id": {
+              "run_id": {
                 "type": "string"
               }
             }
@@ -4964,6 +4456,8 @@
         "type": "object",
         "required": [
           "lease_id",
+          "dispatch_id",
+          "definition_revision",
           "automation_id",
           "scheduled_for_ms",
           "attempt",
@@ -4983,6 +4477,13 @@
           "claimed_at_ms": {
             "type": "integer",
             "format": "int64"
+          },
+          "definition_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "dispatch_id": {
+            "type": "string"
           },
           "expires_at_ms": {
             "type": "integer",
@@ -5086,7 +4587,7 @@
       "AutomationRun": {
         "type": "object",
         "required": [
-          "thread_id",
+          "run_id",
           "automation_id",
           "run_revision",
           "status",
@@ -5138,9 +4639,24 @@
             ],
             "format": "int64"
           },
+          "run_id": {
+            "type": "string"
+          },
           "run_revision": {
             "type": "integer",
             "format": "int64"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_title": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "source_cwd": {
             "type": [
@@ -5150,15 +4666,6 @@
           },
           "status": {
             "$ref": "#/components/schemas/AutomationRunStatus"
-          },
-          "thread_id": {
-            "type": "string"
-          },
-          "thread_title": {
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "updated_at_ms": {
             "type": "integer",
@@ -5517,15 +5024,6 @@
           "test"
         ]
       },
-      "CodexPermissionMode": {
-        "type": "string",
-        "enum": [
-          "auto",
-          "guardian-approvals",
-          "full-access",
-          "custom"
-        ]
-      },
       "CodexThreadActiveFlag": {
         "type": "string",
         "enum": [
@@ -5701,13 +5199,6 @@
                     "null"
                   ]
                 },
-                "target_thread_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Current backend attachment, projected from the target Session."
-                },
                 "updated_at_ms": {
                   "type": "integer",
                   "format": "int64"
@@ -5739,7 +5230,7 @@
               "type": "object",
               "required": [
                 "automation_id",
-                "thread_id",
+                "run_id",
                 "created_at_ms",
                 "status"
               ],
@@ -5788,6 +5279,15 @@
                   ],
                   "format": "int64"
                 },
+                "run_id": {
+                  "type": "string"
+                },
+                "session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "source_cwd": {
                   "type": [
                     "string",
@@ -5796,9 +5296,6 @@
                 },
                 "status": {
                   "$ref": "#/components/schemas/AutomationRunStatus"
-                },
-                "thread_id": {
-                  "type": "string"
                 },
                 "title": {
                   "type": [
@@ -5833,6 +5330,8 @@
               "type": "object",
               "required": [
                 "lease_id",
+                "dispatch_id",
+                "definition_revision",
                 "automation_id",
                 "scheduled_for_ms",
                 "attempt",
@@ -5852,6 +5351,13 @@
                 "claimed_at_ms": {
                   "type": "integer",
                   "format": "int64"
+                },
+                "definition_revision": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "dispatch_id": {
+                  "type": "string"
                 },
                 "expires_at_ms": {
                   "type": "integer",
@@ -5913,7 +5419,7 @@
             "items": {
               "type": "object",
               "required": [
-                "thread_id",
+                "run_id",
                 "automation_id",
                 "run_revision",
                 "status",
@@ -5965,9 +5471,24 @@
                   ],
                   "format": "int64"
                 },
+                "run_id": {
+                  "type": "string"
+                },
                 "run_revision": {
                   "type": "integer",
                   "format": "int64"
+                },
+                "session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "session_title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
                 },
                 "source_cwd": {
                   "type": [
@@ -5977,15 +5498,6 @@
                 },
                 "status": {
                   "$ref": "#/components/schemas/AutomationRunStatus"
-                },
-                "thread_id": {
-                  "type": "string"
-                },
-                "thread_title": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
                 },
                 "updated_at_ms": {
                   "type": "integer",
@@ -6604,7 +6116,7 @@
                     "kind": {
                       "type": "string",
                       "enum": [
-                        "restricted"
+                        "unavailable"
                       ]
                     }
                   }
@@ -6904,6 +6416,181 @@
                   "type": "string"
                 },
                 "view_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "identity",
+                    "native_source",
+                    "kind"
+                  ],
+                  "properties": {
+                    "identity": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "run"
+                      ]
+                    },
+                    "native_source": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "identity",
+                    "kind"
+                  ],
+                  "properties": {
+                    "identity": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "native_session"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Deleting a Session retains only the exact execution identity needed for idempotent cleanup.\nIt is never a tool credential or a live Session binding.",
+              "required": [
+                "cleanup_id",
+                "session_id",
+                "runtime_id",
+                "runtime_thread_id",
+                "created_at"
+              ],
+              "properties": {
+                "cleanup_id": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "project_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "runtime_id": {
+                  "type": "string"
+                },
+                "runtime_thread_id": {
+                  "type": "string"
+                },
+                "session_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A stable Session-to-runtime link, without provider, Run, or transcript projections.\nThe host retries an interrupted launch with the same request and Thread identities.",
+              "required": [
+                "session_id",
+                "runtime_id",
+                "runtime_thread_id",
+                "launch_request_id",
+                "bound_at"
+              ],
+              "properties": {
+                "bound_at": {
+                  "type": "string"
+                },
+                "launch_request_id": {
+                  "type": "string"
+                },
+                "project_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "runtime_id": {
+                  "type": "string"
+                },
+                "runtime_thread_id": {
+                  "type": "string"
+                },
+                "session_id": {
                   "type": "string"
                 }
               }
@@ -7380,7 +7067,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Profile-wide Session discovery metadata; transcript access is authorized separately.",
+              "description": "Profile-wide Session discovery metadata; conversation history uses the same Profile identity.",
               "required": [
                 "task",
                 "project_pinned"
@@ -8416,10 +8103,40 @@
         },
         "additionalProperties": false
       },
-      "ConservativeResetReason": {
-        "type": "string",
-        "enum": [
-          "authorization_closure_exceeded"
+      "ContentRoutingContext": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "library"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "projectId",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project"
+                ]
+              },
+              "projectId": {
+                "type": "string"
+              }
+            }
+          }
         ]
       },
       "CoreArtifactIdentity": {
@@ -9705,16 +9422,11 @@
           "library_id",
           "name",
           "lifecycle",
-          "access_revision",
           "metadata_revision",
           "created_at",
           "updated_at"
         ],
         "properties": {
-          "access_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
           "created_at": {
             "type": "string"
           },
@@ -10242,7 +9954,7 @@
             "items": {
               "$ref": "#/components/schemas/DatabasePersonalViewChange"
             },
-            "description": "Profile-owned deltas are routed through View authorization but do not\ninvalidate shared Database/View projections."
+            "description": "Profile-owned deltas are routed through View identity but do not\ninvalidate shared Database/View projections."
           },
           "project_id": {
             "type": [
@@ -14644,8 +14356,7 @@
               }
             }
           }
-        ],
-        "description": "Logical destination selected by the authenticated Host broker. Routing is\ndistinct from authorization even when both identities are equal today."
+        ]
       },
       "DeliveryAtomDescriptor": {
         "type": "object",
@@ -14838,79 +14549,6 @@
           }
         ],
         "description": "Closed notification payloads that may cross the authorized delivery\nboundary. Every value is the payload of one resource-atomic DeliveryAtom;\naggregate physical events are split before the manifest is sealed.\nDocument updates are intentionally absent: their bytes are available only\nthrough `DocumentEffectRef` and its optional inline body."
-      },
-      "DeliveryAuthorizationScope": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "library_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              },
-              "library_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "library_id",
-              "project_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "project"
-                ]
-              },
-              "library_id": {
-                "type": "string"
-              },
-              "project_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "library_id",
-              "document_id",
-              "kind"
-            ],
-            "properties": {
-              "document_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "document"
-                ]
-              },
-              "library_id": {
-                "type": "string"
-              },
-              "project_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              }
-            }
-          }
-        ],
-        "description": "Core-authored authorization boundary for one delivery artifact. This is\npart of packet integrity and must never be reconstructed by an Adapter."
       },
       "DeliveryCoverage": {
         "type": "object",
@@ -15249,7 +14887,7 @@
       "DocumentInvalidationReason": {
         "type": "string",
         "enum": [
-          "access_changed",
+          "owner_deleted",
           "generation_changed",
           "restored"
         ]
@@ -16575,125 +16213,6 @@
           "test"
         ]
       },
-      "LibraryAccess": {
-        "type": "string",
-        "enum": [
-          "read",
-          "read_write"
-        ]
-      },
-      "LibraryAgentAuthorizedSurface": {
-        "oneOf": [
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id"
-                ],
-                "properties": {
-                  "page_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "page"
-                    ]
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "database_id",
-                  "data_source_id",
-                  "view_id",
-                  "layout"
-                ],
-                "properties": {
-                  "data_source_id": {
-                    "type": "string"
-                  },
-                  "database_id": {
-                    "type": "string"
-                  },
-                  "layout": {
-                    "$ref": "#/components/schemas/DatabaseViewLayout"
-                  },
-                  "view_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "database_view"
-                    ]
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "canvas_id"
-                ],
-                "properties": {
-                  "canvas_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "canvas"
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        ]
-      },
       "LibraryAgentBlockTarget": {
         "type": "object",
         "required": [
@@ -17818,12 +17337,124 @@
           }
         ]
       },
+      "LibraryAgentSurface": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id"
+                ],
+                "properties": {
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "page"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "database_id",
+                  "data_source_id",
+                  "view_id",
+                  "layout"
+                ],
+                "properties": {
+                  "data_source_id": {
+                    "type": "string"
+                  },
+                  "database_id": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "$ref": "#/components/schemas/DatabaseViewLayout"
+                  },
+                  "view_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "database_view"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "canvas_id"
+                ],
+                "properties": {
+                  "canvas_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "canvas"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
       "LibraryAgentSurfaceDescription": {
         "oneOf": [
           {
             "allOf": [
               {
-                "$ref": "#/components/schemas/LibraryAgentAuthorizedSurface"
+                "$ref": "#/components/schemas/LibraryAgentSurface"
               },
               {
                 "type": "object",
@@ -17834,7 +17465,7 @@
                   "status": {
                     "type": "string",
                     "enum": [
-                      "authorized"
+                      "available"
                     ]
                   }
                 }
@@ -17844,17 +17475,13 @@
           {
             "type": "object",
             "required": [
-              "reason",
               "status"
             ],
             "properties": {
-              "reason": {
-                "$ref": "#/components/schemas/LibraryAgentSurfaceRestriction"
-              },
               "status": {
                 "type": "string",
                 "enum": [
-                  "restricted"
+                  "unavailable"
                 ]
               }
             }
@@ -17866,12 +17493,12 @@
         "required": [
           "title",
           "library_id",
-          "displayed_access_context"
+          "displayed_routing_context"
         ],
         "properties": {
-          "displayed_access_context": {
-            "$ref": "#/components/schemas/OwnedDocumentAccessContext",
-            "description": "Display context never contributes an Agent grant."
+          "displayed_routing_context": {
+            "$ref": "#/components/schemas/ContentRoutingContext",
+            "description": "Presentation context for resolving the selected surface."
           },
           "library_id": {
             "type": "string"
@@ -17880,14 +17507,6 @@
             "type": "string"
           }
         }
-      },
-      "LibraryAgentSurfaceRestriction": {
-        "type": "string",
-        "enum": [
-          "consent_required",
-          "access_denied",
-          "unavailable"
-        ]
       },
       "LibraryAgentSurfaceTarget": {
         "oneOf": [
@@ -17946,7 +17565,7 @@
             }
           }
         ],
-        "description": "A semantic content target, independent of the renderer's current access context."
+        "description": "A semantic content target, independent of the renderer's current routing context."
       },
       "LibraryAgentSurfaceViewTarget": {
         "oneOf": [
@@ -20480,88 +20099,6 @@
           "three"
         ]
       },
-      "LibraryInheritedProjectAccessSource": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "database_id",
-              "database_name",
-              "access",
-              "kind"
-            ],
-            "properties": {
-              "access": {
-                "$ref": "#/components/schemas/LibraryAccess"
-              },
-              "database_id": {
-                "type": "string"
-              },
-              "database_name": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "primary_database"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "page_id",
-              "page_title",
-              "access",
-              "kind"
-            ],
-            "properties": {
-              "access": {
-                "$ref": "#/components/schemas/LibraryAccess"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "ancestor_page"
-                ]
-              },
-              "page_id": {
-                "type": "string"
-              },
-              "page_title": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "database_id",
-              "database_name",
-              "access",
-              "kind"
-            ],
-            "properties": {
-              "access": {
-                "$ref": "#/components/schemas/LibraryAccess"
-              },
-              "database_id": {
-                "type": "string"
-              },
-              "database_name": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "database_grant"
-                ]
-              }
-            }
-          }
-        ]
-      },
       "LibraryLifecycle": {
         "type": "string",
         "enum": [
@@ -20953,24 +20490,6 @@
           }
         ]
       },
-      "LibraryPageAccessContext": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              }
-            }
-          }
-        ]
-      },
       "LibraryPageBacklink": {
         "type": "object",
         "required": [
@@ -21030,13 +20549,9 @@
           "plain_text",
           "preview",
           "references",
-          "asset_refs",
-          "access_context"
+          "asset_refs"
         ],
         "properties": {
-          "access_context": {
-            "$ref": "#/components/schemas/LibraryPageAccessContext"
-          },
           "asset_refs": {
             "type": "array",
             "items": {
@@ -21450,13 +20965,9 @@
           "page",
           "document",
           "intrinsic_properties",
-          "data_source_context",
-          "access_context"
+          "data_source_context"
         ],
         "properties": {
-          "access_context": {
-            "$ref": "#/components/schemas/LibraryPageAccessContext"
-          },
           "commit_seq": {
             "type": "integer",
             "format": "int64"
@@ -23534,15 +23045,17 @@
       "LibraryPageLocation": {
         "type": "object",
         "required": [
-          "page_id",
-          "access_project_id"
+          "page_id"
         ],
         "properties": {
-          "access_project_id": {
-            "type": "string"
-          },
           "page_id": {
             "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -24409,7 +23922,7 @@
           "location_label",
           "updated_at",
           "properties",
-          "authorized_project_ids",
+          "project_ids",
           "data_source_ids"
         ],
         "properties": {
@@ -24418,12 +23931,6 @@
               "string",
               "null"
             ]
-          },
-          "authorized_project_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
           },
           "data_source_ids": {
             "type": "array",
@@ -24455,6 +23962,12 @@
                 "$ref": "#/components/schemas/LibraryPageSearchPriority"
               }
             ]
+          },
+          "project_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "properties": {
             "type": "array",
@@ -24876,100 +24389,6 @@
           }
         }
       },
-      "LibraryProjectAccessChange": {
-        "type": "object",
-        "required": [
-          "project_id"
-        ],
-        "properties": {
-          "access": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LibraryAccess"
-              }
-            ]
-          },
-          "expected_revision": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "project_id": {
-            "type": "string"
-          }
-        }
-      },
-      "LibraryProjectAccessRow": {
-        "type": "object",
-        "required": [
-          "project_id",
-          "project_name",
-          "appearance",
-          "lifecycle",
-          "inherited_sources"
-        ],
-        "properties": {
-          "appearance": {
-            "$ref": "#/components/schemas/ProjectAppearance"
-          },
-          "direct_grant": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LibraryProjectDirectGrant"
-              }
-            ]
-          },
-          "effective_access": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LibraryAccess"
-              }
-            ]
-          },
-          "inherited_sources": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryInheritedProjectAccessSource"
-            }
-          },
-          "lifecycle": {
-            "$ref": "#/components/schemas/ProjectLifecycle"
-          },
-          "project_id": {
-            "type": "string"
-          },
-          "project_name": {
-            "type": "string"
-          }
-        }
-      },
-      "LibraryProjectDirectGrant": {
-        "type": "object",
-        "required": [
-          "access",
-          "revision"
-        ],
-        "properties": {
-          "access": {
-            "$ref": "#/components/schemas/LibraryAccess"
-          },
-          "revision": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
       "LibraryProjectPageSearchFacets": {
         "type": "object",
         "required": [
@@ -25041,7 +24460,6 @@
       "LibraryProjectPageSearchHit": {
         "type": "object",
         "required": [
-          "project_id",
           "page_id",
           "title",
           "tags",
@@ -25095,7 +24513,11 @@
             ]
           },
           "project_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Project association for presentation, independent of caller routing."
           },
           "status": {
             "oneOf": [
@@ -25132,24 +24554,6 @@
       },
       "LibraryReadResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_LibraryReadValue"
-      },
-      "LibraryResourceProjectAccess": {
-        "type": "object",
-        "required": [
-          "target",
-          "projects"
-        ],
-        "properties": {
-          "projects": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryProjectAccessRow"
-            }
-          },
-          "target": {
-            "$ref": "#/components/schemas/LibraryResourceTarget"
-          }
-        }
       },
       "LibraryResourceTarget": {
         "oneOf": [
@@ -25416,7 +24820,6 @@
           "version",
           "projection_version",
           "library_id",
-          "access_project_id",
           "store_epoch",
           "commit_head",
           "scope",
@@ -25424,9 +24827,6 @@
           "warnings"
         ],
         "properties": {
-          "access_project_id": {
-            "type": "string"
-          },
           "commit_head": {
             "type": "integer",
             "format": "int64"
@@ -25439,6 +24839,12 @@
             "items": {
               "$ref": "#/components/schemas/LibrarySearchSnapshotPage"
             }
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "projection_version": {
             "type": "integer",
@@ -26429,7 +25835,6 @@
           "rich_text_boundary",
           "target_property_conflict",
           "target_schema_incompatible",
-          "tag_schema_permission_required",
           "tag_option_limit"
         ]
       },
@@ -26438,18 +25843,20 @@
         "required": [
           "view_id",
           "data_source_id",
-          "database_id",
-          "access_project_id"
+          "database_id"
         ],
         "properties": {
-          "access_project_id": {
-            "type": "string"
-          },
           "data_source_id": {
             "type": "string"
           },
           "database_id": {
             "type": "string"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "view_id": {
             "type": "string"
@@ -27251,7 +26658,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "automation_id",
                   "kind"
                 ],
@@ -27265,28 +26672,34 @@
                       "begin_run"
                     ]
                   },
+                  "run_id": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "session_title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "source_cwd": {
                     "type": [
                       "string",
                       "null"
                     ]
-                  },
-                  "thread_id": {
-                    "type": "string"
-                  },
-                  "thread_title": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
                   }
                 }
               },
               {
                 "type": "object",
                 "required": [
-                  "pending_thread_id",
-                  "thread_id",
+                  "run_id",
+                  "session_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27298,13 +26711,13 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "replace_pending_run_thread"
+                      "bind_run_session"
                     ]
                   },
-                  "pending_thread_id": {
+                  "run_id": {
                     "type": "string"
                   },
-                  "thread_id": {
+                  "session_id": {
                     "type": "string"
                   }
                 }
@@ -27312,7 +26725,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27324,13 +26737,13 @@
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "set_run_thread_title"
+                      "set_run_session_title"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   },
-                  "thread_title": {
+                  "session_title": {
                     "type": [
                       "string",
                       "null"
@@ -27341,7 +26754,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27368,7 +26781,7 @@
                       "complete_run_for_review"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27376,7 +26789,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27403,7 +26816,7 @@
                       "set_run_inbox_item"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27411,7 +26824,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27426,7 +26839,7 @@
                       "accept_run"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27434,7 +26847,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "read",
                   "kind"
@@ -27453,7 +26866,7 @@
                   "read": {
                     "type": "boolean"
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27475,7 +26888,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27508,7 +26921,7 @@
                       "archive_run"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27516,7 +26929,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27531,7 +26944,7 @@
                       "unarchive_run"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -27539,7 +26952,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "expected_revision",
                   "kind"
                 ],
@@ -27554,7 +26967,7 @@
                       "delete_run"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -28526,82 +27939,6 @@
               {
                 "type": "object",
                 "required": [
-                  "project_id",
-                  "target",
-                  "access",
-                  "kind"
-                ],
-                "properties": {
-                  "access": {
-                    "$ref": "#/components/schemas/LibraryAccess"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "grant_project_access"
-                    ]
-                  },
-                  "project_id": {
-                    "type": "string"
-                  },
-                  "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "target",
-                  "changes",
-                  "kind"
-                ],
-                "properties": {
-                  "changes": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/LibraryProjectAccessChange"
-                    }
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "set_project_access"
-                    ]
-                  },
-                  "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "provenance",
-                  "grants",
-                  "kind"
-                ],
-                "properties": {
-                  "grants": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/AgentResourceGrantSpec"
-                    }
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "persist_agent_project_resource_grants"
-                    ]
-                  },
-                  "provenance": {
-                    "$ref": "#/components/schemas/AgentTurnProvenance"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
                   "authorization",
                   "request",
                   "kind"
@@ -29324,7 +28661,7 @@
               },
               {
                 "type": "object",
-                "description": "A Turn-authorized application command. Core admits only organization intents.",
+                "description": "An application command retaining its authenticated execution provenance.",
                 "required": [
                   "provenance",
                   "intent",
@@ -29959,7 +29296,6 @@
                   "runtime_id",
                   "runtime_thread_id",
                   "launch_request_id",
-                  "launch_request_hash",
                   "kind"
                 ],
                 "properties": {
@@ -29974,9 +29310,6 @@
                     "enum": [
                       "create_agent_runtime_session"
                     ]
-                  },
-                  "launch_request_hash": {
-                    "type": "string"
                   },
                   "launch_request_id": {
                     "type": "string"
@@ -30006,66 +29339,6 @@
               },
               {
                 "type": "object",
-                "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
-                "required": [
-                  "session_id",
-                  "title",
-                  "launch_request_hash",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "admit_session_launch"
-                    ]
-                  },
-                  "launch_request_hash": {
-                    "type": "string"
-                  },
-                  "project_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  },
-                  "title": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Reserves one message dispatch to an exact existing Session binding.\nA duplicate receipt must never dispatch the message again.",
-                "required": [
-                  "session_id",
-                  "thread_id",
-                  "message_request_hash",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "admit_session_message"
-                    ]
-                  },
-                  "message_request_hash": {
-                    "type": "string"
-                  },
-                  "session_id": {
-                    "type": "string"
-                  },
-                  "thread_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
                 "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
                 "required": [
                   "session_id",
@@ -30087,37 +29360,6 @@
                     "type": "string"
                   },
                   "thread_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Reserves the destination Session for one fork of an authorized source binding.",
-                "required": [
-                  "source_session_id",
-                  "source_thread_id",
-                  "session_id",
-                  "fork_request_hash",
-                  "kind"
-                ],
-                "properties": {
-                  "fork_request_hash": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "admit_session_fork"
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  },
-                  "source_session_id": {
-                    "type": "string"
-                  },
-                  "source_thread_id": {
                     "type": "string"
                   }
                 }
@@ -30896,16 +30138,6 @@
                   "placement": {
                     "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
                   },
-                  "project_access_grant": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/ProjectWorkspaceThreadMoveProjectAccessGrant"
-                      }
-                    ]
-                  },
                   "runtime_workspace_roots": {
                     "type": [
                       "array",
@@ -31065,8 +30297,6 @@
                   "thread_id",
                   "turn_id",
                   "root_thread_id",
-                  "source",
-                  "read_only",
                   "kind"
                 ],
                 "properties": {
@@ -31076,30 +30306,14 @@
                       "null"
                     ]
                   },
-                  "inherited_from": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/ProjectWorkspaceTurnCoordinate"
-                      }
-                    ]
-                  },
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "freeze_turn_authority"
+                      "admit_turn_authority"
                     ]
-                  },
-                  "read_only": {
-                    "type": "boolean"
                   },
                   "root_thread_id": {
                     "type": "string"
-                  },
-                  "source": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
                   },
                   "thread_id": {
                     "type": "string"
@@ -31111,12 +30325,11 @@
               },
               {
                 "type": "object",
-                "description": "Host verifies the runtime's active Run and child lineage before admitting content access.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
+                "description": "Host binds authenticated runtime execution identity to one Session.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
                 "required": [
                   "session_id",
                   "identity",
-                  "source",
-                  "read_only",
+                  "native_source",
                   "kind"
                 ],
                 "properties": {
@@ -31129,6 +30342,9 @@
                       "admit_agent_runtime_turn_authority"
                     ]
                   },
+                  "native_source": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
+                  },
                   "parent": {
                     "oneOf": [
                       {
@@ -31139,14 +30355,8 @@
                       }
                     ]
                   },
-                  "read_only": {
-                    "type": "boolean"
-                  },
                   "session_id": {
                     "type": "string"
-                  },
-                  "source": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
                   }
                 }
               },
@@ -31165,6 +30375,74 @@
                     "enum": [
                       "revoke_agent_runtime_turn_authority"
                     ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Host binds the exact native connection to its product Session, without inventing a Run.",
+                "required": [
+                  "session_id",
+                  "identity",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_agent_runtime_native_session_authority"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revoke_agent_runtime_native_session_authority"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Retires every captured Run and native-session actor for one physical native source.",
+                "required": [
+                  "runtime_id",
+                  "lease_id",
+                  "native_source",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revoke_agent_runtime_native_source_authorities"
+                    ]
+                  },
+                  "lease_id": {
+                    "type": "string"
+                  },
+                  "native_source": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
+                  },
+                  "runtime_id": {
+                    "type": "string"
                   }
                 }
               },
@@ -31195,6 +30473,33 @@
               },
               {
                 "type": "object",
+                "description": "Host acknowledges execution settlement only for the exact durable cleanup identity.",
+                "required": [
+                  "cleanup_id",
+                  "runtime_id",
+                  "runtime_thread_id",
+                  "kind"
+                ],
+                "properties": {
+                  "cleanup_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "acknowledge_agent_runtime_execution_cleanup"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "runtime_thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "process",
                   "kind"
@@ -31214,46 +30519,6 @@
                   },
                   "process": {
                     "$ref": "#/components/schemas/ProjectWorkspaceBackgroundProcess"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "project_id",
-                  "mode",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "set_project_permission_mode"
-                    ]
-                  },
-                  "mode": {
-                    "$ref": "#/components/schemas/CodexPermissionMode"
-                  },
-                  "project_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "mode",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "set_projectless_permission_mode"
-                    ]
-                  },
-                  "mode": {
-                    "$ref": "#/components/schemas/CodexPermissionMode"
                   }
                 }
               },
@@ -33112,7 +32377,7 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
+                  "run_id",
                   "kind"
                 ],
                 "properties": {
@@ -33122,7 +32387,7 @@
                       "run"
                     ]
                   },
-                  "thread_id": {
+                  "run_id": {
                     "type": "string"
                   }
                 }
@@ -34110,46 +33375,6 @@
               {
                 "type": "object",
                 "required": [
-                  "target",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "resource_project_access"
-                    ]
-                  },
-                  "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "project_id",
-                  "impact",
-                  "kind"
-                ],
-                "properties": {
-                  "impact": {
-                    "$ref": "#/components/schemas/ProjectionImpact"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "filter_projection_impact_for_project"
-                    ]
-                  },
-                  "project_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
                   "parent",
                   "kind"
                 ],
@@ -34562,7 +33787,7 @@
                 "type": "object",
                 "required": [
                   "authorization",
-                  "displayed_access_context",
+                  "displayed_routing_context",
                   "target",
                   "kind"
                 ],
@@ -34570,8 +33795,8 @@
                   "authorization": {
                     "$ref": "#/components/schemas/AgentExecutionAuthorization"
                   },
-                  "displayed_access_context": {
-                    "$ref": "#/components/schemas/OwnedDocumentAccessContext"
+                  "displayed_routing_context": {
+                    "$ref": "#/components/schemas/ContentRoutingContext"
                   },
                   "kind": {
                     "type": "string",
@@ -34864,7 +34089,8 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "description": "Explicit query filter; an empty list searches the current Library."
                   },
                   "query": {
                     "type": "string"
@@ -35025,45 +34251,6 @@
                   },
                   "page_id": {
                     "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "provenance",
-                  "call_id",
-                  "intents",
-                  "kind"
-                ],
-                "properties": {
-                  "call_id": {
-                    "type": "string"
-                  },
-                  "intents": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/AgentResourceIntent"
-                    }
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "plan_agent_resource_access"
-                    ]
-                  },
-                  "provenance": {
-                    "$ref": "#/components/schemas/AgentTurnProvenance"
-                  },
-                  "task_access": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AgentResourceAccessOverlay"
-                      }
-                    ]
                   }
                 }
               },
@@ -35632,7 +34819,6 @@
               {
                 "type": "object",
                 "required": [
-                  "page_access_project_id",
                   "page_ids",
                   "kind"
                 ],
@@ -35642,9 +34828,6 @@
                     "enum": [
                       "page_chat_activity_summaries"
                     ]
-                  },
-                  "page_access_project_id": {
-                    "type": "string"
                   },
                   "page_ids": {
                     "type": "array",
@@ -35657,7 +34840,6 @@
               {
                 "type": "object",
                 "required": [
-                  "page_access_project_id",
                   "page_id",
                   "window",
                   "kind"
@@ -35675,46 +34857,11 @@
                       "page_chat_window"
                     ]
                   },
-                  "page_access_project_id": {
-                    "type": "string"
-                  },
                   "page_id": {
                     "type": "string"
                   },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "project_id",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "project_permission_mode"
-                    ]
-                  },
-                  "project_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "projectless_permission_mode"
-                    ]
                   }
                 }
               },
@@ -35970,6 +35117,58 @@
               },
               {
                 "type": "object",
+                "description": "Bounded execution placement metadata, including archived Sessions and Projects.",
+                "required": [
+                  "runtime_id",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_session_binding_window"
+                    ]
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Host-owned durable cleanup after a product Session has been deleted.",
+                "required": [
+                  "runtime_id",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_execution_cleanup_window"
+                    ]
+                  },
+                  "runtime_id": {
+                    "type": "string"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "identity",
                   "kind"
@@ -35977,13 +35176,6 @@
                 "properties": {
                   "identity": {
                     "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                  },
-                  "include_revoked": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ],
-                    "description": "Host-only inheritance evidence; revoked credentials still cannot authorize tools."
                   },
                   "kind": {
                     "type": "string",
@@ -35995,28 +35187,47 @@
               },
               {
                 "type": "object",
-                "description": "The newest immutable admission for a verified parent Run, solely for inheritance.",
+                "description": "An authenticated native connection with no causal Run evidence.",
+                "required": [
+                  "identity",
+                  "kind"
+                ],
+                "properties": {
+                  "identity": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_native_session_authority"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Active execution leases for bounded Host lifecycle reconciliation.",
                 "required": [
                   "runtime_id",
-                  "thread_id",
-                  "run_id",
+                  "lease_id",
+                  "window",
                   "kind"
                 ],
                 "properties": {
                   "kind": {
                     "type": "string",
                     "enum": [
-                      "agent_runtime_parent_admission"
+                      "agent_runtime_admission_window"
                     ]
                   },
-                  "run_id": {
+                  "lease_id": {
                     "type": "string"
                   },
                   "runtime_id": {
                     "type": "string"
                   },
-                  "thread_id": {
-                    "type": "string"
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
                   }
                 }
               },
@@ -36499,7 +35710,7 @@
               },
               {
                 "type": "object",
-                "description": "Agent SQL uses the calling Project's durable resource grants.",
+                "description": "Agent SQL validates the captured execution identity before reading Library data.",
                 "required": [
                   "provenance",
                   "scope",
@@ -36550,7 +35761,7 @@
               },
               {
                 "type": "object",
-                "description": "A fixed effective-View projection, independently authorized from public SQL bindings.",
+                "description": "A fixed effective-View projection, selected independently of public SQL bindings.",
                 "required": [
                   "authorization",
                   "coordinate",
@@ -36813,42 +36024,6 @@
           }
         }
       },
-      "OwnedDocumentAccessContext": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "library"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "projectId",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "project"
-                ]
-              },
-              "projectId": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
       "OwnedDocumentApplyRequest": {
         "$ref": "#/components/schemas/ModuleApplyRequest_OwnedDocumentIntent"
       },
@@ -36857,11 +36032,11 @@
       },
       "OwnedDocumentDescriptor": {
         "type": "object",
-        "description": "Canonical identity and durable head for a Document as observed through one\nexplicit access boundary. Library ownership and Project authorization are\ndeliberately separate fields; adapters must validate this descriptor, not\nrewrite it into a caller-shaped identity.",
+        "description": "Canonical identity and durable head for a Document as observed through one\nexplicit Document owner boundary. Project is presentation routing metadata;\nadapters preserve the canonical identity and current owner lifecycle.",
         "required": [
           "version",
           "libraryId",
-          "accessContext",
+          "routingContext",
           "ownerBlockId",
           "ownerType",
           "ownerLifecycle",
@@ -36875,9 +36050,6 @@
           "sync"
         ],
         "properties": {
-          "accessContext": {
-            "$ref": "#/components/schemas/OwnedDocumentAccessContext"
-          },
           "documentId": {
             "type": "string"
           },
@@ -36903,6 +36075,9 @@
           },
           "readiness": {
             "$ref": "#/components/schemas/OwnedDocumentReadiness"
+          },
+          "routingContext": {
+            "$ref": "#/components/schemas/ContentRoutingContext"
           },
           "schemaKey": {
             "type": "string"
@@ -37242,31 +36417,6 @@
           }
         ]
       },
-      "PageDocumentHeadImpact": {
-        "type": "object",
-        "required": [
-          "page_id",
-          "document_id",
-          "generation",
-          "head_seq"
-        ],
-        "properties": {
-          "document_id": {
-            "type": "string"
-          },
-          "generation": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "head_seq": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "page_id": {
-            "type": "string"
-          }
-        }
-      },
       "PageFileReferenceChange": {
         "oneOf": [
           {
@@ -37357,7 +36507,6 @@
           "page_not_found",
           "page_not_scheduled",
           "page_not_recurring",
-          "authorization_denied",
           "invalid_occurrence_request"
         ]
       },
@@ -37928,7 +37077,6 @@
             "type": "object",
             "required": [
               "page_id",
-              "page_access_project_id",
               "kind"
             ],
             "properties": {
@@ -37937,9 +37085,6 @@
                 "enum": [
                   "link_page"
                 ]
-              },
-              "page_access_project_id": {
-                "type": "string"
               },
               "page_id": {
                 "type": "string"
@@ -37950,7 +37095,6 @@
             "type": "object",
             "required": [
               "page_id",
-              "page_access_project_id",
               "kind"
             ],
             "properties": {
@@ -37959,9 +37103,6 @@
                 "enum": [
                   "unlink_page"
                 ]
-              },
-              "page_access_project_id": {
-                "type": "string"
               },
               "page_id": {
                 "type": "string"
@@ -38061,6 +37202,58 @@
           }
         ]
       },
+      "ProjectWorkspaceAgentRuntimeNativeSessionIdentity": {
+        "type": "object",
+        "description": "Exact native connection lifetime for calls that supply no causal Run metadata.\nIncarnations are unique within a runtime and can never be recycled after retirement.",
+        "required": [
+          "runtime_id",
+          "thread_id",
+          "lease_id",
+          "provider_session_id",
+          "native_generation",
+          "incarnation_id"
+        ],
+        "properties": {
+          "incarnation_id": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string"
+          },
+          "native_generation": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "provider_session_id": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceAgentRuntimeNativeSource": {
+        "type": "object",
+        "description": "Native source captured by the authenticated Host, independent of foreground completion.",
+        "required": [
+          "provider_session_id",
+          "native_generation"
+        ],
+        "properties": {
+          "native_generation": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "provider_session_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProjectWorkspaceAgentRuntimeOptions": {
         "type": "object",
         "required": [
@@ -38095,14 +37288,10 @@
           "runtime_id",
           "runtime_thread_id",
           "launch_request_id",
-          "launch_request_hash",
           "bound_at"
         ],
         "properties": {
           "bound_at": {
-            "type": "string"
-          },
-          "launch_request_hash": {
             "type": "string"
           },
           "launch_request_id": {
@@ -38450,16 +37639,6 @@
           "thread"
         ],
         "properties": {
-          "permission_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CodexPermissionMode"
-              }
-            ]
-          },
           "project": {
             "oneOf": [
               {
@@ -39086,6 +38265,13 @@
                   "null"
                 ]
               },
+              "run_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The captured causal Run; absent when the native protocol cannot identify one."
+              },
               "session_id": {
                 "type": [
                   "string",
@@ -39352,7 +38538,7 @@
           },
           {
             "type": "object",
-            "description": "A Turn-authorized application command. Core admits only organization intents.",
+            "description": "An application command retaining its authenticated execution provenance.",
             "required": [
               "provenance",
               "intent",
@@ -39987,7 +39173,6 @@
               "runtime_id",
               "runtime_thread_id",
               "launch_request_id",
-              "launch_request_hash",
               "kind"
             ],
             "properties": {
@@ -40002,9 +39187,6 @@
                 "enum": [
                   "create_agent_runtime_session"
                 ]
-              },
-              "launch_request_hash": {
-                "type": "string"
               },
               "launch_request_id": {
                 "type": "string"
@@ -40034,66 +39216,6 @@
           },
           {
             "type": "object",
-            "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
-            "required": [
-              "session_id",
-              "title",
-              "launch_request_hash",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "admit_session_launch"
-                ]
-              },
-              "launch_request_hash": {
-                "type": "string"
-              },
-              "project_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Reserves one message dispatch to an exact existing Session binding.\nA duplicate receipt must never dispatch the message again.",
-            "required": [
-              "session_id",
-              "thread_id",
-              "message_request_hash",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "admit_session_message"
-                ]
-              },
-              "message_request_hash": {
-                "type": "string"
-              },
-              "session_id": {
-                "type": "string"
-              },
-              "thread_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
             "required": [
               "session_id",
@@ -40115,37 +39237,6 @@
                 "type": "string"
               },
               "thread_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Reserves the destination Session for one fork of an authorized source binding.",
-            "required": [
-              "source_session_id",
-              "source_thread_id",
-              "session_id",
-              "fork_request_hash",
-              "kind"
-            ],
-            "properties": {
-              "fork_request_hash": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "admit_session_fork"
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              },
-              "source_session_id": {
-                "type": "string"
-              },
-              "source_thread_id": {
                 "type": "string"
               }
             }
@@ -40924,16 +40015,6 @@
               "placement": {
                 "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
               },
-              "project_access_grant": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ProjectWorkspaceThreadMoveProjectAccessGrant"
-                  }
-                ]
-              },
               "runtime_workspace_roots": {
                 "type": [
                   "array",
@@ -41093,8 +40174,6 @@
               "thread_id",
               "turn_id",
               "root_thread_id",
-              "source",
-              "read_only",
               "kind"
             ],
             "properties": {
@@ -41104,30 +40183,14 @@
                   "null"
                 ]
               },
-              "inherited_from": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ProjectWorkspaceTurnCoordinate"
-                  }
-                ]
-              },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "freeze_turn_authority"
+                  "admit_turn_authority"
                 ]
-              },
-              "read_only": {
-                "type": "boolean"
               },
               "root_thread_id": {
                 "type": "string"
-              },
-              "source": {
-                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
               },
               "thread_id": {
                 "type": "string"
@@ -41139,12 +40202,11 @@
           },
           {
             "type": "object",
-            "description": "Host verifies the runtime's active Run and child lineage before admitting content access.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
+            "description": "Host binds authenticated runtime execution identity to one Session.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
             "required": [
               "session_id",
               "identity",
-              "source",
-              "read_only",
+              "native_source",
               "kind"
             ],
             "properties": {
@@ -41157,6 +40219,9 @@
                   "admit_agent_runtime_turn_authority"
                 ]
               },
+              "native_source": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
+              },
               "parent": {
                 "oneOf": [
                   {
@@ -41167,14 +40232,8 @@
                   }
                 ]
               },
-              "read_only": {
-                "type": "boolean"
-              },
               "session_id": {
                 "type": "string"
-              },
-              "source": {
-                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
               }
             }
           },
@@ -41193,6 +40252,74 @@
                 "enum": [
                   "revoke_agent_runtime_turn_authority"
                 ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Host binds the exact native connection to its product Session, without inventing a Run.",
+            "required": [
+              "session_id",
+              "identity",
+              "kind"
+            ],
+            "properties": {
+              "identity": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_agent_runtime_native_session_authority"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity",
+              "kind"
+            ],
+            "properties": {
+              "identity": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revoke_agent_runtime_native_session_authority"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Retires every captured Run and native-session actor for one physical native source.",
+            "required": [
+              "runtime_id",
+              "lease_id",
+              "native_source",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revoke_agent_runtime_native_source_authorities"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              },
+              "native_source": {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
+              },
+              "runtime_id": {
+                "type": "string"
               }
             }
           },
@@ -41223,6 +40350,33 @@
           },
           {
             "type": "object",
+            "description": "Host acknowledges execution settlement only for the exact durable cleanup identity.",
+            "required": [
+              "cleanup_id",
+              "runtime_id",
+              "runtime_thread_id",
+              "kind"
+            ],
+            "properties": {
+              "cleanup_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "acknowledge_agent_runtime_execution_cleanup"
+                ]
+              },
+              "runtime_id": {
+                "type": "string"
+              },
+              "runtime_thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
             "required": [
               "process",
               "kind"
@@ -41242,46 +40396,6 @@
               },
               "process": {
                 "$ref": "#/components/schemas/ProjectWorkspaceBackgroundProcess"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "project_id",
-              "mode",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "set_project_permission_mode"
-                ]
-              },
-              "mode": {
-                "$ref": "#/components/schemas/CodexPermissionMode"
-              },
-              "project_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "mode",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "set_projectless_permission_mode"
-                ]
-              },
-              "mode": {
-                "$ref": "#/components/schemas/CodexPermissionMode"
               }
             }
           },
@@ -43438,25 +42552,6 @@
           }
         }
       },
-      "ProjectWorkspaceThreadMoveProjectAccessGrant": {
-        "type": "object",
-        "required": [
-          "expected_target_binding_revision",
-          "missing_source_roots"
-        ],
-        "properties": {
-          "expected_target_binding_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "missing_source_roots": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
       "ProjectWorkspaceThreadPatch": {
         "type": "object",
         "properties": {
@@ -43959,9 +43054,7 @@
           "turn_id",
           "root_thread_id",
           "library_id",
-          "store_epoch",
-          "scope",
-          "source"
+          "store_epoch"
         ],
         "properties": {
           "actor_project_id": {
@@ -43975,12 +43068,6 @@
           },
           "root_thread_id": {
             "type": "string"
-          },
-          "scope": {
-            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityScope"
-          },
-          "source": {
-            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
           },
           "store_epoch": {
             "type": "string"
@@ -43996,10 +43083,17 @@
       "ProjectWorkspaceTurnAuthorityResolution": {
         "type": "object",
         "required": [
-          "persisted",
-          "read_only"
+          "persisted"
         ],
         "properties": {
+          "admitted_at_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Stable admission timestamp; execution identity carries no content permissions."
+          },
           "authority": {
             "oneOf": [
               {
@@ -44010,50 +43104,8 @@
               }
             ]
           },
-          "frozen_at_ms": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "description": "Present only for persisted authority and stable across process restarts."
-          },
           "persisted": {
             "type": "boolean"
-          },
-          "read_only": {
-            "type": "boolean",
-            "description": "Immutable execution constraint, independent of resource scope."
-          }
-        }
-      },
-      "ProjectWorkspaceTurnAuthorityScope": {
-        "type": "string",
-        "enum": [
-          "project",
-          "library"
-        ]
-      },
-      "ProjectWorkspaceTurnAuthoritySource": {
-        "type": "string",
-        "enum": [
-          "project_turn",
-          "builtin_full_access",
-          "inherited_builtin_full_access"
-        ]
-      },
-      "ProjectWorkspaceTurnCoordinate": {
-        "type": "object",
-        "required": [
-          "thread_id",
-          "turn_id"
-        ],
-        "properties": {
-          "thread_id": {
-            "type": "string"
-          },
-          "turn_id": {
-            "type": "string"
           }
         }
       },
@@ -44279,16 +43331,12 @@
         "required": [
           "targets",
           "total_count",
-          "restricted_count",
+          "unavailable_count",
           "has_more"
         ],
         "properties": {
           "has_more": {
             "type": "boolean"
-          },
-          "restricted_count": {
-            "type": "integer",
-            "format": "int64"
           },
           "targets": {
             "type": "array",
@@ -44297,6 +43345,10 @@
             }
           },
           "total_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unavailable_count": {
             "type": "integer",
             "format": "int64"
           }
@@ -44370,87 +43422,6 @@
             "$ref": "#/components/schemas/ProjectionScopeKey"
           }
         }
-      },
-      "ProjectionImpact": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "none"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "all"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "page_ids",
-              "database_ids",
-              "data_source_ids",
-              "view_ids",
-              "document_heads",
-              "kind"
-            ],
-            "properties": {
-              "data_source_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "database_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "document_heads": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/PageDocumentHeadImpact"
-                }
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "resources"
-                ]
-              },
-              "page_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "view_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        ]
       },
       "ProjectionScopeKey": {
         "type": "object",
@@ -45874,16 +44845,7 @@
             }
           }
         ],
-        "description": "Exact authorization vocabulary used by semantic delivery. Scope resources\nare explicit requirements rather than ambient packet metadata."
-      },
-      "ResourceRevocationReason": {
-        "type": "string",
-        "enum": [
-          "ownership_moved",
-          "access_revoked",
-          "archived",
-          "deleted"
-        ]
+        "description": "Exact resource vocabulary used for delivery routing and projection invalidation."
       },
       "ResponseEnvelope_ApplyResponse_AutomationCommitValue_AutomationReceipt": {
         "oneOf": [
@@ -47929,16 +46891,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -48199,16 +47151,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -48705,16 +47647,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -48918,42 +47850,6 @@
                           },
                           "profile_id": {
                             "type": "string"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "resource_project_access"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/LibraryResourceProjectAccess"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "impact",
-                          "kind"
-                        ],
-                        "properties": {
-                          "impact": {
-                            "$ref": "#/components/schemas/ProjectionImpact"
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "projection_impact"
-                            ]
                           }
                         }
                       },
@@ -49755,24 +48651,6 @@
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "agent_resource_access_plan"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/AgentResourceAccessPlan"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
                               "agent_page_copy_preparation"
                             ]
                           },
@@ -49867,16 +48745,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -50171,16 +49039,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -50405,54 +49263,6 @@
                       {
                         "type": "object",
                         "required": [
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "project_permission_mode"
-                            ]
-                          },
-                          "mode": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/CodexPermissionMode"
-                              }
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "projectless_permission_mode"
-                            ]
-                          },
-                          "mode": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/CodexPermissionMode"
-                              }
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
                           "sessions",
                           "kind"
                         ],
@@ -50645,6 +49455,42 @@
                       {
                         "type": "object",
                         "required": [
+                          "bindings",
+                          "kind"
+                        ],
+                        "properties": {
+                          "bindings": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_session_binding_window"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "cleanups",
+                          "kind"
+                        ],
+                        "properties": {
+                          "cleanups": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_execution_cleanup_window"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "resolution",
                           "kind"
                         ],
@@ -50663,23 +49509,35 @@
                       {
                         "type": "object",
                         "required": [
+                          "resolution",
                           "kind"
                         ],
                         "properties": {
-                          "identity": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                              }
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_runtime_native_session_authority"
                             ]
+                          },
+                          "resolution": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityResolution"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "admissions",
+                          "kind"
+                        ],
+                        "properties": {
+                          "admissions": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission"
                           },
                           "kind": {
                             "type": "string",
                             "enum": [
-                              "agent_runtime_parent_admission"
+                              "agent_runtime_admission_window"
                             ]
                           }
                         }
@@ -51094,16 +49952,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -51222,16 +50070,6 @@
                   "value"
                 ],
                 "properties": {
-                  "authorization": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/AuthorizedReadStamp"
-                      }
-                    ]
-                  },
                   "commit_head": {
                     "type": "integer",
                     "format": "int64"
@@ -52009,87 +50847,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "VisibilityDelta": {
-        "type": "object",
-        "description": "Manifest-bound authorization change. Exact deltas carry one or more roots;\nconservative resets intentionally carry none and fence the whole address.",
-        "required": [
-          "authorization_scope",
-          "change",
-          "roots",
-          "delta_hash"
-        ],
-        "properties": {
-          "authorization_scope": {
-            "$ref": "#/components/schemas/DeliveryAuthorizationScope"
-          },
-          "change": {
-            "$ref": "#/components/schemas/VisibilityDeltaKind"
-          },
-          "delta_hash": {
-            "type": "string"
-          },
-          "roots": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ResourceKey"
-            }
-          }
-        }
-      },
-      "VisibilityDeltaKind": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "grant"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "revoke"
-                ]
-              },
-              "reason": {
-                "$ref": "#/components/schemas/ResourceRevocationReason"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "conservative_reset"
-                ]
-              },
-              "reason": {
-                "$ref": "#/components/schemas/ConservativeResetReason"
-              }
-            }
-          }
-        ]
       }
     }
   }

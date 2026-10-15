@@ -17,10 +17,9 @@ import type {
 } from "../../../shared/block-documents";
 import type { OwnedDocumentEnvelope } from "../../../shared/block-documents/document-schema-adapters";
 import { NodexButton } from "@/components/ui/button";
-import { createDocumentSyncAdapterForContentAccess } from "@/lib/api";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import { createDocumentSyncAdapterForContentRouting } from "@/lib/api";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import {
-  isBlockDocumentAccessRevoked,
   resolveBlockDocumentSurfaceFailure,
   type BlockDocumentSurfaceFailureReason,
 } from "@/lib/block-document-surface-failure";
@@ -70,7 +69,7 @@ export type OwnedBlockDocumentSurfaceValue = OwnedDocumentEnvelope & {
 };
 
 export interface BlockDocumentSurfaceDependencies {
-  readonly createAdapter?: (accessContext: ContentAccessContext) => DocumentSyncAdapter;
+  readonly createAdapter?: (routingContext: ContentRoutingContext) => DocumentSyncAdapter;
   readonly createRuntime?: (
     options: BlockDocumentSurfaceRuntimeOptions,
   ) => BlockDocumentSurfaceRuntime;
@@ -244,7 +243,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const makeActiveAwarenessState = (
   runtime: BlockDocumentSurfaceRuntime,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   descriptor: PrimaryOwnedBlockDocumentDescriptor,
   configured: BlockDocumentLocalAwarenessState | undefined,
   retained: Record<string, unknown> | null,
@@ -259,8 +258,8 @@ const makeActiveAwarenessState = (
     nodex: {
       ...retainedNodex,
       ...configuredNodex,
-      accessContext,
-      ...(accessContext.kind === "project" ? { projectId: accessContext.projectId } : {}),
+      routingContext,
+      ...(routingContext.kind === "project" ? { projectId: routingContext.projectId } : {}),
       ownerBlockId: descriptor.ownerBlockId,
       clientSessionId: runtime.clientSessionId,
     },
@@ -269,7 +268,7 @@ const makeActiveAwarenessState = (
 
 const useSurfaceAwareness = (
   runtime: BlockDocumentSurfaceRuntime,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   descriptor: PrimaryOwnedBlockDocumentDescriptor,
   isActive: boolean,
   configured: BlockDocumentLocalAwarenessState | undefined,
@@ -286,7 +285,7 @@ const useSurfaceAwareness = (
     if (isActive) {
       const activeState = makeActiveAwarenessState(
         runtime,
-        accessContext,
+        routingContext,
         descriptor,
         configuredRef.current,
         awarenessLease?.getRetainedState() ?? retainedStateRef.current,
@@ -321,7 +320,7 @@ const useSurfaceAwareness = (
     awareness.on("update", handleAwarenessUpdate);
     clearPresence();
     return () => awareness.off("update", handleAwarenessUpdate);
-  }, [accessContext, awarenessLease, descriptor, isActive, runtime]);
+  }, [routingContext, awarenessLease, descriptor, isActive, runtime]);
 };
 
 export interface OwnedBlockDocumentRuntimeSurfaceProps {
@@ -354,7 +353,7 @@ export function OwnedBlockDocumentRuntimeSurface({
   const reloadInFlightRef = useRef(false);
   useSurfaceAwareness(
     runtime,
-    descriptor.accessContext,
+    descriptor.routingContext,
     descriptor,
     isActive,
     localAwarenessState,
@@ -378,7 +377,6 @@ export function OwnedBlockDocumentRuntimeSurface({
 
   useEffect(() => {
     if (status.phase !== "reset-required" || reloadInFlightRef.current) return;
-    if (status.error && isBlockDocumentAccessRevoked(status.error)) return;
     reloadInFlightRef.current = true;
     setReloading(true);
     void runtime
@@ -392,17 +390,12 @@ export function OwnedBlockDocumentRuntimeSurface({
 
   const failure = startupError ?? status.error;
   if (failure) {
-    const accessRevoked = isBlockDocumentAccessRevoked(failure);
     const failureState: BlockDocumentSurfaceFailureStateProps = {
       descriptor,
       error: failure,
-      reason: accessRevoked
-        ? "access-revoked"
-        : status.phase === "reset-required"
-          ? "reset-required"
-          : "fatal",
+      reason: status.phase === "reset-required" ? "reset-required" : "fatal",
       reloading,
-      ...(accessRevoked ? {} : { reload }),
+      reload,
     };
     return renderFailureFallback ? (
       renderFailureFallback(failureState)
@@ -458,7 +451,7 @@ function RuntimeOwner({
   const closeTailRef = useRef<Promise<void>>(Promise.resolve());
   const onReloadRef = useRef(onReload);
   onReloadRef.current = onReload;
-  const adapterFactory = dependencies.createAdapter ?? createDocumentSyncAdapterForContentAccess;
+  const adapterFactory = dependencies.createAdapter ?? createDocumentSyncAdapterForContentRouting;
   const runtimeFactory = dependencies.createRuntime ?? createRuntime;
 
   useLayoutEffect(() => {
@@ -471,7 +464,7 @@ function RuntimeOwner({
       if (!live) return;
 
       try {
-        const adapter = adapterFactory(descriptor.accessContext);
+        const adapter = adapterFactory(descriptor.routingContext);
         ownedRuntime = runtimeFactory({
           descriptor,
           adapter,
@@ -563,7 +556,7 @@ function RuntimeOwner({
 const surfaceIdentity = (descriptor: PrimaryOwnedBlockDocumentDescriptor): string =>
   [
     descriptor.libraryId,
-    JSON.stringify(descriptor.accessContext),
+    JSON.stringify(descriptor.routingContext),
     descriptor.documentId,
     descriptor.storeEpoch,
     descriptor.generation,

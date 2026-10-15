@@ -97,17 +97,17 @@ export const WorkbenchLibraryLocationTargetSchema = z
     z.object({
       kind: z.literal("database"),
       databaseId: z.string().min(1),
-      accessProjectId: z.string().min(1).optional(),
+      projectId: z.string().min(1).optional(),
     }),
     z.object({
       kind: z.literal("view"),
       viewId: z.string().min(1),
-      accessProjectId: z.string().min(1).optional(),
+      projectId: z.string().min(1).optional(),
     }),
     z.object({
       kind: z.literal("canvas"),
       canvasId: z.string().min(1),
-      accessProjectId: z.string().min(1).optional(),
+      projectId: z.string().min(1).optional(),
     }),
   ])
   .transform((target): WorkbenchLibraryLocationTarget => {
@@ -864,7 +864,7 @@ function rootSurface(root: LibraryPlacedResourceTarget): WorkbenchSurfaceDescrip
       ...common,
       kind: "page_stage",
       titleSnapshot: "Page",
-      config: { accessContext: { kind: "library" }, pageId: root.pageId },
+      config: { routingContext: { kind: "library" }, pageId: root.pageId },
     };
   }
   if (root.kind === "database") {
@@ -873,7 +873,7 @@ function rootSurface(root: LibraryPlacedResourceTarget): WorkbenchSurfaceDescrip
       kind: "db_view",
       titleSnapshot: "Database",
       config: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         target: { kind: "database-default", databaseId: root.databaseId },
       },
     };
@@ -883,7 +883,7 @@ function rootSurface(root: LibraryPlacedResourceTarget): WorkbenchSurfaceDescrip
     kind: "canvas_stage",
     titleSnapshot: "Canvas",
     config: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       canvasBlockId: root.canvasId,
     },
   };

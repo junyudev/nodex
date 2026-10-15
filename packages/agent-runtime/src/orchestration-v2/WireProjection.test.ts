@@ -12,6 +12,7 @@ import {
   type OrchestrationV2ThreadProjection,
   OrchestrationV2TurnItem,
   OrchestrationV2TurnItemJson,
+  OrchestrationV2StoredEvent,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
@@ -21,6 +22,8 @@ import {
   projectTurnItemForWire,
   projectTurnItemForDetail,
   projectDomainEventForWire,
+  projectStoredEventForWire,
+  assertPublicWirePayloadBudget,
 } from "./WireProjection.ts";
 import { threadShellFromProjection } from "./ProjectionStore.ts";
 import { MAX_TOOL_OUTPUT_IMAGES, toolOutputImages } from "@t3tools/shared/toolOutput";
@@ -50,6 +53,94 @@ const base = {
 };
 
 describe("orchestration V2 wire projection", () => {
+  it("encodes only task metadata while execution retains giant bodies and delivery state", () => {
+    const body = "private task body ".repeat(1_100_000);
+    const stored = {
+      sequence: 1,
+      commandId: null,
+      event: {
+        id: EventId.make("large-task-event"),
+        type: "subagent.updated" as const,
+        threadId: base.threadId,
+        occurredAt: base.updatedAt,
+        payload: {
+          id: NodeId.make("large-task"),
+          threadId: base.threadId,
+          runId: null,
+          parentNodeId: NodeId.make("root"),
+          origin: "app_owned" as const,
+          createdBy: "agent" as const,
+          driver: ProviderDriverKind.make("claude"),
+          providerInstanceId: ProviderInstanceId.make("claude"),
+          providerThreadId: null,
+          childThreadId: ThreadId.make("child"),
+          nativeTaskRef: null,
+          prompt: body,
+          result: body,
+          progress: body,
+          title: "Inspect",
+          model: null,
+          completionWake: "always" as const,
+          completionDelivery: { state: "pending" as const, observedByRunId: null },
+          workflow: {
+            phases: [],
+            agents: [{ index: 0, label: "Agent", state: "completed" as const, result: body }],
+          },
+          status: "completed" as const,
+          startedAt: base.startedAt,
+          completedAt: base.completedAt,
+          updatedAt: base.updatedAt,
+        },
+      },
+    };
+    const projected = projectStoredEventForWire(stored);
+    const encoded = Schema.encodeSync(Schema.toCodecJson(OrchestrationV2StoredEvent))(projected);
+    expect(Buffer.byteLength(JSON.stringify(encoded))).toBeLessThan(2_048);
+    expect(projected.event.payload).toMatchObject({
+      prompt: "",
+      result: null,
+      childThreadId: "child",
+    });
+    expect(projected.event.payload).not.toHaveProperty("workflow");
+    expect(projected.event.payload).not.toHaveProperty("completionDelivery");
+    expect(stored.event.payload.prompt).toBe(body);
+    expect(stored.event.payload.result).toBe(body);
+    expect(stored.event.payload.completionDelivery.state).toBe("pending");
+    expect(stored.event.payload.workflow.agents[0]?.result).toBe(body);
+  });
+
+  it("bounds growing conversation text before codec and notification without changing execution", () => {
+    const stored = {
+      sequence: 1,
+      commandId: null,
+      event: {
+        id: EventId.make("large-message"),
+        type: "message.updated" as const,
+        threadId: base.threadId,
+        occurredAt: base.updatedAt,
+        payload: {
+          id: MessageId.make("large-message"),
+          threadId: base.threadId,
+          runId: null,
+          nodeId: null,
+          role: "assistant" as const,
+          text: "x".repeat(2 * 1_048_576),
+          attachments: [],
+          streaming: false,
+          createdBy: "agent" as const,
+          creationSource: "provider" as const,
+          createdAt: base.startedAt,
+          updatedAt: base.updatedAt,
+        },
+      },
+    };
+    const projected = projectStoredEventForWire(stored);
+    expect(Buffer.byteLength(JSON.stringify(projected))).toBeLessThan(140_000);
+    expect(stored.event.payload.text.length).toBe(2 * 1_048_576);
+    expect(() => assertPublicWirePayloadBudget({ metadata: stored.event.payload.text })).toThrow(
+      "public stream transport budget",
+    );
+  });
   it("keeps copied handoff transcripts out of activity items and live events", () => {
     const item = {
       ...base,
@@ -230,8 +321,8 @@ describe("orchestration V2 wire projection", () => {
     });
   });
 
-  it("truncates detail at a UTF-8 boundary without changing the source", () => {
-    const progress = "a".repeat(32_767) + "😀" + "x".repeat(100_000);
+  it("withholds task bodies from activity and bounds explicit detail at a UTF-8 boundary", () => {
+    const progress = "a".repeat(262_143) + "😀" + "x".repeat(100_000);
     const item = {
       ...base,
       type: "subagent" as const,
@@ -245,8 +336,11 @@ describe("orchestration V2 wire projection", () => {
       progress,
     };
     const projected = projectTurnItemForWire(item);
-    expect(projected.type === "subagent" ? projected.progress : null).toBe(
-      "a".repeat(32_767) + "\n… output truncated for transport",
+    expect(projected).toMatchObject({ prompt: "", result: null });
+    expect(projected).not.toHaveProperty("progress");
+    const detail = projectTurnItemForDetail(item);
+    expect(detail.type === "subagent" ? detail.progress : null).toBe(
+      "a".repeat(262_143) + "\n… output truncated for transport",
     );
     expect(item.progress).toBe(progress);
   });

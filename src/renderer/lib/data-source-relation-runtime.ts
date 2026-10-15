@@ -3,15 +3,15 @@ import {
   type LibraryDatabaseReadV2,
 } from "../../shared/database-module-v2";
 import { readDatabaseModule, readLibraryDatabaseModule } from "./api";
-import type { DatabaseViewAccessContext } from "./database-view-render-model";
+import type { DatabaseViewRoutingContext } from "./database-view-render-model";
 
 const readInContext = async (
-  accessContext: DatabaseViewAccessContext,
+  routingContext: DatabaseViewRoutingContext,
   read: LibraryDatabaseReadV2,
 ) =>
-  accessContext.kind === "project"
-    ? await readDatabaseModule(accessContext.projectId, {
-        projectId: accessContext.projectId,
+  routingContext.kind === "project"
+    ? await readDatabaseModule(routingContext.projectId, {
+        projectId: routingContext.projectId,
         read,
       })
     : await readLibraryDatabaseModule({
@@ -40,7 +40,7 @@ export const buildDataSourceRelationCandidateRead = (input: {
 };
 
 export const readDataSourceRelationTargets = async (input: {
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly pageId: string;
   readonly property: DataSourcePropertyRecordV2;
   readonly after: string | null;
@@ -55,7 +55,7 @@ export const readDataSourceRelationTargets = async (input: {
     mode: "relation_target_window" as const,
     window: { after: input.after, first: 100 },
   };
-  const result = await readInContext(input.accessContext, read);
+  const result = await readInContext(input.routingContext, read);
   if (!result.ok) throw new Error(result.error.message);
   if (result.value.value.kind !== "relation_target_window") {
     throw new Error("Database returned a non-Relation window");
@@ -64,7 +64,7 @@ export const readDataSourceRelationTargets = async (input: {
 };
 
 export const searchDataSourceRelationCandidates = async (input: {
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly property: DataSourcePropertyRecordV2;
   readonly query: string;
   readonly after?: string | null;
@@ -73,7 +73,7 @@ export const searchDataSourceRelationCandidates = async (input: {
   if (!read) {
     return { candidates: [], nextCursor: null, projectionRevision: 0 };
   }
-  const result = await readInContext(input.accessContext, read);
+  const result = await readInContext(input.routingContext, read);
   if (!result.ok) throw new Error(result.error.message);
   if (result.value.value.kind !== "relation_candidate_window") {
     throw new Error("Database returned a non-candidate Relation window");
@@ -82,11 +82,11 @@ export const searchDataSourceRelationCandidates = async (input: {
 };
 
 export const readDataSourceRelationTargetDescriptor = async (input: {
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly property: DataSourcePropertyRecordV2;
 }): Promise<{ readonly name: string } | null> => {
   if (input.property.schema.kind !== "relation") return null;
-  const result = await readInContext(input.accessContext, {
+  const result = await readInContext(input.routingContext, {
     target: {
       kind: "data_source",
       dataSourceId: input.property.schema.targetDataSourceId,

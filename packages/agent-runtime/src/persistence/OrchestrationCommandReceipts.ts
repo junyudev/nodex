@@ -6,14 +6,7 @@
  *
  * @module OrchestrationCommandReceiptRepository
  */
-import {
-  CommandId,
-  IsoDateTime,
-  MessageId,
-  NonNegativeInt,
-  ProjectId,
-  ThreadId,
-} from "@t3tools/contracts";
+import { CommandId, IsoDateTime, NonNegativeInt, ProjectId, ThreadId } from "@t3tools/contracts";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlSchema from "effect/sql/SqlSchema";
 import * as Context from "effect/Context";
@@ -36,9 +29,6 @@ export const OrchestrationCommandReceipt = Schema.Struct({
   resultSequence: NonNegativeInt,
   status: Schema.Literals(["accepted", "rejected"]),
   error: Schema.NullOr(Schema.String),
-  requestFingerprint: Schema.optional(Schema.String),
-  messageId: Schema.optional(MessageId),
-  messageFingerprint: Schema.optional(Schema.String),
 });
 export type OrchestrationCommandReceipt = typeof OrchestrationCommandReceipt.Type;
 
@@ -46,17 +36,6 @@ export const GetByCommandIdInput = Schema.Struct({
   commandId: CommandId,
 });
 export type GetByCommandIdInput = typeof GetByCommandIdInput.Type;
-
-const GetByMessageIdInput = Schema.Struct({ messageId: MessageId });
-
-function omitMissingIdentityFields(row: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(row).filter(
-      ([key, value]) =>
-        value !== null || !["requestFingerprint", "messageId", "messageFingerprint"].includes(key),
-    ),
-  );
-}
 
 /**
  * OrchestrationCommandReceiptRepository - Service tag for command receipt persistence.
@@ -86,12 +65,6 @@ export class OrchestrationCommandReceiptRepository extends Context.Service<
       Option.Option<OrchestrationCommandReceipt>,
       OrchestrationCommandReceiptRepositoryError
     >;
-    readonly getByMessageId: (
-      input: typeof GetByMessageIdInput.Type,
-    ) => Effect.Effect<
-      Option.Option<OrchestrationCommandReceipt>,
-      OrchestrationCommandReceiptRepositoryError
-    >;
   }
 >()("t3/persistence/OrchestrationCommandReceipts/OrchestrationCommandReceiptRepository") {}
 
@@ -110,10 +83,7 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
           accepted_at,
           result_sequence,
           status,
-          error,
-          request_fingerprint,
-          message_id,
-          message_fingerprint
+          error
         )
         VALUES (
           ${receipt.commandId},
@@ -123,10 +93,7 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
           ${receipt.acceptedAt},
           ${receipt.resultSequence},
           ${receipt.status},
-          ${receipt.error},
-          ${receipt.requestFingerprint ?? null},
-          ${receipt.messageId ?? null},
-          ${receipt.messageFingerprint ?? null}
+          ${receipt.error}
         )
         ON CONFLICT (command_id)
         DO UPDATE SET
@@ -136,10 +103,7 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
           accepted_at = excluded.accepted_at,
           result_sequence = excluded.result_sequence,
           status = excluded.status,
-          error = excluded.error,
-          request_fingerprint = excluded.request_fingerprint,
-          message_id = excluded.message_id,
-          message_fingerprint = excluded.message_fingerprint
+          error = excluded.error
       `,
   });
 
@@ -156,27 +120,10 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
           accepted_at AS "acceptedAt",
           result_sequence AS "resultSequence",
           status,
-          error,
-          request_fingerprint AS "requestFingerprint",
-          message_id AS "messageId",
-          message_fingerprint AS "messageFingerprint"
+          error
         FROM orchestration_command_receipts
         WHERE command_id = ${commandId}
-      `.pipe(Effect.map((rows) => rows.map(omitMissingIdentityFields))),
-  });
-
-  const findReceiptByMessageId = SqlSchema.findOneOption({
-    Request: GetByMessageIdInput,
-    Result: OrchestrationCommandReceipt,
-    execute: ({ messageId }) =>
-      sql`
-      SELECT command_id AS "commandId", aggregate_kind AS "aggregateKind",
-        aggregate_id AS "aggregateId", command_type AS "commandType", accepted_at AS "acceptedAt",
-        result_sequence AS "resultSequence", status, error,
-        request_fingerprint AS "requestFingerprint", message_id AS "messageId",
-        message_fingerprint AS "messageFingerprint"
-      FROM orchestration_command_receipts WHERE message_id = ${messageId}
-    `.pipe(Effect.map((rows) => rows.map(omitMissingIdentityFields))),
+      `,
   });
 
   const upsert: OrchestrationCommandReceiptRepository["Service"]["upsert"] = (receipt) =>
@@ -196,10 +143,7 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
         accepted_at,
         result_sequence,
         status,
-        error,
-        request_fingerprint,
-        message_id,
-        message_fingerprint
+        error
       )
       VALUES (
         ${receipt.commandId},
@@ -209,10 +153,7 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
         ${receipt.acceptedAt},
         ${receipt.resultSequence},
         ${receipt.status},
-        ${receipt.error},
-        ${receipt.requestFingerprint ?? null},
-        ${receipt.messageId ?? null},
-        ${receipt.messageFingerprint ?? null}
+        ${receipt.error}
       )
       ON CONFLICT(command_id) DO NOTHING
       RETURNING command_id
@@ -236,12 +177,6 @@ const makeOrchestrationCommandReceiptRepository = Effect.gen(function* () {
     insertIfAbsent,
     upsert,
     getByCommandId,
-    getByMessageId: (input) =>
-      findReceiptByMessageId(input).pipe(
-        Effect.mapError(
-          toPersistenceSqlError("OrchestrationCommandReceiptRepository.getByMessageId:query"),
-        ),
-      ),
   } satisfies OrchestrationCommandReceiptRepository["Service"];
 });
 

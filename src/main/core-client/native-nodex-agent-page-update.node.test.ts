@@ -1,7 +1,7 @@
 import type { components } from "@nodex/core-protocol";
 import { expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { UpdatePageV3InputSchema } from "../../shared/nodex-agent-tools/v3-write-schemas";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { CoreClient } from "./core-client";
@@ -44,13 +44,12 @@ test("guarded Page patches preserve their observed body through native preparati
     await client.workspaceApply({
       operationId: createUuidV7(),
       intent: {
-        kind: "freeze_turn_authority",
-        read_only: false,
+        kind: "admit_turn_authority",
+
         thread_id: threadId,
         turn_id: turnId,
         root_thread_id: threadId,
         actor_project_id: projectId,
-        source: "project_turn",
       },
     });
     const frozen = await client.workspaceRead({
@@ -60,20 +59,17 @@ test("guarded Page patches preserve their observed body through native preparati
       root_thread_id: threadId,
       actor_project_id: projectId,
     });
-    if (frozen.value.kind !== "turn_authority" || !frozen.value.resolution.frozen_at_ms) {
+    if (frozen.value.kind !== "turn_authority" || !frozen.value.resolution.admitted_at_ms) {
       throw new Error("Expected persisted Turn authority");
     }
-    const authority: FrozenNodexAgentTurnAuthority = {
+    const authority: NodexAgentTurnContext = {
       threadId,
       turnId,
       rootThreadId: threadId,
       actorProjectId: projectId,
       libraryId: runtime.identity.libraryId,
       storeEpoch: runtime.identity.storeEpoch,
-      frozenAtMs: frozen.value.resolution.frozen_at_ms,
-      readOnly: false,
-      scope: "project",
-      source: "project_turn",
+      admittedAtMs: frozen.value.resolution.admitted_at_ms,
     };
     const content = await runtime.rootClient.libraryRead({ kind: "page_content", page_id: pageId });
     if (content.value.kind !== "page_content") throw new Error("Expected Page content");

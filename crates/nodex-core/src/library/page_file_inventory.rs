@@ -29,26 +29,10 @@ pub(super) fn require_page(
     page_id: &str,
     write_required: bool,
 ) -> Result<(), StoreError> {
-    if let Some(project_id) = &context.project_id {
-        return if write_required {
-            super::require_page_write_access(
-                connection,
-                &context.library_id.0,
-                &project_id.0,
-                page_id,
-            )
-        } else {
-            super::require_page_read_access(
-                connection,
-                &context.library_id.0,
-                &project_id.0,
-                page_id,
-            )
-        };
+    if write_required {
+        return super::require_page_write_access(connection, &context.library_id.0, page_id);
     }
-    super::require_trusted_library_authority(context)?;
-    revisions(connection, &context.library_id.0, page_id)?;
-    Ok(())
+    super::require_page_read_access(connection, &context.library_id.0, page_id)
 }
 
 pub(super) fn revisions(
@@ -115,7 +99,7 @@ pub(super) fn list(
         context.project_id.as_ref().map(|id| id.0.as_str()),
         page_id,
     )?;
-    list_authorized_page(
+    list_current_page(
         connection,
         &context.library_id.0,
         page_id,
@@ -126,9 +110,9 @@ pub(super) fn list(
     )
 }
 
-/// Reads an already-authorized Page projection. Callers must establish Page
+/// Reads the current Page projection. Callers establish its canonical owner
 /// read authority before entering this narrow projection seam.
-pub(super) fn list_authorized_page(
+pub(super) fn list_current_page(
     connection: &Connection,
     library_id: &str,
     page_id: &str,
@@ -235,26 +219,16 @@ fn error(code: StoreErrorCode, message: &'static str) -> StoreError {
     StoreError::new(code, message, false)
 }
 
-/// A caller must establish Page read authority before requesting its write capability.
+/// Reports the current owner lifecycle; archived Pages remain readable.
 pub(super) fn write_capability(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     page_id: &str,
 ) -> Result<bool, StoreError> {
-    let Some(project_id) = project_id else {
-        return Ok(true);
-    };
-    match super::require_page_write_access(connection, library_id, project_id, page_id) {
+    match super::require_page_write_access(connection, library_id, page_id) {
         Ok(()) => Ok(true),
-        Err(error)
-            if matches!(
-                error.code,
-                StoreErrorCode::Unauthorized | StoreErrorCode::NotFound
-            ) =>
-        {
-            Ok(false)
-        }
+        Err(error) if error.code == StoreErrorCode::NotFound => Ok(false),
         Err(error) => Err(error),
     }
 }

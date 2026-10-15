@@ -1,4 +1,4 @@
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { WorkbenchSurfaceReference } from "../../shared/nodex-app-tools/workbench";
 import type {
   WorkbenchPreparedPageContent,
@@ -32,8 +32,8 @@ const MAX_PREPARATIONS = 128;
 const samePage = (left: PageSurface, right: PageSurface) =>
   left.id === right.id &&
   left.config.pageId === right.config.pageId &&
-  contentAccessContextKey(left.config.accessContext) ===
-    contentAccessContextKey(right.config.accessContext);
+  contentRoutingContextKey(left.config.routingContext) ===
+    contentRoutingContextKey(right.config.routingContext);
 const pending = (state: EditorState): boolean =>
   state.transientInput ||
   !state.status.ready ||
@@ -55,8 +55,8 @@ const matchesPage = (state: EditorState, surface: PageSurface): boolean => {
     descriptor.documentId === provider.documentId &&
     descriptor.storeEpoch === provider.storeEpoch &&
     descriptor.generation === provider.generation &&
-    contentAccessContextKey(descriptor.accessContext) ===
-      contentAccessContextKey(surface.config.accessContext)
+    contentRoutingContextKey(descriptor.routingContext) ===
+      contentRoutingContextKey(surface.config.routingContext)
   );
 };
 
@@ -123,7 +123,7 @@ export function createWorkbenchPageContent(
           pageId: surface.config.pageId,
           documentId: fence.documentId,
           libraryId: after.status.descriptor.libraryId,
-          accessContext: surface.config.accessContext,
+          routingContext: surface.config.routingContext,
           storeEpoch: fence.storeEpoch,
           generation: fence.generation,
           expectedHeadSeq: after.status.provider.headSeq,

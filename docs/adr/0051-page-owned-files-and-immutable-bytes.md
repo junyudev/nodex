@@ -49,12 +49,12 @@ The authorization, retention, and transfer consequences are specified by
 [ADR 0052](0052-file-placement-is-independent-of-ownership.md).
 
 Direct File manifests never flatten child Page Files. Recursive closure is
-composition over the existing Page ownership tree. Project grants, Page
-lifecycle, backup, restore, and copy therefore follow one ownership relation.
-Core owns metadata, blob publication/read, authorization, copy/transfer,
+composition over the existing Page ownership tree. Page lifecycle, backup,
+restore and copy therefore follow one ownership relation.
+Core owns metadata, blob publication/read, identity validation, copy/transfer,
 integrity validation, and garbage collection. Main and CLI adapt explicit
 user-selected streams and destinations. The trusted renderer may resolve an
-authorized current File hash to its regular physical blob only for an explicit
+validated current File hash to its regular physical blob only for an explicit
 opt-in plain-text clipboard presentation; general renderer and Agent interfaces
 expose neither Profile paths nor read-by-hash capability.
 
@@ -87,7 +87,7 @@ queued payload, Composer, and other asset domains do not become Page Files.
 
 ## Rejected alternatives
 
-A dedicated Artifact database duplicates File identity, permissions, history,
+A dedicated Artifact database duplicates File identity, history,
 and lifecycle while adding only a purpose label. A Data Source Files Property
 would make intrinsic Page capability depend on membership. Modeling folders as
 Pages pollutes navigation and search and introduces empty-folder lifecycle.

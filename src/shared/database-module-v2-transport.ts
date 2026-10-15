@@ -1,5 +1,4 @@
 import { stableStringifyBlockPropertyJson } from "./block-property-mutations";
-import { parseAuthorizedReadStamp } from "./authorized-read-stamp";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
@@ -1999,7 +1998,6 @@ const DATABASE_MODULE_ERROR_CODES = new Set<DatabaseModuleErrorCodeV2>([
   "store_not_initialized",
   "project_not_found",
   "resource_not_found",
-  "authorization_denied",
   "revision_conflict",
   "operation_id_collision",
   "resource_exhausted",
@@ -2056,7 +2054,6 @@ export const databaseModuleFailureV2 = (
 export const databaseModuleHttpStatusV2 = (
   error: DatabaseModuleErrorV2,
 ): 400 | 403 | 404 | 409 | 500 | 503 => {
-  if (error.code === "authorization_denied") return 403;
   if (error.code === "project_not_found" || error.code === "resource_not_found") {
     return 404;
   }
@@ -2091,7 +2088,6 @@ const parseContainerRecord = (value: unknown, label: string): DatabaseContainerR
     "name",
     "lifecycle",
     "defaultViewId",
-    "accessRevision",
     "metadataRevision",
     "createdAt",
     "updatedAt",
@@ -2109,7 +2105,6 @@ const parseContainerRecord = (value: unknown, label: string): DatabaseContainerR
       record.defaultViewId === null
         ? null
         : readViewId(record.defaultViewId, `${label}.defaultViewId`),
-    accessRevision: readPositiveRevision(record.accessRevision, `${label}.accessRevision`),
     metadataRevision: readPositiveRevision(record.metadataRevision, `${label}.metadataRevision`),
     createdAt: readTimestamp(record.createdAt, `${label}.createdAt`),
     updatedAt: readTimestamp(record.updatedAt, `${label}.updatedAt`),
@@ -2789,10 +2784,10 @@ const parseReadValue = (value: unknown): DatabaseReadValueV2 => {
         throw new TypeError("Relation target window contains duplicate edge handles");
       }
       edgeIds.add(edgeId);
-      if (target.kind === "restricted") {
+      if (target.kind === "unavailable") {
         assertExactKeys(target, `relationTargetWindow.targets[${index}]`, ["kind", "edgeId"]);
         return {
-          kind: "restricted" as const,
+          kind: "unavailable" as const,
           edgeId,
         };
       }
@@ -2968,8 +2963,6 @@ const parseDatabaseModuleReadSnapshotBody = (
     libraryId: readString(snapshot.libraryId, `${label}.libraryId`),
     storeEpoch: readString(snapshot.storeEpoch, `${label}.storeEpoch`),
     commitSeq: readRevision(snapshot.commitSeq, `${label}.commitSeq`),
-    authorization:
-      snapshot.authorization === null ? null : parseAuthorizedReadStamp(snapshot.authorization),
     value: parseReadValue(snapshot.value),
   };
 };
@@ -2988,7 +2981,6 @@ export const parseDatabaseModuleReadResultV2 = (value: unknown): DatabaseModuleR
     "libraryId",
     "storeEpoch",
     "commitSeq",
-    "authorization",
     "value",
   ]);
   return {
@@ -3245,7 +3237,7 @@ export const parseDatabaseApplyResultV2 = (value: unknown): DatabaseApplyResultV
   };
 };
 
-const assertLibraryAccessContext = (value: unknown, label: string): void => {
+const assertLibraryRoutingContext = (value: unknown, label: string): void => {
   const context = readRecord(value, label);
   assertExactKeys(context, label, ["kind"]);
   if (context.kind !== "library") {
@@ -3265,22 +3257,21 @@ export const parseLibraryDatabaseModuleReadResultV2 = (
   }
   const snapshot = readRecord(result.value, "libraryDatabaseModuleReadV2.snapshot");
   assertExactKeys(snapshot, "libraryDatabaseModuleReadV2.snapshot", [
-    "accessContext",
+    "routingContext",
     "libraryId",
     "storeEpoch",
     "commitSeq",
-    "authorization",
     "value",
   ]);
-  assertLibraryAccessContext(
-    snapshot.accessContext,
-    "libraryDatabaseModuleReadV2.snapshot.accessContext",
+  assertLibraryRoutingContext(
+    snapshot.routingContext,
+    "libraryDatabaseModuleReadV2.snapshot.routingContext",
   );
   return {
     ok: true,
     value: {
       ...parseDatabaseModuleReadSnapshotBody(snapshot, "libraryDatabaseModuleReadV2.snapshot"),
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
     },
   };
 };
@@ -3296,7 +3287,7 @@ export const parseLibraryDatabaseApplyResultV2 = (value: unknown): LibraryDataba
   const receipt = readRecord(result.value, "libraryDatabaseApplyV2.receipt");
   assertExactKeys(receipt, "libraryDatabaseApplyV2.receipt", [
     "operationId",
-    "accessContext",
+    "routingContext",
     "libraryId",
     "storeEpoch",
     "duplicate",
@@ -3310,13 +3301,16 @@ export const parseLibraryDatabaseApplyResultV2 = (value: unknown): LibraryDataba
     "commitSeq",
     "committedAt",
   ]);
-  assertLibraryAccessContext(receipt.accessContext, "libraryDatabaseApplyV2.receipt.accessContext");
+  assertLibraryRoutingContext(
+    receipt.routingContext,
+    "libraryDatabaseApplyV2.receipt.routingContext",
+  );
   return {
     ok: true,
     localCommit: parseLocalCommitApply(result.localCommit),
     value: {
       ...parseDatabaseApplyReceiptBody(receipt, "libraryDatabaseApplyV2.receipt"),
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
     },
   };
 };

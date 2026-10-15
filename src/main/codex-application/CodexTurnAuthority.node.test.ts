@@ -11,14 +11,14 @@ import { CodexConversationContext } from "./CodexConversationContext";
 import { make } from "./CodexTurnAuthority";
 
 type Authority = components["schemas"]["ProjectWorkspaceTurnAuthority"];
-type Freeze = Extract<
+type Admit = Extract<
   ProjectWorkspaceApplyInput["intent"],
-  { readonly kind: "freeze_turn_authority" }
+  { readonly kind: "admit_turn_authority" }
 >;
 
 const harness = () => {
-  const persisted = new Map<string, { authority: Authority; readOnly: boolean }>();
-  const writes: Array<{ intent: Freeze; projectId: string | null | undefined }> = [];
+  const persisted = new Map<string, { authority: Authority }>();
+  const writes: Array<{ intent: Admit; projectId: string | null | undefined }> = [];
   const identity = { profileId: "profile", libraryId: "library", storeEpoch: "epoch" };
   const workspace: CoreModules["Service"]["workspace"] = {
     read: (read, _options, projectId) =>
@@ -33,15 +33,14 @@ const harness = () => {
             resolution: {
               authority: row?.authority ?? null,
               persisted: row !== undefined,
-              read_only: row?.readOnly ?? true,
-              frozen_at_ms: row ? 1_788_825_600_000 : null,
+              admitted_at_ms: row ? 1_788_825_600_000 : null,
             },
           },
         } as ProjectWorkspaceReadSnapshot;
       }),
     apply: (input, _options, projectId) =>
       Effect.sync(() => {
-        if (input.intent.kind !== "freeze_turn_authority")
+        if (input.intent.kind !== "admit_turn_authority")
           throw new Error("Unexpected authority mutation");
         const intent = input.intent;
         writes.push({ intent, projectId });
@@ -53,10 +52,7 @@ const harness = () => {
             actor_project_id: intent.actor_project_id,
             library_id: identity.libraryId,
             store_epoch: identity.storeEpoch,
-            scope: "library",
-            source: intent.source,
           },
-          readOnly: intent.read_only,
         });
         return {} as never;
       }),
@@ -80,39 +76,37 @@ const harness = () => {
 };
 
 it.effect(
-  "freezes and recaptures projectless authority without looking up or borrowing a Project",
+  "binds and recaptures projectless execution identity without looking up or borrowing a Project",
   () =>
     Effect.gen(function* () {
       const fixture = harness();
       const authority = yield* fixture.build;
-      assert.isNull(yield* authority.begin("thread:root", false, false));
       assert.isNull(yield* authority.capture("thread:root", "unrecorded"));
       assert.deepEqual(fixture.writes, []);
 
-      const launch = yield* authority.begin("thread:root", true, false);
+      const launch = yield* authority.begin("thread:root");
       assert.isNotNull(launch);
       const frozen = yield* authority.capture("thread:root", "turn:root");
       assert.strictEqual(frozen?.actorProjectId, null);
-      assert.strictEqual(frozen?.scope, "library");
-      assert.isFalse(frozen?.readOnly);
       assert.strictEqual(fixture.writes.length, 1);
       assert.strictEqual(fixture.writes[0]?.projectId, null);
       assert.strictEqual(fixture.writes[0]?.intent.actor_project_id, null);
-      assert.strictEqual(fixture.writes[0]?.intent.source, "builtin_full_access");
       assert.strictEqual(launch?.boundTurnId, "turn:root");
+
+      const nextLaunch = yield* authority.begin("thread:root");
+      assert.deepEqual(yield* authority.capture("thread:root", "turn:root"), frozen);
+      assert.strictEqual(nextLaunch?.boundTurnId, null);
+      assert.strictEqual(fixture.writes.length, 1);
+      yield* authority.observeStarted("thread:root", "turn:next");
+      assert.strictEqual(nextLaunch?.boundTurnId, "turn:next");
+      assert.strictEqual(
+        (yield* authority.capture("thread:root", "turn:root"))?.turnId,
+        "turn:root",
+      );
+      assert.strictEqual(fixture.writes.length, 2);
 
       const recreated = yield* fixture.build;
       assert.deepEqual(yield* recreated.capture("thread:root", "turn:root"), frozen);
-      assert.strictEqual(fixture.writes.length, 1);
-      if (!frozen) throw new Error("Expected frozen authority");
-      yield* recreated.inherit("thread:child", "turn:child", { ...frozen, readOnly: true });
-      assert.deepEqual(fixture.writes[1]?.intent.inherited_from, {
-        thread_id: "thread:root",
-        turn_id: "turn:root",
-      });
-      assert.strictEqual(fixture.writes[1]?.intent.actor_project_id, null);
-      assert.strictEqual(fixture.writes[1]?.intent.root_thread_id, "thread:root");
-      assert.strictEqual(fixture.writes[1]?.intent.source, "inherited_builtin_full_access");
-      assert.isTrue(fixture.writes[1]?.intent.read_only);
+      assert.strictEqual(fixture.writes.length, 2);
     }),
 );

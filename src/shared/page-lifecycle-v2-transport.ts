@@ -32,7 +32,6 @@ const PREFLIGHT_ERROR_CODES_V2 = new Set<PageLifecyclePreflightErrorCodeV2>([
   "store_not_initialized",
   "project_not_found",
   "page_not_found",
-  "authorization_denied",
   "state_corrupt",
   "unknown",
 ]);
@@ -106,7 +105,8 @@ export const parsePageLifecyclePreflightResultV2 = (
     "commitSeq",
     "value",
   ]);
-  const projectId = readCanonicalIdentity(snapshot.projectId, "projectId");
+  const projectId =
+    snapshot.projectId === null ? null : readCanonicalIdentity(snapshot.projectId, "projectId");
   const libraryId = readCanonicalIdentity(snapshot.libraryId, "libraryId");
   const storeEpoch = readCanonicalIdentity(snapshot.storeEpoch, "storeEpoch");
   const commitSeq = readRevision(snapshot.commitSeq, "commitSeq");
@@ -118,43 +118,48 @@ export const parsePageLifecyclePreflightResultV2 = (
     "reservedBlockType",
     "page",
   ]);
-  const parsedQuery = parseDatabaseModuleReadResultV2({
-    ok: true,
-    value: {
-      projectId,
-      libraryId,
-      storeEpoch,
-      commitSeq,
-      authorization: null,
-      value: { kind: "query", value: preflight.defaultView },
-    },
-  });
-  if (!parsedQuery.ok || parsedQuery.value.value.kind !== "query") {
-    throw new TypeError("Page lifecycle v2 default View query is invalid");
-  }
-  const tags = readRecord(preflight.tagsProperty);
-  if (!tags) throw new TypeError("Page lifecycle v2 tags Property is invalid");
-  assertExactKeys(tags, "Page lifecycle v2 tags Property", [
-    "propertyId",
-    "dataSourceId",
-    "valueType",
-    "lifecycle",
-    "revision",
-    "config",
-  ]);
-  const canonicalTags = parsedQuery.value.value.value.properties.find(
-    (property) => property.propertyId === "tags",
-  );
-  stableStringifyBlockPropertyJson(tags.config);
-  if (
-    !canonicalTags ||
-    tags.propertyId !== canonicalTags.propertyId ||
-    tags.dataSourceId !== canonicalTags.dataSourceId ||
-    tags.valueType !== "multi_select" ||
-    tags.lifecycle !== "active" ||
-    tags.revision !== canonicalTags.revision
-  ) {
-    throw new TypeError("Page lifecycle v2 tags Property diverges from the default View query");
+  if (projectId === null) {
+    if (preflight.defaultView !== null || preflight.tagsProperty !== null) {
+      throw new TypeError("Library Page lifecycle cannot infer a default Project destination");
+    }
+  } else {
+    const parsedQuery = parseDatabaseModuleReadResultV2({
+      ok: true,
+      value: {
+        projectId,
+        libraryId,
+        storeEpoch,
+        commitSeq,
+        value: { kind: "query", value: preflight.defaultView },
+      },
+    });
+    if (!parsedQuery.ok || parsedQuery.value.value.kind !== "query") {
+      throw new TypeError("Page lifecycle v2 default View query is invalid");
+    }
+    const tags = readRecord(preflight.tagsProperty);
+    if (!tags) throw new TypeError("Page lifecycle v2 tags Property is invalid");
+    assertExactKeys(tags, "Page lifecycle v2 tags Property", [
+      "propertyId",
+      "dataSourceId",
+      "valueType",
+      "lifecycle",
+      "revision",
+      "config",
+    ]);
+    const canonicalTags = parsedQuery.value.value.value.properties.find(
+      (property) => property.propertyId === "tags",
+    );
+    stableStringifyBlockPropertyJson(tags.config);
+    if (
+      !canonicalTags ||
+      tags.propertyId !== canonicalTags.propertyId ||
+      tags.dataSourceId !== canonicalTags.dataSourceId ||
+      tags.valueType !== "multi_select" ||
+      tags.lifecycle !== "active" ||
+      tags.revision !== canonicalTags.revision
+    ) {
+      throw new TypeError("Page lifecycle v2 tags Property diverges from the default View query");
+    }
   }
   if (preflight.reservedBlockType !== null && typeof preflight.reservedBlockType !== "string") {
     throw new TypeError("Page lifecycle v2 reserved Block type is invalid");
@@ -202,7 +207,7 @@ export const pageLifecycleMutationFailureV2 = (
  */
 export const bindTrustedPageLifecycleMutationV2 = (
   rawRequest: unknown,
-  projectId: string,
+  projectId: string | null,
   identity: TrustedPageLifecycleMutationIdentityV2,
 ): TrustedPageLifecycleMutationBindingV2 => {
   let request: PageLifecycleMutationRequestV2;
@@ -226,7 +231,7 @@ export const bindTrustedPageLifecycleMutationV2 = (
       ok: false,
       error: pageLifecycleMutationFailureV2(
         "invalid_page_lifecycle_request",
-        "Page lifecycle mutation v2 does not match its Project scope",
+        "Page lifecycle mutation v2 does not match its presentation route",
         request,
       ),
     };
@@ -261,7 +266,6 @@ export const bindTrustedPageLifecycleMutationV2 = (
 export const pageLifecycleMutationHttpStatusV2 = (
   error: PageLifecycleMutationCommandErrorV2,
 ): 400 | 403 | 404 | 409 | 500 => {
-  if (error.code === "authorization_denied") return 403;
   if (
     error.code === "project_not_found" ||
     error.code === "page_not_found" ||

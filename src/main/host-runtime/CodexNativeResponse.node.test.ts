@@ -158,12 +158,6 @@ test("critical response delivery follows the native method and explicit scheduli
     }),
   ).toBe(false);
   expect(
-    codexNativeResponseIsCritical("codex:thread:native-session:execute", {
-      ...base,
-      receiptId: "prepared",
-    }),
-  ).toBe(true);
-  expect(
     codexNativeResponseIsCritical("codex:thread:native-fork:execute", {
       ...base,
       receiptId: "prepared",

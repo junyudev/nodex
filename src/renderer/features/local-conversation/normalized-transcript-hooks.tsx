@@ -55,13 +55,20 @@ export function useCodexTranscriptReadOwner(conversationId: string | null, hostI
   const manager = useCodexAppServerManagerForConversationId(conversationId, hostId);
   const subscribe = useCallback(
     (listener: () => void) =>
-      !override && conversationId
-        ? manager.addConversationCallback(conversationId, listener)
-        : () => {},
+      override
+        ? override.subscribe(conversationId, listener)
+        : conversationId
+          ? manager.addConversationCallback(conversationId, listener)
+          : () => {},
     [conversationId, manager, override],
   );
   const readOwner = useCallback(
-    () => (!override && conversationId ? manager.readTranscriptReadOwner(conversationId) : null),
+    () =>
+      override
+        ? (override.transcriptReadOwner?.(conversationId) ?? null)
+        : conversationId
+          ? manager.readTranscriptReadOwner(conversationId)
+          : null,
     [conversationId, manager, override],
   );
   return useSyncExternalStore(subscribe, readOwner, readOwner);

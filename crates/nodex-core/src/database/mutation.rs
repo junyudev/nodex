@@ -45,9 +45,8 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_t
 use crate::infrastructure::writer::StoreWriter;
 
 use super::DatabaseApplyOutcome;
-use super::authorization::{authorize_required, project_primary_database};
 use super::ensure_database_page_key;
-use super::is_trusted_library_database_context;
+use super::project_default::project_primary_database;
 use super::relation::RelationValueEdit as RelationEdit;
 use super::view_contract::MAX_VIEW_SORT_RULES;
 
@@ -73,16 +72,10 @@ struct MutationEffects {
     operation_outcomes: Vec<DatabaseOperationOutcome>,
 }
 
-struct DatabaseMutationAuthority {
+struct DatabaseMutationRoute {
     /// Actor/delivery coordinate for the change ledger; never a content owner.
     actor_project_id: Option<String>,
     project_id: Option<String>,
-}
-
-impl DatabaseMutationAuthority {
-    fn is_library(&self) -> bool {
-        self.project_id.is_none()
-    }
 }
 
 #[derive(Debug)]
@@ -153,7 +146,7 @@ pub(crate) fn apply_in_transaction(
 ) -> Result<DatabaseApplyOutcome, StoreError> {
     validate_request(request)?;
     assert_identity(connection, profile_id, library_id)?;
-    let authority = mutation_authority(connection, library_id, context)?;
+    let authority = mutation_route(context);
     let store_epoch = read_store_epoch(connection)?;
     if request.store_epoch.0 != store_epoch {
         return Err(StoreError::new(
@@ -263,7 +256,7 @@ pub(crate) fn apply_as_collaborator(
     if intents.is_empty() || intents.len() > MAX_OPERATIONS {
         return Err(invalid("Database collaborator operation count is invalid"));
     }
-    let authority = mutation_authority(connection, library_id, context)?;
+    let authority = mutation_route(context);
     let mut effects = MutationEffects::default();
     for (operation_index, intent) in intents.iter().enumerate() {
         apply_intent(
@@ -631,14 +624,13 @@ fn apply_intent(
     connection: &Connection,
     profile_id: &str,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     intent: &DatabaseIntent,
     operation_index: u32,
     now: &str,
     effects: &mut MutationEffects,
 ) -> Result<(), StoreError> {
     let project_id = authority.actor_project_id.as_deref();
-    let library_scope = authority.is_library();
     match intent {
         DatabaseIntent::Configure {
             data_source_id,
@@ -667,7 +659,6 @@ fn apply_intent(
             prefix,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PutProperty {
             data_source_id,
@@ -690,7 +681,6 @@ fn apply_intent(
             before_property_id.as_deref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::MoveProperty {
             data_source_id,
@@ -709,7 +699,6 @@ fn apply_intent(
             placement,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::ChangePropertyType {
             data_source_id,
@@ -728,7 +717,6 @@ fn apply_intent(
             schema,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DuplicateProperty {
             data_source_id,
@@ -751,7 +739,6 @@ fn apply_intent(
             option_ids,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::RestoreProperty {
             data_source_id,
@@ -768,7 +755,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PermanentlyDeleteProperty {
             data_source_id,
@@ -785,7 +771,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DeleteProperty {
             data_source_id,
@@ -802,7 +787,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PutOption {
             data_source_id,
@@ -823,7 +807,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::MoveOption {
             data_source_id,
@@ -842,7 +825,6 @@ fn apply_intent(
             placement,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DeleteOption {
             data_source_id,
@@ -859,7 +841,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DeleteOptionAndClearValues {
             data_source_id,
@@ -876,7 +857,6 @@ fn apply_intent(
             *expected_property_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PutPageLayoutEntry {
             data_source_id,
@@ -895,7 +875,6 @@ fn apply_intent(
             placement.as_ref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::EditPropertyValues { edits } => {
             let mut addresses = HashSet::with_capacity(edits.len());
@@ -910,15 +889,7 @@ fn apply_intent(
                         "edit_property_values contains a duplicate Page Property address",
                     ));
                 }
-                edit_property_value(
-                    connection,
-                    library_id,
-                    project_id,
-                    edit,
-                    now,
-                    effects,
-                    library_scope,
-                )?;
+                edit_property_value(connection, library_id, project_id, edit, now, effects)?;
             }
             Ok(())
         }
@@ -947,7 +918,6 @@ fn apply_intent(
             before_view_id.as_deref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DuplicateView {
             database_id,
@@ -964,7 +934,6 @@ fn apply_intent(
             new_view_id,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::ChangeViewLayout {
             database_id,
@@ -981,7 +950,6 @@ fn apply_intent(
             *layout,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::MoveView {
             database_id,
@@ -998,7 +966,6 @@ fn apply_intent(
             placement,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::DeleteView {
             database_id,
@@ -1013,7 +980,6 @@ fn apply_intent(
             *expected_revision,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PositionPage {
             view_id,
@@ -1032,7 +998,6 @@ fn apply_intent(
             before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::PositionPages {
             view_id,
@@ -1047,7 +1012,6 @@ fn apply_intent(
             before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::SetTaskParent {
             data_source_id,
@@ -1064,7 +1028,6 @@ fn apply_intent(
             before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::MoveListOccurrences {
             view_id,
@@ -1087,7 +1050,6 @@ fn apply_intent(
             operation_index,
             now,
             effects,
-            library_scope,
         ),
         DatabaseIntent::UndoListOccurrenceMove { recipe } => undo_list_occurrence_move(
             connection,
@@ -1156,7 +1118,6 @@ fn apply_intent(
             target,
             now,
             effects,
-            library_scope,
             false,
             false,
         ),
@@ -1167,25 +1128,18 @@ fn apply_intent(
 fn rename_page_key_namespace_prefix(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     database_id: &str,
     expected_revision: i64,
     prefix: &str,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let container = require_container(connection, library_id, database_id)?;
     if container.lifecycle != "active" {
         return Err(not_found("Database is not active"));
     }
-    authorize_write(
-        connection,
-        project_id,
-        database_id,
-        DatabaseWriteAction::ManageNamespace,
-        library_scope,
-    )?;
+
     let namespace = super::rename_page_key_prefix(
         connection,
         library_id,
@@ -1208,7 +1162,7 @@ fn rename_page_key_namespace_prefix(
 fn put_property(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     expected_source_revision: i64,
@@ -1218,7 +1172,6 @@ fn put_property(
     before_property_id: Option<&str>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     validate_id(data_source_id, "data_source_id", MAX_ID_LENGTH)?;
     validate_id(property_id, "property_id", MAX_PROPERTY_ID_LENGTH)?;
@@ -1246,25 +1199,13 @@ fn put_property(
         )?;
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     if let DatabasePropertySchema::Relation {
         target_data_source_id,
         ..
     } = schema
     {
-        authorize_relation_target_read(
-            connection,
-            library_id,
-            project_id,
-            target_data_source_id,
-            library_scope,
-        )?;
+        require_relation_target_source(connection, library_id, target_data_source_id)?;
     }
     require_revision(
         expected_source_revision,
@@ -1472,7 +1413,7 @@ fn property_non_empty_value_count(
 fn move_property(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     expected_source_revision: i64,
@@ -1480,16 +1421,9 @@ fn move_property(
     placement: &DatabasePropertyPlacement,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     require_revision(
         expected_source_revision,
         source.revision,
@@ -1532,7 +1466,7 @@ fn move_property(
 fn change_property_type(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     expected_source_revision: i64,
@@ -1540,7 +1474,6 @@ fn change_property_type(
     schema: &DatabasePropertySchema,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if !super::property_semantics::is_custom_property_id(property_id) {
         return Err(StoreError::new(
@@ -1550,13 +1483,7 @@ fn change_property_type(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     require_revision(
         expected_source_revision,
         source.revision,
@@ -1608,13 +1535,7 @@ fn change_property_type(
         ..
     } = schema
     {
-        authorize_relation_target_read(
-            connection,
-            library_id,
-            project_id,
-            target_data_source_id,
-            library_scope,
-        )?;
+        require_relation_target_source(connection, library_id, target_data_source_id)?;
     }
     let value_type = super::property_semantics::value_type(schema);
     if !presentation_only {
@@ -1692,7 +1613,6 @@ fn duplicate_property(
     option_ids: &[DatabaseDuplicatePropertyOption],
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let property = active_property(connection, data_source_id, property_id)?;
     require_revision(
@@ -1726,7 +1646,6 @@ fn duplicate_property(
         None,
         now,
         effects,
-        library_scope,
     )?;
     if !matches!(property.value_type.as_str(), "select" | "multi_select") {
         if !option_ids.is_empty() {
@@ -1798,7 +1717,6 @@ fn restore_property(
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let property = property_row(connection, data_source_id, property_id)?
         .ok_or_else(|| not_found("Property is unavailable"))?;
@@ -1835,7 +1753,6 @@ fn restore_property(
         None,
         now,
         effects,
-        library_scope,
     )
 }
 
@@ -1843,14 +1760,13 @@ fn restore_property(
 fn permanently_delete_property(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     expected_source_revision: i64,
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if super::property_semantics::is_required_property_id(property_id) {
         return Err(StoreError::new(
@@ -1860,13 +1776,7 @@ fn permanently_delete_property(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     require_revision(
         expected_source_revision,
         source.revision,
@@ -1941,14 +1851,13 @@ fn permanently_delete_property(
 fn delete_property(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     expected_source_revision: i64,
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if super::property_semantics::is_required_property_id(property_id) {
         return Err(StoreError::new(
@@ -1958,13 +1867,7 @@ fn delete_property(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     require_revision(
         expected_source_revision,
         source.revision,
@@ -2023,7 +1926,7 @@ fn delete_property(
 fn put_option(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     option_id: &str,
@@ -2032,7 +1935,6 @@ fn put_option(
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     validate_id(option_id, "option_id", MAX_PROPERTY_ID_LENGTH)?;
     if !super::property_semantics::is_canonical_option_id(property_id, option_id) {
@@ -2047,13 +1949,7 @@ fn put_option(
         return Err(invalid("Option color must contain between 1 and 128 bytes"));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     let property = active_property(connection, data_source_id, property_id)?;
     require_revision(
         expected_property_revision,
@@ -2125,14 +2021,13 @@ fn put_option(
 fn delete_option(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     option_id: &str,
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if property_id == super::property_semantics::STATUS_PROPERTY_ID {
         return Err(StoreError::new(
@@ -2142,13 +2037,7 @@ fn delete_option(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     let property = active_property(connection, data_source_id, property_id)?;
     require_revision(
         expected_property_revision,
@@ -2199,7 +2088,7 @@ fn delete_option(
 fn move_option(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     property_id: &str,
     option_id: &str,
@@ -2207,7 +2096,6 @@ fn move_option(
     placement: &DatabaseOptionPlacement,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if property_id == super::property_semantics::STATUS_PROPERTY_ID {
         return Err(StoreError::new(
@@ -2217,13 +2105,7 @@ fn move_option(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     let property = active_property(connection, data_source_id, property_id)?;
     require_revision(
         expected_property_revision,
@@ -2280,7 +2162,6 @@ fn delete_option_and_clear_values(
     expected_property_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if property_id == super::property_semantics::STATUS_PROPERTY_ID {
         return Err(StoreError::new(
@@ -2290,13 +2171,7 @@ fn delete_option_and_clear_values(
         ));
     }
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     let property = active_property(connection, data_source_id, property_id)?;
     require_revision(
         expected_property_revision,
@@ -2360,7 +2235,6 @@ fn delete_option_and_clear_values(
             &next,
             now,
             effects,
-            library_scope,
         )?;
     }
     config.options.retain(|option| option.id != option_id);
@@ -2383,7 +2257,7 @@ fn delete_option_and_clear_values(
 fn put_page_layout_entry(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     expected_revision: i64,
     property_id: &str,
@@ -2391,16 +2265,9 @@ fn put_page_layout_entry(
     placement: Option<&DatabasePageLayoutPlacement>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        library_scope,
-    )?;
+
     let revision = connection
         .query_row(
             "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
@@ -2454,20 +2321,13 @@ fn edit_property_value(
     input: &DatabasePropertyValueMutation,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if let Some(expected) = input.expected_membership_revision {
         if expected < 1 {
             return Err(invalid("Observed membership revision must be positive"));
         }
-        let source = require_source(connection, library_id, &input.address.data_source_id)?;
-        authorize_write(
-            connection,
-            project_id,
-            &source.database_id,
-            DatabaseWriteAction::Write,
-            library_scope,
-        )?;
+        let _source = require_source(connection, library_id, &input.address.data_source_id)?;
+
         let revision = connection
             .query_row(
                 "SELECT membership.revision FROM data_source_page_memberships membership \
@@ -2507,7 +2367,6 @@ fn edit_property_value(
                 &value,
                 now,
                 effects,
-                library_scope,
             )
         }
         DatabasePropertyValueEdit::PatchSet { delta } => match delta {
@@ -2525,7 +2384,6 @@ fn edit_property_value(
                 remove_option_ids,
                 now,
                 effects,
-                library_scope,
             ),
             DatabasePropertySetDelta::Relation {
                 add_page_ids,
@@ -2541,7 +2399,6 @@ fn edit_property_value(
                 },
                 now,
                 effects,
-                library_scope,
             ),
         },
         DatabasePropertyValueEdit::ReplaceOneRelation {
@@ -2558,7 +2415,6 @@ fn edit_property_value(
             },
             now,
             effects,
-            library_scope,
         ),
         DatabasePropertyValueEdit::ClearManyRelation {
             expected_value_revision,
@@ -2572,7 +2428,6 @@ fn edit_property_value(
             },
             now,
             effects,
-            library_scope,
         ),
     }
 }
@@ -2607,16 +2462,9 @@ fn edit_relation_value(
     edit: RelationEdit<'_>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
-    let source = require_source(connection, library_id, &address.data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        library_scope,
-    )?;
+    let _source = require_source(connection, library_id, &address.data_source_id)?;
+
     let property = active_property(connection, &address.data_source_id, &address.property_id)?;
     if property.value_type != "relation" {
         return Err(invalid("Relation value edit requires a Relation Property"));
@@ -2632,22 +2480,10 @@ fn edit_relation_value(
             &address.data_source_id,
             &address.property_id,
         )?;
-        authorize_relation_target_read(
-            connection,
-            library_id,
-            project_id,
-            &target_data_source_id,
-            library_scope,
-        )?;
+        require_relation_target_source(connection, library_id, &target_data_source_id)?;
     }
-    let outcome = super::relation::apply_value_edit(
-        connection,
-        library_id,
-        project_id.filter(|_| !library_scope),
-        address,
-        edit,
-        now,
-    )?;
+    let outcome =
+        super::relation::apply_value_edit(connection, library_id, project_id, address, edit, now)?;
     if !outcome.changed {
         return Ok(());
     }
@@ -2735,22 +2571,15 @@ pub(crate) fn synchronize_relation_value_projections(
 fn set_value(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     address: &DatabasePagePropertyAddress,
     expected_value_revision: i64,
     input_value: &Value,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let source = require_source(connection, library_id, &address.data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        library_scope,
-    )?;
+
     let property = active_property(connection, &address.data_source_id, &address.property_id)?;
     if property.value_type == "relation" {
         return Err(invalid("Relation Property requires a Relation value edit"));
@@ -2920,7 +2749,6 @@ fn add_remove_value(
     remove: &[String],
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let property = active_property(connection, data_source_id, property_id)?;
     if property.value_type != "multi_select" {
@@ -2992,7 +2820,6 @@ fn add_remove_value(
         &Value::Array(selection.into_iter().map(Value::String).collect()),
         now,
         effects,
-        library_scope,
     )
 }
 
@@ -3072,7 +2899,6 @@ pub(crate) struct PageTaskShorthandBatchPlan {
 pub(crate) enum PageTaskShorthandPreservedReason {
     TargetPropertyConflict,
     TargetSchemaIncompatible,
-    TagSchemaPermissionRequired,
     TagOptionLimit,
 }
 
@@ -3084,7 +2910,7 @@ pub(crate) struct AppliedPageTaskShorthandSchema {
 pub(crate) fn plan_page_task_shorthand(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     operation_id: &str,
     destination: &PageCopyDataSourceDestination,
     candidates: &[PageTaskShorthandCandidate],
@@ -3101,15 +2927,6 @@ pub(crate) fn plan_page_task_shorthand(
     let tags_config = tags
         .as_ref()
         .and_then(|property| option_config(property).ok());
-    let can_manage_schema = authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        false,
-    )
-    .is_ok();
-
     let mut option_by_name = tags_config
         .as_ref()
         .map(|config| {
@@ -3235,13 +3052,7 @@ pub(crate) fn plan_page_task_shorthand(
             .filter(|name| !option_by_name.contains_key(*name))
             .cloned()
             .collect::<Vec<_>>();
-        if !missing.is_empty() && !can_manage_schema {
-            preserved_reasons.insert(
-                candidate.root_id.clone(),
-                PageTaskShorthandPreservedReason::TagSchemaPermissionRequired,
-            );
-            continue;
-        }
+
         if used_option_ids.len() + missing.len() > super::MAX_PROPERTY_OPTIONS {
             preserved_reasons.insert(
                 candidate.root_id.clone(),
@@ -3315,7 +3126,6 @@ pub(crate) fn apply_page_task_shorthand_schema(
             revision,
             now,
             &mut effects,
-            false,
         )?;
     }
     let source_revision = require_source(connection, library_id, data_source_id)?.revision;
@@ -3441,78 +3251,17 @@ pub(crate) struct AgentMoveDataSourceFinalization {
 pub(crate) fn validate_page_transfer_data_source_source(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
-    data_source_id: &str,
-) -> Result<(), StoreError> {
-    let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        Some(requesting_project_id),
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        false,
-    )?;
-    Ok(())
-}
-
-pub(crate) fn validate_page_transfer_data_source_source_prevalidated(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: Option<&str>,
     data_source_id: &str,
 ) -> Result<(), StoreError> {
     require_source(connection, library_id, data_source_id)?;
-    if let Some(project_id) = requesting_project_id {
-        crate::library::require_project_in_library(connection, project_id, library_id)?;
-    }
     Ok(())
-}
-
-pub(crate) fn validate_page_copy_data_source_source(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: &str,
-    data_source_id: &str,
-) -> Result<(), StoreError> {
-    let source = require_source(connection, library_id, data_source_id)?;
-    let primary = project_primary_database(connection, library_id, requesting_project_id)?;
-    authorize_required(
-        connection,
-        Some(requesting_project_id),
-        primary.as_deref(),
-        &source.database_id,
-    )?;
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn resolve_page_transfer_data_source_destination(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: &str,
-    data_source_id: &str,
-    view_id: &str,
-    group_key: Option<&str>,
-    before_page_id: Option<&str>,
-) -> Result<PageCopyDataSourceDestination, StoreError> {
-    resolve_page_transfer_data_source_destination_with_access(
-        connection,
-        library_id,
-        Some(requesting_project_id),
-        data_source_id,
-        view_id,
-        group_key,
-        before_page_id,
-        true,
-        TransferGroupAxis::Durable,
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn resolve_page_transfer_board_destination(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     data_source_id: &str,
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
@@ -3520,15 +3269,11 @@ pub(crate) fn resolve_page_transfer_board_destination(
     before_page_id: Option<&str>,
     sorted_property_values: &[PageCopyValueDraft],
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
-    let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        Some(requesting_project_id),
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        false,
-    )?;
-    crate::library::require_project_in_library(connection, requesting_project_id, library_id)?;
+    let _source = require_source(connection, library_id, data_source_id)?;
+
+    if let Some(project_id) = requesting_project_id {
+        crate::library::require_project_in_library(connection, project_id, library_id)?;
+    }
     let drop_presentation = super::window::direct_drop_presentation(
         connection,
         library_id,
@@ -3545,15 +3290,14 @@ pub(crate) fn resolve_page_transfer_board_destination(
             "Block transfer inferred Properties must match the presented Board sort prefix",
         ));
     }
-    let mut destination = resolve_page_transfer_data_source_destination_with_access(
+    let mut destination = resolve_page_transfer_destination(
         connection,
         library_id,
-        Some(requesting_project_id),
+        requesting_project_id,
         data_source_id,
         view_id,
         group_key,
         before_page_id,
-        false,
         TransferGroupAxis::Effective(drop_presentation.group_property_id.as_deref()),
     )?;
     for value in sorted_property_values {
@@ -3572,7 +3316,7 @@ pub(crate) fn resolve_page_transfer_board_destination(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn resolve_page_transfer_data_source_destination_prevalidated(
+pub(crate) fn resolve_page_transfer_data_source_destination(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -3581,7 +3325,7 @@ pub(crate) fn resolve_page_transfer_data_source_destination_prevalidated(
     group_key: Option<&str>,
     before_page_id: Option<&str>,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
-    resolve_page_transfer_data_source_destination_with_access(
+    resolve_page_transfer_destination(
         connection,
         library_id,
         requesting_project_id,
@@ -3589,7 +3333,6 @@ pub(crate) fn resolve_page_transfer_data_source_destination_prevalidated(
         view_id,
         group_key,
         before_page_id,
-        false,
         TransferGroupAxis::Durable,
     )
 }
@@ -3598,7 +3341,7 @@ pub(crate) fn resolve_page_transfer_data_source_destination_prevalidated(
 pub(crate) fn resolve_page_transfer_list_destination(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     data_source_id: &str,
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
@@ -3606,21 +3349,17 @@ pub(crate) fn resolve_page_transfer_list_destination(
     target: &DatabaseListMoveTarget,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
     let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        Some(requesting_project_id),
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        false,
-    )?;
-    crate::library::require_project_in_library(connection, requesting_project_id, library_id)?;
+
+    if let Some(project_id) = requesting_project_id {
+        crate::library::require_project_in_library(connection, project_id, library_id)?;
+    }
     let projection = super::window::presented_list_projection(
         connection,
         library_id,
         view_id,
         preferences_override,
         &read_store_epoch(connection)?,
-        Some(requesting_project_id),
+        requesting_project_id,
     )?;
     if projection.graph.database_id != source.database_id
         || projection.graph.data_source_id != source.id
@@ -3751,7 +3490,7 @@ fn page_copy_position_anchor(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn resolve_page_transfer_data_source_destination_with_access(
+fn resolve_page_transfer_destination(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -3759,19 +3498,9 @@ fn resolve_page_transfer_data_source_destination_with_access(
     view_id: &str,
     group_key: Option<&str>,
     before_page_id: Option<&str>,
-    require_access: bool,
     group_axis: TransferGroupAxis<'_>,
 ) -> Result<PageCopyDataSourceDestination, StoreError> {
     let source = require_source(connection, library_id, data_source_id)?;
-    if require_access {
-        authorize_write(
-            connection,
-            requesting_project_id,
-            &source.database_id,
-            DatabaseWriteAction::Write,
-            false,
-        )?;
-    }
     if let Some(project_id) = requesting_project_id {
         crate::library::require_project_in_library(connection, project_id, library_id)?;
     }
@@ -3824,44 +3553,9 @@ enum TransferGroupAxis<'a> {
 pub(crate) fn validate_page_copy_data_source_destination(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
-    data_source_id: &str,
-    expected_data_source_revision: i64,
-) -> Result<(), StoreError> {
-    validate_page_copy_data_source_destination_with_access(
-        connection,
-        library_id,
-        Some(requesting_project_id),
-        data_source_id,
-        expected_data_source_revision,
-        true,
-    )
-}
-
-pub(crate) fn validate_page_copy_data_source_destination_prevalidated(
-    connection: &Connection,
-    library_id: &str,
     requesting_project_id: Option<&str>,
     data_source_id: &str,
     expected_data_source_revision: i64,
-) -> Result<(), StoreError> {
-    validate_page_copy_data_source_destination_with_access(
-        connection,
-        library_id,
-        requesting_project_id,
-        data_source_id,
-        expected_data_source_revision,
-        false,
-    )
-}
-
-fn validate_page_copy_data_source_destination_with_access(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: Option<&str>,
-    data_source_id: &str,
-    expected_data_source_revision: i64,
-    require_access: bool,
 ) -> Result<(), StoreError> {
     let source = require_source(connection, library_id, data_source_id)?;
     require_revision(
@@ -3869,15 +3563,6 @@ fn validate_page_copy_data_source_destination_with_access(
         source.revision,
         "Target Data Source revision changed",
     )?;
-    if require_access {
-        authorize_write(
-            connection,
-            requesting_project_id,
-            &source.database_id,
-            DatabaseWriteAction::Write,
-            false,
-        )?;
-    }
     let database_is_active = connection
         .query_row(
             "SELECT 1 FROM blocks WHERE id = ?1 AND library_id = ?2 \
@@ -3902,40 +3587,13 @@ fn validate_page_copy_data_source_destination_with_access(
 pub(crate) fn place_copied_page_in_data_source(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
-    source_page_id: &str,
-    copied_page_id: &str,
-    destination: &PageCopyDataSourceDestination,
-    now: &str,
-) -> Result<PageCopyDataSourcePlacement, StoreError> {
-    place_staged_page_in_data_source_with_access(
-        connection,
-        library_id,
-        Some(requesting_project_id),
-        Some(source_page_id),
-        copied_page_id,
-        destination,
-        StagedPagePlacementRevisions {
-            location_revision: 1,
-            metadata_revision: 1,
-            parent_revision: 1,
-        },
-        now,
-        true,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn place_copied_page_in_data_source_prevalidated(
-    connection: &Connection,
-    library_id: &str,
     requesting_project_id: Option<&str>,
     source_page_id: &str,
     copied_page_id: &str,
     destination: &PageCopyDataSourceDestination,
     now: &str,
 ) -> Result<PageCopyDataSourcePlacement, StoreError> {
-    place_staged_page_in_data_source_with_access(
+    place_page_in_data_source(
         connection,
         library_id,
         requesting_project_id,
@@ -3948,36 +3606,11 @@ pub(crate) fn place_copied_page_in_data_source_prevalidated(
             parent_revision: 1,
         },
         now,
-        false,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn place_staged_page_in_data_source(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: &str,
-    source_page_id: Option<&str>,
-    staged_page_id: &str,
-    destination: &PageCopyDataSourceDestination,
-    expected: StagedPagePlacementRevisions,
-    now: &str,
-) -> Result<PageCopyDataSourcePlacement, StoreError> {
-    place_staged_page_in_data_source_with_access(
-        connection,
-        library_id,
-        Some(requesting_project_id),
-        source_page_id,
-        staged_page_id,
-        destination,
-        expected,
-        now,
-        true,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn place_staged_page_in_data_source_prevalidated(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -3986,7 +3619,7 @@ pub(crate) fn place_staged_page_in_data_source_prevalidated(
     expected: StagedPagePlacementRevisions,
     now: &str,
 ) -> Result<PageCopyDataSourcePlacement, StoreError> {
-    place_staged_page_in_data_source_with_access(
+    place_page_in_data_source(
         connection,
         library_id,
         requesting_project_id,
@@ -3995,12 +3628,11 @@ pub(crate) fn place_staged_page_in_data_source_prevalidated(
         destination,
         expected,
         now,
-        false,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-fn place_staged_page_in_data_source_with_access(
+fn place_page_in_data_source(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -4009,7 +3641,6 @@ fn place_staged_page_in_data_source_with_access(
     destination: &PageCopyDataSourceDestination,
     expected: StagedPagePlacementRevisions,
     now: &str,
-    require_access: bool,
 ) -> Result<PageCopyDataSourcePlacement, StoreError> {
     if destination.values.len() > 512 {
         return Err(invalid("Data Source placement values exceed their bound"));
@@ -4030,15 +3661,6 @@ fn place_staged_page_in_data_source_with_access(
         source.revision,
         "Target Data Source revision changed",
     )?;
-    if require_access {
-        authorize_write(
-            connection,
-            requesting_project_id,
-            &source.database_id,
-            DatabaseWriteAction::Write,
-            false,
-        )?;
-    }
     let staged = connection
         .query_row(
             "SELECT block.library_id, block.placement_revision, block.metadata_revision, \
@@ -4283,7 +3905,6 @@ fn place_staged_page_in_data_source_with_access(
             &value.value,
             now,
             &mut effects,
-            !require_access,
         )?;
     }
     if let (Some(placement), Some(_)) = (&destination.view, view) {
@@ -4307,7 +3928,6 @@ fn place_staged_page_in_data_source_with_access(
                 .map(|anchor| anchor.page_id.as_str()),
             now,
             &mut effects,
-            !require_access,
         )?;
     }
     effects.database_ids.insert(source.database_id.clone());
@@ -4366,7 +3986,7 @@ fn place_staged_page_in_data_source_with_access(
 pub(crate) fn transfer_existing_page_for_block_transfer(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     page_id: &str,
     expected_parent_revision: i64,
     expected_active_membership_revision: i64,
@@ -4376,19 +3996,18 @@ pub(crate) fn transfer_existing_page_for_block_transfer(
     transfer_existing_page_for_structural_move(
         connection,
         library_id,
-        Some(requesting_project_id),
+        requesting_project_id,
         page_id,
         expected_parent_revision,
         expected_active_membership_revision,
         target,
         now,
         false,
-        false,
     )
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn transfer_existing_page_for_agent_move_prevalidated(
+pub(crate) fn transfer_existing_page_for_agent_move(
     connection: &Connection,
     library_id: &str,
     actor_project_id: Option<&str>,
@@ -4408,7 +4027,6 @@ pub(crate) fn transfer_existing_page_for_agent_move_prevalidated(
         expected_active_membership_revision,
         target,
         now,
-        true,
         defer_projection_refresh,
     )
 }
@@ -4423,7 +4041,7 @@ fn transfer_existing_page_for_structural_move(
     expected_active_membership_revision: i64,
     target: ExistingPageTransferTarget<'_>,
     now: &str,
-    preauthorized_library_scope: bool,
+
     defer_projection_refresh: bool,
 ) -> Result<ExistingPageTransferPlacement, StoreError> {
     let mut effects = MutationEffects::default();
@@ -4504,7 +4122,6 @@ fn transfer_existing_page_for_structural_move(
             &database_target,
             now,
             &mut effects,
-            preauthorized_library_scope,
             true,
             defer_projection_refresh,
         )?;
@@ -4539,7 +4156,6 @@ fn transfer_existing_page_for_structural_move(
                 &value.value,
                 now,
                 &mut effects,
-                preauthorized_library_scope,
             )?;
         }
         if let Some(view) = &destination.view {
@@ -4564,7 +4180,6 @@ fn transfer_existing_page_for_structural_move(
                 view.before.as_ref().map(|anchor| anchor.page_id.as_str()),
                 now,
                 &mut effects,
-                preauthorized_library_scope,
             )?;
         }
     }
@@ -4625,7 +4240,7 @@ fn transfer_existing_page_for_structural_move(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn finalize_agent_moved_pages_in_data_source_prevalidated(
+pub(crate) fn finalize_agent_moved_pages_in_data_source(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -4670,7 +4285,6 @@ pub(crate) fn finalize_agent_moved_pages_in_data_source_prevalidated(
                 &value.value,
                 now,
                 &mut effects,
-                true,
             )?;
         }
     }
@@ -4718,7 +4332,6 @@ pub(crate) fn finalize_agent_moved_pages_in_data_source_prevalidated(
                     &value,
                     now,
                     &mut effects,
-                    true,
                 )?;
             }
         }
@@ -4752,7 +4365,6 @@ pub(crate) fn finalize_agent_moved_pages_in_data_source_prevalidated(
                 .map(|anchor| anchor.page_id.as_str()),
             now,
             &mut effects,
-            true,
         )?;
     }
     refresh_scheduled_page_indexes(connection, &effects.page_ids, now)?;
@@ -4790,7 +4402,7 @@ fn transfer_page(
     target: &DatabaseTransferTarget,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
+
     allow_page_parent_transition: bool,
     defer_projection_refresh: bool,
 ) -> Result<(), StoreError> {
@@ -4821,12 +4433,7 @@ fn transfer_page(
     if let Some(project_id) = project_id {
         crate::library::require_project_in_library(connection, project_id, library_id)?;
     }
-    if !library_scope {
-        let project_id = project_id.ok_or_else(|| {
-            unauthorized("Project-scoped Database write requires an actor Project")
-        })?;
-        crate::library::require_page_write_access(connection, library_id, project_id, page_id)?;
-    }
+
     if !allow_page_parent_transition
         && (parent_kind == "page" || matches!(target, DatabaseTransferTarget::Page { .. }))
     {
@@ -4866,15 +4473,7 @@ fn transfer_page(
         .as_ref()
         .map(|membership| require_source(connection, library_id, &membership.data_source_id))
         .transpose()?;
-    if let Some(source) = &previous_source {
-        authorize_write(
-            connection,
-            project_id,
-            &source.database_id,
-            DatabaseWriteAction::Write,
-            library_scope,
-        )?;
-    }
+    if let Some(_source) = &previous_source {}
     if let Some(membership) = &active_membership {
         let relation_outcomes = super::relation::remove_membership_task_parent_edges(
             connection,
@@ -4951,20 +4550,12 @@ fn transfer_page(
                 return Err(unauthorized("A Page cannot transfer to another Library"));
             }
             crate::library::insert_library_placement(connection, library_id, page_id, None, now)?;
-            crate::library::insert_creator_resource_grant(
-                connection, project_id, library_id, "page", page_id, now,
-            )?;
+
             (None, None)
         }
         DatabaseTransferTarget::DataSource { data_source_id } => {
             let target_source = require_source(connection, library_id, data_source_id)?;
-            authorize_write(
-                connection,
-                project_id,
-                &target_source.database_id,
-                DatabaseWriteAction::Write,
-                library_scope,
-            )?;
+
             if active_membership
                 .as_ref()
                 .is_some_and(|membership| membership.data_source_id == *data_source_id)
@@ -5066,16 +4657,7 @@ fn transfer_page(
                 )
                 .optional()?
                 .ok_or_else(|| not_found("Target Page is unavailable"))?;
-            if !library_scope {
-                let project_id = project_id
-                    .ok_or_else(|| unauthorized("Project transfer requires an actor Project"))?;
-                crate::library::require_page_write_access(
-                    connection,
-                    library_id,
-                    project_id,
-                    target_page_id,
-                )?;
-            }
+
             effects.page_ids.insert(target_page_id.clone());
             (None, None)
         }
@@ -5592,7 +5174,6 @@ fn put_view(
     before_view_id: Option<&str>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     validate_id(database_id, "database_id", MAX_ID_LENGTH)?;
     validate_id(view_id, "view_id", MAX_ID_LENGTH)?;
@@ -5607,13 +5188,7 @@ fn put_view(
             "View Database and Data Source must share one active authority",
         ));
     }
-    authorize_write(
-        connection,
-        project_id,
-        database_id,
-        DatabaseWriteAction::ManageViews,
-        library_scope,
-    )?;
+
     let existing = view_row(connection, view_id)?;
     require_revision(
         expected_revision,
@@ -5652,7 +5227,6 @@ fn put_view(
         project_id,
         data_source_id,
         definition,
-        library_scope,
     )?;
     let encoded_config =
         super::view_contract::encode_definition_json(definition).map_err(invalid)?;
@@ -5765,7 +5339,6 @@ fn duplicate_view(
     new_view_id: &str,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let source_view = view_row(connection, source_view_id)?
         .filter(|view| view.database_id == database_id && view.lifecycle == "active")
@@ -5836,7 +5409,6 @@ fn duplicate_view(
         before_view_id.as_deref(),
         now,
         effects,
-        library_scope,
     )
 }
 
@@ -5851,7 +5423,6 @@ fn change_view_layout(
     layout: DatabaseViewLayout,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let view = view_row(connection, view_id)?
         .filter(|view| view.database_id == database_id && view.lifecycle == "active")
@@ -5887,7 +5458,6 @@ fn change_view_layout(
         None,
         now,
         effects,
-        library_scope,
     )
 }
 
@@ -5895,26 +5465,19 @@ fn change_view_layout(
 fn move_view(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     database_id: &str,
     view_id: &str,
     expected_revision: i64,
     placement: &DatabaseViewPlacement,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let container = require_container(connection, library_id, database_id)?;
     if container.lifecycle != "active" {
         return Err(not_found("Database is not active"));
     }
-    authorize_write(
-        connection,
-        project_id,
-        database_id,
-        DatabaseWriteAction::ManageViews,
-        library_scope,
-    )?;
+
     let view = view_row(connection, view_id)?.ok_or_else(|| not_found("View is unavailable"))?;
     if view.lifecycle != "active" || view.database_id != database_id {
         return Err(not_found("View is not active in this Database"));
@@ -5957,25 +5520,18 @@ fn move_view(
 fn delete_view(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     database_id: &str,
     view_id: &str,
     expected_revision: i64,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let container = require_container(connection, library_id, database_id)?;
     let view = view_row(connection, view_id)?
         .filter(|view| view.database_id == database_id && view.lifecycle == "active")
         .ok_or_else(|| not_found("Active Database View is unavailable"))?;
-    authorize_write(
-        connection,
-        project_id,
-        database_id,
-        DatabaseWriteAction::ManageViews,
-        library_scope,
-    )?;
+
     require_revision(
         expected_revision,
         view.revision,
@@ -6039,7 +5595,6 @@ fn position_pages(
     before_page_id: Option<&str>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     position_page_runs(
         connection,
@@ -6053,7 +5608,6 @@ fn position_pages(
         }],
         now,
         effects,
-        library_scope,
     )
 }
 
@@ -6061,13 +5615,12 @@ fn position_pages(
 fn position_page_runs(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     view_id: &str,
     pages: &[DatabasePagePosition],
     runs: &[LogicalPositionRun],
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     if pages.is_empty() || pages.len() > MAX_BULK_VALUES {
         return Err(invalid(format!(
@@ -6104,13 +5657,7 @@ fn position_page_runs(
     if source.database_id != view.database_id {
         return Err(corrupt("Database View source authority is inconsistent"));
     }
-    authorize_write(
-        connection,
-        project_id,
-        &view.database_id,
-        DatabaseWriteAction::Write,
-        library_scope,
-    )?;
+
     let definition =
         super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
     let order = super::manual_order::require_ready(connection, view_id)?;
@@ -6165,23 +5712,16 @@ fn position_page_runs(
 fn set_task_parent(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     pages: &[DatabaseTaskParentPage],
     parent_page_id: Option<&str>,
     before_page_id: Option<&str>,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
-    let source = require_source(connection, library_id, data_source_id)?;
-    authorize_write(
-        connection,
-        project_id,
-        &source.database_id,
-        DatabaseWriteAction::Write,
-        library_scope,
-    )?;
+    let _source = require_source(connection, library_id, data_source_id)?;
+
     active_property(
         connection,
         data_source_id,
@@ -6216,7 +5756,6 @@ fn move_list_occurrences(
     operation_index: u32,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let store_epoch = read_store_epoch(connection)?;
     let projection = super::window::presented_list_projection(
@@ -6244,23 +5783,9 @@ fn move_list_occurrences(
             "Semantic List move crossed its Data Source boundary",
         ));
     }
-    authorize_write(
-        connection,
-        project_id,
-        &plan.database_id,
-        DatabaseWriteAction::Write,
-        library_scope,
-    )?;
+
     for edit in &plan.property_edits {
-        edit_property_value(
-            connection,
-            library_id,
-            project_id,
-            edit,
-            now,
-            effects,
-            library_scope,
-        )?;
+        edit_property_value(connection, library_id, project_id, edit, now, effects)?;
     }
     if let Some(parent_run) = &plan.parent_run {
         set_task_parent(
@@ -6273,7 +5798,6 @@ fn move_list_occurrences(
             parent_run.before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         )?;
     }
     if let Some(position_run) = &plan.position_run {
@@ -6286,7 +5810,6 @@ fn move_list_occurrences(
             position_run.before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         )?;
     }
     let undo_recipe = super::list_drag::finish_list_inverse(connection, plan.undo_recipe)?;
@@ -6309,7 +5832,7 @@ fn move_list_occurrences(
 fn undo_list_occurrence_move(
     connection: &Connection,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     recipe: &DatabaseListMoveUndoRecipe,
     operation_index: u32,
     now: &str,
@@ -6317,18 +5840,9 @@ fn undo_list_occurrence_move(
 ) -> Result<(), StoreError> {
     data_history::authorize_list_recipe(connection, library_id, authority, recipe)?;
     let project_id = authority.actor_project_id.as_deref();
-    let library_scope = authority.is_library();
     let plan = super::list_drag::plan_list_occurrence_move_undo(connection, recipe)?;
     for edit in &plan.property_edits {
-        edit_property_value(
-            connection,
-            library_id,
-            project_id,
-            edit,
-            now,
-            effects,
-            library_scope,
-        )?;
+        edit_property_value(connection, library_id, project_id, edit, now, effects)?;
     }
     for parent_run in &plan.parent_runs {
         set_task_parent(
@@ -6341,7 +5855,6 @@ fn undo_list_occurrence_move(
             parent_run.before_page_id.as_deref(),
             now,
             effects,
-            library_scope,
         )?;
     }
     if !plan.position_runs.is_empty() {
@@ -6367,7 +5880,6 @@ fn undo_list_occurrence_move(
             &runs,
             now,
             effects,
-            library_scope,
         )?;
     }
     let undo_recipe = super::list_drag::finish_list_inverse(connection, plan.undo_recipe)?;
@@ -6410,7 +5922,7 @@ fn put_view_personal_preferences(
     now: &str,
     effects: &mut MutationEffects,
 ) -> Result<(), StoreError> {
-    let view = authorize_personal_view(connection, library_id, authority_project_id, view_id)?;
+    let view = require_personal_view(connection, library_id, authority_project_id, view_id)?;
     let preferences_override = DatabaseViewPreferencesOverrideInput {
         rules_override: rules_override.clone(),
         presentation_override: presentation_override.clone(),
@@ -6489,7 +6001,7 @@ fn set_view_occurrence_disclosure(
     effects: &mut MutationEffects,
 ) -> Result<(), StoreError> {
     validate_disclosure_target(target)?;
-    let view = authorize_personal_view(connection, library_id, project_id, view_id)?;
+    let view = require_personal_view(connection, library_id, project_id, view_id)?;
     let (target_kind, occurrence_key) = disclosure_storage_address(target);
     let exists = connection
         .query_row(
@@ -6558,7 +6070,7 @@ fn set_view_occurrence_disclosure(
     Ok(())
 }
 
-fn authorize_personal_view(
+fn require_personal_view(
     connection: &Connection,
     library_id: &str,
     project_id: Option<&str>,
@@ -6571,16 +6083,11 @@ fn authorize_personal_view(
     if source.database_id != view.database_id {
         return Err(corrupt("Database View source authority is inconsistent"));
     }
-    let primary_database_id = project_id
+    let _primary_database_id = project_id
         .map(|project_id| project_primary_database(connection, library_id, project_id))
         .transpose()?
         .flatten();
-    authorize_required(
-        connection,
-        project_id,
-        primary_database_id.as_deref(),
-        &view.database_id,
-    )?;
+
     Ok(view)
 }
 
@@ -6628,7 +6135,6 @@ pub(super) fn validate_view_definition(
     project_id: Option<&str>,
     data_source_id: &str,
     definition: &DatabaseViewDefinition,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let mut filter_ids = HashSet::new();
     for filter in &definition.rules.property_filters {
@@ -6769,7 +6275,6 @@ pub(super) fn validate_view_definition(
         data_source_id,
         definition,
         &property_semantics,
-        library_scope,
     )
 }
 
@@ -6781,19 +6286,16 @@ struct ViewPropertySemantics {
 fn validate_view_property_capabilities(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     definition: &DatabaseViewDefinition,
     property_semantics: &BTreeMap<String, ViewPropertySemantics>,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
     let filter_context = FilterCapabilityContext {
         connection,
         library_id,
-        project_id,
         data_source_id,
         property_semantics,
-        library_scope,
     };
     if [
         view_group_property(definition),
@@ -6856,10 +6358,9 @@ fn validate_view_property_capabilities(
 struct FilterCapabilityContext<'a> {
     connection: &'a Connection,
     library_id: &'a str,
-    project_id: Option<&'a str>,
+
     data_source_id: &'a str,
     property_semantics: &'a BTreeMap<String, ViewPropertySemantics>,
-    library_scope: bool,
 }
 
 fn validate_filter_capabilities(
@@ -6918,26 +6419,12 @@ fn validate_filter_capabilities(
             context.data_source_id,
             property_id,
         )?;
-        authorize_relation_target_read(
+        require_relation_target_source(
             context.connection,
             context.library_id,
-            context.project_id,
             &target_data_source_id,
-            context.library_scope,
         )?;
-        if !context.library_scope {
-            let project_id = context
-                .project_id
-                .ok_or_else(|| unauthorized("Project-scoped filter requires an actor Project"))?;
-            for page_id in &page_ids {
-                crate::library::require_page_read_access(
-                    context.connection,
-                    context.library_id,
-                    project_id,
-                    page_id,
-                )?;
-            }
-        }
+
         super::relation::validate_active_targets(
             context.connection,
             &target_data_source_id,
@@ -7969,7 +7456,7 @@ fn seal_commit(
     context: &BoundModuleContext,
     request: &ModuleApplyRequest<Vec<DatabaseIntent>>,
     request_hash: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     now: &str,
     effects: MutationEffects,
 ) -> Result<
@@ -8049,13 +7536,11 @@ fn seal_commit(
         expand_database_coordinates(connection, impact_for_payload(&event_payload)?)?;
     let payload_json =
         serde_json::to_string(&payload).map_err(|_| internal("Database event payload"))?;
-    let authorization_before = scope.authorization_before()?;
     super::record_local_projection_delta(
         connection,
         scope.evidence(),
         &context.library_id.0,
         &projection_impact,
-        &authorization_before,
     )?;
     super::record_page_detail_projection_delta(
         connection,
@@ -8142,30 +7627,13 @@ fn require_source(
     Ok(source)
 }
 
-fn authorize_relation_target_read(
+fn require_relation_target_source(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
     target_data_source_id: &str,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
-    let target = require_source(connection, library_id, target_data_source_id)?;
-    if library_scope {
-        return Ok(());
-    }
-    let project_id = project_id
-        .ok_or_else(|| unauthorized("Project-scoped Relation read requires an actor Project"))?;
-    let primary =
-        super::authorization::project_primary_database(connection, library_id, project_id)?;
-    if super::authorization::authorize_database(
-        connection,
-        project_id,
-        primary.as_deref(),
-        &target.database_id,
-    )? {
-        return Ok(());
-    }
-    Err(not_found("Relation target is unavailable"))
+    require_source(connection, library_id, target_data_source_id)?;
+    Ok(())
 }
 
 fn property_row(
@@ -8208,136 +7676,12 @@ pub(crate) fn active_property(
     Ok(property)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DatabaseWriteAction {
-    Write,
-    ManageSchema,
-    ManageViews,
-    ManageNamespace,
-}
-
-fn authorize_write(
-    connection: &Connection,
-    project_id: Option<&str>,
-    database_id: &str,
-    action: DatabaseWriteAction,
-    library_scope: bool,
-) -> Result<(), StoreError> {
-    if library_scope {
-        return Ok(());
+fn mutation_route(context: &BoundModuleContext) -> DatabaseMutationRoute {
+    let project_id = context.project_id.as_ref().map(|id| id.0.clone());
+    DatabaseMutationRoute {
+        actor_project_id: project_id.clone(),
+        project_id,
     }
-    let project_id = project_id
-        .ok_or_else(|| unauthorized("Project-scoped Database write requires an actor Project"))?;
-    let project = connection
-        .query_row(
-            "SELECT database_block_id, lifecycle FROM projects WHERE id = ?1",
-            [project_id],
-            |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?)),
-        )
-        .optional()?
-        .ok_or_else(|| unauthorized("Project is unavailable"))?;
-    if project.1 != "active" {
-        return Err(unauthorized("Project is read-only"));
-    }
-    let primary = project.0.or(connection
-        .query_row(
-            "SELECT database_block_id FROM project_database_bindings \
-                 WHERE project_id = ?1 AND lifecycle = 'active'",
-            [project_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?);
-    if primary.as_deref() == Some(database_id) {
-        return Ok(());
-    }
-    if action != DatabaseWriteAction::Write {
-        return Err(unauthorized(
-            "Database administration requires the Project's primary Database",
-        ));
-    }
-    let direct = connection
-        .query_row(
-            "SELECT 1 FROM project_resource_grants WHERE project_id = ?1 \
-             AND root_kind = 'database' AND root_id = ?2 AND access = 'read_write' \
-             AND lifecycle = 'active'",
-            params![project_id, database_id],
-            |_| Ok(()),
-        )
-        .optional()?;
-    if direct.is_some() {
-        return Ok(());
-    }
-    let document_id = connection
-        .query_row(
-            "SELECT containing.document_id FROM blocks block \
-             JOIN document_block_index containing ON containing.block_id = block.id \
-             WHERE block.id = ?1 AND block.type = 'database'",
-            [database_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?
-        .flatten();
-    let Some(document_id) = document_id else {
-        return Err(unauthorized("Project cannot mutate this Database"));
-    };
-    let owner_page_id = connection
-        .query_row(
-            "SELECT page.block_id FROM pages page \
-             JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
-             WHERE page.document_id = ?1 AND block.lifecycle <> 'deleted'",
-            [document_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .ok_or_else(|| corrupt("Embedded Database has no owning Page"))?;
-    let inherited = connection
-        .query_row(
-            "WITH RECURSIVE ancestors(page_id) AS (\
-               SELECT ?2 UNION ALL SELECT page.parent_id FROM pages page JOIN ancestors current \
-                 ON page.block_id = current.page_id WHERE page.parent_kind = 'page'\
-             ) SELECT 1 FROM project_resource_grants grant_row JOIN ancestors \
-               ON grant_row.root_id = ancestors.page_id \
-             WHERE grant_row.project_id = ?1 AND grant_row.root_kind = 'page' \
-               AND grant_row.access = 'read_write' AND grant_row.lifecycle = 'active' LIMIT 1",
-            params![project_id, owner_page_id],
-            |_| Ok(()),
-        )
-        .optional()?;
-    if inherited.is_some() {
-        return Ok(());
-    }
-    Err(unauthorized("Project cannot mutate this Database"))
-}
-
-fn mutation_authority(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-) -> Result<DatabaseMutationAuthority, StoreError> {
-    if let Some(project_id) = context.project_id.as_ref() {
-        let project_id = connection
-            .query_row(
-                "SELECT id FROM projects \
-                 WHERE id = ?1 AND library_id = ?2 AND lifecycle = 'active'",
-                params![project_id.0, library_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| unauthorized("Bound Project is not active in this Library"))?;
-        return Ok(DatabaseMutationAuthority {
-            actor_project_id: Some(project_id.clone()),
-            project_id: Some(project_id),
-        });
-    }
-    if !is_trusted_library_database_context(context) {
-        return Err(unauthorized(
-            "Database mutations require a Project or trusted Library scope",
-        ));
-    }
-    Ok(DatabaseMutationAuthority {
-        actor_project_id: None,
-        project_id: None,
-    })
 }
 
 fn assert_identity(

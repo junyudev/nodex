@@ -3,7 +3,6 @@ import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexWaitThreads } from "./CodexWaitThreads";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
@@ -11,7 +10,12 @@ import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProjectSessionFork } from "./CodexProjectSessionFork";
 import { CodexReadThreadHistory } from "./CodexReadThreadHistory";
-import { CodexSessionThreadLaunch } from "./CodexSessionThreadLaunch";
+import {
+  AppToolInvocationInbox,
+  type AppToolInvocation,
+} from "../app-tools/AppToolInvocationInbox";
+import { CodexApplicationRequestInbox } from "../codex-runtime/CodexApplicationRequestInbox";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
@@ -23,9 +27,10 @@ import { ConversationCommands } from "./ConversationCommands";
 import { make } from "./CodexAppProtocolTools";
 
 interface Calls {
+  nativeCommands: AppToolInvocation[];
+  nativeActive: boolean;
   coreReads: number;
   directoryReads: number;
-  automationWrites: number;
   historyReads: number;
   turns: number;
   titles: number;
@@ -37,9 +42,10 @@ interface Calls {
 }
 
 const makeCalls = (): Calls => ({
+  nativeCommands: [],
+  nativeActive: true,
   coreReads: 0,
   directoryReads: 0,
-  automationWrites: 0,
   historyReads: 0,
   turns: 0,
   titles: 0,
@@ -50,7 +56,12 @@ const makeCalls = (): Calls => ({
   handoffInputs: [],
 });
 
-const buildTools = (backend: "codex" | "acp", calls: Calls, missing = false) =>
+const buildTools = (
+  backend: "codex" | "acp",
+  calls: Calls,
+  missing = false,
+  hostId = "ssh:builder",
+) =>
   make.pipe(
     Effect.provideService(
       CoreModules,
@@ -97,7 +108,7 @@ const buildTools = (backend: "codex" | "acp", calls: Calls, missing = false) =>
         Effect.sync(() => {
           calls.directoryReads += 1;
           return {
-            durable: { sessionId: "session-target" },
+            durable: { sessionId: "session-target", executionHostId: hostId },
             summary: {
               threadName: "**Target** [task](https://example.com)",
               threadPreview: "",
@@ -105,21 +116,6 @@ const buildTools = (backend: "codex" | "acp", calls: Calls, missing = false) =>
           } as never;
         }),
     } as unknown as CodexThreadDirectory["Service"]),
-    Effect.provideService(AutomationApplication, {
-      definitions: {
-        create: () =>
-          Effect.sync(() => {
-            calls.automationWrites += 1;
-            return {} as never;
-          }),
-        get: () => Effect.succeed({} as never),
-        update: () =>
-          Effect.sync(() => {
-            calls.automationWrites += 1;
-            return {} as never;
-          }),
-      },
-    } as unknown as AutomationApplication["Service"]),
     Effect.provideService(CodexReadThreadHistory, {
       read: () =>
         Effect.sync(() => {
@@ -186,7 +182,26 @@ const buildTools = (backend: "codex" | "acp", calls: Calls, missing = false) =>
       CodexPendingServerRequestRuntime,
       {} as CodexPendingServerRequestRuntime["Service"],
     ),
-    Effect.provideService(CodexSessionThreadLaunch, {} as CodexSessionThreadLaunch["Service"]),
+    Effect.provideService(AppToolInvocationInbox, {
+      invoke: (input: AppToolInvocation) =>
+        Effect.sync(() => {
+          calls.nativeCommands.push(input);
+          return {
+            content: [],
+            structuredContent: { sessionId: "runtime-session", threadId: "runtime-thread" },
+          };
+        }),
+    } as unknown as AppToolInvocationInbox["Service"]),
+    Effect.provideService(CodexApplicationRequestInbox, {
+      captureNativeTurnSource: () => Effect.succeed({ isActive: () => calls.nativeActive }),
+    } as unknown as CodexApplicationRequestInbox["Service"]),
+    Effect.provideService(CodexMainConversationManagers, {
+      current: () => ({
+        assertCurrent: (generation: number) => {
+          if (generation !== 7 || !calls.nativeActive) throw new Error("Native generation retired");
+        },
+      }),
+    } as unknown as CodexMainConversationManagers["Service"]),
     Effect.provideService(CodexSidebarSectionSync, {} as CodexSidebarSectionSync["Service"]),
     Effect.provideService(CodexThreadCatalog, {} as CodexThreadCatalog["Service"]),
     Effect.provideService(CodexWaitThreads, { execute: () => Effect.die("unused wait tool") }),
@@ -215,25 +230,6 @@ it.effect("rejects ACP-owned targets before invoking any Codex thread owner", ()
       call("fork_thread", { threadId: target, environment: { type: "same-directory" } }),
       call("fork_thread", { threadId: target, environment: { type: "worktree" } }),
       call("handoff_thread", { threadId: target }),
-      call("automation_update", {
-        mode: "create",
-        kind: "heartbeat",
-        name: "No",
-        prompt: "No",
-        rrule: "FREQ=HOURLY",
-        status: "ACTIVE",
-        targetThreadId: target,
-      }),
-      call("automation_update", {
-        mode: "update",
-        id: "automation-no",
-        kind: "heartbeat",
-        name: "No",
-        prompt: "No",
-        rrule: "FREQ=HOURLY",
-        status: "ACTIVE",
-        targetThreadId: target,
-      }),
     ];
 
     for (const attempt of attempts) {
@@ -244,7 +240,6 @@ it.effect("rejects ACP-owned targets before invoking any Codex thread owner", ()
 
     assert.strictEqual(calls.coreReads, attempts.length);
     assert.strictEqual(calls.directoryReads, 0);
-    assert.strictEqual(calls.automationWrites, 0);
     assert.strictEqual(calls.historyReads, 0);
     assert.strictEqual(calls.turns, 0);
     assert.strictEqual(calls.titles, 0);
@@ -255,7 +250,7 @@ it.effect("rejects ACP-owned targets before invoking any Codex thread owner", ()
   }),
 );
 
-it.effect("admits a Core-owned Codex target before sending a message", () =>
+it.effect("admits an explicitly remote Core-owned Codex target before sending a message", () =>
   Effect.gen(function* () {
     const calls = makeCalls();
     const tools = yield* buildTools("codex", calls);
@@ -302,4 +297,55 @@ it.effect("read_thread can inspect a native task before durable workspace import
     assert.strictEqual(calls.historyReads, 1);
     assert.strictEqual(calls.directoryReads, 0);
   }),
+);
+
+it.effect(
+  "local native tool Session writes retain original source and enter the Runtime owner",
+  () =>
+    Effect.gen(function* () {
+      const calls = makeCalls();
+      const tools = yield* buildTools("codex", calls, false, "local");
+      const context = { nativeSource: { hostId: "local", generation: 7 } };
+      const source = call("create_thread", {
+        prompt: "Build",
+        target: { type: "projectless" },
+        thinking: "high",
+      });
+      assert.isTrue((yield* tools.execute(source as never, context)).success);
+      assert.isTrue((yield* tools.execute(source as never, context)).success);
+      assert.deepEqual(calls.nativeCommands[0]?.arguments, {
+        prompt: "Build",
+        target: { type: "projectless" },
+        reasoningEffort: "high",
+      });
+      assert.deepEqual(calls.nativeCommands[0]?.arguments, calls.nativeCommands[1]?.arguments);
+      assert.equal(calls.nativeCommands[0]?.caller.turnId, "turn-caller");
+      assert.equal(calls.nativeCommands[0]?.caller.callId, source.callId);
+      assert.equal(calls.nativeCommands[0]?.caller.generation, 7);
+      assert.equal(calls.coreReads, 0);
+      assert.isTrue(
+        (yield* tools.execute(
+          call("send_message_to_thread", { threadId: "target", prompt: "Continue" }) as never,
+          context,
+        )).success,
+      );
+      assert.isTrue(
+        (yield* tools.execute(call("fork_thread", { threadId: "target" }) as never, context))
+          .success,
+      );
+      assert.deepEqual(
+        calls.nativeCommands.slice(2).map((input) => [input.name, input.arguments]),
+        [
+          ["send_message_to_session", { sessionId: "session-target", prompt: "Continue" }],
+          ["fork_session", { sessionId: "session-target" }],
+        ],
+      );
+      assert.equal(calls.turns, 0);
+      assert.equal(calls.conversationForks, 0);
+      assert.equal(calls.worktreeForks, 0);
+      calls.nativeActive = false;
+      assert.isFalse(calls.nativeCommands[0]?.caller.isActive());
+      assert.isFalse((yield* tools.execute(source as never, context)).success);
+      assert.equal(calls.nativeCommands.length, 4);
+    }),
 );

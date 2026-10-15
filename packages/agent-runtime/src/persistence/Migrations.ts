@@ -78,6 +78,15 @@ import Migration0061 from "./Migrations/061_PullRequestReviewGuides.ts";
 import Migration0062 from "./Migrations/062_OrchestrationCommandIdentity.ts";
 import Migration0063 from "./Migrations/063_ProviderConfigurationOwnership.ts";
 import Migration0064 from "./Migrations/064_SubagentOverviewIndex.ts";
+import Migration0065 from "./Migrations/065_CommandReceiptConvergence.ts";
+import Migration0066 from "./Migrations/066_ProjectRouting.ts";
+import Migration0067 from "./Migrations/067_QueuedRunWindow.ts";
+import Migration0068 from "./Migrations/068_AgentControlIndexes.ts";
+import Migration0069 from "./Migrations/069_NativeIdentityMetadata.ts";
+import Migration0070 from "./Migrations/070_MessageIntakeControlIndexes.ts";
+import Migration0071 from "./Migrations/071_AddressedUserMessageIndex.ts";
+import Migration0072 from "./Migrations/072_HandoffHistoryIndexes.ts";
+import Migration0073 from "./Migrations/073_TurnStartMetadata.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -156,6 +165,15 @@ export const migrationEntries = [
   [62, "OrchestrationCommandIdentity", Migration0062],
   [63, "ProviderConfigurationOwnership", Migration0063],
   [64, "SubagentOverviewIndex", Migration0064],
+  [65, "CommandReceiptConvergence", Migration0065],
+  [66, "ProjectRouting", Migration0066],
+  [67, "QueuedRunWindow", Migration0067],
+  [68, "AgentControlIndexes", Migration0068],
+  [69, "NativeIdentityMetadata", Migration0069],
+  [70, "MessageIntakeControlIndexes", Migration0070],
+  [71, "AddressedUserMessageIndex", Migration0071],
+  [72, "HandoffHistoryIndexes", Migration0072],
+  [73, "TurnStartMetadata", Migration0073],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -1,7 +1,4 @@
-import type { CommandExecutionApprovalDecision } from "@nodex/codex-app-server-protocol/v2/CommandExecutionApprovalDecision";
-import type { FileChangeApprovalDecision } from "@nodex/codex-app-server-protocol/v2/FileChangeApprovalDecision";
 import type { McpServerElicitationRequestResponse } from "@nodex/codex-app-server-protocol/v2/McpServerElicitationRequestResponse";
-import type { PermissionsRequestApprovalResponse } from "@nodex/codex-app-server-protocol/v2/PermissionsRequestApprovalResponse";
 import type { ToolRequestUserInputResponse } from "@nodex/codex-app-server-protocol/v2/ToolRequestUserInputResponse";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
 import type { TurnSteerParams } from "@nodex/codex-app-server-protocol/v2/TurnSteerParams";
@@ -17,8 +14,7 @@ export interface ConversationFollowerTurnStart {
     localTurnMetadata?: unknown;
     attachments?: unknown;
     commentAttachments?: unknown;
-    useAppServerPermissionDefault?: boolean;
-    usePermissionSelection?: boolean;
+
     inheritThreadSettings?: boolean;
     writingBlockContextPrepared?: boolean;
     threadStartKind?: unknown;
@@ -35,13 +31,6 @@ export interface ConversationFollowerParams extends CodexQueuedMessageFollowerPa
   "thread-follower-set-queued-follow-ups-state": Conversation & {
     state: Record<string, readonly unknown[]>;
   };
-  "thread-follower-command-approval-decision": Request & {
-    decision: CommandExecutionApprovalDecision;
-  };
-  "thread-follower-file-approval-decision": Request & { decision: FileChangeApprovalDecision };
-  "thread-follower-permissions-request-approval-response": Request & {
-    response: PermissionsRequestApprovalResponse;
-  };
   "thread-follower-submit-mcp-server-elicitation-response": Request & {
     response: McpServerElicitationRequestResponse;
   };
@@ -50,8 +39,7 @@ export interface ConversationFollowerParams extends CodexQueuedMessageFollowerPa
   "thread-follower-edit-last-user-turn": Conversation & {
     turnId: string;
     message: string;
-    agentMode?: unknown;
-    shouldSendPermissionOverrides?: boolean;
+
     serviceTier?: TurnStartParams["serviceTier"];
     additionalContext?: unknown;
     writingBlockContextPrepared?: boolean;
@@ -75,7 +63,6 @@ export interface ConversationFollowerParams extends CodexQueuedMessageFollowerPa
   "thread-follower-update-thread-settings": Conversation & {
     threadSettings: unknown;
     condition?: unknown;
-    activeTurnId?: string | null;
   };
 }
 export type ConversationFollowerMethod = keyof ConversationFollowerParams;

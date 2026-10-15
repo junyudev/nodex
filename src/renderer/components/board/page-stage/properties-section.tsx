@@ -345,7 +345,7 @@ function DataSourcePropertyRow({
 
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
   const pageId = controller.page?.id ?? "";
-  const baseFiles = usePageFiles(controller.contentAccessContext, pageId);
+  const baseFiles = usePageFiles(controller.contentRoutingContext, pageId);
   const filesSignal = resolvePageFilesPropertySignal({
     hasManifest: baseFiles.inventory !== null,
     unplacedTotal: baseFiles.inventory?.unplaced_total ?? 0,

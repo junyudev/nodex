@@ -1,3 +1,5 @@
+import { makeFrameGuard } from "../SseIntake.ts";
+import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import { OpenCode, type OpenCodeClient } from "@opencode/client/effect";
 import { OpenCodeEvent } from "@opencode/protocol/groups/event";
 import * as Context from "effect/Context";
@@ -75,7 +77,11 @@ export interface OpenCode2Api {
   readonly events: Effect.Effect<
     Stream.Stream<
       OpenCode2StreamEvent,
-      HttpClientError.HttpClientError | Sse.Retry | Sse.SseError | OpenCode2SilentStreamError
+      | HttpClientError.HttpClientError
+      | Sse.Retry
+      | Sse.SseError
+      | OpenCode2SilentStreamError
+      | BoundedQueue.BufferOverflow
     >,
     HttpClientError.HttpClientError
   >;
@@ -143,22 +149,36 @@ const readEvents = HttpClient.get("/api/event", {
   headers: { accept: "text/event-stream" },
 }).pipe(
   Effect.flatMap(HttpClientResponse.filterStatusOk),
-  Effect.map((response) =>
-    response.stream.pipe(
+  Effect.map((response) => {
+    const guard = makeFrameGuard("OpenCode2 SSE frame");
+    return response.stream.pipe(
+      Stream.tap((chunk) =>
+        Effect.try({
+          try: () => guard(chunk),
+          catch: (cause) =>
+            cause instanceof BoundedQueue.BufferOverflow
+              ? cause
+              : new BoundedQueue.BufferOverflow({
+                  label: "OpenCode2 SSE frame",
+                  maxItems: 1,
+                  maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+                }),
+        }),
+      ),
       Stream.timeoutOrElse({
         duration: SILENT_STREAM_TIMEOUT,
         orElse: () => Stream.fail(new OpenCode2SilentStreamError()),
       }),
       Stream.decodeText,
-      Stream.pipeThroughChannel(Sse.decode()),
+      Stream.pipeThroughChannel(Sse.decode({ maxEventSize: BoundedQueue.MAX_PROMPT_BYTES })),
       Stream.filterMapEffect((frame) => {
         const decoded = decodeEvent(frame.data);
         return Result.isSuccess(decoded)
           ? Effect.succeed(Result.succeed<OpenCode2StreamEvent>(decoded.success))
           : undecodable(frame.data);
       }),
-    ),
-  ),
+    );
+  }),
 );
 
 /**

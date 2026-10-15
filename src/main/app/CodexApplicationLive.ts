@@ -41,10 +41,7 @@ import {
   CodexPendingServerRequestRuntime,
   make as makeCodexPendingServerRequestRuntime,
 } from "../codex-application/CodexPendingServerRequestRuntime";
-import {
-  CodexPermissions,
-  live as codexPermissionsLive,
-} from "../codex-application/CodexPermissions";
+
 import {
   CodexPreferences,
   live as codexPreferencesLive,
@@ -421,12 +418,6 @@ const connection = codexConnectionLive.pipe(Layer.provideMerge(Layer.mergeAll(ke
 const tools = codexToolRuntimeLive({
   supportsChatGptApps: CODEX_INTEGRATION_CAPABILITIES.chatGptApps,
 }).pipe(Layer.provideMerge(Layer.merge(kernel, account)));
-const permissions = Layer.unwrap(
-  Effect.gen(function* () {
-    const codex = yield* CodexPlatform;
-    return codexPermissionsLive({ codexHome: codex.codexHome });
-  }),
-).pipe(Layer.provideMerge(kernel));
 
 const rendererPresentation = Layer.effect(
   CodexRendererPresentationRegistry,
@@ -453,7 +444,6 @@ const applicationServices = Layer.mergeAll(
   connection,
   tools,
   codexPreferencesLive,
-  permissions,
   events,
   rendererPresentation,
   readState,
@@ -483,7 +473,6 @@ export const live: Layer.Layer<
   | CodexConnection
   | CodexToolRuntime
   | CodexPreferences
-  | CodexPermissions
   | CodexApplicationEventHub
   | CodexRendererPresentationRegistry
   | CodexThreadReadState

@@ -1,6 +1,6 @@
 # Nodex Domain Context
 
-Data Source Properties use a typed schema owned by the Database Module. A `relation` Property targets one Data Source in the same Library and stores normalized, non-owning Page-reference edges: cardinality `one` is nullable, while cardinality `many` is an unordered unique set. The schema selects the legal mutation family; query/presentation capabilities do not duplicate edit grammar. Relation never changes Page ownership or grants access. Reads return authorization-safe bounded previews; complete values use a separate bounded window. Relation supports membership/empty filters and is neither sortable nor groupable.
+Data Source Properties use a typed schema owned by the Database Module. A `relation` Property targets one Data Source in the same Library and stores normalized, non-owning Page-reference edges: cardinality `one` is nullable, while cardinality `many` is an unordered unique set. The schema selects the legal mutation family; query/presentation capabilities do not duplicate edit grammar. Relation never changes Page ownership. Reads return bounded previews; complete values use a separate bounded window. Relation supports membership/empty filters and is neither sortable nor groupable.
 
 This document defines the canonical domain language for Nodex. ADR 0017 moves
 durable content from Project-owned Spaces to the local Profile's Library,
@@ -15,8 +15,9 @@ authority.
 Nodex is a local-first workspace for durable content and agent work. A local
 Profile owns one Library containing Pages, Databases, Blocks, Documents, and
 their durable history. A Project is an execution context: it owns filesystem
-roots, sessions, terminals, Threads, and approval policy, binds one
-primary Database, and receives grants to Library resources. Project lifecycle
+roots, sessions, terminals and Threads, and binds one primary Database.
+The single user and all Agents have full access to every resource in that Profile.
+Projects organize execution, placement and lifecycle. Project lifecycle
 never owns or deletes Library content.
 
 Accepted system-wide decisions live in `docs/adr/`.
@@ -27,7 +28,7 @@ Accepted system-wide decisions live in `docs/adr/`.
 
 The Agent Runtime coordinates execution conversations and their work. It owns Runs,
 native provider sessions, queued messages, delegated tasks and result delivery. It
-does not own Library content or grant access to it.
+does not own Library content.
 
 ### Session
 
@@ -78,7 +79,7 @@ from any Project.
 Library is the durable content scope. `libraryId` is the ownership coordinate
 for Blocks, Documents, Databases, Data Sources, Views, assets, search units,
 schedules, revisions, and content mutation evidence. One Profile has one
-Library; many Projects may receive access to it.
+Library; Projects reference its content without owning it.
 
 Library is not a Block. A top-level Block has a Library parent and a fractional
 rank. Archiving or deleting a Project leaves the Library and all of its content
@@ -137,10 +138,10 @@ A Page Link is an ordinary link to a canonical Page deeplink.
 An Owning Page Shell is a childless `page` Block created by Core and is the only
 one of these occurrences that establishes Page containment.
 Mention, Reference Block, and Link edges never change parentage, membership,
-grants, or copy closure.
+or copy closure.
 
 Page Stage resolves the owned Document with exact `(libraryId, pageId)`
-identity after Project access has been evaluated. It never derives a Document
+identity after resolving the current resource lifecycle. It never derives a Document
 ID from Page ID, treats a query row as content authority, or initializes an
 existing Document from a projection. Only a ready descriptor for the registered
 sync engine may mount.
@@ -159,8 +160,8 @@ such as `BoardCard` or a generic request-card component.
 A File is a durable Library resource with stable identity, a nonunique default
 name, metadata revision, lifecycle, and a current immutable content version.
 It has no owner Page. File versions refer to immutable Profile Blob bytes;
-sharing bytes does not merge identities. Direct Project File grants authorize
-global reads and writes; creation provenance is not authority.
+sharing bytes does not merge identities. The current Profile can read and write all
+Files; Project placement and creation provenance do not restrict access.
 _Avoid_: Page-owned File, attachment as ownership, Data Source Files Property.
 
 ### Page File entry
@@ -176,8 +177,8 @@ A child's entries are not flattened into its parent.
 A File placement is an image or attachment occurrence in a Page Document in
 the File's Library. It references stable File identity and does not require a
 Page File entry. Removing or moving a placement leaves the File intact; Page
-copy likewise shares its File IDs. The containing Page authorizes only current
-presentation metadata and bytes, without granting File history or global writes.
+copy likewise shares its File IDs. The containing Page presents the File's current
+metadata and bytes; retained versions belong to File history.
 _Avoid_: Asset URI as an access capability.
 
 ### Logical folder
@@ -193,12 +194,9 @@ history-scoped content owner. Its identity is `documentId`; its registration
 selects schema, content model, and sync engine. Document is an implementation
 coordinate and is never exposed as a Page parent noun.
 
-The public identity of an authorized Document observation is
-`(libraryId, accessContext, documentId)`. Library names the physical content
-lifetime; `accessContext` names either direct Library authority or one
-authorized Project path. Mounted sessions, sync subscriptions, caches, and
-Canvas outboxes retain that complete identity and never synthesize a Project
-owner for Library-authorized content.
+A Document observation identifies its Library and Document. Mounted sessions, sync
+subscriptions, caches and Canvas outboxes retain the physical content lifetime and
+Document generation. Project placement does not change that identity.
 
 A `block_tree` Page Document uses Yjs and has exactly two roots:
 
@@ -249,11 +247,8 @@ Document ID in a host shell. Project creation seeds one deterministic primary
 Canvas, but primary status is only the default Project entry point—not a
 different Document or Database View type.
 
-A Library-parented Canvas receives explicit Project resource grants like any
-other root. A Page-parented Canvas has no direct grant and inherits access from
-the host Page ownership path. Moving between those placements changes the
-direct-grant state atomically with the owner shell; it never changes the
-Canvas, Block, or Document identity.
+Canvas placement belongs to the Library or a host Page. Moving between placements
+preserves Canvas, Block and Document identity.
 
 Synced Block and Reusable Template remain dormant capabilities without ordinary
 Library UI. Their hidden source Blocks have real Library placement and body-only
@@ -387,7 +382,7 @@ _Avoid_: View kind, Table view, toggle-list view, Calendar layout
 A View Preference Override is a sparse Profile-local Filter and Presentation
 preference for one Database View. It can change only the fields explicitly
 supported for that View's current Layout. It cannot change the View's name,
-target Data Source, Layout, rank, lifecycle, access scope, or Manual Order.
+target Data Source, Layout, rank, lifecycle, or Manual Order.
 _Avoid_: Project view preference, personal View copy
 
 ### Effective View
@@ -430,14 +425,14 @@ policy. The Page must be actively parented by the View's target Source.
 
 The first implementation requires the target Source's home Database to equal
 the View's host Database. A future linked View will own a new View identity and
-must require access to both host Database and target Source home Database. An
+must resolve both the host Database and target Source home Database in the same Library. An
 inline Database View Block stores only its own Block ID and stable View ID;
 query rows never become host Document children.
 
 ### Project
 
 A Project is an execution context, not content. It owns filesystem sources,
-ordinary Sessions, Codex Threads, runtime settings, and approval policy. A
+ordinary Sessions, execution Thread references, and runtime settings. A
 Project may have zero Sessions. A Window Session owns owner-scoped Workbench
 Scenes through which one app window presents Project or Session resources;
 Terminal and Browser Modules own their live runtimes.
@@ -451,10 +446,10 @@ Database authority mutation. Project removal or archive leaves the namespace
 and every historical Page-key assignment intact with the Library content.
 
 Active Projects may create and run Sessions. Inactive and archived Projects
-retain history but cannot start work and are read-only. Reactivation restores
-current implicit access after current lifecycle/revisions are checked; it never
-revives an expired approval or archived Session automatically. Project archive
-or deletion never deletes Library resources.
+retain history and do not accept new Session launches in that Project. Project
+lifecycle does not limit access to Library content. Reactivation restores eligible
+Project operations; it does not reopen archived Sessions or revive expired execution
+identity. Project archive or deletion never deletes Library resources.
 
 ### Sidebar Section
 
@@ -469,11 +464,10 @@ _Avoid_: Project folder, Thread lane, filter.
 
 ### Linked chat
 
-A Linked chat is a normalized, non-owning, non-authorizing edge between one
+A Linked chat is a normalized, non-owning edge between one
 Page and one durable Project Session. It records that the user explicitly put
-the Page into that Chat's work context. It does not move the Page, grant the
-Session's Project or Agent access, embed a transcript, or assert that a Turn is
-editing the Page.
+the Page into that Chat's work context. It neither moves the Page nor embeds a
+transcript, and does not assert that a Turn is editing the Page.
 
 The edge targets Project Session rather than Codex Thread because a Chat may be
 threadless and Thread attachment may change independently. It also never
@@ -531,39 +525,20 @@ opening, reading, renaming, pinning, archiving, status transitions, or execution
 location updates. A Session without an attached Thread has no conversation
 recency.
 
-### Project resource grant
+### Profile access
 
-A Project resource grant authorizes `read` or `read_write` access to one Page,
-Database, or Library-parented Canvas root and its ownership closure, or directly
-to one Library File without recursive expansion. Active
-Project binding supplies an implicit recursive read-write grant to the primary
-Database. All foreign resources require either an explicit grant or a bounded
-Agent consent overlay.
+The user, parent Agents, child Agents and background work can read and write every
+Project, Page and Library resource in the current Profile. Project ownership and
+Session lineage organize work. They do not restrict content operations. A planning
+interaction retains the same content access.
 
-Database closure includes owned Data Sources, hosted Views, Source-parented
-Pages, nested Pages, owned Documents, and the current presentation of Files
-used by those Pages. Page closure includes nested Pages, physically nested
-Databases, Documents, and Files used by explicit entries or canonical body
-occurrences. These relationships grant current presentation access only; they
-do not include global File operations, other Pages, or arbitrary File history. Closure never follows
-`pageRef`, relation, linked View, mention, backlink, or ordinary link edges.
-Canvas closure includes its owned scene Document and managed assets. A
-Page-parented Canvas inherits the host Page grant and has no independent grant.
+### Execution identity
 
-A grant to one Source-parented Page exposes only the read-only schema slice
-needed to interpret that Page's current values. It never permits sibling query
-or schema management. `read_write` permits Page content/current-value edits but
-not structural schema, grant, Data Source move, archive, or permanent-delete
-operations.
-
-Persistent authorization and transient Agent consent are independent. The
-primary Database and `read_write` grants execute directly, including destructive
-writes. A `read` grant executes reads directly but requires consent for writes;
-an ungranted known target in the same Library also requires consent. Consent may
-cover one exact prepared footprint, the corresponding resource for the root
-task, or a durable Project grant. Only the durable choice writes
-`project_resource_grants`; cross-Library, deleted, stale, and unsupported
-structural targets remain ineligible for consent.
+Execution identity identifies the product Session, runtime, Run, attempt and native
+process that issued a call. A captured call remains attached to its original execution.
+Cancellation, connection retirement or Session deletion invalidates it. A replacement
+execution never adopts an invalid call. Profile and Store identity identify the
+physical resource lifetime.
 
 ### Structural edit
 
@@ -589,7 +564,7 @@ while their lease or recipe remains reachable.
 ### Content interaction history
 
 Content interaction history orders local Page body, Page title, and Database
-gestures within one window's Library, access context, and Store epoch. Retained
+gestures within one window's Library and Store epoch. Retained
 content participants own inverse evidence; one owner orders commands and replay
 across their views. Focus selects the input boundary, not the next content action.
 A structural restore may preserve Block identity while replacing collaborative
@@ -605,11 +580,11 @@ A Reference Block has its own `blockId` and stable `targetBlockId`. It presents
 foreign content without changing parent, membership, or authority. `pageRef`
 uses its own identity so duplicate mounts retain independent local disclosure.
 Idle references read rebuildable exact-head summaries; an active surface mounts
-the target Page's Document directly after access evaluation. The foreign body
+the target Page's Document directly after resolving its current resource lifecycle. The foreign body
 never becomes host content.
 
 References are childless and never participate in ownership traversal for copy,
-retention, or grants. Copy preserves reference targets. Unresolved legacy
+or retention. Copy preserves reference targets. Unresolved legacy
 references reserve tombstoned diagnostic identities so unrelated creation
 cannot capture the target ID.
 
@@ -637,40 +612,23 @@ There is no ordinary whole-Page update transport.
 
 A mutation is durable user or Agent intent applied by the single SQLite writer.
 Document updates, Page parents, Block/Data Source properties, View positions,
-Project bindings, and resource grants are different families but share bounded
+and Project bindings are different families but share bounded
 validation, caller-retained operation IDs, canonical semantic equality,
 immutable receipts, post-commit acknowledgement, history, and change-log rules.
 
-The host binds Profile, Library, explicit content authority, Session, actor, and
-store epoch; public callers cannot forge scope. Project-scoped mutations
-evaluate current Project lifecycle, binding/grant/access revisions, and
-independent approval policy. Trusted local Library mutations instead evaluate
-Library identity, target lifecycle, and store epoch. Durable content mutations
-are Library-scoped. Any Project ID retained on a receipt, change, automation,
-recovery, or delivery record is the actor/execution/delivery coordinate and
-never changes the content lifetime.
-
-For `nodex_app`, the host also binds one immutable authority snapshot to the
-exact Codex Turn. Ordinary snapshots have Project scope and continue to resolve
-the current primary Database, recursive Page/Database grants, and root-task
-resource consent overlays. A Turn
-started with Nodex's built-in Full access preset has temporary Library scope:
-it may use the existing tool catalog across the actor Project's Library and its
-writes do not require a Nodex approval card. This overlay is never persisted as
-a Project resource grant, cannot cross a Profile/Library/store epoch, and does
-not transfer to a later Turn merely because permission settings changed. Main
-tracks the selected built-in preset separately from raw Codex config, so an
-equivalent Custom sandbox configuration or renderer-supplied mode cannot create
-Library authority.
+The host binds Profile, Library, product Session, exact execution identity and Store
+epoch. Content mutations resolve resource identity and lifecycle in that Library.
+Durable content belongs to the Library; any Project on a receipt, change, Automation
+or delivery record identifies execution or presentation placement. It does not change
+the content lifetime or the Agent's full access.
 
 `BlockTransfer` moves/copies ownership within one Library. It accepts logical
 Page/Block roots and Library/Page/Data Source targets, while the writer compiles
 exact parent, membership, View, and Document heads. Copy recursively allocates
 fresh ownership identities and never follows reference targets. Move rejects
 any edge that would make a Page own itself transitively; prepare provides early
-feedback and the committing transaction rechecks current authority. Project is
-not a product content owner; ordinary access changes through binding/grants.
-Moving between resources reached through different Project access paths changes
+feedback and the committing transaction rechecks current resource lifecycle. Project
+is an execution context. Moving between resources in different Projects changes
 only the logical Page parent/placement and its associated Source or host-shell
 state. Block and Document Library ownership remains stable. Mutation evidence
 records the logical transfer, affected Documents, and actor/delivery Project;
@@ -719,8 +677,6 @@ state is rejected rather than replayed.
 | Schema, Pages, and property values                                         | Data Source relational records                                           |
 | View query/configuration/manual Page position                              | Database View records                                                    |
 | Project binding/lifecycle                                                  | Project execution records                                                |
-| Foreign Page/Database capability                                           | Project resource grants                                                  |
-| One-call/root-task Agent resource capability                               | main-owned consent overlays                                              |
 | Page-intrinsic schedule/run behavior                                       | generic Block properties and typed read models                           |
 | NFM, preview, search, schedule, asset, and Page summary                    | rebuildable projections                                                  |
 | Restorable Document states                                                 | immutable semantic Document revisions                                    |
@@ -743,11 +699,11 @@ state is rejected rather than replayed.
 7. Database owns Data Sources and Views but not schema or Pages.
 8. Data Source owns schema, Page rows, values, and query identity.
 9. View belongs to one Database, targets one Source, and positions Pages.
-10. References never change parent or membership, copy ownership, grant access,
+10. References never change parent or membership, copy ownership,
     or embed a foreign body in the host Document.
 11. Each Project binds one Database; each Database has at most one active
     Project. Project lifecycle never removes content.
-12. Recursive grants traverse ownership only; access and approval are separate.
+12. The user and all Agents have full access to the current Profile; execution identity and resource lifecycle remain exact.
 13. Committed engine/database/transfer mutations are idempotent and acknowledged
     only after their SQLite transaction commits.
 14. Restore appends a forward engine mutation and never rewinds causal history.
@@ -771,16 +727,16 @@ state is rejected rather than replayed.
     and immutable. Committed numbers are never reclaimed.
 24. A Page has at most one current Page key, determined by its current Database,
     while historical assignments and retired-prefix ranges remain resolvable.
-25. A Linked chat never changes Page ownership, Database membership, Project
-    resource grants, Agent authority, Session ownership, or Thread attachment.
+25. A Linked chat never changes Page ownership, Database membership, Agent execution identity, Session ownership, or Thread attachment.
 26. The Library owns File identity. Each Page has an independent entry manifest;
     its File paths are optional relationships, and logical folders have no identity.
 27. A Page File placement references stable File identity, remains non-owning,
     and may occur in any Page Document in the same Library. The containing Page
     may resolve only the File's current presentation metadata and bytes.
 28. A Dispatch proposal never starts work, sends a prompt, or moves content by
-    itself. Agents and the command line may only append Inbox entries, and Core,
-    not the caller, records each entry's source.
+    itself. Agent and command-line Inbox workflow endpoints append entries; their
+    backing Pages follow the same full-Profile content model. Core records each
+    entry's actual execution source, and confirmed triage owns dispatch intent.
 
 ## Operation semantics
 
@@ -799,7 +755,7 @@ canonical scene intent through the same durable FIFO. Remote repair never
 guesses snapshots.
 
 Title, body, and Database edits share window-local content interaction history
-under the same Library and access authority. Awareness is ephemeral
+under the same Library and Store identity. Awareness is ephemeral
 and not a lock. Close/deactivation persistence is bounded: durable
 acknowledgement or disposable local checkpoint, never an unbounded offline wait.
 
@@ -917,23 +873,28 @@ each renderer window's TanStack Query cache.
 Legacy Card/Project-content readers are allowed only in shipped-schema staging
 import code. Production Page read models are assembled from Block/Document/Data
 Source authority. The deep Database Module hides target resolution,
-authorization, schema/value validation, membership history, ranking,
+schema/value validation, membership history, ranking,
 idempotency, projections, and post-commit events behind `read` and `apply`.
 
 ## Decision index
 
+- `docs/adr/0068-agent-runtime-execution-authority.md`: one Runtime execution
+  owner, exact Session and native source identity, and full-Profile content access.
+- `docs/adr/0067-inbox-entries-and-dispatch-proposals.md`: Page-backed Inbox
+  triage, proposals and confirmed dispatch without a second task authority.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
-  identity boundary, authorized resolution, and presentation projection.
+  identity boundary, resolution, and presentation projection.
 - `docs/adr/0049-page-project-session-links.md`: durable Page–Project Session
-  relationships, atomic establishment, access and lifecycle boundaries, and
+  relationships, atomic establishment, lifecycle boundaries, and
   bounded Page Chat activity projection.
 - `docs/adr/0042-dedicated-git-read-worker.md`: one rebuildable,
   generation-bound Git repository read plane in a dedicated worker, with Main
   and renderer Adapters and mutation-driven invalidation.
 - `docs/adr/0017-library-pages-data-sources-and-project-resource-grants.md`:
   Library ownership, Page rename/exclusive parent, Database/Data Source/View,
-  Project binding, resource grants, and Database Module depth.
+  Project placement and Database Module depth. Its resource grant decisions are superseded
+  by full-Profile access.
 - `docs/adr/0020-database-identity-scopes.md`: independent opaque Database/
   Data Source/View roots and compact owner-scoped Property/option identity.
 - `docs/adr/0001-block-identity-card-alias.md`: retained single Block identity;

@@ -6,8 +6,54 @@ import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
+import type { ServerSettingsService } from "../serverSettings.ts";
 import * as Registry from "../provider/ProviderInstanceRegistryMutator.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
+
+/** The effective provider policy follows the applied registry, including deferred native instances. */
+export class ProviderPolicy extends Context.Service<
+  ProviderPolicy,
+  {
+    readonly current: Effect.Effect<ProviderInstanceConfigMap>;
+    readonly replace: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
+  }
+>()("nodex/agent-runtime/ProviderPolicy") {}
+
+export const makePolicy = Effect.fn("AgentRuntime.makeProviderPolicy")(function* (
+  initial: ProviderInstanceConfigMap,
+) {
+  const current = yield* Ref.make(initial);
+  return ProviderPolicy.of({
+    current: Ref.get(current),
+    replace: (config) => Ref.set(current, config),
+  });
+});
+
+export const layerPolicy = (initial: ProviderInstanceConfigMap) =>
+  Layer.effect(ProviderPolicy, makePolicy(initial));
+
+/** Provider configuration is read from the applied in-memory owner, never copied into settings files. */
+export const effectiveSettings = (
+  stored: ServerSettingsService["Service"],
+  policy: ProviderPolicy["Service"],
+): ServerSettingsService["Service"] => {
+  const project = (settings: Effect.Success<typeof stored.getSettings>) =>
+    policy.current.pipe(Effect.map((providerInstances) => ({ ...settings, providerInstances })));
+  return {
+    ...stored,
+    getSettings: stored.getSettings.pipe(Effect.flatMap(project)),
+    withSettingsSnapshot: (use) =>
+      stored.withSettingsSnapshot((settings) => project(settings).pipe(Effect.flatMap(use))),
+    updateSettings: (patch) => stored.updateSettings(patch).pipe(Effect.flatMap(project)),
+    streamChanges: stored.streamChanges.pipe(Stream.mapEffect(project)),
+    subscribeChanges: stored.subscribeChanges.pipe(
+      Effect.map((stream) => stream.pipe(Stream.mapEffect(project))),
+    ),
+  };
+};
 
 interface ConfigurationPorts {
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>, Error>;
@@ -80,11 +126,13 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
   | Registry.ProviderInstanceRegistryMutator
   | Sessions.ProviderSessionManagerV2
   | SqlClient.SqlClient
+  | ProviderPolicy
   | Scope.Scope
 > {
   const registry = yield* Registry.ProviderInstanceRegistryMutator;
   const sessions = yield* Sessions.ProviderSessionManagerV2;
   const sql = yield* SqlClient.SqlClient;
+  const policy = yield* ProviderPolicy;
   return yield* makeWithPorts(initial, {
     busyInstances: Effect.gen(function* () {
       const native = yield* sessions.busyInstances;
@@ -109,6 +157,6 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
             (cause) => new Error("Could not retire an idle provider instance.", { cause }),
           ),
         ),
-    reconcile: registry.reconcile,
+    reconcile: (config) => registry.reconcile(config).pipe(Effect.andThen(policy.replace(config))),
   });
 });

@@ -46,7 +46,7 @@ describe("Library File resources", () => {
       },
     }));
     const created = await importLibraryFile(
-      { libraryId: "library-1", contentAccessContext: access, storeEpoch: "store-1" },
+      { libraryId: "library-1", contentRoutingContext: access, storeEpoch: "store-1" },
       { kind: "browser_file", file: new File(["diagram"], "diagram.png", { type: "image/png" }) },
     );
     const prepare = api.prepareFileBlob.mock.calls[0]![1];
@@ -94,7 +94,7 @@ describe("Library File resources", () => {
     } as const;
     const authority = {
       libraryId: "library-1",
-      contentAccessContext: access,
+      contentRoutingContext: access,
       storeEpoch: "epoch",
       readSource,
     };

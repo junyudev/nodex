@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { isNativeAgentBackendKind, type NativeAgentBackendKind } from "../../shared/agent-backend";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 
 export interface AppToolCaller {
-  readonly backend?: "codex" | NativeAgentBackendKind;
+  readonly backend?: AgentBackendBinding["kind"];
   readonly threadId: string;
   readonly turnId: string;
   readonly callId: string;
@@ -14,81 +13,82 @@ export interface AppToolCaller {
   readonly isActive: () => boolean;
 }
 
-interface NativeClaim {
-  readonly capture: Effect.Effect<FrozenNodexAgentTurnAuthority | null>;
+export type AppToolAuthorityCapture = (
+  caller: AppToolCaller,
+) => Effect.Effect<NodexAgentTurnContext | null>;
+
+/** Product and engine identity issued by the Host; Core execution coordinates remain separate. */
+export interface HostedAppToolSessionContext {
+  readonly sessionId: string;
+  readonly projectId: string | null;
+  readonly runtimeId: string;
+  readonly rootThreadId: string;
+  readonly threadId: string;
+  readonly runId: string | null;
+  readonly cwd: string | null;
+}
+
+interface HostedClaim {
+  readonly capture: Effect.Effect<NodexAgentTurnContext | null>;
+  readonly sessionContext?: HostedAppToolSessionContext;
 }
 
 // Only a host-issued object is recognized. MCP metadata cannot mint or revive a claim.
-const nativeClaims = new WeakMap<AppToolCaller, NativeClaim>();
+const hostedClaims = new WeakMap<AppToolCaller, HostedClaim>();
 
-export function createNativeAppToolClaimIssuer(input: {
-  readonly backend: NativeAgentBackendKind;
-  readonly threadId: string;
-  readonly hostId: string;
+/** The execution Host issues one immutable caller; copies and MCP metadata cannot issue it. */
+export function createHostedAppToolCaller(input: {
+  readonly backend: AppToolCaller["backend"];
+  readonly authority: NodexAgentTurnContext;
+  readonly callId: string;
   readonly generation: number;
-  readonly capture: (authority: FrozenNodexAgentTurnAuthority) => Effect.Effect<boolean>;
-}) {
-  let open = true;
-  let backgroundTasksPresent = false;
-  let claimEpoch = 0;
-  let active: { readonly authority: FrozenNodexAgentTurnAuthority; calls: number } | null = null;
-  return {
-    beginTurn(authority: FrozenNodexAgentTurnAuthority): boolean {
-      if (!open || active || authority.threadId !== input.threadId || !authority.turnId)
-        return false;
-      active = { authority: structuredClone(authority), calls: 0 };
-      return true;
-    },
-    endTurn(turnId: string): void {
-      if (active?.authority.turnId === turnId) active = null;
-    },
-    close(): void {
-      open = false;
-      active = null;
-    },
-    /** Stdio carries no trustworthy actor ID; never attribute a live child's call to a newer turn. */
-    setBackgroundTasks(taskIds: readonly string[]): void {
-      const blocked = taskIds.length > 0;
-      if (blocked === backgroundTasksPresent) return;
-      backgroundTasksPresent = blocked;
-      claimEpoch += 1;
-    },
-    claim(): AppToolCaller | null {
-      const admitted = active;
-      if (!open || backgroundTasksPresent || !admitted || admitted.calls >= 1024) return null;
-      admitted.calls += 1;
-      const epoch = claimEpoch;
-      const isActive = () =>
-        open && !backgroundTasksPresent && epoch === claimEpoch && active === admitted;
-      const caller: AppToolCaller = {
-        backend: input.backend,
-        threadId: input.threadId,
-        turnId: admitted.authority.turnId,
-        callId: randomUUID(),
-        hostId: input.hostId,
-        generation: input.generation,
-        isActive,
-      };
-      nativeClaims.set(caller, {
-        capture: Effect.gen(function* () {
-          if (!isActive()) return null;
-          if (!(yield* input.capture(admitted.authority)) || !isActive()) return null;
-          return admitted.authority;
-        }),
-      });
-      return caller;
-    },
-  };
+  readonly isActive: () => boolean;
+  readonly capture: Effect.Effect<NodexAgentTurnContext | null>;
+  readonly sessionContext?: HostedAppToolSessionContext;
+}): AppToolCaller {
+  const caller: AppToolCaller = Object.freeze({
+    ...(input.backend ? { backend: input.backend } : {}),
+    threadId: input.authority.threadId,
+    turnId: input.authority.turnId,
+    hostId: "local",
+    callId: input.callId,
+    generation: input.generation,
+    isActive: input.isActive,
+  });
+  hostedClaims.set(caller, {
+    ...(input.sessionContext ? { sessionContext: Object.freeze({ ...input.sessionContext }) } : {}),
+    capture: Effect.suspend(() => (input.isActive() ? input.capture : Effect.succeed(null))).pipe(
+      Effect.map((authority) => (input.isActive() ? authority : null)),
+    ),
+  });
+  return caller;
 }
+
+/** Metadata locates the product Session; every operation must still recapture Core authority. */
+export const readHostedAppToolSessionContext = (
+  caller: AppToolCaller,
+): HostedAppToolSessionContext | null =>
+  caller.isActive() ? (hostedClaims.get(caller)?.sessionContext ?? null) : null;
+
+export const captureHostedAppToolAuthority = (
+  caller: AppToolCaller,
+): Effect.Effect<NodexAgentTurnContext | null> =>
+  caller.isActive()
+    ? (hostedClaims.get(caller)?.capture ?? Effect.succeed(null))
+    : Effect.succeed(null);
 
 /** Invocation identity and Core authority are verified separately for each native backend. */
 export const captureAppToolAuthority = (
   caller: AppToolCaller,
   codex: Pick<CodexTurnAuthority["Service"], "capture">,
-): Effect.Effect<FrozenNodexAgentTurnAuthority | null> => {
+): Effect.Effect<NodexAgentTurnContext | null> => {
   if (!caller.isActive()) return Effect.succeed(null);
-  if (isNativeAgentBackendKind(caller.backend))
-    return nativeClaims.get(caller)?.capture ?? Effect.succeed(null);
+  const issued = hostedClaims.get(caller);
+  if (issued) return issued.capture;
+  // Core reserves these coordinates for Host-issued execution leases.
+  if (caller.threadId.startsWith("runtime:") || caller.turnId.startsWith("runtime-run:"))
+    return Effect.succeed(null);
+  if (caller.backend && caller.backend !== "codex") return Effect.succeed(null);
   return codex
     .capture(caller.threadId, caller.turnId)
     .pipe(Effect.catch(() => Effect.succeed(null)));

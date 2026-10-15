@@ -2,7 +2,7 @@ use base64::prelude::{BASE64_STANDARD, Engine as _};
 use nodex_core::document::CanvasSceneSyncSnapshot;
 use nodex_core::infrastructure::request_execution::request_is_cancelled;
 use nodex_core_contracts::document::{
-    OwnedDocumentAccessContext, OwnedDocumentCommitValue, OwnedDocumentDescriptor,
+    ContentRoutingContext, OwnedDocumentCommitValue, OwnedDocumentDescriptor,
     OwnedDocumentReadValue, OwnedDocumentReceipt, OwnedDocumentSyncDescriptor,
 };
 use nodex_core_contracts::{
@@ -140,7 +140,7 @@ struct CanvasSyncResponseMetadata<'a> {
     kind: CanvasSyncKind,
     sync_request_id: &'a str,
     library_id: &'a str,
-    access_context: &'a OwnedDocumentAccessContext,
+    routing_context: &'a ContentRoutingContext,
     document_id: &'a str,
     store_epoch: &'a str,
     generation: i64,
@@ -169,7 +169,7 @@ pub(crate) struct YjsSyncValue {
 #[derive(Debug)]
 pub(crate) struct CanvasSyncValue {
     pub(crate) library_id: String,
-    pub(crate) access_context: OwnedDocumentAccessContext,
+    pub(crate) routing_context: ContentRoutingContext,
     pub(crate) document_id: String,
     pub(crate) store_epoch: String,
     pub(crate) generation: i64,
@@ -294,7 +294,7 @@ pub(crate) fn parse_canvas_sync(
     }
     Ok(CanvasSyncValue {
         library_id: snapshot.library_id,
-        access_context: snapshot.access_context,
+        routing_context: snapshot.routing_context,
         document_id: snapshot.document_id,
         store_epoch: snapshot.store_epoch,
         generation: snapshot.generation,
@@ -323,7 +323,7 @@ pub(crate) fn encode_canvas_sync(
             kind,
             sync_request_id,
             library_id: &value.library_id,
-            access_context: &value.access_context,
+            routing_context: &value.routing_context,
             document_id: &value.document_id,
             store_epoch: &value.store_epoch,
             generation: value.generation,
@@ -596,7 +596,7 @@ mod tests {
         let scene = br#"{"appState":{},"elements":[],"files":{},"kind":"canvas_scene","pageReferences":[],"plainText":"","preview":"","schemaVersion":1}"#.to_vec();
         let value = CanvasSyncValue {
             library_id: "library:one".to_owned(),
-            access_context: OwnedDocumentAccessContext::Project {
+            routing_context: ContentRoutingContext::Project {
                 project_id: "project:one".to_owned(),
             },
             document_id: "canvas:one".to_owned(),
@@ -615,7 +615,7 @@ mod tests {
         assert_eq!(metadata["kind"], "snapshot");
         assert_eq!(metadata["libraryId"], "library:one");
         assert_eq!(
-            metadata["accessContext"],
+            metadata["routingContext"],
             serde_json::json!({ "kind": "project", "projectId": "project:one" }),
         );
         assert!(metadata.get("projectId").is_none());
@@ -634,7 +634,7 @@ mod tests {
     fn canvas_snapshot_encoder_rejects_limit_plus_one() {
         let value = CanvasSyncValue {
             library_id: "library:one".to_owned(),
-            access_context: OwnedDocumentAccessContext::Library,
+            routing_context: ContentRoutingContext::Library,
             document_id: "canvas:one".to_owned(),
             store_epoch: "epoch:one".to_owned(),
             generation: 1,

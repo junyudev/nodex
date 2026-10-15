@@ -38,7 +38,7 @@ describe("Database event renderer IPC", () => {
       project_id: "project-1",
     };
     const packet = createCoreLocalCommitFixture({
-      authorizationScope: address,
+      deliveryAddress: address,
       commitSeq: 73,
       projectionEffects: [
         {
@@ -65,11 +65,10 @@ describe("Database event renderer IPC", () => {
       ],
     });
     recipient.listener?.({
-      version: 2,
+      version: 3,
       deliveryId: "a".repeat(64),
       recipientLeaseId: "c".repeat(64),
       deliveryAddress: address,
-      authorizationScope: address,
       payload: { kind: "packet", packet },
     });
     await vi.waitFor(() =>
@@ -89,7 +88,7 @@ describe("Database event renderer IPC", () => {
         channel: "recipient-delivery:admit",
         args: [
           {
-            version: 2,
+            version: 3,
             deliveryId: "a".repeat(64),
             outcome: "ack",
           },

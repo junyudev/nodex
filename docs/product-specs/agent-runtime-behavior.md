@@ -4,95 +4,219 @@
 
 A Session may have one external execution reference identifying its runtime and root
 Thread. Native Thread binding and external execution binding are mutually exclusive.
-The Session's Project is immutable once externally bound. Moving it to another Project
-requires an explicit execution migration rather than changing the content actor while
-work remains in the old runtime context.
+Moving a Session changes its product Project placement while retaining its runtime
+and root Thread identity. The execution tree follows that placement for Project
+activity and lifecycle; existing working directories remain attached.
 
 Launching promotes an unstarted Session without changing its identity or existing
 Page links. If it was the default draft, Core creates its replacement in the same
 transaction. A fresh programmatic Session can be created by the same operation.
 The transaction admits the execution reference, stable launch request identity and
 requested Page Linked chats. The operation checks current
-Project lifecycle, Page access and ambient Agent authority. Repeating the same request
-returns the original Session. Reusing its identity with different immutable launch
-content fails before native execution admission.
+Project lifecycle, resource existence and captured execution identity. Repeating the
+same stable command returns the original Session without launching duplicate work.
 
 Page links and sidebar placement refer to Session identity. They do not own its Thread
 history, title, model selection, queue, Run status or delegated tasks. Delegated Threads
 remain within the bound root's lineage and do not implicitly create ordinary sidebar
 Sessions.
 
-## Content authority
+## Profile access and execution identity
 
-Host preparation admits content authority for an exact runtime, Thread, Run and
-connection lease. The bound root and Core Project must match the observed execution.
-Archived Projects cannot admit or capture live content authority. Runtime workspace
-paths and projectless execution workspaces never imply a Core actor Project.
+Every Agent has full read and write access to the current Profile's Projects, Pages
+and Library. Parent Agents, delegated children and background work use the same model
+and may operate across Projects and Sessions. Plan changes planning interaction and
+permits content writes. Native Providers run with full access and permission requests
+are approved automatically. Questions requiring the user's information remain open.
+Standard ACP information questions belong to the live Session, with Run left null;
+they can arrive after foreground completion or while another Run executes.
 
-Core freezes the available scope and read-only restriction at admission. A fresh lease
-for the same stable Run may narrow that ceiling and cannot broaden it. A new Run may
-use newly selected permissions. A delegated
-Run inherits its verified parent's frozen restrictions. The latest immutable parent
-admission may be read after restart or revocation solely to establish inheritance;
-revoked provenance cannot authorize a content operation.
+Host preparation binds the product Session before its first Run executes. Every
+application call carries exact runtime, Thread, native incarnation and connection
+identity. Providers supplying causal tool metadata also carry the captured Run and
+attempt. Standard ACP calls carry their real Session with Run and attempt left null. Model-authored metadata cannot mint that identity. A captured
+request keeps its original Run when another Run starts, including after foreground
+completion while its native process remains live. Cancelled or retired execution fails
+instead of borrowing replacement credentials. Cancelling source-less native execution
+retires its connection and credential before another prompt is admitted.
 
-An Agent with Project scope cannot create an independent Session or select execution
-modes that elevate it to Library scope, even when the human's Project default allows
-full access. A delegated Run and an independent Session both respect the caller's
-frozen ceiling; only the Desktop Host can change Project permission settings.
+Provider utility processes for titles, commit messages and change-request guides use the same
+full-access, automatic-approval native execution policy. Their task prompts and output schemas
+remain specific to their purpose; investigation instructions request observations without
+installing a tool allowlist, denylist or separate permission boundary.
 
-Every content tool capture verifies the current live Run and native call, the exact
-root binding and the frozen Core record. Model-authored MCP metadata cannot mint this
-authority. An old native request cannot borrow a newer Run's credentials.
+Native event intake bounds retained messages and UTF-8 bytes before decoding or
+normalizing provider payloads. Overflow fails the affected physical source and
+retires its credentials while other providers continue. Outgoing image-capable
+frames retain their larger input budget. Continuation notifications use a shared
+512-message, 8 MiB mailbox with nonblocking admission; overload preserves already
+accepted notifications and returns an explicit failure. Durable pending deliveries
+remain in SQL for restart recovery rather than spawning unbounded retry waiters.
 
-Closing a connection revokes only its lease. Startup may revoke abandoned leases for
-the same runtime. Resuming a stable Run creates a fresh lease without reviving older
-provenance; delayed completion from an old lease cannot revoke its replacement.
-Admission and revocation change permission records without publishing conversation or
-sidebar activity as if execution state had changed.
+Connection closure revokes only its leases. Restart admits new leases while old calls
+remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
+integrity and exact execution routing apply to every operation. Project membership,
+working directories and list filters organize content and execution.
 
 ## Conversation interface
 
 Page Chat and Workbench use one Session interface for Agent launch, follow-up messages,
-steering, selected-Run stop, approval responses, model selection and execution modes.
+steering, selected-Run stop, information answers, model selection and planning.
+Page editor submissions use that same interface. New submissions promote the chosen
+Session with its Page links, model options and workspace configuration; existing
+sections resolve a bound Session before sending. Imported native history does not
+acquire an execution owner when a section is sent.
 Every command resolves the Session's immutable root before accessing an engine Thread;
-delegated targets remain inside that root. Responses carry the exact pending request
-and Run, so a stale card cannot answer a newer request.
+explicit targets resolve their own Session and Thread identity. Responses carry the exact pending request
+and its original Run, or null when the source is a native Session. A stale card cannot
+answer a newer request. Session-origin Dismiss answers that request without stopping
+an unrelated foreground Run. Runtime questions use this Session interface and remain
+open for user input; native Codex inactivity controls belong to their own execution owner.
 
-Launch returns execution identity without transcript bodies. The retained conversation
-reader opens one bounded history window and publishes canonical items into the keyed
+Launch returns execution identity without transcript bodies. Controls acquire only
+execution metadata and observe control events. Activating a transcript reader opens
+one bounded history window and publishes canonical items into the keyed
 transcript cache. Text changes notify only the affected item. Older windows preserve
-resident items, and releasing the last reader clears body caches and the engine event
-subscription. Captured fork ancestry authorizes read-only item details; it does not
-expand the Session's execution targets.
+resident items. Releasing the last transcript reader clears body caches; retained
+controls continue observing metadata until their last reader releases. Captured fork ancestry identifies the source of inherited history.
+
+Selected-text side chats create independent product Sessions and prefill a draft.
+Explicit side-chat prompts submit immediately through the same launch owner. Neither
+route copies parent history. Panel remounts resolve the Session's cached canonical
+binding, and closing the panel keeps its product chat.
+Local imported native conversations use the same independent side-chat route while
+their history stays passive. Runtime forks retain the selected source Run and prepare
+the chosen workspace and environment before binding the new Session; they do not
+resume an imported native conversation or hydrate history to choose a workspace.
+Native forks use the source Run's captured native incarnation. If its provider binding
+has since changed, the fork carries the bounded source prefix through portable history.
+
+Workbench presentation is captured before asynchronous submission work. Main binds
+the ticket to the exact engine Thread and stable client message, then attaches it to
+the Run only through causal provider evidence. A later foreground Run does not change
+an earlier background call's origin. Queued edits replace the origin only after the
+accepted edit receipt and a point read proving that its exact Run is still unstarted;
+retries retain that edit's origin. Same-Run steering retains the captured Run origin.
+Actual native-source or runtime connection retirement releases these bounded anchors.
+
+Effect cleanup releases subscriptions and bodies immediately; a render-held lease can
+be retained again without reviving old callbacks. Concurrent readers of the same
+Session and Thread share one read owner. Queue observation reads at most 25 metadata
+rows per page with canonical Run and message identities. An open queue hydrates bounded
+previews only for its visible page; editing explicitly reads that message. Collapsed
+queues and controls do not load prompts. A held queue remains paused until an explicit queue command resumes it.
+
+The initial window admits at most five user Turns and 500 distinct items. Its complete
+public envelope, including metadata, stays within 1 MiB. Root windows retain visible
+entities and a bounded set of live control dependencies; an admitted Run never implies
+reading all of its tasks. Task prompts, results, workflow bodies and delivery records
+stay out of public metadata snapshots and events. Child history and explicit item
+details provide those bodies. Long text appears as a bounded preview with a truncation
+marker; full copy and export use explicit full-item reads. A control envelope that
+cannot fit fails explicitly rather than exceeding the transport budget.
+
+Compaction admits one durable maintenance Run per request. Editing the latest user
+message first admits a conversation rewind and waits for that exact Run to become
+rolled back before submitting replacement content. Queued or active work and native
+background tasks block editing. Conversation rewind leaves workspace files intact
+and can proceed without a Git file checkpoint. Repeated commands retain their original
+Run and message identity; reusing an identity for another target fails.
+Active proposed plans can be implemented in another Project. Recording a created
+Session also works across Projects; the source plan, parent Run and target Session
+retain their exact product identities and content owners.
+
+Message delivery intent resolves inside the serialized command writer, after its
+durable receipt lookup. An accepted steer or restart therefore replays after the
+Run completes. Ordinary intake reads addressed control heads and input identities;
+historical prompts and tool bodies stay out of planning. Provider handoff, captured
+ancestry and queue promotion select the required control identities before reading
+history. Portable history admits intact items within its database read and delivery
+budgets, prioritizing the latest request, partial answer and original constraints.
+Oversized items remain available through explicit history reads. Coverage records the
+complete source range and exact omitted count; omitted item IDs appear only when
+the list is complete and bounded. Native context estimates and delivery proofs use
+stored scalars rather than loading the old transcript.
+An existing user-input item resolves through its message identity and follows
+that message into its queued Run, including when a Provider assigned the item ID.
 
 Images are materialized from explicit attachments, then persisted by the runtime under
-the admitted Thread and message before dispatch. Workspace creation and environment
+the admitted Thread and message before dispatch. Image URLs resolve on demand from that
+exact visible item and attachment identity. Forked history resolves through its captured
+source Run prefix; later source items are excluded. Resolution returns only the owned
+path, and conversation metadata never hydrates image bytes. Workspace creation and environment
 setup use the same scoped filesystem owner as other native capabilities. The workspace
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
 
+## Native voice and prediction
+
+Local voice and composer prediction use the bound Session's managed Codex connection.
+Runtime owns native calls, source-bound observations and helper lifetimes; Main owns
+account service eligibility, microphone/media admission and exact renderer routing.
+Explicit remote native conversations retain their own Gateway source.
+
+Voice input is admitted through the existing durable command writer after its real
+native Turn and early frames have been captured within count and byte budgets. The
+Run adopts those frames without starting that native Turn again. Cancellation and
+failed admission discard the captured bodies; terminal frames release the pending
+source even when the terminal frame itself crosses the budget. Runtime and native
+generations fence persisted input across process replacement. Known settled Runs
+continue receiving their own late background events.
+
+Prediction sampling can return a cold cached empty result without acquiring a native
+connection. Actual inference uses the latest Run's exact native boundary and a hidden
+ephemeral helper on that source. Bounded output failure settles the request without
+waiting for a delayed Turn acknowledgement, while an independent source-owned wait
+still interrupts any late accepted Turn and releases its helper. These lifetimes
+participate in ordinary Session residency and snapshot admission.
+
+See [Realtime voice](realtime-voice-behavior.md) and
+[Composer prediction](composer-prediction-behavior.md) for their product contracts.
+
 ## Application tools
 
-Application tools receive the product Session and exact engine Thread and Run from the
-verified Host invocation. Core execution coordinates remain authority evidence; they
+Application tools receive the product Session and exact engine Thread from the
+verified Host invocation. A causal Run is included only when the provider transport
+proves it; unknown Runs remain null and never focus another Turn. Core execution coordinates remain authority evidence; they
 never stand in for a product Session or native Thread. Caller copies, cancelled calls,
 and expired native generations cannot reuse that context. Each operation recaptures
-Core authority before accessing content or changing application state.
+Core execution identity before accessing content or changing application state.
 
 Session observation uses bounded metadata and only loads conversation items for an
 explicit history read. Session waits acquire their metadata subscription before the
 initial inspection. Completed results repeat only when their observation cursor changes.
 Workbench, sidebar, terminal, account, plugin and Automation commands use their existing
 application owners with the same caller checks. Session messages, launches and forks
-use the canonical Runtime writer and stable immutable request identities.
+use the canonical Runtime writer and stable command identities.
 
-An independent Session fork creates a new execution root in the source Project and
-keeps only the captured conversation prefix as read ancestry. Internal delegated forks
-remain in their parent root. Neither history inheritance nor a managed worktree permits
-the forked execution to exceed the caller's frozen access or read-only ceiling.
+Execution MCP controls can observe and change Sessions across Projects and task trees.
+Task status and cancellation resolve an indexed task identity to its actual parent;
+observation does not scan every Session. Ordinary Session creation goes through the
+Host's product binding transaction before execution. Background tools retain their
+captured execution identity while their native process remains live.
+
+Delegation attaches to the native call's exact source Run, including a completed
+foreground Run that still has live native background work. A Session-only caller
+chooses `parentRunId` explicitly; that target never becomes a claimed source Run.
+Retries with the same command identity replay their durable receipt and create one
+child. Child follow-ups use the sending Agent's captured Run for task ownership. A Session-only or human follow-up retains the
+original task owner and does not infer the current foreground Run. Owner lookup reads
+one addressed task and Run metadata, without task prompts, results or native workflow bodies.
+Information questions can belong directly to a Session or to their original
+Run. Their native lifetime closes them after cancellation; another foreground Run
+does not own or dismiss them.
+
+An independent fork creates a new execution root and keeps the captured conversation
+prefix as read ancestry. Delegated forks retain their parent's root and task lineage.
+Both have full access to the current Profile.
 
 ## Metadata catalogs
+
+Conversation and queued-message images retain native attachment descriptors. A mounted
+image resolves its exact item and captured read ancestry to the Runtime's stored file
+path, then uses the desktop image reader. Metadata, cold history and closed queues
+never read image bytes. Editing a queued message resolves its own image paths and
+preserves the images when submitting the edited prompt.
 
 Session titles and placement come from Core Session overview. Runtime status and child
 metadata come from bounded engine readers. A task overview admits four active and ten
@@ -100,8 +224,20 @@ terminal tasks initially, with independent continuation cursors. It omits prompt
 results, item bodies and native workflow payloads. Native task observations without an
 application-owned child Thread never acquire Thread navigation or command authority.
 
+Project lifecycle checks read one metadata-only blocker for each category: an active
+Run, a pending runtime request, and active provider-native background work. Descendant,
+archived and deleted Threads remain relevant while their execution is active; terminal
+foreground work does not hide a live native background task.
+Closing an idle Project detaches its native provider bindings through durable Runtime
+commands and revokes their tool credentials. The close waits for provider cleanup to
+finish and preserves Session and Thread history. An active execution blocks detaching;
+an empty Project does not start an execution process just to close it.
+
 Sidebar refreshes read stored Core metadata. They never scan native history, create or
 link Sessions, or reconcile missing native Threads implicitly. Provider history and
 imports remain explicit operations. Registering the local account/catalog endpoint or
 Profile snapshot control leaves its process cold; its first real request acquires one
 supervised connection. An unused endpoint snapshot does not start a provider.
+An existing execution database resumes under the supervised Host after application
+tools are ready. Durable Session deletion intents are reconciled after each connection;
+their acknowledged tombstones prevent a deleted execution from being adopted again.

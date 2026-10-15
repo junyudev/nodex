@@ -129,7 +129,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          accessContext: { kind: "project" as const, projectId: "alpha" },
+          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -163,7 +163,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            accessContext: { kind: "project" as const, projectId: "alpha" },
+            routingContext: { kind: "project" as const, projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -215,7 +215,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page:one",
         },
       },
@@ -343,7 +343,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -397,7 +397,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -458,7 +458,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -538,7 +538,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          accessContext: { kind: "project" as const, projectId: "alpha" },
+          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -588,7 +588,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            accessContext: { kind: "library" as const },
+            routingContext: { kind: "library" as const },
             pageId,
           },
           titleSnapshot: pageId,
@@ -616,7 +616,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,

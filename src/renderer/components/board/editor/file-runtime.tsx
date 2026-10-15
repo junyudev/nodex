@@ -200,7 +200,7 @@ export function FileReadBoundary({
           ? JSON.stringify([
               authority.libraryId,
               authority.storeEpoch,
-              authority.contentAccessContext,
+              authority.contentRoutingContext,
               Object.entries(authority.bindings).sort(([a], [b]) => a.localeCompare(b)),
             ])
           : fileReadAuthorityKey(authority)
@@ -247,7 +247,7 @@ export function createFilePreviewRuntime(authority: FilePreviewAuthority): FileP
       {
         libraryId: authority.libraryId,
         storeEpoch: authority.storeEpoch,
-        contentAccessContext: authority.contentAccessContext,
+        contentRoutingContext: authority.contentRoutingContext,
         readSource: binding.source,
         version: binding.version,
       },

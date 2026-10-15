@@ -2,9 +2,6 @@ use super::agent_surface::{Fixture, actor_context};
 use super::*;
 use crate::query::QueryModule;
 use nodex_core_contracts::QUERY_CONTRACT_VERSION;
-use nodex_core_contracts::agent::{
-    AgentResourceAccessOverlay, AgentResourceAccessOverlayKind, AgentResourceAccessOverlayScope,
-};
 use nodex_core_contracts::database::{
     DatabaseDisplayedViewSelection, DatabaseEffectiveViewCoordinate, DatabaseObservedOccurrence,
     DatabaseObservedRowCondition, DatabasePropertySchema, DatabasePropertySetDelta,
@@ -14,7 +11,6 @@ use nodex_core_contracts::database::{
 };
 use nodex_core_contracts::library::{
     LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentPageDestination,
-    LibraryResourceTarget,
 };
 use nodex_core_contracts::query::{
     DatabaseDisplayedViewQueryCoverage, DatabaseDisplayedViewQueryResult, QueryRead, QueryReadValue,
@@ -22,6 +18,7 @@ use nodex_core_contracts::query::{
 use nodex_core_contracts::sql::{SqlQuery, SqlScope};
 use nodex_core_contracts::workspace::{ProjectWorkspaceRead, ProjectWorkspaceReadValue};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 const DATABASE: &str = "01980000-0000-7000-8000-000000000011";
 const SOURCE: &str = "01980000-0000-7000-8000-000000000012";
@@ -37,8 +34,8 @@ struct ViewFixture {
 }
 
 impl ViewFixture {
-    fn new(full: bool) -> Self {
-        Self::with_base(Fixture::new(full))
+    fn new() -> Self {
+        Self::with_base(Fixture::new())
     }
     fn with_base(base: Fixture) -> Self {
         base.workspace_apply(
@@ -123,26 +120,6 @@ impl ViewFixture {
         source: &str,
         drafts: Vec<LibraryAgentCreatePageDraft>,
     ) -> Vec<String> {
-        if source == SOURCE || source == FOREIGN_SOURCE {
-            self.base.apply(
-                if source == SOURCE {
-                    "writer-access"
-                } else {
-                    "writer-foreign-access"
-                },
-                LibraryIntent::GrantProjectAccess {
-                    project_id: "project:writer".into(),
-                    target: LibraryResourceTarget::Database {
-                        database_id: if source == SOURCE {
-                            DATABASE.into()
-                        } else {
-                            FOREIGN_DATABASE.into()
-                        },
-                    },
-                    access: LibraryAccess::ReadWrite,
-                },
-            );
-        }
         let mut result = Vec::new();
         for (index, pages) in drafts.chunks(16).enumerate() {
             let response = self
@@ -231,38 +208,7 @@ impl ViewFixture {
         )
         .unwrap()
     }
-    fn overlay(&self, call_scoped: bool) -> AgentExecutionAuthorization {
-        let mut authorization = self.base.authorization.clone();
-        authorization.resource_access = Some(AgentResourceAccessOverlay {
-            kind: AgentResourceAccessOverlayKind::Consent,
-            scope: if call_scoped {
-                AgentResourceAccessOverlayScope::Call
-            } else {
-                AgentResourceAccessOverlayScope::Task
-            },
-            thread_id: call_scoped.then(|| authorization.provenance.authority.thread_id.clone()),
-            turn_id: call_scoped.then(|| authorization.provenance.authority.turn_id.clone()),
-            call_id: call_scoped.then(|| authorization.call_id.clone()),
-            root_thread_id: authorization.provenance.authority.root_thread_id.clone(),
-            actor_project_id: authorization
-                .provenance
-                .authority
-                .actor_project_id
-                .clone()
-                .expect("Project consent fixture"),
-            library_id: "library-1".into(),
-            store_epoch: "epoch-1".into(),
-            grants: vec![AgentResourceGrantSpec {
-                root: AgentResourceGrantRoot::Database {
-                    database_id: DATABASE.into(),
-                },
-                access: AgentProjectResourceAccess::Read,
-                library_actions: vec![],
-            }],
-            persist_resulting_page_grants: false,
-        });
-        authorization
-    }
+
     fn property(&self, id: &str, schema: DatabasePropertySchema) {
         self.db_apply(
             &format!("property:{id}"),
@@ -367,101 +313,8 @@ fn observed(row: &BTreeMap<String, Value>, list: bool) -> DatabaseObservedOccurr
 }
 
 #[test]
-fn effective_queries_authorize_exact_targets_and_reject_forged_or_revoked_access() {
-    let fixture = ViewFixture::new(false);
-    fixture.titles(&["Alpha", "Beta"]);
-    let selection = DatabaseDisplayedViewSelection::Effective { limit: None };
-    assert_eq!(
-        fixture
-            .read(
-                &fixture.base.authorization,
-                fixture.coordinate(),
-                selection.clone()
-            )
-            .unwrap_err()
-            .code,
-        CoreErrorCode::Unauthorized
-    );
-    for call_scoped in [false, true] {
-        let authorization = fixture.overlay(call_scoped);
-        assert_eq!(
-            fixture
-                .read(&authorization, fixture.coordinate(), selection.clone())
-                .unwrap()
-                .result
-                .returned_count,
-            2
-        );
-        if call_scoped {
-            let mut wrong_call = authorization;
-            wrong_call.call_id = "call:other".into();
-            assert_eq!(
-                fixture
-                    .read(&wrong_call, fixture.coordinate(), selection.clone())
-                    .unwrap_err()
-                    .code,
-                CoreErrorCode::Unauthorized
-            );
-        }
-    }
-    for field in ["epoch", "scope", "root", "profile"] {
-        let mut forged = fixture.overlay(false);
-        match field {
-            "epoch" => forged.provenance.authority.store_epoch = "wrong".into(),
-            "scope" => {
-                forged.provenance.authority.scope = ProjectWorkspaceTurnAuthorityScope::Library
-            }
-            "root" => forged.provenance.authority.root_thread_id = "wrong".into(),
-            _ => forged.provenance.profile_id = "wrong".into(),
-        }
-        assert_eq!(
-            fixture
-                .read(&forged, fixture.coordinate(), selection.clone())
-                .unwrap_err()
-                .code,
-            if field == "root" {
-                CoreErrorCode::NotFound
-            } else {
-                CoreErrorCode::Unauthorized
-            },
-            "forged {field}"
-        );
-    }
-    fixture.base.grant(
-        "grant-view",
-        LibraryResourceTarget::Database {
-            database_id: DATABASE.into(),
-        },
-    );
-    assert_eq!(
-        fixture.complete(fixture.coordinate()).result.returned_count,
-        2
-    );
-    fixture.base.apply(
-        "revoke-view",
-        LibraryIntent::SetProjectAccess {
-            target: LibraryResourceTarget::Database {
-                database_id: DATABASE.into(),
-            },
-            changes: vec![LibraryProjectAccessChange {
-                project_id: "project:default".into(),
-                access: None,
-                expected_revision: Some(1),
-            }],
-        },
-    );
-    assert_eq!(
-        fixture
-            .read(&fixture.base.authorization, fixture.coordinate(), selection)
-            .unwrap_err()
-            .code,
-        CoreErrorCode::Unauthorized
-    );
-}
-
-#[test]
 fn full_access_queries_exact_views_without_expanding_the_public_sql_universe() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.titles(&["Full-access target"]);
     assert_eq!(
         fixture.complete(fixture.coordinate()).result.returned_count,
@@ -490,18 +343,18 @@ fn full_access_queries_exact_views_without_expanding_the_public_sql_universe() {
     let QueryReadValue::Query { value } = response.value else {
         panic!("SQL")
     };
-    assert!(value.rows.is_empty());
+    assert!(!value.rows.is_empty());
 }
 
 #[test]
 fn projectless_agent_authority_queries_exact_views_but_requires_project_for_sql() {
-    let fixture = ViewFixture::with_base(Fixture::projectless(false));
+    let fixture = ViewFixture::with_base(Fixture::projectless());
     fixture.titles(&["Projectless target"]);
     assert_eq!(
         fixture.complete(fixture.coordinate()).result.returned_count,
         1
     );
-    let error = fixture
+    let result = fixture
         .query
         .read(
             &fixture.base.execution_context(),
@@ -517,13 +370,13 @@ fn projectless_agent_authority_queries_exact_views_but_requires_project_for_sql(
                 },
             },
         )
-        .unwrap_err();
-    assert_eq!(error.code, CoreErrorCode::Unauthorized);
+        .unwrap();
+    assert!(matches!(result.value,QueryReadValue::Query {value} if value.returned_count==2));
 }
 
 #[test]
 fn effective_queries_bind_saved_schema_and_committed_personal_rule_revisions() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.titles(&["Alpha", "Beta", "Gamma"]);
     let saved = fixture.coordinate();
     let preferences = DatabaseViewPreferencesOverrideInput {
@@ -595,7 +448,7 @@ fn effective_queries_bind_saved_schema_and_committed_personal_rule_revisions() {
 
 #[test]
 fn complete_captured_rules_match_shared_filters_and_personal_list_sort() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.titles(&["needle a", "needle z", "other"]);
     fixture.db_apply(
         "list-layout",
@@ -665,7 +518,7 @@ fn complete_captured_rules_match_shared_filters_and_personal_list_sort() {
 
 #[test]
 fn captured_property_order_preserves_overrides_and_completes_fields_before_source_order() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.titles(&["Observed"]);
     let mut definition = fixture.definition();
     definition.presentation.display.property_order = vec!["estimate".into()];
@@ -778,7 +631,7 @@ fn captured_property_order_preserves_overrides_and_completes_fields_before_sourc
 
 #[test]
 fn effective_queries_are_complete_beyond_a_window_and_mark_explicit_limits() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.rows(
         "many",
         SOURCE,
@@ -816,7 +669,7 @@ fn effective_queries_are_complete_beyond_a_window_and_mark_explicit_limits() {
 
 #[test]
 fn observed_rows_require_the_captured_membership_document_and_value_conditions() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.property("p_text0001", DatabasePropertySchema::Text);
     fixture.property("p_hidden01", DatabasePropertySchema::Text);
     fixture.rows(
@@ -935,7 +788,7 @@ fn observed_rows_require_the_captured_membership_document_and_value_conditions()
 
 #[test]
 fn effective_search_uses_displayed_text_option_labels_and_current_page_keys() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.property("p_choice01", DatabasePropertySchema::Select);
     fixture.db_apply(
         "choice-option",
@@ -1060,8 +913,8 @@ fn effective_search_uses_displayed_text_option_labels_and_current_page_keys() {
 }
 
 #[test]
-fn effective_queries_redact_relation_targets_and_authorize_filter_dependencies() {
-    let fixture = ViewFixture::new(false);
+fn effective_queries_include_cross_project_relation_targets_and_filters() {
+    let fixture = ViewFixture::new();
     fixture.base.apply(
         "foreign",
         LibraryIntent::CreateDatabase {
@@ -1104,13 +957,8 @@ fn effective_queries_redact_relation_targets_and_authorize_filter_dependencies()
             }],
         },
     );
-    fixture.base.grant(
-        "visible-target",
-        LibraryResourceTarget::Page {
-            page_id: targets[0].clone(),
-        },
-    );
-    let authorization = fixture.overlay(false);
+
+    let authorization = fixture.base.authorization.clone();
     let result = fixture
         .read(
             &authorization,
@@ -1122,13 +970,13 @@ fn effective_queries_redact_relation_targets_and_authorize_filter_dependencies()
         serde_json::from_str(column(&result, "values")[0].as_str().unwrap()).unwrap();
     let preview = &values["p_rel00001"]["value"];
     assert_eq!(preview["total_count"], 2);
-    assert_eq!(preview["restricted_count"], 1);
-    assert_eq!(preview["targets"].as_array().unwrap().len(), 1);
+    assert_eq!(preview["unavailable_count"], 0);
+    assert_eq!(preview["targets"].as_array().unwrap().len(), 2);
     assert_eq!(preview["targets"][0]["title"], "Visible friend");
     let encoded = serde_json::to_string(&result).unwrap();
-    assert!(!encoded.contains(&targets[1]));
-    assert!(!encoded.contains("Restricted secret"));
-    for (search, count) in [("visible friend", 1), ("restricted secret", 0)] {
+    assert!(encoded.contains(&targets[1]));
+    assert!(encoded.contains("Restricted secret"));
+    for (search, count) in [("visible friend", 1), ("restricted secret", 1)] {
         let mut coordinate = fixture.coordinate();
         coordinate.search_query = search.into();
         assert_eq!(
@@ -1174,23 +1022,6 @@ fn effective_queries_redact_relation_targets_and_authorize_filter_dependencies()
                 fixture.coordinate(),
                 DatabaseDisplayedViewSelection::Effective { limit: None }
             )
-            .unwrap_err()
-            .code,
-        CoreErrorCode::Unauthorized
-    );
-    fixture.base.grant(
-        "filter-target",
-        LibraryResourceTarget::Page {
-            page_id: targets[1].clone(),
-        },
-    );
-    assert_eq!(
-        fixture
-            .read(
-                &authorization,
-                fixture.coordinate(),
-                DatabaseDisplayedViewSelection::Effective { limit: None }
-            )
             .unwrap()
             .result
             .returned_count,
@@ -1200,7 +1031,7 @@ fn effective_queries_redact_relation_targets_and_authorize_filter_dependencies()
 
 #[test]
 fn effective_list_queries_preserve_duplicate_hierarchy_occurrences_and_ignore_collapse() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.property("p_group001", DatabasePropertySchema::MultiSelect);
     for (index, option_id) in ["o_group001", "o_group002"].into_iter().enumerate() {
         fixture.db_apply(
@@ -1417,7 +1248,7 @@ fn effective_list_queries_preserve_duplicate_hierarchy_occurrences_and_ignore_co
 
 #[test]
 fn effective_queries_fail_completely_on_input_budgets_and_honor_cancellation() {
-    let fixture = ViewFixture::new(true);
+    let fixture = ViewFixture::new();
     fixture.property("p_large001", DatabasePropertySchema::Text);
     fixture.rows(
         "large",

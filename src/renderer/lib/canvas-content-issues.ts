@@ -1,8 +1,8 @@
 import { exportRecoveryEnvelope } from "./document-recovery-export";
 import {
-  contentAccessIdentityKey,
-  type ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  contentRoutingIdentityKey,
+  type ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 import type { CanvasSceneProvider } from "./canvas-scene-provider";
 import {
   contentEditIssues,
@@ -12,7 +12,7 @@ import {
 
 export async function exportCanvasRecovery(
   provider: Pick<CanvasSceneProvider, "exportRecovery">,
-  scope: ContentAccessIdentity & { readonly documentId: string },
+  scope: ContentRoutingIdentity & { readonly documentId: string },
 ): Promise<void> {
   const data = await provider.exportRecovery();
   await exportRecoveryEnvelope(scope, scope.documentId, data);
@@ -21,7 +21,7 @@ export async function exportCanvasRecovery(
 /** Observe the shared Canvas provider, so repeated surfaces do not create duplicate problems. */
 export function observeCanvasContentIssues(
   provider: CanvasSceneProvider,
-  scope: ContentAccessIdentity & {
+  scope: ContentRoutingIdentity & {
     readonly documentId: string;
     readonly ownerBlockId: string;
     readonly storeEpoch: string;
@@ -63,7 +63,7 @@ export function observeCanvasContentIssues(
                     scope.storeEpoch,
                     `canvas:${scope.documentId}:${mutationId}`,
                   )
-                : `${contentAccessIdentityKey(scope)}\0${scope.storeEpoch}\0canvas:${scope.documentId}:${scope.generation}`,
+                : `${contentRoutingIdentityKey(scope)}\0${scope.storeEpoch}\0canvas:${scope.documentId}:${scope.generation}`,
               scope,
               location: {
                 target: { kind: "canvas", canvasId: scope.ownerBlockId },

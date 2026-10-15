@@ -1,6 +1,6 @@
 import { CoreHttpError, CoreResponseTooLargeError } from "../../core-client/uds-http";
 import { createHash } from "node:crypto";
-import { contentAccessIdentityKey } from "../../../shared/content-access-context";
+import { contentRoutingIdentityKey } from "../../../shared/content-routing-context";
 import {
   makeDocumentRecoveryExportSink,
   RecoveryExportError,
@@ -17,7 +17,7 @@ import type {
   DocumentRecoveryFailure,
   DocumentRecoveryScope,
 } from "../../../shared/block-documents/document-recovery";
-import { parseContentAccessContext } from "../../../shared/content-access-context";
+import { parseContentRoutingContext } from "../../../shared/content-routing-context";
 import { isBoundedOperationId } from "../../../shared/operation-identity";
 import { MainConfig } from "../../app/MainConfig";
 import { CoreAuthority } from "../../core-runtime/CoreAuthority";
@@ -112,7 +112,7 @@ export const live = Layer.effectDiscard(
       requireTrustedAppRendererSender(event, "Document recovery", config.rendererUrl);
       if (!windows.has(event.sender.id) || request.libraryId !== authority.identity.libraryId)
         throw new Error("Recovery requires access to this Library");
-      const context = parseContentAccessContext(request.accessContext);
+      const context = parseContentRoutingContext(request.routingContext);
       return context.kind === "project" ? context.projectId : undefined;
     };
     yield* ipc.handlePlainCommand("document-recovery:export", (event, request) => {
@@ -123,7 +123,7 @@ export const live = Layer.effectDiscard(
           try: () => bind(event, request),
           catch: (cause) => new RecoveryExportError({ cause }),
         });
-        const scope = contentAccessIdentityKey(request);
+        const scope = contentRoutingIdentityKey(request);
         const owner = event.sender.id;
         if (request.kind === "append") {
           yield* exports.append(owner, scope, request.handle, request.offset, request.bytes);

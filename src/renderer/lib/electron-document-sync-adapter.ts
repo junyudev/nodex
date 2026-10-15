@@ -40,7 +40,8 @@ const ERROR_CODES = new Set<DocumentSyncErrorCode>([
   "request_cancelled",
   "request_timeout",
   "service_busy",
-  "unauthorized",
+  "authentication_failed",
+  "invalid_session",
   "store_not_initialized",
   "store_epoch_mismatch",
   "document_not_found",
@@ -74,8 +75,8 @@ const invalidResponseError = (message: string): DocumentSyncCommandError => ({
   resetRequired: false,
 });
 
-const unauthorizedError = (): DocumentSyncCommandError => ({
-  code: "unauthorized",
+const invalidSessionError = (): DocumentSyncCommandError => ({
+  code: "invalid_session",
   message: "The document provider has no active Electron subscription",
   retryable: false,
   resetRequired: false,
@@ -400,8 +401,7 @@ const normalizeRealtimeEvent = (value: unknown): DocumentSyncRealtimeEvent | nul
       value.reason !== "history-compacted" &&
       value.reason !== "transport-reconnected" &&
       value.reason !== "resource-integrity-failure" &&
-      value.reason !== "identity-boundary-changed" &&
-      value.reason !== "access-revoked")
+      value.reason !== "identity-boundary-changed")
   ) {
     return null;
   }
@@ -420,17 +420,17 @@ const normalizeRealtimeEvent = (value: unknown): DocumentSyncRealtimeEvent | nul
 const subscriptionKey = (request: DocumentSyncSubscribeRequest): string =>
   JSON.stringify([request.clientSessionId, request.documentId]);
 
-type ElectronDocumentAccessScope =
+type ElectronDocumentRoutingContext =
   | { readonly kind: "project"; readonly projectId: string }
   | { readonly kind: "library" };
 
-const createScopedElectronDocumentSyncAdapter = (
+const createRoutedElectronDocumentSyncAdapter = (
   bridge: ElectronRendererBridge,
-  accessScope: ElectronDocumentAccessScope,
+  routingContext: ElectronDocumentRoutingContext,
 ): DocumentSyncAdapter => {
   if (
-    accessScope.kind === "project" &&
-    (!accessScope.projectId || accessScope.projectId !== accessScope.projectId.trim())
+    routingContext.kind === "project" &&
+    (!routingContext.projectId || routingContext.projectId !== routingContext.projectId.trim())
   ) {
     throw new TypeError("projectId must be an exact non-empty identity");
   }
@@ -438,9 +438,11 @@ const createScopedElectronDocumentSyncAdapter = (
   const scope = <Request extends { readonly documentId: string }>(
     request: Request,
   ): Request | (Request & { readonly projectId: string }) =>
-    accessScope.kind === "library" ? request : { ...request, projectId: accessScope.projectId };
+    routingContext.kind === "library"
+      ? request
+      : { ...request, projectId: routingContext.projectId };
   const channel = (operation: string): string =>
-    accessScope.kind === "library"
+    routingContext.kind === "library"
       ? `library-document-sync:${operation}`
       : `document-sync:${operation}`;
 
@@ -464,7 +466,7 @@ const createScopedElectronDocumentSyncAdapter = (
     command: () => Promise<DocumentSyncCommandResult<T>>,
   ): Promise<DocumentSyncCommandResult<T>> => {
     const entry = subscriptions.get(subscriptionKey(request));
-    if (!entry) return Promise.resolve({ ok: false, error: unauthorizedError() });
+    if (!entry) return Promise.resolve({ ok: false, error: invalidSessionError() });
     return entry.lifecycle.run(async (subscription) => {
       if (!subscription.ok) return { ok: false, error: subscription.error };
       return command();
@@ -482,7 +484,7 @@ const createScopedElectronDocumentSyncAdapter = (
       withRemoteSubscription(request, async () => {
         try {
           const commandResult =
-            accessScope.kind === "library"
+            routingContext.kind === "library"
               ? await invokeLocalCommitCommandResultThrough(
                   libraryDocumentUpdateCommand,
                   bridge,
@@ -490,7 +492,7 @@ const createScopedElectronDocumentSyncAdapter = (
                 )
               : await invokeLocalCommitCommandResultThrough(projectDocumentUpdateCommand, bridge, {
                   ...request,
-                  projectId: accessScope.projectId,
+                  projectId: routingContext.projectId,
                 });
           return normalizeApplyResult(normalizeCommandResult<DocumentSyncApplyAck>(commandResult));
         } catch (error) {
@@ -550,7 +552,7 @@ const createScopedElectronDocumentSyncAdapter = (
           }),
           inactiveResult: () => ({
             ok: false,
-            error: unauthorizedError(),
+            error: invalidSessionError(),
           }),
           close: async () => {
             await invokeCommand(channel("unsubscribe"), scope(request));
@@ -592,7 +594,7 @@ export function createElectronDocumentSyncAdapter(
   bridge: ElectronRendererBridge,
   projectId: string,
 ): DocumentSyncAdapter {
-  return createScopedElectronDocumentSyncAdapter(bridge, {
+  return createRoutedElectronDocumentSyncAdapter(bridge, {
     kind: "project",
     projectId,
   });
@@ -601,5 +603,5 @@ export function createElectronDocumentSyncAdapter(
 export function createElectronLibraryDocumentSyncAdapter(
   bridge: ElectronRendererBridge,
 ): DocumentSyncAdapter {
-  return createScopedElectronDocumentSyncAdapter(bridge, { kind: "library" });
+  return createRoutedElectronDocumentSyncAdapter(bridge, { kind: "library" });
 }

@@ -61,6 +61,7 @@ export const inboxSourceFromCore = (source: CoreInboxSource): InboxSource => {
         kind: "agent",
         sessionId: source.session_id ?? null,
         threadId: source.thread_id ?? null,
+        runId: source.run_id ?? null,
         projectId: source.project_id ?? null,
         label: source.label,
       };

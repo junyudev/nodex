@@ -18,7 +18,7 @@ import { PageFilesRow } from "./page-files-row";
 
 const controller = {
   page: { id: "page-1", title: "Files" },
-  contentAccessContext: { kind: "project", projectId: "project-1" },
+  contentRoutingContext: { kind: "project", projectId: "project-1" },
   storeEpoch: "epoch-1",
 } as PageStageController;
 
@@ -70,7 +70,7 @@ describe("PageFilesRow", () => {
 
     expect(modal.openModal).toHaveBeenCalledOnce();
     expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      accessContext: controller.contentAccessContext,
+      routingContext: controller.contentRoutingContext,
       pageId: "page-1",
       initialFileId: "file-1",
     });
@@ -86,7 +86,7 @@ describe("PageFilesRow", () => {
 
     expect(screen.queryByText("assets/hero.png")).toBeNull();
     expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      accessContext: controller.contentAccessContext,
+      routingContext: controller.contentRoutingContext,
       pageId: "page-1",
     });
     expect(modal.openModal.mock.calls[0]?.[2]).not.toHaveProperty("initialFileId");

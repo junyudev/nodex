@@ -121,7 +121,7 @@ describe("Workbench renderer Agent bridge", () => {
           id: "page-tab",
           kind: "page_stage",
           titleSnapshot: "Page",
-          config: { accessContext: { kind: "project", projectId: "project-a" }, pageId: "page-a" },
+          config: { routingContext: { kind: "project", projectId: "project-a" }, pageId: "page-a" },
           state: null,
           stateKey: 0,
         },

@@ -5,7 +5,11 @@ import type {
   ThreadTurnsListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import { formatCodexReasoningEffortLabel } from "../../../src/renderer/lib/codex-thread-settings";
-import { chooseComposerModel, openComposerOptionControl } from "./composer-model-picker";
+import {
+  chooseComposerModel,
+  openComposerOptionControl,
+  refreshComposerModels,
+} from "./composer-model-picker";
 
 import {
   classifyAgentSmokeTurnSnapshot,
@@ -15,6 +19,7 @@ import type { CodexExecutionProfile } from "../../../src/shared/codex-execution-
 import { parseModelOption } from "../../../src/shared/codex-composer-catalog";
 import type { CodexNativeRequestOutcome } from "../../../src/shared/codex-native-request-outcome";
 import type { CodexModelOption } from "../../../src/shared/types";
+import type { IpcApi } from "../../../src/shared/ipc-api";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import { waitForDraftScene } from "./new-chat-draft";
@@ -47,7 +52,7 @@ export const invokeIpc = async (
     { targetChannel: channel, targetArguments: arguments_ },
   );
 
-/** Read the model catalog through the same native request transport used by the renderer. */
+/** Read native catalog facts for tests of the Codex account and protocol surface. */
 export const readCodexModelCatalog = async (page: Page): Promise<CodexModelOption[]> => {
   const models: CodexModelOption[] = [];
   const seen = new Set<string>();
@@ -156,32 +161,65 @@ export const setAgentExecutionProfile = async (
   page: Page,
   input: { readonly preferredModelId?: string } = {},
 ): Promise<CodexExecutionProfile> => {
-  const models = await readCodexModelCatalog(page);
-  const model =
-    models.find(
-      (candidate) =>
-        !candidate.hidden &&
-        (candidate.id === input.preferredModelId || candidate.model === input.preferredModelId),
-    ) ?? models.find((candidate) => !candidate.hidden);
-  if (!model) throw new Error("Scripted Agent smoke found no visible Codex model");
+  // The Composer owns a Runtime catalog, independent of the native account endpoint. Explicit
+  // refresh is user demand; reading the native catalog cannot populate this cold cache.
+  await refreshComposerModels(page);
+  type RuntimeModel = IpcApi["agent-runtime:providers:read"]["result"][number]["models"][number];
+  let model: RuntimeModel | undefined;
+  await expect
+    .poll(
+      async () => {
+        const providers = (await invokeIpc(
+          page,
+          "agent-runtime:providers:read",
+          {},
+        )) as IpcApi["agent-runtime:providers:read"]["result"];
+        const provider = providers.find((candidate) => candidate.instanceId === "codex");
+        if (!provider?.enabled || !provider.installed || provider.status === "error") return null;
+        model =
+          provider.models.find((candidate) => candidate.slug === input.preferredModelId) ??
+          provider.models.find((candidate) => candidate.isDefault) ??
+          provider.models[0];
+        return model?.slug ?? null;
+      },
+      {
+        timeout: 15_000,
+        message: "The Composer Runtime catalog must advertise a selectable Codex model",
+      },
+    )
+    .not.toBeNull();
+  if (!model) throw new Error("Scripted Agent smoke found no visible Runtime Codex model");
+  const effort = model.capabilities?.optionDescriptors?.find(
+    (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
+  );
+  const choices = effort?.type === "select" ? effort.options : [];
   const reasoningEffort =
-    model.supportedReasoningEfforts.find((candidate) => candidate.reasoningEffort === "low")
-      ?.reasoningEffort ??
-    model.defaultReasoningEffort ??
-    model.supportedReasoningEfforts[0]?.reasoningEffort ??
+    choices.find((candidate) => candidate.id === "low")?.id ??
+    (effort?.type === "select" ? effort.currentValue : undefined) ??
+    choices.find((candidate) => candidate.isDefault)?.id ??
+    choices[0]?.id ??
     null;
   const profile: CodexExecutionProfile = {
-    modelId: model.id,
+    modelId: model.slug,
     reasoningEffort,
     serviceTier: null,
   };
-  await selectCodexExecutionProfile(page, model, profile);
+  await chooseCodexExecutionProfile(page, { id: model.slug }, profile);
   return profile;
 };
 
 export const selectCodexExecutionProfile = async (
   page: Page,
   model: CodexModelOption,
+  profile: CodexExecutionProfile,
+): Promise<void> => {
+  await refreshComposerModels(page);
+  await chooseCodexExecutionProfile(page, model, profile);
+};
+
+const chooseCodexExecutionProfile = async (
+  page: Page,
+  model: Pick<CodexModelOption, "id">,
   profile: CodexExecutionProfile,
 ): Promise<void> => {
   await chooseComposerModel(page, `${model.id} Codex`);

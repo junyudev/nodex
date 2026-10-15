@@ -1,5 +1,5 @@
 import type { PublicBlockTransferIntent } from "../../../shared/block-transfer-transport";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import type {
   LibraryModuleApplyRequest,
   LibraryStructuralHistoryToken,
@@ -12,7 +12,7 @@ export { promotionRetentionResources } from "../../../shared/block-transfer";
 
 /** Main retains the exact cleanup request beyond the surface's lifetime. */
 export const releaseStructuralHistory = async (
-  access: ContentAccessContext,
+  access: ContentRoutingContext,
   storeEpoch: string,
   tokens: readonly LibraryStructuralHistoryToken[],
   apply?: typeof applyLibraryModule,
@@ -33,7 +33,7 @@ export const releaseStructuralHistory = async (
 };
 
 export const abandonStructuralHistory = async (
-  access: ContentAccessContext,
+  access: ContentRoutingContext,
   request: LibraryModuleApplyRequest,
 ): Promise<void> => {
   const result = await invokeRendererControl("editor-history:abandon", access, request);

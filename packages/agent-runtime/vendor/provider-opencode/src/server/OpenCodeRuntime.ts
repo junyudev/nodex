@@ -1,6 +1,7 @@
+import { sdkFetch } from "./SseIntake.ts";
 import * as NodeURL from "node:url";
 
-import type { ChatAttachment, ProviderApprovalDecision, RuntimeMode } from "@t3tools/contracts";
+import type { ChatAttachment } from "@t3tools/contracts";
 import {
   createOpencodeClient,
   type Agent,
@@ -18,6 +19,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -34,6 +36,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import { signalProcessGroup } from "@t3tools/provider-core/server/processGroup";
 import { isWindowsCommandNotFound } from "@t3tools/provider-core/server/snapshotProbe";
 import * as OpenCodeServerLedger from "./OpenCodeServerLedger.ts";
+import * as NativeExecutionPlugin from "./NativeExecutionPlugin.ts";
 import { collectStreamAsString } from "@t3tools/provider-core/server/snapshotProbe";
 import * as NetService from "@t3tools/shared/Net";
 import { AgentScope } from "@t3tools/shared/AgentScope";
@@ -510,60 +513,6 @@ export function toOpenCodeFileParts(input: {
   return parts;
 }
 
-export function buildOpenCodePermissionRules(runtimeMode: RuntimeMode): PermissionRuleset {
-  if (runtimeMode === "full-access") {
-    return [
-      { permission: "*", pattern: "*", action: "allow" },
-      { permission: "external_directory", pattern: "*", action: "allow" },
-    ];
-  }
-
-  // "Auto-accept edits" is documented as "auto-approve edits, ask before other
-  // actions", so prompting for every edit ignores the mode the user picked.
-  // "auto" is left asking on purpose: the docs say providers without an AI
-  // reviewer, OpenCode among them, fall back to Supervised for that mode.
-  const editAction = runtimeMode === "auto-accept-edits" ? "allow" : "ask";
-
-  // Session rules override OpenCode's agent defaults. Allow reads and task
-  // updates, but keep its default approval rules for environment files.
-  return [
-    { permission: "*", pattern: "*", action: "ask" },
-    { permission: "read", pattern: "*", action: "allow" },
-    { permission: "read", pattern: "*.env", action: "ask" },
-    { permission: "read", pattern: "*.env.*", action: "ask" },
-    { permission: "read", pattern: "*.env.example", action: "allow" },
-    { permission: "glob", pattern: "*", action: "allow" },
-    { permission: "grep", pattern: "*", action: "allow" },
-    { permission: "lsp", pattern: "*", action: "allow" },
-    { permission: "skill", pattern: "*", action: "allow" },
-    { permission: "todowrite", pattern: "*", action: "allow" },
-    { permission: "bash", pattern: "*", action: "ask" },
-    { permission: "edit", pattern: "*", action: editAction },
-    { permission: "webfetch", pattern: "*", action: "ask" },
-    { permission: "websearch", pattern: "*", action: "ask" },
-    { permission: "codesearch", pattern: "*", action: "ask" },
-    { permission: "external_directory", pattern: "*", action: "ask" },
-    { permission: "doom_loop", pattern: "*", action: "ask" },
-    { permission: "question", pattern: "*", action: "allow" },
-  ];
-}
-
-export function toOpenCodePermissionReply(
-  decision: ProviderApprovalDecision,
-): "once" | "always" | "reject" {
-  switch (decision) {
-    case "accept":
-      return "once";
-    case "acceptForSession":
-    case "acceptAlways":
-      return "always";
-    case "decline":
-    case "cancel":
-    default:
-      return "reject";
-  }
-}
-
 export function toOpenCodeQuestionAnswers(
   request: QuestionRequest,
   answers: Record<string, unknown>,
@@ -594,6 +543,7 @@ function ensureRuntimeError(
 }
 
 const makeOpenCodeRuntime = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const netService = yield* NetService.NetService;
   const hostPlatform = yield* HostProcess.Platform;
@@ -659,6 +609,7 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
 
   const createOpenCodeSdkClient: OpenCodeRuntime["Service"]["createOpenCodeSdkClient"] = (input) =>
     createOpencodeClient({
+      fetch: sdkFetch,
       baseUrl: input.baseUrl,
       directory: input.directory,
       ...(input.serverPassword
@@ -913,23 +864,38 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       );
     }
 
-    return startOpenCodeServerProcess({
-      binaryPath: input.binaryPath,
-      directory: input.directory,
-      ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
-      ...(input.environment !== undefined ? { environment: input.environment } : {}),
-      ...(input.port !== undefined ? { port: input.port } : {}),
-      ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
-      ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
-    }).pipe(
-      Effect.map((server) => ({
+    return Effect.gen(function* () {
+      const environment = yield* NativeExecutionPlugin.environment(
+        input.environment ?? process.env,
+        "v1",
+      ).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.mapError(
+          (cause) =>
+            new OpenCodeRuntimeError({
+              operation: "native-execution-plugin",
+              detail: "Could not prepare the native execution bridge.",
+              cause,
+            }),
+        ),
+      );
+      const server = yield* startOpenCodeServerProcess({
+        binaryPath: input.binaryPath,
+        directory: input.directory,
+        ...(input.serverPassword !== undefined ? { serverPassword: input.serverPassword } : {}),
+        environment,
+        ...(input.port !== undefined ? { port: input.port } : {}),
+        ...(input.hostname !== undefined ? { hostname: input.hostname } : {}),
+        ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+      });
+      return {
         url: server.url,
         ...(server.serverPassword !== undefined ? { serverPassword: server.serverPassword } : {}),
         version: server.version,
         exitCode: server.exitCode,
         external: false,
-      })),
-    );
+      };
+    });
   };
 
   const loadProviders = (client: OpencodeClient) =>

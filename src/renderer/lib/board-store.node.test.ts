@@ -24,8 +24,6 @@ import type {
 import { toDatabasePageSummary } from "../../shared/page-summary";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
 import type { ProjectionStreamMessage } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import type { DatabaseViewWindowSnapshot } from "../../shared/database-views";
 import {
   type DatabaseModuleReadResultV2,
@@ -93,7 +91,6 @@ function createDatabaseViewSnapshot(
     name: "Tasks",
     lifecycle: "active" as const,
     defaultViewId: parseDatabaseViewId("view-primary"),
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: "2026-07-12T00:00:00.000Z",
     updatedAt: "2026-07-12T00:00:00.000Z",
@@ -176,7 +173,6 @@ function createDatabaseViewSnapshot(
       libraryId,
       storeEpoch: "epoch-1",
       commitSeq,
-      authorization: null,
       value: { kind: "query", value: query },
     },
   };
@@ -253,20 +249,6 @@ function createBoardSnapshot(
     viewId,
     storeEpoch: "epoch-1",
     commitSeq,
-    authorization: authorizedReadStampFixture({
-      deliveryAddress: {
-        kind: "project",
-        library_id: "library-1",
-        project_id: "project-1",
-      },
-      subject: { kind: "view", view_id: viewId },
-      storeEpoch: "epoch-1",
-      commitSeq,
-      authorizationDependencies: [
-        { kind: "page", page_id: card.id },
-        { kind: "view", view_id: viewId },
-      ],
-    }),
     projection: {
       scopeKey: `scope:${viewId}`,
       schemaVersion: 1,
@@ -379,18 +361,6 @@ function createGroupsSnapshot(
   };
   return {
     ...snapshot,
-    authorization:
-      overrides.authorization ??
-      authorizedReadStampFixture({
-        deliveryAddress: {
-          kind: "project",
-          library_id: snapshot.libraryId,
-          project_id: snapshot.projectId,
-        },
-        subject: { kind: "view", view_id: snapshot.viewId },
-        storeEpoch: snapshot.storeEpoch,
-        commitSeq: snapshot.commitSeq,
-      }),
   };
 }
 
@@ -423,8 +393,7 @@ function createTestRegistry(dependencies: Partial<BoardStoreDependencies> = {}) 
 
 function createProjectionHarness() {
   const projectionListeners = new Set<(message: ProjectionStreamMessage) => void>();
-  const revocationListeners = new Set<(message: ResourceRevocationMessage) => void>();
-  let latestMessage: ProjectionStreamMessage | ResourceRevocationMessage | null = null;
+  let latestMessage: ProjectionStreamMessage | null = null;
   const registry = new ProjectionInvalidationRegistry({
     subscribeProjection: (scope, listener) => {
       projectionListeners.add(listener);
@@ -438,10 +407,6 @@ function createProjectionHarness() {
       }
       return () => projectionListeners.delete(listener);
     },
-    subscribeRevocations: (_scope, listener) => {
-      revocationListeners.add(listener);
-      return () => revocationListeners.delete(listener);
-    },
   });
   const registrations: ProjectionRegistration[] = [];
   const register = registry.register.bind(registry);
@@ -452,12 +417,8 @@ function createProjectionHarness() {
   return {
     getRegistry: () => registry,
     registrations,
-    publish: (message: ProjectionStreamMessage | ResourceRevocationMessage) => {
+    publish: (message: ProjectionStreamMessage) => {
       latestMessage = message;
-      if (message.version === 1) {
-        for (const listener of revocationListeners) listener(message);
-        return;
-      }
       for (const listener of projectionListeners) listener(message);
     },
   };
@@ -542,36 +503,6 @@ function pageRemoved(commitSeq: number, pageId: string): ProjectionStreamMessage
           subgroupKey: null,
           groupTotal: 0,
         },
-      },
-    },
-  };
-}
-
-function pageRevoked(commitSeq: number, pageId: string): ResourceRevocationMessage {
-  return {
-    version: 1,
-    kind: "revocation",
-    scope: {
-      kind: "project",
-      libraryId: "library-1",
-      projectId: "project-1",
-    },
-    stream: { storeEpoch: "epoch-1", commitSeq },
-    delivery: {
-      storeEpoch: "epoch-1",
-      commitSeq,
-      manifestHash: String(commitSeq).padStart(64, "b").slice(-64),
-      operationId: `operation-${commitSeq}`,
-      committedAt: "2026-08-06T00:00:00.000Z",
-      revocation: {
-        authorization_scope: {
-          kind: "project",
-          library_id: "library-1",
-          project_id: "project-1",
-        },
-        resource_kind: "page",
-        resource_id: pageId,
-        reason: "ownership_moved",
       },
     },
   };
@@ -3285,90 +3216,7 @@ describe("board store", () => {
     unsubscribe();
   });
 
-  test("evicts a revoked Page immediately and fences a pre-revocation Board read", async () => {
-    const staleRead = createDeferred<DatabaseViewWindowSnapshot>();
-    const projection = createProjectionHarness();
-    let readCount = 0;
-    const registry = createTestRegistry({
-      readViewWindow: async () => {
-        readCount += 1;
-        if (readCount === 1) return createBoardSnapshot(createBoard(), 1);
-        if (readCount === 2) return await staleRead.promise;
-        return createBoardSnapshot(
-          {
-            ...createBoard(),
-            columns: createBoard().columns.map((column) => ({
-              ...column,
-              cards: column.cards.filter((card) => card.id !== "card-1"),
-            })),
-          },
-          2,
-          "view-primary",
-          true,
-          2,
-        );
-      },
-      subscribeBoardChanges: () => () => {},
-      getProjectionInvalidationRegistry: projection.getRegistry,
-    });
-    const store = registry.getStore("project-1");
-    const unsubscribe = store.subscribe(() => {});
-    await waitForMicrotasks();
-    expect(store.getSnapshot().pageIndex.has("card-1")).toBe(true);
-
-    const refresh = store.refreshBoard();
-    await waitForMicrotasks();
-    projection.publish(pageRevoked(2, "card-1"));
-    expect(store.getSnapshot().pageIndex.has("card-1")).toBe(false);
-
-    staleRead.resolve(createBoardSnapshot(createBoard(), 1));
-    await refresh;
-    await waitForMicrotasks();
-
-    expect(readCount).toBe(3);
-    expect(store.getSnapshot().pageIndex.has("card-1")).toBe(false);
-    unsubscribe();
-  });
-
-  test("removes a revoked Page create overlay before it reaches canonical base", async () => {
-    const projection = createProjectionHarness();
-    const remote = createDeferred<{ ok: true }>();
-    const pageId = "019fe620-0000-7000-8000-000000000099";
-    const optimisticCard = createOptimisticCard({
-      id: pageId,
-      status: "triage",
-      title: "Pending but revoked",
-    });
-    const registry = createTestRegistry({
-      readViewWindow: async () => createBoardSnapshot(),
-      subscribeBoardChanges: () => () => {},
-      getProjectionInvalidationRegistry: projection.getRegistry,
-    });
-    const store = registry.getStore("project-1");
-    const unsubscribe = store.subscribe(() => {});
-    await waitForMicrotasks();
-
-    const mutation = store.runOptimisticMutation({
-      kind: "page:create",
-      conflictKeys: conflictKeysForCreate("triage", pageId),
-      apply: buildCreateCardTransform("triage", optimisticCard, "top"),
-      runRemote: async () => await remote.promise,
-      refreshOnSuccess: false,
-    });
-    expect(store.getSnapshot().pageIndex.has(pageId)).toBe(true);
-    expect(store.getSnapshot().pendingMutationCount).toBe(1);
-
-    projection.publish(pageRevoked(2, pageId));
-    expect(store.getSnapshot().pageIndex.has(pageId)).toBe(false);
-    expect(store.getSnapshot().pendingMutationCount).toBe(0);
-
-    remote.resolve({ ok: true });
-    await mutation;
-    expect(store.getSnapshot().pageIndex.has(pageId)).toBe(false);
-    unsubscribe();
-  });
-
-  test("keeps an authorized Board warm across unsubscribe/resubscribe", async () => {
+  test("keeps a Board warm across unsubscribe/resubscribe", async () => {
     let readCount = 0;
     const registry = createTestRegistry({
       readViewWindow: async () => {

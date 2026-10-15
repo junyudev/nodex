@@ -25,7 +25,7 @@ import type {
   GlobalDictationRendererCommand,
   GlobalDictationRendererEvent,
 } from "../shared/global-dictation";
-import type { ContentAccessContext } from "../shared/content-access-context";
+import type { ContentRoutingContext } from "../shared/content-routing-context";
 import type {
   AvatarOverlayRendererCommand,
   AvatarOverlayRendererEvent,

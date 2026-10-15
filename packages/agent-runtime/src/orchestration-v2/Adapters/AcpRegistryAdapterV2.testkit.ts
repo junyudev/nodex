@@ -17,8 +17,7 @@ import {
   type AcpReplayTranscript,
   AcpReplayTranscriptDecodeError,
   decodeAcpReplayTranscript,
-  makeAcpReplayCompletenessAssertion,
-  makeAcpReplayRuntime,
+  makeAcpReplayRuntimeSequence,
 } from "./AcpAdapterV2.testkit.ts";
 import {
   ACP_REGISTRY_DEFAULT_INSTANCE_ID,
@@ -53,20 +52,22 @@ function layerAcpRegistryProviderAdapterRegistryReplay(
       const scriptPath = yield* path
         .fromFileUrl(new URL("../../../scripts/acp-replay-agent.ts", import.meta.url))
         .pipe(Effect.orDie);
+      const replay = makeAcpReplayRuntimeSequence({
+        transcript,
+        statusPath,
+        scriptPath,
+        childProcessSpawner,
+        fileSystem,
+        ...(replayGate === undefined ? {} : { replayGate }),
+      });
+      yield* Effect.addFinalizer(() => replay.assertAllComplete.pipe(Effect.orDie));
       const adapter = yield* makeAcpRegistryAdapterV2({
         instanceId: ACP_REGISTRY_DEFAULT_INSTANCE_ID,
         settings: REPLAY_SETTINGS,
         environment: {},
         selfInvocation: yield* resolveSelfInvocation(),
-        makeRuntime: makeAcpReplayRuntime({
-          transcript,
-          statusPath,
-          scriptPath,
-          childProcessSpawner,
-          fileSystem,
-          ...(replayGate === undefined ? {} : { replayGate }),
-        }),
-        assertComplete: makeAcpReplayCompletenessAssertion(fileSystem, statusPath, transcript),
+        makeRuntime: replay.makeRuntime,
+        assertComplete: replay.assertComplete,
       });
       return [adapter];
     }),

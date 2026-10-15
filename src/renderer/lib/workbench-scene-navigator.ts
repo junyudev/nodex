@@ -472,7 +472,7 @@ function validateSceneSurfaceRequest(
     input.request.kind === "db_view";
   const libraryAuthorized =
     requestAllowed &&
-    input.request.config.accessContext.kind === "library" &&
+    input.request.config.routingContext.kind === "library" &&
     (input.request.kind !== "db_view" || input.request.config.target.kind !== "project-default");
   return libraryAuthorized
     ? null

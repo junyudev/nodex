@@ -2,7 +2,8 @@ import type { CodexAutomationInboxItem } from "@/lib/types";
 
 export interface WorkbenchAutomationPreviousRunRowModel {
   item: CodexAutomationInboxItem;
-  threadId: string;
+  runId: string;
+  sessionId: string | null;
   title: string;
   sourceLabel: string | null;
   relativeTimeLabel: string;
@@ -57,21 +58,22 @@ export function buildWorkbenchAutomationPreviousRunRowModel({
 }): WorkbenchAutomationPreviousRunRowModel {
   const isArchived = item.status === "ARCHIVED";
   const isInProgress = item.status === "IN_PROGRESS";
-  const threadId = item.threadId.trim();
-  const hasThread = threadId.length > 0;
+  const hasRun = item.runId.trim().length > 0;
+  const sessionId = item.sessionId?.trim() || null;
 
   return {
     item,
-    threadId: item.threadId,
+    runId: item.runId,
+    sessionId,
     title: item.title ?? item.automationName ?? "Untitled",
     sourceLabel: formatWorkbenchAutomationRunSourceLabel(item.sourceCwd),
     relativeTimeLabel: formatWorkbenchAutomationRunRelativeTime(item.createdAt, now),
     isUnread: item.readAt === null,
     isArchived,
     isInProgress,
-    canArchive: hasThread && !isArchived && !isInProgress,
-    canUnarchive: hasThread && isArchived,
-    canOpen: hasThread && !isArchived,
+    canArchive: hasRun && !isArchived && !isInProgress,
+    canUnarchive: hasRun && isArchived,
+    canOpen: sessionId !== null && !isArchived,
   };
 }
 

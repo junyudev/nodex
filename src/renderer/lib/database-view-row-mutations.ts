@@ -264,7 +264,7 @@ const defaultDependencies: DatabaseViewMutationDependencies = {
 export type DatabaseViewMutationReceipt = DatabaseApplyReceiptV2 | LibraryDatabaseApplyReceiptV2;
 export type DatabaseViewMutationScope = Pick<
   DatabaseViewRenderModel,
-  "accessContext" | "storeEpoch"
+  "routingContext" | "storeEpoch"
 >;
 
 export const commitDatabaseViewOperations = async (input: {
@@ -281,11 +281,11 @@ export const commitDatabaseViewOperations = async (input: {
   } as const;
   const dependencies = input.dependencies ?? defaultDependencies;
   const apply = () =>
-    input.model.accessContext.kind === "library"
+    input.model.routingContext.kind === "library"
       ? dependencies.applyLibrary(commonRequest)
-      : dependencies.applyProject(input.model.accessContext.projectId, {
+      : dependencies.applyProject(input.model.routingContext.projectId, {
           ...commonRequest,
-          projectId: input.model.accessContext.projectId,
+          projectId: input.model.routingContext.projectId,
           actor: { kind: "renderer_database_view" as const },
         });
   const result = await apply();

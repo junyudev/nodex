@@ -297,7 +297,7 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
             payload: {
               ...shellProjection.thread,
               title: "Renamed after shell import",
-              runtimeMode: "approval-required",
+              runtimeMode: "full-access",
               interactionMode: "plan",
               archivedAt: renamedAt,
               settledOverride: "settled",
@@ -316,7 +316,7 @@ it.layer(layerTest)("LegacyV1ThreadImporter", (it) => {
       });
       const projection = yield* projections.getThreadProjection(threadId);
       assert.equal(projection.thread.title, "Renamed after shell import");
-      assert.equal(projection.thread.runtimeMode, "approval-required");
+      assert.equal(projection.thread.runtimeMode, "full-access");
       assert.equal(projection.thread.interactionMode, "plan");
       assert.deepEqual(projection.thread.archivedAt, renamedAt);
       assert.equal(projection.thread.settledOverride, "settled");

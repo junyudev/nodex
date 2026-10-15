@@ -1,14 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nodex_core_contracts::database::DatabaseRowSummary;
-use nodex_core_contracts::events::{DeliveryAuthorizationScope, ResourceKey};
-use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, LibraryId, LocalProjectionPatch, LocalProjectionScope,
-    ProfileId, ProjectId, ProjectionImpact,
-};
+use nodex_core_contracts::{LocalProjectionPatch, LocalProjectionScope, ProjectionImpact};
 use rusqlite::{Connection, OptionalExtension};
 
-use crate::infrastructure::durable_mutation::AuthorizedResourceObservation;
 use crate::infrastructure::local_commit::{self, CommitContext};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
@@ -72,7 +67,6 @@ pub(crate) fn record_local_projection_delta(
     commit: &CommitContext,
     library_id: &str,
     impact: &ProjectionImpact,
-    authorization_before: &[AuthorizedResourceObservation],
 ) -> Result<ProjectionAudienceCompilation, StoreError> {
     let ProjectionImpact::Resources {
         page_ids, view_ids, ..
@@ -87,12 +81,20 @@ pub(crate) fn record_local_projection_delta(
 
     let affected_page_ids = canonical_strings(page_ids);
     let affected_view_ids = canonical_strings(view_ids);
+    if !affected_page_ids.is_empty() || !affected_view_ids.is_empty() {
+        local_commit::require_projection_read(
+            connection,
+            commit,
+            LocalProjectionScope::Library {
+                library_id: library_id.to_owned(),
+            },
+        )?;
+    }
     let audiences = compile_audiences(
         connection,
         library_id,
         &affected_page_ids,
         &affected_view_ids,
-        authorization_before,
     )?;
     let mut grouped = BTreeMap::<ProjectionInputFingerprint, Vec<String>>::new();
     for audience in audiences {
@@ -128,39 +130,9 @@ pub(crate) fn record_local_projection_delta(
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let relation_sensitive = representative_views
-            .iter()
-            .any(compiled_view_contains_relation_preview);
         metrics.patch_blobs += input.post_visible_page_ids.len() + representative_views.len();
-        if relation_sensitive {
-            metrics.fingerprint_groups += project_ids.len().saturating_sub(1);
-        }
-
-        for (index, project_id) in project_ids.into_iter().enumerate() {
-            let project_views = if !relation_sensitive || index == 0 {
-                None
-            } else {
-                Some(
-                    input
-                        .visible_view_ids
-                        .iter()
-                        .map(|view_id| {
-                            compile_view_delta(
-                                connection,
-                                commit,
-                                library_id,
-                                &project_id,
-                                view_id,
-                                &projection_page_ids,
-                            )
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                )
-            };
-            let compiled_views = project_views.as_deref().unwrap_or(&representative_views);
-            if project_views.is_some() {
-                metrics.patch_blobs += compiled_views.len();
-            }
+        for project_id in project_ids {
+            let compiled_views = &representative_views;
             record_page_deltas(
                 connection,
                 commit,
@@ -211,6 +183,13 @@ pub(crate) fn record_page_document_projection_delta(
     if page_ids.is_empty() && view_ids.is_empty() {
         return Ok(());
     }
+    local_commit::require_projection_read(
+        connection,
+        commit,
+        LocalProjectionScope::Library {
+            library_id: library_id.to_owned(),
+        },
+    )?;
     let view_coordinates = view_ids
         .iter()
         .map(|view_id| {
@@ -230,19 +209,8 @@ pub(crate) fn record_page_document_projection_delta(
         .collect::<Result<BTreeMap<_, _>, StoreError>>()?;
 
     for project_id in active_project_ids(connection, library_id)? {
-        let context = project_context(library_id, &project_id);
-        let scope = DeliveryAuthorizationScope::Project {
-            library_id: library_id.to_owned(),
-            project_id: project_id.clone(),
-        };
-        let visible_pages =
-            readable_resource_ids(connection, &context, &scope, &page_ids, |page_id| {
-                ResourceKey::Page { page_id }
-            })?;
-        record_page_deltas(connection, commit, &project_id, &visible_pages)?;
-        for view_id in readable_resource_ids(connection, &context, &scope, &view_ids, |view_id| {
-            ResourceKey::View { view_id }
-        })? {
+        record_page_deltas(connection, commit, &project_id, &page_ids)?;
+        for view_id in view_ids.iter().cloned() {
             let Some(Some((database_id, data_source_id))) = view_coordinates.get(&view_id) else {
                 continue;
             };
@@ -305,34 +273,7 @@ pub(crate) fn record_page_detail_projection_delta(
         }
     }
     for project_id in active_project_ids(connection, library_id)? {
-        let context = project_context(library_id, &project_id);
-        let scope = DeliveryAuthorizationScope::Project {
-            library_id: library_id.to_owned(),
-            project_id: project_id.clone(),
-        };
         for (data_source_id, database_id) in &data_source_coordinates {
-            let can_read_data_source = crate::infrastructure::resource_authorization::can_read(
-                connection,
-                &context,
-                &scope,
-                &ResourceKey::DataSource {
-                    data_source_id: data_source_id.clone(),
-                },
-            )?;
-            if !can_read_data_source {
-                continue;
-            }
-            let can_read_database = crate::infrastructure::resource_authorization::can_read(
-                connection,
-                &context,
-                &scope,
-                &ResourceKey::Database {
-                    database_id: database_id.clone(),
-                },
-            )?;
-            if !can_read_database {
-                continue;
-            }
             local_commit::require_projection_read(
                 connection,
                 commit,
@@ -344,17 +285,6 @@ pub(crate) fn record_page_detail_projection_delta(
             )?;
         }
         for database_id in &page_database_ids {
-            let can_read_database = crate::infrastructure::resource_authorization::can_read(
-                connection,
-                &context,
-                &scope,
-                &ResourceKey::Database {
-                    database_id: database_id.clone(),
-                },
-            )?;
-            if !can_read_database {
-                continue;
-            }
             local_commit::require_projection_read(
                 connection,
                 commit,
@@ -403,32 +333,22 @@ fn compile_audiences(
     library_id: &str,
     affected_page_ids: &[String],
     affected_view_ids: &[String],
-    authorization_before: &[AuthorizedResourceObservation],
 ) -> Result<Vec<ProjectionAudience>, StoreError> {
-    let project_ids = active_project_ids(connection, library_id)?;
-    let pre_visible = pre_visible_pages_by_project(authorization_before, affected_page_ids);
-    project_ids
+    let active_views = affected_view_ids.iter().filter_map(|view_id| {
+        let visible = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM database_views view JOIN database_containers container ON container.block_id=view.database_block_id JOIN data_sources source ON source.id=view.data_source_id WHERE view.id=?1 AND container.library_id=?2 AND view.lifecycle='active' AND container.lifecycle='active' AND source.lifecycle='active')",
+            rusqlite::params![view_id,library_id], |row| row.get::<_,bool>(0));
+        match visible {Ok(true)=>Some(Ok(view_id.clone())), Ok(false)=>None, Err(error)=>Some(Err(StoreError::from(error)))}
+    }).collect::<Result<Vec<_>,_>>()?;
+    active_project_ids(connection, library_id)?
         .into_iter()
         .map(|project_id| {
-            let context = project_context(library_id, &project_id);
-            let scope = DeliveryAuthorizationScope::Project {
-                library_id: library_id.to_owned(),
-                project_id: project_id.clone(),
-            };
-            let post_visible_page_ids =
-                readable_resource_ids(connection, &context, &scope, affected_page_ids, |id| {
-                    ResourceKey::Page { page_id: id }
-                })?;
-            let visible_view_ids =
-                readable_resource_ids(connection, &context, &scope, affected_view_ids, |id| {
-                    ResourceKey::View { view_id: id }
-                })?;
             Ok(ProjectionAudience {
-                project_id: project_id.clone(),
+                project_id,
                 input: ProjectionInputFingerprint {
-                    pre_visible_page_ids: pre_visible.get(&project_id).cloned().unwrap_or_default(),
-                    post_visible_page_ids,
-                    visible_view_ids,
+                    pre_visible_page_ids: affected_page_ids.to_vec(),
+                    post_visible_page_ids: affected_page_ids.to_vec(),
+                    visible_view_ids: active_views.clone(),
                 },
             })
         })
@@ -454,66 +374,6 @@ fn active_project_ids(
         ));
     }
     Ok(project_ids)
-}
-
-fn pre_visible_pages_by_project(
-    authorization_before: &[AuthorizedResourceObservation],
-    affected_page_ids: &[String],
-) -> BTreeMap<String, Vec<String>> {
-    let affected = affected_page_ids.iter().cloned().collect::<BTreeSet<_>>();
-    let mut visible = BTreeMap::<String, BTreeSet<String>>::new();
-    for observation in authorization_before {
-        let DeliveryAuthorizationScope::Project { project_id, .. } =
-            &observation.authorization_scope
-        else {
-            continue;
-        };
-        if observation.resource_kind != nodex_core_contracts::RevokedResourceKind::Page
-            || !affected.contains(&observation.resource_id)
-        {
-            continue;
-        }
-        visible
-            .entry(project_id.clone())
-            .or_default()
-            .insert(observation.resource_id.clone());
-    }
-    visible
-        .into_iter()
-        .map(|(project_id, pages)| (project_id, pages.into_iter().collect()))
-        .collect()
-}
-
-fn readable_resource_ids(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    scope: &DeliveryAuthorizationScope,
-    ids: &[String],
-    resource: impl Fn(String) -> ResourceKey,
-) -> Result<Vec<String>, StoreError> {
-    let mut readable = Vec::new();
-    for id in ids {
-        if crate::infrastructure::resource_authorization::can_read(
-            connection,
-            context,
-            scope,
-            &resource(id.clone()),
-        )? {
-            readable.push(id.clone());
-        }
-    }
-    Ok(readable)
-}
-
-fn project_context(library_id: &str, project_id: &str) -> BoundModuleContext {
-    BoundModuleContext {
-        editor_history_owner: None,
-        profile_id: ProfileId("profile:projection-compiler".to_owned()),
-        library_id: LibraryId(library_id.to_owned()),
-        project_id: Some(ProjectId(project_id.to_owned())),
-        connection_id: "connection:projection-compiler".to_owned(),
-        adapter: AdapterKind::Test,
-    }
 }
 
 fn compile_view_delta(
@@ -549,7 +409,7 @@ fn compile_view_delta(
         .ok_or_else(|| {
             StoreError::new(
                 StoreErrorCode::StoreCorrupt,
-                "A post-authorized Database View has no canonical projection",
+                "An active Database View has no canonical projection",
                 false,
             )
         })?;
@@ -579,7 +439,7 @@ fn compile_view_delta(
         Err(error) if error.code == StoreErrorCode::NotFound => {
             return Err(StoreError::new(
                 StoreErrorCode::StoreCorrupt,
-                "A post-authorized Database View has no canonical projection",
+                "An active Database View has no canonical projection",
                 false,
             ));
         }
@@ -726,15 +586,6 @@ fn record_compiled_view_delta(
     local_commit::require_projection_read(connection, commit, scope)
 }
 
-fn compiled_view_contains_relation_preview(compiled: &CompiledViewDelta) -> bool {
-    let ViewDeltaContent::Upsert { row, .. } = &compiled.content else {
-        return false;
-    };
-    row.database_values
-        .values()
-        .any(|value| value.get("kind").and_then(serde_json::Value::as_str) == Some("relation"))
-}
-
 fn canonical_strings(values: &[String]) -> Vec<String> {
     values
         .iter()
@@ -761,8 +612,6 @@ fn internal(message: &str) -> StoreError {
 mod tests {
     use std::time::Instant;
 
-    use nodex_core_contracts::RevokedResourceKind;
-    use nodex_core_contracts::events::DeliveryAuthorizationScope;
     use rusqlite::Connection;
 
     use super::*;
@@ -830,10 +679,7 @@ mod tests {
                  CREATE TABLE blocks(
                    id TEXT PRIMARY KEY, library_id TEXT, lifecycle TEXT
                  );
-                 CREATE TABLE project_resource_grants(
-                   project_id TEXT, root_kind TEXT, root_id TEXT,
-                   recursive INTEGER, lifecycle TEXT
-                 );
+
                  CREATE TABLE pages(
                    block_id TEXT PRIMARY KEY, library_id TEXT, document_id TEXT
                  );",
@@ -862,23 +708,12 @@ mod tests {
     #[test]
     fn two_hundred_equivalent_projects_share_one_projection_input() {
         let connection = audience_fixture(200);
-        let before = (0..200)
-            .map(|index| AuthorizedResourceObservation {
-                authorization_scope: DeliveryAuthorizationScope::Project {
-                    library_id: "library:audiences".to_owned(),
-                    project_id: format!("project:{index:03}"),
-                },
-                resource_kind: RevokedResourceKind::Page,
-                resource_id: "page:moved".to_owned(),
-            })
-            .collect::<Vec<_>>();
         let started = Instant::now();
         let audiences = compile_audiences(
             &connection,
             "library:audiences",
             &["page:moved".to_owned()],
             &[],
-            &before,
         )
         .expect("compile bounded audiences");
         assert_eq!(audiences.len(), 200);
@@ -890,39 +725,9 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_grants_do_not_fragment_affected_visibility_groups() {
-        let connection = audience_fixture(3);
-        connection
-            .execute(
-                "INSERT INTO project_resource_grants(
-                   project_id, root_kind, root_id, recursive, lifecycle
-                 ) VALUES ('project:001', 'page', 'page:shared', 1, 'active')",
-                [],
-            )
-            .expect("grant reader");
-        let before = [AuthorizedResourceObservation {
-            authorization_scope: DeliveryAuthorizationScope::Project {
-                library_id: "library:audiences".to_owned(),
-                project_id: "project:002".to_owned(),
-            },
-            resource_kind: RevokedResourceKind::Page,
-            resource_id: "page:moved".to_owned(),
-        }];
-        let audiences = compile_audiences(
-            &connection,
-            "library:audiences",
-            &["page:moved".to_owned()],
-            &[],
-            &before,
-        )
-        .expect("compile distinct audiences");
-        assert_eq!(grouped_count(audiences), 2);
-    }
-
-    #[test]
     fn audience_bound_fails_before_patch_computation() {
         let connection = audience_fixture(201);
-        let error = compile_audiences(&connection, "library:audiences", &[], &[], &[])
+        let error = compile_audiences(&connection, "library:audiences", &[], &[])
             .expect_err("audience overflow");
         assert_eq!(error.code, StoreErrorCode::ResourceExhausted);
     }

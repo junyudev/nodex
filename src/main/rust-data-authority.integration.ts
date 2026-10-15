@@ -64,10 +64,6 @@ import {
   layer as nodexAgentDynamicToolsLive,
 } from "./nodex-agent-application/NodexAgentDynamicTools";
 import {
-  NodexAgentResourceAccess,
-  live as nodexAgentResourceAccessLive,
-} from "./nodex-agent-application/NodexAgentResourceAccess";
-import {
   CodexConversationContext,
   make as makeCodexConversationContext,
 } from "./codex-application/CodexConversationContext";
@@ -89,7 +85,6 @@ const withFinalDataApplications = <A, E>(
     readonly automation: AutomationApplication["Service"];
     readonly database: DatabaseModule["Service"];
     readonly dynamicTools: NodexAgentDynamicTools["Service"];
-    readonly resourceAccess: NodexAgentResourceAccess["Service"];
     readonly turnAuthority: CodexTurnAuthority["Service"];
     readonly workspace: ProjectWorkspace["Service"];
   }) => Effect.Effect<A, E>,
@@ -177,11 +172,6 @@ const withFinalDataApplications = <A, E>(
           ),
         );
         const agent = Context.get(agentContext, NodexAgentApplication);
-        const resourceAccessContext = yield* Layer.build(
-          nodexAgentResourceAccessLive.pipe(
-            Layer.provide(Layer.merge(authorityLayer, Layer.succeed(CoreModules, core))),
-          ),
-        );
         const dynamicToolsContext = yield* Layer.build(
           nodexAgentDynamicToolsLive(true).pipe(
             Layer.provide(Layer.succeed(NodexAgentApplication, agent)),
@@ -191,7 +181,6 @@ const withFinalDataApplications = <A, E>(
           automation,
           database,
           dynamicTools: Context.get(dynamicToolsContext, NodexAgentDynamicTools),
-          resourceAccess: Context.get(resourceAccessContext, NodexAgentResourceAccess),
           turnAuthority,
           workspace,
         });
@@ -448,7 +437,7 @@ describe("Electron native data authority", () => {
       expect(libraryDatabaseWrite).toMatchObject({
         ok: true,
         value: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: runtime.rootClient.handshake.library_id,
           operationId: "electron-library-database-put-property",
           operationKinds: ["put_property"],
@@ -986,18 +975,8 @@ describe("Electron native data authority", () => {
                   actorProjectId: projectId,
                   libraryId: authorityRuntime.rootClient.handshake.library_id,
                   storeEpoch: authorityRuntime.rootClient.handshake.store_epoch,
-                  frozenAtMs: 1_785_491_085_000,
-                  readOnly: false,
-                  scope: "project",
-                  source: "project_turn",
+                  admittedAtMs: 1_785_491_085_000,
                 },
-                access: {
-                  read: "allowed",
-                  write: "consent_required",
-                  domains: ["document", "placement", "database"],
-                },
-                resolveResourceAccess: () => Effect.succeed({ kind: "authorized" }),
-                authorize: () => Effect.succeed("deny"),
               },
             );
             const nativeWindow = yield* databaseApplication.viewWindow(
@@ -1601,11 +1580,7 @@ describe("Electron native data authority", () => {
               threadId: "thread:electron-session",
               projectId: project.id,
             });
-            const authorityLaunch = yield* turnAuthority.begin(
-              "thread:electron-session",
-              false,
-              false,
-            );
+            const authorityLaunch = yield* turnAuthority.begin("thread:electron-session");
             yield* turnAuthority.bind(
               "thread:electron-session",
               authorityLaunch,
@@ -1626,96 +1601,16 @@ describe("Electron native data authority", () => {
         turnId: "turn:electron-session",
         rootThreadId: "thread:electron-session",
         actorProjectId: createdProject.id,
-        scope: "project",
-        source: "project_turn",
       });
       expect(frozenAuthority).toMatchObject({
         storeEpoch: runtime.rootClient.handshake.store_epoch,
         libraryId: runtime.rootClient.handshake.library_id,
       });
-      const agentResources = await withFinalDataApplications(runtime, ({ resourceAccess }) =>
-        Effect.succeed(resourceAccess),
-      );
-      const planAgentResources = (input: Parameters<typeof agentResources.plan>[0]) =>
-        Effect.runPromise(agentResources.plan(input));
-      const persistAgentProjectGrants = (
-        input: Parameters<typeof agentResources.persistProjectGrants>[0],
-      ) => Effect.runPromise(agentResources.persistProjectGrants(input));
-      const consentPlan = await planAgentResources({
-        authority: frozenAuthority,
-        callId: "call:electron-session",
-        intents: [
-          {
-            target: { kind: "page", pageId: copiedDataSourcePageId },
-            action: "write",
-          },
-        ],
-      });
-      expect(consentPlan).toMatchObject({
-        kind: "consent_required",
-        requirements: [
-          {
-            grant: {
-              root: { kind: "page", pageId: copiedDataSourcePageId },
-              access: "read_write",
-            },
-            persistable: true,
-          },
-        ],
-      });
-      if (consentPlan.kind !== "consent_required") {
-        throw new Error("Foreign Page did not require Project consent");
-      }
-      await persistAgentProjectGrants({
-        operationId: "electron-agent-project-grants",
-        authority: frozenAuthority,
-        grants: consentPlan.requirements.map((requirement) => requirement.grant),
-      });
-      await expect(
-        planAgentResources({
-          authority: frozenAuthority,
-          callId: "call:electron-session-after-grant",
-          intents: [
-            {
-              target: { kind: "page", pageId: copiedDataSourcePageId },
-              action: "write",
-            },
-          ],
-        }),
-      ).resolves.toEqual({ kind: "authorized" });
       const nativeDuplicateContext = {
         toolsetRevision: NODEX_APP_TOOLSET_REVISION,
         authority: frozenAuthority,
-        access: {
-          read: "allowed" as const,
-          write: "consent_required" as const,
-          domains: ["document", "placement", "database"] as (
-            | "document"
-            | "placement"
-            | "database"
-          )[],
-        },
-        resolveResourceAccess: (intents: Parameters<typeof agentResources.plan>[0]["intents"]) =>
-          agentResources
-            .plan({
-              authority: frozenAuthority,
-              callId: "call:electron-native-duplicate",
-              intents,
-            })
-            .pipe(Effect.orDie),
-        authorize: () => Effect.succeed("deny" as const),
       };
-      const nativeCreateContext = {
-        ...nativeDuplicateContext,
-        resolveResourceAccess: (intents: Parameters<typeof agentResources.plan>[0]["intents"]) =>
-          agentResources
-            .plan({
-              authority: frozenAuthority,
-              callId: "call:electron-native-create-pages",
-              intents,
-            })
-            .pipe(Effect.orDie),
-      };
+      const nativeCreateContext = nativeDuplicateContext;
       const nativeCreateInput = {
         destination: {
           kind: "page" as const,
@@ -1796,36 +1691,7 @@ describe("Electron native data authority", () => {
         ),
       );
       expect(nativeCreatedReplay).toEqual(nativeCreated);
-      const nativeMoveContext = {
-        ...nativeDuplicateContext,
-        resolveResourceAccess: (intents: Parameters<typeof agentResources.plan>[0]["intents"]) =>
-          agentResources
-            .plan({
-              authority: frozenAuthority,
-              callId: "call:electron-native-move-pages",
-              intents,
-            })
-            .pipe(Effect.orDie),
-      };
-      const moveTargetConsent = await planAgentResources({
-        authority: frozenAuthority,
-        callId: "call:electron-native-move-target-consent",
-        intents: [
-          {
-            target: { kind: "page", pageId: nativeContentBlockId },
-            action: "create_child",
-          },
-        ],
-      });
-      if (moveTargetConsent.kind === "consent_required") {
-        await persistAgentProjectGrants({
-          operationId: "electron-agent-move-target-grant",
-          authority: frozenAuthority,
-          grants: moveTargetConsent.requirements.map((requirement) => requirement.grant),
-        });
-      } else if (moveTargetConsent.kind !== "authorized") {
-        throw new Error("Native Agent Page-move target was not grantable");
-      }
+      const nativeMoveContext = nativeDuplicateContext;
       const createdPageIds = nativeCreated.data.pages.map((page) => page.pageId).reverse();
       const nativeMoveInput = {
         pageIds: createdPageIds,
@@ -1937,7 +1803,7 @@ describe("Electron native data authority", () => {
       );
       expect(nativeDuplicateReplay).toEqual(nativeDuplicate);
       expect(listCurrentProcessFiles()).not.toContain(databasePath);
-      await withFinalDataApplications(runtime, ({ automation }) =>
+      await withFinalDataApplications(runtime, ({ automation, workspace }) =>
         Effect.gen(function* () {
           const definition = yield* automation.definitions.create({
             kind: "cron",
@@ -1960,17 +1826,25 @@ describe("Electron native data authority", () => {
             id: definition.id,
             lastRunAt: expect.any(Number),
           });
+          const { value: automationSession } = yield* workspace.createProjectSession({
+            operationId: createOperationId("integration.automation.session"),
+            payload: {
+              sessionId: randomUUID(),
+              input: { projectId, noThreadFallbackTitle: "Automation", initialPageIds: [] },
+            },
+          });
           expect(
             yield* automation.runs.begin({
-              threadId: "thread:electron-session",
+              runId: "run:electron-automation",
               automationId: definition.id,
-              threadTitle: "Electron Automation run",
+              sessionId: automationSession.id,
+              sessionTitle: "Electron Automation run",
               sourceCwd: nodexHome,
             }),
           ).toBe(true);
           expect(
             yield* automation.runs.completeForReview({
-              threadId: "thread:electron-session",
+              runId: "run:electron-automation",
               inboxTitle: "Native report ready",
               inboxSummary: "Review the native Automation run.",
             }),
@@ -1979,7 +1853,8 @@ describe("Electron native data authority", () => {
             items: [
               {
                 automationId: definition.id,
-                threadId: "thread:electron-session",
+                runId: "run:electron-automation",
+                sessionId: automationSession.id,
                 description: "Review the native Automation run.",
               },
             ],
@@ -1987,29 +1862,29 @@ describe("Electron native data authority", () => {
           });
           expect(
             yield* automation.inbox.setReadState({
-              threadId: "thread:electron-session",
+              runId: "run:electron-automation",
               readAt: Date.now(),
             }),
           ).toMatchObject({
-            threadId: "thread:electron-session",
+            runId: "run:electron-automation",
             readAt: expect.any(Number),
           });
           expect(
             yield* automation.runs.archive({
-              threadId: "thread:electron-session",
+              runId: "run:electron-automation",
               archivedReason: "manual",
               archivedUserMessage: "Run the native report.",
               archivedAssistantMessage: "Native report complete.",
             }),
           ).toBe(true);
-          expect(yield* automation.runs.get("thread:electron-session")).toMatchObject({
+          expect(yield* automation.runs.get("run:electron-automation")).toMatchObject({
             status: "ARCHIVED",
             archivedUserMessage: "Run the native report.",
             archivedAssistantMessage: "Native report complete.",
             archivedReason: "manual",
           });
-          expect(yield* automation.runs.unarchive("thread:electron-session")).toBe(true);
-          expect(yield* automation.runs.delete("thread:electron-session")).toBe(true);
+          expect(yield* automation.runs.unarchive("run:electron-automation")).toBe(true);
+          expect(yield* automation.runs.delete("run:electron-automation")).toBe(true);
           expect(
             yield* automation.occurrences.list({
               projectId: createdProject.id,
@@ -2085,17 +1960,17 @@ describe("Electron native data authority", () => {
       ).resolves.toMatchObject({ value: { kind: "catalog_window" } });
 
       const canvasDocumentId = primaryCanvasDocumentId(projectId);
-      const canvasAccessContext = { kind: "project", projectId } as const;
+      const canvasRoutingContext = { kind: "project", projectId } as const;
       const canvasBinding = {
         libraryId: runtime.identity.libraryId,
-        accessContext: canvasAccessContext,
+        routingContext: canvasRoutingContext,
       };
       const firstCanvasClient = runtime.clientForProject(projectId);
       const firstCanvas = createCoreCanvasSceneAdapter(firstCanvasClient, canvasBinding);
       const secondCanvasClient = runtime.clientForProject(projectId);
       const secondCanvas = createCoreCanvasSceneAdapter(secondCanvasClient, canvasBinding);
       const firstCanvasRequest = {
-        accessContext: canvasAccessContext,
+        routingContext: canvasRoutingContext,
         documentId: canvasDocumentId,
         clientSessionId: "renderer:electron-canvas:first",
       } as const;
@@ -2126,7 +2001,7 @@ describe("Electron native data authority", () => {
           secondCanvasEvents.push({
             type: "canvas_scene_resync_required",
             libraryId: canvasBinding.libraryId,
-            accessContext: canvasBinding.accessContext,
+            routingContext: canvasBinding.routingContext,
             documentId: repair.document_id,
             storeEpoch: repair.store_epoch,
             generation: repair.document_generation,
@@ -2274,29 +2149,6 @@ describe("Electron native data authority", () => {
         },
       });
       await expect(
-        library.apply({
-          operationId: "electron-library-adapter-grant",
-          storeEpoch: runtime.rootClient.handshake.store_epoch,
-          operation: {
-            kind: "grant_project_access",
-            projectId,
-            target: {
-              kind: "page",
-              pageId: "page:electron-library-adapter",
-            },
-            access: "read_write",
-          },
-        }),
-      ).resolves.toMatchObject({
-        ok: true,
-        value: {
-          operationKind: "grant_project_access",
-          // A Project-created Library-root Page grants its creator read/write
-          // access atomically; repeating that grant is a semantic no-op.
-          didMutate: false,
-        },
-      });
-      await expect(
         library.readProjectPageDetail(projectId, "page:electron-library-adapter"),
       ).resolves.toMatchObject({
         ok: true,
@@ -2312,7 +2164,7 @@ describe("Electron native data authority", () => {
       });
       await expect(
         library.resolvePageTarget({
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           targetPageId: "page:electron-library-adapter",
         }),
       ).resolves.toMatchObject({
@@ -2326,7 +2178,7 @@ describe("Electron native data authority", () => {
       });
       await expect(
         library.resolvePageTarget({
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           targetPageId: "page:electron-library-adapter",
         }),
       ).resolves.toMatchObject({
@@ -2340,7 +2192,7 @@ describe("Electron native data authority", () => {
       });
       await expect(
         library.resolvePageOwnershipPath({
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           targetPageId: "page:electron-library-adapter",
         }),
       ).resolves.toMatchObject({
@@ -2353,7 +2205,7 @@ describe("Electron native data authority", () => {
       });
       await expect(
         library.resolvePageOwnershipPath({
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           targetPageId: "page:electron-library-adapter",
         }),
       ).resolves.toMatchObject({
@@ -2409,17 +2261,15 @@ describe("Electron native data authority", () => {
           },
         },
       });
-      await expect(rootLibrary.findPageLocation("page:electron-library-adapter")).resolves.toEqual({
-        pageId: "page:electron-library-adapter",
-        projectId,
-      });
+      await expect(
+        rootLibrary.findPageLocation("page:electron-library-adapter"),
+      ).resolves.toBeNull();
       const libraryPageDetail = await rootLibrary.readLibraryPageDetail(
         "page:electron-library-adapter",
       );
       expect(libraryPageDetail).toMatchObject({
         ok: true,
         value: {
-          accessContext: { kind: "library" },
           page: { pageId: "page:electron-library-adapter" },
         },
       });
@@ -2445,7 +2295,7 @@ describe("Electron native data authority", () => {
       ).resolves.toMatchObject({
         ok: true,
         value: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           operationKinds: ["transfer_page"],
         },
       });

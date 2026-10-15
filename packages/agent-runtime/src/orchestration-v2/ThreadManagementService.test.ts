@@ -29,6 +29,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -39,7 +40,6 @@ import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
-import { DispatchModeLimit, type DispatchModeRefusal } from "./DispatchModeLimit.ts";
 
 it("stamps authoritative provenance on commands that create threads or messages", () => {
   const command: OrchestrationV2Command = {
@@ -238,18 +238,6 @@ it("derives thread management messages from structural error attributes", () => 
   expect(archived).toMatchObject({ threadId });
   expect(archived.message).toBe(`Thread ${threadId} is archived and cannot receive messages.`);
 
-  const notSteerable = new ThreadManagementService.ThreadManagementNoSteerableRunError({
-    threadId,
-    mode: "restart",
-  });
-  expect(notSteerable).toMatchObject({
-    threadId,
-    mode: "restart",
-  });
-  expect(notSteerable.message).toBe(
-    `Thread ${threadId} has no running turn that can be restarted.`,
-  );
-
   const notInterruptible = new ThreadManagementService.ThreadManagementThreadNotInterruptibleError({
     threadId,
     runId,
@@ -386,6 +374,48 @@ const layerDispatchChokepointTest =
       Layer.provide(settingsLayer),
       Layer.provideMerge(layerReceiptsTest),
     );
+
+it.effect(
+  "rechecks the admitted foreground before a command reaches the durable dispatcher",
+  () => {
+    const dispatched: string[] = [];
+    let checks = 0;
+    const layer = layerDispatchChokepointTest(ServerSettings.layerTest({}))(dispatched);
+    return Effect.gen(function* () {
+      const threads = yield* ThreadManagementService.ThreadManagementService;
+      const result = yield* threads
+        .dispatch({
+          type: "thread.visit",
+          commandId: CommandId.make("command:stale-admission"),
+          threadId: ThreadId.make("thread:stale-admission"),
+          visitedAt: "2026-10-14T00:00:00.000Z",
+        })
+        .pipe(Effect.result);
+      expect(result._tag).toBe("Failure");
+      expect(checks).toBe(1);
+      expect(dispatched).toEqual([]);
+    }).pipe(
+      Effect.provide(layer),
+      Effect.provideService(ExecutionHost.McpTurnAdmission, {
+        actor: undefined,
+        requestId: "request:stale",
+        assertCurrent: () =>
+          Effect.sync(() => {
+            checks++;
+          }).pipe(
+            Effect.andThen(
+              Effect.fail(
+                new ExecutionHost.ExecutionHostError({
+                  operation: "mcp.admission",
+                  message: "The foreground Run changed.",
+                }),
+              ),
+            ),
+          ),
+      }),
+    );
+  },
+);
 
 it.effect(
   "the dispatch chokepoint refuses a continuation message.dispatch on a project-disabled instance before reaching the orchestrator",
@@ -716,9 +746,6 @@ it.effect.each([
   "unsupported-runtime",
   "provider-failed",
   "provider-timeout",
-  "within-limit",
-  "runtime-raised",
-  "interaction-raised",
 ] as const)("stops a persisted workflow with state %s", (state) =>
   Effect.gen(function* () {
     const threadId = ThreadId.make("thread:workflow-stop");
@@ -729,8 +756,8 @@ it.effect.each([
     const driver = ProviderDriverKind.make("claudeAgent");
     const instanceId = ProviderInstanceId.make("claudeAgent");
     const now = yield* DateTime.now;
-    let targetModes: Pick<OrchestrationV2ThreadShell, "runtimeMode" | "interactionMode"> = {
-      runtimeMode: "approval-required",
+    const targetModes: Pick<OrchestrationV2ThreadShell, "runtimeMode" | "interactionMode"> = {
+      runtimeMode: "full-access",
       interactionMode: "plan",
     };
     const task: OrchestrationV2Subagent = {
@@ -835,58 +862,27 @@ it.effect.each([
     );
     yield* Effect.gen(function* () {
       const service = yield* ThreadManagementService.ThreadManagementService;
-      const refused = yield* Ref.make<DispatchModeRefusal | undefined>(undefined);
-      const stop = service
-        .stopWorkflow({ threadId, subagentId })
-        .pipe(
-          Effect.provideService(
-            DispatchModeLimit,
-            state === "within-limit" || state === "runtime-raised" || state === "interaction-raised"
-              ? { runtimeMode: "approval-required", interactionMode: "plan", refused }
-              : undefined,
-          ),
-          Effect.result,
-        );
+      const stop = service.stopWorkflow({ threadId, subagentId }).pipe(Effect.result);
       const executor = yield* ThreadCommandExecutor.ThreadCommandExecutor;
       const result =
-        state === "runtime-raised" || state === "interaction-raised"
+        state === "provider-timeout"
           ? yield* Effect.gen(function* () {
-              const started = yield* Deferred.make<void>();
-              const pending = yield* executor.withLock(
-                threadId,
-                Effect.gen(function* () {
-                  const fiber = yield* Deferred.succeed(started, undefined).pipe(
-                    Effect.andThen(stop),
-                    Effect.forkChild,
-                  );
-                  yield* Deferred.await(started);
-                  targetModes =
-                    state === "runtime-raised"
-                      ? { ...targetModes, runtimeMode: "full-access" }
-                      : { ...targetModes, interactionMode: "default" };
-                  return fiber;
-                }),
+              const finished = yield* Ref.make(false);
+              const pending = yield* stop.pipe(
+                Effect.tap(() => Ref.set(finished, true)),
+                Effect.forkChild,
               );
-              return yield* Fiber.join(pending);
+              yield* Deferred.await(stopStarted);
+              yield* TestClock.adjust("15 seconds");
+              expect(yield* Ref.get(finished)).toBe(true);
+              const result = yield* Fiber.join(pending);
+              expect(yield* executor.withLock(threadId, Effect.succeed("lock-released"))).toBe(
+                "lock-released",
+              );
+              return result;
             })
-          : state === "provider-timeout"
-            ? yield* Effect.gen(function* () {
-                const finished = yield* Ref.make(false);
-                const pending = yield* stop.pipe(
-                  Effect.tap(() => Ref.set(finished, true)),
-                  Effect.forkChild,
-                );
-                yield* Deferred.await(stopStarted);
-                yield* TestClock.adjust("15 seconds");
-                expect(yield* Ref.get(finished)).toBe(true);
-                const result = yield* Fiber.join(pending);
-                expect(yield* executor.withLock(threadId, Effect.succeed("lock-released"))).toBe(
-                  "lock-released",
-                );
-                return result;
-              })
-            : yield* stop;
-      if (state === "running" || state === "within-limit") {
+          : yield* stop;
+      if (state === "running") {
         expect(result).toMatchObject({ _tag: "Success" });
         expect(calls).toEqual([{ taskId: "native-workflow-id", providerThread }]);
         expect(task.status).toBe("running");
@@ -910,13 +906,6 @@ it.effect.each([
         expect(calls).toEqual([]);
         if (state === "provider-timeout") {
           expect(result).toMatchObject({ failure: { cause: { _tag: "TimeoutError" } } });
-        }
-        if (state === "runtime-raised" || state === "interaction-raised") {
-          expect(yield* Ref.get(refused)).toEqual({
-            threadId,
-            ...targetModes,
-            mode: state === "runtime-raised" ? "runtime" : "interaction",
-          });
         }
       }
     }).pipe(Effect.provide(Layer.merge(layerTest, ThreadCommandExecutor.layer)));

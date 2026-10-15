@@ -59,11 +59,10 @@ function makeAutomation(
     id: "automation-1",
     definitionRevision: 1,
     projectId: null,
-    targetSessionId: null,
     notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
-    targetThreadId: "thread-1",
+    targetSessionId: "thread-1",
     name: "Daily standup",
     prompt: "Check the daily standup thread.",
     rrule: "FREQ=DAILY",
@@ -104,7 +103,7 @@ describe("workbench automation draft", () => {
     });
     const definition = makeAutomation({
       kind: "cron",
-      targetThreadId: null,
+      targetSessionId: null,
       projectId: "project",
       cwds: ["/workspace"],
       backendBinding: { kind: "claude", instanceConfigId: "gateway" },
@@ -191,7 +190,7 @@ describe("workbench automation draft", () => {
         ...(notificationPolicy !== undefined ? { notificationPolicy } : {}),
       });
       const payload = buildCodexScheduledAutomationCreateInput({ draft });
-      expect(payload).toMatchObject({ targetSessionId: "session:original", targetThreadId: null });
+      expect(payload).toMatchObject({ targetSessionId: "session:original" });
       expect(payload?.notificationPolicy).toBe(notificationPolicy);
       expect(Object.hasOwn(payload ?? {}, "notificationPolicy")).toBe(
         notificationPolicy !== undefined,
@@ -221,7 +220,6 @@ describe("workbench automation draft", () => {
     expect(payload).toMatchObject({
       expectedRevision: 3,
       targetSessionId: "session:original",
-      targetThreadId: null,
       status: "PAUSED",
     });
     expect(Object.hasOwn(payload ?? {}, "notificationPolicy")).toBe(false);
@@ -231,7 +229,7 @@ describe("workbench automation draft", () => {
     const draft = createWorkbenchAutomationDraft({ id: "automation-new" });
     draft.name = "  Weekly triage  ";
     draft.prompt = "  Triage the project queue.  ";
-    draft.targetThreadId = " thread-alpha ";
+    draft.targetSessionId = " thread-alpha ";
     draft.rrule = " FREQ=WEEKLY ";
     draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
@@ -242,7 +240,7 @@ describe("workbench automation draft", () => {
 
     expect(payload?.name).toBe("Weekly triage");
     expect(payload?.prompt).toBe("Triage the project queue.");
-    expect(payload?.targetThreadId).toBe(null);
+    expect(payload?.targetSessionId).toBe(null);
     expect(payload?.rrule).toBe("FREQ=WEEKLY");
     expect(JSON.stringify(payload?.cwds)).toBe(JSON.stringify(["/tmp/project"]));
     expect(payload?.model).toBe("gpt-5.5");
@@ -286,7 +284,7 @@ describe("workbench automation draft", () => {
     const draft = createWorkbenchAutomationDraft({
       automation: makeAutomation({
         kind: "cron",
-        targetThreadId: null,
+        targetSessionId: null,
         model: "unavailable-model",
         reasoningEffort: "max",
         projectId: "project",
@@ -323,7 +321,7 @@ describe("workbench automation draft", () => {
     const calendarRrule = "DTSTART;TZID=Asia/Shanghai:20260710T090000\nRRULE:FREQ=DAILY";
     const automation = makeAutomation({
       kind: "cron",
-      targetThreadId: null,
+      targetSessionId: null,
       rrule: calendarRrule,
       model: "gpt-5.5",
       reasoningEffort: "medium",
@@ -373,10 +371,10 @@ describe("workbench automation draft", () => {
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(true);
 
     draft.kind = "heartbeat";
-    draft.targetThreadId = "";
+    draft.targetSessionId = "";
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 
-    draft.targetThreadId = "thread-1";
+    draft.targetSessionId = "thread-1";
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(true);
   });
 
@@ -408,7 +406,7 @@ describe("workbench automation draft", () => {
     draft.kind = "heartbeat";
     draft.model = "";
     draft.cwds = [];
-    draft.targetThreadId = "";
+    draft.targetSessionId = "";
 
     expect(
       formatWorkbenchAutomationDraftSaveTooltip({
@@ -417,7 +415,7 @@ describe("workbench automation draft", () => {
       }),
     ).toBe("Select chat to create");
 
-    draft.targetThreadId = "thread-1";
+    draft.targetSessionId = "thread-1";
     expect(
       formatWorkbenchAutomationDraftSaveTooltip({
         draft,

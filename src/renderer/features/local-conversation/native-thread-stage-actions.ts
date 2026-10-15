@@ -35,11 +35,10 @@ export function composeNativeThreadStageActions(
     onCollaborationModeChange: unavailable,
     onModelChange: unavailable,
     onReasoningEffortChange: unavailable,
-    onPermissionModeChange: unavailable,
+
     onSendPrompt: unavailable,
     onSteerPrompt: unavailable,
     onInterruptTurn: unavailable,
-    onRespondApproval: unavailable,
     onRespondUserInput: unavailable,
     onRespondMcpElicitation: unavailable,
     onResolvePlanImplementationRequest: unavailable,

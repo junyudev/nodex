@@ -1,11 +1,27 @@
 import type { components } from "@nodex/core-protocol";
 import type { DatabasePageSummary } from "./types";
 
-export type ProjectionImpact = components["schemas"]["ProjectionImpact"];
+/** Renderer-derived resource impact for keyed cache repair. */
+export type ProjectionImpact =
+  | { readonly kind: "none" }
+  | { readonly kind: "all" }
+  | {
+      readonly kind: "resources";
+      readonly page_ids: readonly string[];
+      readonly database_ids: readonly string[];
+      readonly data_source_ids: readonly string[];
+      readonly view_ids: readonly string[];
+      readonly document_heads: readonly {
+        readonly page_id: string;
+        readonly document_id: string;
+        readonly generation: number;
+        readonly head_seq: number;
+      }[];
+    };
 export type LocalProjectionScope = components["schemas"]["LocalProjectionScope"];
 export type CoreProjectionEffect = components["schemas"]["ProjectionEffect"];
 
-/** Authorization boundary for one renderer subscription. */
+/** Delivery coordinate for one renderer subscription. */
 export type ProjectionScope =
   | { readonly kind: "library"; readonly libraryId: string }
   | {

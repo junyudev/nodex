@@ -32,7 +32,7 @@ export function useOpenDocumentRecoveryReview() {
 
 /** Keep bounded Library recovery visible independently of the selected Page. */
 export function ContentRecoveryObserver({ libraryId }: { readonly libraryId: string }) {
-  useDocumentRecovery({ libraryId, accessContext: { kind: "library" } }, null);
+  useDocumentRecovery({ libraryId, routingContext: { kind: "library" } }, null);
   return null;
 }
 export function useDocumentRecovery(scope: DocumentRecoveryScope, documentId: string | null) {

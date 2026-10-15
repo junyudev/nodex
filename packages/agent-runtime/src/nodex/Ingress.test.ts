@@ -2,6 +2,7 @@ import {
   EnvironmentId,
   ProjectId,
   ProviderInstanceId,
+  ProviderDriverKind,
   ProviderSessionId,
   ProviderThreadId,
   RunAttemptId,
@@ -9,19 +10,25 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
-import type * as Schema from "effect/Schema";
-import { HttpServerRequest, HttpServerResponse } from "effect/http";
+import * as Scope from "effect/Scope";
+import * as Schema from "effect/Schema";
+import { McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
+import { HttpEffect, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Invocation from "../mcp/McpInvocationContext.ts";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
-import { HostBridge } from "./HostBridge.ts";
+import * as Environment from "../environment/ServerEnvironment.ts";
+import { HostBridge, make as makeBridge } from "./HostBridge.ts";
 import { make } from "./Ingress.ts";
+import { OrchestratorToolkit } from "../mcp/toolkits/orchestrator/tools.ts";
 
 const actor = {
   runtimeId: "runtime:test",
@@ -69,6 +76,90 @@ const unused = Layer.mergeAll(
     get: () => Effect.die("An old client must be rejected before loading the new native runtime."),
   }),
 );
+const send = (
+  effect: Effect.Effect<HttpServerResponse.HttpServerResponse, unknown>,
+  request: HttpServerRequest.HttpServerRequest,
+) =>
+  Effect.gen(function* () {
+    let emitted: HttpServerResponse.HttpServerResponse | undefined;
+    yield* HttpEffect.toHandled(effect, (_request, response) =>
+      Effect.sync(() => {
+        emitted = response;
+      }),
+    ).pipe(Effect.provideService(HttpServerRequest.HttpServerRequest, request));
+    if (emitted === undefined) return yield* Effect.die("HTTP response was not emitted");
+    return emitted;
+  });
+
+it.effect("binds the emitted initialize session before checking canonical execution identity", () =>
+  Effect.gen(function* () {
+    let authorityReads = 0;
+    const expectedFailure = new Projections.ProjectionStoreReadError({
+      threadId: actor.threadId,
+    });
+    yield* Effect.gen(function* () {
+      const admit = yield* make;
+      const initialize = request({ method: "initialize", id: 1 });
+      const opened = yield* send(
+        admit(
+          Effect.sync(() => {
+            HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
+              Effect.succeed(
+                HttpServerResponse.setHeader(response, "mcp-session-id", "profile:test"),
+              ),
+            );
+            return HttpServerResponse.empty();
+          }),
+          scope,
+          initialize,
+        ),
+        initialize,
+      );
+      expect(opened.headers["mcp-session-id"]).toBe("profile:test");
+      const response = yield* admit(
+        Effect.die("A failed canonical authority lookup must not execute the tool"),
+        scope,
+        request({ method: "tools/call", id: 2, params: { name: "delegate_task" } }, "profile:test"),
+      );
+      expect(authorityReads).toBe(1);
+      expect(response.body._tag).toBe("Uint8Array");
+      if (response.body._tag !== "Uint8Array") return;
+      expect(JSON.parse(new TextDecoder().decode(response.body.body)).result.content[0].text).toBe(
+        expectedFailure.message,
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.mock(HostBridge)({
+          runtimeId: EnvironmentId.make(actor.runtimeId),
+          runtimeGeneration: actor.runtimeGeneration,
+          nativeSessionLive: () => Effect.succeed(true),
+          preparedTurn: () => Effect.succeed(actor),
+          nativeSessions: () =>
+            Effect.succeed([
+              {
+                providerSessionId: actor.providerSessionId,
+                nativeGeneration: actor.nativeGeneration,
+              },
+            ]),
+          onNativeSessionClose: () => Effect.void,
+        }),
+      ),
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(Projections.ProjectionStoreV2)({
+            getHostToolAuthorityContext: () =>
+              Effect.sync(() => {
+                authorityReads++;
+              }).pipe(Effect.andThen(Effect.fail(expectedFailure))),
+          }),
+          Layer.mock(Sessions.ProviderSessionManagerV2)({
+            get: () => Effect.die("Failed canonical authority must not load a native session"),
+          }),
+        ),
+      ),
+    );
+  }),
+);
 
 it.effect(
   "rejects an initialized client from an older native generation instead of borrowing the newest Run",
@@ -77,12 +168,16 @@ it.effect(
       const current = yield* Ref.make(actor);
       yield* Effect.gen(function* () {
         const admit = yield* make;
-        yield* admit(
-          Effect.succeed(
-            HttpServerResponse.empty({ headers: { "mcp-session-id": "profile:old" } }),
+        const initialize = request({ method: "initialize", id: 1 });
+        yield* send(
+          admit(
+            Effect.succeed(
+              HttpServerResponse.empty({ headers: { "mcp-session-id": "profile:old" } }),
+            ),
+            scope,
+            initialize,
           ),
-          scope,
-          request({ method: "initialize", id: 1 }),
+          initialize,
         );
         yield* Ref.update(current, (old) => ({
           ...old,
@@ -102,6 +197,7 @@ it.effect(
           Layer.mock(HostBridge)({
             runtimeId: EnvironmentId.make(actor.runtimeId),
             runtimeGeneration: actor.runtimeGeneration,
+            nativeSessionLive: () => Effect.succeed(true),
             preparedTurn: () => Ref.get(current),
             nativeSessions: () =>
               Ref.get(current).pipe(
@@ -112,6 +208,7 @@ it.effect(
                   },
                 ]),
               ),
+            onNativeSessionClose: () => Effect.void,
           }),
         ),
         Effect.provide(unused),
@@ -124,6 +221,7 @@ it.effect("keeps the ingress Run immutable while a request body is delayed", () 
     const current = yield* Ref.make(actor);
     const body = yield* Deferred.make<Schema.Json>();
     const entered = yield* Deferred.make<void>();
+    let observed = false;
     yield* Effect.gen(function* () {
       const admit = yield* make;
       const slow = Object.create(request({}), {
@@ -133,6 +231,7 @@ it.effect("keeps the ingress Run immutable while a request body is delayed", () 
       }) as HttpServerRequest.HttpServerRequest;
       const pending = yield* admit(
         Effect.gen(function* () {
+          observed = true;
           const captured = yield* ExecutionHost.McpTurnAdmission;
           expect(captured?.actor?.runId).toBe(actor.runId);
           expect(captured?.requestId).toBe(7);
@@ -146,14 +245,16 @@ it.effect("keeps the ingress Run immutable while a request body is delayed", () 
       yield* Deferred.succeed(body, {
         method: "tools/call",
         id: 7,
-        params: { name: "t3_thread_read" },
+        params: { name: "orchestrator_capabilities" },
       });
       yield* Fiber.join(pending);
+      expect(observed).toBe(true);
     }).pipe(
       Effect.provide(
         Layer.mock(HostBridge)({
           runtimeId: EnvironmentId.make(actor.runtimeId),
           runtimeGeneration: actor.runtimeGeneration,
+          nativeSessionLive: () => Effect.succeed(true),
           preparedTurn: () => Ref.get(current),
           nativeSessions: () =>
             Ref.get(current).pipe(
@@ -169,4 +270,548 @@ it.effect("keeps the ingress Run immutable while a request body is delayed", () 
       Effect.provide(unused),
     );
   }),
+);
+
+it.live("releases every ended native client's HTTP profile while retaining a live sibling", () =>
+  Effect.gen(function* () {
+    const bridge = yield* makeBridge(
+      { home: "/runtime", cwd: "/workspace", providers: {} },
+      () => Effect.void,
+    );
+    const parent = yield* Scope.Scope;
+    const ended = yield* Scope.fork(parent);
+    const live = yield* Scope.fork(parent);
+    const identity = {
+      credentialId: scope.thread!.providerSessionId,
+      providerSessionId: actor.providerSessionId,
+      nativeGeneration: actor.nativeGeneration,
+    };
+    const siblingActor = {
+      ...actor,
+      threadId: ThreadId.make("thread:live"),
+      providerSessionId: ProviderSessionId.make("native:live"),
+    };
+    const sibling = {
+      ...scope,
+      thread: {
+        ...scope.thread!,
+        threadId: siblingActor.threadId,
+        providerSessionId: "credential:live",
+      },
+    };
+    yield* bridge.registerNativeSession(identity).pipe(Effect.provideService(Scope.Scope, ended));
+    yield* bridge
+      .registerNativeSession({
+        ...identity,
+        credentialId: sibling.thread.providerSessionId,
+        providerSessionId: siblingActor.providerSessionId,
+      })
+      .pipe(Effect.provideService(Scope.Scope, live));
+    let authorityReads = 0;
+    const expectedFailure = new Projections.ProjectionStoreReadError({ threadId: actor.threadId });
+    yield* Effect.gen(function* () {
+      const admit = yield* make;
+      const initialize = Effect.fn(function* (
+        profileId: string,
+        caller: Invocation.McpInvocationScope,
+        beforeResponse: Effect.Effect<void> = Effect.void,
+      ) {
+        const incoming = request({ method: "initialize", id: profileId });
+        yield* send(
+          admit(
+            beforeResponse.pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  HttpEffect.appendPreResponseHandlerUnsafe(incoming, (_request, response) =>
+                    Effect.succeed(
+                      HttpServerResponse.setHeader(response, "mcp-session-id", profileId),
+                    ),
+                  );
+                  return HttpServerResponse.empty();
+                }),
+              ),
+            ),
+            caller,
+            incoming,
+          ),
+          incoming,
+        );
+      });
+      yield* initialize("profile:ended:one", scope);
+      yield* initialize("profile:ended:two", scope);
+      yield* initialize("profile:live", sibling);
+      // A native process can close while the HTTP initialize response is still being emitted.
+      yield* initialize("profile:ended:late", scope, Scope.close(ended, Exit.void));
+      expect(yield* bridge.nativeSessions(identity.credentialId)).toEqual([]);
+      const replacement = yield* Scope.fork(parent);
+      yield* bridge
+        .registerNativeSession(identity)
+        .pipe(Effect.provideService(Scope.Scope, replacement));
+      const call = Effect.fn(function* (profileId: string, caller: Invocation.McpInvocationScope) {
+        const incoming = request(
+          { method: "tools/call", id: 2, params: { name: "delegate_task" } },
+          profileId,
+        );
+        const response = yield* send(
+          admit(Effect.die("The test authority lookup must stop tool execution"), caller, incoming),
+          incoming,
+        );
+        expect(response.body._tag).toBe("Uint8Array");
+        if (response.body._tag !== "Uint8Array") return "";
+        return JSON.parse(new TextDecoder().decode(response.body.body)).result.content[0]
+          .text as string;
+      });
+      for (const profileId of ["profile:ended:one", "profile:ended:two", "profile:ended:late"])
+        expect(yield* call(profileId, scope)).toBe(
+          "This MCP client has no captured execution identity.",
+        );
+      expect(authorityReads).toBe(0);
+      expect(yield* call("profile:live", sibling)).toBe(expectedFailure.message);
+      expect(authorityReads).toBe(1);
+    }).pipe(
+      Effect.provideService(HostBridge, {
+        ...bridge,
+        preparedTurn: (threadId) =>
+          Effect.succeed(threadId === actor.threadId ? actor : siblingActor),
+      }),
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.mock(Projections.ProjectionStoreV2)({
+            getHostToolAuthorityContext: () =>
+              Effect.sync(() => {
+                authorityReads++;
+              }).pipe(Effect.andThen(Effect.fail(expectedFailure))),
+          }),
+          Layer.mock(Sessions.ProviderSessionManagerV2)({
+            get: () => Effect.die("Failed canonical authority must not load a native session"),
+          }),
+        ),
+      ),
+    );
+  }).pipe(
+    Effect.provide(NodeServices.layer),
+    Effect.provide(
+      Layer.succeed(Environment.ServerEnvironmentIdentity, {
+        getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
+      }),
+    ),
+  ),
+);
+
+it.effect(
+  "routes private native metadata through strict tool decoding to the original Run and refuses cancellation",
+  () =>
+    Effect.gen(function* () {
+      const next = {
+        ...actor,
+        runId: RunId.make("run:new"),
+        attemptId: RunAttemptId.make("attempt:new"),
+      };
+      let cancelled = false;
+      const seen: string[] = [];
+      const toolkit = Toolkit.make(
+        Tool.make("content_write", {
+          parameters: OrchestratorToolkit.tools.orchestrator_capabilities.parametersSchema,
+          success: Schema.Struct({ runId: Schema.String }),
+        }),
+      );
+      const tools = McpServer.toolkit(toolkit).pipe(
+        Layer.provide(
+          toolkit.toLayer({
+            content_write: () =>
+              Effect.gen(function* () {
+                const frame = yield* ExecutionHost.McpTurnAdmission;
+                seen.push(frame!.actor!.runId!);
+                yield* frame!.assertCurrent().pipe(Effect.orDie);
+                return { runId: frame!.actor!.runId! };
+              }),
+          }),
+        ),
+        Layer.provideMerge(McpServer.McpServer.layer),
+      );
+      yield* Effect.gen(function* () {
+        const admit = yield* make;
+        const server = yield* McpServer.McpServer;
+        const initialize = request({ method: "initialize", id: "init" });
+        yield* send(
+          admit(
+            Effect.sync(() => {
+              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
+                Effect.succeed(
+                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:shared"),
+                ),
+              );
+              return HttpServerResponse.empty();
+            }),
+            scope,
+            initialize,
+          ),
+          initialize,
+        );
+        const invoke = (extra: Record<string, unknown> = {}) =>
+          admit(
+            Effect.gen(function* () {
+              const incoming = yield* HttpServerRequest.HttpServerRequest;
+              const body = yield* incoming.text.pipe(
+                Effect.flatMap(
+                  Schema.decodeUnknownEffect(
+                    Schema.fromJsonString(
+                      Schema.Struct({
+                        params: Schema.Struct({
+                          name: Schema.String,
+                          arguments: Schema.Record(Schema.String, Schema.Unknown),
+                        }),
+                      }),
+                    ),
+                  ),
+                ),
+              );
+              const result = yield* server.callTool(body.params).pipe(
+                Effect.provideService(
+                  McpSchema.McpServerClient,
+                  McpSchema.McpServerClient.of({
+                    clientId: 1,
+                    protocolVersion: "2025-06-18",
+                    clientCapabilities: {},
+                    clientInfo: { name: "native-source-test", version: "1" },
+                    initializePayload: {
+                      protocolVersion: "2025-06-18",
+                      capabilities: {},
+                      clientInfo: { name: "native-source-test", version: "1" },
+                    },
+                    getClient: Effect.die("unused"),
+                  }),
+                ),
+              );
+              return HttpServerResponse.jsonUnsafe(result);
+            }).pipe(Effect.orDie),
+            scope,
+            request(
+              {
+                method: "tools/call",
+                id: "native:original",
+                params: {
+                  name: "content_write",
+                  arguments: {
+                    ...extra,
+                    __nodexExecutionCall: "call:original",
+                    __nodexNativeExecution: { nativeThreadId: "transport-only" },
+                  },
+                },
+              },
+              "profile:shared",
+            ),
+          );
+        const accepted = yield* invoke();
+        expect(accepted.status).toBe(200);
+        expect(accepted.body._tag).toBe("Uint8Array");
+        if (accepted.body._tag !== "Uint8Array") return;
+        expect(JSON.parse(new TextDecoder().decode(accepted.body.body)).structuredContent).toEqual({
+          runId: actor.runId,
+        });
+        expect(seen).toEqual([actor.runId]);
+        expect(Exit.isFailure(yield* invoke({ unsupported: true }).pipe(Effect.exit))).toBe(true);
+        expect(seen).toEqual([actor.runId]);
+        cancelled = true;
+        const refused = yield* invoke();
+        expect(seen).toEqual([actor.runId]);
+        expect(refused.body._tag).toBe("Uint8Array");
+        if (refused.body._tag !== "Uint8Array") return;
+        expect(JSON.parse(new TextDecoder().decode(refused.body.body)).result.isError).toBe(true);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            tools,
+            Layer.mock(HostBridge)({
+              runtimeId: EnvironmentId.make(actor.runtimeId),
+              runtimeGeneration: actor.runtimeGeneration,
+              nativeSessionLive: () => Effect.succeed(true),
+              preparedTurn: () => Effect.succeed(next),
+              resolveNativeToolCall: (token) =>
+                Effect.succeed(
+                  token === "call:original"
+                    ? { ...actor, nativeCallId: "tool:original", nativeCallKey: "call:original" }
+                    : undefined,
+                ),
+              nativeSessions: () =>
+                Effect.succeed([
+                  {
+                    providerSessionId: actor.providerSessionId,
+                    nativeGeneration: actor.nativeGeneration,
+                  },
+                ]),
+              onNativeSessionClose: () => Effect.void,
+            }),
+            Layer.mock(Projections.ProjectionStoreV2)({
+              getHostToolAuthorityContext: (_threadId, runId) => {
+                expect(runId).toBe(actor.runId);
+                return Effect.succeed({
+                  thread: { id: actor.threadId, projectId: actor.projectId, deletedAt: null },
+                  runs: [
+                    {
+                      id: actor.runId,
+                      status: cancelled ? "cancelled" : "completed",
+                      activeAttemptId: actor.attemptId,
+                      providerThreadId: actor.providerThreadId,
+                      providerInstanceId: actor.providerInstanceId,
+                    },
+                  ],
+                  providerThreads: [
+                    {
+                      id: actor.providerThreadId,
+                      providerSessionId: actor.providerSessionId,
+                      providerInstanceId: actor.providerInstanceId,
+                      nativeThreadRef: null,
+                    },
+                  ],
+                  subagents: [],
+                } as never);
+              },
+            }),
+          ),
+        ),
+      );
+    }),
+);
+
+it.live(
+  "routes shared OpenCode namespaces by native source and invalidates a released call during suspension",
+  () =>
+    Effect.gen(function* () {
+      let bridge!: Effect.Success<ReturnType<typeof makeBridge>>;
+      bridge = yield* makeBridge(
+        { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
+        (notification) =>
+          notification.type === "host.request"
+            ? Effect.suspend(() =>
+                bridge.accept({
+                  type: "host.result",
+                  id: notification.id,
+                  success: true,
+                  output: {},
+                }),
+              ).pipe(Effect.asVoid, Effect.orDie)
+            : Effect.void,
+      );
+      const original = { ...actor, nativeDriver: ProviderDriverKind.make("opencode2") };
+      const other = {
+        ...original,
+        threadId: ThreadId.make("thread:other"),
+        runId: RunId.make("run:other"),
+        providerSessionId: ProviderSessionId.make("native:other"),
+        providerThreadId: ProviderThreadId.make("provider:other"),
+      };
+      const otherScope = {
+        ...scope,
+        thread: {
+          ...scope.thread!,
+          threadId: other.threadId,
+          providerSessionId: "credential:other",
+        },
+      };
+      for (const [turn, credentialId] of [
+        [original, scope.thread!.providerSessionId],
+        [other, otherScope.thread.providerSessionId],
+      ] as const) {
+        yield* bridge.registerNativeSession({
+          credentialId,
+          providerSessionId: turn.providerSessionId,
+          nativeGeneration: turn.nativeGeneration,
+        });
+        yield* bridge.prepareTurn(turn);
+      }
+      const native = {
+        nativeThreadId: "native:source",
+        nativeTurnId: "message:source",
+        nativeCallId: "call:source",
+      };
+      const token = yield* bridge.captureNativeToolCall({ identity: original, ...native });
+      yield* Effect.gen(function* () {
+        const admit = yield* make;
+        const initialize = request({ method: "initialize", id: 1 });
+        yield* send(
+          admit(
+            Effect.sync(() => {
+              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
+                Effect.succeed(
+                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:other"),
+                ),
+              );
+              return HttpServerResponse.empty();
+            }),
+            otherScope,
+            initialize,
+          ),
+          initialize,
+        );
+        const response = yield* admit(
+          Effect.gen(function* () {
+            const captured = yield* ExecutionHost.McpTurnAdmission;
+            const invocation = yield* Invocation.McpInvocationContext;
+            expect(captured?.actor?.threadId).toBe(original.threadId);
+            expect(captured?.actor?.runId).toBe(original.runId);
+            expect(invocation.thread?.threadId).toBe(original.threadId);
+            expect(invocation.requestNamespace).toBe(`native-thread:${original.threadId}`);
+            yield* captured!.assertCurrent().pipe(Effect.orDie);
+            yield* bridge.releaseNativeToolCall(token);
+            expect((yield* captured!.assertCurrent().pipe(Effect.result))._tag).toBe("Failure");
+            return HttpServerResponse.empty();
+          }),
+          otherScope,
+          request(
+            {
+              method: "tools/call",
+              id: 2,
+              params: { name: "content_write", arguments: { __nodexNativeExecution: native } },
+            },
+            "profile:other",
+          ),
+        );
+        expect(response.status).toBe(204);
+      }).pipe(
+        Effect.provideService(HostBridge, bridge),
+        Effect.provide(
+          Layer.mock(Projections.ProjectionStoreV2)({
+            getHostToolAuthorityContext: (threadId, runId) => {
+              expect(threadId).toBe(original.threadId);
+              expect(runId).toBe(original.runId);
+              return Effect.succeed({
+                thread: { id: original.threadId, deletedAt: null },
+                runs: [
+                  {
+                    id: original.runId,
+                    status: "completed",
+                    activeAttemptId: original.attemptId,
+                    providerThreadId: original.providerThreadId,
+                    providerInstanceId: original.providerInstanceId,
+                  },
+                ],
+                providerThreads: [
+                  {
+                    id: original.providerThreadId,
+                    providerSessionId: original.providerSessionId,
+                    providerInstanceId: original.providerInstanceId,
+                    nativeThreadRef: null,
+                  },
+                ],
+                subagents: [],
+              } as never);
+            },
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        Layer.succeed(Environment.ServerEnvironmentIdentity, {
+          getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
+        }),
+      ),
+    ),
+);
+
+it.live(
+  "keeps standard ACP calls on their real Session with unknown Run and expires the native incarnation",
+  () =>
+    Effect.gen(function* () {
+      let bridge!: Effect.Success<ReturnType<typeof makeBridge>>;
+      bridge = yield* makeBridge(
+        { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
+        (notification) =>
+          notification.type === "host.request"
+            ? Effect.suspend(() =>
+                bridge.accept({
+                  type: "host.result",
+                  id: notification.id,
+                  success: true,
+                  output: {},
+                }),
+              ).pipe(Effect.asVoid, Effect.orDie)
+            : Effect.void,
+      );
+      const nativeScope = yield* Scope.make();
+      yield* bridge
+        .registerNativeSession({
+          credentialId: scope.thread!.providerSessionId,
+          providerSessionId: actor.providerSessionId,
+          nativeGeneration: actor.nativeGeneration,
+        })
+        .pipe(Effect.provideService(Scope.Scope, nativeScope));
+      const first = { ...actor, nativeDriver: ProviderDriverKind.make("grok") };
+      yield* bridge.prepareTurn(first);
+      const original = yield* bridge.nativeSessionActor(first.threadId, first);
+      expect(original?.runId).toBeNull();
+      yield* bridge.prepareTurn({
+        ...first,
+        runId: RunId.make("run:later"),
+        attemptId: RunAttemptId.make("attempt:later"),
+      });
+      expect(yield* bridge.nativeSessionActor(first.threadId, first)).toEqual(original);
+      yield* Effect.gen(function* () {
+        const admit = yield* make;
+        const initialize = request({ method: "initialize", id: 1 });
+        yield* send(
+          admit(
+            Effect.sync(() => {
+              HttpEffect.appendPreResponseHandlerUnsafe(initialize, (_request, response) =>
+                Effect.succeed(
+                  HttpServerResponse.setHeader(response, "mcp-session-id", "profile:acp"),
+                ),
+              );
+              return HttpServerResponse.empty();
+            }),
+            scope,
+            initialize,
+          ),
+          initialize,
+        );
+        const response = yield* admit(
+          Effect.gen(function* () {
+            const captured = yield* ExecutionHost.McpTurnAdmission;
+            expect(captured?.actor?.runId).toBeNull();
+            expect(captured?.actor?.attemptId).toBeNull();
+            yield* captured!.assertCurrent().pipe(Effect.orDie);
+            yield* Scope.close(nativeScope, Exit.void);
+            expect((yield* captured!.assertCurrent().pipe(Effect.result))._tag).toBe("Failure");
+            return HttpServerResponse.empty();
+          }),
+          scope,
+          request(
+            { method: "tools/call", id: 2, params: { name: "content_write" } },
+            "profile:acp",
+          ),
+        );
+        expect(response.status).toBe(204);
+      }).pipe(
+        Effect.provideService(HostBridge, bridge),
+        Effect.provide(
+          Layer.mock(Projections.ProjectionStoreV2)({
+            getHostToolAuthorityContext: (_threadId, runId, providerThreadId) => {
+              expect(runId).toBeNull();
+              expect(providerThreadId).toBe(actor.providerThreadId);
+              return Effect.succeed({
+                thread: { id: actor.threadId, deletedAt: null },
+                runs: [],
+                providerThreads: [
+                  {
+                    id: actor.providerThreadId,
+                    providerSessionId: actor.providerSessionId,
+                    providerInstanceId: actor.providerInstanceId,
+                    nativeThreadRef: null,
+                  },
+                ],
+                subagents: [],
+              } as never);
+            },
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        Layer.succeed(Environment.ServerEnvironmentIdentity, {
+          getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
+        }),
+      ),
+    ),
 );

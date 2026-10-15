@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { act, fireEvent, within } from "@testing-library/react";
-import { useEffect } from "react";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { useEffect, useState } from "react";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import type { ThreadGoal } from "@nodex/codex-app-server-protocol/v2";
 import { openNodexMenu, render, settleAsyncRender, textContent } from "../../../../test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
-import { useAutoReviewApprovalNudgeActions } from "../../auto-review-approval-nudge-state";
 import { buildComposerShellFixture } from "@/test/composer-shell-fixture";
 import {
   LocalConversationAboveComposerPortalHost,
@@ -84,13 +83,12 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
+
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
     onSendCapturedFollowUp: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
-    onRespondApproval: async () => {},
     onRespondUserInput: async () => {},
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},
@@ -167,7 +165,6 @@ function installComposerShellWindowApi(
 function renderComposerShell(
   model: ReturnType<typeof buildComposerShellModel>,
   actions: ThreadStageActions = buildActions(),
-  options: { readonly activateAutoReviewNudge?: boolean } = {},
 ) {
   return render(
     <TestQueryProvider>
@@ -175,9 +172,6 @@ function renderComposerShell(
         <TestThreadRouteScopePath>
           <TooltipProvider>
             <div className="z-10 mx-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar pb-4">
-              {options.activateAutoReviewNudge && model.threadId ? (
-                <AutoReviewApprovalNudgeActivator threadId={model.threadId} />
-              ) : null}
               <LocalConversationAboveComposerPortalHost conversationId={model.threadId} />
               <LocalConversationAboveComposerQueuePortalHost conversationId={model.threadId} />
               <LocalConversationComposerShell
@@ -192,21 +186,6 @@ function renderComposerShell(
       </RendererStateProvider>
     </TestQueryProvider>,
   );
-}
-
-function AutoReviewApprovalNudgeActivator({ threadId }: { readonly threadId: string }) {
-  const { recordManualApproval, resolveNudge } = useAutoReviewApprovalNudgeActions();
-
-  useEffect(() => {
-    void recordManualApproval({
-      threadId,
-      eligible: true,
-      threshold: 1,
-    });
-    return () => resolveNudge(threadId);
-  }, [recordManualApproval, resolveNudge, threadId]);
-
-  return null;
 }
 
 describe("LocalConversationComposerShell", () => {
@@ -255,14 +234,12 @@ describe("LocalConversationComposerShell", () => {
     ];
 
     expect(cases.map(resolveComposerReplacementOwner).join(",")).toBe(
-      "normal,normal,requestStack,autoReviewNudge,requestStack,normal",
+      "normal,normal,requestStack,requestStack,requestStack,normal",
     );
   });
 
   test("keeps every request family on the production stage projection path", () => {
     const cases = [
-      ["file-approval-lane", "approval:file"],
-      ["permission-lane", "permissionRequest"],
       ["mcp-elicitation-lane", "mcpServerElicitation"],
       ["option-picker-lane", "optionPicker"],
       ["onboarding-input-lane", "userInput:onboarding"],
@@ -273,13 +250,11 @@ describe("LocalConversationComposerShell", () => {
     const projected = cases.map(([preset, expected]) => {
       const request = buildComposerShellFixture(preset).composerShell.activeRequest?.request;
       const actual =
-        request?.type === "approval"
-          ? `${request.type}:${request.kind}`
-          : request?.type === "userInput" && request.isOnboardingDynamicInput
-            ? `${request.type}:onboarding`
-            : request?.type === "setupCodexStep"
-              ? `${request.type}:${request.step}`
-              : request?.type;
+        request?.type === "userInput" && request.isOnboardingDynamicInput
+          ? `${request.type}:onboarding`
+          : request?.type === "setupCodexStep"
+            ? `${request.type}:${request.step}`
+            : request?.type;
       return `${expected}=${actual ?? "missing"}`;
     });
 
@@ -288,7 +263,7 @@ describe("LocalConversationComposerShell", () => {
     );
 
     const shell = buildComposerShellFixture("background-permission-option").composerShell;
-    expect(shell.backgroundRequest?.request.type).toBe("permissionRequest");
+    expect(shell.backgroundRequest?.request.type).toBe("userInput");
     expect(shell.activeRequest?.request.type).toBe("optionPicker");
   });
 
@@ -349,6 +324,86 @@ describe("LocalConversationComposerShell", () => {
     expect(view.queryByLabelText(/Context window/) === null).toBe(true);
     expect(view.queryByLabelText("Send prompt") === null).toBe(true);
     expect(view.queryByLabelText("Stop generating") === null).toBe(true);
+  });
+
+  test("pages a thirty-message queue and edits the exact message beyond the initial transcript window", async () => {
+    installComposerShellWindowApi();
+    const base = buildComposerShellModel();
+    const edit = vi.fn(async () => {});
+    const rows = Array.from({ length: 30 }, (_, index) => ({
+      followUpId: `run:${index}`,
+      threadId: base.threadId!,
+      prompt: `Queued prompt ${index}`,
+      promptInput: { text: `Queued prompt ${index}` },
+      displayText: `Queued prompt ${index}`,
+      canSendNow: true,
+      ledgerRevision: 3,
+    }));
+    function PagedQueue() {
+      const [page, setPage] = useState(0);
+      const model = {
+        ...base,
+        composerShell: {
+          ...base.composerShell,
+          pendingSteerRows: [],
+          queuedFollowUpRows: rows.slice(page * 25, page * 25 + 25),
+          queuedFollowUpHasPreviousPage: page > 0,
+          queuedFollowUpHasNextPage: page === 0,
+        },
+      };
+      return (
+        <LocalConversationComposerShell
+          model={model}
+          actions={buildActions({
+            onNextQueuedFollowUpPage: async () => {
+              setPage(1);
+            },
+            onPreviousQueuedFollowUpPage: async () => {
+              setPage(0);
+            },
+            onEditQueuedFollowUp: edit,
+          })}
+          errorMessage={null}
+          onErrorMessage={() => {}}
+        />
+      );
+    }
+    const view = render(
+      <TestQueryProvider>
+        <RendererStateProvider>
+          <TestThreadRouteScopePath>
+            <TooltipProvider>
+              <LocalConversationAboveComposerQueuePortalHost conversationId={base.threadId} />
+              <LocalConversationAboveComposerPortalHost conversationId={base.threadId} />
+              <PagedQueue />
+            </TooltipProvider>
+          </TestThreadRouteScopePath>
+        </RendererStateProvider>
+      </TestQueryProvider>,
+    );
+    await settleAsyncRender();
+    expect(view.getByText("Queued prompt 24")).toBeTruthy();
+    expect(view.queryByText("Queued prompt 25")).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: /^Next$/ }));
+    });
+    await waitFor(() => expect(view.getByText("Queued prompt 29")).toBeTruthy());
+    const row = view
+      .getByText("Queued prompt 25")
+      .closest("[data-queued-follow-up-row]") as HTMLElement;
+    await openNodexMenu(within(row).getByRole("button", { name: "Queued message actions" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Edit message" }));
+    });
+    await waitFor(() =>
+      expect(edit).toHaveBeenCalledWith(
+        expect.objectContaining({ followUpId: "run:25", prompt: "Queued prompt 25" }),
+      ),
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: /^Previous$/ }));
+    });
+    await waitFor(() => expect(view.getByText("Queued prompt 0")).toBeTruthy());
   });
 
   test("renders interruption pause and resumes only the queued-follow-up lane", async () => {
@@ -519,55 +574,6 @@ describe("LocalConversationComposerShell", () => {
     expect(view.queryByLabelText("Send prompt")).toBeNull();
   });
 
-  test("gives the idle auto-review nudge exclusive ownership and restores requests after enabling it", async () => {
-    installComposerShellWindowApi();
-    const baseModel = buildComposerShellModel();
-    if (!baseModel.threadId) throw new Error("Expected a thread-backed story model");
-    const changedModes: string[] = [];
-    const view = renderComposerShell(
-      {
-        ...baseModel,
-        isThreadRunning: false,
-      },
-      buildActions({
-        onPermissionModeChange: async (mode) => {
-          changedModes.push(mode);
-        },
-      }),
-      { activateAutoReviewNudge: true },
-    );
-    await settleAsyncRender();
-
-    expect(view.getByText("Want fewer approval prompts?") !== null).toBe(true);
-    expect(
-      view.queryByText("Background child wants to run the isolated request-card tests.") === null,
-    ).toBe(true);
-    expect(view.queryByText("Foreground thread wants to run the semantic checks.") === null).toBe(
-      true,
-    );
-    expect(
-      Boolean(
-        textContent(document.body).includes(
-          "Run final validation once the request workflow is complete.",
-        ),
-      ),
-    ).toBe(true);
-
-    await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: /Approve for me/ }));
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(changedModes.join(",")).toBe("guardian-approvals");
-    expect(
-      view.getByText("Background child wants to run the isolated request-card tests.") !== null,
-    ).toBe(true);
-    expect(view.getByText("Foreground thread wants to run the semantic checks.") !== null).toBe(
-      true,
-    );
-  });
-
   test("restores the normal composer after every request surface clears", async () => {
     installComposerShellWindowApi();
     const baseModel = buildComposerShellModel();
@@ -586,7 +592,7 @@ describe("LocalConversationComposerShell", () => {
     await settleAsyncRender();
 
     expect(view.getByLabelText("Add files and more") !== null).toBe(true);
-    expect(view.getByLabelText("Change permissions") !== null).toBe(true);
+    expect(view.queryByLabelText("Change permissions")).toBeNull();
     expect(view.getByLabelText("Select model") !== null).toBe(true);
     expect(view.queryByText("Foreground thread wants to run the semantic checks.") === null).toBe(
       true,
@@ -744,7 +750,7 @@ describe("LocalConversationComposerShell", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(activeView.getByRole("button", { name: "Clear goal" }));
+      fireEvent.click(activeView.getAllByRole("button", { name: "Clear goal" })[0]!);
       await Promise.resolve();
     });
 

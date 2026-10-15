@@ -260,11 +260,11 @@ pub(crate) fn capture_home(
         .map(|thread| thread.thread_id.clone())
         .collect();
     let started = now();
-    files::private_directory(&staging)?;
-    if !files::exists(&source)? {
+    files::private_directory(staging)?;
+    if !files::exists(source)? {
         return receipt(
             started,
-            &staging,
+            staging,
             &required,
             required.iter().cloned().collect(),
             threads.len(),
@@ -272,11 +272,11 @@ pub(crate) fn capture_home(
             false,
         );
     }
-    files::require_directory(&source)?;
-    validate_config(&source)?;
-    validate_database_layout(&source)?;
-    let writers = IdleWriters::acquire(&source)?;
-    let before = files::inventory(&source, DIRECTORIES, FILES)?;
+    files::require_directory(source)?;
+    validate_config(source)?;
+    validate_database_layout(source)?;
+    let writers = IdleWriters::acquire(source)?;
+    let before = files::inventory(source, DIRECTORIES, FILES)?;
     let databases = DATABASES
         .iter()
         .filter_map(|name| match files::exists(&source.join(name)) {
@@ -294,13 +294,13 @@ pub(crate) fn capture_home(
     // Account homes index new rollouts through their session directory aliases.
     // Resolve those aliases against the captured physical inventory while source
     // coordination still holds, without changing its original SQLite evidence.
-    normalize_staged_selections(&source, &staging, &before)?;
+    normalize_staged_selections(source, staging, &before)?;
     // Finish source verification while its Desktop lease and native writer fence still hold.
     // All relocation and semantic validation below operate only on the detached snapshot.
     for database in &databases {
         database.verify_unchanged()?;
     }
-    validate_database_layout(&source)?;
+    validate_database_layout(source)?;
     for name in DATABASES {
         if files::exists(&source.join(name))?
             != databases
@@ -312,19 +312,19 @@ pub(crate) fn capture_home(
             ));
         }
     }
-    if before != files::inventory(&source, DIRECTORIES, FILES)? {
+    if before != files::inventory(source, DIRECTORIES, FILES)? {
         return Err(invalid(
             "Source conversation files changed during capture; retry after stopping its Agent runtime",
         ));
     }
     drop(databases);
     drop(writers);
-    crate::goals::relocate_managed_references(&source, &staging, &target)?;
-    let rollouts = read_rollouts(&staging, before.keys(), METADATA_BUDGET)?;
-    let projections = read_projections(&staging, METADATA_BUDGET)?;
+    crate::goals::relocate_managed_references(source, staging, target)?;
+    let rollouts = read_rollouts(staging, before.keys(), METADATA_BUDGET)?;
+    let projections = read_projections(staging, METADATA_BUDGET)?;
     let has_state = files::exists(&staging.join("state_5.sqlite"))?;
     let mut selected = if has_state {
-        relocate_state(&source, &staging, &target, &rollouts, METADATA_BUDGET)?
+        relocate_state(source, staging, target, &rollouts, METADATA_BUDGET)?
     } else {
         legacy_selections(&rollouts)
     };
@@ -339,7 +339,7 @@ pub(crate) fn capture_home(
         let key = (base.id.clone(), base.bytes, base.ordinal);
         if !checked_prefixes.contains_key(&key) {
             let valid = match rollouts.get(&base.id) {
-                Some(parent) => valid_prefix(&staging, parent, base)?,
+                Some(parent) => valid_prefix(staging, parent, base)?,
                 None => false,
             };
             checked_prefixes.insert(key.clone(), valid);
@@ -355,7 +355,7 @@ pub(crate) fn capture_home(
         .collect::<Vec<_>>();
     receipt(
         started,
-        &staging,
+        staging,
         &required,
         missing,
         threads.len(),

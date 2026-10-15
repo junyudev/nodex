@@ -210,7 +210,7 @@ struct DatabaseAuthoritySnapshot {
     name: String,
     lifecycle: String,
     default_view_id: Option<String>,
-    access_revision: i64,
+
     metadata_revision: i64,
     sources: Vec<DatabaseSourceSnapshot>,
     properties: Vec<DatabasePropertySnapshot>,
@@ -267,7 +267,6 @@ struct DormantPageState {
     placeholder_block_id: String,
     moved_root_ids: Vec<String>,
     moved_block_ids: Vec<String>,
-    revoked_grant_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -748,13 +747,8 @@ pub(super) fn reverse(
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let actor_project_id = structural_actor_project_id(connection, context)?;
     let project_id = actor_project_id.as_deref();
-    let (recipe_json, consumed_project_id) = read_history_payload(
-        connection,
-        library_id,
-        context.project_id.as_ref().map(|id| id.0.as_str()),
-        store_epoch,
-        token,
-    )?;
+    let (recipe_json, consumed_project_id) =
+        read_history_payload(connection, library_id, store_epoch, token)?;
     if let Some(outcome) = super::block_transfer::reverse_history_payload(
         connection,
         context,
@@ -956,9 +950,7 @@ fn capture_clipboard(
                         event_sequence,
                         &now,
                     )?;
-                    release_previous_clipboards(
-                        connection, library_id, project_id, &bundle_id, &now,
-                    )?;
+                    release_previous_clipboards(connection, library_id, &bundle_id, &now)?;
                     connection.execute(
                         "INSERT INTO structural_clipboard_bundles( \
                        bundle_id, capture_operation_id, library_id, store_epoch, capability_hash, \
@@ -1014,13 +1006,7 @@ fn delete_selection(
     let cut_bundle = match reason {
         LibraryStructuralDeleteReason::Delete => None,
         LibraryStructuralDeleteReason::Cut { bundle } => {
-            let authority = read_bundle(
-                connection,
-                library_id,
-                context.project_id.as_ref().map(|id| id.0.as_str()),
-                store_epoch,
-                bundle,
-            )?;
+            let authority = read_bundle(connection, library_id, store_epoch, bundle)?;
             if canonical_snapshot_hash(&authority.snapshot)? != canonical_snapshot_hash(&snapshot)?
             {
                 return Err(conflict(
@@ -1153,13 +1139,7 @@ fn paste_clipboard(
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let actor_project_id = structural_actor_project_id(connection, context)?;
     let project_id = actor_project_id.as_deref();
-    let authority = read_bundle(
-        connection,
-        library_id,
-        context.project_id.as_ref().map(|id| id.0.as_str()),
-        store_epoch,
-        bundle,
-    )?;
+    let authority = read_bundle(connection, library_id, store_epoch, bundle)?;
     let mut target_parent = load_and_authorize_target(connection, context, library_id, target)?;
     let target_location = target_location(&target_parent, target, &authority.snapshot)?;
     ensure_destination_outside_closure(&authority.snapshot, &target_location)?;
@@ -1566,13 +1546,9 @@ fn replace_selection(
     let removed = capture_snapshot(connection, library_id, &parent, selection)?;
     reject_primary_databases(connection, &removed.databases)?;
     let bundle = match replacement {
-        LibraryStructuralReplacement::Clipboard { bundle } => Some(read_bundle(
-            connection,
-            library_id,
-            context.project_id.as_ref().map(|id| id.0.as_str()),
-            store_epoch,
-            bundle,
-        )?),
+        LibraryStructuralReplacement::Clipboard { bundle } => {
+            Some(read_bundle(connection, library_id, store_epoch, bundle)?)
+        }
         LibraryStructuralReplacement::Blocks { .. } => None,
     };
     let ordinary_blocks = match replacement {
@@ -2184,7 +2160,6 @@ fn turn_active_selection(
             let commit_result = persist_parent_relocation_source_with_placeholder(
                 connection,
                 ParentDocumentWriteContext {
-                    context,
                     actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
@@ -2199,7 +2174,6 @@ fn turn_active_selection(
             document_commits.push(commit_result);
             relocated_block_ids.extend(moved_ids.iter().cloned());
         }
-        let revoked_grant_ids = revoke_page_grants(connection, page_id)?;
         dormant_pages.push(DormantPageState {
             page_id: page_id.clone(),
             document_id: document.document_id.clone(),
@@ -2208,7 +2182,6 @@ fn turn_active_selection(
             placeholder_block_id,
             moved_root_ids: moved_roots.iter().map(|root| root.id.clone()).collect(),
             moved_block_ids: moved_ids,
-            revoked_grant_ids,
         });
         page_plans.insert(page_id.clone(), plan);
     }
@@ -2261,7 +2234,6 @@ fn turn_active_selection(
     let host_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2434,7 +2406,6 @@ fn restore_turned_selection(
                 ],
             )?;
         }
-        restore_page_grants(connection, dormant, &now)?;
         let dormant_parent = load_parent_document(connection, &dormant.document_id)?;
         insert_page_read_model(
             connection,
@@ -2480,7 +2451,6 @@ fn restore_turned_selection(
     let host_commit = persist_parent_relocation_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2524,7 +2494,6 @@ fn restore_turned_selection(
         let commit_result = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                context,
                 actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
@@ -2679,7 +2648,6 @@ fn apply_backward_merge(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2830,7 +2798,6 @@ fn restore_backward_merge(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -2853,7 +2820,6 @@ fn restore_backward_merge(
             source_document_id: &state.snapshot.source.document_id,
             source_document_generation: state.snapshot.source.document_generation,
         },
-        &structural_file_ids(&state.snapshot.roots)?,
     )?;
     let current_parent = load_parent_document(connection, &state.snapshot.source.document_id)?;
     let library_id = current_parent.authority.head.library_id.clone();
@@ -2890,50 +2856,6 @@ fn restore_backward_merge(
             fallback_after_block_id: None,
         }),
     })
-}
-
-pub(super) fn revoke_page_grants(
-    connection: &Connection,
-    page_id: &str,
-) -> Result<Vec<String>, StoreError> {
-    let grant_ids = connection
-        .prepare(
-            "SELECT id FROM project_resource_grants \
-             WHERE root_kind = 'page' AND root_id = ?1 AND lifecycle = 'active' ORDER BY id",
-        )?
-        .query_map([page_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let now = sqlite_now(connection)?;
-    for grant_id in &grant_ids {
-        let changed = connection.execute(
-            "UPDATE project_resource_grants SET lifecycle = 'revoked', revision = revision + 1, \
-               updated_at = ?1 WHERE id = ?2 AND lifecycle = 'active'",
-            params![now, grant_id],
-        )?;
-        if changed != 1 {
-            return Err(conflict("Page access changed during Turn into"));
-        }
-    }
-    Ok(grant_ids)
-}
-
-fn restore_page_grants(
-    connection: &Connection,
-    dormant: &DormantPageState,
-    now: &str,
-) -> Result<(), StoreError> {
-    for grant_id in &dormant.revoked_grant_ids {
-        let changed = connection.execute(
-            "UPDATE project_resource_grants SET lifecycle = 'active', revision = revision + 1, \
-               updated_at = ?1 WHERE id = ?2 AND root_kind = 'page' AND root_id = ?3 \
-                 AND lifecycle = 'revoked'",
-            params![now, grant_id, dormant.page_id],
-        )?;
-        if changed != 1 {
-            return Err(conflict("Page access changed before Turn into Undo"));
-        }
-    }
-    Ok(())
 }
 
 pub(super) fn retire_page_capability(
@@ -3123,14 +3045,9 @@ fn release_history(
         let (recipe_hash, recipe_project) = connection
             .query_row(
                 "SELECT recipe_hash, project_id FROM structural_history_recipes \
-                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
-                   AND store_epoch = ?4",
-                params![
-                    token.recipe_operation_id,
-                    library_id,
-                    context.project_id.as_ref().map(|id| id.0.as_str()),
-                    store_epoch
-                ],
+                 WHERE recipe_operation_id = ?1 AND library_id = ?2 \
+                   AND store_epoch = ?3",
+                params![token.recipe_operation_id, library_id, store_epoch],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
             )
             .optional()?
@@ -3252,7 +3169,6 @@ fn apply_recipe_action(
             let content_commit = persist_parent_operations_detailed_with_local_commit(
                 connection,
                 ParentDocumentWriteContext {
-                    context,
                     actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
@@ -3413,20 +3329,14 @@ fn authorize_parent_access(
     {
         return Err(conflict("Structural Document owner is unavailable"));
     }
-    // The receipt actor does not grant access to this content. Only a bound
-    // Project narrows authority; trusted Library editors keep Library scope.
-    let Some(project_id) = context.project_id.as_ref().map(|id| id.0.as_str()) else {
-        return super::require_trusted_library_authority(context);
-    };
-    let authorize = if write {
+    let require_owner = if write {
         super::history::require_page_write_access
     } else {
         super::history::require_page_read_access
     };
-    authorize(
+    require_owner(
         connection,
         &parent.authority.head.library_id,
-        project_id,
         &parent.authority.owner_block_id,
     )
 }
@@ -3790,7 +3700,7 @@ fn capture_database(
 ) -> Result<DatabaseAuthoritySnapshot, StoreError> {
     let mut database = connection
         .query_row(
-            "SELECT name, lifecycle, default_view_id, access_revision, metadata_revision \
+            "SELECT name, lifecycle, default_view_id, metadata_revision \
              FROM database_containers WHERE block_id = ?1 AND library_id = ?2",
             params![database_id, library_id],
             |row| {
@@ -3799,8 +3709,7 @@ fn capture_database(
                     name: row.get(0)?,
                     lifecycle: row.get(1)?,
                     default_view_id: row.get(2)?,
-                    access_revision: row.get(3)?,
-                    metadata_revision: row.get(4)?,
+                    metadata_revision: row.get(3)?,
                     sources: Vec::new(),
                     properties: Vec::new(),
                     relation_properties: Vec::new(),
@@ -4268,7 +4177,6 @@ fn read_bundle_payload(
 fn read_bundle(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralClipboardToken,
 ) -> Result<BundleAuthority, StoreError> {
@@ -4316,14 +4224,9 @@ fn read_bundle(
         let (recipe_hash, recipe_operation_id) = connection
             .query_row(
                 "SELECT recipe_hash, recipe_operation_id FROM structural_history_recipes \
-                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
-                   AND store_epoch = ?4 AND state = 'available'",
-                params![
-                    claim.delete_recipe_operation_id,
-                    library_id,
-                    requesting_project_id,
-                    store_epoch,
-                ],
+                 WHERE recipe_operation_id = ?1 AND library_id = ?2 \
+                   AND store_epoch = ?3 AND state = 'available'",
+                params![claim.delete_recipe_operation_id, library_id, store_epoch,],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .optional()?
@@ -4390,7 +4293,6 @@ fn consume_cut_claim(
 fn release_previous_clipboards(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
     next_bundle_id: &str,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -4398,12 +4300,11 @@ fn release_previous_clipboards(
         .prepare(
             "SELECT bundle.bundle_id FROM structural_clipboard_bundles bundle \
              JOIN structural_clipboard_leases lease ON lease.bundle_id = bundle.bundle_id \
-             JOIN block_mutations mutation ON mutation.mutation_id = bundle.capture_operation_id \
-             WHERE bundle.library_id = ?1 AND mutation.project_id = ?2 \
-               AND lease.state = 'active' AND bundle.bundle_id <> ?3 \
+             WHERE bundle.library_id = ?1 \
+               AND lease.state = 'active' AND bundle.bundle_id <> ?2 \
              ORDER BY bundle.created_at, bundle.bundle_id",
         )?
-        .query_map(params![library_id, project_id, next_bundle_id], |row| {
+        .query_map(params![library_id, next_bundle_id], |row| {
             row.get::<_, String>(0)
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -4447,7 +4348,6 @@ fn decode_history_recipe(recipe_json: &str) -> Result<StructuralHistoryRecipe, S
 pub(super) fn read_history_payload(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralHistoryToken,
 ) -> Result<(String, Option<String>), StoreError> {
@@ -4461,14 +4361,9 @@ pub(super) fn read_history_payload(
     let row = connection
         .query_row(
             "SELECT recipe_hash, state, project_id FROM structural_history_recipes \
-             WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
-               AND store_epoch = ?4",
-            params![
-                token.recipe_operation_id,
-                library_id,
-                requesting_project_id,
-                store_epoch
-            ],
+             WHERE recipe_operation_id = ?1 AND library_id = ?2 \
+               AND store_epoch = ?3",
+            params![token.recipe_operation_id, library_id, store_epoch],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -4958,7 +4853,6 @@ pub(super) fn read_history_states(
     connection: &Connection,
     library_id: &str,
     store_epoch: &str,
-    context: &BoundModuleContext,
     tokens: &[LibraryStructuralHistoryToken],
 ) -> Result<Vec<nodex_core_contracts::library::LibraryStructuralHistoryState>, StoreError> {
     use nodex_core_contracts::library::{LibraryStructuralHistoryState, StructuralHistoryState};
@@ -4967,12 +4861,10 @@ pub(super) fn read_history_states(
             "Structural history reconciliation exceeds its token bound",
         ));
     }
-    let authority =
-        super::mutation::resolve_library_mutation_authority(connection, context, library_id)?;
     let mut seen = HashSet::new();
     let mut query = connection.prepare(
         "SELECT recipe_hash, state FROM structural_history_recipes \
-         WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) AND store_epoch = ?4",
+         WHERE recipe_operation_id = ?1 AND library_id = ?2 AND store_epoch = ?3",
     )?;
     tokens
         .iter()
@@ -4999,12 +4891,7 @@ pub(super) fn read_history_states(
             }
             let row = query
                 .query_row(
-                    params![
-                        token.recipe_operation_id,
-                        library_id,
-                        authority.requesting_project_id,
-                        store_epoch
-                    ],
+                    params![token.recipe_operation_id, library_id, store_epoch],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 )
                 .optional()?;
@@ -5218,7 +5105,7 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
 }
 
 /// A receipt actor is not content authority. Keep the original context intact
-/// for idempotency, Host retention and Project/Library authorization checks.
+/// for idempotency, Host retention and physical Library identity checks.
 fn structural_actor_project_id(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -5407,7 +5294,6 @@ fn insert_ordinary_replacement(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -5509,7 +5395,6 @@ fn delete_snapshot(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -5606,7 +5491,6 @@ fn restore_snapshot(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -5616,7 +5500,6 @@ fn restore_snapshot(
         parent,
         &operations,
         placement,
-        &structural_file_ids(&snapshot.roots)?,
     )?;
     if defers_page_projection {
         transition_page_projections(
@@ -6532,7 +6415,6 @@ fn move_active_snapshot(
         let document_commit = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                context,
                 actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
@@ -6604,7 +6486,6 @@ fn move_active_snapshot(
     let source_commit = persist_parent_relocation_source_with_placeholder(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6639,7 +6520,6 @@ fn move_active_snapshot(
     let target_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6651,7 +6531,6 @@ fn move_active_snapshot(
         ParentDocumentPlacement::Derived {
             attachment_advances: &relocated_block_ids,
         },
-        &structural_file_ids(&snapshot.roots)?,
     )?;
     update_host_page_parent_projections(connection, &snapshot, &target.host_page_id, &moved_at)?;
     let current = StructuralLocation {
@@ -6821,7 +6700,6 @@ fn clone_snapshot_into_target(
                 let persisted = persist_yjs_genesis_with_local_commit(
                     connection,
                     PersistYjsGenesis {
-                        file_access_context: Some(context),
                         authority: &target_authority,
                         actor_project_id: structural_actor_project_id(connection, context)?
                             .as_deref(),
@@ -6834,8 +6712,7 @@ fn clone_snapshot_into_target(
                         store_epoch,
                         operation_id: &update_id,
                         placement: DocumentPlacementEvidence::STRUCTURAL
-                            .with_genesis(&typed_genesis)
-                            .with_authorized_file_ids(&structural_file_ids(blocks)?),
+                            .with_genesis(&typed_genesis),
                         emit_event: false,
                     },
                     commit,
@@ -6907,7 +6784,6 @@ fn clone_snapshot_into_target(
     let host_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            context,
             actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
@@ -6917,7 +6793,6 @@ fn clone_snapshot_into_target(
         parent,
         &operations,
         ParentDocumentPlacement::Genesis(&host_typed_genesis),
-        &structural_file_ids(&snapshot.roots)?,
     )?;
     document_commits.push(host_commit);
     let mut cloned_snapshot = remap_snapshot(
@@ -7156,9 +7031,9 @@ fn stage_database_clone(
         .transpose()?;
     connection.execute(
         "INSERT INTO database_containers( \
-           block_id, library_id, name, lifecycle, default_view_id, access_revision, \
+           block_id, library_id, name, lifecycle, default_view_id, \
            metadata_revision, created_at, updated_at \
-         ) VALUES (?1, ?2, ?3, 'active', NULL, 1, 1, ?4, ?4)",
+         ) VALUES (?1, ?2, ?3, 'active', NULL, 1, ?4, ?4)",
         params![
             database_id,
             library_id,
@@ -7669,7 +7544,6 @@ fn remap_snapshot(
                     .as_ref()
                     .map(|view_id| mapped(view_ids, view_id, "Default View").cloned())
                     .transpose()?,
-                access_revision: 1,
                 metadata_revision: 1,
                 sources: database
                     .sources
@@ -7995,7 +7869,6 @@ mod tests {
                         placeholder_block_id: "placeholder".to_owned(),
                         moved_root_ids: vec!["nested-code".to_owned()],
                         moved_block_ids: vec!["nested-code".to_owned(), "nested-lifted".to_owned()],
-                        revoked_grant_ids: Vec::new(),
                     }],
                 },
             },

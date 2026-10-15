@@ -13,10 +13,10 @@ import {
 } from "./canvas-scene-sync";
 import { parseLocalCommitApply } from "../local-commit-delivery";
 import {
-  contentAccessContextKey,
-  parseContentAccessContext,
-  type ContentAccessContext,
-} from "../content-access-context";
+  contentRoutingContextKey,
+  parseContentRoutingContext,
+  type ContentRoutingContext,
+} from "../content-routing-context";
 import {
   canonicalizeCanvasSceneElement,
   canonicalizeCanvasSceneFile,
@@ -79,7 +79,7 @@ export const requireCanvasSceneError = (value: unknown): CanvasSceneMutationErro
     "invalid_response",
     "invalid_canvas_scene_mutation",
     "store_epoch_mismatch",
-    "access_scope_mismatch",
+    "invalid_session",
     "document_not_found",
     "document_not_ready",
     "document_engine_mismatch",
@@ -117,7 +117,7 @@ export const parseCanvasSceneRealtimeEvent = (value: unknown): CanvasSceneRealti
   }
   const identity = {
     libraryId: requireCanvasSceneIdentity(value.libraryId, "libraryId"),
-    accessContext: parseContentAccessContext(value.accessContext),
+    routingContext: parseContentRoutingContext(value.routingContext),
     documentId: requireCanvasSceneIdentity(value.documentId, "documentId"),
   };
   if (value.type === "canvas_scene_session") {
@@ -180,17 +180,17 @@ export const encodeCanvasSceneSyncRequestHttp = (request: CanvasSceneSyncRequest
 
 export const decodeCanvasSceneSyncRequestHttp = (
   serialized: string,
-  routeAccessContext: ContentAccessContext,
+  routeRoutingContext: ContentRoutingContext,
   routeDocumentId: string,
 ): CanvasSceneSyncRequest => {
   const value = parseBoundedJson(serialized, MAX_CANVAS_SCENE_MUTATION_BYTES);
   if (!isRecord(value)) {
     throw new TypeError("Canvas scene sync request is invalid");
   }
-  const accessContext = parseContentAccessContext(value.accessContext);
+  const routingContext = parseContentRoutingContext(value.routingContext);
   const documentId = requireCanvasSceneIdentity(value.documentId, "documentId");
   if (
-    contentAccessContextKey(accessContext) !== contentAccessContextKey(routeAccessContext) ||
+    contentRoutingContextKey(routingContext) !== contentRoutingContextKey(routeRoutingContext) ||
     documentId !== routeDocumentId
   ) {
     throw new TypeError("Canvas scene sync request does not match its route");
@@ -214,7 +214,7 @@ export const decodeCanvasSceneSyncRequestHttp = (
       : requireHash(value.knownSceneHash, "knownSceneHash");
   return {
     syncRequestId: requireCanvasSceneIdentity(value.syncRequestId, "syncRequestId"),
-    accessContext,
+    routingContext,
     documentId,
     clientSessionId,
     ...(knownStoreEpoch ? { knownStoreEpoch } : {}),
@@ -236,15 +236,15 @@ export const encodeCanvasSceneMutationRequestHttp = (request: CanvasSceneMutatio
 
 export const decodeCanvasSceneMutationRequestHttp = (
   serialized: string,
-  routeAccessContext: ContentAccessContext,
+  routeRoutingContext: ContentRoutingContext,
   routeDocumentId: string,
 ): CanvasSceneMutationRequest => {
   const request = canonicalizeCanvasSceneMutationRequest(
     parseBoundedJson(serialized, MAX_CANVAS_SCENE_MUTATION_BYTES),
   );
   if (
-    contentAccessContextKey(request.accessContext) ===
-      contentAccessContextKey(routeAccessContext) &&
+    contentRoutingContextKey(request.routingContext) ===
+      contentRoutingContextKey(routeRoutingContext) &&
     request.documentId === routeDocumentId
   ) {
     return request;
@@ -267,7 +267,7 @@ export const decodeCanvasSceneSyncResultHttp = (
   const common = {
     syncRequestId: requireCanvasSceneIdentity(envelope.value.syncRequestId, "syncRequestId"),
     libraryId: requireCanvasSceneIdentity(envelope.value.libraryId, "libraryId"),
-    accessContext: parseContentAccessContext(envelope.value.accessContext),
+    routingContext: parseContentRoutingContext(envelope.value.routingContext),
     documentId: requireCanvasSceneIdentity(envelope.value.documentId, "documentId"),
     storeEpoch: requireCanvasSceneIdentity(envelope.value.storeEpoch, "storeEpoch"),
     generation: requireInteger(envelope.value.generation, "generation", 1),

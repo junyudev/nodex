@@ -71,12 +71,7 @@ pub(super) fn prepare_session(
         validate_id("project_id", project_id)?;
         require_project(connection, library_id, project_id, true)?;
     }
-    super::page_chat::validate_initial_page_ids(
-        connection,
-        library_id,
-        project_id,
-        initial_page_ids,
-    )?;
+    super::page_chat::validate_initial_page_ids(connection, library_id, initial_page_ids)?;
     let title = normalize_session_title(title)?;
     let now = insert_session_records(connection, session_id, project_id, &title, false)?;
     super::page_chat::insert_initial_page_links(connection, session_id, initial_page_ids, &now)?;
@@ -218,6 +213,14 @@ pub(super) fn delete_session(
     if let Some(thread_id) = &authority.thread_id {
         super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
     }
+    super::agent_runtime_cleanup::enqueue(
+        connection,
+        library_id,
+        operation_id,
+        session_id,
+        authority.project_id.as_deref(),
+    )?;
+    super::agent_runtime_native_session::retire_session(connection, session_id)?;
     let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during deletion"));
@@ -272,13 +275,6 @@ pub(super) fn move_session(
             SessionInvalidationKind::None,
             now,
         );
-    }
-    if super::agent_runtime_binding::is_runtime_bound(connection, session_id)? {
-        return Err(StoreError::new(
-            StoreErrorCode::Conflict,
-            "Agent Runtime Session execution scope cannot change",
-            false,
-        ));
     }
     if authority.is_default_draft {
         let target_has_default = connection.query_row(

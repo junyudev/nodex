@@ -1,6 +1,6 @@
 import type { LibraryFilePresentation } from "../../shared/library-files";
 import type { FileBytes } from "../../shared/file-resources";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { FileReadAuthority } from "./library-file-resources";
 
 export interface FileReadCacheDependencies {
@@ -20,7 +20,7 @@ export interface FileReadDemand {
 }
 
 export interface FileReadInvalidation {
-  /** Refresh preserves an authorized stale value; revoke removes it before revalidation. */
+  /** Refresh retains a previous value; revoke removes stale bytes and object URLs. */
   readonly mode: "refresh" | "revoke";
   /** `null` is the generated reset variant for the containing Page scope. */
   readonly fileIds: readonly string[] | null;
@@ -108,7 +108,7 @@ export const fileReadAuthorityKey = (authority: FileReadAuthority): string =>
   JSON.stringify([
     authority.libraryId,
     authority.storeEpoch,
-    contentAccessContextKey(authority.contentAccessContext),
+    contentRoutingContextKey(authority.contentRoutingContext),
     authority.readSource,
     authority.version ?? null,
   ]);

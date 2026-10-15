@@ -2,9 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::agent::{
-    AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAction,
-};
+use nodex_core_contracts::agent::AgentExecutionAuthorization;
 use nodex_core_contracts::library::{
     LibraryAgentSearchMatchQuality, LibraryAgentSearchResult, LibraryAgentSearchScope,
     LibraryAgentSearchTarget, LibraryReadValue, LibrarySearchSourceKind,
@@ -14,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-use super::{agent_authorization, cursor, search_match::search_tokens};
+use super::{agent_execution, cursor, search_match::search_tokens};
 
 const MAX_QUERY_BYTES: usize = 512;
 const MAX_TERMS: usize = 32;
@@ -58,7 +56,7 @@ pub(super) fn read(
     let query = validate_query(query)?;
     let terms = search_terms(query)?;
     let block_types = normalize_block_types(target, block_types)?;
-    authorize_explicit_scope(connection, context, library_id, authorization, &scope)?;
+    agent_execution::validate_execution(connection, context, library_id, authorization)?;
     let subject = search_subject(
         query,
         target,
@@ -74,13 +72,6 @@ pub(super) fn read(
     let after = search_cursor_identity(connection, requested_cursor, library_id, &subject)?;
     let limit = search_limit(limit)?;
     if terms.is_empty() || block_types.as_ref().is_some_and(Vec::is_empty) {
-        agent_authorization::authorized_page_ids(
-            connection,
-            context,
-            library_id,
-            authorization,
-            &[],
-        )?;
         return empty();
     }
 
@@ -92,8 +83,6 @@ pub(super) fn read(
             page_search_index,
             library_id,
             super::page_search::AgentSearchRequest {
-                context,
-                authorization,
                 query,
                 scope: &scope,
                 include_archived,
@@ -105,25 +94,10 @@ pub(super) fn read(
             .iter()
             .map(|candidate| candidate.id.clone())
             .collect::<Vec<_>>();
-        let authorized = agent_authorization::authorized_page_ids(
-            connection,
-            context,
-            library_id,
-            authorization,
-            &candidate_ids,
-        )?;
-        let candidates = candidates
-            .into_iter()
-            .filter(|candidate| authorized.contains(&candidate.id))
-            .collect::<Vec<_>>();
-        let authorized_ids = candidates
-            .iter()
-            .map(|candidate| candidate.id.clone())
-            .collect::<Vec<_>>();
         search_blocks(
             connection,
             &terms,
-            &authorized_ids,
+            &candidate_ids,
             block_types.as_deref(),
             include_archived,
         )?
@@ -172,38 +146,6 @@ fn empty() -> Result<LibraryReadValue, StoreError> {
         next_cursor: None,
         has_more: false,
     })
-}
-
-fn authorize_explicit_scope(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    library_id: &str,
-    authorization: &AgentExecutionAuthorization,
-    scope: &LibraryAgentSearchScope,
-) -> Result<(), StoreError> {
-    let target = match scope {
-        LibraryAgentSearchScope::Library => return Ok(()),
-        LibraryAgentSearchScope::Database { database_id } => AgentAuthorizationTarget::Database {
-            database_id: database_id.clone(),
-        },
-        LibraryAgentSearchScope::DataSource { data_source_id } => {
-            AgentAuthorizationTarget::DataSource {
-                data_source_id: data_source_id.clone(),
-            }
-        }
-        LibraryAgentSearchScope::Page { page_id } => AgentAuthorizationTarget::Page {
-            page_id: page_id.clone(),
-        },
-    };
-    agent_authorization::authorize_execution(
-        connection,
-        context,
-        library_id,
-        authorization,
-        &target,
-        AgentProjectResourceAction::Read,
-    )?;
-    Ok(())
 }
 
 fn read_page_candidates(

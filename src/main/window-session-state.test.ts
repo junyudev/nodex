@@ -263,7 +263,7 @@ describe("WindowSessionState", () => {
           kind: "db_view",
           titleSnapshot: "Database",
           config: {
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             target: {
               kind: "database-view",
               databaseViewId: "view-1",
@@ -442,7 +442,7 @@ describe("WindowSessionState", () => {
           kind: "db_view",
           titleSnapshot: "Database",
           config: {
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             target: {
               kind: "database-view",
               databaseViewId: "view-1",
@@ -490,7 +490,7 @@ describe("WindowSessionState", () => {
           kind: "page_stage",
           titleSnapshot: "Clone only",
           config: {
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             pageId: "page-1",
           },
           stateKey: 0,

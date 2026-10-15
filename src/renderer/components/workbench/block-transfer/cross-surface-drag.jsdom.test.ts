@@ -16,24 +16,28 @@ import {
 } from "./cross-surface-drag";
 
 describe("cross-surface Block transfer drag", () => {
-  test("round-trips stable identities and parent authority without content snapshots", () => {
-    const serialized = encodeBlockTransferDragPayload({
-      sessionId: "session-a",
-      sourceSurfaceId: "surface-a",
-      projectId: "project-a",
-      storeEpoch: "epoch-a",
-      source: { kind: "document", documentId: "document-a" },
-      rootBlockIds: ["paragraph-a", "card-a"],
-      displayHints: ["paragraph", "Card A"],
-    });
+  test.each(["project-a", null])(
+    "round-trips route %s and exact source identities without content snapshots",
+    (projectId) => {
+      const serialized = encodeBlockTransferDragPayload({
+        sessionId: "session-a",
+        sourceSurfaceId: "surface-a",
+        projectId,
+        storeEpoch: "epoch-a",
+        source: { kind: "document", documentId: "document-a" },
+        rootBlockIds: ["paragraph-a", "card-a"],
+        displayHints: ["paragraph", "Card A"],
+      });
 
-    expect(parseBlockTransferDragPayload(serialized)).toMatchObject({
-      source: { kind: "document", documentId: "document-a" },
-      rootBlockIds: ["paragraph-a", "card-a"],
-    });
-    expect(serialized).not.toContain("description");
-    expect(serialized).not.toContain("content");
-  });
+      expect(parseBlockTransferDragPayload(serialized)).toMatchObject({
+        projectId,
+        source: { kind: "document", documentId: "document-a" },
+        rootBlockIds: ["paragraph-a", "card-a"],
+      });
+      expect(serialized).not.toContain("description");
+      expect(serialized).not.toContain("content");
+    },
+  );
 
   test("rejects duplicate identities and unbounded payloads", () => {
     const duplicate = encodeBlockTransferDragPayload({

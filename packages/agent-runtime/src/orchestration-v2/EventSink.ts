@@ -32,7 +32,6 @@ import * as EventStore from "./EventStore.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
-import type { CommandReceiptIdentity } from "./CommandIdentity.ts";
 
 /**
  * ERRORS
@@ -120,20 +119,18 @@ export interface EventSinkV2Shape {
     },
     EventSinkV2Error
   >;
-  readonly commitCommand: (
-    input: CommandReceiptIdentity & {
-      readonly commandId: CommandId;
-      readonly threadId: ThreadId;
-      readonly commandType: string;
-      readonly acceptedAt: DateTime.Utc;
-      readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
-      readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
-      readonly cancelUnsettledEffects?: {
-        readonly effectTypes: ReadonlyArray<EffectOutbox.OrchestrationEffectRequestV2["type"]>;
-        readonly reason: string;
-      };
-    },
-  ) => Effect.Effect<
+  readonly commitCommand: (input: {
+    readonly commandId: CommandId;
+    readonly threadId: ThreadId;
+    readonly commandType: string;
+    readonly acceptedAt: DateTime.Utc;
+    readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
+    readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
+    readonly cancelUnsettledEffects?: {
+      readonly effectTypes: ReadonlyArray<EffectOutbox.OrchestrationEffectRequestV2["type"]>;
+      readonly reason: string;
+    };
+  }) => Effect.Effect<
     {
       readonly receipt: CommandReceiptStore.CommandReceiptV2;
       readonly storedEvents: ReadonlyArray<OrchestrationV2StoredEvent>;
@@ -142,21 +139,18 @@ export interface EventSinkV2Shape {
     },
     EventSinkV2Error
   >;
-  readonly commitRejectedCommand: (
-    input: CommandReceiptIdentity & {
-      readonly commandId: CommandId;
-      readonly threadId: ThreadId;
-      readonly commandType: string;
-      readonly rejectedAt: DateTime.Utc;
-      readonly error: string;
-    },
-  ) => Effect.Effect<CommandReceiptStore.CommandReceiptV2, EventSinkV2Error>;
+  readonly commitRejectedCommand: (input: {
+    readonly commandId: CommandId;
+    readonly threadId: ThreadId;
+    readonly commandType: string;
+    readonly rejectedAt: DateTime.Utc;
+    readonly error: string;
+  }) => Effect.Effect<CommandReceiptStore.CommandReceiptV2, EventSinkV2Error>;
   /**
    * Append a project event, fold it into its row and record the receipt in one
    * transaction. A reused command id commits nothing and returns its receipt.
    */
   readonly commitProjectCommand: (input: {
-    readonly requestFingerprint?: string;
     readonly commandId: CommandId;
     readonly projectId: ProjectId;
     readonly commandType: string;
@@ -168,7 +162,6 @@ export interface EventSinkV2Shape {
   >;
   /** Record a rejected project command, or return the receipt its command id already has. */
   readonly commitRejectedProjectCommand: (input: {
-    readonly requestFingerprint?: string;
     readonly commandId: CommandId;
     readonly projectId: ProjectId;
     readonly commandType: string;
@@ -536,25 +529,6 @@ const layerBase: Layer.Layer<
     ) {
       const result = yield* commitThenPublish(
         Effect.gen(function* () {
-          const existingCommand = yield* commandReceipts.getByCommandId(input.commandId);
-          if (Option.isSome(existingCommand)) {
-            yield* CommandReceiptStore.assertCommandIdentity(existingCommand.value, input);
-            const existing = yield* existingCommandResult(input.commandId);
-            return { ...existing, committed: false as const, cancelledEffectIds: [] };
-          }
-          // This lookup and the unique identity reservation share the event transaction.
-          // Concurrent submissions cannot allocate a second Run for the same message.
-          if (input.messageId !== undefined) {
-            const existingMessage = yield* commandReceipts.getByMessageId(
-              input.messageId,
-              input.commandId,
-            );
-            if (Option.isSome(existingMessage)) {
-              yield* CommandReceiptStore.assertMessageIdentity(existingMessage.value, input);
-              const existing = yield* existingCommandResult(existingMessage.value.commandId);
-              return { ...existing, committed: false as const, cancelledEffectIds: [] };
-            }
-          }
           const reserved = yield* commandReceipts.insertIfAbsent({
             commandId: input.commandId,
             threadId: input.threadId,
@@ -563,17 +537,9 @@ const layerBase: Layer.Layer<
             resultSequence: 0,
             status: "accepted",
             error: null,
-            ...(input.requestFingerprint === undefined
-              ? {}
-              : { requestFingerprint: input.requestFingerprint }),
-            ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
-            ...(input.messageFingerprint === undefined
-              ? {}
-              : { messageFingerprint: input.messageFingerprint }),
           });
           if (!reserved) {
             const existing = yield* existingCommandResult(input.commandId);
-            yield* CommandReceiptStore.assertCommandIdentity(existing.receipt, input);
             return { ...existing, committed: false as const, cancelledEffectIds: [] };
           }
 
@@ -582,8 +548,7 @@ const layerBase: Layer.Layer<
             commandId: input.commandId,
             events: normalized,
           });
-          // Accepted no-op controls still reserve identity atomically, so a retry
-          // cannot settle work that appeared after the original request.
+          // No-op controls retain their command receipt so a late retry cannot affect new work.
           const sequence =
             storedEvents.at(-1)?.sequence ??
             (yield* eventStore.latestSequence({ threadId: input.threadId }));
@@ -597,13 +562,6 @@ const layerBase: Layer.Layer<
             resultSequence: sequence,
             status: "accepted",
             error: null,
-            ...(input.requestFingerprint === undefined
-              ? {}
-              : { requestFingerprint: input.requestFingerprint }),
-            ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
-            ...(input.messageFingerprint === undefined
-              ? {}
-              : { messageFingerprint: input.messageFingerprint }),
           };
           yield* commandReceipts.upsert(receipt);
           const cancelledEffectIds =
@@ -646,23 +604,18 @@ const layerBase: Layer.Layer<
             resultSequence: sequence,
             status: "rejected",
             error: input.error,
-            ...(input.requestFingerprint === undefined
-              ? {}
-              : { requestFingerprint: input.requestFingerprint }),
           };
           const inserted = yield* commandReceipts.insertIfAbsent(receipt);
           if (inserted) {
             return receipt;
           }
           const existing = yield* commandReceipts.getByCommandId(input.commandId);
-          if (Option.isSome(existing))
-            yield* CommandReceiptStore.assertCommandIdentity(existing.value, input);
           return Option.getOrElse(existing, () => receipt);
         }),
       );
     });
 
-    const existingProjectReceipt = (commandId: CommandId, requestFingerprint?: string) =>
+    const existingProjectReceipt = (commandId: CommandId) =>
       commandReceipts.getProjectByCommandId(commandId).pipe(
         Effect.flatMap(
           Option.match({
@@ -670,16 +623,6 @@ const layerBase: Layer.Layer<
               Effect.fail(`Command ${commandId} was already used by a thread command.` as const),
             onSome: Effect.succeed,
           }),
-        ),
-        Effect.flatMap((receipt) =>
-          requestFingerprint === undefined || receipt.requestFingerprint === requestFingerprint
-            ? Effect.succeed(receipt)
-            : Effect.fail(
-                new CommandReceiptStore.CommandReceiptIdentityConflictError({
-                  commandId,
-                  detail: "the command ID belongs to a different immutable project request",
-                }),
-              ),
         ),
       );
 
@@ -695,15 +638,9 @@ const layerBase: Layer.Layer<
               resultSequence: 0,
               status: "accepted",
               error: null,
-              ...(input.requestFingerprint === undefined
-                ? {}
-                : { requestFingerprint: input.requestFingerprint }),
             };
             if (!(yield* commandReceipts.insertIfAbsent(reserved))) {
-              return {
-                receipt: yield* existingProjectReceipt(input.commandId, input.requestFingerprint),
-                event: undefined,
-              };
+              return { receipt: yield* existingProjectReceipt(input.commandId), event: undefined };
             }
             const event = yield* eventStore.appendProjectEvent(input.event);
             yield* projectStore.apply(event);
@@ -731,13 +668,10 @@ const layerBase: Layer.Layer<
             resultSequence: yield* eventStore.latestApplicationSequence,
             status: "rejected",
             error: input.error,
-            ...(input.requestFingerprint === undefined
-              ? {}
-              : { requestFingerprint: input.requestFingerprint }),
           };
           return (yield* commandReceipts.insertIfAbsent(receipt))
             ? receipt
-            : yield* existingProjectReceipt(input.commandId, input.requestFingerprint);
+            : yield* existingProjectReceipt(input.commandId);
         }),
       );
     });

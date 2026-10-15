@@ -121,7 +121,8 @@ or source root; ambiguous matches fail with stable candidates.
 The primary Agent read interface is `sql schema` and `sql query`: public Page
 metadata and bodies, Source values, saved View occurrences, ranked search hits,
 File metadata and domain catalogs. `read PAGE` and `search QUERY --limit K`
-remain convenient single-Page and ranked-search entries. Search returns Page
+remain convenient single-Page and ranked-search entries. Search spans the current
+Library without an implicit Project filter. Search returns Page
 identity, current key, title, location, and up to three merged body/Property
 fragments, each bounded to 240 Unicode characters. Fragments retain Block or
 Property identity; historical-key matches report the matched key separately.
@@ -139,17 +140,16 @@ cannot read or triage the Inbox. `--idempotency-key` makes a retry return the
 original receipt.
 
 Resource selectors accept bare IDs directly; no `@` prefix is required.
-Page selectors resolve a stable `pageId` first, then an authorized current or
+Page selectors resolve a stable `pageId` first, then a current or
 historical Page key, then an explicitly unique supported title path. Key input
 accepts documented case normalization, one optional leading `#`, and
 no-hyphen shorthand; output reports canonical current `page_key` alongside
-`page_id`. If compact input maps to more than one authorized Page, the command
+`page_id`. If compact input maps to more than one active Page, the command
 reports ambiguity and asks for a canonical hyphenated key or `pageId` rather
 than choosing one. An explicit `#` miss does not fall back to a title path.
-Core resolves the alias inside the selected Project before the CLI invokes the
+Core resolves the alias inside the current Library before the CLI invokes the
 UUID-based operation. Other selectors use stable typed
-identities or an explicitly unique supported name or path. Unauthorized
-alternatives are never returned as disambiguation evidence. Terminal collection
+identities or an explicitly unique supported name or path. Missing or deleted alternatives remain unavailable. Terminal collection
 windows retain opaque continuations; SQL queries are complete or fail their
 budget and do not provide a cursor session.
 
@@ -161,7 +161,7 @@ nodex sql query SQL [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
 nodex sql query --file FILE|- [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
 ```
 
-`pages` always means every authorized active Page in the selected Project,
+`pages` always means every active Page in the current Profile Library,
 including standalone Pages. Source Property columns require an explicit binding
 such as `--bind tasks=SOURCE_ID`. `--database` hints schema discovery only and
 does not narrow `pages`. Start with the compact catalog, then describe a relation
@@ -204,7 +204,7 @@ fields, not arbitrary WHERE/JOIN dependencies.
 with at most 2 MiB of combined Nested Markdown. Drafts use `title_markdown`,
 `nested_markdown` and typed `values`. Separate commands are separate transactions.
 See [Agent CLI queries and configuration](product-specs/agent-cli-queries.md)
-for the complete relation, authorization, lifecycle and observation contracts.
+for the complete relation, execution identity, lifecycle and observation contracts.
 
 ## Drafts and mutations
 
@@ -256,8 +256,8 @@ requires a fresh read.
 
 ## Library Files and Page relations
 
-`nodex file` manages independently authorized Library Files in the selected
-Project. A File has a stable identity, a default name, a metadata revision,
+`nodex file` manages Library Files in the current authenticated Profile.
+Project is an optional presentation and workspace coordinate. A File has a stable identity, a default name, a metadata revision,
 and an immutable version history. Page paths belong to Page relations.
 
 ```text
@@ -295,9 +295,9 @@ nodex page file copy <page-selector> --file-id <file-id> --to <target-page> --pa
 
 The SQL `page_files` relation combines explicit entries and body uses, deduplicated by File ID.
 Body-only uses have no logical path. Reads require exactly one `--file-id` or
-`--path`; Page access authorizes current bytes. Independent File history and
-shared edits require direct File access. Adding a File requires direct access;
-copying or moving an existing relation uses the source Page's authority.
+`--path`. Core validates the exact File source, version and current lifecycle.
+Independent File history and shared edits use the same Profile identity. Copying
+or moving a relation binds both Page manifests atomically.
 
 `put` rejects path collisions by default. `--replace-entry` and `replace-entry`
 create a new File and retarget only this Page relation; the original File,
@@ -326,7 +326,7 @@ Profile paths or Blob-hash read capabilities.
 
 ## Search leases
 
-`nodex rg` asks Core for a short-lived immutable projection of authorized Page
+`nodex rg` asks Core for a short-lived immutable projection of current Profile Page
 metadata and canonical content. The CLI validates the lease manifest, paths,
 permissions, lengths, and hashes before running the bundled ripgrep with the
 supported read-only flags. Physical lease paths are never writable inputs and
@@ -350,7 +350,7 @@ artifact and create/remove only an exact managed link. Existing foreign files,
 directories, and links are reported as compatible or conflict and are never
 adopted, overwritten, or force-repaired.
 
-The product-level authority and consent contract is in
+The product-level execution identity contract is in
 [Agent Interface Behavior](product-specs/agent-interface-behavior.md).
 
 ## Agent task evaluation

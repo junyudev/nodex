@@ -1,10 +1,8 @@
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import type { NodexAgentResourceAccessOverlay } from "../../shared/nodex-agent-resource-access";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { workbenchControlSchemas as schemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
 import { createStableOperationId } from "../core-runtime/operation-identity";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchObservation, type WorkbenchObservationPrincipal } from "./WorkbenchObservation";
@@ -16,8 +14,8 @@ import { toolFailure, toolSuccess } from "./app-tool-result";
 export interface WorkbenchAppToolContext {
   readonly invocation: AppToolInvocation;
   readonly principal: WorkbenchObservationPrincipal;
-  readonly authority: FrozenNodexAgentTurnAuthority;
-  readonly taskAccess?: NodexAgentResourceAccessOverlay;
+  readonly authority: NodexAgentTurnContext;
+
   readonly isCurrent: Effect.Effect<boolean>;
 }
 
@@ -26,32 +24,17 @@ export const make = Effect.gen(function* () {
   const bridge = yield* WorkbenchAgentBridge;
   const describe = yield* makeDescription;
   const openTarget = yield* makeOpenTarget;
-  const workspace = yield* ProjectWorkspace;
   return Effect.fn("WorkbenchControl.execute")(function* (context: WorkbenchAppToolContext) {
     const { invocation: input, authority, principal } = context;
-    if (authority.readOnly) return toolFailure("read_only_turn");
+
     const schema = schemas[input.name as keyof typeof schemas];
     if (!schema) return toolFailure("unknown_tool");
     const parsed = schema.safeParse(input.arguments);
     if (!parsed.success) return toolFailure("invalid_arguments");
     const record = yield* observations.forCommand(principal, parsed.data.observationId);
-    const scene = record.reference.sceneOwner;
-    if (
-      authority.scope !== "library" &&
-      scene.kind === "project" &&
-      scene.projectId !== authority.actorProjectId
-    )
-      return toolFailure("access_denied");
-    if (authority.scope !== "library" && scene.kind === "session") {
-      const session = yield* workspace
-        .getProjectSession(scene.sessionId)
-        .pipe(Effect.catch(() => Effect.succeed(null)));
-      if (!session || session.projectId !== authority.actorProjectId)
-        return toolFailure("access_denied");
-    }
     const operationId =
       parsed.data.operationId ??
-      createStableOperationId(`app.${input.name}`, authority.frozenAtMs, [
+      createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
         principal.profileId,
         input.caller.threadId,
         input.caller.turnId,
@@ -76,9 +59,8 @@ export const make = Effect.gen(function* () {
         tab,
         authority,
         callId: input.caller.callId,
-        taskAccess: context.taskAccess,
       });
-      return result.status === "authorized" ? tab : null;
+      return result.status === "available" ? tab : null;
     });
     const translate = Effect.gen(function* (): Effect.fn.Return<WorkbenchCommand | null> {
       if (input.name === "activate_tab" || input.name === "close_tab") {
@@ -96,7 +78,6 @@ export const make = Effect.gen(function* () {
           operationId,
           authority,
           callId: input.caller.callId,
-          taskAccess: context.taskAccess,
         });
         return surface
           ? { kind: "open_tab", panelId: args.panelId, groupId: group.groupId, surface }

@@ -9,7 +9,6 @@ import {
   projectionFor,
   SUBAGENT_V2_NESTED_APPROVAL_PROMPT,
 } from "../shared.ts";
-import { NESTED_SUBAGENT_APPROVAL_PENDING_SHELL_KEY } from "./input.ts";
 
 /**
  * Codex asks for a grandchild's command approval on the grandchild's own
@@ -43,66 +42,8 @@ export function assertSubagentV2NestedApprovalOutput(
   assert.equal(grandchildProjection.thread.lineage.parentThreadId, childProjection.thread.id);
   assert.equal(grandchildProjection.thread.lineage.rootThreadId, projection.thread.id);
 
-  const requests = projection.runtimeRequests;
-  assert.lengthOf(requests, 1);
-  const request = requests[0]!;
-  assert.equal(request.kind, "command");
-  assert.equal(request.status, "resolved");
-  assert.equal(request.decision, "accept");
-  assert.equal(
-    projection.providerTurns.find((turn) => turn.id === request.providerTurnId)?.runAttemptId,
-    run.activeAttemptId,
-    "the request belongs to the top-level provider turn",
-  );
-
-  const node = projection.nodes.find((candidate) => candidate.id === request.nodeId);
-  assert.isDefined(node);
-  assert.equal(node.kind, "approval_request");
-  assert.equal(node.threadId, projection.thread.id);
-  assert.equal(node.runId, run.id);
-  assert.equal(
-    node.parentNodeId,
-    child.id,
-    "the approval hangs off the top-level subagent, the one node on this thread that leads to the grandchild",
-  );
-  assert.equal(node.status, "completed");
-
-  const approvalItems = projection.turnItems.filter((item) => item.type === "approval_request");
-  assert.lengthOf(approvalItems, 1);
-  const approval = approvalItems[0]!;
-  assert.equal(approval.runId, run.id);
-  assert.equal(approval.status, "completed");
-  const pendingRequestIndex = result.domainEvents.findIndex(
-    (event) =>
-      event.type === "runtime-request.updated" &&
-      event.payload.id === request.id &&
-      event.payload.status === "pending",
-  );
-  const waitingItemIndex = result.domainEvents.findIndex(
-    (event) =>
-      event.type === "turn-item.updated" &&
-      event.payload.id === approval.id &&
-      event.payload.status === "waiting",
-  );
-  assert.isAtLeast(waitingItemIndex, 0);
-  assert.isAbove(pendingRequestIndex, waitingItemIndex);
-  if (approval.type !== "approval_request") throw new Error("expected an approval item");
-  assert.equal(approval.requestId, request.id);
-  assert.include(approval.prompt ?? "", "nested-approval.txt");
-
-  // While Codex waited, only the top-level thread reported the approval.
-  const pendingShell = result.capturedShellSnapshots.get(
-    NESTED_SUBAGENT_APPROVAL_PENDING_SHELL_KEY,
-  );
-  assert.isDefined(pendingShell);
-  const pendingThreads = pendingShell.threads;
-  const rootShell = pendingThreads.find((thread) => thread.id === projection.thread.id);
-  assert.equal(rootShell?.pendingRuntimeRequest?.id, request.id);
-  for (const nested of [childProjection, grandchildProjection]) {
-    const nestedShell = pendingThreads.find((thread) => thread.id === nested.thread.id);
-    assert.isDefined(nestedShell, `${nested.thread.id} exists while the approval is pending`);
-    assert.isNull(nestedShell.pendingRuntimeRequest);
-  }
+  assert.lengthOf(projection.runtimeRequests, 0);
+  assert.isFalse(projection.turnItems.some((item) => item.type === "approval_request"));
 
   // Neither native child thread holds a request; the grandchild ran the command.
   for (const nested of [childProjection, grandchildProjection]) {

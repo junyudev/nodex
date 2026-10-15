@@ -942,16 +942,6 @@ function replayQueryRunnerService(
   });
 }
 
-function layerClaudeAgentSdkReplayQueryRunner(
-  transcript: ClaudeAgentSdkReplayTranscript,
-  options: { readonly replayGate?: ProviderReplayGate } = {},
-): Layer.Layer<ClaudeAdapterV2.ClaudeAgentSdkQueryRunner> {
-  return Layer.effect(
-    ClaudeAdapterV2.ClaudeAgentSdkQueryRunner,
-    makeClaudeAgentSdkReplayQueryRunner(transcript, options),
-  );
-}
-
 function layerClaudeAgentSdkReplay(
   transcript: ClaudeAgentSdkReplayTranscript,
   options: {

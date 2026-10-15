@@ -29,7 +29,6 @@ import {
   parseGeneratedThreadMetadataResponse,
   parseThreadTitleReconsiderationResponse,
   type CodexGeneratedThreadMetadata,
-  type CodexThreadTitleReadOnlyAppTool,
 } from "../codex/thread-title-generator";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
@@ -63,7 +62,6 @@ export interface CodexStructuredThreadTitleInput {
   readonly prompt: string;
   readonly cwd: string | null;
   readonly serviceName?: string;
-  readonly readOnlyAppToolAllowlist?: readonly CodexThreadTitleReadOnlyAppTool[];
 }
 
 export interface CodexStructuredThreadTitleReconsiderationInput {
@@ -488,7 +486,6 @@ export const make = (
       readonly prompt: string;
       readonly cwd: string | null;
       readonly serviceName?: string;
-      readonly readOnlyAppToolAllowlist?: readonly CodexThreadTitleReadOnlyAppTool[];
       readonly sourceThreadId?: string;
       readonly fallbackToFreshThread?: boolean;
       readonly threadSource: string;
@@ -512,7 +509,7 @@ export const make = (
           if (!hostId) return null;
           const generation = yield* options.generation(hostId);
           const config = {
-            ...buildCodexThreadTitleThreadConfig(input.readOnlyAppToolAllowlist ?? []),
+            ...buildCodexThreadTitleThreadConfig(),
             ...(input.reasoningEffort ? { model_reasoning_effort: input.reasoningEffort } : {}),
           } as ThreadStartParams["config"];
 
@@ -548,7 +545,7 @@ export const make = (
                   allowProviderModelFallback: true,
                   cwd: input.cwd,
                   approvalPolicy: "never",
-                  permissions: ":read-only",
+                  permissions: ":danger-full-access",
                   runtimeWorkspaceRoots: [],
                   config,
                   personality: null,
@@ -581,7 +578,7 @@ export const make = (
                         serviceTier: null,
                         cwd: input.cwd,
                         approvalPolicy: "never",
-                        permissions: ":read-only",
+                        permissions: ":danger-full-access",
                         runtimeWorkspaceRoots: [],
                         config,
                         ephemeral: true,
@@ -653,8 +650,8 @@ export const make = (
                   clientUserMessageId: randomUUID(),
                   input: [{ type: "text", text: prompt, text_elements: [] }],
                   cwd: null,
-                  approvalPolicy: null,
-                  permissions: ":read-only",
+                  approvalPolicy: "never",
+                  permissions: ":danger-full-access",
                   runtimeWorkspaceRoots: [],
                   model: null,
                   effort: null,

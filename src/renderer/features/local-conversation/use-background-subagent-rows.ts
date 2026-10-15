@@ -41,7 +41,7 @@ export function useBackgroundSubagentRows(
   preferredHostId?: string | null,
 ) {
   const runtime = useConversationRuntimeOverride();
-  const enabled = !runtime || runtime.kind === "codex";
+  const enabled = !runtime || (runtime.kind === "codex" && !runtime.sessionId);
   const nativeObservations = useConversationRuntimeTaskObservations(
     enabled ? null : runtime,
     rootThreadId,
@@ -51,11 +51,17 @@ export function useBackgroundSubagentRows(
     const conversations = new Map(
       nativeObservations.map((entry) => [entry.membership.threadId, entry.conversation]),
     );
-    return projectNativeTaskRows(
+    const projected = projectNativeTaskRows(
       nativeObservations.map((entry) => entry.membership),
       (id) => conversations.get(id) ?? null,
     );
-  }, [nativeObservations]);
+    if (!runtime?.sessionId) return projected;
+    return projected.map((row, index) =>
+      nativeObservations[index]?.membership.task
+        ? row
+        : { ...row, canInteract: true, showInlineActivity: true },
+    );
+  }, [nativeObservations, runtime?.sessionId]);
   const manager = useCodexAppServerManagerForConversationId(rootThreadId, preferredHostId);
   const client = useQueryClient();
   const hostId = manager.getHostId();

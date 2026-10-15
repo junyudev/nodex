@@ -19,12 +19,12 @@ export const make = Effect.gen(function* () {
   let closed = false;
   const change = (mutation: () => void) =>
     Effect.sync(mutation).pipe(Effect.andThen(SubscriptionRef.update(revision, (n) => n + 1)));
-  yield* Effect.addFinalizer(() =>
+  const retire = () =>
     change(() => {
       closed = true;
       ledger.close();
-    }),
-  );
+    });
+  yield* Effect.addFinalizer(retire);
 
   const run = <A, E, R>(
     input: Parameters<typeof ledger.claim>[0],
@@ -32,6 +32,7 @@ export const make = Effect.gen(function* () {
   ): Effect.Effect<A, E | CodexAppCallRejected, R> =>
     Effect.acquireUseRelease(
       Effect.suspend(() => {
+        if (ledger.overflowed) return Effect.fail(new CodexAppCallRejected({ reason: "capacity" }));
         if (closed) return Effect.fail(new CodexAppCallRejected({ reason: "revoked" }));
         if (pending >= 128) return Effect.fail(new CodexAppCallRejected({ reason: "capacity" }));
         pending += 1;
@@ -42,9 +43,11 @@ export const make = Effect.gen(function* () {
           // SubscriptionRef supplies the current revision before updates, closing the arrival race.
           const candidate = yield* SubscriptionRef.changes(revision).pipe(
             Stream.mapEffect(() =>
-              closed
-                ? Effect.fail(new CodexAppCallRejected({ reason: "revoked" }))
-                : Effect.sync(() => ledger.claim(input)),
+              ledger.overflowed
+                ? Effect.fail(new CodexAppCallRejected({ reason: "capacity" }))
+                : closed
+                  ? Effect.fail(new CodexAppCallRejected({ reason: "revoked" }))
+                  : Effect.sync(() => ledger.claim(input)),
             ),
             Stream.filter((claim): claim is CodexAppCallClaim => claim !== null),
             Stream.runHead,
@@ -70,13 +73,18 @@ export const make = Effect.gen(function* () {
     );
 
   return {
-    startTurn: (threadId: string, turnId: string) =>
-      change(() => ledger.startTurn(threadId, turnId)),
-    endTurn: (threadId: string, turnId: string) => change(() => ledger.endTurn(threadId, turnId)),
+    retire,
+    cancelTurn: (threadId: string, turnId: string) =>
+      change(() => ledger.cancelTurn(threadId, turnId)),
+    completeCall: (threadId: string, turnId: string, callId: string) =>
+      change(() => ledger.completeCall(threadId, turnId, callId)),
     observe: (event: ItemStartedNotification) =>
       change(() => {
         ledger.observe(event);
       }),
+    overflowed: () => ledger.overflowed,
+    isTurnLive: (threadId: string, turnId: string) =>
+      !closed && ledger.isTurnLive(threadId, turnId),
     run,
   };
 });

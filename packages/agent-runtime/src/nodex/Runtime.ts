@@ -58,6 +58,7 @@ import * as Recovery from "../orchestration-v2/ProviderRuntimeRecoveryService.ts
 import * as ProviderSessions from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as Fiber from "effect/Fiber";
+import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
 const layerPlatform = Layer.merge(NodeServices.layer, FetchHttpClient.layer);
@@ -114,10 +115,19 @@ export const layerConfiguration = (configuration: AgentRuntimeConfiguration) =>
     }),
   ).pipe(Layer.provide(layerPlatform));
 
-const layerSettings = ServerSettings.layer.pipe(
+const layerStoredSettings = ServerSettings.layer.pipe(
   Layer.provide(ServerSecretStore.layer),
   Layer.provideMerge(Sqlite.layerConfig),
 );
+const layerSettings = Layer.effect(
+  ServerSettings.ServerSettingsService,
+  Effect.gen(function* () {
+    return ProviderConfiguration.effectiveSettings(
+      yield* ServerSettings.ServerSettingsService,
+      yield* ProviderConfiguration.ProviderPolicy,
+    );
+  }),
+).pipe(Layer.provide(layerStoredSettings), Layer.provideMerge(Sqlite.layerConfig));
 const layerPower = Layer.effect(HostPowerMonitor.HostPowerMonitor, HostPowerMonitor.make());
 const layerBackground = BackgroundPolicy.layer.pipe(
   Layer.provide(layerPower),
@@ -177,6 +187,11 @@ const layerProviderInfrastructure = Layer.mergeAll(
  * HTTP/MCP credentials are supplied by the scoped transport host, never by a renderer.
  */
 export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
+  const layerPolicy = Layer.unwrap(
+    decodeProviderConfiguration(configuration.providers).pipe(
+      Effect.map(ProviderConfiguration.layerPolicy),
+    ),
+  );
   const layerInstances = Layer.unwrap(
     Effect.gen(function* () {
       const configMap = yield* decodeProviderConfiguration(configuration.providers);
@@ -186,9 +201,11 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
       );
     }),
   );
-  const layerExecution = Layer.mergeAll(RuntimeLayer.layer, RuntimeLayer.layerEventSink).pipe(
-    Layer.provideMerge(RuntimeLayer.layerProjectService),
-  );
+  const layerExecution = Layer.mergeAll(
+    RuntimeLayer.layer,
+    RuntimeLayer.layerEventSink,
+    RuntimeLayer.layerStores,
+  ).pipe(Layer.provideMerge(RuntimeLayer.layerProjectService));
   const layerContinuation = Continuation.layer.pipe(
     Layer.provide(layerExecution),
     Layer.provide(ProviderContinuationRequests.layer),
@@ -207,6 +224,7 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     Layer.provideMerge(layerProviderInfrastructure),
     Layer.provideMerge(layerBackground),
     Layer.provideMerge(layerSettings),
+    Layer.provideMerge(layerPolicy),
     Layer.provideMerge(ServerSecretStore.layer),
     Layer.provideMerge(layerConfiguration(configuration)),
     Layer.provideMerge(layerPlatform),

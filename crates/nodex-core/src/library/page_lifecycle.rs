@@ -36,28 +36,30 @@ pub(super) fn read_preflight(
     page_id: &str,
 ) -> Result<LibraryPageLifecyclePreflight, StoreError> {
     validate_id(page_id, "page_id")?;
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page lifecycle preflight requires a bound Project"))?;
-    let default_database_id =
-        database::authorization::project_primary_database(connection, library_id, project_id)?
-            .ok_or_else(|| corrupt("Project default Database is unavailable"))?;
-    let default_view_id = connection
-        .query_row(
-            "SELECT default_view_id FROM database_containers WHERE block_id = ?1",
-            [&default_database_id],
-            |row| row.get::<_, Option<String>>(0),
+    let (default_view, tags_property) = if let Some(project_id) = context.project_id.as_ref() {
+        let project_id = project_id.0.as_str();
+        let default_database_id = database::project_default::project_primary_database(
+            connection, library_id, project_id,
         )?
-        .ok_or_else(|| corrupt("Project default Database has no default View"))?;
-    let default_view = database::read::view_descriptor_query(
-        connection,
-        library_id,
-        Some(project_id),
-        &default_view_id,
-    )?;
-    let tags_property = read_tags_property(connection, &default_view)?;
+        .ok_or_else(|| corrupt("Project default Database is unavailable"))?;
+        let default_view_id = connection
+            .query_row(
+                "SELECT default_view_id FROM database_containers WHERE block_id = ?1",
+                [&default_database_id],
+                |row| row.get::<_, Option<String>>(0),
+            )?
+            .ok_or_else(|| corrupt("Project default Database has no default View"))?;
+        let default_view = database::read::view_descriptor_query(
+            connection,
+            library_id,
+            Some(project_id),
+            &default_view_id,
+        )?;
+        let tags_property = read_tags_property(connection, &default_view)?;
+        (default_view, tags_property)
+    } else {
+        (Value::Null, Value::Null)
+    };
     let Some(row) = read_page_authority(connection, page_id)? else {
         return Ok(LibraryPageLifecyclePreflight {
             default_view,
@@ -74,9 +76,7 @@ pub(super) fn read_preflight(
             page: None,
         });
     }
-    super::history::require_page_lifecycle_read_access(
-        connection, library_id, project_id, page_id,
-    )?;
+    super::history::require_page_lifecycle_read_access(connection, library_id, page_id)?;
     let page = project_page_authority(connection, library_id, page_id, row)?;
     Ok(LibraryPageLifecyclePreflight {
         default_view,
@@ -445,10 +445,6 @@ fn non_negative(value: i64, label: &str) -> Result<i64, StoreError> {
 
 fn invalid(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn corrupt(message: &str) -> StoreError {

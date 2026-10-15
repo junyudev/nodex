@@ -1,9 +1,9 @@
 import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
 import {
-  compareAuthorityResources,
-  isAuthorityResource,
-  type AuthorityResource,
-} from "./authorized-read-stamp";
+  compareDeliveryResources,
+  isDeliveryResource,
+  type DeliveryResource,
+} from "./delivery-resource-key";
 import { isDocumentHistoryFence } from "./block-documents/document-history-fence";
 
 export type AuthorizedDeliveryPacket = components["schemas"]["AuthorizedDeliveryPacket"];
@@ -16,7 +16,7 @@ export interface AuthorizedDeliveryPacketConstraints {
 }
 
 const MAX_PACKET_ITEMS = 10_000;
-const PACKET_VERSION = 4;
+const PACKET_VERSION = 5;
 const HASH_PATTERN = /^[0-9a-f]{64}$/u;
 const PROJECTION_SCOPE_KEY_PATTERN = /^v1:[0-9a-f]{64}$/u;
 
@@ -81,10 +81,10 @@ const isUniqueIdentities = (value: unknown): value is readonly string[] => {
 
 const isCanonicalResourceKeys = (value: unknown): boolean => {
   if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PACKET_ITEMS) return false;
-  let previous: AuthorityResource | undefined;
+  let previous: DeliveryResource | undefined;
   for (const resource of value) {
-    if (!isAuthorityResource(resource)) return false;
-    if (previous && compareAuthorityResources(previous, resource) >= 0) return false;
+    if (!isDeliveryResource(resource)) return false;
+    if (previous && compareDeliveryResources(previous, resource) >= 0) return false;
     previous = resource;
   }
   return true;
@@ -247,7 +247,7 @@ const isProjectionEffect = (value: unknown): boolean => {
   );
 };
 
-const isAuthorizationScope = (value: unknown, expectedLibraryId?: string): boolean => {
+const isDeliveryAddress = (value: unknown, expectedLibraryId?: string): boolean => {
   if (!isRecord(value) || !isIdentity(value.library_id)) return false;
   if (expectedLibraryId !== undefined && value.library_id !== expectedLibraryId) {
     return false;
@@ -265,48 +265,6 @@ const isAuthorizationScope = (value: unknown, expectedLibraryId?: string): boole
     hasExactKeys(value, ["document_id", "kind", "library_id", "project_id"]) &&
     isIdentity(value.document_id) &&
     (value.project_id === null || isIdentity(value.project_id))
-  );
-};
-
-const isDeliveryAddress = (value: unknown, expectedLibraryId?: string): boolean =>
-  isAuthorizationScope(value, expectedLibraryId);
-
-const sameAddressAndScope = (address: unknown, scope: unknown): boolean =>
-  isRecord(address) && isRecord(scope) && JSON.stringify(address) === JSON.stringify(scope);
-
-const revocationReasons = new Set(["ownership_moved", "access_revoked", "archived", "deleted"]);
-
-const isVisibilityDelta = (
-  value: unknown,
-  expectedScope: unknown,
-  expectedLibraryId?: string,
-): boolean => {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ["authorization_scope", "change", "delta_hash", "roots"]) ||
-    !isAuthorizationScope(value.authorization_scope, expectedLibraryId) ||
-    !sameAddressAndScope(value.authorization_scope, expectedScope) ||
-    !isHash(value.delta_hash) ||
-    !isRecord(value.change) ||
-    !Array.isArray(value.roots)
-  )
-    return false;
-  if (value.change.kind === "grant") {
-    return hasExactKeys(value.change, ["kind"]) && isCanonicalResourceKeys(value.roots);
-  }
-  if (value.change.kind === "revoke") {
-    return (
-      hasExactKeys(value.change, ["kind", "reason"]) &&
-      typeof value.change.reason === "string" &&
-      revocationReasons.has(value.change.reason) &&
-      isCanonicalResourceKeys(value.roots)
-    );
-  }
-  return (
-    value.change.kind === "conservative_reset" &&
-    hasExactKeys(value.change, ["kind", "reason"]) &&
-    value.change.reason === "authorization_closure_exceeded" &&
-    value.roots.length === 0
   );
 };
 
@@ -344,7 +302,7 @@ const invalidPacket = (): never => {
 };
 
 /**
- * Parses the one transport-neutral authorized delivery boundary used by apply,
+ * Parses the one transport-neutral authenticated delivery boundary used by apply,
  * exact-live, and durable-stream ingress. Context-specific callers may pin the
  * Store, Library, and event contract without maintaining another packet parser.
  */
@@ -356,7 +314,6 @@ export const parseAuthorizedDeliveryPacket = (
     !isRecord(value) ||
     !hasExactKeys(value, [
       "atoms",
-      "authorization_scope",
       "coverage",
       "delivery_address",
       "document_effects",
@@ -364,13 +321,10 @@ export const parseAuthorizedDeliveryPacket = (
       "packet_hash",
       "packet_version",
       "projection_effects",
-      "visibility_deltas",
     ]) ||
     value.packet_version !== PACKET_VERSION ||
     !isHash(value.packet_hash) ||
     !isDeliveryAddress(value.delivery_address, constraints.libraryId) ||
-    !isAuthorizationScope(value.authorization_scope, constraints.libraryId) ||
-    !sameAddressAndScope(value.delivery_address, value.authorization_scope) ||
     (constraints.deliveryAddress !== undefined &&
       JSON.stringify(value.delivery_address) !== JSON.stringify(constraints.deliveryAddress)) ||
     !isRecord(value.manifest)
@@ -418,12 +372,7 @@ export const parseAuthorizedDeliveryPacket = (
     value.document_effects.some((effect) => !isDocumentEffect(effect)) ||
     !Array.isArray(value.projection_effects) ||
     value.projection_effects.length > MAX_PACKET_ITEMS ||
-    value.projection_effects.some((effect) => !isProjectionEffect(effect)) ||
-    !Array.isArray(value.visibility_deltas) ||
-    value.visibility_deltas.length > MAX_PACKET_ITEMS ||
-    value.visibility_deltas.some(
-      (delta) => !isVisibilityDelta(delta, value.authorization_scope, constraints.libraryId),
-    )
+    value.projection_effects.some((effect) => !isProjectionEffect(effect))
   ) {
     return invalidPacket();
   }

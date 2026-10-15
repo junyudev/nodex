@@ -27,6 +27,16 @@ describe("application CI suite planning", () => {
         },
       ],
       [
+        "agent-runtime",
+        {
+          needsPlaywright: false,
+          needsRust: false,
+          needsXvfb: false,
+          packageScript: "test:agent-runtime",
+          relatedPackageScript: "test:agent-runtime:related",
+        },
+      ],
+      [
         "core-client",
         {
           needsPlaywright: false,

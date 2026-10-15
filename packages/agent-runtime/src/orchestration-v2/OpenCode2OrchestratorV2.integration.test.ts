@@ -71,84 +71,14 @@ const event = (type: string, data: Record<string, unknown>): ProviderReplayEntry
 });
 const labelled = (entry: ProviderReplayEntry, label: string): ProviderReplayEntry =>
   entry.type === "runtime_exit" ? entry : { ...entry, label };
-/**
- * T3's own rules after a mode's: every thread's T3 MCP server is denied, and
- * then this thread's own is allowed again (last match wins).
- */
-const mcpRules = (name: string) => [
-  { action: "t3-code-*", resource: "*", effect: "deny" },
-  { action: `t3-code-thread_${name}_*`, resource: "*", effect: "allow" },
-];
-const FULL_ACCESS = [{ action: "*", resource: "*", effect: "allow" }];
-/** Full access for the thread named `name`. */
-const t3Rules = (name: string) => [...FULL_ACCESS, ...mcpRules(name)];
-/** Paths the build and plan agents allow for themselves, as 2.0.18 lists them. */
-const BUILD_PATHS = [
-  {
-    action: "external_directory",
-    resource: "/home/.local/share/opencode/tool-output/*",
-    effect: "allow",
-  },
-];
-const PLAN_PATHS = [
-  ...BUILD_PATHS,
-  { action: "edit", resource: "/home/.opencode/plan/*", effect: "allow" },
-  { action: "external_directory", resource: "/home/.opencode/plan/*", effect: "allow" },
-];
-const agentInfo = (id: string, description: string, permissions: ReadonlyArray<unknown>) => ({
-  id,
-  name: id === "plan" ? "Plan" : "Build",
-  request: { settings: {}, headers: {}, body: {} },
-  description,
-  mode: "primary",
-  hidden: false,
-  permissions,
-});
-/** `/api/agent` trimmed to the two agents a T3 session runs. */
-const agentList = (directory: string) => ({
-  location: { directory },
-  data: [
-    agentInfo("build", "The default agent.", [
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "external_directory", resource: "*", effect: "ask" },
-      ...BUILD_PATHS,
-    ]),
-    agentInfo("plan", "Read-only agent for planning.", [
-      { action: "*", resource: "*", effect: "allow" },
-      { action: "external_directory", resource: "*", effect: "ask" },
-      ...BUILD_PATHS,
-      { action: "edit", resource: "*", effect: "deny" },
-      ...PLAN_PATHS.slice(BUILD_PATHS.length),
-    ]),
-  ],
-});
+/** Native Sessions retain full access across planning, resume and model changes. */
+const EXECUTION_PERMISSIONS = [{ action: "*", resource: "*", effect: "allow" }];
 /** A session this runtime loads again (after a detach) waits on nothing. */
 const noOpenRequests: ReadonlyArray<ProviderReplayEntry> = [
   out("permission.list", { sessionID: SESSION }),
   reply("permission.list", { data: [] }),
   out("session.form.list", { sessionID: SESSION }),
   reply("session.form.list", { data: [] }),
-];
-const supervisedRules = (name: string) => [
-  { action: "shell", resource: "*", effect: "ask" },
-  { action: "edit", resource: "*", effect: "ask" },
-  { action: "external_directory", resource: "*", effect: "ask" },
-  ...BUILD_PATHS,
-  ...mcpRules(name),
-];
-const autoEditRules = (name: string) => [
-  { action: "shell", resource: "*", effect: "ask" },
-  { action: "edit", resource: "*", effect: "allow" },
-  { action: "external_directory", resource: "*", effect: "ask" },
-  ...BUILD_PATHS,
-  ...mcpRules(name),
-];
-/** Plan mode on Full access: edits are denied except the plan agent's own plan files. */
-const planRules = (name: string) => [
-  { action: "*", resource: "*", effect: "allow" },
-  { action: "edit", resource: "*", effect: "deny" },
-  ...PLAN_PATHS,
-  ...mcpRules(name),
 ];
 
 const sessionInfo = (directory: string, permissions: ReadonlyArray<unknown>, title: string) => ({
@@ -219,13 +149,7 @@ const catalogModel = (id: string, name: string) => ({
   enabled: true,
   limit: { context: 200000, input: 160000, output: 32000 },
 });
-const createdSession = (
-  directory: string,
-  name: string,
-  permissions: ReadonlyArray<unknown> = t3Rules(name),
-  // Only a mode that narrows Full access reads the agents' own path rules.
-  narrows = false,
-): ReadonlyArray<ProviderReplayEntry> => [
+const createdSession = (directory: string, name: string): ReadonlyArray<ProviderReplayEntry> => [
   out("event.subscribe"),
   out("model.list", "<any>"),
   reply("model.list", {
@@ -235,10 +159,14 @@ const createdSession = (
       catalogModel("mimo-v2.6-flash-free", "MiMo V2.6 Flash Free"),
     ],
   }),
-  ...(narrows ? [out("agent.list", "<any>"), reply("agent.list", agentList(directory))] : []),
   // The thread's title, which is its name here.
-  out("session.create", { location: { directory }, model: "<any>", permissions, title: name }),
-  reply("session.create", sessionInfo(directory, permissions, name)),
+  out("session.create", {
+    location: { directory },
+    model: "<any>",
+    permissions: EXECUTION_PERMISSIONS,
+    title: name,
+  }),
+  reply("session.create", sessionInfo(directory, EXECUTION_PERMISSIONS, name)),
 ];
 
 /** A recording with its scrubbed `<work>` directory replaced by `directory`. */
@@ -350,7 +278,7 @@ describe("OpenCode 2 through the orchestrator", () => {
             ...answeredPrompt("FIRST"),
             // The next turn resumes the session at its new selection.
             out("session.get", { sessionID: SESSION }),
-            reply("session.get", sessionInfo(cwd, t3Rules(name), name)),
+            reply("session.get", sessionInfo(cwd, EXECUTION_PERMISSIONS, name)),
             out("session.switchModel", {
               sessionID: SESSION,
               model: { providerID: "opencode", id: "mimo-v2.6-flash-free" },
@@ -403,7 +331,7 @@ describe("OpenCode 2 through the orchestrator", () => {
           ...answeredPrompt("FIRST"),
           ...directoryModels(after),
           out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(before, t3Rules(name), name)),
+          reply("session.get", sessionInfo(before, EXECUTION_PERMISSIONS, name)),
           // The worktree change detached the thread, so its session is loaded afresh.
           ...noOpenRequests,
           out("session.move", { sessionID: SESSION, directory: after }),
@@ -432,7 +360,7 @@ describe("OpenCode 2 through the orchestrator", () => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("gives a session made with older rules T3's rules before its next prompt", () =>
+  it.effect("restores full native access before resuming a session with stale provider rules", () =>
     Effect.gen(function* () {
       const name = "opencode2-resume-rules";
       const before = yield* checkpointWorkspace(`${name}-before`);
@@ -462,7 +390,7 @@ describe("OpenCode 2 through the orchestrator", () => {
             ),
           ),
           ...noOpenRequests,
-          out("session.update", { sessionID: SESSION, permissions: t3Rules(name) }),
+          out("session.update", { sessionID: SESSION, permissions: EXECUTION_PERMISSIONS }),
           reply("session.update", null),
           out("session.move", { sessionID: SESSION, directory: after }),
           reply("session.move", null),
@@ -479,127 +407,6 @@ describe("OpenCode 2 through the orchestrator", () => {
             worktreePath: after,
           },
           thread.message("second"),
-        ],
-      });
-      assert.deepEqual(
-        projection.runs.map((run) => run.status),
-        ["completed", "completed"],
-      );
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "creates a Supervised thread's session with rules that ask before shell and edits",
-    () =>
-      Effect.gen(function* () {
-        const name = "opencode2-supervised-rules";
-        const cwd = yield* checkpointWorkspace(name);
-        const thread = threadCommands({
-          name,
-          worktreePath: cwd,
-          runtimeMode: "approval-required",
-        });
-        const projection = yield* runScenario({
-          name,
-          threadId: thread.threadId,
-          entries: [
-            ...createdSession(cwd, name, supervisedRules(name), true),
-            ...instructionsWritten,
-            ...answeredPrompt("FIRST"),
-          ],
-          commands: [thread.create, thread.message("first")],
-        });
-        assert.deepEqual(
-          projection.runs.map((run) => run.status),
-          ["completed"],
-        );
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("rewrites the session's rules when the thread's mode changes between turns", () =>
-    Effect.gen(function* () {
-      const name = "opencode2-mode-change";
-      const cwd = yield* checkpointWorkspace(name);
-      const thread = threadCommands({ name, worktreePath: cwd });
-      const setMode = (key: string, runtimeMode: RuntimeMode) =>
-        ({
-          type: "thread.runtime-mode.set",
-          commandId: thread.command(key),
-          threadId: thread.threadId,
-          runtimeMode,
-        }) satisfies OrchestrationV2Command;
-      const projection = yield* runScenario({
-        name,
-        threadId: thread.threadId,
-        entries: [
-          ...createdSession(cwd, name),
-          ...instructionsWritten,
-          ...answeredPrompt("FIRST"),
-          // A mode change detaches nothing: the same session is resumed with the new rules.
-          out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(cwd, t3Rules(name), name)),
-          out("agent.list", "<any>"),
-          reply("agent.list", agentList(cwd)),
-          out("session.update", { sessionID: SESSION, permissions: autoEditRules(name) }),
-          reply("session.update", null),
-          ...answeredPrompt("SECOND"),
-          // Back to Full access: the narrowing rules go.
-          out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(cwd, autoEditRules(name), name)),
-          out("session.update", { sessionID: SESSION, permissions: t3Rules(name) }),
-          reply("session.update", null),
-          ...answeredPrompt("THIRD"),
-        ],
-        commands: [
-          thread.create,
-          thread.message("first"),
-          setMode("auto-edit", "auto-accept-edits"),
-          thread.message("second"),
-          setMode("full", "full-access"),
-          thread.message("third"),
-        ],
-      });
-      assert.deepEqual(
-        projection.runs.map((run) => run.status),
-        ["completed", "completed", "completed"],
-      );
-      assert.lengthOf(projection.providerThreads, 1);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("denies edits outside the plan directory in plan mode and lifts it after", () =>
-    Effect.gen(function* () {
-      const name = "opencode2-plan-rules";
-      const cwd = yield* checkpointWorkspace(name);
-      const thread = threadCommands({ name, worktreePath: cwd, interactionMode: "plan" });
-      const projection = yield* runScenario({
-        name,
-        threadId: thread.threadId,
-        entries: [
-          ...createdSession(cwd, name, planRules(name), true),
-          // Plan mode is also OpenCode's plan agent, switched before the prompt.
-          out("session.switchAgent", { sessionID: SESSION, agent: "plan" }),
-          reply("session.switchAgent", null),
-          ...instructionsWritten,
-          ...answeredPrompt("PLANNED"),
-          out("session.get", { sessionID: SESSION }),
-          reply("session.get", sessionInfo(cwd, planRules(name), name)),
-          out("session.update", { sessionID: SESSION, permissions: t3Rules(name) }),
-          reply("session.update", null),
-          out("session.switchAgent", { sessionID: SESSION, agent: "build" }),
-          reply("session.switchAgent", null),
-          ...answeredPrompt("BUILT"),
-        ],
-        commands: [
-          thread.create,
-          thread.message("plan"),
-          {
-            type: "thread.interaction-mode.set",
-            commandId: thread.command("default"),
-            threadId: thread.threadId,
-            interactionMode: "default",
-          },
-          thread.message("build"),
         ],
       });
       assert.deepEqual(
@@ -1178,7 +985,7 @@ describe("OpenCode 2 through the orchestrator", () => {
         const replies = projection.turnItems.flatMap((item) =>
           item.type === "assistant_message" ? [item.text] : [],
         );
-        // The plan agent refused to write; OpenCode's own reminder told it why.
+        // Planning remains the selected native agent; its recorded response is preserved.
         assert.include(replies[0], "Plan mode");
         assert.equal(replies[1], "SWITCHED");
         assert.lengthOf(projection.providerThreads, 1);

@@ -224,7 +224,7 @@ describe("AcpRegistryAdapterV2", () => {
             options: [{ id: ACP_SESSION_MODE_OPTION_ID, value: input.storedModePick }],
           },
           runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-            runtimeMode: "approval-required",
+            runtimeMode: "full-access",
             interactionMode: "default",
             cwd: replayDir,
           }),
@@ -334,7 +334,7 @@ describe("AcpRegistryAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.effect("opens a real ACP child process resolved from registry configuration", () =>
+  it.live("opens a real ACP child process resolved from registry configuration", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const host = yield* ProviderHost.ProviderHost;

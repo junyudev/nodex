@@ -1,28 +1,16 @@
 import { assert, it } from "@effect/vitest";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
-import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 import type { CodexSidebarSnapshot } from "../../shared/types";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../shared/project-appearance";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
-import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import {
   CodexInternalThreadRegistry,
   make as makeInternalThreadRegistry,
 } from "./CodexInternalThreadRegistry";
-import {
-  CodexSidebarSyncError,
-  CodexSidebarSyncRuntime,
-  make as makeSidebarSync,
-} from "./CodexSidebarSyncRuntime";
+import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { make as makeThreadCatalog } from "./CodexThreadCatalog";
 import { projectCoreWorkspaceTask } from "./CodexThreadCatalogProjection";
@@ -137,8 +125,6 @@ const catalogHarness = (input: {
           current = {
             ...current,
             project_id: "project:target",
-            cwd: input.targetRoot,
-            writable_roots: [input.targetRoot],
           };
         }
         return {
@@ -157,6 +143,9 @@ const catalogHarness = (input: {
   });
   return {
     applied,
+    get current() {
+      return current;
+    },
     runtime: makeThreadCatalog().pipe(
       Effect.provideService(
         CodexGateway,
@@ -184,492 +173,45 @@ const catalogHarness = (input: {
   };
 };
 
-const sidebarHarness = (input: {
-  readonly requestList: (params: {
-    readonly archived: boolean;
-    readonly cursor?: string | null;
-  }) => Effect.Effect<unknown, CodexSidebarSyncError>;
-  readonly directory?: CodexThreadDirectory["Service"];
-  readonly runtimeOptions?: Parameters<typeof makeSidebarSync>[0];
-}) => {
-  const applied: Array<{ readonly intent: { readonly kind: string } }> = [];
-  let snapshotReads = 0;
-  const workspace = {
-    read: (request: { readonly kind: string }) =>
-      Effect.sync(() => {
-        if (request.kind === "project_window") {
-          return {
-            value: {
-              kind: "project_window",
-              projects: {
-                items: [],
-                next_cursor: null,
-                authority: { projection_revision: 1 },
-              },
-            },
-          } as never;
-        }
-        if (request.kind === "sidebar_overview") {
-          snapshotReads += 1;
-          return {
-            value: {
-              kind: "sidebar_overview",
-              pinned_tasks: {
-                items: [],
-                next_cursor: null,
-                authority: { projection_revision: snapshotReads },
-              },
-            },
-          } as never;
-        }
-        throw new Error(`Unexpected Core read: ${request.kind}`);
-      }),
-    apply: (request: { readonly intent: { readonly kind: string } }) =>
-      Effect.sync(() => {
-        applied.push(request);
-        return {
-          status: "committed",
-          commit: { commit_seq: applied.length, store_epoch: "epoch:test" },
-          outcome: { affected_project_ids: [], affected_thread_ids: [] },
-        } as never;
-      }),
-  };
-  const gateway = CodexGateway.of({
-    promoteQueuedCatalogPage: Effect.succeed(false),
-    localHostId: "local",
-    events: Stream.empty,
-    requestLocal: (method: string, params: { readonly archived: boolean }) => {
-      if (method !== "thread/list") return Effect.die(`Unexpected gateway request: ${method}`);
-      return input.requestList(params);
-    },
-  } as unknown as CodexGateway["Service"]);
-
-  return {
-    applied,
-    snapshotReads: () => snapshotReads,
-    runtime: makeSidebarSync(input.runtimeOptions).pipe(
-      Effect.provideService(
-        CodexApplicationEventHub,
-        CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
-      ),
-      Effect.provideService(CodexGateway, gateway),
-      Effect.provideService(
-        CodexThreadDirectory,
-        input.directory ??
-          CodexThreadDirectory.of({
-            resolve: () => Effect.succeed(null),
-            observeMetadata: () => Effect.die("unused"),
-          } as unknown as CodexThreadDirectory["Service"]),
-      ),
-      Effect.provideService(
-        CoreModules,
-        CoreModules.of({ workspace } as unknown as CoreModules["Service"]),
-      ),
-      Effect.provideService(
-        DatabaseNotifierRuntime,
-        DatabaseNotifierRuntime.of({
-          projectSessionInvalidations: Stream.never,
-        } as unknown as DatabaseNotifierRuntime["Service"]),
-      ),
-      Effect.provideService(
-        ExecutionHostRuntime,
-        ExecutionHostRuntime.of({
-          hosts: () => Effect.succeed([]),
-        } as unknown as ExecutionHostRuntime["Service"]),
-      ),
-    ),
-  };
-};
-
-it.effect("coalesces physical refreshes and crosses the Core invalidation fence", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const release = yield* Deferred.make<void>();
-      let activeRequests = 0;
-      const harness = sidebarHarness({
-        requestList: ({ archived }) => {
-          if (archived) return Effect.succeed({ data: [], nextCursor: null });
-          activeRequests += 1;
-          return Deferred.await(release).pipe(Effect.as({ data: [], nextCursor: null }));
-        },
-      });
-      const internalThreads = yield* makeInternalThreadRegistry;
-      const runtime = yield* harness.runtime.pipe(
-        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-      );
-      const first = yield* Effect.forkChild(runtime.sync({ policy: "force" }), {
-        startImmediately: true,
-      });
-      const second = yield* Effect.forkChild(runtime.sync({ policy: "force" }), {
-        startImmediately: true,
-      });
-      yield* Effect.yieldNow;
-      assert.strictEqual(activeRequests, 1);
-      yield* Deferred.succeed(release, undefined);
-      assert.deepStrictEqual(yield* Fiber.join(first), yield* Fiber.join(second));
-
-      yield* runtime.sync({ policy: "stale" });
-      assert.strictEqual(activeRequests, 1);
-      runtime.invalidate();
-      yield* runtime.sync({ policy: "stale" });
-      assert.strictEqual(activeRequests, 2);
-      assert.isAtLeast(harness.snapshotReads(), 2);
-    }),
-  ),
-);
-
 it.effect(
-  "pauses a capped background sweep and rejects a cursor cycle before reconciling unseen Threads",
+  "moves a native conversation between Projects while preserving its execution workspace",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const requests: Array<{ readonly archived: boolean; readonly cursor: string | null }> = [];
-        const harness = sidebarHarness({
-          runtimeOptions: { sweepMaxPages: 1 },
-          requestList: ({ archived, cursor = null }) =>
-            Effect.sync(() => {
-              requests.push({ archived, cursor });
-              return { data: [], nextCursor: "unseen-page" };
-            }),
+        const harness = catalogHarness({
+          sourceRoot: "/workspace/source",
+          targetRoot: "/unrelated/target",
+          targetBindingRevision: 3,
         });
-        const internalThreads = yield* makeInternalThreadRegistry;
-        const runtime = yield* harness.runtime.pipe(
-          Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-        );
-
-        yield* runtime.sync({ policy: "force", reason: "host-message" });
-        for (let attempt = 0; attempt < 8; attempt += 1) yield* Effect.yieldNow;
-
-        assert.deepEqual(requests, [{ archived: false, cursor: null }]);
-        yield* TestClock.adjust("1 second");
-        assert.deepEqual(requests, [
-          { archived: false, cursor: null },
-          { archived: false, cursor: "unseen-page" },
-        ]);
-        assert.strictEqual(
-          harness.applied.filter(
-            (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
-          ).length,
-          0,
-        );
-      }),
-    ),
-);
-
-it.effect("serves the Core snapshot without retrying during Effect-clock backoff", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      let requests = 0;
-      const harness = sidebarHarness({
-        requestList: () => {
-          requests += 1;
-          return Effect.fail(new CodexSidebarSyncError({ cause: new Error("busy") }));
-        },
-      });
-      const internalThreads = yield* makeInternalThreadRegistry;
-      const runtime = yield* harness.runtime.pipe(
-        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-      );
-      yield* runtime.sync({ policy: "read" });
-      assert.strictEqual((yield* runtime.sync({ policy: "force" })).source, "stale-last-known");
-      assert.strictEqual((yield* runtime.sync({ policy: "stale" })).source, "stale-last-known");
-      assert.strictEqual(requests, 1);
-      yield* TestClock.adjust("2 seconds");
-      yield* runtime.sync({ policy: "stale" });
-      assert.strictEqual(requests, 2);
-    }),
-  ),
-);
-
-it.effect("interrupts an admitted refresh when its Main Scope closes", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const ownerScope = yield* Scope.make();
-      let interrupted = false;
-      const harness = sidebarHarness({
-        requestList: () =>
-          Effect.never.pipe(Effect.onInterrupt(() => Effect.sync(() => void (interrupted = true)))),
-      });
-      const internalThreads = yield* makeInternalThreadRegistry;
-      const runtime = yield* harness.runtime.pipe(
-        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-        Effect.provideService(Scope.Scope, ownerScope),
-      );
-      const pending = yield* Effect.forkChild(runtime.sync({ policy: "force" }), {
-        startImmediately: true,
-      });
-      yield* Effect.yieldNow;
-      yield* Scope.close(ownerScope, Exit.void);
-
-      assert.isTrue(interrupted);
-      assert.strictEqual((yield* Fiber.await(pending))._tag, "Failure");
-    }),
-  ),
-);
-
-it.effect(
-  "archives protocol-internal and ephemeral roots while keeping child Threads sessionless",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const durable = (threadId: string) =>
-          ({
-            fidelity: "durable",
-            durable: {
-              ...thread("project:source"),
-              threadId,
-              projectId: "project:source",
-              sessionId: null,
-              backendBinding: { kind: "codex" },
-              executionHostId: "local",
-            },
-            summary: {
-              threadId,
-              projectId: "project:source",
-              threadPreview: threadId,
-              modelProvider: "openai",
-              statusType: "idle",
-              statusActiveFlags: [],
-              archived: false,
-              pinned: false,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          }) as never;
-        const existing = new Map([
-          ["thread:ephemeral", durable("thread:ephemeral")],
-          ["thread:internal", durable("thread:internal")],
-          ["thread:root", durable("thread:root")],
-        ]);
-        let observedChild = false;
-        const directory = CodexThreadDirectory.of({
-          resolve: ({ threadId }: { readonly threadId: string }) =>
-            Effect.succeed(existing.get(threadId) ?? null),
-          observeMetadata: ({ thread: observed }: { readonly thread: { readonly id: string } }) =>
-            Effect.sync(() => {
-              observedChild = observed.id === "thread:child";
-              return durable(observed.id);
-            }),
-        } as unknown as CodexThreadDirectory["Service"]);
-        const harness = sidebarHarness({
-          directory,
-          requestList: ({ archived }) =>
-            Effect.succeed({
-              data: archived
-                ? []
-                : [
-                    { id: "thread:ephemeral", ephemeral: true, threadSource: "system" },
-                    { id: "thread:internal", ephemeral: false, threadSource: "subagent" },
-                    {
-                      id: "thread:child",
-                      ephemeral: false,
-                      threadSource: "subagent",
-                      parentThreadId: "thread:root",
-                      cwd: "/workspace/source",
-                    },
-                  ],
-              nextCursor: null,
-            }),
+        const catalog = yield* harness.runtime;
+        const result = yield* catalog.move({
+          hostId: "local",
+          threadId: "thread:move",
+          sourceContainerId: "project:project:source",
+          targetContainerId: "project:project:target",
+          beforeThreadId: null,
+          useDefaultOrder: true,
         });
-        const internalThreads = yield* makeInternalThreadRegistry;
-        const runtime = yield* harness.runtime.pipe(
-          Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-        );
-        yield* runtime.sync({ policy: "force" });
 
-        assert.isTrue(observedChild);
-        assert.strictEqual(
-          harness.applied.filter((request) => request.intent.kind === "set_thread_archived").length,
-          2,
-        );
-        assert.strictEqual(
-          harness.applied.filter((request) => request.intent.kind === "create_session").length,
-          0,
-        );
-        assert.strictEqual(
-          harness.applied.filter(
-            (request) => request.intent.kind === "observe_app_server_thread_window",
-          ).length,
-          0,
-        );
-      }),
-    ),
-);
-
-it.effect("admits only Profile-linked roots and descendants across native history pages", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const observed: string[] = [];
-      const observedAll = yield* Deferred.make<void>();
-      const durable = (
-        threadId: string,
-        options: {
-          readonly parentThreadId?: string;
-          readonly backend?: "codex" | "claude";
-          readonly host?: string;
-        } = {},
-      ) =>
-        ({
-          fidelity: "durable",
-          durable: {
-            threadId,
-            projectId: "project:source",
-            sessionId: null,
-            backendBinding:
-              options.backend === "claude"
-                ? { kind: "claude", instanceConfigId: "claude" }
-                : { kind: "codex" },
-            executionHostId: options.host ?? "local",
-            parentThreadId: options.parentThreadId ?? null,
-            archived: true,
-          },
-          summary: { threadId, projectId: "project:source", archived: true },
-        }) as never;
-      const existing = new Map([
-        ["owned", durable("owned")],
-        ["other-backend", durable("other-backend", { backend: "claude" })],
-        ["other-host", durable("other-host", { host: "remote" })],
-      ]);
-      const directory = CodexThreadDirectory.of({
-        resolve: ({ threadId }: { readonly threadId: string; readonly hostId?: string }) =>
-          Effect.succeed(existing.get(threadId) ?? null),
-        observeMetadata: ({
-          thread: native,
-        }: {
-          readonly thread: { readonly id: string; readonly parentThreadId?: string };
-        }) =>
-          Effect.sync(() => {
-            observed.push(native.id);
-            const entry = durable(native.id, { parentThreadId: native.parentThreadId });
-            existing.set(native.id, entry);
-            return entry;
-          }).pipe(
-            Effect.tap(() =>
-              observed.length === 3 ? Deferred.succeed(observedAll, undefined) : Effect.void,
-            ),
-          ),
-      } as unknown as CodexThreadDirectory["Service"]);
-      const harness = sidebarHarness({
-        directory,
-        requestList: ({ archived, cursor }) =>
-          Effect.succeed(
-            archived
-              ? { data: [], nextCursor: null }
-              : {
-                  data: cursor
-                    ? [
-                        { id: "child", parentThreadId: "owned", archived: true },
-                        { id: "owned", archived: true },
-                      ]
-                    : [
-                        { id: "grandchild", parentThreadId: "child", archived: true },
-                        { id: "external", cwd: "/workspace/source" },
-                        { id: "external-child", parentThreadId: "external" },
-                        { id: "other-backend" },
-                        { id: "other-host" },
-                      ],
-                  nextCursor: cursor ? null : "next",
-                },
-          ),
-      });
-      const internalThreads = yield* makeInternalThreadRegistry;
-      const runtime = yield* harness.runtime.pipe(
-        Effect.provideService(CodexInternalThreadRegistry, internalThreads),
-      );
-      yield* runtime.sync({ policy: "force" });
-      yield* Deferred.await(observedAll);
-      assert.sameMembers(observed, ["owned", "child", "grandchild"]);
-      assert.isFalse(existing.has("external"));
-      assert.isFalse(existing.has("external-child"));
-      assert.strictEqual(
-        harness.applied.filter((request) => request.intent.kind === "create_session").length,
-        0,
-      );
-    }),
-  ),
-);
-
-it.effect("requires a grant fenced by the target Project binding revision", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = catalogHarness({
-        sourceRoot: "/workspace/source",
-        targetRoot: "/workspace/target",
-        targetBindingRevision: 8,
-      });
-      const catalog = yield* harness.runtime;
-      const result = yield* catalog.move({
-        hostId: "local",
-        threadId: "thread:move",
-        sourceContainerId: "project:project:source",
-        targetContainerId: "project:project:target",
-        projectAccessGrant: {
-          targetProjectId: "project:target",
-          expectedBindingRevision: 7,
-          missingProjectSources: ["/workspace/source"],
-        },
-        beforeThreadId: null,
-        useDefaultOrder: true,
-      });
-
-      assert.deepStrictEqual(result, {
-        status: "confirmation-required",
-        reason: "target-project-needs-source-access",
-        threadId: "thread:move",
-        targetProjectId: "project:target",
-        targetBindingRevision: 8,
-        missingProjectSources: ["/workspace/source"],
-        targetProjectName: "project:target",
-      });
-      assert.strictEqual(harness.applied.length, 0);
-    }),
-  ),
-);
-
-it.effect("stages a loaded Thread workspace transition in Core for turn-time adoption", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const harness = catalogHarness({
-        sourceRoot: "/workspace/source",
-        targetRoot: "/workspace",
-        targetBindingRevision: 3,
-      });
-      const catalog = yield* harness.runtime;
-      const result = yield* catalog.move({
-        hostId: "local",
-        threadId: "thread:move",
-        sourceContainerId: "project:project:source",
-        targetContainerId: "project:project:target",
-        beforeThreadId: null,
-        useDefaultOrder: true,
-      });
-
-      assert.strictEqual(result.status, "moved");
-      assert.strictEqual(harness.applied.length, 1);
-      const move = harness.applied[0] as {
-        readonly intent: {
-          readonly kind: string;
-          readonly metadata: unknown;
-          readonly workspace_transition?: {
-            readonly revision: string;
-            readonly pending: {
-              readonly project_sources: readonly string[];
-              readonly cwd: string;
-              readonly runtime_workspace_roots: readonly string[];
-            } | null;
+        assert.strictEqual(result.status, "moved");
+        assert.strictEqual(harness.applied.length, 1);
+        const move = harness.applied[0] as {
+          readonly intent: {
+            readonly kind: string;
+            readonly metadata: unknown;
+            readonly target: unknown;
           };
         };
-      };
-      assert.strictEqual(move.intent.kind, "move_thread");
-      assert.deepStrictEqual(move.intent.metadata, {});
-      assert.match(move.intent.workspace_transition?.revision ?? "", /^[0-9a-f-]{36}$/u);
-      assert.deepStrictEqual(move.intent.workspace_transition?.pending, {
-        project_sources: ["/workspace"],
-        cwd: "/workspace",
-        runtime_workspace_roots: ["/workspace"],
-      });
-    }),
-  ),
+        assert.strictEqual(move.intent.kind, "move_thread");
+        assert.deepStrictEqual(move.intent.metadata, {});
+        assert.deepStrictEqual(move.intent.target, {
+          kind: "project",
+          project_id: "project:target",
+        });
+        assert.strictEqual(harness.current.cwd, "/workspace/source");
+        assert.deepStrictEqual(harness.current.writable_roots, ["/workspace/source"]);
+      }),
+    ),
 );
 
 it.effect("classifies only protocol-authoritative internal roots, never child Threads", () =>
@@ -740,86 +282,3 @@ it("projects execution authority from the Core task window without follow-up rea
   assert.strictEqual(projected.thread?.projectlessOutputDirectory, "/workspace/output");
   assert.strictEqual(projected.thread?.projectlessWorkspaceBrowserRoot, "/workspace/browser");
 });
-
-it.effect(
-  "continues a catalog beyond 1000 entries and then scans only the changed head plus overlap",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const catalog = Array.from({ length: 1100 }, (_, index) => ({
-          id: `unowned-${index}`,
-          updatedAt: 10000 - index,
-          parentThreadId: null,
-        }));
-        const requests: Array<{ archived: boolean; cursor: string | null }> = [];
-        const harness = sidebarHarness({
-          runtimeOptions: { sweepMaxPages: 2 },
-          requestList: ({ archived, cursor = null }) =>
-            Effect.sync(() => {
-              requests.push({ archived, cursor });
-              if (archived) return { data: [], nextCursor: null };
-              const offset = cursor === null ? 0 : Number(cursor);
-              return {
-                data: catalog.slice(offset, offset + 100),
-                nextCursor: offset + 100 < catalog.length ? String(offset + 100) : null,
-              };
-            }),
-        });
-        const internal = yield* makeInternalThreadRegistry;
-        const runtime = yield* harness.runtime.pipe(
-          Effect.provideService(CodexInternalThreadRegistry, internal),
-        );
-        yield* runtime.sync({ policy: "force", reason: "manual" });
-        yield* TestClock.adjust("30 seconds");
-        assert.isTrue(requests.some((request) => request.cursor === "1000"));
-        const completedReconciles = harness.applied.filter(
-          (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
-        ).length;
-        assert.strictEqual(completedReconciles, 1);
-        const before = requests.length;
-        catalog.unshift({ id: "new-head", updatedAt: 20000, parentThreadId: null });
-        yield* runtime.sync({ policy: "force", reason: "manual" });
-        yield* TestClock.adjust("10 seconds");
-        assert.deepEqual(requests.slice(before), [
-          { archived: false, cursor: null },
-          { archived: false, cursor: null },
-          { archived: true, cursor: null },
-        ]);
-        assert.strictEqual(
-          harness.applied.filter(
-            (request) => request.intent.kind === "reconcile_app_server_thread_sweep",
-          ).length,
-          completedReconciles,
-        );
-      }),
-    ),
-);
-
-it.effect(
-  "paces background catalog pages by one second and resumes an opaque cursor at a window boundary",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const requests: Array<string | null> = [];
-        const harness = sidebarHarness({
-          runtimeOptions: { sweepMaxPages: 1 },
-          requestList: ({ archived, cursor = null }) =>
-            Effect.sync(() => {
-              if (archived) return { data: [], nextCursor: null };
-              requests.push(cursor);
-              return { data: [], nextCursor: cursor === null ? "page-two" : null };
-            }),
-        });
-        const internal = yield* makeInternalThreadRegistry;
-        const runtime = yield* harness.runtime.pipe(
-          Effect.provideService(CodexInternalThreadRegistry, internal),
-        );
-        yield* runtime.sync({ policy: "force", reason: "host-message" });
-        assert.deepEqual(requests, [null]);
-        yield* TestClock.adjust(999);
-        assert.deepEqual(requests, [null]);
-        yield* TestClock.adjust(1);
-        assert.deepEqual(requests, [null, "page-two"]);
-      }),
-    ),
-);

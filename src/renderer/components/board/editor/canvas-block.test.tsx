@@ -132,7 +132,7 @@ describe("CanvasBlock", () => {
     const openCanvas = vi.fn();
     const renameCanvas = vi.fn(async () => undefined);
     const host = {
-      contentAccessContext: { kind: "project", projectId: "project-1" } as const,
+      contentRoutingContext: { kind: "project", projectId: "project-1" } as const,
       projectName: "Project",
       projectWorkspacePath: null,
       hostPageId: "page-1",
@@ -159,7 +159,7 @@ describe("CanvasBlock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open System map" }));
     expect(openCanvas).toHaveBeenCalledWith({
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       canvasBlockId: "canvas-1",
       titleSnapshot: "System map",
     });
@@ -176,7 +176,7 @@ describe("CanvasBlock", () => {
 
   test("auto-admits a bounded set and keeps an engaged Canvas mounted", async () => {
     const host = {
-      contentAccessContext: { kind: "project", projectId: "project-1" } as const,
+      contentRoutingContext: { kind: "project", projectId: "project-1" } as const,
       projectName: "Project",
       projectWorkspacePath: null,
       hostPageId: "page-1",
@@ -222,7 +222,7 @@ describe("CanvasBlock", () => {
       focus,
     };
     const host = {
-      contentAccessContext: { kind: "project", projectId: "project-1" } as const,
+      contentRoutingContext: { kind: "project", projectId: "project-1" } as const,
       projectName: "Project",
       projectWorkspacePath: null,
       hostPageId: "page-1",
@@ -251,7 +251,7 @@ describe("CanvasBlock", () => {
   test("restores frame height across Page runtime replacement", async () => {
     installMeasuredResizeObserver({ blockSize: 520, inlineSize: 800 });
     const host = {
-      contentAccessContext: { kind: "project", projectId: "project-1" } as const,
+      contentRoutingContext: { kind: "project", projectId: "project-1" } as const,
       projectName: "Project",
       projectWorkspacePath: null,
       hostPageId: "page-1",

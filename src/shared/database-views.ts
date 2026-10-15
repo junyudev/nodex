@@ -1,12 +1,12 @@
 import type { DatabaseViewPreferencesOverride, DatabaseViewLayout } from "./database-kernel";
 import type { DatabaseViewQueryResultV2, DataSourcePageRowV2 } from "./database-module-v2";
 import type { BoardSummary, DatabasePageSummary } from "./types";
-import type { ContentAccessContext } from "./content-access-context";
+import type { ContentRoutingContext } from "./content-routing-context";
 import type { ProjectionCoordinate, ProjectionCursor } from "./projection-stream";
 
 export interface ReadDatabaseViewReferenceInput {
   /** Authority inherited from the content surface containing the reference. */
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly databaseViewId: string;
   /** Host Page identity used only for window-local include/exclude projection. */
   readonly hostBlockId?: string;
@@ -47,7 +47,6 @@ export interface DatabaseViewReadModel {
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: import("./authorized-read-stamp").AuthorizedReadStamp;
   readonly dataSourceId: string;
   readonly view: DatabaseViewDefinition<string | null>;
   readonly rows: readonly DatabaseViewPageRow[];
@@ -125,7 +124,6 @@ export interface DatabaseListWindowSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: import("./authorized-read-stamp").AuthorizedReadStamp;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly nextCursor: string | null;
   readonly rows: readonly DatabaseListProjectionRowSnapshot[];
@@ -170,7 +168,6 @@ export interface DatabaseViewGroupsSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: import("./authorized-read-stamp").AuthorizedReadStamp;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly grouped: boolean;
   readonly subgrouped: boolean;
@@ -196,7 +193,6 @@ export interface DatabaseViewWindowSnapshot<ProjectScope extends string | null =
   readonly viewId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: import("./authorized-read-stamp").AuthorizedReadStamp;
   readonly projection: Omit<ProjectionCoordinate, "storeEpoch">;
   readonly nextCursor: string | null;
   readonly rows: readonly DatabaseViewPageRow[];

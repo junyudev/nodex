@@ -183,14 +183,17 @@ describe("local-conversation selectors", () => {
     expect(selectPlanImplementationRequest(conversation)).toBe(null);
   });
 
-  test("marks approval and elicitation turns as blocked", () => {
+  test("marks information requests as blocked", () => {
     const conversation = buildConversation({
       turns: [buildTurn({ turnId: "turn_1" }), buildTurn({ turnId: "turn_2" })],
       requests: [
         {
-          type: "approval",
+          type: "mcpServerElicitation",
           requestId: "approval_1",
-          kind: "command",
+          kind: "generic",
+          mode: "form",
+          serverName: "Fixture",
+          message: "Choose a target",
           projectId: "project_1",
           threadId: "thread_1",
           turnId: "turn_1",
@@ -250,14 +253,17 @@ describe("local-conversation selectors", () => {
     expect(selectConversationLiveRequests(conversation)).toHaveLength(2);
   });
 
-  test("prioritizes request-user-input ahead of approval in the live request order", () => {
+  test("orders information requests by their owning Turn", () => {
     const conversation = buildConversation({
       turns: [buildTurn({ turnId: "turn_1" }), buildTurn({ turnId: "turn_2" })],
       requests: [
         {
-          type: "approval",
+          type: "mcpServerElicitation",
           requestId: "approval_1",
-          kind: "command",
+          kind: "generic",
+          mode: "form",
+          serverName: "Fixture",
+          message: "Choose a target",
           projectId: "project_1",
           threadId: "thread_1",
           turnId: "turn_1",
@@ -280,7 +286,7 @@ describe("local-conversation selectors", () => {
 
     const liveRequests = selectConversationLiveRequests(conversation);
     expect(liveRequests[0]?.type).toBe("userInput");
-    expect(liveRequests[1]?.type).toBe("approval");
+    expect(liveRequests[1]?.type).toBe("mcpServerElicitation");
   });
 
   test("filters resumed child turns that already exist in the parent thread", () => {
@@ -483,9 +489,12 @@ describe("local-conversation selectors", () => {
           isBlocking: true,
         },
         {
-          type: "approval",
+          type: "mcpServerElicitation",
           requestId: "approval_2",
-          kind: "command",
+          kind: "generic",
+          mode: "form",
+          serverName: "Fixture",
+          message: "Choose a target",
           projectId: "project_1",
           threadId: "thread_1",
           turnId: "turn_2",
@@ -495,7 +504,7 @@ describe("local-conversation selectors", () => {
       ],
     });
 
-    expect(selectPrimaryConversationRequest(conversation)?.type).toBe("approval");
+    expect(selectPrimaryConversationRequest(conversation)?.type).toBe("mcpServerElicitation");
   });
 
   test("prefers a newer implement-plan request over older request surfaces", () => {
@@ -543,9 +552,10 @@ describe("local-conversation selectors", () => {
       turns: [buildTurn({ turnId: "turn_1" }), buildTurn({ turnId: "turn_2" })],
       requests: [
         {
-          type: "approval",
+          type: "userInput",
           requestId: "approval_1",
-          kind: "command",
+          questions: [],
+          isBlocking: true,
           projectId: "project_1",
           threadId: "thread_1",
           turnId: "turn_1",
@@ -579,9 +589,12 @@ describe("local-conversation selectors", () => {
         isBlocking: true,
       },
       {
-        type: "approval" as const,
+        type: "mcpServerElicitation" as const,
         requestId: "approval_2",
-        kind: "command" as const,
+        kind: "generic" as const,
+        mode: "form" as const,
+        serverName: "Fixture",
+        message: "Choose a target",
         projectId: "project_1",
         threadId: "thread_1",
         turnId: "turn_2",
@@ -603,9 +616,9 @@ describe("local-conversation selectors", () => {
     const firstLiveRequests = selectConversationLiveRequests(firstConversation);
     const secondLiveRequests = selectConversationLiveRequests(secondConversation);
 
-    expect(firstPrimary?.type).toBe("approval");
+    expect(firstPrimary?.type).toBe("mcpServerElicitation");
     expect(secondPrimary?.type).toBe("userInput");
-    expect(firstLiveRequests[0]?.type).toBe("approval");
+    expect(firstLiveRequests[0]?.type).toBe("mcpServerElicitation");
     expect(secondLiveRequests[0]?.type).toBe("userInput");
     expect(firstLiveRequests === secondLiveRequests).toBe(false);
   });
@@ -716,22 +729,21 @@ describe("local-conversation selectors", () => {
     expect(liveRequests[0]?.requestId).toBe("input-1");
   });
 
-  test("keeps background approval visible when a child private request is primary", () => {
+  test("keeps child information requests scoped to their owning Turn", () => {
     const conversation = buildConversation({
       turns: [buildTurn({ turnId: "turn_1", status: "inProgress" })],
       requests: [
         {
-          type: "permissionRequest",
-          requestId: "permission-1",
+          type: "mcpServerElicitation",
+          requestId: "form-1",
           projectId: "project_1",
           threadId: "thread_1",
           turnId: "turn_1",
-          itemId: "permission-item-1",
-          reason: "Allow access",
-          cwd: "/tmp/project",
-          permissions: { network: null, fileSystem: null },
-          completed: false,
-          response: null,
+          itemId: "form-item-1",
+          kind: "generic",
+          mode: "form",
+          serverName: "Fixture",
+          message: "Choose a target",
           createdAt: 1,
         },
       ],
@@ -750,40 +762,8 @@ describe("local-conversation selectors", () => {
     });
 
     expect(selectPrimaryConversationRequest(conversation)?.type).toBe("optionPicker");
-    expect(selectPrimaryBackgroundConversationRequest(conversation)?.type).toBe(
-      "permissionRequest",
-    );
+    expect(selectPrimaryBackgroundConversationRequest(conversation)?.type).toBe("optionPicker");
     expect(JSON.stringify(selectBlockedTurnIds(conversation))).toBe(JSON.stringify(["turn_1"]));
-  });
-
-  test("projects Nodex authorization as the blocking background request for its turn", () => {
-    const conversation = buildConversation({
-      turns: [buildTurn({ turnId: "turn_1", status: "inProgress" })],
-      requests: [
-        {
-          type: "nodexAgentAuthorization",
-          requestId: "nodex-auth-1",
-          projectId: "project_1",
-          threadId: "thread_1",
-          turnId: "turn_1",
-          itemId: "call-1",
-          tool: "edit_document",
-          effect: "write",
-          preview: {
-            title: "Append rollout plan",
-            summary: "Append four Blocks.",
-            details: [],
-          },
-          createdAt: 1,
-        },
-      ],
-    });
-
-    expect(selectPrimaryBackgroundConversationRequest(conversation)?.type).toBe(
-      "nodexAgentAuthorization",
-    );
-    expect(selectConversationLiveRequests(conversation)[0]?.type).toBe("nodexAgentAuthorization");
-    expect(selectBlockedTurnIds(conversation)).toEqual(["turn_1"]);
   });
 
   test("uses the unfinished synthetic user-input item before approval when raw input is gone", () => {
@@ -856,66 +836,6 @@ describe("local-conversation selectors", () => {
     });
 
     expect(selectPrimaryConversationRequest(conversation)?.requestId).toBe("turnless-elicitation");
-  });
-
-  test("uses raw request order and skips invalid file approvals before permission fallback", () => {
-    const permission = {
-      type: "permissionRequest" as const,
-      requestId: "permission-1",
-      projectId: "project_1",
-      threadId: "thread_1",
-      turnId: "turn_1",
-      itemId: "permission-item",
-      cwd: "/tmp/project",
-      reason: "Need network",
-      permissions: { network: null, fileSystem: null },
-      response: null,
-      completed: false,
-      createdAt: 50,
-    };
-    const invalidNewestFileApproval = {
-      type: "approval" as const,
-      requestId: "missing-file-approval",
-      kind: "file" as const,
-      projectId: "project_1",
-      threadId: "thread_1",
-      turnId: "turn_1",
-      itemId: "missing-file-item",
-      createdAt: 100,
-    };
-    const newerByArrayOrder = {
-      type: "approval" as const,
-      requestId: "newer-command",
-      kind: "command" as const,
-      projectId: "project_1",
-      threadId: "thread_1",
-      turnId: "turn_1",
-      itemId: "newer-command-item",
-      createdAt: 1,
-    };
-    const olderByArrayOrder = {
-      ...newerByArrayOrder,
-      requestId: "older-command",
-      itemId: "older-command-item",
-      createdAt: 200,
-    };
-    const turn = buildTurn({ turnId: "turn_1", status: "inProgress" });
-
-    const approvalConversation = buildConversation({
-      turns: [turn],
-      requests: [olderByArrayOrder, permission, newerByArrayOrder, invalidNewestFileApproval],
-    });
-    const permissionConversation = buildConversation({
-      turns: [turn],
-      requests: [permission, invalidNewestFileApproval],
-    });
-
-    expect(selectPrimaryBackgroundConversationRequest(approvalConversation)?.requestId).toBe(
-      "newer-command",
-    );
-    expect(selectPrimaryBackgroundConversationRequest(permissionConversation)?.requestId).toBe(
-      "permission-1",
-    );
   });
 
   test("builds searchable user and assistant units from visible turns", () => {

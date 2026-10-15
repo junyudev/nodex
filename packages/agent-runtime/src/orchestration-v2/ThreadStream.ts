@@ -10,6 +10,8 @@ import {
   type BoundedProjectionResult,
 } from "./threadHistoryPaging.ts";
 import { projectThreadProjectionForWire } from "./WireProjection.ts";
+import { retainPublicThreadControlClosure } from "./PublicThreadProjection.ts";
+import { THREAD_HISTORY_PAGE_POLICY } from "./threadHistoryPaging.ts";
 
 /** Maximum number of reducer applications allowed during a thread resume. */
 export const THREAD_RESUME_MAX_REPLAY_EVENTS = 128;
@@ -54,17 +56,32 @@ export function boundedSnapshotResponseFields(input: {
   readonly compactTurnItems: boolean;
 }) {
   const { bounded } = input;
+  const publicProjection = retainPublicThreadControlClosure(
+    projectThreadProjectionForWire(bounded.projection),
+  );
   const compactProjection = input.compactTurnItems
-    ? omitLocalVisibleTurnItems(bounded.projection)
+    ? omitLocalVisibleTurnItems(publicProjection)
     : null;
-  return {
-    projection: compactProjection ?? bounded.projection,
+  const fields = {
+    projection: compactProjection ?? publicProjection,
     historyCursor: bounded.historyCursor,
     hasMoreHistory: bounded.hasMoreHistory,
     latestLocalTurnOrdinal: bounded.latestLocalTurnOrdinal,
-    payloadBudgetExceeded: bounded.payloadBudgetExceeded,
+    payloadBudgetExceeded: false,
     ...(compactProjection === null ? {} : { turnItemsOmitLocalVisible: true as const }),
   };
+  const itemIds = new Set(fields.projection.turnItems.map((item) => `${item.threadId}:${item.id}`));
+  for (const row of fields.projection.visibleTurnItems)
+    itemIds.add(`${row.sourceThreadId}:${row.sourceItemId}`);
+  // Reserve the enclosing response fields. Oversized control state is an
+  // explicit read failure, never an exception to the public wire budget.
+  if (
+    itemIds.size > THREAD_HISTORY_PAGE_POLICY.maxItems ||
+    Buffer.byteLength(JSON.stringify(fields), "utf8") >
+      THREAD_HISTORY_PAGE_POLICY.maxEncodedBytes - 1_024
+  )
+    throw new Error("The thread's control state exceeds the snapshot transport budget.");
+  return fields;
 }
 
 /** Build the same bounded, wire-projected snapshot for every socket fallback path. */

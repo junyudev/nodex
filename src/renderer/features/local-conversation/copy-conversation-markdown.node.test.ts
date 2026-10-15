@@ -2,12 +2,63 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import {
   CONVERSATION_MARKDOWN_CLIPBOARD_MAX_BYTES,
   runCopyConversationMarkdown,
+  streamReadOnlyConversationMarkdown,
 } from "./copy-conversation-markdown";
+import type { CodexConversationTurn } from "../../../shared/types";
 
 const stream = (...chunks: string[]): AsyncIterable<string> =>
   (async function* () {
     yield* chunks;
   })();
+
+test("read-only export keeps late background replies with their source Turn across overlapping pages", async () => {
+  const turn = (
+    turnId: string,
+    itemId: string,
+    role: "user" | "assistant",
+    text: string,
+  ): CodexConversationTurn => ({
+    threadId: "thread",
+    turnId,
+    status: "completed",
+    itemIds: [itemId],
+    items: [
+      {
+        threadId: "thread",
+        turnId,
+        itemId,
+        type: role === "user" ? "userMessage" : "agentMessage",
+        role,
+        kind: role === "user" ? "userMessage" : "assistantMessage",
+        markdownText: text,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+  });
+  const latest = turn("new-run", "new-user", "user", "New task");
+  const lateReply = turn("old-run", "old-answer", "assistant", "Original background reply");
+  const original = turn("old-run", "old-user", "user", "Original task");
+  const readPage = vi
+    .fn()
+    .mockResolvedValueOnce({ turns: [latest, lateReply], olderCursor: "older" })
+    .mockResolvedValueOnce({ turns: [original, lateReply], olderCursor: null });
+  const chunks: string[] = [];
+  for await (const chunk of streamReadOnlyConversationMarkdown({
+    title: "History",
+    cwd: null,
+    signal: new AbortController().signal,
+    readPage,
+  }))
+    chunks.push(chunk);
+  const markdown = chunks.join("");
+  expect(readPage.mock.calls).toEqual([[null], ["older"]]);
+  expect(markdown.indexOf("Original task")).toBeLessThan(
+    markdown.indexOf("Original background reply"),
+  );
+  expect(markdown.indexOf("Original background reply")).toBeLessThan(markdown.indexOf("New task"));
+  expect(markdown.split("Original background reply")).toHaveLength(2);
+});
 
 describe("runCopyConversationMarkdown", () => {
   test("collects bounded stream pages and writes the complete document byte-for-byte", async () => {

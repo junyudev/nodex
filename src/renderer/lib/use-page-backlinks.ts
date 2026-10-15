@@ -1,17 +1,12 @@
 import { hashKey, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import { type LibraryPageBacklink } from "../../shared/library-module";
 import type { ProjectionScope } from "../../shared/projection-stream";
 import { readLibraryModule } from "./api";
 import { invalidateExactQuery } from "./query-invalidation";
 import { queryKeys } from "./query-keys";
 import { useProjectionRegistration } from "./projection-invalidation-context";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
 import { useLibraryMetadata } from "./use-library-navigation";
 
 interface PageBacklinksPage {
@@ -23,23 +18,7 @@ interface PageBacklinksPage {
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp | null;
 }
-
-const resolvePageBacklinksAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const candidate = data as {
-    readonly authorization?: AuthorizedReadStamp | null;
-    readonly pages?: readonly PageBacklinksPage[];
-  } | null;
-  const authorizations =
-    [
-      ...(candidate?.authorization ? [candidate.authorization] : []),
-      ...(candidate?.pages ?? []).map((page) => page.authorization),
-    ].filter((authorization): authorization is AuthorizedReadStamp => authorization !== null) ?? [];
-  return authorizations.length > 0 ? { authorizations } : null;
-};
-
-const pageBacklinksMeta = resourceAuthorityQueryMeta(resolvePageBacklinksAuthority);
 
 export interface PageBacklinksReadModel {
   readonly items: readonly LibraryPageBacklink[];
@@ -52,17 +31,17 @@ export interface PageBacklinksReadModel {
 }
 
 export const usePageBacklinks = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   targetPageId: string,
 ): PageBacklinksReadModel => {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.library.pageBacklinks(accessContext, targetPageId);
+  const queryKey = queryKeys.library.pageBacklinks(routingContext, targetPageId);
   const library = useLibraryMetadata(targetPageId.length > 0);
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: undefined as string | undefined,
     queryFn: async ({ pageParam }): Promise<PageBacklinksPage> => {
-      const result = await readLibraryModule(accessContext, {
+      const result = await readLibraryModule(routingContext, {
         read: {
           mode: "page_backlinks",
           targetPageId,
@@ -76,31 +55,26 @@ export const usePageBacklinks = (
           `Library read returned ${result.value.value.kind}, expected page_backlinks`,
         );
       }
-      return await admitResourceAuthorityQuery(
-        {
-          ...result.value.value,
-          libraryId: result.value.libraryId,
-          storeEpoch: result.value.storeEpoch,
-          commitSeq: result.value.commitSeq,
-          authorization: result.value.authorization,
-        },
-        resolvePageBacklinksAuthority,
-      );
+      return {
+        ...result.value.value,
+        libraryId: result.value.libraryId,
+        storeEpoch: result.value.storeEpoch,
+        commitSeq: result.value.commitSeq,
+      };
     },
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: targetPageId.length > 0,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: pageBacklinksMeta,
   });
   const latestPage = query.data?.pages.at(-1);
   const libraryId = library.data?.libraryId ?? latestPage?.libraryId ?? null;
   const scope: ProjectionScope | null =
     libraryId === null
       ? null
-      : accessContext.kind === "library"
+      : routingContext.kind === "library"
         ? { kind: "library", libraryId }
-        : { kind: "project", libraryId, projectId: accessContext.projectId };
+        : { kind: "project", libraryId, projectId: routingContext.projectId };
   useProjectionRegistration(
     scope
       ? {

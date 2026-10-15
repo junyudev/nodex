@@ -43,7 +43,7 @@ import {
   bindLibraryDatabaseModuleReadV2,
   databaseModuleFailureV2,
 } from "../../../shared/database-module-v2-transport";
-import { parseContentAccessContext } from "../../../shared/content-access-context";
+import { parseContentRoutingContext } from "../../../shared/content-routing-context";
 import {
   bindLibraryModuleApply,
   bindLibraryModuleRead,
@@ -272,7 +272,7 @@ export const live: Layer.Layer<
         let access;
         let request;
         try {
-          access = parseContentAccessContext(rawAccess);
+          access = parseContentRoutingContext(rawAccess);
           request = bindLibraryModuleRead(rawRequest);
         } catch (error) {
           return Effect.succeed({
@@ -314,7 +314,7 @@ export const live: Layer.Layer<
         let access;
         let request;
         try {
-          access = parseContentAccessContext(rawAccess);
+          access = parseContentRoutingContext(rawAccess);
           request = bindLibraryModuleApply(rawRequest);
         } catch (error) {
           return Effect.succeed({
@@ -362,7 +362,7 @@ export const live: Layer.Layer<
               : editorHistory.handoffAbandon;
           return handoff(
             target,
-            parseContentAccessContext(rawAccess),
+            parseContentRoutingContext(rawAccess),
             bindLibraryModuleApply(rawRequest),
           );
         } catch {
@@ -447,8 +447,8 @@ export const live: Layer.Layer<
           return Effect.succeed({
             ok: false as const,
             error: {
-              code: "authorization_denied" as const,
-              message: "Page Detail is restricted to a trusted application window",
+              code: "invalid_request" as const,
+              message: "Page Detail requires a connected application window",
               retryable: false,
             },
           });
@@ -475,8 +475,8 @@ export const live: Layer.Layer<
           return Effect.succeed({
             ok: false as const,
             error: {
-              code: "authorization_denied" as const,
-              message: "Library Page Detail is restricted to a trusted application window",
+              code: "invalid_request" as const,
+              message: "Library Page Detail requires a connected application window",
               retryable: false,
             },
           });
@@ -498,12 +498,12 @@ export const live: Layer.Layer<
 
     yield* ipc.handleQuery(
       "pages:lifecycle:preflight",
-      (event, projectId: string, pageId: string) => {
+      (event, projectId: string | null, pageId: string) => {
         if (!trustedTarget(event)) {
           return Effect.succeed({
             ok: false as const,
             error: {
-              code: "authorization_denied" as const,
+              code: "invalid_request" as const,
               message: "Page lifecycle preflight requires a trusted application window",
               retryable: false,
             },
@@ -526,7 +526,7 @@ export const live: Layer.Layer<
 
     yield* ipc.handleLocalCommitCommand(
       "pages:lifecycle:apply",
-      (event, projectId: string, rawRequest: IpcApi["pages:lifecycle:apply"]["args"][1]) => {
+      (event, projectId: string | null, rawRequest: IpcApi["pages:lifecycle:apply"]["args"][1]) => {
         const identity = trustedIdentity(event);
         if (!identity) {
           return Effect.succeed({
@@ -601,7 +601,7 @@ export const live: Layer.Layer<
 
     yield* ipc.handleQuery(
       "blocks:transfer:plan",
-      (event, projectId: string, rawIntent: IpcApi["blocks:transfer:plan"]["args"][1]) => {
+      (event, projectId: string | null, rawIntent: IpcApi["blocks:transfer:plan"]["args"][1]) => {
         const identity = trustedIdentity(event);
         if (!identity) {
           return Effect.succeed({
@@ -620,7 +620,7 @@ export const live: Layer.Layer<
 
     yield* ipc.handleLocalCommitCommand(
       "blocks:transfer",
-      (event, projectId: string, rawIntent: IpcApi["blocks:transfer"]["args"][1]) => {
+      (event, projectId: string | null, rawIntent: IpcApi["blocks:transfer"]["args"][1]) => {
         const identity = trustedIdentity(event);
         if (!identity) {
           return Effect.succeed({
@@ -651,7 +651,7 @@ export const live: Layer.Layer<
 
     yield* ipc.handleLocalCommitCommand(
       "blocks:transfer:undo",
-      (event, projectId: string, rawIntent: IpcApi["blocks:transfer:undo"]["args"][1]) => {
+      (event, projectId: string | null, rawIntent: IpcApi["blocks:transfer:undo"]["args"][1]) => {
         if (!trustedTarget(event)) {
           return Effect.succeed({
             ok: false as const,

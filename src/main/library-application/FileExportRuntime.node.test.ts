@@ -134,7 +134,7 @@ it.effect("exports do not follow an existing cache symlink", () =>
   }),
 );
 
-it.effect("clipboard export replaces complete locators once and rechecks authorization", () =>
+it.effect("clipboard export replaces complete locators once and rechecks source identity", () =>
   Effect.gen(function* () {
     const { runtime, state } = yield* fixture();
     const result = yield* runtime.clipboardText(

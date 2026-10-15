@@ -12,6 +12,7 @@ import {
   CommandId,
   SecretRef,
   SecretRequestError,
+  TurnItemId,
   type ProjectId,
   type SecretRequestAnswerInput,
   type ThreadId,
@@ -102,24 +103,21 @@ const make = Effect.gen(function* () {
         "secret_request.answer": input.answer.type,
       });
       const records = yield* threadManagement
-        .getThreadRecords(input.threadId, ["runs", "turnItems"], {
+        .getThreadRecords(input.threadId, ["turnItems"], {
+          turnItemIds: [TurnItemId.make(input.turnItemId)],
           turnItemTypes: ["secret_request"],
           messageRoles: [],
         })
         .pipe(Effect.mapError((cause) => new SecretRequestError({ reason: "load_failed", cause })));
       const item = records.turnItems.find((candidate) => candidate.id === input.turnItemId);
-      if (item?.type !== "secret_request" || item.runId === null || item.nodeId === null) {
+      if (item?.type !== "secret_request") {
         return yield* new SecretRequestError({ reason: "not_found" });
       }
       if (item.secretStatus !== "pending") {
         return yield* new SecretRequestError({ reason: "already_answered" });
       }
-      // The agent is waiting inside the run that asked; once it has ended,
-      // nobody will ever receive the ref, so a value saved now would be lost.
-      const run = records.runs.find((candidate) => candidate.id === item.runId);
-      if (run === undefined || ThreadManagementService.isTerminalRunStatus(run.status)) {
-        return yield* new SecretRequestError({ reason: "agent_stopped" });
-      }
+      // The requesting native lifetime closes its card when cancelled. A
+      // completed foreground Run may still own this live background question.
       // Store first: the card only says saved once the value is kept. Create,
       // not set: a second answer racing this one must not replace the value.
       // A value already there on a card still pending is an earlier save whose
@@ -181,7 +179,7 @@ const make = Effect.gen(function* () {
       const card = recorded.turnItems.find((candidate) => candidate.id === item.id);
       if (card?.type === "secret_request" && card.secretStatus !== "saved") {
         yield* removeLogged(storeName(refFor(salt, input.threadId, item.id)));
-        return yield* new SecretRequestError({ reason: "agent_stopped" });
+        return yield* new SecretRequestError({ reason: "request_closed" });
       }
     }).pipe(Effect.withSpan("SecretRequests.answer"));
 

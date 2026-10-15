@@ -73,16 +73,22 @@ const preserve = (name: string, passed: boolean): CaseAssertion => ({
 });
 const canonical = createBlockDocumentNfmContentParitySignature;
 
-/** Complete authorized Page inventory, including standalone Pages and Source rows. */
-async function projectPageIds(context: Context): Promise<string[]> {
-  const snapshot = await context.runtime.rootClient.libraryRead({
-    kind: "project_page_search_metadata",
-    project_ids: [context.manifest.projectId],
-    page_ids: null,
+/** Page identities across the fresh evaluation Library; unrelated additions are collateral work. */
+async function libraryPageIds(context: Context): Promise<string[]> {
+  const snapshot = await context.runtime.rootClient.queryRead({
+    kind: "query",
+    query: {
+      scope: { database_id: null, bindings: [] },
+      sql: "SELECT page_id FROM pages ORDER BY page_id",
+      parameters: {},
+    },
   });
-  if (snapshot.value.kind !== "project_page_search_metadata")
-    throw new Error("Expected Project Page inventory");
-  return snapshot.value.items.map((item) => item.page_id).sort();
+  if (snapshot.value.kind !== "query") throw new Error("Expected Library Page inventory");
+  return snapshot.value.value.rows.map((row) => {
+    const id = row[0];
+    if (typeof id !== "string") throw new Error("Page inventory returned a non-identity value");
+    return id;
+  });
 }
 
 async function database(context: Context) {
@@ -232,12 +238,12 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
       ),
     ),
   );
-  const initialPageIds = await projectPageIds(context);
+  const initialPageIds = await libraryPageIds(context);
   const samePages = async () =>
     preserve(
-      "Project Page identities preserved",
+      "Library Page identities preserved",
       same(
-        await projectPageIds(context),
+        await libraryPageIds(context),
         [...new Set([...initialPageIds, ...before.keys()])].sort(),
       ),
     );

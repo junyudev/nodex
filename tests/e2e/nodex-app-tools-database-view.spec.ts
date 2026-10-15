@@ -274,7 +274,6 @@ test("native Database View tools distinguish displayed rows from the effective s
             ],
           }),
         );
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         threadId = await sendAgentPrompt(page, draft.projectSessionId, "DATABASE_VIEW_OPEN_PROBE");
         await waitForFinalMarker(page, "DATABASE_VIEW_OPEN_OK");
         await waitForCompletedAgentTurn(page, threadId, 60_000);

@@ -5,7 +5,6 @@ import type {
   ProjectionScope,
   ProjectionStreamMessage,
 } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
 import { projectionCursorCovers, projectionScopeKey } from "../../shared/projection-stream";
 import type { CausalProjectionRuntime } from "./causal-projection-runtime";
 import { BoundedBurstScheduler, type BoundedBurstTiming } from "./bounded-burst-scheduler";
@@ -23,30 +22,20 @@ export interface ProjectionResourceDependencies {
 
 export type ProjectionDependencies = ProjectionResourceDependencies;
 
-export type ProjectionRevocationMessage = Extract<
-  ResourceRevocationMessage,
-  { readonly kind: "revocation" }
+export type ProjectionInvalidationCause = ProjectionStreamMessage;
+export type ProjectionFenceCause = Extract<
+  ProjectionStreamMessage,
+  { readonly kind: "checkpoint" | "reset" }
 >;
-export type ProjectionInvalidationCause = ProjectionStreamMessage | ResourceRevocationMessage;
-export type ProjectionFenceCause =
-  | Extract<
-      ProjectionStreamMessage,
-      {
-        readonly kind: "checkpoint" | "reset";
-      }
-    >
-  | Extract<ResourceRevocationMessage, { readonly kind: "reset" }>;
 
 export interface ProjectionRegistration {
   readonly scope: ProjectionScope;
   readonly consumerKey: string;
   readonly causalRuntime?: CausalProjectionRuntime;
-  /** A revocation-only consumer does not participate in projection repair. */
+  /** Consumers may observe resets without matching content effects. */
   readonly projectionEffects?: "match" | "ignore";
   getDependencies(): ProjectionDependencies;
   getCursor(): ProjectionCursor | null;
-  /** Applies cache removal synchronously, before any queued repair I/O. */
-  revoke?(cause: ProjectionRevocationMessage): void;
   /** Clears authority synchronously when a checkpoint/reset exposes a gap. */
   fence?(cause: ProjectionFenceCause): void;
   invalidate(cause: ProjectionInvalidationCause): void | Promise<void>;
@@ -55,11 +44,6 @@ export interface ProjectionRegistration {
 type SubscribeProjection = (
   scope: ProjectionScope,
   listener: (message: ProjectionStreamMessage) => void,
-) => () => void;
-
-type SubscribeRevocations = (
-  scope: ProjectionScope,
-  listener: (message: ResourceRevocationMessage) => void,
 ) => () => void;
 
 interface ConsumerState {
@@ -75,23 +59,19 @@ interface ScopeState {
   readonly scope: ProjectionScope;
   readonly consumers: Map<string, ConsumerState>;
   unsubscribeProjection: (() => void) | null;
-  unsubscribeRevocations: (() => void) | null;
   latestCursor: ProjectionCursor | null;
 }
 
 export class ProjectionInvalidationRegistry {
   readonly #subscribeProjection: SubscribeProjection;
-  readonly #subscribeRevocations: SubscribeRevocations;
   readonly #scopes = new Map<string, ScopeState>();
   readonly #effectRepairBurst: BoundedBurstTiming;
 
   constructor(input: {
     readonly subscribeProjection: SubscribeProjection;
-    readonly subscribeRevocations: SubscribeRevocations;
     readonly effectRepairBurst?: BoundedBurstTiming;
   }) {
     this.#subscribeProjection = input.subscribeProjection;
-    this.#subscribeRevocations = input.subscribeRevocations;
     this.#effectRepairBurst = input.effectRepairBurst ?? {
       quietMs: 0,
       maxMs: 0,
@@ -104,7 +84,6 @@ export class ProjectionInvalidationRegistry {
       scope: registration.scope,
       consumers: new Map<string, ConsumerState>(),
       unsubscribeProjection: null,
-      unsubscribeRevocations: null,
       latestCursor: null,
     };
     this.#scopes.set(scopeKey, scope);
@@ -114,11 +93,6 @@ export class ProjectionInvalidationRegistry {
     const token = Symbol(registration.consumerKey);
     consumer.registrations.set(token, registration);
 
-    if (!scope.unsubscribeRevocations) {
-      scope.unsubscribeRevocations = this.#subscribeRevocations(scope.scope, (message) => {
-        this.#handle(scope, message);
-      });
-    }
     if (!scope.unsubscribeProjection) {
       scope.unsubscribeProjection = this.#subscribeProjection(scope.scope, (message) => {
         this.#handle(scope, message);
@@ -144,9 +118,7 @@ export class ProjectionInvalidationRegistry {
       }
       if (scope.consumers.size > 0) return;
       scope.unsubscribeProjection?.();
-      scope.unsubscribeRevocations?.();
       scope.unsubscribeProjection = null;
-      scope.unsubscribeRevocations = null;
       this.#scopes.delete(scopeKey);
     };
   }
@@ -154,7 +126,6 @@ export class ProjectionInvalidationRegistry {
   dispose(): void {
     for (const scope of this.#scopes.values()) {
       scope.unsubscribeProjection?.();
-      scope.unsubscribeRevocations?.();
       for (const consumer of scope.consumers.values()) {
         consumer.scheduler?.dispose();
       }
@@ -217,7 +188,6 @@ export class ProjectionInvalidationRegistry {
       consumer.initialCheckpointObserved = true;
     }
     if (!this.#shouldInvalidate(registration, message)) return;
-    if (message.kind === "revocation") registration.revoke?.(message);
     if (message.kind === "checkpoint" || message.kind === "reset") {
       registration.fence?.(message);
     }
@@ -228,9 +198,6 @@ export class ProjectionInvalidationRegistry {
     registration: ProjectionRegistration,
     message: ProjectionInvalidationCause,
   ): boolean {
-    if (message.kind === "revocation") {
-      return revocationMatches(registration.getDependencies(), message.delivery.revocation);
-    }
     if (registration.projectionEffects === "ignore" && message.kind === "effect") return false;
     if (message.kind === "reset") return true;
     const cursor = registration.getCursor();
@@ -272,7 +239,6 @@ export class ProjectionInvalidationRegistry {
       if (!registration) return;
       if (
         cause.kind !== "reset" &&
-        cause.kind !== "revocation" &&
         projectionCursorCovers(registration.getCursor(), cause.stream)
       ) {
         return;
@@ -350,33 +316,8 @@ export const projectionEffectMatches = (
   }
 };
 
-export const revocationMatches = (
-  dependencies: ProjectionResourceDependencies,
-  revocation: ProjectionRevocationMessage["delivery"]["revocation"],
-): boolean => {
-  if (dependencies.aggregate === true) return true;
-  const ids = [revocation.resource_id];
-  switch (revocation.resource_kind) {
-    case "page":
-      return intersects(dependencies.pageIds, ids);
-    case "document":
-      return intersects(dependencies.documentIds, ids);
-    case "database":
-      return intersects(dependencies.databaseIds, ids);
-    case "data_source":
-      return intersects(dependencies.dataSourceIds, ids);
-    case "view":
-      return intersects(dependencies.viewIds, ids);
-    case "canvas":
-      return intersects(dependencies.canvasIds, ids);
-    case "file":
-      return intersects(dependencies.fileIds, ids);
-  }
-};
-
 const messagePriority = (message: ProjectionInvalidationCause): number => {
   if (message.kind === "reset") return 4;
-  if (message.kind === "revocation") return 3;
   if (message.kind === "effect") return 2;
   return 1;
 };

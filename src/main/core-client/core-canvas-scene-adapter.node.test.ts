@@ -18,7 +18,7 @@ const test = (name: string, run: (createAdapter: CreateCanvasAdapter) => Promise
 const PROJECT_ID = "project:canvas";
 const LIBRARY_ID = "library:canvas";
 const ACCESS_CONTEXT = { kind: "project", projectId: PROJECT_ID } as const;
-const BINDING = { libraryId: LIBRARY_ID, accessContext: ACCESS_CONTEXT };
+const BINDING = { libraryId: LIBRARY_ID, routingContext: ACCESS_CONTEXT };
 const DOCUMENT_ID = "document:canvas";
 const CLIENT_SESSION_ID = "renderer:canvas";
 const STORE_EPOCH = "epoch:canvas";
@@ -37,7 +37,7 @@ const syncSnapshot = (syncRequestId: string) => ({
   kind: "snapshot" as const,
   syncRequestId,
   libraryId: LIBRARY_ID,
-  accessContext: ACCESS_CONTEXT,
+  routingContext: ACCESS_CONTEXT,
   documentId: DOCUMENT_ID,
   storeEpoch: STORE_EPOCH,
   generation: 1,
@@ -49,7 +49,7 @@ const syncSnapshot = (syncRequestId: string) => ({
 const mutationResult = {
   mutationId: "canvas-mutation:one",
   libraryId: LIBRARY_ID,
-  accessContext: ACCESS_CONTEXT,
+  routingContext: ACCESS_CONTEXT,
   documentId: DOCUMENT_ID,
   storeEpoch: STORE_EPOCH,
   generation: 1,
@@ -101,7 +101,7 @@ describe("Core Canvas scene adapter", () => {
     const adapter = createCoreCanvasSceneAdapter(client, BINDING);
     const request = {
       syncRequestId: "sync:invalid",
-      accessContext: ACCESS_CONTEXT,
+      routingContext: ACCESS_CONTEXT,
       documentId: DOCUMENT_ID,
       clientSessionId: CLIENT_SESSION_ID,
     } as const;
@@ -120,7 +120,7 @@ describe("Core Canvas scene adapter", () => {
     const client = new FakeCoreClient();
     const adapter = createCoreCanvasSceneAdapter(client, BINDING);
     const subscription = {
-      accessContext: ACCESS_CONTEXT,
+      routingContext: ACCESS_CONTEXT,
       documentId: DOCUMENT_ID,
       clientSessionId: CLIENT_SESSION_ID,
     } as const;
@@ -135,7 +135,7 @@ describe("Core Canvas scene adapter", () => {
       ok: true,
       value: {
         libraryId: "library:canvas",
-        accessContext: { kind: "project", projectId: PROJECT_ID },
+        routingContext: { kind: "project", projectId: PROJECT_ID },
         documentId: DOCUMENT_ID,
         headSeq: 0,
         kind: "snapshot",
@@ -171,13 +171,13 @@ describe("Core Canvas scene adapter", () => {
     const client = new FakeCoreClient();
     const adapter = createCoreCanvasSceneAdapter(client, BINDING);
     const subscription = {
-      accessContext: ACCESS_CONTEXT,
+      routingContext: ACCESS_CONTEXT,
       documentId: DOCUMENT_ID,
       clientSessionId: CLIENT_SESSION_ID,
     } as const;
     client.enqueueDocumentCanvasSync({
       ...syncSnapshot("sync:granted"),
-      accessContext: {
+      routingContext: {
         kind: "project",
         projectId: "project:wrong-authority",
       },
@@ -200,7 +200,7 @@ describe("Core Canvas scene adapter", () => {
         ...physicalMutation.outcome,
         canvas: {
           ...mutationResult,
-          accessContext: {
+          routingContext: {
             kind: "project",
             projectId: "project:wrong-authority",
           },
@@ -246,7 +246,7 @@ describe("Core Canvas scene adapter", () => {
     });
     const request = {
       mutationId: "canvas-compaction:one",
-      accessContext: ACCESS_CONTEXT,
+      routingContext: ACCESS_CONTEXT,
       documentId: DOCUMENT_ID,
       clientSessionId: CLIENT_SESSION_ID,
       trigger: "automatic_idle",
@@ -266,7 +266,7 @@ describe("Core Canvas scene adapter", () => {
       kind: "tombstone_compaction" as const,
       operationId: request.mutationId,
       libraryId: LIBRARY_ID,
-      accessContext: ACCESS_CONTEXT,
+      routingContext: ACCESS_CONTEXT,
       documentId: DOCUMENT_ID,
       storeEpoch: STORE_EPOCH,
       previousGeneration: 1,

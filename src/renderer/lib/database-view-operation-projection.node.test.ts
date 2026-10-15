@@ -26,7 +26,7 @@ const propertyId = parseDataSourcePropertyId("p_SCORE001");
 const timestamp = "2026-09-06T00:00:00Z";
 const lifecycle = "active" as const;
 const model = (): DatabaseViewRenderModel => ({
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   libraryId: "library",
   databaseId,
   databaseViewId: viewId,
@@ -36,8 +36,6 @@ const model = (): DatabaseViewRenderModel => ({
   viewName: "All",
   storeEpoch: "epoch",
   commitSeq: 4,
-  authorization: null,
-  readOnlyReason: null,
   columns: [],
   query: {
     database: {
@@ -46,7 +44,6 @@ const model = (): DatabaseViewRenderModel => ({
       name: "Tasks",
       lifecycle,
       defaultViewId: viewId,
-      accessRevision: 1,
       metadataRevision: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -162,7 +159,7 @@ const withRow = (
 
 const receipt = (operationId: string, commitSeq = 5): DatabaseViewMutationReceipt => ({
   operationId,
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   libraryId: "library",
   storeEpoch: "epoch",
   duplicate: false,
@@ -178,10 +175,9 @@ const receipt = (operationId: string, commitSeq = 5): DatabaseViewMutationReceip
 });
 
 describe("Database View presentation owner", () => {
-  test("retains pending Page revocation dependencies after they leave the canonical window", async () => {
+  test("retains pending Page invalidation dependencies after they leave the canonical window", async () => {
     const canonical = {
       ...model(),
-      authorization: {} as NonNullable<DatabaseViewRenderModel["authorization"]>,
     };
     const registrations: ProjectionRegistration[] = [];
     const owner = new DatabaseViewPresentationStore(canonical, () => ({
@@ -219,7 +215,9 @@ describe("Database View presentation owner", () => {
         ],
       },
     };
-    const owner = new DatabaseViewPresentationStore(canonical);
+    const owner = new DatabaseViewPresentationStore(canonical, () => ({
+      register: () => () => undefined,
+    }));
     const detach = owner.attach();
     const first = valueEdit();
     const second: DatabaseApplyOperationV2 = {
@@ -249,7 +247,9 @@ describe("Database View presentation owner", () => {
 
   test("returns durable acknowledgement before repair, retaining intent through exact rendered handoff", async () => {
     const canonical = model();
-    const owner = new DatabaseViewPresentationStore(canonical);
+    const owner = new DatabaseViewPresentationStore(canonical, () => ({
+      register: () => () => undefined,
+    }));
     const detach = owner.attach();
     let finishRepair!: () => void;
     owner.update(
@@ -282,7 +282,9 @@ describe("Database View presentation owner", () => {
 
   test("keeps unknown intent and its original semantic proof during exact-identity retry", async () => {
     const canonical = model();
-    const owner = new DatabaseViewPresentationStore(canonical);
+    const owner = new DatabaseViewPresentationStore(canonical, () => ({
+      register: () => () => undefined,
+    }));
     const detach = owner.attach();
     const request = { model: canonical, operations: [valueEdit()], operationId: "uncertain" };
     await expect(
@@ -309,7 +311,9 @@ describe("Database View presentation owner", () => {
 
   test("pending-only edits require a new canonical read, not an unrelated high cursor", async () => {
     const canonical = { ...model(), commitSeq: 9 };
-    const owner = new DatabaseViewPresentationStore(canonical);
+    const owner = new DatabaseViewPresentationStore(canonical, () => ({
+      register: () => () => undefined,
+    }));
     const detach = owner.attach();
     owner.update(canonical, undefined, canonical, 3);
     await owner.submit(
@@ -324,7 +328,9 @@ describe("Database View presentation owner", () => {
 
   test("detachment retires presentation only and a retained history Adapter can still submit", async () => {
     const canonical = model();
-    const owner = new DatabaseViewPresentationStore(canonical);
+    const owner = new DatabaseViewPresentationStore(canonical, () => ({
+      register: () => () => undefined,
+    }));
     const detach = owner.attach();
     const request = { model: canonical, operations: [valueEdit()], operationId: "detached" };
     await expect(
@@ -658,7 +664,7 @@ describe("bounded Database operation projection", () => {
     expect(plan.apply(canonical)).toBe(canonical);
     const projectRead: DatabaseViewRenderModel = {
       ...canonical,
-      accessContext: { kind: "project", projectId: "other" },
+      routingContext: { kind: "project", projectId: "other" },
     };
     expect(plan.apply(projectRead)).not.toBe(projectRead);
   });

@@ -10,7 +10,7 @@ import { DesktopDocumentSessionRuntime } from "../../core-client";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
 import {
   type DocumentSyncClientTarget,
-  documentSyncUnauthorized,
+  documentSyncInvalidSession,
 } from "../../document-sync-transport";
 import { LibraryModule } from "../../library-application/LibraryModule";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -49,7 +49,7 @@ const omitProjectScope = <Request extends { readonly projectId: string }>(
   return unscoped;
 };
 
-const canvasUnauthorized = (
+const canvasInvalidSession = (
   message: string,
   mutationId?: string,
 ): {
@@ -58,7 +58,7 @@ const canvasUnauthorized = (
 } => ({
   ok: false,
   error: {
-    code: "access_scope_mismatch",
+    code: "invalid_session",
     message,
     retryable: false,
     resetRequired: false,
@@ -100,7 +100,7 @@ export const live: Layer.Layer<
         },
         catch: (cause) => new CoreDocumentIpcError({ operation: "authorize-renderer", cause }),
       });
-    const unauthorizedResult = <A>() => Effect.succeed(documentSyncUnauthorized() as A);
+    const invalidSessionResult = <A>() => Effect.succeed(documentSyncInvalidSession() as A);
 
     yield* handleQuery("page-target:resolve", (event, input) =>
       authorize(event).pipe(Effect.andThen(library.resolvePageTarget(input))),
@@ -137,7 +137,7 @@ export const live: Layer.Layer<
       ): Handler<Channel> =>
       (event, request) => {
         const target = targetFor(event);
-        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
+        if (!target) return invalidSessionResult<IpcApi[Channel]["result"]>();
         return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
       };
     const projectDocumentControl = <
@@ -230,7 +230,7 @@ export const live: Layer.Layer<
       ): Handler<Channel> =>
       (event, request) => {
         const target = targetFor(event);
-        if (!target) return unauthorizedResult<IpcApi[Channel]["result"]>();
+        if (!target) return invalidSessionResult<IpcApi[Channel]["result"]>();
         return execute(target, request).pipe(Effect.withSpan(`CoreDocumentIpc.${operation}`));
       };
     const libraryDocumentControl = <
@@ -292,25 +292,35 @@ export const live: Layer.Layer<
     yield* handleControl("canvas-scene:subscribe", (event, request) => {
       const target = targetFor(event);
       if (!target)
-        return Effect.succeed(canvasUnauthorized("Canvas scene subscription is unauthorized"));
+        return Effect.succeed(
+          canvasInvalidSession("Canvas scene subscription requires an active client session"),
+        );
       return documents.subscribeCanvasScene(target, request);
     });
     yield* handleControl("canvas-scene:unsubscribe", (event, request) => {
       const target = targetFor(event);
       if (!target)
-        return Effect.succeed(canvasUnauthorized("Canvas scene subscription is unauthorized"));
+        return Effect.succeed(
+          canvasInvalidSession("Canvas scene subscription requires an active client session"),
+        );
       return documents.unsubscribeCanvasScene(target, request);
     });
     yield* handleControl("canvas-scene:sync", (event, request) => {
       const target = targetFor(event);
-      if (!target) return Effect.succeed(canvasUnauthorized("Canvas scene sync is unauthorized"));
+      if (!target)
+        return Effect.succeed(
+          canvasInvalidSession("Canvas scene sync requires an active client session"),
+        );
       return documents.syncCanvasScene(target, request);
     });
     yield* handleLocalCommitCommand("canvas-scene:apply", (event, request) => {
       const target = targetFor(event);
       if (!target) {
         return Effect.succeed(
-          canvasUnauthorized("Canvas scene mutation is unauthorized", request.mutationId),
+          canvasInvalidSession(
+            "Canvas scene mutation requires an active client session",
+            request.mutationId,
+          ),
         );
       }
       return documents.applyCanvasSceneMutation(target, request);
@@ -321,8 +331,8 @@ export const live: Layer.Layer<
         return Effect.succeed({
           ok: false as const,
           error: {
-            code: "unauthorized" as const,
-            message: "Canvas presence publication is unauthorized",
+            code: "invalid_session" as const,
+            message: "Canvas presence publication requires an active client session",
             retryable: false as const,
             resetRequired: false as const,
           },
@@ -333,14 +343,19 @@ export const live: Layer.Layer<
     yield* handleQuery("canvas-scene:compaction:read", (event, request) => {
       const target = targetFor(event);
       if (!target)
-        return Effect.succeed(canvasUnauthorized("Canvas compaction read is unauthorized"));
+        return Effect.succeed(
+          canvasInvalidSession("Canvas compaction read requires an active client session"),
+        );
       return documents.readCanvasSceneCompaction(target, request);
     });
     yield* handleLocalCommitCommand("canvas-scene:compaction:apply", (event, request) => {
       const target = targetFor(event);
       if (!target) {
         return Effect.succeed(
-          canvasUnauthorized("Canvas compaction is unauthorized", request.mutationId),
+          canvasInvalidSession(
+            "Canvas compaction requires an active client session",
+            request.mutationId,
+          ),
         );
       }
       return documents.compactCanvasScene(target, request);

@@ -45,11 +45,11 @@ test("Library history repairs on Library-scope releases without broadening a Pro
   const projectInvalidated = vi.fn();
   const scope = { libraryId: "library", storeEpoch: "epoch" };
   const stopLibrary = coreHistoryReconciliation.subscribe(
-    { ...scope, accessContext: { kind: "library" } },
+    { ...scope, routingContext: { kind: "library" } },
     libraryInvalidated,
   );
   const stopProject = coreHistoryReconciliation.subscribe(
-    { ...scope, accessContext: { kind: "project", projectId: "project" } },
+    { ...scope, routingContext: { kind: "project", projectId: "project" } },
     projectInvalidated,
   );
   const libraryListener = subscribe.mock.calls[0]![1];

@@ -46,7 +46,6 @@ export interface MuseSdkHostOptions {
   readonly launch?: MuseLaunch;
   readonly cwd?: string;
   readonly environment?: NodeJS.ProcessEnv;
-  readonly runtimeMode?: RuntimeMode;
   /** Disables shell and filesystem writes and workspace trust. */
   readonly readOnly?: boolean;
   /** Read-only generation needs durable logging for turn/item notifications (verified through 1.1.1). */
@@ -134,13 +133,11 @@ export const museLaunch = Effect.fn("museLaunch")(function* (
   };
 });
 
-export function museApprovalMode(runtimeMode: RuntimeMode) {
-  return runtimeMode === "full-access" ? "allowAll" : "promptUnmatched";
-}
+export const MUSE_APPROVAL_MODE = "allowAll";
 
 /** The `muse serve` arguments for a host: read-only hosts get no shell, writes, or workspace trust. */
 export function museServeArgs(
-  options: Pick<MuseSdkHostOptions, "readOnly" | "sessionLogging" | "runtimeMode">,
+  options: Pick<MuseSdkHostOptions, "readOnly" | "sessionLogging">,
 ) {
   const args = ["serve"];
   if (options.readOnly) {
@@ -148,7 +145,7 @@ export function museServeArgs(
     if (options.sessionLogging !== true) args.push("--no-session-log");
   } else {
     args.push("--trust-workspace");
-    if (options.runtimeMode === "full-access") args.push("--disable-sandbox");
+    args.push("--disable-sandbox");
   }
   return args;
 }

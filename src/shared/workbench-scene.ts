@@ -3,7 +3,7 @@ import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type { CodexForkBrowserSidePanelSnapshot } from "./codex-fork-browser-transfer";
 import type { InitialProjectPresentation } from "./initial-project-welcome";
 import { createSecureRuntimeId } from "./secure-runtime-id";
-import { contentAccessContextKey, type ContentAccessContext } from "./content-access-context";
+import { contentRoutingContextKey, type ContentRoutingContext } from "./content-routing-context";
 import type { DatabaseId } from "./database-identities";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
 import type { LibraryPlacedResourceTarget } from "./library-module";
@@ -106,7 +106,7 @@ export interface WorkbenchConversationSurfaceConfig {
 }
 
 export interface WorkbenchDbViewSurfaceConfig {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly target:
     | { readonly kind: "project-default" }
     | {
@@ -120,13 +120,13 @@ export interface WorkbenchDbViewSurfaceConfig {
 }
 
 export interface WorkbenchPageStageSurfaceConfig {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly titleSnapshot?: string;
 }
 
 export interface WorkbenchCanvasStageSurfaceConfig {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;
   readonly titleSnapshot?: string;
 }
@@ -231,12 +231,12 @@ type WorkbenchLegacyResourceSurfaceDescriptor =
       };
     })
   | (Omit<Extract<WorkbenchSurfaceDescriptor, { readonly kind: "page_stage" }>, "config"> & {
-      readonly config: Omit<WorkbenchPageStageSurfaceConfig, "accessContext"> & {
+      readonly config: Omit<WorkbenchPageStageSurfaceConfig, "routingContext"> & {
         readonly projectId: string;
       };
     })
   | (Omit<Extract<WorkbenchSurfaceDescriptor, { readonly kind: "canvas_stage" }>, "config"> & {
-      readonly config: Omit<WorkbenchCanvasStageSurfaceConfig, "accessContext"> & {
+      readonly config: Omit<WorkbenchCanvasStageSurfaceConfig, "routingContext"> & {
         readonly projectId: string;
       };
     });
@@ -499,11 +499,11 @@ export function enforceWorkbenchSessionReviewEligibility(
 
 export function isPagesSceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
   if (surface.kind === "page_stage" || surface.kind === "canvas_stage") {
-    return surface.config.accessContext.kind === "library";
+    return surface.config.routingContext.kind === "library";
   }
   return (
     surface.kind === "db_view" &&
-    surface.config.accessContext.kind === "library" &&
+    surface.config.routingContext.kind === "library" &&
     surface.config.target.kind !== "project-default"
   );
 }
@@ -638,8 +638,8 @@ function toLegacyPanelTab(surface: WorkbenchSurfaceDescriptor): WorkbenchSession
     ...surface,
     config: {
       projectId:
-        surface.config.accessContext.kind === "project"
-          ? surface.config.accessContext.projectId
+        surface.config.routingContext.kind === "project"
+          ? surface.config.routingContext.projectId
           : (() => {
               throw new Error(
                 "A Library Database surface cannot be projected as a legacy Session tab",
@@ -661,7 +661,7 @@ export function workbenchSurfaceFromLegacySessionTab(
   return {
     ...tab,
     config: {
-      accessContext: { kind: "project", projectId: tab.config.projectId },
+      routingContext: { kind: "project", projectId: tab.config.projectId },
       target: {
         kind: "database-view",
         databaseViewId: tab.config.databaseViewId,
@@ -724,7 +724,7 @@ function ownerRootPrimary(
       kind: "db_view",
       titleSnapshot: "Database",
       config: {
-        accessContext: { kind: "project", projectId: owner.projectId },
+        routingContext: { kind: "project", projectId: owner.projectId },
         target: { kind: "project-default" },
       },
       stateKey: 0,
@@ -813,7 +813,7 @@ export function materializeInitialProjectWelcomeScene(
       kind: "page_stage",
       titleSnapshot: presentation.starterPageTitle,
       config: {
-        accessContext: {
+        routingContext: {
           kind: "project",
           projectId: presentation.projectId,
         },
@@ -853,7 +853,7 @@ function migrateWorkbenchSurfaceV3ToV4(
       ...surface,
       config: {
         ...config,
-        accessContext: { kind: "project", projectId },
+        routingContext: { kind: "project", projectId },
       },
     };
   }
@@ -862,7 +862,7 @@ function migrateWorkbenchSurfaceV3ToV4(
     ...surface,
     config: {
       ...config,
-      accessContext: { kind: "project", projectId },
+      routingContext: { kind: "project", projectId },
     },
   } as WorkbenchSurfaceDescriptor;
 }
@@ -1251,8 +1251,8 @@ function cloneWorkbenchScene(
         return (
           surface.kind === "db_view" &&
           surface.config.target.kind === "project-default" &&
-          surface.config.accessContext.kind === "project" &&
-          surface.config.accessContext.projectId === projectId
+          surface.config.routingContext.kind === "project" &&
+          surface.config.routingContext.projectId === projectId
         );
       }) as WorkbenchSurfaceDescriptor | undefined)
     : undefined;
@@ -1296,7 +1296,7 @@ export function getWorkbenchSurfaceReuseKey(
     case "conversation":
       return `conversation:${surface.config.sessionId}`;
     case "db_view": {
-      const accessKey = contentAccessContextKey(surface.config.accessContext);
+      const accessKey = contentRoutingContextKey(surface.config.routingContext);
       return surface.config.target.kind === "project-default"
         ? `db:${accessKey}:default`
         : surface.config.target.kind === "database-default"
@@ -1304,9 +1304,9 @@ export function getWorkbenchSurfaceReuseKey(
           : `db:${accessKey}:view:${surface.config.target.databaseViewId}`;
     }
     case "page_stage":
-      return `page:${contentAccessContextKey(surface.config.accessContext)}:${surface.config.pageId}`;
+      return `page:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.pageId}`;
     case "canvas_stage":
-      return `canvas:${contentAccessContextKey(surface.config.accessContext)}:${surface.config.canvasBlockId}`;
+      return `canvas:${contentRoutingContextKey(surface.config.routingContext)}:${surface.config.canvasBlockId}`;
     case "review":
       return "review";
     case "files":

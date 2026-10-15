@@ -30,7 +30,7 @@ use crate::infrastructure::sqlite::StoreError;
 
 use super::inbox::{
     MAX_PROPOSAL_PAGES, corrupt, invalid, parse_action, parse_kind, proposal_page_ids,
-    read_registry, require_trusted_local, truncate_chars,
+    read_registry, truncate_chars,
 };
 
 const MAX_STREAM_BODY_BYTES: usize = 8 * 1024;
@@ -43,10 +43,9 @@ const MAX_BATCH: u32 = 16;
 
 pub(super) fn read_summary(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
 ) -> Result<ProjectWorkspaceInboxSummary, StoreError> {
-    require_trusted_local(context)?;
     let registry = read_registry(connection, library_id)?;
     let (entry_count, inbox_count, needs_decision_count, pending_suggestion_count) = connection
         .query_row(
@@ -112,13 +111,12 @@ fn filter_predicate(filter: ProjectWorkspaceInboxWindowFilter) -> String {
 /// Newest-first stream window ordered by submission sequence.
 pub(super) fn read_window(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     commit_head: i64,
     filter: ProjectWorkspaceInboxWindowFilter,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceInboxItem>, StoreError> {
-    require_trusted_local(context)?;
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&("workspace_inbox_window_v1", filter))?;
     let subject = CollectionCursorSubject {
@@ -202,6 +200,7 @@ struct EntryRow {
     source_kind: String,
     source_session_id: Option<String>,
     source_thread_id: Option<String>,
+    source_run_id: Option<String>,
     source_project_id: Option<String>,
     source_label: Option<String>,
     provisional_title: Option<String>,
@@ -214,29 +213,38 @@ struct EntryRow {
     parent_kind: String,
     parent_id: String,
     title: String,
-    nfm: String,
+    nfm: Option<String>,
+    source_body_truncated: bool,
     plain_text: String,
     generation: i64,
     head_seq: i64,
 }
 
-fn read_entry(connection: &Connection, page_id: &str) -> Result<EntryRow, StoreError> {
+/// Admit a small complete NFM or bounded text prefix in SQLite before decoding.
+/// Byte lengths read column metadata; oversized documents never enter the NFM parser.
+fn read_entry(
+    connection: &Connection,
+    page_id: &str,
+    body_budget: usize,
+) -> Result<EntryRow, StoreError> {
     connection
         .query_row(
             "SELECT entry.seq, entry.submitted_at, entry.source_kind, entry.source_session_id, \
                entry.source_thread_id, entry.source_project_id, entry.source_label, entry.kind, \
                entry.state, entry.suggestion_state, entry.suggestion_error, \
                entry.current_proposal_id, entry.revision, page.parent_kind, page.parent_id, \
-               COALESCE(materialization.title, ''), COALESCE(materialization.nfm, ''), \
-               COALESCE(materialization.plain_text, ''), document.generation, document.head_seq, \
-               entry.provisional_title \
+               COALESCE(materialization.title, ''), CASE WHEN octet_length(materialization.nfm) <= ?2 \
+                 THEN materialization.nfm ELSE NULL END, \
+               substr(COALESCE(materialization.plain_text, ''),1,?3), document.generation, document.head_seq, \
+               entry.provisional_title, entry.source_turn_id, \
+               COALESCE(octet_length(materialization.plain_text),0) > ?3 \
              FROM inbox_entries entry \
              JOIN pages page ON page.block_id = entry.page_id \
              JOIN documents document ON document.id = page.document_id \
              LEFT JOIN document_materializations materialization \
                ON materialization.document_id = page.document_id \
              WHERE entry.page_id = ?1",
-            [page_id],
+            params![page_id, (body_budget * 8) as i64, body_budget as i64],
             |row| {
                 Ok(EntryRow {
                     seq: row.get(0)?,
@@ -244,6 +252,8 @@ fn read_entry(connection: &Connection, page_id: &str) -> Result<EntryRow, StoreE
                     source_kind: row.get(2)?,
                     source_session_id: row.get(3)?,
                     source_thread_id: row.get(4)?,
+                    source_run_id: row.get(21)?,
+                    source_body_truncated: row.get(22)?,
                     source_project_id: row.get(5)?,
                     source_label: row.get(6)?,
                     provisional_title: row.get(20)?,
@@ -269,10 +279,10 @@ fn read_entry(connection: &Connection, page_id: &str) -> Result<EntryRow, StoreE
 
 /// The message is the Page body; the title is only its label.
 fn message_body(row: &EntryRow) -> String {
-    if row.nfm.trim().is_empty() {
-        return String::new();
-    }
-    crate::domain::nfm_parser::parse_nfm(&row.nfm)
+    let Some(nfm) = &row.nfm else {
+        return row.plain_text.clone();
+    };
+    crate::domain::nfm_parser::parse_nfm(nfm)
         .map(|blocks| crate::domain::nfm::extract_block_lines(&blocks))
         .unwrap_or_else(|_| row.plain_text.clone())
 }
@@ -293,6 +303,7 @@ fn source(row: &EntryRow) -> ProjectWorkspaceInboxSource {
         "agent" => ProjectWorkspaceInboxSource::Agent {
             session_id: row.source_session_id.clone(),
             thread_id: row.source_thread_id.clone(),
+            run_id: row.source_run_id.clone(),
             project_id: row.source_project_id.clone(),
             label: row
                 .source_label
@@ -316,7 +327,7 @@ fn read_item(
     registry: Option<&super::inbox::InboxRegistry>,
     page_id: &str,
 ) -> Result<(ProjectWorkspaceInboxItem, i64), StoreError> {
-    let row = read_entry(connection, page_id)?;
+    let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
     let (body, body_truncated) = bounded_utf8(&message_body(&row), MAX_STREAM_BODY_BYTES);
     let location = location(connection, registry, &row)?;
     let proposal = row
@@ -331,7 +342,7 @@ fn read_item(
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             title: row.title.clone(),
             body,
-            body_truncated,
+            body_truncated: body_truncated || row.source_body_truncated || row.nfm.is_none(),
             submitted_at: row.submitted_at.clone(),
             source: source(&row),
             kind: parse_kind(row.kind.as_deref())?,
@@ -491,10 +502,12 @@ fn read_chat(
     Ok(connection
         .query_row(
             "SELECT session.id, session.project_id, project.name, session.no_thread_fallback_title, \
-               thread.thread_id, thread.thread_name, COALESCE(thread.thread_preview, ''), \
+               COALESCE(binding.runtime_thread_id,thread.thread_id), thread.thread_name, \
+               substr(COALESCE(thread.thread_preview, ''),1,240), \
                thread.status_type, thread.status_active_flags_json, session.unread, session.archived \
              FROM project_sessions session \
              LEFT JOIN projects project ON project.id = session.project_id \
+             LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              WHERE session.id = ?1 AND (session.project_id IS NULL OR project.library_id = ?2)",
@@ -502,13 +515,9 @@ fn read_chat(
             |row| {
                 let thread_id = row.get::<_, Option<String>>(4)?;
                 let preview = super::task_window::bounded_preview(&row.get::<_, String>(6)?);
-                let status = match thread_id {
-                    Some(_) => Some(thread_status(
-                        &row.get::<_, String>(7)?,
-                        &row.get::<_, String>(8)?,
-                    )?),
-                    None => None,
-                };
+                let status = row.get::<_, Option<String>>(7)?.map(|status_type| {
+                    thread_status(&status_type, &row.get::<_, String>(8)?)
+                }).transpose()?;
                 Ok(ProjectWorkspaceInboxChat {
                     session_id: row.get(0)?,
                     project_id: row.get(1)?,
@@ -550,11 +559,10 @@ fn thread_status(
 /// Open entries waiting for a suggestion, oldest first.
 pub(super) fn read_pending_suggestions(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxSuggestionInput>, StoreError> {
-    require_trusted_local(context)?;
     let limit = i64::from(limit.clamp(1, MAX_BATCH));
     let page_ids = connection
         .prepare(
@@ -577,7 +585,7 @@ fn suggestion_input(
     library_id: &str,
     page_id: &str,
 ) -> Result<ProjectWorkspaceInboxSuggestionInput, StoreError> {
-    let row = read_entry(connection, page_id)?;
+    let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
     let (body, _) = bounded_utf8(&message_body(&row), MAX_AGENT_BODY_BYTES);
     Ok(ProjectWorkspaceInboxSuggestionInput {
         page_id: page_id.to_owned(),
@@ -599,11 +607,10 @@ fn suggestion_input(
 
 pub(super) fn read_dispatch_context(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     page_ids: &[String],
 ) -> Result<ProjectWorkspaceInboxDispatchContext, StoreError> {
-    require_trusted_local(context)?;
     if page_ids.is_empty() || page_ids.len() > MAX_PROPOSAL_PAGES {
         return Err(invalid("Inbox dispatch context needs 1 to 16 entries"));
     }
@@ -622,7 +629,7 @@ pub(super) fn read_dispatch_context(
     }
     let projects = connection
         .prepare(
-            "SELECT project.id, project.name, project.description FROM projects project \
+            "SELECT project.id, project.name, substr(project.description,1,400) FROM projects project \
              LEFT JOIN project_order ordering ON ordering.project_id = project.id \
              WHERE project.library_id = ?1 AND project.lifecycle = 'active' \
              ORDER BY COALESCE(ordering.\"order\", 0), project.id LIMIT ?2",
@@ -641,17 +648,19 @@ pub(super) fn read_dispatch_context(
     let sessions = connection
         .prepare(
             "SELECT session.id, session.project_id, thread.thread_name, \
-               COALESCE(thread.thread_preview, ''), session.no_thread_fallback_title, \
-               thread.status_type, thread.status_active_flags_json, thread.recency_at \
+               substr(COALESCE(thread.thread_preview, ''),1,240), session.no_thread_fallback_title, \
+               thread.status_type, thread.status_active_flags_json, \
+               COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000) \
              FROM project_sessions session \
-             JOIN project_session_threads link ON link.session_id = session.id \
-             JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+             LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id \
+             LEFT JOIN project_session_threads link ON link.session_id = session.id \
+             LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
              LEFT JOIN projects project ON project.id = session.project_id \
              WHERE session.archived = 0 AND COALESCE(thread.archived, 0) = 0 \
-               AND thread.parent_thread_id IS NULL \
+               AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) \
                AND (session.project_id IS NULL OR (project.library_id = ?1 \
                  AND project.lifecycle = 'active')) \
-             ORDER BY thread.recency_at DESC, session.id LIMIT ?2",
+             ORDER BY COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000) DESC, session.id LIMIT ?2",
         )?
         .query_map(params![library_id, MAX_CONTEXT_SESSIONS], |row| {
             let preview = super::task_window::bounded_preview(&row.get::<_, String>(3)?);
@@ -664,10 +673,9 @@ pub(super) fn read_dispatch_context(
                     &row.get::<_, String>(4)?,
                 ),
                 preview,
-                status: Some(thread_status(
-                    &row.get::<_, String>(5)?,
-                    &row.get::<_, String>(6)?,
-                )?),
+                status: row.get::<_, Option<String>>(5)?.map(|status_type| {
+                    thread_status(&status_type, &row.get::<_, String>(6)?)
+                }).transpose()?,
                 recency_at: row.get(7)?,
             })
         })?
@@ -716,21 +724,21 @@ pub(super) fn read_dispatch_context(
 /// Confirmed chat dispatches awaiting host delivery, oldest confirmation first.
 pub(super) fn read_dispatch_outbox(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxDispatchWork>, StoreError> {
-    require_trusted_local(context)?;
     let limit = i64::from(limit.clamp(1, MAX_BATCH));
     let rows = connection
         .prepare(
             "SELECT proposal.proposal_id, proposal.revision, proposal.action_json, \
                proposal.dispatch_session_id, session.project_id, \
-               COALESCE(link.thread_id, proposal.dispatch_thread_id), proposal.attempt, \
+               COALESCE(binding.runtime_thread_id,link.thread_id, proposal.dispatch_thread_id), proposal.attempt, \
                proposal.confirmed_at, thread.status_type, thread.status_active_flags_json, \
                thread.agent_backend_kind \
              FROM inbox_proposals proposal \
              LEFT JOIN project_sessions session ON session.id = proposal.dispatch_session_id \
+             LEFT JOIN project_session_execution_bindings binding ON binding.session_id=proposal.dispatch_session_id \
              LEFT JOIN project_session_threads link ON link.session_id = proposal.dispatch_session_id \
              LEFT JOIN codex_threads thread \
                ON thread.thread_id = COALESCE(link.thread_id, proposal.dispatch_thread_id) \
@@ -830,4 +838,40 @@ fn parse_proposal_state(value: &str) -> Result<ProjectWorkspaceInboxProposalStat
 
 fn count(value: i64) -> Result<u32, StoreError> {
     u32::try_from(value).map_err(|_| corrupt("Inbox count is invalid"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_support::{apply, seeded_workspace};
+    use super::*;
+    use nodex_core_contracts::workspace::ProjectWorkspaceIntent;
+
+    #[test]
+    fn edited_large_inbox_pages_admit_only_bounded_body_text_before_decoding() {
+        let workspace = seeded_workspace();
+        apply(
+            &workspace.module,
+            "large-capture",
+            ProjectWorkspaceIntent::SendInboxMessage {
+                page_id: "page:large".into(),
+                document_id: "document:large".into(),
+                text: "Initial message".into(),
+                title: None,
+            },
+        );
+        // Scale is the subject: ordinary captured Pages may grow long after capture.
+        workspace.kernel.writer().call(|connection| {
+            let huge="界".repeat(1_000_000);
+            connection.execute("UPDATE document_materializations SET nfm=?1,plain_text=?1 WHERE document_id='document:large'",[huge])?;
+            for budget in [MAX_STREAM_BODY_BYTES,MAX_AGENT_BODY_BYTES] {
+                let row=read_entry(connection,"page:large",budget)?;
+                assert!(row.nfm.is_none(),"oversized NFM never crosses the SQL read boundary");
+                assert!(row.plain_text.len()<=budget*4);assert!(row.source_body_truncated);
+                let (body,truncated)=bounded_utf8(&message_body(&row),budget);
+                assert!(truncated);assert!(body.len()<=budget);assert!(!body.is_empty());
+                assert!(body.chars().all(|value|value=='界'));
+            }
+            Ok(())
+        }).expect("bounded reads");
+    }
 }

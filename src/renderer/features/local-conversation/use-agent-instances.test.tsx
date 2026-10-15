@@ -6,7 +6,6 @@ import {
   type OpenCodeAgentSettings,
 } from "../../../shared/opencode-agent-settings";
 import type { AcpAgentSettings } from "../../../shared/types";
-import { resolveNewThreadBackendUnavailableReason } from "../../lib/new-thread-backend-selection";
 import { useAgentInstances } from "./use-agent-instances";
 
 const mocks = vi.hoisted(() => {
@@ -49,12 +48,6 @@ test("a settings read failure remains explicit instead of classifying the select
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.error).toBe("Could not read Agent profiles");
   expect(result.current.instances).toEqual([]);
-  expect(
-    resolveNewThreadBackendUnavailableReason(
-      { kind: "opencode", instanceConfigId: "local" },
-      result.current,
-    ),
-  ).toBe("Could not read Agent profiles");
 });
 
 test("a late settings read cannot re-enable a profile disabled by a newer settings event", async () => {
@@ -88,7 +81,6 @@ test("refresh retries failed profile settings and recovers inventory without blo
     .mockResolvedValueOnce({ instances: [instance] });
   const { result } = renderHook(() => useAgentInstances());
   await waitFor(() => expect(result.current.error).toBe("Could not read Agent profiles"));
-  expect(resolveNewThreadBackendUnavailableReason("codex", result.current)).toBeNull();
   await act(async () => {
     result.current.refresh();
   });

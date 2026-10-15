@@ -97,7 +97,6 @@ interface ServerTomlConfig {
   backup_retention?: number;
   backup_retention_gib?: number;
   thread_notifications_turn_mode?: ThreadNotificationTurnMode;
-  thread_notifications_permissions_enabled?: boolean;
   thread_notifications_questions_enabled?: boolean;
   history_retention?: number;
   app_updates_auto_check_enabled?: boolean;
@@ -153,7 +152,6 @@ const BACKUP_RETENTION_DEFAULT = 28;
 const BACKUP_RETENTION_GIB_DEFAULT = 32;
 const BACKUP_RETENTION_GIB_MAX = 8_192;
 const THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT: ThreadNotificationTurnMode = "unfocused";
-const THREAD_NOTIFICATIONS_PERMISSIONS_ENABLED_DEFAULT = true;
 const THREAD_NOTIFICATIONS_QUESTIONS_ENABLED_DEFAULT = true;
 const APP_UPDATES_AUTO_CHECK_DEFAULT = true;
 const WINDOW_RESTORE_POLICY_DEFAULT: WindowRestorePolicy = "all";
@@ -397,10 +395,6 @@ function threadNotificationSettingsFromConfig(
       config.thread_notifications_turn_mode === "always"
         ? config.thread_notifications_turn_mode
         : THREAD_NOTIFICATIONS_TURN_MODE_DEFAULT,
-    permissionsEnabled:
-      typeof config.thread_notifications_permissions_enabled === "boolean"
-        ? config.thread_notifications_permissions_enabled
-        : THREAD_NOTIFICATIONS_PERMISSIONS_ENABLED_DEFAULT,
     questionsEnabled:
       typeof config.thread_notifications_questions_enabled === "boolean"
         ? config.thread_notifications_questions_enabled
@@ -1281,16 +1275,12 @@ export function updateThreadNotificationSettings(
   if (input.turnMode !== "off" && input.turnMode !== "unfocused" && input.turnMode !== "always") {
     throw new Error("turnMode must be one of off, unfocused, or always");
   }
-  if (typeof input.permissionsEnabled !== "boolean") {
-    throw new Error("permissionsEnabled must be a boolean");
-  }
   if (typeof input.questionsEnabled !== "boolean") {
     throw new Error("questionsEnabled must be a boolean");
   }
 
   const nextSettings = {
     turnMode: input.turnMode,
-    permissionsEnabled: input.permissionsEnabled,
     questionsEnabled: input.questionsEnabled,
   };
 
@@ -1299,7 +1289,6 @@ export function updateThreadNotificationSettings(
   const nextServer = {
     ...(nextToml.server ?? {}),
     thread_notifications_turn_mode: nextSettings.turnMode,
-    thread_notifications_permissions_enabled: nextSettings.permissionsEnabled,
     thread_notifications_questions_enabled: nextSettings.questionsEnabled,
   };
 

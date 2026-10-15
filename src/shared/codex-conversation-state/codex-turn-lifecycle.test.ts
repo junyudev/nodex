@@ -90,7 +90,7 @@ function appendPlaceholder() {
         excludeTmpdirEnvVar: false,
         excludeSlashTmp: false,
       },
-      useAppServerPermissionDefault: false,
+
       model: "gpt-test",
       serviceTier: null,
       effort: "high",

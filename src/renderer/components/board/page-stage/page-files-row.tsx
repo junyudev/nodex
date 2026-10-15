@@ -33,7 +33,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { LibraryFilesDialog, ManagedFilePreview } from "@/components/library/library-files-dialog";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
   LibraryPageFileInventory,
   LibraryPageFileItem,
@@ -67,7 +67,7 @@ interface PageFilesRowProps {
 }
 
 interface PageFilesDialogProps extends ModalCloseProps {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly initialFileId?: string;
   readonly onChanged: () => Promise<void>;
@@ -99,14 +99,14 @@ const isSystemFileDrag = (dataTransfer: DataTransfer): boolean =>
 export function PageFilesDialog(props: PageFilesDialogProps) {
   return (
     <PageFilesDialogContent
-      key={JSON.stringify([props.accessContext, props.pageId, props.initialFileId ?? null])}
+      key={JSON.stringify([props.routingContext, props.pageId, props.initialFileId ?? null])}
       {...props}
     />
   );
 }
 
 function PageFilesDialogContent({
-  accessContext,
+  routingContext,
   pageId,
   initialFileId,
   onChanged,
@@ -123,7 +123,7 @@ function PageFilesDialogContent({
   const [fileDragActive, setFileDragActive] = useState(false);
   const fileDragDepthRef = useRef(0);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const inventory = usePageFiles(accessContext, pageId, { query });
+  const inventory = usePageFiles(routingContext, pageId, { query });
   const value = inventory.inventory ?? EMPTY_INVENTORY(pageId);
   const fileGroups = [
     {
@@ -138,7 +138,7 @@ function PageFilesDialogContent({
     },
   ].filter((group) => group.files.length > 0);
   const canWrite = value.can_write;
-  const selectedQuery = usePageFile(accessContext, pageId, selectedFileId);
+  const selectedQuery = usePageFile(routingContext, pageId, selectedFileId);
   const selected =
     value.files.find((item) => item.file.file_id === selectedFileId) ?? selectedQuery.item;
 
@@ -154,7 +154,7 @@ function PageFilesDialogContent({
 
   const authority = metadata.data
     ? {
-        contentAccessContext: accessContext,
+        contentRoutingContext: routingContext,
         storeEpoch: metadata.data.storeEpoch,
         libraryId: metadata.data.libraryId,
       }
@@ -188,7 +188,7 @@ function PageFilesDialogContent({
     const operationId = createUuidV7();
     setMutating(true);
     try {
-      const picked = await pickAndPrepareFiles(accessContext, {
+      const picked = await pickAndPrepareFiles(routingContext, {
         operationId,
         selection,
         title: selection === "directory" ? "Add folder to Page" : "Add Files to Page",
@@ -273,7 +273,7 @@ function PageFilesDialogContent({
     resetFileDrag();
     if (mutating || !authority || !canWrite) return;
     const operationId = createUuidV7();
-    void prepareDroppedFiles(accessContext, operationId, Array.from(event.dataTransfer.files))
+    void prepareDroppedFiles(routingContext, operationId, Array.from(event.dataTransfer.files))
       .then((files) => addDroppedFiles(operationId, files))
       .catch((error) => toast.danger(mutationMessage(error)));
   };
@@ -388,7 +388,7 @@ function PageFilesDialogContent({
                   onClick={() => {
                     onClose();
                     openModal(appHandle, LibraryFilesDialog, {
-                      accessContext,
+                      routingContext,
                       pageTarget: {
                         pageId,
                         manifestRevision: value.revision,
@@ -560,7 +560,7 @@ function PageFilesDialogContent({
                       onClick={() => {
                         onClose();
                         openModal(appHandle, LibraryFilesDialog, {
-                          accessContext,
+                          routingContext,
                           initialFileId: selected.file.file_id,
                         });
                       }}
@@ -660,7 +660,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
 
   const openFiles = (initialFileId?: string): void => {
     openModal(appHandle, PageFilesDialog, {
-      accessContext: controller.contentAccessContext,
+      routingContext: controller.contentRoutingContext,
       pageId,
       ...(initialFileId ? { initialFileId } : {}),
       onChanged: async () => {

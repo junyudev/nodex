@@ -20,7 +20,7 @@ export interface CrossSurfaceBlockTransferPayload {
   readonly kind: "block_transfer";
   readonly sessionId: string;
   readonly sourceSurfaceId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly source: BlockTransferIntentSource;
   readonly rootBlockIds: readonly string[];
@@ -99,7 +99,7 @@ export const parseBlockTransferDragPayload = (
   if (
     !isBoundedIdentity(value.sessionId) ||
     !isBoundedIdentity(value.sourceSurfaceId) ||
-    !isBoundedIdentity(value.projectId) ||
+    (value.projectId !== null && !isBoundedIdentity(value.projectId)) ||
     !isBoundedIdentity(value.storeEpoch)
   ) {
     return null;
@@ -159,7 +159,7 @@ export const blockTransferDropLabel = (
 
 export const buildBlockToDataSourceTransferIntent = (input: {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly payload: CrossSurfaceBlockTransferPayload;
   readonly dataSourceId: string;

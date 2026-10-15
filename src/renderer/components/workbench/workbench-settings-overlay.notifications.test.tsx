@@ -16,10 +16,9 @@ afterEach(() => {
 });
 
 describe("ThreadNotificationSettingControl", () => {
-  test("renders the three notification preferences and persists each choice", async () => {
+  test("renders turn and question preferences and persists each choice", async () => {
     let settings: ThreadNotificationSettings = {
       turnMode: "unfocused",
-      permissionsEnabled: true,
       questionsEnabled: true,
     };
     const updates: UpdateThreadNotificationSettingsInput[] = [];
@@ -50,21 +49,15 @@ describe("ThreadNotificationSettingControl", () => {
     view.getByRole("region", { name: "Notifications" });
     view.getByText("Turn completion notifications");
     view.getByText("Set when agent alerts you that it's finished");
-    view.getByText("Enable permission notifications");
-    view.getByText("Show alerts when notification permissions are required");
     view.getByText("Enable question notifications");
     view.getByText("Show alerts when input is needed to continue");
     expect(view.queryByText("Desktop notifications")).toBeNull();
     expect(view.queryByText("Approval requests")).toBeNull();
     expect(view.queryByText("System settings")).toBeNull();
 
-    const permissionSwitch = view.getByRole("switch", {
-      name: "Enable permission notifications",
-    });
     const questionSwitch = view.getByRole("switch", {
       name: "Enable question notifications",
     });
-    expect(permissionSwitch.getAttribute("aria-checked")).toBe("true");
     expect(questionSwitch.getAttribute("aria-checked")).toBe("true");
 
     const trigger = view.getByRole("button", { name: "Only when unfocused" });
@@ -92,18 +85,6 @@ describe("ThreadNotificationSettingControl", () => {
 
     expect(updates[0]).toEqual({
       turnMode: "always",
-      permissionsEnabled: true,
-      questionsEnabled: true,
-    });
-
-    await act(async () => {
-      fireEvent.click(permissionSwitch);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(updates[1]).toEqual({
-      turnMode: "always",
-      permissionsEnabled: false,
       questionsEnabled: true,
     });
 
@@ -112,9 +93,8 @@ describe("ThreadNotificationSettingControl", () => {
       await Promise.resolve();
     });
     await settleAsyncRender();
-    expect(updates[2]).toEqual({
+    expect(updates[1]).toEqual({
       turnMode: "always",
-      permissionsEnabled: false,
       questionsEnabled: false,
     });
   });

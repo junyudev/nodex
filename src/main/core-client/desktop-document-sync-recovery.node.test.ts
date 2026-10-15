@@ -8,7 +8,7 @@ import type {
   DocumentSyncRealtimeEvent,
   DocumentSyncResponse,
 } from "../../shared/block-documents/document-sync";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import { NodexYProvider } from "../../renderer/lib/nodex-y-provider";
 import { CoreModuleResponseError } from "./core-client";
 import { CoreEventCompatibilityError } from "./uds-http";
@@ -17,7 +17,7 @@ import { makeDesktopDocumentSessionHarness } from "./testing/desktop-document-se
 import type { CoreGenerationClient } from "./core-generation-client";
 
 const documentId = "document:recovery";
-const scopes: ContentAccessContext[] = [
+const scopes: ContentRoutingContext[] = [
   { kind: "library" },
   { kind: "project", projectId: "project:test" },
 ];
@@ -48,7 +48,7 @@ function fixture() {
 
 const withProvider = Effect.fn("DesktopDocumentRecovery.test.withProvider")(function* (
   client: CoreGenerationClient,
-  scope: ContentAccessContext,
+  scope: ContentRoutingContext,
   run: (provider: NodexYProvider, local: Y.Doc) => Promise<void>,
 ) {
   const adapter = yield* makeDesktopDocumentSessionHarness(client, scope);

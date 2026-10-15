@@ -18,7 +18,7 @@ import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import type { AntigravityAuth } from "../../provider/AntigravityAuth.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
-  antigravityPermissionMode,
+  ANTIGRAVITY_PERMISSION_MODE,
   applyAntigravityAcpModelSelection,
   type AntigravityAcpRuntimeInput,
 } from "../../provider/acp/AntigravityAcpSupport.ts";
@@ -48,7 +48,6 @@ const AntigravityProviderCapabilitiesV2 = {
   sessions: {
     ...AcpProviderCapabilitiesV2.sessions,
     supportsModelSwitchInSession: true,
-    supportsRuntimeModeSwitchInSession: true,
   },
   tools: {
     ...AcpProviderCapabilitiesV2.tools,
@@ -123,11 +122,6 @@ interface AntigravityFlavorServices {
 export function makeAntigravityAcpAdapterFlavor(
   options: AntigravityAdapterV2Options & AntigravityFlavorServices,
 ): AcpAdapterV2Flavor {
-  // The attachments dir grant lets the agent read pasted files at the paths
-  // the turn text references. It is a leaf directory of uploads. A session
-  // without a workspace gets no workspace root rather than the server's cwd.
-  const antigravityClientFileRoots = (cwd: string | null) =>
-    cwd === null ? [options.host.paths.attachmentsDir] : [cwd, options.host.paths.attachmentsDir];
   const makeRuntime = (input: AcpAdapterV2RuntimeInput) =>
     Effect.gen(function* () {
       // AcpAdapterV2 owns the runtime scope; sign-in and sign-out stop the
@@ -184,24 +178,21 @@ export function makeAntigravityAcpAdapterFlavor(
           mapError: (cause) => cause,
         });
       }),
-    sessionModeForPolicy: (policy) => antigravityPermissionMode(policy.runtimeMode),
+    sessionModeForPolicy: () => ANTIGRAVITY_PERMISSION_MODE,
     clientFileSystem: {
-      readTextFile: (request, cwd) =>
+      readTextFile: (request) =>
         readAntigravityClientTextFile({
           fileSystem: options.fileSystem,
           path: options.path,
-          allowedRoots: antigravityClientFileRoots(cwd),
           request,
         }),
-      writeTextFile: (request, cwd) =>
+      writeTextFile: (request) =>
         writeAntigravityClientTextFile({
           fileSystem: options.fileSystem,
           path: options.path,
-          allowedRoots: antigravityClientFileRoots(cwd),
           request,
         }),
     },
-    approvalOptions: antigravityApprovalOptions,
     extractPermissionQuestion: (request) => {
       const question = extractAntigravityUserInputQuestion(request);
       if (question === undefined) return undefined;

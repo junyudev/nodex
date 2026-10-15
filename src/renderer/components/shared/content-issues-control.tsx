@@ -7,7 +7,7 @@ import {
   type ContentEditIssueAction,
   type ContentEditLocation,
 } from "@/lib/content-edit-issues";
-import type { ContentAccessIdentity } from "../../../shared/content-access-context";
+import type { ContentRoutingIdentity } from "../../../shared/content-routing-context";
 import type { Project } from "@/lib/types";
 import { useOpenDocumentRecoveryReview } from "@/features/document-recovery/recovery-entry";
 import { CircleAlert } from "@/components/shared/icons/generic-icons";
@@ -31,7 +31,7 @@ type RunAction = Extract<ContentEditIssueAction, { kind: "run" }>;
 type Projects = readonly Pick<Project, "id" | "name">[];
 const EMPTY_PROJECTS: Projects = [];
 type OpenLocation = (
-  scope: ContentAccessIdentity,
+  scope: ContentRoutingIdentity,
   location: ContentEditLocation,
 ) => void | Promise<unknown>;
 
@@ -110,7 +110,7 @@ function ContentIssueRow({
   const appHandle = useScopeHandle(appScope);
   const review = useOpenDocumentRecoveryReview();
   const affectedScope =
-    issue.scope.accessContext.kind === "project" ? `Project: ${scopeLabel}` : scopeLabel;
+    issue.scope.routingContext.kind === "project" ? `Project: ${scopeLabel}` : scopeLabel;
   const [error, setError] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<{
     readonly action: ContentEditIssueAction;
@@ -257,12 +257,12 @@ function ContentIssuesPopover({
               key={issue.id}
               issue={issue}
               scopeLabel={
-                issue.scope.accessContext.kind === "library"
+                issue.scope.routingContext.kind === "library"
                   ? "Library"
                   : (projects.find(
                       (project) =>
-                        issue.scope.accessContext.kind === "project" &&
-                        project.id === issue.scope.accessContext.projectId,
+                        issue.scope.routingContext.kind === "project" &&
+                        project.id === issue.scope.routingContext.projectId,
                     )?.name ?? "Project")
               }
               onOpenLocation={onOpenLocation}

@@ -952,7 +952,7 @@ it("applies Turn execution atomically and restores permissions without replacing
     sandboxPolicy: execution.permissions.sandboxPolicy,
     permissions: null,
     runtimeWorkspaceRoots: null,
-    useAppServerPermissionDefault: false,
+
     model: null,
     effort: null,
     serviceTier: null,
@@ -1105,7 +1105,7 @@ it("optimistic Main turns retain admitted local metadata and app context through
     permissions: null,
     sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
     runtimeWorkspaceRoots: null,
-    useAppServerPermissionDefault: false,
+
     attachments: [],
     clientUserMessageId: "native-start",
     input: [{ type: "text" as const, text: "next", text_elements: [] }],

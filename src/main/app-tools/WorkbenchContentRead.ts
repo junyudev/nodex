@@ -1,8 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { contentAccessContextKey } from "../../shared/content-access-context";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import type { NodexAgentResourceAccessOverlay } from "../../shared/nodex-agent-resource-access";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { WorkbenchSceneReference } from "../../shared/nodex-app-tools/workbench";
 import type { WorkbenchPreparedPageContent } from "../../shared/nodex-app-tools/workbench-content";
 import { BlockIdSchema } from "../../shared/nodex-agent-tools/base-schemas";
@@ -12,22 +11,19 @@ import type {
 } from "../core-client/native-nodex-agent-fetch";
 import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentApplication";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
-import type { WorkbenchContentDescription } from "./WorkbenchContentAccess";
+import type { WorkbenchContentDescription } from "./WorkbenchContentRouting";
 import {
   make as makeViewContentRead,
   type WorkbenchViewContentReadResult,
 } from "./WorkbenchViewContentRead";
 
 type PageObservation = Extract<NativeNodexAgentFetchObservation, { readonly ok: true }>;
-type AuthorizedDescription = Extract<
-  WorkbenchContentDescription,
-  { readonly status: "authorized" }
->;
+type AuthorizedDescription = Extract<WorkbenchContentDescription, { readonly status: "available" }>;
 
 export interface WorkbenchContentReadInput {
-  readonly authority: FrozenNodexAgentTurnAuthority;
+  readonly authority: NodexAgentTurnContext;
   readonly callId: string;
-  readonly taskAccess?: NodexAgentResourceAccessOverlay;
+
   readonly description: WorkbenchContentDescription;
   readonly live?: {
     readonly reference: WorkbenchSceneReference;
@@ -93,14 +89,14 @@ export class WorkbenchContentRead extends Context.Service<
 const preparedFor = (
   prepared: WorkbenchPreparedPageContent,
   description: Extract<AuthorizedDescription, { readonly kind: "page" }>,
-  authority: FrozenNodexAgentTurnAuthority,
+  authority: NodexAgentTurnContext,
 ) =>
   prepared.pageId === description.pageId &&
   prepared.libraryId === description.libraryId &&
   prepared.libraryId === authority.libraryId &&
   prepared.storeEpoch === authority.storeEpoch &&
-  contentAccessContextKey(prepared.accessContext) ===
-    contentAccessContextKey(description.displayedAccessContext);
+  contentRoutingContextKey(prepared.routingContext) ===
+    contentRoutingContextKey(description.displayedRoutingContext);
 
 const matchesFence = (observation: PageObservation, prepared: WorkbenchPreparedPageContent) =>
   observation.document.documentId === prepared.documentId &&
@@ -156,7 +152,7 @@ export const make = Effect.gen(function* () {
         projectId: input.authority.actorProjectId,
         authority: input.authority,
         callId: input.callId,
-        ...(input.taskAccess ? { resourceAccess: input.taskAccess } : {}),
+
         input: {
           id: id.data,
           format: input.format ?? "markdown",
@@ -222,13 +218,7 @@ export const make = Effect.gen(function* () {
     read: Effect.fn("WorkbenchContentRead.read")(function* (input) {
       if (!(yield* input.isCurrent)) return { status: "cancelled" as const };
       const description = input.description;
-      if (description.status === "restricted")
-        return {
-          status:
-            description.reason === "access_denied"
-              ? ("access_denied" as const)
-              : ("unavailable" as const),
-        };
+      if (description.status === "unavailable") return { status: "unavailable" as const };
       if (description.libraryId !== input.authority.libraryId)
         return { status: "access_denied" as const };
       if (description.kind === "page") return yield* readPage(input, description);

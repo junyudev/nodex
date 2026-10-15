@@ -69,8 +69,8 @@ function HistoryRow({
             <InboxIconActions>
               {target ? (
                 <InboxIconAction
-                  label={target.kind === "thread" ? "Open chat" : "Open in Project"}
-                  icon={target.kind === "thread" ? ThreadIcon : ProjectFolderIcon}
+                  label={target.kind === "session" ? "Open chat" : "Open in Project"}
+                  icon={target.kind === "session" ? ThreadIcon : ProjectFolderIcon}
                   onClick={() => onOpenTarget(target)}
                 />
               ) : null}

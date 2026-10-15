@@ -481,16 +481,6 @@ function resolveRequestSearchableText(request: CodexTurnScopedConversationReques
     return request.step;
   }
 
-  if (request.type === "nodexAgentAuthorization") {
-    return [
-      request.preview.summary,
-      ...request.preview.details.map((detail) => `${detail.label} ${detail.value}`),
-      request.preview.markdownPreview ?? request.preview.nfmPreview ?? "",
-    ]
-      .join("\n")
-      .trim();
-  }
-
   return request.planContent.trim();
 }
 

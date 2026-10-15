@@ -93,7 +93,7 @@ const parsePublicIntent = (
   });
 };
 
-/** Bind Project route scope and host-owned audit identity. */
+/** Bind the selected presentation route and host-owned audit identity. */
 export const bindBlockTransferIntent = (
   rawIntent: unknown,
   rawProjectId: unknown,
@@ -107,12 +107,12 @@ export const bindBlockTransferIntent = (
       ? rawProjectId
       : null;
   const operationId = readIdentityHint(rawIntent, "operationId");
-  if (!projectId) {
+  if (rawProjectId !== null && projectId === null) {
     return {
       ok: false,
       error: blockTransferFailure(
         "invalid_transfer_request",
-        "Block transfer Project scope is invalid",
+        "Block transfer Project route is invalid",
         { operationId },
       ),
     };
@@ -137,7 +137,7 @@ export const bindBlockTransferIntent = (
       ok: false,
       error: blockTransferFailure(
         "invalid_transfer_request",
-        "Block transfer intent does not match its Project route scope",
+        "Block transfer intent does not match its presentation route",
         { operationId: intent.operationId },
       ),
     };
@@ -157,12 +157,12 @@ export const bindBlockTransferUndoIntent = (
       ? rawProjectId
       : null;
   const operationId = readIdentityHint(rawIntent, "operationId");
-  if (!projectId) {
+  if (rawProjectId !== null && projectId === null) {
     return {
       ok: false,
       error: blockTransferFailure(
         "invalid_transfer_request",
-        "Block transfer Undo Project scope is invalid",
+        "Block transfer Undo Project route is invalid",
         { operationId },
       ),
     };
@@ -174,7 +174,7 @@ export const bindBlockTransferUndoIntent = (
         ok: false,
         error: blockTransferFailure(
           "invalid_transfer_request",
-          "Block transfer Undo does not match its Project route scope",
+          "Block transfer Undo does not match its presentation route",
           { operationId: intent.operationId },
         ),
       };

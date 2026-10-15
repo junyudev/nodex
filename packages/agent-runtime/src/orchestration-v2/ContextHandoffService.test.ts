@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import {
   MessageId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
   RunId,
@@ -13,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ContextHandoffService from "./ContextHandoffService.ts";
+import { deliverContextHandoffs } from "./ContextHandoffDelivery.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 
 const layerTest = ContextHandoffService.layer.pipe(Layer.provide(IdAllocator.layer));
@@ -68,6 +70,77 @@ function importedItem(
 }
 
 it.layer(layerTest)("ContextHandoffService legacy import", (it) => {
+  it.effect(
+    "reports unhydrated durable handoffs without creating or changing their delivery markers",
+    () =>
+      Effect.gen(function* () {
+        const service = yield* ContextHandoffService.ContextHandoffServiceV2;
+        const now = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
+        const threadId = ThreadId.make("thread:bounded-ready-handoffs");
+        const providerThreadId = ProviderThreadId.make("provider:bounded-ready-handoffs");
+        const handoff = yield* service.prepareLegacyImport({
+          threadId,
+          targetRunId: RunId.make("run:bounded-ready-handoffs"),
+          toProviderThreadId: providerThreadId,
+          toProviderInstanceId: ProviderInstanceId.make("codex"),
+          items: [
+            importedItem({
+              role: "user",
+              id: "bounded-ready",
+              text: "Keep this constraint.",
+              ordinal: 1,
+            }),
+          ],
+          createdAt: now,
+        });
+        const persisted: string[] = [];
+        let injectedContext = "";
+        const delivery = yield* deliverContextHandoffs({
+          handoffs: [handoff],
+          omittedHandoffCount: 1000,
+          providerThread: {
+            id: providerThreadId,
+            driver: ProviderDriverKind.make("codex"),
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            providerSessionId: null,
+            appThreadId: threadId,
+            ownerNodeId: null,
+            nativeThreadRef: {
+              driver: ProviderDriverKind.make("codex"),
+              nativeId: "native:bounded-ready",
+              strength: "strong",
+            },
+            nativeConversationHeadRef: null,
+            status: "active",
+            firstRunOrdinal: 1,
+            lastRunOrdinal: 1,
+            handoffIds: [handoff.id],
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+          },
+          budget: 2000,
+          alreadyDeliveredItemIds: new Set(),
+          inject: (input) =>
+            Effect.sync(() => {
+              injectedContext = input.context;
+              return true;
+            }),
+          persist: (input) =>
+            Effect.sync(() => {
+              persisted.push(input.id);
+            }),
+        });
+        yield* delivery.delivered;
+        assert.include(injectedContext, "1000 records omitted by the read budget");
+        assert.include(injectedContext, "1001 handoff records");
+        assert.include(injectedContext, "t3_thread_read");
+        assert.isAtMost(Buffer.byteLength(injectedContext), 2000);
+        assert.isTrue(persisted.every((id) => id === handoff.id));
+        assert.lengthOf(persisted, 2);
+      }),
+  );
+
   it.effect("prepares imported history for the first native v2 turn", () =>
     Effect.gen(function* () {
       const service = yield* ContextHandoffService.ContextHandoffServiceV2;

@@ -458,7 +458,7 @@ describe.runIf(binaryPath !== undefined && ROOT !== "")("OpenCode 2 live orchest
           projectId: ProjectId.make("project:opencode2-live"),
           title: "OpenCode 2 live supervised",
           modelSelection: MODEL,
-          runtimeMode: "approval-required",
+          runtimeMode: "full-access",
           interactionMode: "default",
           branch: null,
           worktreePath: `${ROOT}/work`,

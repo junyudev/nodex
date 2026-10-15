@@ -8,6 +8,13 @@ export const openComposerModelPicker = async (page: Page) => {
   return search;
 };
 
+export const refreshComposerModels = async (page: Page): Promise<void> => {
+  await openComposerModelPicker(page);
+  const refresh = page.getByRole("button", { name: "Refresh models", exact: true });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+};
+
 /** A runtime name in the query disambiguates the same model exposed by multiple instances. */
 export const chooseComposerModel = async (page: Page, query: string): Promise<void> => {
   const search = await openComposerModelPicker(page);

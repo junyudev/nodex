@@ -231,32 +231,35 @@ export function createCanvasFileBridge(
   };
 }
 
-/** Canvas presentations depend on their owner, independently of a direct File grant. */
+/** Canvas File presentation follows exact owner invalidation and transport resets. */
 export function subscribeCanvasFileAuthority(
   authority: LibraryFileAuthority,
   owner: { readonly canvasId?: string; readonly documentId: string },
   invalidate: () => void,
 ): () => void {
   const scope =
-    authority.contentAccessContext.kind === "project"
+    authority.contentRoutingContext.kind === "project"
       ? {
           kind: "project" as const,
           libraryId: authority.libraryId,
-          projectId: authority.contentAccessContext.projectId,
+          projectId: authority.contentRoutingContext.projectId,
         }
       : { kind: "library" as const, libraryId: authority.libraryId };
-  return rendererLocalCommitIngress.subscribeRevocation(scope, (message) => {
-    if (message.kind === "reset") {
-      invalidate();
+  const releaseReset = rendererLocalCommitIngress.subscribeProjection(scope, (message) => {
+    if (message.kind === "reset") invalidate();
+  });
+  const releaseOwner = rendererLocalCommitIngress.subscribeAtoms((_packet, atom) => {
+    if (atom.payload.module !== "owned_document" || atom.payload.library_id !== authority.libraryId)
       return;
-    }
-    const revoked = message.delivery.revocation;
+    if (atom.payload.event.document_id !== owner.documentId) return;
     if (
-      revoked.resource_kind === "page" ||
-      (revoked.resource_kind === "document" && revoked.resource_id === owner.documentId) ||
-      (revoked.resource_kind === "canvas" &&
-        (!owner.canvasId || revoked.resource_id === owner.canvasId))
+      atom.payload.event.kind === "document_invalidated" ||
+      atom.payload.event.kind === "canvas_generation_changed"
     )
       invalidate();
   });
+  return () => {
+    releaseReset();
+    releaseOwner();
+  };
 }

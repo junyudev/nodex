@@ -42,20 +42,10 @@ import type { LocalPathPresentationContext } from "../../shared/local-path-prese
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import type { ProtocolMcpResourceReadParams } from "../../shared/types";
 import type { CodexHooksListInput, CodexHooksListResponse } from "../../shared/codex-hooks";
-import type { DatabaseViewWindowSnapshot } from "../../shared/database-views";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
 import { normalizePageChatPageIds, readPageChatActivitySummaryBatches } from "./page-chat-queries";
 import { readPageChatActivitySummaries, readPageChatWindow } from "./page-chat-runtime";
 
 const MCP_CATALOG_STALE_TIME_MS = 5 * 60_000;
-
-const resolveBoardAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const snapshot = data as DatabaseViewWindowSnapshot | undefined;
-  return snapshot ? { authorizations: [snapshot.authorization] } : null;
-};
 
 export function projectsListQueryOptions(options: ProjectListOptions = {}) {
   const includeArchived = options.includeArchived === true;
@@ -133,12 +123,7 @@ export function pageChatWindowQueryOptions(input: Omit<PageChatWindowInput, "aft
 export function boardByProjectQueryOptions(projectId: string) {
   return queryOptions({
     queryKey: queryKeys.boards.byProject(projectId),
-    queryFn: async () =>
-      admitResourceAuthorityQuery(
-        await readDatabaseViewWindow(projectId, { first: 50 }),
-        resolveBoardAuthority,
-      ),
-    meta: resourceAuthorityQueryMeta(resolveBoardAuthority),
+    queryFn: async () => await readDatabaseViewWindow(projectId, { first: 50 }),
   });
 }
 

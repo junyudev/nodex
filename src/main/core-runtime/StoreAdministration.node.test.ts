@@ -13,7 +13,58 @@ import type {
 } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "./CoreModules";
 import { coreRuntimeError } from "./CoreRuntimeError";
-import { live, mapCoreStoreAdministrationEvent, StoreAdministration } from "./StoreAdministration";
+import {
+  live,
+  layer as administrationLayer,
+  mapCoreStoreAdministrationEvent,
+  StoreAdministration,
+  type StoreAdministrationSnapshotPorts,
+} from "./StoreAdministration";
+
+const executionSource = {
+  runtime_id: "profile-runtime",
+  runtime_generation: "generation",
+  sequence: 7,
+  database_path: "/profile/runtime/snapshots/execution.sqlite",
+  environment_id_path: "/profile/agent-runtime/userdata/environment-id",
+  attachments_path: "/profile/agent-runtime/userdata/attachments",
+  native_histories: [
+    { provider_instance_id: "codex", driver: "codex", home_path: "/profile/agent" },
+  ],
+};
+
+const snapshotPorts = () => {
+  let held = false;
+  let captures = 0;
+  let restores = 0;
+  const ports: StoreAdministrationSnapshotPorts = {
+    capture: (use) =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          held = true;
+          captures += 1;
+        }),
+        () => use(executionSource),
+        () =>
+          Effect.sync(() => {
+            held = false;
+          }),
+      ),
+    restore: (use) =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          held = true;
+          restores += 1;
+        }),
+        () => use(executionSource),
+        () =>
+          Effect.sync(() => {
+            held = false;
+          }),
+      ),
+  };
+  return { ports, held: () => held, captures: () => captures, restores: () => restores };
+};
 
 const backup = {
   version: 2,
@@ -24,6 +75,7 @@ const backup = {
   includes_assets: true,
   db_bytes: 100,
   assets_bytes: 20,
+  execution_bytes: 0,
   total_bytes: 120,
   byte_length: 120,
 };
@@ -83,7 +135,7 @@ const committed = (
   },
 });
 
-const makeHarness = () => {
+const makeHarness = (snapshots?: StoreAdministrationSnapshotPorts) => {
   const reads: StoreAdministrationRead[] = [];
   const applies: StoreAdministrationApplyInput[] = [];
   const readResults: StoreAdministrationReadSnapshot[] = [];
@@ -105,7 +157,9 @@ const makeHarness = () => {
       }),
   };
   const core = CoreModules.of({ administration } as unknown as CoreModuleClients);
-  const layer = live.pipe(Layer.provide(Layer.succeed(CoreModules, core)));
+  const layer = administrationLayer({ snapshots }).pipe(
+    Layer.provide(Layer.succeed(CoreModules, core)),
+  );
   return { applies, applyResults, layer, reads, readResults };
 };
 
@@ -141,6 +195,7 @@ it.effect("owns Backup CRUD and maintenance semantics on the typed Core Module",
         createdAt: "2026-07-19T20:00:00.000Z",
         includesAssets: true,
         dbBytes: 100,
+        executionBytes: 0,
         assetsBytes: 20,
         totalBytes: 120,
       },
@@ -179,6 +234,41 @@ it.effect("owns Backup CRUD and maintenance semantics on the typed Core Module",
       ],
     );
   }),
+);
+
+it.effect(
+  "routes confirmed restores through the execution stop boundary and releases failed capture",
+  () =>
+    Effect.gen(function* () {
+      const snapshot = snapshotPorts();
+      const harness = makeHarness(snapshot.ports);
+      const context = yield* Layer.build(harness.layer);
+      const administration = Context.get(context, StoreAdministration);
+      yield* administration
+        .restoreBackup({ backupId: "core-backup", confirm: false })
+        .pipe(Effect.flip);
+      assert.strictEqual(snapshot.restores(), 0);
+      harness.applyResults.push(committed({ backup_id: "core-backup" }));
+      yield* administration.restoreBackup({ backupId: "core-backup", confirm: true });
+      assert.strictEqual(snapshot.restores(), 1);
+      assert.isFalse(snapshot.held());
+      assert.deepStrictEqual(harness.applies[0]?.intent, {
+        kind: "restore_backup",
+        backup_id: "core-backup",
+        create_safety_backup: true,
+        profile_snapshot: executionSource,
+      });
+      yield* administration.createBackup().pipe(Effect.exit);
+      assert.strictEqual(snapshot.captures(), 1);
+      assert.isFalse(snapshot.held());
+      assert.deepStrictEqual(harness.applies[1]?.intent, {
+        kind: "create_backup",
+        label: null,
+        include_assets: true,
+        trigger: "manual",
+        profile_snapshot: executionSource,
+      });
+    }),
 );
 
 it.effect("requires explicit confirmation and returns the safety Backup identity", () =>
@@ -223,6 +313,7 @@ it.effect("returns submitted before durable admission and durably coalesces late
     let activeOperationId: string | null = null;
     let createApplyCount = 0;
     let coalesceApplyCount = 0;
+    const snapshot = snapshotPorts();
     const administrationClient: CoreModuleClients["administration"] = {
       apply: (input) =>
         Effect.gen(function* () {
@@ -231,6 +322,11 @@ it.effect("returns submitted before durable admission and durably coalesces late
             return committed({ coalesced_backup_job_id: input.intent.active_job_id });
           }
           createApplyCount += 1;
+          assert.isTrue(snapshot.held());
+          assert.deepStrictEqual(
+            input.intent.kind === "create_backup" ? input.intent.profile_snapshot : null,
+            executionSource,
+          );
           activeOperationId = input.operationId;
           yield* Deferred.succeed(applyStarted, undefined);
           yield* Deferred.await(finishApply);
@@ -288,7 +384,7 @@ it.effect("returns submitted before durable admission and durably coalesces late
         );
       },
     };
-    const layer = live.pipe(
+    const layer = administrationLayer({ snapshots: snapshot.ports }).pipe(
       Layer.provide(
         Layer.succeed(
           CoreModules,
@@ -308,6 +404,7 @@ it.effect("returns submitted before durable admission and durably coalesces late
     assert.strictEqual(submitted.job.state, "queued");
     assert.strictEqual(submitted.job.phase, "queued");
     yield* Deferred.await(applyStarted);
+    assert.isTrue(snapshot.held());
 
     const retried = yield* administration.startBackup({
       operationId: submitted.operationId,
@@ -339,6 +436,8 @@ it.effect("returns submitted before durable admission and durably coalesces late
       const completed = yield* administration.backupJob(submitted.operationId);
       if (completed?.state !== "completed") continue;
       assert.strictEqual(completed.backup?.id, "core-backup");
+      assert.isFalse(snapshot.held());
+      assert.strictEqual(snapshot.captures(), 1);
       const coalescedRetry = yield* administration.startBackup({
         operationId: coalescedOperationId,
         label: "Coalesced",

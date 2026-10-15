@@ -37,7 +37,7 @@ fn snapshot(fixture: &Fixture, document: &OwnedDocumentModule) -> AgentDocumentS
 
 #[test]
 fn projectless_agent_authority_reads_writes_and_replays_without_creating_a_project() {
-    let fixture = Fixture::projectless(false);
+    let fixture = Fixture::projectless();
     let document = OwnedDocumentModule::new("profile-1", "library-1", &fixture.kernel);
     let before = snapshot(&fixture, &document);
     let mutation = AgentDocumentSemanticMutation {
@@ -106,12 +106,12 @@ fn projectless_agent_authority_reads_writes_and_replays_without_creating_a_proje
         "Written without a Project"
     );
     let mut forged = fixture.authorization.clone();
-    forged.provenance.authority.actor_project_id = Some("borrowed-project".into());
+    forged.provenance.authority.turn_id = "not-admitted".into();
     assert!(
         restarted
             .apply(&fixture.execution_context(), execute(forged, None))
             .is_err(),
-        "a duplicate receipt cannot bypass exact actor provenance"
+        "a duplicate receipt cannot bypass exact execution identity"
     );
     drop(restarted);
     drop(document);
@@ -130,44 +130,12 @@ fn projectless_agent_authority_reads_writes_and_replays_without_creating_a_proje
     );
     fixture.kernel.readers().read_default(|connection| {
         assert_eq!(connection.query_row("SELECT count(*) FROM projects", [], |row| row.get::<_, i64>(0))?, 1);
-        assert_eq!(connection.query_row("SELECT count(*) FROM nodex_agent_turn_authorities WHERE actor_project_id IS NULL AND scope = 'library'", [], |row| row.get::<_, i64>(0))?, 1);
+        assert_eq!(connection.query_row("SELECT count(*) FROM nodex_agent_turn_authorities", [], |row| row.get::<_, i64>(0))?, 1);
         assert_eq!(connection.query_row("SELECT count(*) FROM change_log WHERE project_id IS NOT NULL AND operation_id <> 'test:rootless-default-project:v1'", [], |row| row.get::<_, i64>(0))?, 0);
         assert_eq!(connection.query_row("SELECT count(*) FROM local_commit_documents WHERE project_id IS NOT NULL AND document_id = 'document:target'", [], |row| row.get::<_, i64>(0))?, 0);
         assert_eq!(connection.query_row("SELECT count(*) FROM document_updates WHERE document_id = 'document:target'", [], |row| row.get::<_, i64>(0))?, 2);
         Ok::<_, StoreError>(())
     }).unwrap();
-}
-
-#[test]
-fn projectless_agent_authority_preserves_plan_mode_write_refusal() {
-    let fixture = Fixture::projectless(true);
-    let document = OwnedDocumentModule::new("profile-1", "library-1", &fixture.kernel);
-    let before = snapshot(&fixture, &document);
-    let result = document.read(
-        &fixture.execution_context(),
-        ModuleReadRequest {
-            contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-            read: OwnedDocumentRead::PrepareAgentSemanticMutation {
-                operation_id: "projectless:readonly".into(),
-                store_epoch: StoreEpoch("epoch-1".into()),
-                authorization: Box::new(fixture.authorization.clone()),
-                mutation: Box::new(AgentDocumentSemanticMutation {
-                    document_id: before.document_id,
-                    generation: before.generation,
-                    expected_head_seq: before.head_seq,
-                    commands: vec![DocumentSemanticCommand::SetTitle {
-                        inline_markdown: "Forbidden".into(),
-                        expected_etag: before.title_etag.unwrap(),
-                    }],
-                }),
-            },
-        },
-    );
-    assert_eq!(
-        result.unwrap_err().code,
-        nodex_core_contracts::CoreErrorCode::Unauthorized
-    );
-    assert_eq!(snapshot(&fixture, &document).title, "Canonical Page");
 }
 
 fn prepared_library_write(
@@ -221,7 +189,7 @@ fn projectless_agent_authority_creates_copies_and_moves_pages_with_exact_receipt
         LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentMovePagesRequest,
         LibraryAgentPageCopyRequest, LibraryAgentPageDestination,
     };
-    let fixture = Fixture::projectless(false);
+    let fixture = Fixture::projectless();
     let create = LibraryAgentCreatePagesRequest {
         destination: LibraryAgentPageDestination::Library { at: None },
         pages: vec![LibraryAgentCreatePageDraft {
@@ -333,203 +301,8 @@ fn projectless_agent_authority_creates_copies_and_moves_pages_with_exact_receipt
 }
 
 #[test]
-fn projectless_agent_authority_requires_persisted_full_access_and_exact_parent_lineage() {
-    use nodex_core_contracts::workspace::{
-        CodexPermissionMode, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
-        ProjectWorkspaceTurnCoordinate,
-    };
-    let fixture = Fixture::projectless(true);
-    let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &fixture.kernel).unwrap();
-    let apply = |operation: &str, intent| {
-        workspace.apply(
-            &fixture.execution_context(),
-            ModuleApplyRequest {
-                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                operation_id: operation.into(),
-                store_epoch: StoreEpoch("epoch-1".into()),
-                intent,
-            },
-        )
-    };
-    for thread_id in ["thread:child", "thread:other"] {
-        fixture.workspace_apply(
-            &format!("create:{thread_id}"),
-            ProjectWorkspaceIntent::UpsertThread {
-                thread_id: thread_id.into(),
-                patch: Box::new(ProjectWorkspaceThreadPatch {
-                    project_id: Some(None),
-                    ..Default::default()
-                }),
-            },
-        );
-    }
-    let freeze = |turn: &str, root: &str, source, inherited_from| {
-        ProjectWorkspaceIntent::FreezeTurnAuthority {
-            thread_id: "thread:child".into(),
-            turn_id: turn.into(),
-            root_thread_id: root.into(),
-            actor_project_id: None,
-            source,
-            read_only: false,
-            inherited_from,
-        }
-    };
-    fixture.workspace_apply(
-        "revoke-selection",
-        ProjectWorkspaceIntent::SetProjectlessPermissionMode {
-            mode: CodexPermissionMode::Auto,
-        },
-    );
-    assert_eq!(
-        apply(
-            "no-full-access",
-            freeze(
-                "unverified",
-                "thread:child",
-                ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
-                None
-            )
-        )
-        .unwrap_err()
-        .code,
-        CoreErrorCode::Unauthorized
-    );
-    assert_eq!(
-        apply(
-            "no-project-scope",
-            freeze(
-                "project",
-                "thread:child",
-                ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                None
-            )
-        )
-        .unwrap_err()
-        .code,
-        CoreErrorCode::Unauthorized
-    );
-    let parent = || {
-        Some(ProjectWorkspaceTurnCoordinate {
-            thread_id: "thread:actor".into(),
-            turn_id: "turn:actor".into(),
-        })
-    };
-    assert_eq!(
-        apply(
-            "wrong-root",
-            freeze(
-                "wrong-root",
-                "thread:other",
-                ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
-                parent()
-            )
-        )
-        .unwrap_err()
-        .code,
-        CoreErrorCode::Unauthorized
-    );
-    apply(
-        "inherit",
-        freeze(
-            "inherited",
-            "thread:actor",
-            ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
-            parent(),
-        ),
-    )
-    .expect("exact frozen parent survives later permission selection changes");
-    let resolution = workspace
-        .read(
-            &fixture.execution_context(),
-            ModuleReadRequest {
-                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                read: ProjectWorkspaceRead::TurnAuthority {
-                    thread_id: "thread:child".into(),
-                    turn_id: "inherited".into(),
-                    root_thread_id: "thread:actor".into(),
-                    actor_project_id: None,
-                },
-            },
-        )
-        .unwrap()
-        .value;
-    let ProjectWorkspaceReadValue::TurnAuthority { resolution } = resolution else {
-        panic!("authority resolution")
-    };
-    assert!(resolution.persisted && resolution.read_only);
-    assert_eq!(resolution.authority.unwrap().actor_project_id, None);
-    let mut authorization = fixture.authorization.clone();
-    authorization.provenance.authority.root_thread_id = "thread:other".into();
-    let document = OwnedDocumentModule::new("profile-1", "library-1", &fixture.kernel);
-    let read = |authorization| {
-        document.read(
-            &fixture.execution_context(),
-            ModuleReadRequest {
-                contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                read: OwnedDocumentRead::AgentSemanticSnapshot {
-                    store_epoch: StoreEpoch("epoch-1".into()),
-                    authorization: Box::new(authorization),
-                    document_id: "document:target".into(),
-                    target_block_id: "page:target".into(),
-                    prepare_title: false,
-                    prepare_body: false,
-                    block_guards: vec![],
-                    max_depth: None,
-                    cursor: None,
-                    limit: None,
-                },
-            },
-        )
-    };
-    assert_eq!(
-        read(authorization).unwrap_err().code,
-        CoreErrorCode::Unauthorized
-    );
-    fixture.workspace_apply(
-        "create-actor-session",
-        ProjectWorkspaceIntent::CreateSession {
-            session_id: "session:actor".into(),
-            project_id: None,
-            title: "Actor".into(),
-            initial_page_ids: vec![],
-        },
-    );
-    fixture.workspace_apply(
-        "link-actor-session",
-        ProjectWorkspaceIntent::MutateSession {
-            session_id: "session:actor".into(),
-            intent: nodex_core_contracts::workspace::ProjectSessionIntent::LinkThread {
-                thread_id: "thread:actor".into(),
-                expected_project_id: None,
-                thread_patch: None,
-                execution_location: None,
-            },
-        },
-    );
-    fixture.workspace_apply(
-        "move-actor",
-        ProjectWorkspaceIntent::MoveThread {
-            thread_id: "thread:actor".into(),
-            source: nodex_core_contracts::workspace::ProjectWorkspaceThreadLane::Projectless,
-            target: nodex_core_contracts::workspace::ProjectWorkspaceThreadLane::Project {
-                project_id: "project:default".into(),
-            },
-            placement: nodex_core_contracts::workspace::ProjectWorkspaceThreadPlacement::Default,
-            metadata: Default::default(),
-            workspace_transition: None,
-            runtime_workspace_roots: None,
-            project_access_grant: None,
-        },
-    );
-    assert_eq!(
-        read(fixture.authorization.clone()).unwrap_err().code,
-        CoreErrorCode::Unauthorized
-    );
-}
-
-#[test]
 fn projectless_agent_authority_keeps_relocation_source_foreign_keys_mandatory() {
-    let fixture = Fixture::projectless(false);
+    let fixture = Fixture::projectless();
     fixture.kernel.writer().call(|connection| {
         let rejected = connection.execute("INSERT INTO block_relocation_source_states(
             relocation_id,document_id,project_id,library_id,generation,head_seq,pre_state_vector,

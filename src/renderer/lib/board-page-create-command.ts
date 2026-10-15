@@ -57,7 +57,7 @@ function materializeCommittedCreateFallback(
   };
 }
 
-async function requireWritableSelectedView(
+async function requireSelectedView(
   store: ReturnType<typeof getBoardProjectStore>,
   databaseViewId: string | null | undefined,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -68,10 +68,9 @@ async function requireWritableSelectedView(
   }
 
   const databaseView = store.getSnapshot().databaseView;
-  if (databaseView?.readOnlyReason === null) return { ok: true };
+  if (databaseView) return { ok: true };
 
-  const error =
-    databaseView?.readOnlyReason ?? "The selected Database View is not ready for writes";
+  const error = "The selected Database View is not ready for writes";
   store.setError(error);
   return { ok: false, error };
 }
@@ -90,9 +89,9 @@ export async function createBoardPage({
   placement = "bottom",
 }: CreateBoardPageCommandInput): Promise<PageCreateMutationResult> {
   const store = getBoardProjectStore(projectId, databaseViewId ?? null);
-  const writable = await requireWritableSelectedView(store, databaseViewId);
-  if (!writable.ok) {
-    return { status: "error", error: writable.error };
+  const selectedView = await requireSelectedView(store, databaseViewId);
+  if (!selectedView.ok) {
+    return { status: "error", error: selectedView.error };
   }
   if (!isWorkflowStatus(status)) {
     return {

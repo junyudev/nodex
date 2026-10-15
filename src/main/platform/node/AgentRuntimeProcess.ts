@@ -41,7 +41,74 @@ const replySchema = z.discriminatedUnion("success", [
     error: z.object({ message: z.string(), tag: z.string().optional() }),
   }),
 ]);
+const hostIdentitySchema = z.object({
+  runtimeId: z.string().min(1),
+  runtimeGeneration: z.string().min(1),
+});
+const hostToolIdentitySchema = z.union([
+  hostIdentitySchema
+    .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
+    .passthrough(),
+  hostIdentitySchema
+    .extend({
+      threadId: z.string().min(1),
+      source: z.literal("native-session"),
+      runId: z.null(),
+      attemptId: z.null(),
+      incarnationId: z.string().min(1),
+      providerSessionId: z.string().min(1),
+      nativeGeneration: z.number().int().positive(),
+    })
+    .passthrough(),
+]);
+const hostRequestSchema = z.discriminatedUnion("operation", [
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("provider.auth"),
+    identity: hostIdentitySchema.extend({ providerInstanceId: z.string().min(1) }),
+    refresh: z.boolean(),
+    previousAccountId: z.string().nullable(),
+  }),
+  z
+    .object({
+      type: z.literal("host.request"),
+      id: z.string().min(1),
+      operation: z.literal("turn.prepare"),
+      identity: hostIdentitySchema
+        .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
+        .passthrough(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("host.request"),
+      id: z.string().min(1),
+      operation: z.literal("tool.call"),
+      identity: hostToolIdentitySchema,
+    })
+    .passthrough(),
+]);
+const nativeSourceSchema = z.object({
+  runtimeGeneration: z.string(),
+  threadId: z.string(),
+  providerSessionId: z.string(),
+  nativeGeneration: z.number().int(),
+  providerThreadId: z.string(),
+  nativeThreadId: z.string(),
+});
 const notificationSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("native.voice.event"),
+    claimId: z.string(),
+    source: nativeSourceSchema,
+    notification: z.object({ method: z.string(), params: z.unknown() }),
+  }),
+  z.object({
+    type: z.literal("native.voice.closed"),
+    claimId: z.string(),
+    source: nativeSourceSchema,
+  }),
   z.object({ type: z.literal("ready"), identity: identitySchema }),
   z.object({
     type: z.literal("event"),
@@ -49,6 +116,14 @@ const notificationSchema = z.discriminatedUnion("type", [
     event: z.object({ sequence: z.number().int().nonnegative(), event: z.unknown() }).passthrough(),
   }),
   z.object({ type: z.literal("event.error"), subscriptionId: z.string(), message: z.string() }),
+  z.object({
+    type: z.literal("execution.native-session.closed"),
+    runtimeId: z.string().min(1),
+    runtimeGeneration: z.string().min(1),
+    providerSessionId: z.string().min(1),
+    nativeGeneration: z.number().int().positive(),
+    incarnationId: z.string().min(1),
+  }),
   z.object({
     type: z.literal("execution.lifecycle"),
     subscriptionId: z.string(),
@@ -59,21 +134,7 @@ const notificationSchema = z.discriminatedUnion("type", [
     runId: z.string().optional(),
     runStatus: z.string().optional(),
   }),
-  z
-    .object({
-      type: z.literal("host.request"),
-      id: z.string().min(1),
-      operation: z.enum(["turn.prepare", "tool.call"]),
-      identity: z
-        .object({
-          runtimeId: z.string().min(1),
-          runtimeGeneration: z.string().min(1),
-          threadId: z.string().min(1),
-          runId: z.string().min(1),
-        })
-        .passthrough(),
-    })
-    .passthrough(),
+  hostRequestSchema,
 ]);
 
 export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimeProcessError>()(
@@ -116,7 +177,9 @@ export interface AgentRuntimeProcessConnection {
   >;
   /** Independent metadata delivery budget; transcript bursts cannot evict lifecycle observations. */
   readonly subscribeExecutionNotifications: Effect.Effect<
-    Stream.Stream<AgentRuntimeProcessDelivery>, never, Scope.Scope
+    Stream.Stream<AgentRuntimeProcessDelivery>,
+    never,
+    Scope.Scope
   >;
 }
 
@@ -250,7 +313,11 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       return;
     }
     if (notification.type !== "host.request") {
-      if (notification.type === "execution.lifecycle" || notification.type === "event.error") {
+      if (
+        notification.type === "execution.lifecycle" ||
+        notification.type === "execution.native-session.closed" ||
+        notification.type === "event.error"
+      ) {
         const delivery = yield* Ref.updateAndGet(executionDelivery, (current) => current + 1);
         yield* PubSub.publish(executionNotifications, { delivery, notification });
       }
@@ -362,9 +429,10 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     const waiter = yield* Deferred.make<unknown, AgentRuntimeProcessError>();
     const refused = yield* Ref.modify(state, (current) => {
       if (current.closed) return [current.closed, current] as const;
-      const capacity = method === "storage.snapshot.release" || method === "shutdown"
-        ? MAXIMUM_PENDING_REQUESTS + 2
-        : MAXIMUM_PENDING_REQUESTS;
+      const capacity =
+        method === "storage.snapshot.release" || method === "shutdown"
+          ? MAXIMUM_PENDING_REQUESTS + 2
+          : MAXIMUM_PENDING_REQUESTS;
       if (current.pending.size >= capacity)
         return [
           new AgentRuntimeProcessError({

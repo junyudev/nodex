@@ -244,6 +244,11 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
         Deferred.succeed(delivered, notification).pipe(Effect.asVoid),
       );
 
+      const raw = yield* acp.raw.notifications.pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.forkScoped({ startImmediately: true }),
+      );
       yield* Queue.offer(
         input,
         yield* encodeJsonl(SessionUpdateNotification, {
@@ -260,7 +265,7 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
       );
 
       assert.strictEqual(yield* Deferred.await(delivered), normalized);
-      const [retained] = yield* acp.raw.notifications.pipe(Stream.take(1), Stream.runCollect);
+      const [retained] = yield* Fiber.join(raw);
       assert.deepEqual(retained, {
         _tag: "SessionUpdate",
         method: "session/update",
@@ -399,13 +404,18 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
           .pipe(Effect.flip);
         assert.equal(setMode._tag === "AcpRequestError" ? setMode.code : undefined, -32601);
 
+        const raw = yield* acp.raw.notifications.pipe(
+          Stream.take(2),
+          Stream.runCollect,
+          Effect.forkScoped({ startImmediately: true }),
+        );
         const prompt = yield* acp.agent.prompt({
           sessionId: session.sessionId,
           prompt: [{ type: "text", text: "hello" }],
         });
         assert.equal(prompt.stopReason, "end_turn");
 
-        const streamed = yield* Stream.runCollect(Stream.take(acp.raw.notifications, 2));
+        const streamed = yield* Fiber.join(raw);
         assert.equal(streamed.length, 2);
         assert.equal(streamed[0]?._tag, "SessionUpdate");
         assert.equal(streamed[1]?._tag, "ElicitationComplete");

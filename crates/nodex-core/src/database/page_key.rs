@@ -519,9 +519,8 @@ pub(crate) fn current_page_key_for_database_page(
         .map_err(StoreError::from)
 }
 
-/// Resolves every canonical candidate within a Library. Callers must apply
-/// their Project/grant authorization before deciding whether the result is
-/// unique or returning any Page metadata.
+/// Resolves canonical candidates in the current Library before applying explicit
+/// query selection and lifecycle rules. Project is a locator coordinate.
 pub(crate) fn resolve_page_key_matches_in_library(
     connection: &Connection,
     library_id: &str,
@@ -875,7 +874,7 @@ mod tests {
         let mut connection = open_writer(&home.join("nodex.db")).expect("writer");
         prepare_profile_store(&mut connection, &home).expect("fresh store");
         with_immediate_transaction(&mut connection, |transaction| {
-            crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
                 transaction,
             )?;
             transaction.execute(

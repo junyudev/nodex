@@ -23,11 +23,11 @@ export const make = Effect.gen(function* () {
     if (!input.caller.isActive()) return toolFailure("call_withdrawn");
     const authority = yield* captureAppToolAuthority(input.caller, turns);
     if (!authority) return toolFailure("authority_unavailable");
-    if (authority.readOnly) return toolFailure("read_only_turn");
+
     const { operationId: suppliedOperationId, ...request } = parsed.data;
     const operationId =
       suppliedOperationId ??
-      createStableOperationId("app.handoff_session", authority.frozenAtMs, [
+      createStableOperationId("app.handoff_session", authority.admittedAtMs, [
         identity.identity.profileId,
         input.caller.threadId,
         input.caller.turnId,

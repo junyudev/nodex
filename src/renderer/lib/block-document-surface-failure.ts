@@ -2,13 +2,9 @@ import type {
   DocumentSyncCommandError,
   OwnedDocumentDescriptor,
 } from "../../shared/block-documents";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 
-export type BlockDocumentSurfaceFailureReason =
-  | "access-revoked"
-  | "fatal"
-  | "reset-required"
-  | "startup";
+export type BlockDocumentSurfaceFailureReason = "fatal" | "reset-required" | "startup";
 
 interface BlockDocumentSurfaceErrorOptions {
   readonly syncError?: DocumentSyncCommandError;
@@ -42,10 +38,9 @@ const resolveFailureTitle = (
   reason: BlockDocumentSurfaceFailureReason,
   syncError: DocumentSyncCommandError | undefined,
 ): string => {
-  if (reason === "access-revoked") return "Access to this content is unavailable";
   if (reason === "reset-required") return "This content needs to resync";
-  if (syncError?.code === "unauthorized") {
-    return "Nodex can’t access this content";
+  if (syncError?.code === "invalid_session") {
+    return "This document connection has ended";
   }
   if (syncError?.code === "document_not_found") {
     return "This content is no longer available";
@@ -64,9 +59,6 @@ const resolveFailureTitle = (
   }
   return "Couldn’t open this collaborative content";
 };
-
-export const isBlockDocumentAccessRevoked = (error: Error): boolean =>
-  error instanceof BlockDocumentSurfaceError && error.syncError?.code === "unauthorized";
 
 const appendDiagnostic = (
   diagnostics: string[],
@@ -91,7 +83,7 @@ export const resolveBlockDocumentSurfaceFailure = ({
   appendDiagnostic(diagnostics, "Code", syncError?.code ?? "runtime_error");
   appendDiagnostic(diagnostics, "Message", message || title);
   appendDiagnostic(diagnostics, "Library", descriptor.libraryId);
-  appendDiagnostic(diagnostics, "Access", contentAccessContextKey(descriptor.accessContext));
+  appendDiagnostic(diagnostics, "Access", contentRoutingContextKey(descriptor.routingContext));
   appendDiagnostic(diagnostics, "Owner block", descriptor.ownerBlockId);
   appendDiagnostic(diagnostics, "Document", descriptor.documentId);
   appendDiagnostic(diagnostics, "Store epoch", descriptor.storeEpoch);
@@ -105,12 +97,7 @@ export const resolveBlockDocumentSurfaceFailure = ({
 
   return {
     title,
-    description:
-      reason === "access-revoked"
-        ? "Your current access no longer includes this content."
-        : message && message !== title
-          ? message
-          : "Reload to try again.",
+    description: message && message !== title ? message : "Reload to try again.",
     diagnostics: diagnostics.join("\n"),
   };
 };

@@ -516,7 +516,10 @@ export function selectBlockedTurnIds(conversation: CodexConversationSnapshot | n
   return selectConversationLiveRequests(conversation)
     .filter((request) => isBlockingConversationRequest(request))
     .map((request) => request.turnId)
-    .filter((turnId, index, values) => values.indexOf(turnId) === index);
+    .filter(
+      (turnId, index, values): turnId is string =>
+        turnId !== null && values.indexOf(turnId) === index,
+    );
 }
 
 export function selectConversationSearchUnits(

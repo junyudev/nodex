@@ -51,7 +51,7 @@ export interface AcpClientOptions {
 }
 
 type AcpClientRaw = {
-  readonly notifications: Stream.Stream<AcpProtocol.AcpIncomingNotification>;
+  readonly notifications: Stream.Stream<AcpProtocol.AcpIncomingNotification, AcpError.AcpError>;
   readonly request: (method: string, payload: unknown) => Effect.Effect<unknown, AcpError.AcpError>;
   readonly notify: (method: string, payload: unknown) => Effect.Effect<void, AcpError.AcpError>;
 };

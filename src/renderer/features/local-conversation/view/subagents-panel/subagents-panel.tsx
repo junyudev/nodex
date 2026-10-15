@@ -109,12 +109,16 @@ function SubagentOverviewRowView({
   doneClockMs,
   nowMs,
   onSelect,
+  onStop,
+  stoppingTaskId,
   previewLineCount,
   row,
 }: {
   doneClockMs: number;
   nowMs: number;
   onSelect: (row: CodexSubagentOverviewRow) => void;
+  onStop?: (row: CodexSubagentOverviewRow) => void;
+  stoppingTaskId?: string | null;
   previewLineCount: 1 | 2;
   row: CodexSubagentOverviewRow;
 }) {
@@ -147,6 +151,19 @@ function SubagentOverviewRowView({
     return (
       <div className={cn(className, "cursor-default")} data-subagent-overview-unavailable="true">
         {content}
+        {onStop &&
+        row.canStop !== false &&
+        (row.status === "active" || row.status === "waiting") ? (
+          <button
+            type="button"
+            aria-label={`Stop ${row.displayName}`}
+            disabled={stoppingTaskId === row.threadId}
+            onClick={() => onStop(row)}
+            className="shrink-0 cursor-interaction px-1 py-1 text-xs text-token-text-tertiary hover:text-token-foreground disabled:opacity-50"
+          >
+            Stop
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -171,7 +188,10 @@ function SubagentOverviewSectionView({
   initialLimit,
   nowMs,
   onSelect,
+  onStop,
+  stoppingTaskId,
   onToggleExpanded,
+  onLoadMore,
   previewLineCount,
   section,
   sectionId,
@@ -185,15 +205,20 @@ function SubagentOverviewSectionView({
   initialLimit: number;
   nowMs: number;
   onSelect: (row: CodexSubagentOverviewRow) => void;
+  onStop?: (row: CodexSubagentOverviewRow) => void;
+  stoppingTaskId?: string | null;
   onToggleExpanded: (sectionId: SubagentSectionId, expanded: boolean) => void;
+  onLoadMore?: (sectionId: SubagentSectionId) => void;
   previewLineCount: 1 | 2;
   section: CodexSubagentOverviewSection;
   sectionId: SubagentSectionId;
   title: string;
   titleTrailing?: string | null;
 }) {
-  const visibleRows = expanded ? section.rows : section.rows.slice(0, initialLimit);
-  const hasMore = sectionHasMore(section, initialLimit);
+  const visibleRows = onLoadMore || expanded ? section.rows : section.rows.slice(0, initialLimit);
+  const hasMore = onLoadMore
+    ? section.continuation !== null
+    : sectionHasMore(section, initialLimit);
 
   return (
     <section className={className} data-subagent-overview-section={sectionId}>
@@ -217,6 +242,8 @@ function SubagentOverviewSectionView({
               doneClockMs={doneClockMs}
               previewLineCount={previewLineCount}
               onSelect={onSelect}
+              onStop={onStop}
+              stoppingTaskId={stoppingTaskId}
             />
           ))}
         </div>
@@ -225,9 +252,11 @@ function SubagentOverviewSectionView({
         <button
           type="button"
           className="mt-2 ml-10 cursor-interaction rounded-md px-1 text-sm text-token-text-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2"
-          onClick={() => onToggleExpanded(sectionId, !expanded)}
+          onClick={() =>
+            onLoadMore ? onLoadMore(sectionId) : onToggleExpanded(sectionId, !expanded)
+          }
         >
-          {expanded ? "Show less" : "Show more"}
+          {!onLoadMore && expanded ? "Show less" : "Show more"}
         </button>
       ) : null}
     </section>
@@ -249,10 +278,10 @@ export function SubagentsPanelOverview({
 }: {
   onError: (message: string) => void;
   onSelect: (row: CodexSubagentOverviewRow) => void;
-  projectId: string;
+  projectId: string | null;
   rootThreadId: string;
 }) {
-  const codexControl = useCodexAppServerControl(projectId, rootThreadId);
+  const codexControl = useCodexAppServerControl(rootThreadId);
   const readSubagentOverview = codexControl.readSubagentOverview;
   const [overview, setOverview] = useState<CodexSubagentOverviewWindow | null>(null);
   const [expandedSections, setExpandedSections] = useState<ReadonlySet<SubagentSectionId>>(
@@ -382,13 +411,19 @@ export function SubagentsPanelOverview({
 export function SubagentsPanelOverviewContent({
   expandedSections = EMPTY_EXPANDED_SECTIONS,
   onSelect,
+  onStop,
+  stoppingTaskId,
   onToggleExpanded = ignoreSubagentSectionToggle,
+  onLoadMore,
   overview,
   rootThreadId,
 }: {
   expandedSections?: ReadonlySet<SubagentSectionId>;
   onSelect: (row: CodexSubagentOverviewRow) => void;
+  onStop?: (row: CodexSubagentOverviewRow) => void;
+  stoppingTaskId?: string | null;
   onToggleExpanded?: (sectionId: SubagentSectionId, expanded: boolean) => void;
+  onLoadMore?: (sectionId: SubagentSectionId) => void;
   overview: CodexSubagentOverviewWindow;
   rootThreadId: string;
 }) {
@@ -396,7 +431,7 @@ export function SubagentsPanelOverviewContent({
     (row) => row.status === "active" || row.status === "waiting",
   );
   const [nowMs, setNowMs] = useState(Date.now);
-  const doneClockMsRef = useRef(Date.now());
+  const [doneClockMs] = useState(Date.now);
 
   useEffect(() => {
     if (!hasLiveRows) return;
@@ -415,13 +450,16 @@ export function SubagentsPanelOverviewContent({
     >
       <div className="mx-auto w-full max-w-[var(--thread-content-max-width)]">
         <SubagentOverviewSectionView
-          doneClockMs={doneClockMsRef.current}
+          doneClockMs={doneClockMs}
           emptyState="No active subagents"
           expanded={expandedSections.has("active")}
           initialLimit={CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT}
           nowMs={nowMs}
           onSelect={onSelect}
+          onStop={onStop}
+          stoppingTaskId={stoppingTaskId}
           onToggleExpanded={onToggleExpanded}
+          onLoadMore={onLoadMore}
           previewLineCount={1}
           section={overview.active}
           sectionId="active"
@@ -431,12 +469,13 @@ export function SubagentsPanelOverviewContent({
         {doneCount > 0 ? (
           <SubagentOverviewSectionView
             className="mt-6"
-            doneClockMs={doneClockMsRef.current}
+            doneClockMs={doneClockMs}
             expanded={expandedSections.has("done")}
             initialLimit={CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT}
             nowMs={nowMs}
             onSelect={onSelect}
             onToggleExpanded={onToggleExpanded}
+            onLoadMore={onLoadMore}
             previewLineCount={1}
             section={overview.done}
             sectionId="done"

@@ -78,7 +78,6 @@ import type {
   PageOwnershipPathReadModel,
   ResolvePageOwnershipPathInput,
 } from "../../shared/page-ownership-paths";
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
 import { isWorkflowStatus } from "../../shared/workflow-status";
 import { isPriority } from "../../shared/priority";
 import { CoreModuleResponseError } from "./core-client";
@@ -123,7 +122,7 @@ export interface CoreLibraryModuleAdapter {
     readonly projectId: string;
   } | null>;
   readPageLifecyclePreflight(
-    projectId: string,
+    projectId: string | null,
     pageId: string,
   ): Promise<PageLifecyclePreflightResultV2>;
   applyPageLifecycleMutation(
@@ -156,11 +155,6 @@ const toCorePlacedTarget = (target: LibraryPlacedResourceTarget) => {
   }
   return { kind: target.kind, canvas_id: target.canvasId } as const;
 };
-
-const toCoreResourceTarget = (target: LibraryResourceTarget) =>
-  target.kind === "file"
-    ? ({ kind: target.kind, file_id: target.fileId } as const)
-    : toCorePlacedTarget(target);
 
 const toCoreParent = (parent: LibraryNavigationParent) => {
   if (parent.kind === "library") return parent;
@@ -325,11 +319,7 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
       };
     case "metadata":
       return { kind: "metadata" };
-    case "resource_project_access":
-      return {
-        kind: "resource_project_access",
-        target: toCoreResourceTarget(read.target),
-      };
+
     case "canvas_target":
       return { kind: "canvas_target", canvas_id: read.canvasId };
     case "children":
@@ -674,23 +664,7 @@ const toCoreIntent = (operation: LibraryApplyOperation): LibraryIntent => {
             : { kind: "database", database_id: operation.target.databaseId },
         expected_metadata_revision: operation.target.expectedMetadataRevision,
       };
-    case "grant_project_access":
-      return {
-        kind: operation.kind,
-        project_id: operation.projectId,
-        target: toCoreResourceTarget(operation.target),
-        access: operation.access,
-      };
-    case "set_project_access":
-      return {
-        kind: operation.kind,
-        target: toCoreResourceTarget(operation.target),
-        changes: operation.changes.map((change) => ({
-          project_id: change.projectId,
-          access: change.access,
-          expected_revision: change.expectedRevision,
-        })),
-      };
+
     case "apply_page_metadata_properties":
       return {
         kind: operation.kind,
@@ -949,42 +923,7 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
       };
     case "metadata":
       return { kind: value.kind } as const;
-    case "resource_project_access":
-      return {
-        kind: value.kind,
-        value: {
-          target: fromCoreCreatedTarget(value.value.target),
-          projects: value.value.projects.map((project) => ({
-            projectId: project.project_id,
-            projectName: project.project_name,
-            appearance: project.appearance,
-            lifecycle: project.lifecycle,
-            directGrant: project.direct_grant
-              ? {
-                  access: project.direct_grant.access,
-                  revision: project.direct_grant.revision,
-                }
-              : null,
-            inheritedSources: project.inherited_sources.map((source) => {
-              if (source.kind === "ancestor_page") {
-                return {
-                  kind: source.kind,
-                  pageId: source.page_id,
-                  pageTitle: source.page_title,
-                  access: source.access,
-                } as const;
-              }
-              return {
-                kind: source.kind,
-                databaseId: parseDatabaseId(source.database_id),
-                databaseName: source.database_name,
-                access: source.access,
-              } as const;
-            }),
-            effectiveAccess: project.effective_access ?? null,
-          })),
-        },
-      } as const;
+
     case "canvas_target":
       return {
         kind: value.kind,
@@ -1243,14 +1182,10 @@ const mapPageDataSourceContext = (context: CorePageDetail["data_source_context"]
   };
 };
 
-const mapPageDetail = (
-  detail: CorePageDetail,
-  authorization: NonNullable<LibraryReadSnapshot["authorization"]>,
-): Readonly<Record<string, unknown>> => ({
+const mapPageDetail = (detail: CorePageDetail): Readonly<Record<string, unknown>> => ({
   libraryId: detail.library_id,
   storeEpoch: detail.store_epoch,
   commitSeq: detail.commit_seq,
-  authorization,
   page: detail.page,
   document: {
     readiness: detail.document.readiness,
@@ -1436,16 +1371,12 @@ function validatePageSearchMetadataItem(item: CorePageSearchMetadataItem): void 
     throw new Error("Core Page search metadata returned invalid property collections");
   }
   if (
-    !Array.isArray(item.authorized_project_ids) ||
-    item.authorized_project_ids.some(
-      (projectId) => typeof projectId !== "string" || projectId.length === 0,
-    ) ||
     !Array.isArray(item.data_source_ids) ||
     item.data_source_ids.some(
       (dataSourceId) => typeof dataSourceId !== "string" || dataSourceId.length === 0,
     )
   ) {
-    throw new Error("Core Page search metadata returned invalid authorization scope");
+    throw new Error("Core Page search metadata returned invalid Data Source identities");
   }
 }
 
@@ -1462,7 +1393,6 @@ const mapPageTarget = (
     readonly libraryId: string;
     readonly storeEpoch: string;
     readonly commitSeq: number;
-    readonly authorization: AuthorizedReadStamp | null;
   },
 ): PageTargetReadModel => {
   const base = authority;
@@ -1512,7 +1442,6 @@ const mapPageOwnershipPath = (
     readonly libraryId: string;
     readonly storeEpoch: string;
     readonly commitSeq: number;
-    readonly authorization: AuthorizedReadStamp | null;
   },
 ): PageOwnershipPathReadModel => {
   if (value.status === "missing") {
@@ -1657,8 +1586,8 @@ const mapLifecyclePage = (page: NonNullable<CorePageLifecyclePreflight["page"]>)
 };
 
 const mapPageLifecyclePreflight = (input: CorePageLifecyclePreflight) => ({
-  defaultView: mapLifecycleDefaultView(input.default_view),
-  tagsProperty: mapLifecycleTagsProperty(input.tags_property),
+  defaultView: input.default_view === null ? null : mapLifecycleDefaultView(input.default_view),
+  tagsProperty: input.tags_property === null ? null : mapLifecycleTagsProperty(input.tags_property),
   reservedBlockType: input.reserved_block_type ?? null,
   page: input.page ? mapLifecyclePage(input.page) : null,
 });
@@ -1673,8 +1602,6 @@ const pageLifecyclePreflightFailure = (error: unknown): PageLifecyclePreflightRe
           return "store_not_initialized";
         case "not_found":
           return "page_not_found";
-        case "unauthorized":
-          return "authorization_denied";
         case "store_corrupt":
         case "invalid_document_schema":
           return "state_corrupt";
@@ -1716,8 +1643,6 @@ const pageLifecycleMutationFailure = (
         return "operation_id_collision";
       case "not_found":
         return "page_not_found";
-      case "unauthorized":
-        return "authorization_denied";
       case "revision_conflict":
         return request.operation.kind === "move_page_in_library"
           ? "parent_revision_conflict"
@@ -1753,7 +1678,6 @@ const mapCoreError = (error: CoreModuleError): LibraryModuleError => {
       case "idempotency_window_expired":
         return "recovery_required";
       case "not_found":
-      case "unauthorized":
         return "resource_not_found";
       case "revision_conflict":
         return "revision_conflict";
@@ -1795,8 +1719,6 @@ const pageDetailError = (error: unknown): PageDetailError => {
           return "invalid_request";
         case "not_found":
           return "page_not_found";
-        case "unauthorized":
-          return "authorization_denied";
         case "store_corrupt":
         case "invalid_document_schema":
           return "page_detail_corrupt";
@@ -1824,7 +1746,6 @@ const pageHistoryError = (error: unknown): PageHistoryCommandError => {
         case "invalid_input":
           return "invalid_page_history_request";
         case "not_found":
-        case "unauthorized":
           return "page_not_found";
         case "store_corrupt":
         case "invalid_document_schema":
@@ -1961,7 +1882,6 @@ export const createCoreLibraryModuleAdapter = (
     pageId: string,
   ): Promise<{
     readonly detail: CorePageDetail;
-    readonly authorization: NonNullable<LibraryReadSnapshot["authorization"]>;
   }> => {
     const snapshot = await input.client.libraryRead({
       kind: "page_detail",
@@ -1977,10 +1897,7 @@ export const createCoreLibraryModuleAdapter = (
     if (detail.commit_seq !== snapshot.commit_head) {
       throw new Error("Core Page Detail crossed its LocalCommit snapshot boundary");
     }
-    if (!snapshot.authorization) {
-      throw new Error("Core Page Detail omitted its authorization stamp");
-    }
-    return { detail, authorization: snapshot.authorization };
+    return { detail };
   };
 
   type CoreBlockPropertyApplyRequest = {
@@ -2079,7 +1996,6 @@ export const createCoreLibraryModuleAdapter = (
             libraryId: input.libraryId,
             storeEpoch: snapshot.store_epoch,
             commitSeq: snapshot.commit_head,
-            authorization: snapshot.authorization ?? null,
             value: mapReadValue(snapshot),
           },
         };
@@ -2238,7 +2154,7 @@ export const createCoreLibraryModuleAdapter = (
         return parsePageDetailResult({
           ok: true,
           value: {
-            ...mapPageDetail(snapshot.detail, snapshot.authorization),
+            ...mapPageDetail(snapshot.detail),
             projectId,
           },
         });
@@ -2252,8 +2168,7 @@ export const createCoreLibraryModuleAdapter = (
         return parseLibraryPageDetailResult({
           ok: true,
           value: {
-            ...mapPageDetail(snapshot.detail, snapshot.authorization),
-            accessContext: { kind: "library" },
+            ...mapPageDetail(snapshot.detail),
           },
         });
       } catch (error) {
@@ -2329,7 +2244,7 @@ export const createCoreLibraryModuleAdapter = (
       }
       const results = snapshot.value.items.map((item): PageSearchResult => {
         if (
-          !item.project_id ||
+          (item.project_id !== null && typeof item.project_id !== "string") ||
           !item.page_id ||
           typeof item.title !== "string" ||
           (item.page_key !== null && typeof item.page_key !== "string") ||
@@ -2381,12 +2296,6 @@ export const createCoreLibraryModuleAdapter = (
         libraryId: input.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
-        authorization: {
-          libraryId: input.libraryId,
-          storeEpoch: snapshot.store_epoch,
-          coveredCommitSeq: snapshot.commit_head,
-          projectIds: [...projectIds],
-        },
         documents: value.items.map((item) => {
           validatePageSearchMetadataItem(item);
           return {
@@ -2405,7 +2314,7 @@ export const createCoreLibraryModuleAdapter = (
               propertyName: property.property_name,
               text: property.text,
             })),
-            authorizedProjectIds: [...item.authorized_project_ids],
+            projectIds: [...item.project_ids],
             dataSourceIds: [...item.data_source_ids],
           };
         }),
@@ -2444,7 +2353,6 @@ export const createCoreLibraryModuleAdapter = (
         libraryId: input.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
-        authorization: snapshot.authorization ?? null,
       });
     },
     resolvePageOwnershipPath: async (request) => {
@@ -2464,7 +2372,6 @@ export const createCoreLibraryModuleAdapter = (
         libraryId: input.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
-        authorization: snapshot.authorization ?? null,
       });
     },
     findPageLocation: async (pageId) => {
@@ -2477,10 +2384,10 @@ export const createCoreLibraryModuleAdapter = (
       }
       const value = snapshot.value.value;
       if (!value) return null;
-      if (value.page_id !== pageId || !value.access_project_id) {
+      if (value.page_id !== pageId) {
         throw new Error("Core Page location escaped its requested identity");
       }
-      return { pageId: value.page_id, projectId: value.access_project_id };
+      return value.project_id ? { pageId: value.page_id, projectId: value.project_id } : null;
     },
     findViewLocation: async (viewId) => {
       const snapshot = await input.client.libraryRead({
@@ -2492,14 +2399,15 @@ export const createCoreLibraryModuleAdapter = (
       }
       const value = snapshot.value.value;
       if (!value) return null;
-      if (value.view_id !== viewId || !value.access_project_id) {
+      if (value.view_id !== viewId) {
         throw new Error("Core View location escaped its requested identity");
       }
+      if (!value.project_id) return null;
       return {
         viewId: value.view_id,
         dataSourceId: value.data_source_id,
         databaseId: value.database_id,
-        projectId: value.access_project_id,
+        projectId: value.project_id,
       };
     },
     readPageLifecyclePreflight: async (projectId, pageId) => {
@@ -2605,7 +2513,7 @@ export const createCoreLibraryModuleAdapter = (
         localCommit: result.localCommit,
         value: {
           mutationId: result.value.mutationId,
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           storeEpoch: result.value.storeEpoch,
           duplicate: result.value.duplicate,
           fields: result.value.fields,

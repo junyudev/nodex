@@ -502,7 +502,8 @@ export const agentConversationTurnId = (
 
 /** Stable provider turn/item IDs feed the same Markdown, activity, request and composer UI. */
 export function projectAgentConversation(
-  presentation: AgentBackendSessionPresentation,
+  presentation: Pick<AgentBackendSessionPresentation, "snapshot"> &
+    Partial<Omit<AgentBackendSessionPresentation, "snapshot">>,
   summary: CodexThreadSummary,
 ): CodexConversationSnapshot {
   const { snapshot } = presentation;
@@ -589,7 +590,7 @@ export function projectAgentConversation(
       ];
     },
   );
-  const configOptions = snapshot.metadata?.configOptions ?? presentation.configOptions;
+  const configOptions = snapshot.metadata?.configOptions ?? presentation.configOptions ?? [];
   const model = configOptions.find((option) => option.category === "model");
   const modelId =
     snapshot.metadata?.effectiveSelection?.model ??
@@ -660,9 +661,9 @@ export function projectAgentConversation(
     },
     capabilityFlags: {
       canEditLastUserTurn:
-        (snapshot.metadata?.capabilities ?? presentation.capabilities).controls?.rollback === true,
+        (snapshot.metadata?.capabilities ?? presentation.capabilities)?.controls?.rollback === true,
       canForkFromTurn:
-        (snapshot.metadata?.capabilities ?? presentation.capabilities).controls?.fork === true,
+        (snapshot.metadata?.capabilities ?? presentation.capabilities)?.controls?.fork === true,
       canSearch: true,
       canCollapseTurns: true,
     },

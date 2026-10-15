@@ -31,14 +31,14 @@ describe("Canvas document presence contract", () => {
     expect("user" in publication).toBe(false);
     expect(
       canonicalizeCanvasPresencePublishRequest({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         clientSessionId: "session-1",
         publication,
       }),
     ).toMatchObject({ publication });
     expect(() =>
       canonicalizeCanvasPresencePublishRequest({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         publication,
       }),
     ).toThrow("client session");
@@ -111,7 +111,7 @@ describe("Canvas document presence contract", () => {
       canonicalizeCanvasPresenceRealtimeEvent({
         type: "canvas_presence_snapshot",
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: publication.documentId,
         generation: publication.generation,
         presences: [event],
@@ -121,7 +121,7 @@ describe("Canvas document presence contract", () => {
       canonicalizeCanvasPresenceRealtimeEvent({
         type: "canvas_presence_snapshot",
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: publication.documentId,
         generation: publication.generation,
         presences: [{ ...event, state: null }],
@@ -131,7 +131,7 @@ describe("Canvas document presence contract", () => {
       canonicalizeCanvasPresenceRealtimeEvent({
         type: "canvas_presence_snapshot",
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: publication.documentId,
         generation: publication.generation,
         presences: [event, event],
@@ -141,7 +141,7 @@ describe("Canvas document presence contract", () => {
       canonicalizeCanvasPresenceRealtimeEvent({
         type: "canvas_presence_snapshot",
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: publication.documentId,
         generation: publication.generation,
         presences: Array.from({ length: 300 }, (_, index) => ({

@@ -469,7 +469,7 @@ export function boundedTimelineEncodedBytes(input: {
 }
 
 /**
- * Builds a partial thread projection with full control-plane arrays and a
+ * Builds a partial thread projection with its admitted control-plane arrays and a
  * bounded recent timeline window plus matching local turnItems.
  */
 export function buildBoundedThreadProjection(input: {
@@ -520,7 +520,11 @@ export function buildBoundedThreadProjection(input: {
   );
   const windowPolicy: ThreadHistoryPagePolicy = {
     maxUserTurns: policy.maxUserTurns,
-    maxItems: policy.maxItems,
+    maxItems: Math.max(
+      1,
+      policy.maxItems -
+        controlProjection.turnItems.filter((item) => item.type === "run_interrupt_request").length,
+    ),
     // Zero still admits the first row via the at-least-one rule.
     maxEncodedBytes: windowBudget,
   };

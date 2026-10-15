@@ -116,7 +116,6 @@ test("long file paths retain exact submission context before and after pinning",
           harness.profile.initialProjectsDirectory,
           "File submission",
         );
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "FILE_LINK_PROBE");
         const link = page
           .locator('button[data-file-reference="true"]')

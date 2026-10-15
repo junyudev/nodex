@@ -1,9 +1,9 @@
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 
 export interface DatabaseViewPageTarget {
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly projectId: string | null;
   readonly pageId: string;
   readonly pageKey: string | null;

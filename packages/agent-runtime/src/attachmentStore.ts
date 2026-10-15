@@ -208,6 +208,7 @@ export function planAttachmentClaim(input: {
   readonly attachmentsDir: string;
   readonly threadId: string;
   readonly attachmentId: string;
+  readonly contentDigest: string;
 }): AttachmentClaimPlan {
   const uuid = parseAttachmentUuid(input.attachmentId);
   const requestedSegment = parseThreadSegmentFromAttachmentId(input.attachmentId);
@@ -230,7 +231,14 @@ export function planAttachmentClaim(input: {
     return { ok: false, reason: "attachment not found (removed or expired)" };
   }
   const fileExtension = parseAttachmentFileExtension(input.attachmentId) ?? undefined;
-  const finalId = createAttachmentId(input.threadId, fileExtension);
+  const deterministicId = createDeterministicAttachmentId(
+    input.threadId,
+    `${uuid}:${input.contentDigest}`,
+  );
+  const finalId =
+    deterministicId === null
+      ? null
+      : `${deterministicId}${attachmentIdExtensionSuffix(fileExtension)}`;
   if (!finalId) {
     return { ok: false, reason: "failed to create attachment id" };
   }

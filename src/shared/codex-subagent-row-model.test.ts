@@ -75,6 +75,38 @@ function rows(
 }
 
 describe("shared subagent row contract", () => {
+  test("available child metadata remains interactive without spawn history or after a later parent Turn", () => {
+    const child: SubagentConversation = {
+      turns: [],
+      threadRuntimeStatus: { type: "active", activeFlags: [] },
+      archived: false,
+    };
+    expect(rows([], child)[0]?.canInteract).toBe(true);
+    expect(
+      rows([], child, {
+        parentTurns: [turn([], "completed-parent"), turn([activity("active")], "later-parent")],
+      })[0]?.canInteract,
+    ).toBe(true);
+    expect(rows([], { ...child, archived: true })).toEqual([]);
+    expect(
+      rows([], child, {
+        childMemberships: [
+          {
+            threadId: "child",
+            parentThreadId: "root",
+            role: "backgroundChild",
+            task: {
+              id: "native-task",
+              bornTurnSequence: null,
+              description: "Native task",
+              status: "running",
+            },
+          },
+        ],
+      })[0]?.canInteract,
+    ).toBe(false);
+  });
+
   test("runtime status has the same priority independently of active waiting flags", () => {
     expect(rows([action("spawnAgent", "pendingInit")])[0]?.status).toBe("waiting");
     expect(
@@ -121,7 +153,7 @@ describe("shared subagent row contract", () => {
       "Scout",
     );
   });
-  test("modern activity makes source-only descendants inline and nested grants use immediate parent history", () => {
+  test("modern activity locates inline descendants while their own metadata supplies availability", () => {
     const result = rows([activity("active")], undefined, {
       childMemberships: [
         {
@@ -132,6 +164,7 @@ describe("shared subagent row contract", () => {
         },
       ],
       knownConversationsById: {
+        nested: { threadId: "nested", turns: [], archived: false },
         child: {
           turns: [
             turn([
@@ -250,6 +283,7 @@ describe("shared subagent row contract", () => {
         { threadId: "nested", parentThreadId: "child", role: "backgroundChild", createdAtMs: 50 },
       ],
       knownConversationsById: {
+        nested: { threadId: "nested", turns: [], archived: false },
         child: {
           turns: [
             turn(

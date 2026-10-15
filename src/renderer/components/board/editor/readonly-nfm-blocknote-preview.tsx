@@ -470,7 +470,7 @@ function ReadonlyNfmPreviewContent({
           ? {
               openPage: (targetPageId) =>
                 hostRuntime.openPage?.({
-                  accessContext: hostRuntime.contentAccessContext,
+                  routingContext: hostRuntime.contentRoutingContext,
                   pageId: targetPageId,
                 }),
             }

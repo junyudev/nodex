@@ -8,7 +8,6 @@ export {
   GROK_DEFAULT_INSTANCE_ID,
   GROK_PROVIDER,
   GrokProviderCapabilitiesV2,
-  grokLaunchRuntimeMode,
   makeGrokAcpAdapterFlavor,
   makeGrokAdapterV2,
   type GrokAdapterV2Options,

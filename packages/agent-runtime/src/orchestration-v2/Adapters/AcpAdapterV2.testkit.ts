@@ -244,3 +244,44 @@ export function makeAcpReplayRuntime(input: {
       );
     });
 }
+
+/** Each runtime_exit closes one physical connection; the next part opens a fresh one. */
+export function makeAcpReplayRuntimeSequence(input: Parameters<typeof makeAcpReplayRuntime>[0]) {
+  const segments: AcpReplayTranscript[] = [];
+  let entries: AcpReplayTranscript["entries"][number][] = [];
+  for (const entry of input.transcript.entries) {
+    entries.push(entry);
+    if (entry.type !== "runtime_exit") continue;
+    segments.push({ ...input.transcript, entries });
+    entries = [];
+  }
+  if (entries.length > 0) segments.push({ ...input.transcript, entries });
+  let opened = 0;
+  const launched: Effect.Effect<void, EffectAcpErrors.AcpError>[] = [];
+  const assertComplete = Effect.suspend(() => Effect.all(launched, { discard: true }));
+  const assertAllComplete = Effect.suspend(() =>
+    opened === segments.length
+      ? assertComplete
+      : Effect.fail(
+          new EffectAcpErrors.AcpTransportError({
+            detail: `ACP replay opened ${opened} of ${segments.length} physical connections`,
+            cause: input.transcript.scenario,
+          }),
+        ),
+  );
+  const makeRuntime: ReturnType<typeof makeAcpReplayRuntime> = (runtimeInput) =>
+    Effect.suspend(() => {
+      const segment = segments[opened];
+      if (segment === undefined)
+        return Effect.fail(
+          new EffectAcpErrors.AcpTransportError({
+            detail: "ACP replay has no next physical connection",
+            cause: input.transcript.scenario,
+          }),
+        );
+      const statusPath = `${input.statusPath}.${opened++}`;
+      launched.push(makeAcpReplayCompletenessAssertion(input.fileSystem, statusPath, segment));
+      return makeAcpReplayRuntime({ ...input, transcript: segment, statusPath })(runtimeInput);
+    });
+  return { makeRuntime, assertComplete, assertAllComplete };
+}

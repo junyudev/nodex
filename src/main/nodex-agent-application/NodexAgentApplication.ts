@@ -294,12 +294,9 @@ export const live: Layer.Layer<
             tool: request.tool,
             output: GetContextV3OutputSchema.parse({
               data: {
+                libraryId: authority.identity.libraryId,
                 project: null,
-                access: {
-                  read: request.access.read,
-                  write: request.access.write,
-                  domains: request.access.read === "allowed" ? ["page", "database"] : [],
-                },
+
                 ...(request.input.include?.markdownGuide
                   ? { markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE }
                   : {}),
@@ -345,11 +342,7 @@ export const live: Layer.Layer<
             ok: false,
             error: {
               code:
-                databaseResult.error.code === "authorization_denied"
-                  ? "authorization_denied"
-                  : databaseResult.error.code === "resource_not_found"
-                    ? "not_found"
-                    : "internal_error",
+                databaseResult.error.code === "resource_not_found" ? "not_found" : "internal_error",
               message: databaseResult.error.message,
               retryable: databaseResult.error.retryable,
               recovery: "none",
@@ -404,6 +397,7 @@ export const live: Layer.Layer<
           tool: request.tool,
           output: GetContextV3OutputSchema.parse({
             data: {
+              libraryId: authority.identity.libraryId,
               project: {
                 projectId: project.id,
                 name: project.name,
@@ -411,11 +405,7 @@ export const live: Layer.Layer<
                 libraryId: project.library_id,
                 boundDatabaseId: project.database_id,
               },
-              access: {
-                read: request.access.read,
-                write: project.lifecycle === "active" ? request.access.write : "unavailable",
-                domains: request.access.read === "allowed" ? ["page", "database"] : [],
-              },
+
               ...(databases ? { databases } : {}),
               ...(request.input.include?.markdownGuide
                 ? { markdownGuide: NESTED_MARKDOWN_AGENT_GUIDE }

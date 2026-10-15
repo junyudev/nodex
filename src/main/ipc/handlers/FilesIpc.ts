@@ -8,7 +8,7 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import { lookup as lookupMimeType } from "mime-types";
-import { parseContentAccessContext } from "../../../shared/content-access-context";
+import { parseContentRoutingContext } from "../../../shared/content-routing-context";
 import { FILE_IMPORT_MAX_BYTES, FILE_MAX_BYTES } from "../../../shared/file-resources";
 import { MainConfig } from "../../app/MainConfig";
 import { LibraryModule } from "../../library-application/LibraryModule";
@@ -78,7 +78,7 @@ export const live: Layer.Layer<
         catch: (cause) => new FilesIpcError({ operation, cause }),
       });
     const prepare = (
-      access: ReturnType<typeof parseContentAccessContext>,
+      access: ReturnType<typeof parseContentRoutingContext>,
       operationId: string,
       idempotencySlot: string,
       input: { logicalPath: string; mimeType: string; bytes: Uint8Array },
@@ -109,7 +109,7 @@ export const live: Layer.Layer<
         };
       });
     const prepareLocalSelection = (
-      access: ReturnType<typeof parseContentAccessContext>,
+      access: ReturnType<typeof parseContentRoutingContext>,
       operationId: string,
       selectedPaths: readonly string[],
     ) =>
@@ -147,7 +147,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const access = yield* Effect.try({
-              try: () => parseContentAccessContext(rawAccess),
+              try: () => parseContentRoutingContext(rawAccess),
               catch: (cause) => new FilesIpcError({ operation: "parse-access", cause }),
             });
             const owner = windows.get(event.sender.id);
@@ -178,7 +178,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const access = yield* Effect.try({
-              try: () => parseContentAccessContext(rawAccess),
+              try: () => parseContentRoutingContext(rawAccess),
               catch: (cause) => new FilesIpcError({ operation: "parse-access", cause }),
             });
             const files = yield* prepareLocalSelection(access, input.operationId, input.localPaths);
@@ -193,7 +193,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const access = yield* Effect.try({
-              try: () => parseContentAccessContext(rawAccess),
+              try: () => parseContentRoutingContext(rawAccess),
               catch: (cause) => new FilesIpcError({ operation: "parse-access", cause }),
             });
             if (input.source.kind === "bytes") {
@@ -233,7 +233,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const { access, input } = yield* run("parse-file-read", () => ({
-              access: parseContentAccessContext(rawAccess),
+              access: parseContentRoutingContext(rawAccess),
               input: readFileBytesSchema.parse(rawInput),
             }));
             return yield* library.readFileBlob(access, input);
@@ -247,7 +247,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const { access, input } = yield* run("parse-file-materialize", () => ({
-              access: parseContentAccessContext(rawAccess),
+              access: parseContentRoutingContext(rawAccess),
               input: saveFileSchema.parse(rawInput),
             }));
             const { defaultName, ...read } = input;
@@ -262,7 +262,7 @@ export const live: Layer.Layer<
         Effect.andThen(
           Effect.gen(function* () {
             const { access, input } = yield* run("parse-file-save", () => ({
-              access: parseContentAccessContext(rawAccess),
+              access: parseContentRoutingContext(rawAccess),
               input: saveFileSchema.parse(rawInput),
             }));
             const owner = windows.get(event.sender.id);

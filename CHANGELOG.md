@@ -10,9 +10,11 @@ All notable changes to this project will be documented in this file.
 
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
 
-- Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and approvals. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.
+- Codex and Claude chats can delegate work to each other, open each child's conversation, and receive results after the parent Turn ends. Delegated work, result delivery and cancellation survive runtime restart, while Profile snapshots preserve the complete execution history and native conversation identities.
 
-- Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, approvals, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and continued with their native history. Separate profiles support environment variables, encrypted tokens and custom models. Authorized application tools and scheduled tasks use the selected native profile.
+- Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and questions. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.
+
+- Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and inspected through their native history. Separate profiles support environment variables, encrypted tokens and custom models. Application tools and scheduled tasks use the selected native profile.
 
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Admitted Codex chats can start realtime voice with microphone and output mute controls. Calls stay active while switching chats within the same window and release their microphone when ended or cancelled.
@@ -27,6 +29,8 @@ All notable changes to this project will be documented in this file.
 - Files can preview remote text, Markdown, images and PDFs while preserving the source host when pinned or reopened.
 
 ### Changed
+
+- Agents can read and write all Projects, Pages and Library resources in the current Profile, including across Sessions and from background tasks. Native execution uses full access and automatically approves permission requests while retaining questions that need your input.
 
 - Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted and live voice segments keep their native order alongside text; missing promoted content and failed item-history pages can be restored in place. Completed responses show their available outputs, and active voice work keeps its live status. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text, with highlights restored as visible rows change.
 

@@ -11,7 +11,7 @@ import { createPageDocument } from "../../shared/block-documents";
 
 const scope = {
   libraryId: "library",
-  accessContext: { kind: "project" as const, projectId: "project" },
+  routingContext: { kind: "project" as const, projectId: "project" },
   storeEpoch: "epoch",
   documentId: "document",
   ownerBlockId: "page",
@@ -57,7 +57,7 @@ test("a retained Page reports only actionable saves and clears after acknowledge
     expect(contentEditIssues.getSnapshot()).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     const issue = contentEditIssues.getSnapshot()[0]!;
-    expect(issue.scope.accessContext).toEqual(scope.accessContext);
+    expect(issue.scope.routingContext).toEqual(scope.routingContext);
     expect(issue.location).toEqual({
       target: { kind: "page", pageId: "page" },
       label: "Research notes",
@@ -109,7 +109,7 @@ test("a Canvas problem and its retained request use the same draft identity", as
     const issue = contentEditIssues.getSnapshot()[0]!;
     expect(issue.id).toBe(
       contentRecoveryIssueId(
-        { ...scope, accessContext: { kind: "library" } },
+        { ...scope, routingContext: { kind: "library" } },
         "epoch",
         "canvas:document:mutation",
       ),
@@ -119,7 +119,7 @@ test("a Canvas problem and its retained request use the same draft identity", as
     expect(contentEditIssues.getSnapshot()[0]?.id).toBe(issue.id);
     const review = issue.actions[0]!;
     if (review.kind !== "review") throw new Error("Expected recovery review");
-    expect(review.scope.accessContext).toEqual(scope.accessContext);
+    expect(review.scope.routingContext).toEqual(scope.routingContext);
     await review.prepare?.();
     expect(checkpointRecovery).toHaveBeenCalledOnce();
   } finally {

@@ -41,9 +41,7 @@ function createStartRequest(
       cwd: "/repo",
       fileAttachments: [],
       addedFiles: [],
-      agentMode: "auto",
-      permissionProfileId: undefined,
-      shouldSendPermissionOverrides: true,
+
       model: null,
       serviceTier: null,
       reasoningEffort: null,

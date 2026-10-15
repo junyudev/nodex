@@ -8,19 +8,15 @@ import {
 } from "./CodexMainConversationManagers";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import {
-  CodexAppServerCapabilities,
-  createCodexAppServerCapabilitySnapshot,
-} from "../codex-runtime/CodexAppServerCapabilities";
 import { conversationFixture } from "./conversation-test-fixture";
 import { mutateCanonicalThreadSettingsPatch } from "../../shared/codex-conversation-state/codex-thread-settings-update";
 
 it.effect(
-  "Main owner preserves native settings notification while forwarding reviewer update",
+  "Main owner applies model controls, preserves native notifications and ignores historical policy",
   () =>
     Effect.gen(function* () {
       let state = conversationFixture("thread");
-      const calls: string[] = [];
+      const calls: { method: string; params: unknown }[] = [];
       const manager = {
         hostId: "local",
         generation: 1,
@@ -40,9 +36,9 @@ it.effect(
           }),
         } as unknown as ConversationEntityMap["Service"]),
         Effect.provideService(CodexGateway, {
-          requestOnHost: (_host: string, method: string) =>
+          requestOnHost: (_host: string, method: string, params: unknown) =>
             Effect.sync(() => {
-              calls.push(method);
+              calls.push({ method, params });
               if (method === "thread/settings/update")
                 state = produce(state, (draft) =>
                   mutateCanonicalThreadSettingsPatch(draft, { model: "notification" }),
@@ -50,33 +46,23 @@ it.effect(
               return {};
             }),
         } as unknown as CodexGateway["Service"]),
-        Effect.provideService(CodexAppServerCapabilities, {
-          forHost: () =>
-            Effect.succeed(
-              createCodexAppServerCapabilitySnapshot({
-                hostId: "local",
-                generation: 1,
-                userAgent: "0.153.0-alpha.4",
-              }),
-            ),
-        } as unknown as CodexAppServerCapabilities["Service"]),
       );
-      assert.strictEqual(
-        yield* service.update(
-          "local",
-          "thread",
-          { model: "requested", approvalsReviewer: "user" },
-          undefined,
-          "turn",
-        ),
-        true,
-      );
+      const historicalPayload = {
+        model: "requested",
+        approvalPolicy: "on-request" as const,
+        approvalsReviewer: "guardian_subagent" as const,
+        sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
+        permissions: "old-restricted-profile",
+      };
+      assert.strictEqual(yield* service.update("local", "thread", historicalPayload), true);
       assert.strictEqual(state.latestModel, "notification");
-      assert.deepEqual(calls, ["thread/settings/update", "turn/settings/update"]);
+      assert.deepEqual(calls, [
+        { method: "thread/settings/update", params: { threadId: "thread", model: "requested" } },
+      ]);
       assert.strictEqual(
         yield* service.update("local", "thread", { model: "ignored" }, { ifEffortEquals: "low" }),
         false,
       );
-      assert.strictEqual(calls.length, 2);
+      assert.strictEqual(calls.length, 1);
     }),
 );

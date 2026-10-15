@@ -1,4 +1,4 @@
-import { CommandId, MessageId, NonNegativeInt, ProjectId, ThreadId } from "@t3tools/contracts";
+import { CommandId, NonNegativeInt, ProjectId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -6,7 +6,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as OrchestrationCommandReceipts from "../persistence/OrchestrationCommandReceipts.ts";
-import type { CommandReceiptIdentity } from "./CommandIdentity.ts";
 
 /**
  * ERRORS
@@ -35,19 +34,9 @@ export class CommandReceiptStoreReadError extends Schema.TaggedError<CommandRece
   }
 }
 
-export class CommandReceiptIdentityConflictError extends Schema.TaggedError<CommandReceiptIdentityConflictError>()(
-  "CommandReceiptIdentityConflictError",
-  { commandId: CommandId, detail: Schema.String },
-) {
-  override get message(): string {
-    return `Command ${this.commandId} cannot be reused: ${this.detail}`;
-  }
-}
-
 export const CommandReceiptStoreV2Error = Schema.Union([
   CommandReceiptStoreWriteError,
   CommandReceiptStoreReadError,
-  CommandReceiptIdentityConflictError,
 ]);
 export type CommandReceiptStoreV2Error = typeof CommandReceiptStoreV2Error.Type;
 
@@ -65,48 +54,8 @@ export const CommandReceiptV2 = Schema.Struct({
   resultSequence: NonNegativeInt,
   status: CommandReceiptV2Status,
   error: Schema.NullOr(Schema.String),
-  requestFingerprint: Schema.optional(Schema.String),
-  messageId: Schema.optional(MessageId),
-  messageFingerprint: Schema.optional(Schema.String),
 });
 export type CommandReceiptV2 = typeof CommandReceiptV2.Type;
-
-export function assertCommandIdentity(
-  receipt: CommandReceiptV2,
-  input: CommandReceiptIdentity & { readonly commandId: CommandId; readonly threadId: ThreadId },
-): Effect.Effect<void, CommandReceiptIdentityConflictError> {
-  if (
-    receipt.threadId === input.threadId &&
-    (input.requestFingerprint === undefined ||
-      receipt.requestFingerprint === input.requestFingerprint)
-  ) {
-    return Effect.void;
-  }
-  return Effect.fail(
-    new CommandReceiptIdentityConflictError({
-      commandId: input.commandId,
-      detail: "the command ID belongs to a different immutable request",
-    }),
-  );
-}
-
-export function assertMessageIdentity(
-  receipt: CommandReceiptV2,
-  input: CommandReceiptIdentity & { readonly commandId: CommandId; readonly threadId: ThreadId },
-): Effect.Effect<void, CommandReceiptIdentityConflictError> {
-  if (
-    receipt.threadId === input.threadId &&
-    receipt.messageId === input.messageId &&
-    receipt.messageFingerprint === input.messageFingerprint
-  )
-    return Effect.void;
-  return Effect.fail(
-    new CommandReceiptIdentityConflictError({
-      commandId: input.commandId,
-      detail: "the message ID belongs to a different immutable submission",
-    }),
-  );
-}
 
 /** Receipt for a project command; shares the receipt table with thread commands. */
 export const ProjectCommandReceiptV2 = Schema.Struct({
@@ -117,7 +66,6 @@ export const ProjectCommandReceiptV2 = Schema.Struct({
   resultSequence: NonNegativeInt,
   status: CommandReceiptV2Status,
   error: Schema.NullOr(Schema.String),
-  requestFingerprint: Schema.optional(Schema.String),
 });
 export type ProjectCommandReceiptV2 = typeof ProjectCommandReceiptV2.Type;
 
@@ -138,10 +86,6 @@ export interface CommandReceiptStoreV2Shape {
   readonly getProjectByCommandId: (
     commandId: CommandId,
   ) => Effect.Effect<Option.Option<ProjectCommandReceiptV2>, CommandReceiptStoreV2Error>;
-  readonly getByMessageId: (
-    messageId: MessageId,
-    commandId: CommandId,
-  ) => Effect.Effect<Option.Option<CommandReceiptV2>, CommandReceiptStoreV2Error>;
 }
 
 export class CommandReceiptStoreV2 extends Context.Service<
@@ -174,13 +118,6 @@ function fromApplicationReceipt(receipt: OrchestrationCommandReceipts.Orchestrat
     resultSequence: receipt.resultSequence,
     status: receipt.status,
     error: receipt.error,
-    ...(receipt.requestFingerprint === undefined
-      ? {}
-      : { requestFingerprint: receipt.requestFingerprint }),
-    ...(receipt.messageId === undefined ? {} : { messageId: receipt.messageId }),
-    ...(receipt.messageFingerprint === undefined
-      ? {}
-      : { messageFingerprint: receipt.messageFingerprint }),
   });
 }
 
@@ -197,15 +134,6 @@ function toApplicationReceipt(
     resultSequence: receipt.resultSequence,
     status: receipt.status,
     error: receipt.error,
-    ...("requestFingerprint" in receipt && receipt.requestFingerprint !== undefined
-      ? { requestFingerprint: receipt.requestFingerprint }
-      : {}),
-    ...("messageId" in receipt && receipt.messageId !== undefined
-      ? { messageId: receipt.messageId }
-      : {}),
-    ...("messageFingerprint" in receipt && receipt.messageFingerprint !== undefined
-      ? { messageFingerprint: receipt.messageFingerprint }
-      : {}),
   };
 }
 
@@ -271,19 +199,7 @@ const layerBase: Layer.Layer<
                   resultSequence: receipt.value.resultSequence,
                   status: receipt.value.status,
                   error: receipt.value.error,
-                  ...(receipt.value.requestFingerprint === undefined
-                    ? {}
-                    : { requestFingerprint: receipt.value.requestFingerprint }),
                 }).pipe(Effect.map(Option.some)),
-          ),
-          Effect.mapError((cause) => new CommandReceiptStoreReadError({ commandId, cause })),
-        ),
-      getByMessageId: (messageId, commandId) =>
-        receipts.getByMessageId({ messageId }).pipe(
-          Effect.flatMap((receipt) =>
-            Option.isNone(receipt) || receipt.value.aggregateKind !== "thread"
-              ? Effect.succeed(Option.none())
-              : fromApplicationReceipt(receipt.value).pipe(Effect.map(Option.some)),
           ),
           Effect.mapError((cause) => new CommandReceiptStoreReadError({ commandId, cause })),
         ),

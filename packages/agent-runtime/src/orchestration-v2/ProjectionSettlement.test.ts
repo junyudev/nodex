@@ -438,8 +438,10 @@ it.effect(
       const runId = yield* createRun(threadId);
       yield* createItem(threadId, runId, "completed");
       yield* sql`UPDATE orchestration_v2_projection_turn_items SET payload_json = '{broken' WHERE thread_id = ${threadId}`;
-      yield* sql`UPDATE orchestration_v2_projection_runs SET payload_json = '{broken' WHERE thread_id = ${source}`;
+      yield* sql`UPDATE orchestration_v2_projection_runs SET payload_json = '{"broken":true}' WHERE thread_id = ${source}`;
       yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+      (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
+       parent_item_id, ordinal, type, status, updated_at, payload_json)
       SELECT 'history:' || value, i.thread_id, i.run_id, i.node_id, i.provider_thread_id, i.provider_turn_id,
         i.parent_item_id, i.ordinal + value, i.type, i.status, i.updated_at, i.payload_json
       FROM orchestration_v2_projection_turn_items i, json_each(${encodeNumbers(Array.from({ length: 2000 }, (_, i) => i + 1))})
@@ -524,6 +526,7 @@ it.effect("shell failure lookups stay on the thread's own turn items", () =>
     // The pending secret request lookup is bounded the same way.
     const secretLookups = plan.filter((row) => row.detail.startsWith("SEARCH secret "));
     assert.lengthOf(secretLookups, 1);
-    assert.include(secretLookups[0]!.detail, "turn_items_thread_run_idx");
+    assert.include(secretLookups[0]!.detail, "turn_items_pending_secret_idx");
+    assert.include(secretLookups[0]!.detail, "thread_id=?");
   }).pipe(Effect.provide(layerSql)),
 );

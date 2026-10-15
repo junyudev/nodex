@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::agent::{AgentAuthorizationTarget, AgentProjectResourceAction};
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
@@ -25,8 +24,7 @@ use crate::infrastructure::{
     cursor::{self, CollectionCursorSubject, CursorDirection, KeysetCoordinate},
 };
 
-use super::authorization::{authorize_database, authorize_required, project_primary_database};
-use super::is_trusted_library_database_context;
+use super::project_default::project_primary_database;
 
 pub(crate) struct PageDataSourceProjection {
     pub page_key: Option<String>,
@@ -408,31 +406,23 @@ pub(crate) fn read_at_commit_head(
         .project_id
         .as_ref()
         .map(|project_id| project_id.0.as_str());
-    if project_id.is_none() && !is_trusted_library_database_context(context) {
-        return Err(unauthorized(
-            "Database reads require a Project or trusted Library scope",
-        ));
-    }
+
     let primary_database_id = project_id
         .map(|project_id| project_primary_database(connection, library_id, project_id))
         .transpose()?
         .flatten();
     let store_epoch = crate::document::read_store_epoch(connection)?;
     let mut value = match request {
-        DatabaseRead::CatalogWindow { window } => {
-            let project_id = project_id
-                .ok_or_else(|| invalid("Library Database reads require a concrete target"))?;
-            DatabaseReadValue::CatalogWindow {
-                databases: catalog_window(
-                    connection,
-                    library_id,
-                    commit_head,
-                    project_id,
-                    primary_database_id.as_deref(),
-                    &window,
-                )?,
-            }
-        }
+        DatabaseRead::CatalogWindow { window } => DatabaseReadValue::CatalogWindow {
+            databases: catalog_window(
+                connection,
+                library_id,
+                commit_head,
+                project_id,
+                primary_database_id.as_deref(),
+                &window,
+            )?,
+        },
         DatabaseRead::Database { target } => {
             let database_id = match target {
                 DatabaseIdentityTarget::ProjectDefault => primary_database_id
@@ -440,12 +430,7 @@ pub(crate) fn read_at_commit_head(
                     .ok_or_else(|| not_found("Project has no primary Database"))?,
                 DatabaseIdentityTarget::Database { database_id } => database_id,
             };
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+
             DatabaseReadValue::Database {
                 value: database_descriptor(connection, library_id, &database_id)?,
             }
@@ -455,14 +440,7 @@ pub(crate) fn read_at_commit_head(
             name_hint,
             requested_prefix,
         } => {
-            if let Some(database_id) = database_id.as_deref() {
-                authorize_required(
-                    connection,
-                    project_id,
-                    primary_database_id.as_deref(),
-                    database_id,
-                )?;
-            }
+            if let Some(_database_id) = database_id.as_deref() {}
             let preview = super::preview_page_key_prefix(
                 connection,
                 library_id,
@@ -492,12 +470,6 @@ pub(crate) fn read_at_commit_head(
             }
         }
         DatabaseRead::PageKeyNamespace { database_id } => {
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
             let settings =
                 super::page_key_namespace_settings(connection, library_id, &database_id)?
                     .ok_or_else(|| {
@@ -524,31 +496,18 @@ pub(crate) fn read_at_commit_head(
         DatabaseRead::DataSourceWindow {
             database_id,
             window,
-        } => {
-            authorize_required(
+        } => DatabaseReadValue::DataSourceWindow {
+            data_sources: data_source_window(
                 connection,
-                project_id,
-                primary_database_id.as_deref(),
+                library_id,
+                commit_head,
                 &database_id,
-            )?;
-            DatabaseReadValue::DataSourceWindow {
-                data_sources: data_source_window(
-                    connection,
-                    library_id,
-                    commit_head,
-                    &database_id,
-                    &window,
-                )?,
-            }
-        }
+                &window,
+            )?,
+        },
         DatabaseRead::DataSource { data_source_id } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             DatabaseReadValue::DataSource {
                 value: data_source_descriptor(connection, library_id, &data_source_id)?,
             }
@@ -557,13 +516,8 @@ pub(crate) fn read_at_commit_head(
             data_source_id,
             window,
         } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             DatabaseReadValue::PropertyWindow {
                 properties: property_window(
                     connection,
@@ -579,13 +533,8 @@ pub(crate) fn read_at_commit_head(
             property_id,
             window,
         } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             DatabaseReadValue::OptionWindow {
                 options: option_window(
                     connection,
@@ -598,13 +547,8 @@ pub(crate) fn read_at_commit_head(
             }
         }
         DatabaseRead::PageLayout { data_source_id } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             DatabaseReadValue::PageLayout {
                 value: page_layout(connection, &data_source_id)?,
             }
@@ -612,24 +556,16 @@ pub(crate) fn read_at_commit_head(
         DatabaseRead::ViewDescriptorWindow {
             database_id,
             window,
-        } => {
-            authorize_required(
+        } => DatabaseReadValue::ViewDescriptorWindow {
+            views: view_descriptor_window(
                 connection,
+                library_id,
+                commit_head,
                 project_id,
-                primary_database_id.as_deref(),
                 &database_id,
-            )?;
-            DatabaseReadValue::ViewDescriptorWindow {
-                views: view_descriptor_window(
-                    connection,
-                    library_id,
-                    commit_head,
-                    project_id,
-                    &database_id,
-                    &window,
-                )?,
-            }
-        }
+                &window,
+            )?,
+        },
         DatabaseRead::View { view_id } => {
             authorize_view(
                 connection,
@@ -787,12 +723,10 @@ pub(crate) fn read_at_commit_head(
             group_scope,
             projection_property_ids,
         } => {
-            let project_id = project_id
-                .ok_or_else(|| invalid("Database View context requires a Project scope"))?;
             authorize_view(
                 connection,
                 library_id,
-                Some(project_id),
+                project_id,
                 primary_database_id.as_deref(),
                 &view_id,
             )?;
@@ -822,7 +756,7 @@ pub(crate) fn read_at_commit_head(
                 value: Box::new(DatabaseViewContext {
                     database: container_record(connection, library_id, &projection.database_id)?,
                     data_source: source_record(connection, library_id, &projection.data_source_id)?,
-                    view: view_record(connection, library_id, Some(project_id), &view_id)?,
+                    view: view_record(connection, library_id, project_id, &view_id)?,
                     properties,
                     groups: projection.groups,
                     projection: projection.projection,
@@ -836,12 +770,7 @@ pub(crate) fn read_at_commit_head(
                     let database_id = primary_database_id
                         .clone()
                         .ok_or_else(|| not_found("Project has no primary Database"))?;
-                    authorize_required(
-                        connection,
-                        project_id,
-                        primary_database_id.as_deref(),
-                        &database_id,
-                    )?;
+
                     default_view_for_database(connection, &database_id)?
                 }
                 DatabaseRowsTarget::View { view_id } => {
@@ -862,12 +791,7 @@ pub(crate) fn read_at_commit_head(
         DatabaseRead::RowDetail { page_id } => {
             let data_source_id = data_source_for_page(connection, library_id, &page_id)?;
             let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+
             let view_id = default_view_for_database(connection, &database_id)?;
             DatabaseReadValue::RowDetail {
                 value: Box::new(super::window::row_detail(
@@ -879,13 +803,8 @@ pub(crate) fn read_at_commit_head(
             data_source_id,
             query,
         } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             let window = CollectionWindowRequest {
                 after: query.cursor.clone(),
                 first: query.limit,
@@ -910,15 +829,11 @@ pub(crate) fn read_at_commit_head(
             data_source_id,
             query,
         } => {
-            crate::library::agent_authorization::authorize_execution(
+            crate::library::agent_execution::validate_execution(
                 connection,
                 context,
                 library_id,
                 &query.authorization,
-                &AgentAuthorizationTarget::DataSource {
-                    data_source_id: data_source_id.clone(),
-                },
-                AgentProjectResourceAction::Read,
             )?;
             let window = CollectionWindowRequest {
                 after: query.cursor.clone(),
@@ -947,15 +862,11 @@ pub(crate) fn read_at_commit_head(
             }
         }
         DatabaseRead::AgentViewQuery { view_id, query } => {
-            crate::library::agent_authorization::authorize_execution(
+            crate::library::agent_execution::validate_execution(
                 connection,
                 context,
                 library_id,
                 &query.authorization,
-                &AgentAuthorizationTarget::View {
-                    view_id: view_id.clone(),
-                },
-                AgentProjectResourceAction::Read,
             )?;
             validate_view_filter_access_by_id(connection, library_id, project_id, &view_id)?;
             let window = CollectionWindowRequest {
@@ -979,13 +890,9 @@ pub(crate) fn read_at_commit_head(
             }
         }
         DatabaseRead::RelationTargetWindow { address, window } => {
-            let database_id = database_for_source(connection, library_id, &address.data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id =
+                database_for_source(connection, library_id, &address.data_source_id)?;
+
             DatabaseReadValue::RelationTargetWindow {
                 value: super::relation::target_window(
                     connection,
@@ -1002,13 +909,8 @@ pub(crate) fn read_at_commit_head(
             query,
             window,
         } => {
-            let database_id = database_for_source(connection, library_id, &data_source_id)?;
-            authorize_required(
-                connection,
-                project_id,
-                primary_database_id.as_deref(),
-                &database_id,
-            )?;
+            let _database_id = database_for_source(connection, library_id, &data_source_id)?;
+
             DatabaseReadValue::RelationCandidateWindow {
                 candidates: super::relation::candidate_window(
                     connection,
@@ -1058,11 +960,10 @@ fn resolve_view_read_target(
         DatabaseViewReadTarget::ProjectDefault => {
             let database_id =
                 primary_database_id.ok_or_else(|| not_found("Project has no primary Database"))?;
-            authorize_required(connection, project_id, primary_database_id, database_id)?;
+
             (default_view_for_database(connection, database_id)?, None)
         }
         DatabaseViewReadTarget::Database { database_id } => {
-            authorize_required(connection, project_id, primary_database_id, &database_id)?;
             (default_view_for_database(connection, &database_id)?, None)
         }
         DatabaseViewReadTarget::View { view_id } => {
@@ -1098,12 +999,11 @@ fn resolve_view_read_target(
 fn authorize_view(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
-    primary_database_id: Option<&str>,
+    _project_id: Option<&str>,
+    _primary_database_id: Option<&str>,
     view_id: &str,
 ) -> Result<(), StoreError> {
-    let database_id = database_for_view(connection, library_id, view_id)?;
-    authorize_required(connection, project_id, primary_database_id, &database_id)
+    database_for_view(connection, library_id, view_id).map(|_| ())
 }
 
 pub(super) fn view_personal_preferences(
@@ -1315,7 +1215,7 @@ fn catalog_window(
     connection: &Connection,
     library_id: &str,
     commit_head: i64,
-    project_id: &str,
+    project_id: Option<&str>,
     primary_database_id: Option<&str>,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<DatabaseDescriptor>, StoreError> {
@@ -1351,9 +1251,6 @@ fn catalog_window(
             break;
         };
         let database_id = row.get::<_, String>(0)?;
-        if !authorize_database(connection, project_id, primary_database_id, &database_id)? {
-            continue;
-        }
         candidates.push(WindowCandidate {
             item: database_descriptor(connection, library_id, &database_id)?,
             coordinate: KeysetCoordinate {
@@ -1883,7 +1780,7 @@ fn container_record(
 ) -> Result<DatabaseContainerRecord, StoreError> {
     connection
         .query_row(
-            "SELECT block_id, library_id, name, lifecycle, default_view_id, access_revision, \
+            "SELECT block_id, library_id, name, lifecycle, default_view_id, \
                metadata_revision, created_at, updated_at FROM database_containers \
              WHERE block_id = ?1 AND library_id = ?2",
             params![database_id, library_id],
@@ -1894,10 +1791,9 @@ fn container_record(
                     name: row.get(2)?,
                     lifecycle: row.get(3)?,
                     default_view_id: row.get(4)?,
-                    access_revision: row.get(5)?,
-                    metadata_revision: row.get(6)?,
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    metadata_revision: row.get(5)?,
+                    created_at: row.get(6)?,
+                    updated_at: row.get(7)?,
                 })
             },
         )
@@ -1942,8 +1838,7 @@ fn container_record_value(record: &DatabaseContainerRecord) -> Value {
         "name": record.name,
         "lifecycle": record.lifecycle,
         "defaultViewId": record.default_view_id,
-        "accessRevision": record.access_revision,
-        "metadataRevision": record.metadata_revision,
+                "metadataRevision": record.metadata_revision,
         "createdAt": record.created_at,
         "updatedAt": record.updated_at,
     })
@@ -2350,10 +2245,6 @@ fn invalid(message: &str) -> StoreError {
 
 fn not_found(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::NotFound, message, false)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn corrupt(message: &str) -> StoreError {

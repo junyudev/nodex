@@ -1,6 +1,6 @@
 # ADR 0065: Claude Code owns its native execution and configuration
 
-- Status: Accepted
+- Status: Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md)
 - Date: 2026-09-29
 - Owners: Nodex maintainers
 - Refines: [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md)
@@ -38,25 +38,21 @@ and helper work. Requested intelligence is independent of effective startup meta
 inheritance rebuilds only an idle Query without overrides. Metadata, task liveness and content share
 the same revision-fenced snapshot and delta path.
 
-SDK permission callbacks become scoped pending requests. Responses must name a live request in
-that exact Thread; questions require answers, and closing or stopping denies outstanding requests.
-Existing Claude permission rules and hooks remain native policy. Native permission selection reads
-Core's Project or projectless preference without Codex configuration constraints. Ask and automatic
-approval use native default mode; Full access selects native permission bypass. Plan remains native
-Plan mode and freezes read-only application authority. Live native mode changes must succeed before the
-new preference is committed. Cancellation before persistence restores the old native policy; after
-persistence starts, a bounded handoff completes Core/native synchronization before honoring cancellation.
-An uncertain commit closes the owner so reopening reads Core's actual preference.
-Selected and effective permission modes remain distinct in live metadata. Native tools do not acquire Nodex's Codex-only application or desktop
-capabilities merely by sharing a tool name. Native application calls use separately issued scoped
-claims against frozen Core authority, as specified in [ADR 0064](0064-native-application-mcp.md).
+Claude runs with native `bypassPermissions` and automatically approves permission callbacks.
+Genuine questions become scoped pending requests; responses must name the exact live Session,
+native request and incarnation. Closing or cancelling the owner invalidates outstanding requests.
+Code and Plan select native interaction behavior with the same full Profile content access.
+Native application calls carry captured source evidence and execution-lifetime claims, as
+specified in [ADR 0064](0064-native-application-mcp.md) and
+[ADR 0068](0068-agent-runtime-execution-authority.md). Parent, child and background tasks share
+this model; no Project preference, frozen access policy or tool consent is retained.
 Semantic native controls and renderer actions are positively selected from supported capabilities.
 Task details are read-only observations, and never become Core Threads or Codex document authority.
 
 ## Consequences
 
 Users can select Claude Code, change its advertised model, use Code or Plan mode, invoke commands
-and skills, attach images, answer questions, approve tools, inspect and stop subtasks, steer, compact,
+and skills, attach images, answer questions, inspect and stop subtasks, steer, compact,
 fork, edit the last turn, and resume the exact
 native conversation after a Nodex restart. Native history is projected as a bounded recent transcript
 without replaying prior prompts. Missing sessions and process failures are explicit errors.

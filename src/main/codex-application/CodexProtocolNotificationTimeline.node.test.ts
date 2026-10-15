@@ -21,7 +21,6 @@ import type { CodexServerNotification } from "../codex-runtime/CodexApplicationP
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -169,10 +168,6 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
       Effect.provideService(CodexManualCompactionRuntime, {
         consumeSource: () => "automatic",
       } as unknown as CodexManualCompactionRuntime["Service"]),
-      Effect.provideService(
-        CodexAutomationTurnCompletion,
-        {} as CodexAutomationTurnCompletion["Service"],
-      ),
       Effect.provideService(
         CodexConversationLifecycle,
         {} as CodexConversationLifecycle["Service"],

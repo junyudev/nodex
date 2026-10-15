@@ -4,7 +4,6 @@ import {
   type ProjectionFenceCause,
   type ProjectionInvalidationCause,
   type ProjectionRegistration,
-  type ProjectionRevocationMessage,
 } from "./projection-invalidation-registry";
 import { getRendererProjectionInvalidationRegistry } from "./projection-invalidation-service";
 import { projectionScopeKey } from "../../shared/projection-stream";
@@ -46,9 +45,6 @@ export const useProjectionRegistration = (registration: ProjectionRegistration |
   const projectionEffects = registration?.projectionEffects;
   const getDependencies = useEffectEvent(() => registration?.getDependencies() ?? {});
   const getCursor = useEffectEvent(() => registration?.getCursor() ?? null);
-  const revoke = useEffectEvent((cause: ProjectionRevocationMessage) =>
-    registration?.revoke?.(cause),
-  );
   const fence = useEffectEvent((cause: ProjectionFenceCause) => registration?.fence?.(cause));
   const invalidate = useEffectEvent((cause: ProjectionInvalidationCause) =>
     registration?.invalidate(cause),
@@ -64,7 +60,6 @@ export const useProjectionRegistration = (registration: ProjectionRegistration |
         : {}),
       getDependencies,
       getCursor,
-      revoke,
       fence,
       invalidate,
     });

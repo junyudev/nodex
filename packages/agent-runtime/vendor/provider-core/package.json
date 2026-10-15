@@ -186,6 +186,10 @@
     "./server/ExecutionHost": {
       "types": "./src/server/ExecutionHost.ts",
       "import": "./src/server/ExecutionHost.ts"
+    },
+    "./server/nativeInteraction": {
+      "types": "./src/server/nativeInteraction.ts",
+      "import": "./src/server/nativeInteraction.ts"
     }
   },
   "scripts": {
@@ -194,7 +198,8 @@
   "dependencies": {
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "effect": "4.0.3"
+    "effect": "4.0.3",
+    "@nodex/codex-app-server-protocol": "workspace:*"
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.3",

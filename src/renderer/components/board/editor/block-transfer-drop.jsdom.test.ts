@@ -329,11 +329,13 @@ describe("Board Card Block transfer drop", () => {
   });
 
   test.each([
-    [false, "move"],
-    [true, "copy"],
+    [false, "move", "project-a"],
+    [true, "copy", "project-a"],
+    [false, "move", null],
+    [true, "copy", null],
   ] as const)(
-    "admits Page drops before preparing the receiving editor (alt=%s)",
-    async (altKey, mode) => {
+    "admits Page drops before preparing the receiving editor (alt=%s, mode=%s, route=%s)",
+    async (altKey, mode, projectId) => {
       const container = document.createElement("div");
       const receivePages = vi.fn(async () => undefined);
       const prepareAndFence = vi.fn(structuralPreparation.prepareAndFence);
@@ -348,7 +350,7 @@ describe("Board Card Block transfer drop", () => {
           value: {
             version: 3 as const,
             operationId: "operation-a",
-            projectId: "project-a",
+            projectId,
             storeEpoch: "epoch-a",
             mode,
             duplicate: false,
@@ -375,7 +377,7 @@ describe("Board Card Block transfer drop", () => {
       const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
         ...structuralPreparation,
         surfaceId: "surface-target",
-        projectId: "project-a",
+        projectId,
         documentId: "document-host",
         storeEpoch: "epoch-a",
         hostPageId: "card-host",
@@ -409,6 +411,7 @@ describe("Board Card Block transfer drop", () => {
       expect(transfer).not.toHaveBeenCalled();
       expect(receivePages).toHaveBeenCalledWith(
         expect.objectContaining({
+          projectId,
           mode,
           rootBlockIds: ["card-target"],
           dataSourceId: "source-a",

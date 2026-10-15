@@ -1,28 +1,25 @@
 import type { CodexConversationRequestContext } from "./codex-conversation-request-context";
 import type {
-  CodexApprovalRequest,
   CodexConversationLiveRequest,
   CodexConversationItem,
   CodexConversationServerRequest,
   CodexCanonicalServerRequest,
+  CodexCanonicalInteractivePendingRequest,
   CodexConversationTurn,
   CodexMcpServerElicitationRequest,
-  CodexPermissionRequest,
   CodexPlanImplementationServerRequest,
   CodexPlanImplementationRequest,
   CodexUserInputRequest,
-  NodexAgentAuthorizationRequest,
 } from "./types";
 import {
   buildCodexCanonicalPendingRequestBuckets,
   selectCanonicalInteractiveRequestForTurn,
 } from "./codex-canonical-pending-request";
-import { hasCodexFileChangeEntries } from "./codex-file-change";
 
 export type CodexTurnScopedConversationRequest = Exclude<
   CodexConversationLiveRequest,
   { type: "mcpServerElicitation" }
->;
+> & { readonly turnId: string };
 
 const EMPTY_LIVE_REQUESTS: CodexConversationLiveRequest[] = [];
 const EMPTY_TURN_REQUESTS: CodexTurnScopedConversationRequest[] = [];
@@ -34,10 +31,9 @@ interface LatestPlanImplementationSelection {
 }
 
 type BackgroundConversationRequest =
-  | CodexApprovalRequest
-  | CodexPermissionRequest
-  | CodexMcpServerElicitationRequest
-  | NodexAgentAuthorizationRequest;
+  | CodexUserInputRequest
+  | CodexCanonicalInteractivePendingRequest
+  | CodexMcpServerElicitationRequest;
 
 interface DerivedConversationRequestSelection {
   planSelection: LatestPlanImplementationSelection | null;
@@ -60,6 +56,18 @@ const derivedRequestSelectionsByServerRequestRef = new WeakMap<
   readonly CodexConversationServerRequest[],
   DerivedConversationRequestCacheEntry
 >();
+
+export type CodexInteractiveConversationRequest = Exclude<
+  CodexConversationLiveRequest,
+  { type: "approval" | "permissionRequest" }
+>;
+
+/** Native permission history is diagnostic; only information requests enter composer interaction. */
+export function isInteractiveConversationRequest(
+  request: CodexConversationLiveRequest | null | undefined,
+): request is CodexInteractiveConversationRequest {
+  return request != null && request.type !== "approval" && request.type !== "permissionRequest";
+}
 
 export function buildPlanImplementationRequestId(turnId: string): string {
   return `implement-plan:${turnId}`;
@@ -110,11 +118,8 @@ function findMatchingPlanImplementationRequest(
 }
 
 interface ProjectedPendingRequestBucket {
-  approvalRequests: CodexApprovalRequest[];
   latestUserInputRequest: CodexUserInputRequest | null;
   latestMcpElicitationRequest: CodexMcpServerElicitationRequest | null;
-  latestPermissionRequest: CodexPermissionRequest | null;
-  latestNodexAgentAuthorization: NodexAgentAuthorizationRequest | null;
 }
 
 interface ProjectedPendingRequestBuckets {
@@ -129,11 +134,8 @@ function getOrCreateProjectedPendingRequestBucket(
   const existing = buckets.get(turnId);
   if (existing) return existing;
   const bucket: ProjectedPendingRequestBucket = {
-    approvalRequests: [],
     latestUserInputRequest: null,
     latestMcpElicitationRequest: null,
-    latestPermissionRequest: null,
-    latestNodexAgentAuthorization: null,
   };
   buckets.set(turnId, bucket);
   return bucket;
@@ -147,7 +149,7 @@ function buildProjectedPendingRequestBuckets(
 
   for (let index = requests.length - 1; index >= 0; index -= 1) {
     const request = requests[index];
-    if (!request || request.type === "implementPlan") continue;
+    if (!request || request.type === "implementPlan" || request.turnId === null) continue;
     if (request.type === "mcpServerElicitation" && request.turnId.trim().length === 0) {
       latestTurnlessMcpElicitation ??= request;
       continue;
@@ -155,50 +157,16 @@ function buildProjectedPendingRequestBuckets(
 
     const bucket = getOrCreateProjectedPendingRequestBucket(byTurnId, request.turnId);
     switch (request.type) {
-      case "approval":
-        bucket.approvalRequests.push(request);
-        break;
       case "userInput":
         bucket.latestUserInputRequest ??= request;
         break;
       case "mcpServerElicitation":
         bucket.latestMcpElicitationRequest ??= request;
         break;
-      case "permissionRequest":
-        bucket.latestPermissionRequest ??= request;
-        break;
-      case "nodexAgentAuthorization":
-        bucket.latestNodexAgentAuthorization ??= request;
-        break;
     }
   }
 
   return { byTurnId, latestTurnlessMcpElicitation };
-}
-
-function isValidApprovalForTurn(
-  request: CodexApprovalRequest,
-  turn: CodexConversationTurn,
-): boolean {
-  if (request.kind === "command") return true;
-  const item = [...turn.items].reverse().find((candidate) => candidate.itemId === request.itemId);
-  if (!item?.fileChange) return false;
-  return (
-    hasCodexFileChangeEntries(item.fileChange.changes) ||
-    (item.fileChange.visualizationActivities?.length ?? 0) > 0
-  );
-}
-
-function selectApprovalOrPermissionForTurn(
-  turn: CodexConversationTurn,
-  bucket: ProjectedPendingRequestBucket | undefined,
-): CodexApprovalRequest | CodexPermissionRequest | NodexAgentAuthorizationRequest | null {
-  if (!bucket) return null;
-  return (
-    bucket.approvalRequests.find((request) => isValidApprovalForTurn(request, turn)) ??
-    bucket.latestNodexAgentAuthorization ??
-    bucket.latestPermissionRequest
-  );
 }
 
 function selectSyntheticUserInputForTurn(
@@ -245,17 +213,17 @@ function freezeTurnRequestMap(
 
   const requestsByTurnId = new Map<string, CodexTurnScopedConversationRequest[]>();
   for (const request of requests) {
-    if (request.type === "mcpServerElicitation") {
+    if (request.type === "mcpServerElicitation" || request.turnId === null) {
       continue;
     }
 
     const current = requestsByTurnId.get(request.turnId);
     if (!current) {
-      requestsByTurnId.set(request.turnId, [request]);
+      requestsByTurnId.set(request.turnId, [{ ...request, turnId: request.turnId }]);
       continue;
     }
 
-    current.push(request);
+    current.push({ ...request, turnId: request.turnId });
   }
 
   for (const [turnId, turnRequests] of requestsByTurnId.entries()) {
@@ -276,8 +244,19 @@ function deriveConversationRequestSelection(
   const projectedPendingBuckets = buildProjectedPendingRequestBuckets(conversation.requests);
   const canonicalPendingBuckets = buildCodexCanonicalPendingRequestBuckets(conversation);
 
-  const liveRequests: CodexConversationLiveRequest[] = [];
-  let primaryBackgroundRequest: BackgroundConversationRequest | null = null;
+  const knownTurnIds = new Set(conversation.turns.map((turn) => turn.turnId));
+  // A live question can originate from a native Session or a Turn outside the loaded window.
+  const liveRequests: CodexConversationLiveRequest[] = conversation.requests
+    .filter(
+      (request) =>
+        request.type === "userInput" &&
+        (request.turnId === null || !knownTurnIds.has(request.turnId)),
+    )
+    .toReversed();
+  let primaryBackgroundRequest: BackgroundConversationRequest | null =
+    liveRequests.find(
+      (request): request is CodexUserInputRequest => request.type === "userInput",
+    ) ?? null;
   for (let turnIndex = conversation.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
     const turn = conversation.turns[turnIndex];
     if (!turn || turn.turnId === null) continue;
@@ -288,18 +267,17 @@ function deriveConversationRequestSelection(
       canonicalPendingBuckets.get(turn.turnId),
     );
     if (canonicalInteractiveRequest) {
+      primaryBackgroundRequest ??= canonicalInteractiveRequest;
       liveRequests.push(canonicalInteractiveRequest);
     } else if (userInput) {
+      primaryBackgroundRequest ??= userInput;
       liveRequests.push(userInput);
     } else {
       const syntheticUserInput = selectSyntheticUserInputForTurn(conversation, turn);
-      if (syntheticUserInput) liveRequests.push(syntheticUserInput);
-    }
-
-    const approvalOrPermission = selectApprovalOrPermissionForTurn(turn, projectedBucket);
-    if (approvalOrPermission) {
-      primaryBackgroundRequest ??= approvalOrPermission;
-      liveRequests.push(approvalOrPermission);
+      if (syntheticUserInput) {
+        primaryBackgroundRequest ??= syntheticUserInput;
+        liveRequests.push(syntheticUserInput);
+      }
     }
 
     const mcpElicitation = projectedBucket?.latestMcpElicitationRequest;
@@ -425,13 +403,7 @@ export function areConversationLiveRequestsEqual(
         left.permissions === right.permissions &&
         left.response === right.response
       );
-    case "nodexAgentAuthorization":
-      return (
-        right.type === "nodexAgentAuthorization" &&
-        left.tool === right.tool &&
-        left.effect === right.effect &&
-        left.preview === right.preview
-      );
+
     case "implementPlan":
       if (right.type !== "implementPlan") return false;
       return left.planContent === right.planContent;
@@ -509,12 +481,9 @@ export function selectTurnScopedConversationRequests(
 
 export function isBlockingConversationRequest(request: CodexConversationLiveRequest): boolean {
   return (
-    request.type === "approval" ||
     (request.type === "userInput" && request.isBlocking) ||
     request.type === "optionPicker" ||
     request.type === "setupCodexStep" ||
-    request.type === "mcpServerElicitation" ||
-    request.type === "permissionRequest" ||
-    request.type === "nodexAgentAuthorization"
+    request.type === "mcpServerElicitation"
   );
 }

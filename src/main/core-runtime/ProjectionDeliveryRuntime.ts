@@ -5,7 +5,6 @@ import * as Stream from "effect/Stream";
 import type { WebContents } from "electron";
 import type { DeliveryAddress, RecipientAdmissionResult } from "../../shared/recipient-delivery";
 import { projectionScopeDeliveryAddress } from "../../shared/recipient-delivery";
-import { revocationsFromVisibilityDelta } from "../../shared/local-commit-delivery";
 import type { CoreEventEnvelope } from "../core-client";
 import { DesktopDocumentSessionRuntime } from "../core-client";
 import { safeSendToWebContents } from "../ipc-safe-send";
@@ -83,15 +82,6 @@ export const live: Layer.Layer<
           atom,
           coreIdentity.libraryId,
         ),
-      onVisibility: (packet, delta) =>
-        Effect.forEach(
-          revocationsFromVisibilityDelta(delta),
-          (revocation) =>
-            revocation.resource_kind === "document"
-              ? documentSessions.publishResourceRevocation(packet, revocation)
-              : Effect.void,
-          { discard: true },
-        ),
       onError: (failure) =>
         Effect.sync(() =>
           logger.error("LocalCommit delivery lane failed", {
@@ -103,7 +93,7 @@ export const live: Layer.Layer<
           }),
         ).pipe(
           Effect.andThen(
-            failure.lane !== "projection" && failure.lane !== "visibility"
+            failure.lane !== "projection"
               ? Effect.void
               : audience.reset(
                   {

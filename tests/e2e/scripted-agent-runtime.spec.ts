@@ -306,25 +306,6 @@ test("runs a real shell tool through the scripted model boundary", async () => {
             harness.profile.initialProjectsDirectory,
             "Scripted Agent file smoke",
           );
-          const freshPermissionState = await invokeIpc(
-            page,
-            "codex:permission:state:get",
-            draft.projectId,
-          );
-          if (
-            !isRecord(freshPermissionState) ||
-            freshPermissionState.mode !== "guardian-approvals"
-          ) {
-            throw new Error(
-              `Fresh Profile did not resolve Approve for me:\n${JSON.stringify(freshPermissionState, null, 2)}`,
-            );
-          }
-          expect(freshPermissionState).toMatchObject({
-            mode: "guardian-approvals",
-            effectivePreset: "guardian-approvals",
-            approvalsReviewer: "auto_review",
-            autoReviewAvailable: true,
-          });
           const threadId = await sendAgentPrompt(
             page,
             draft.projectSessionId,

@@ -86,7 +86,6 @@ import type {
   TelemetrySettings,
   UpdateTelemetrySettingsInput,
   WorktreeStartMode,
-  CodexPermissionState,
   CodexThreadDetailLevel,
   ThreadNotificationSettings,
   ThreadNotificationTurnMode,
@@ -247,17 +246,6 @@ export function TogglePill({
   );
 }
 
-export function formatApprovalPolicyLabel(value: CodexPermissionState["approvalPolicy"]): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  return "granular";
-}
-
-export function formatSandboxModeLabel(value: CodexPermissionState["sandboxMode"]): string {
-  return value ?? "unset";
-}
-
 export { ConfigValueDropdown } from "./config-value-dropdown";
 
 const THREAD_NOTIFICATION_TURN_MODE_OPTIONS: Array<{
@@ -381,22 +369,6 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
             void handleChange({
               ...settings,
               turnMode,
-            });
-          }}
-          disabled={busy || isLoading}
-        />
-      </SettingRow>
-      <SettingRow
-        label="Enable permission notifications"
-        description="Show alerts when notification permissions are required"
-      >
-        <TogglePill
-          ariaLabel="Enable permission notifications"
-          value={settings.permissionsEnabled}
-          onChange={(permissionsEnabled) => {
-            void handleChange({
-              ...settings,
-              permissionsEnabled,
             });
           }}
           disabled={busy || isLoading}

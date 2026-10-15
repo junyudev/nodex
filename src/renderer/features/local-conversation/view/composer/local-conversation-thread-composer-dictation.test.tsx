@@ -26,7 +26,8 @@ import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-t
 import { ThreadComposer } from "./local-conversation-thread-composer";
 import { RendererStateProvider } from "@/app-providers";
 import { TestComposerScopePath } from "@/test/maitai-scope-harness";
-import { TestQueryProvider } from "@/test/query";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
+import { commandKeymapStateQueryOptions } from "@/lib/query-options";
 import { createCommandKeymapState } from "../../../../../shared/command-keybindings";
 import { __resetNodexToastStoreForTests } from "@/components/ui/toast";
 
@@ -217,7 +218,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
     },
     selectedReasoningEffort: "high",
     reasoningEffortOptions: [],
-    permissionMode: "auto",
     isQueueingEnabled: false,
     composerEnterBehavior: "enter",
     composerIntent: null,
@@ -255,7 +255,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
-      showApprovalMode: false,
     },
     ...overrides,
   };
@@ -266,12 +265,10 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
-    onRespondApproval: async () => {},
     onRespondUserInput: async () => {},
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},
@@ -385,8 +382,11 @@ async function renderThreadComposer(input?: {
   actions?: Partial<ThreadStageActions>;
   voiceOwner?: RealtimeVoiceWindowOwner;
 }) {
+  const queryClient = createTestQueryClient();
+  // The composer fixture starts with loaded keyboard settings, like an active app surface.
+  await queryClient.ensureQueryData(commandKeymapStateQueryOptions());
   const rendered = render(
-    <TestQueryProvider>
+    <TestQueryProvider client={queryClient}>
       <RendererStateProvider>
         <TestComposerScopePath>
           <TooltipProvider>
@@ -692,7 +692,10 @@ describe("ThreadComposer dictation", () => {
     const { container } = await renderThreadComposer();
 
     await act(async () => {
-      fireEvent.keyDown(document, { key: "m", ctrlKey: true });
+      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
+      if (!editor) throw new Error("Expected dictation edit target");
+      editor.focus();
+      fireEvent.keyDown(editor, { key: "m", ctrlKey: true });
       await Promise.resolve();
     });
     await waitFor(() => {
@@ -720,24 +723,30 @@ describe("ThreadComposer dictation", () => {
     terminal.dataset.codexTerminal = "true";
     document.body.append(terminal);
 
-    await act(async () => {
-      fireEvent.keyDown(document, { key: "m", ctrlKey: true });
-      await Promise.resolve();
-    });
-    await waitFor(() => {
-      expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
-    });
-    await act(async () => {
-      dictationNow += 260;
-      fireEvent.keyUp(terminal, { key: "m", ctrlKey: true });
-      await Promise.resolve();
-    });
+    try {
+      await act(async () => {
+        const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
+        if (!editor) throw new Error("Expected dictation edit target");
+        editor.focus();
+        fireEvent.keyDown(editor, { key: "m", ctrlKey: true });
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(Boolean(document.querySelector('[aria-label="Stop dictation"]'))).toBe(true);
+      });
+      await act(async () => {
+        dictationNow += 260;
+        fireEvent.keyUp(terminal, { key: "m", ctrlKey: true });
+        await Promise.resolve();
+      });
 
-    await waitFor(() => {
-      const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
-      expect(editor?.textContent ?? "").toBe("released safely");
-    });
-    terminal.remove();
+      await waitFor(() => {
+        const editor = container.querySelector<HTMLElement>("[data-codex-composer='true']");
+        expect(editor?.textContent ?? "").toBe("released safely");
+      });
+    } finally {
+      terminal.remove();
+    }
   });
 
   test("sends the transcript on explicit send stop mode", async () => {

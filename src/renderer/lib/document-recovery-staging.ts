@@ -3,9 +3,9 @@ import type {
   RecoveryCaptureReceipt,
 } from "../../shared/block-documents/document-recovery";
 import {
-  contentAccessIdentityKey,
-  parseContentAccessContext,
-} from "../../shared/content-access-context";
+  contentRoutingIdentityKey,
+  parseContentRoutingContext,
+} from "../../shared/content-routing-context";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import {
   decodeRecoverySource,
@@ -93,9 +93,9 @@ export const frozenRecoveryRecord = (row: unknown): FrozenRecoveryRecord | null 
   const scope = recoveryRecord(value.scope);
   if (!scope || typeof scope.libraryId !== "string")
     throw new Error("Retained package scope is unavailable");
-  contentAccessIdentityKey({
+  contentRoutingIdentityKey({
     libraryId: scope.libraryId,
-    accessContext: parseContentAccessContext(scope.accessContext),
+    routingContext: parseContentRoutingContext(scope.routingContext),
   });
   return value as unknown as FrozenRecoveryRecord;
 };
@@ -126,7 +126,7 @@ export const recoverySummary = (
     try {
       scope = {
         libraryId: String(source.libraryId),
-        accessContext: parseContentAccessContext(intent.accessContext),
+        routingContext: parseContentRoutingContext(intent.routingContext),
       };
     } catch {
       scope = null;
@@ -165,7 +165,7 @@ export const recoverySummary = (
     operationId: null,
     payloadHash: null,
     libraryKey: scope?.libraryId ?? "",
-    scopeKey: scope ? contentAccessIdentityKey(scope) : "",
+    scopeKey: scope ? contentRoutingIdentityKey(scope) : "",
   };
 };
 
@@ -288,9 +288,9 @@ export class RecoveryStagingStore {
         const entry = cursor.value as RecoveryStagingSummary;
         const visible = entry.scope
           ? entry.scope.libraryId === scope.libraryId &&
-            (scope.accessContext.kind === "library" ||
-              contentAccessIdentityKey(entry.scope) === contentAccessIdentityKey(scope))
-          : scope.accessContext.kind === "library";
+            (scope.routingContext.kind === "library" ||
+              contentRoutingIdentityKey(entry.scope) === contentRoutingIdentityKey(scope))
+          : scope.routingContext.kind === "library";
         if (visible && (!documentId || documentId === entry.documentId)) found.push(entry);
         cursor.continue();
       };
@@ -306,11 +306,11 @@ export class RecoveryStagingStore {
     const database = await this.config.database();
     const transaction = database.transaction(RECOVERY_DIRECTORY_STORE, "readonly");
     const completed = recoveryTransaction(transaction);
-    const library = scope.accessContext.kind === "library";
+    const library = scope.routingContext.kind === "library";
     const index = transaction
       .objectStore(RECOVERY_DIRECTORY_STORE)
       .index(`${library ? "library" : "scope"}${documentId ? "-document" : ""}`);
-    const prefix = library ? scope.libraryId : contentAccessIdentityKey(scope);
+    const prefix = library ? scope.libraryId : contentRoutingIdentityKey(scope);
     const count = recoveryRequest(
       index.count(IDBKeyRange.only(documentId ? [prefix, documentId] : prefix)),
     );
@@ -353,8 +353,8 @@ export class RecoveryStagingStore {
     if (existing) {
       if (
         existing.scope.libraryId !== scope.libraryId ||
-        (scope.accessContext.kind !== "library" &&
-          contentAccessIdentityKey(existing.scope) !== contentAccessIdentityKey(scope)) ||
+        (scope.routingContext.kind !== "library" &&
+          contentRoutingIdentityKey(existing.scope) !== contentRoutingIdentityKey(scope)) ||
         existing.storeEpoch !== storeEpoch
       )
         throw new Error(
@@ -367,12 +367,14 @@ export class RecoveryStagingStore {
     // A matching globally unique Store epoch proves the Library for pre-scope Yjs rows. Earlier epochs remain unbound.
     const sourceScope =
       summary.scope ??
-      (summary.sourceEpoch === storeEpoch && scope.accessContext.kind === "library" ? scope : null);
+      (summary.sourceEpoch === storeEpoch && scope.routingContext.kind === "library"
+        ? scope
+        : null);
     if (
       !sourceScope ||
       sourceScope.libraryId !== scope.libraryId ||
-      (scope.accessContext.kind !== "library" &&
-        contentAccessIdentityKey(sourceScope) !== contentAccessIdentityKey(scope))
+      (scope.routingContext.kind !== "library" &&
+        contentRoutingIdentityKey(sourceScope) !== contentRoutingIdentityKey(scope))
     )
       throw new RecoveryBundleValidationError(
         "source_unverified",
@@ -425,7 +427,7 @@ export class RecoveryStagingStore {
       ...summary,
       scope: sourceScope,
       libraryKey: sourceScope.libraryId,
-      scopeKey: contentAccessIdentityKey(sourceScope),
+      scopeKey: contentRoutingIdentityKey(sourceScope),
       byteLength: bundle.bytes.length,
       encoding: "bundle_v1",
       operationId: frozen.operationId,
@@ -464,7 +466,7 @@ export class RecoveryStagingStore {
       current.bundle.sourceRevision === frozen.bundle.sourceRevision &&
       current.bundle.payloadHash === frozen.bundle.payloadHash &&
       current.storeEpoch === frozen.storeEpoch &&
-      contentAccessIdentityKey(current.scope) === contentAccessIdentityKey(frozen.scope) &&
+      contentRoutingIdentityKey(current.scope) === contentRoutingIdentityKey(frozen.scope) &&
       sameRecoverySource(current.bundle.bytes, frozen.bundle.bytes);
     if (matches) {
       store.delete(entry.rawKey);

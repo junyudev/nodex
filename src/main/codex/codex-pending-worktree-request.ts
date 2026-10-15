@@ -11,7 +11,6 @@ import type {
 import type {
   CodexLiveFileAttachment,
   CodexPastedTextAttachment,
-  CodexPermissionState,
   CodexThreadGoalDraftInput,
 } from "../../shared/types";
 import {
@@ -36,13 +35,6 @@ export interface CodexPendingThreadStartProjection {
   readonly defaultFeatureOverrides: NonNullable<ThreadStartParams["config"]> | null;
   readonly configOverrides: NonNullable<ThreadStartParams["config"]>;
   readonly memoryPreferences?: CodexPendingStartConversationParamsInput["memoryPreferences"];
-}
-
-export function shouldSendCodexPendingPermissionOverrides(input: {
-  readonly effectivePreset: CodexPermissionState["effectivePreset"];
-  readonly permissionProfileId?: string;
-}): boolean {
-  return input.permissionProfileId !== undefined || input.effectivePreset !== "custom";
 }
 
 /** Exact `gBe`: append pasted source files with preview-derived display labels. */
@@ -262,7 +254,7 @@ export function buildCodexPendingStartConversationParams(
 
 /**
  * Project the frozen start payload onto a fresh platform thread config.
- * The full frozen config is intentionally absent: it is permission-derivation input only.
+ * Only execution settings belong here; native workspace identity is carried separately.
  */
 export function buildCodexPendingThreadStartConfig(
   platformConfig: ThreadStartParams["config"],

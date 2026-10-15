@@ -317,16 +317,6 @@ const runPaidCase = async (
       harness.profile.initialProjectsDirectory,
       caseId,
     );
-    const permissionState = requireRecord(
-      await invokeIpc(page, "codex:permission:state:get", draft.projectId),
-      "Fresh Profile permission state",
-    );
-    expect(permissionState).toMatchObject({
-      mode: "guardian-approvals",
-      effectivePreset: "guardian-approvals",
-      approvalsReviewer: "auto_review",
-      autoReviewAvailable: true,
-    });
     const preflight = await preflightExecutionProfile(page, caseId);
     const selectedProfile = await selectExecutionProfile(page, preflight);
     await beforeSend({ page });
@@ -398,7 +388,6 @@ const runPaidCase = async (
       disabledSkillNames: PAID_AGENT_SMOKE_DISABLED_SKILL_NAMES,
       expectedLogicalExecutions: PAID_AGENT_SMOKE_DEFINITIONS[caseId].expectedLogicalExecutions,
       executionProfile: selectedProfile,
-      permissionMode: permissionState.mode,
       projectSessionId: draft.projectSessionId,
       threadId,
       firstSubmission: firstSubmissionEvidence,

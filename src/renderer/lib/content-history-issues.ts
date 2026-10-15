@@ -1,4 +1,4 @@
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { ContentInteractionHistoryScope } from "./content-interaction-history";
 import type { HistoryAttention, InteractionHistory } from "./surface-history/owner";
 import type {
@@ -62,7 +62,7 @@ export function createContentHistoryIssueSource(
           kind: "history",
           id: [
             scope.libraryId,
-            contentAccessContextKey(scope.accessContext),
+            contentRoutingContextKey(scope.routingContext),
             scope.storeEpoch,
             issue.ownerId,
             issue.generation,

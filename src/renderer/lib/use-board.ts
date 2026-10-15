@@ -229,9 +229,9 @@ export function useBoard(options: UseBoardOptions) {
     [store],
   );
 
-  const requireWritableSelectedView = useCallback((): boolean => {
+  const hasSelectedView = useCallback((): boolean => {
     if (!databaseViewId) return true;
-    return store.getSnapshot().databaseView?.readOnlyReason === null;
+    return store.getSnapshot().databaseView != null;
   }, [databaseViewId, store]);
 
   const publishDatabaseViewDefinition = useCallback(
@@ -241,7 +241,6 @@ export function useBoard(options: UseBoardOptions) {
       if (!databaseViewId) throw new Error("A durable Database View is required for publication");
       const visibleModel = store.getSnapshot().databaseView;
       if (!visibleModel) throw new Error("The Database View is not loaded");
-      if (visibleModel.readOnlyReason) throw new Error(visibleModel.readOnlyReason);
 
       const apply: DatabaseViewTransform = (model) =>
         withPublishedDatabaseViewDefinition(model, input.patch);
@@ -293,7 +292,7 @@ export function useBoard(options: UseBoardOptions) {
       pageId: string,
       updates: Partial<PageInput>,
     ): Promise<PageUpdateMutationResult> => {
-      if (!requireWritableSelectedView()) {
+      if (!hasSelectedView()) {
         return { status: "error", error: "The selected Database View is read-only" };
       }
       const documentFields = findPageDocumentPatchFields(updates);
@@ -375,7 +374,7 @@ export function useBoard(options: UseBoardOptions) {
       await store.refreshBoard();
       return result;
     },
-    [onMutation, projectId, requireWritableSelectedView, sessionId, store],
+    [onMutation, projectId, hasSelectedView, sessionId, store],
   );
 
   const getPage = useCallback(
@@ -399,7 +398,7 @@ export function useBoard(options: UseBoardOptions) {
 
   const deletePage = useCallback(
     async (columnId: string | undefined, pageId: string): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const deleted = await deleteBoardPage({
         store,
         projectId,
@@ -412,12 +411,12 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, sessionId, store],
+    [onMutation, projectId, hasSelectedView, sessionId, store],
   );
 
   const movePage = useCallback(
     async (input: MovePageInput): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const moved = await moveBoardPage({
         store,
         projectId,
@@ -428,12 +427,12 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, store],
+    [onMutation, projectId, hasSelectedView, store],
   );
 
   const movePages = useCallback(
     async (input: MovePagesInput): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const moved = await moveBoardPages({
         store,
         projectId,
@@ -444,7 +443,7 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, store],
+    [onMutation, projectId, hasSelectedView, store],
   );
 
   const listPageOccurrences = useCallback(
@@ -491,7 +490,7 @@ export function useBoard(options: UseBoardOptions) {
 
   const completeOccurrence = useCallback(
     async (input: NewPageOccurrenceComplete): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const command: PageOccurrenceCompleteInput = {
         ...input,
         operationId: createUuidV7(),
@@ -516,12 +515,12 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, sessionId, store],
+    [onMutation, projectId, hasSelectedView, sessionId, store],
   );
 
   const skipOccurrence = useCallback(
     async (input: NewPageOccurrenceAction): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const command: PageOccurrenceActionInput = {
         ...input,
         operationId: createUuidV7(),
@@ -545,12 +544,12 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, sessionId, store],
+    [onMutation, projectId, hasSelectedView, sessionId, store],
   );
 
   const updateOccurrence = useCallback(
     async (input: NewPageOccurrenceUpdate): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+      if (!hasSelectedView()) return false;
       const command = {
         ...input,
         operationId: createUuidV7(),
@@ -576,19 +575,19 @@ export function useBoard(options: UseBoardOptions) {
       onMutation?.();
       return true;
     },
-    [onMutation, projectId, requireWritableSelectedView, sessionId, store],
+    [onMutation, projectId, hasSelectedView, sessionId, store],
   );
 
   const patchPage = useCallback(
     (columnId: string, pageId: string, updates: Partial<PageInput>) => {
-      if (!requireWritableSelectedView()) return;
+      if (!hasSelectedView()) return;
       store.enqueueLocalOverlay({
         kind: "page:patch-local",
         conflictKeys: conflictKeysForPatch(pageId, updates),
         apply: buildPatchPageTransform(columnId, pageId, updates),
       });
     },
-    [requireWritableSelectedView, store],
+    [hasSelectedView, store],
   );
 
   const clearLastMutationError = useCallback(() => {

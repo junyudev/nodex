@@ -27,8 +27,7 @@ export interface WorkbenchAutomationDraft {
   kind: CodexScheduledAutomationKind;
   status: CodexScheduledAutomationStatus;
   projectId: string | null;
-  targetThreadId: string;
-  targetSessionId?: string | null;
+  targetSessionId: string;
   notificationPolicy?: CodexScheduledAutomationCreateInput["notificationPolicy"];
   expectedRevision?: number;
   name: string;
@@ -114,8 +113,7 @@ export function createWorkbenchAutomationDraft(
     kind,
     status: normalizeStatus(automation?.status ?? "ACTIVE"),
     projectId: automation?.projectId ?? null,
-    targetThreadId: automation?.targetThreadId ?? "",
-    targetSessionId: automation?.targetSessionId,
+    targetSessionId: automation?.targetSessionId ?? "",
     notificationPolicy: automation?.notificationPolicy,
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
@@ -150,8 +148,7 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     kind,
     status: "ACTIVE",
     projectId: kind === "cron" ? (input.projectId ?? null) : null,
-    targetThreadId: kind === "heartbeat" ? (input.targetThreadId ?? "") : "",
-    targetSessionId: kind === "heartbeat" ? input.targetSessionId : undefined,
+    targetSessionId: kind === "heartbeat" ? (input.targetSessionId ?? "") : "",
     notificationPolicy: input.notificationPolicy,
     name: input.name ?? "",
     prompt: input.prompt ?? "",
@@ -194,14 +191,7 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
     status: normalizeStatus(update.status ?? base.status),
     projectId:
       kind === "cron" ? (update.projectId === undefined ? base.projectId : update.projectId) : null,
-    targetThreadId:
-      kind === "heartbeat" && !update.targetSessionId
-        ? (update.targetThreadId ?? base.targetThreadId)
-        : "",
-    targetSessionId:
-      kind === "heartbeat"
-        ? (update.targetSessionId ?? (update.targetThreadId ? undefined : base.targetSessionId))
-        : undefined,
+    targetSessionId: kind === "heartbeat" ? (update.targetSessionId ?? base.targetSessionId) : "",
     name: update.name ?? base.name,
     prompt: update.prompt ?? base.prompt,
     rrule: update.rrule ?? base.rrule,
@@ -309,10 +299,7 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
     missingRequirements.push("prompt");
   }
 
-  if (
-    draft.kind === "heartbeat" &&
-    !normalizeOptionalText(draft.targetSessionId ?? draft.targetThreadId)
-  ) {
+  if (draft.kind === "heartbeat" && !normalizeOptionalText(draft.targetSessionId)) {
     missingRequirements.push("thread");
   }
 
@@ -421,11 +408,7 @@ function buildCodexScheduledAutomationDraftPayload(
     backendBinding: draft.backendBinding,
     status: normalizeStatus(draft.status),
     projectId: isHeartbeat ? null : draft.projectId,
-    targetThreadId:
-      isHeartbeat && !draft.targetSessionId ? normalizeOptionalText(draft.targetThreadId) : null,
-    ...(isHeartbeat && draft.targetSessionId !== undefined
-      ? { targetSessionId: normalizeOptionalText(draft.targetSessionId ?? "") }
-      : {}),
+    targetSessionId: isHeartbeat ? normalizeOptionalText(draft.targetSessionId) : null,
     ...(draft.notificationPolicy !== undefined
       ? { notificationPolicy: draft.notificationPolicy }
       : {}),
@@ -454,8 +437,7 @@ export function buildCodexScheduledAutomationCreateInput(input: {
     kind: payload.kind,
     backendBinding: payload.backendBinding,
     projectId: payload.projectId,
-    targetThreadId: payload.targetThreadId,
-    ...(payload.targetSessionId !== undefined ? { targetSessionId: payload.targetSessionId } : {}),
+    targetSessionId: payload.targetSessionId,
     ...(payload.notificationPolicy !== undefined
       ? { notificationPolicy: payload.notificationPolicy }
       : {}),
@@ -501,10 +483,8 @@ export function isWorkbenchAutomationDraftDirty(input: {
     normalizeKind(draft.kind) !== existing.kind ||
     draft.projectId !== existing.projectId ||
     normalizeStatus(draft.status) !== existing.status ||
-    (draft.kind === "heartbeat" && draft.targetSessionId
-      ? draft.targetSessionId !== existing.targetSessionId
-      : (draft.kind === "heartbeat" ? normalizeOptionalText(draft.targetThreadId) : null) !==
-        existing.targetThreadId) ||
+    (draft.kind === "heartbeat" ? normalizeOptionalText(draft.targetSessionId) : null) !==
+      existing.targetSessionId ||
     (draft.notificationPolicy !== undefined &&
       draft.notificationPolicy !== existing.notificationPolicy) ||
     normalizeOptionalText(draft.name) !== existing.name ||
@@ -536,8 +516,8 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       normalizeKind(draft.kind) !== normalizeKind(initialDraft.kind) ||
       draft.projectId !== initialDraft.projectId ||
       normalizeStatus(draft.status) !== normalizeStatus(initialDraft.status) ||
-      normalizeOptionalText(draft.targetThreadId) !==
-        normalizeOptionalText(initialDraft.targetThreadId) ||
+      normalizeOptionalText(draft.targetSessionId) !==
+        normalizeOptionalText(initialDraft.targetSessionId) ||
       normalizeOptionalText(draft.name) !== normalizeOptionalText(initialDraft.name) ||
       normalizeOptionalText(draft.prompt) !== normalizeOptionalText(initialDraft.prompt) ||
       normalizeOptionalText(draft.rrule) !== normalizeOptionalText(initialDraft.rrule) ||
@@ -559,7 +539,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
     normalizeKind(draft.kind) !== "cron" ||
     draft.projectId !== null ||
     normalizeStatus(draft.status) !== "ACTIVE" ||
-    normalizeOptionalText(draft.targetThreadId) !== null ||
+    normalizeOptionalText(draft.targetSessionId) !== null ||
     normalizeOptionalText(draft.name) !== null ||
     normalizeOptionalText(draft.prompt) !== null ||
     normalizeOptionalText(draft.rrule) !== DEFAULT_WORKBENCH_AUTOMATION_RRULE ||

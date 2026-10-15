@@ -917,6 +917,16 @@ function projectCanonicalItemViews(
     }
     case "functionCallOutput":
       return [];
+    case "runtimeNotice":
+      return [
+        {
+          ...buildBaseView(item, context),
+          normalizedKind: "systemEvent",
+          semanticKind: "systemEvent",
+          markdownText: item.message,
+          status: resolveCanonicalItemStatus(item, context),
+        },
+      ];
     case "plan": {
       const status = resolveCanonicalItemStatus(item, context);
       return [

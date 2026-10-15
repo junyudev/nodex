@@ -406,7 +406,6 @@ test("reads its Session through native MCP before and after restarting Nodex", a
         );
         sessionId = draft.projectSessionId;
         projectId = draft.projectId;
-        await invokeIpc(page, "codex:permission:mode:set", projectId, "full-access");
         await invokeIpc(page, "project-sessions:create", {
           operationId: createBoundedOperationId("e2e.app-tools.threadless"),
           payload: {

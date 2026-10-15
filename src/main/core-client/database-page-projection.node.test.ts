@@ -1,5 +1,4 @@
 import { describe, expect, test } from "vite-plus/test";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import { testPropertyManagement } from "../../shared/testing/database-property-record";
 
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
@@ -155,7 +154,6 @@ const makeQuery = (rows: readonly DataSourcePageRowV2[]): DatabaseViewQueryResul
     name: "Tasks",
     lifecycle: "active",
     defaultViewId: viewId,
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: "2026-07-20T00:00:00.000Z",
     updatedAt: "2026-07-20T00:00:00.000Z",
@@ -319,7 +317,7 @@ describe("native Database Page projections", () => {
     const model = projectDatabaseViewReference(
       makeQuery([makeRow("page:host"), makeRow("page:visible")]),
       {
-        accessContext: {
+        routingContext: {
           kind: "project",
           projectId: "project:reader",
         },
@@ -330,15 +328,6 @@ describe("native Database Page projections", () => {
         libraryId: "library:test",
         storeEpoch: "epoch:test",
         commitSeq: 1,
-        authorization: authorizedReadStampFixture({
-          deliveryAddress: {
-            kind: "project",
-            library_id: "library:test",
-            project_id: "project:reader",
-          },
-          subject: { kind: "view", view_id: viewId },
-          storeEpoch: "epoch:test",
-        }),
       },
     );
 

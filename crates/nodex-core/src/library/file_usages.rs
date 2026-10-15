@@ -17,7 +17,7 @@ pub(super) fn read(
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
 ) -> Result<LibraryFileUsagePage, StoreError> {
-    file_access::require_direct(connection, context, file_id, false)?;
+    file_access::require_direct(connection, context, file_id)?;
     let file = files::metadata(connection, &context.library_id.0, file_id)?;
     let limit = requested_limit.unwrap_or(50);
     if !(1..=200).contains(&limit) {
@@ -57,18 +57,16 @@ pub(super) fn read(
         }
         for (owner, kind, logical_path, occurrence_count) in rows {
             after = owner.clone();
-            if let Some(project) = &context.project_id {
+            if let Some(_project) = &context.project_id {
                 let authority = match kind.as_str() {
                     "page" => super::history::require_page_lifecycle_read_access(
                         connection,
                         &context.library_id.0,
-                        &project.0,
                         &owner,
                     ),
                     "canvas" => super::history::require_canvas_lifecycle_read_access(
                         connection,
                         &context.library_id.0,
-                        &project.0,
                         &owner,
                     ),
                     _ => return Err(invalid("File usage owner kind is invalid")),
@@ -151,7 +149,7 @@ pub(super) fn read(
     } else {
         None
     };
-    let writable = match file_access::require_direct(connection, context, file_id, true) {
+    let writable = match file_access::require_direct(connection, context, file_id) {
         Ok(()) => true,
         Err(error) if error.code == StoreErrorCode::Unauthorized => false,
         Err(error) => return Err(error),

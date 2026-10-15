@@ -61,7 +61,7 @@ import {
 const PI_PRESENTATION = {
   displayName: "Pi",
   showInteractionModeToggle: false,
-  supportedRuntimeModes: ["approval-required", "auto-accept-edits", "full-access"],
+
   // The adapter reports context usage from Pi's streaming usage while a
   // turn runs, so clients can reserve the meter before the first settle.
   reportsContextWindow: true,

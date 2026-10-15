@@ -1,7 +1,7 @@
 # NFM Editor Structural Editing Behavior
 
 Status: Active
-Last updated: 2026-09-07
+Last updated: 2026-10-15
 
 Structural preparation has one absolute 10-second deadline, including native
 drag/IME cleanup and durable fencing. After 700 ms the document status offers
@@ -31,9 +31,11 @@ An open character-scoped picker, such as Link or Color, retains that inline pain
 
 An inline Page context has a separate quiet boundary halo. The halo is visible while the Page itself is selected or while the active caret or Block selection is inside its title or body; nested Page contexts show the halo on every containing Page. Moving the active selection outside the context hides the halo. Context halos never imply that their descendant Blocks are selected.
 
-Core normalizes the selection in current Document order. A selected descendant is omitted when its selected ancestor already contains it; owned descendants are still discovered while Core expands the ancestor's complete ownership closure. A stale root, causal-head mismatch, authorization failure, or protected primary Database rejects the whole operation before content changes.
+Core normalizes the selection in current Document order. A selected descendant is omitted when its selected ancestor already contains it; owned descendants are still discovered while Core expands the ancestor's complete ownership closure. A stale root, causal-head mismatch, physical identity failure, or protected primary Database rejects the whole operation before content changes.
 
 Generic Document updates may edit ordinary content, but they cannot create, remove, reparent, clone, or reclassify an owning shell. Page references, mentions, relations, links, and View occurrences remain non-owning and follow ordinary editing semantics.
+
+Explicit Page, Document, Library, Data Source, and View transfer targets also work from Library routing, with no selected Project. Project defaults require an actual Project coordinate. Transfer and inverse history retain exact Library, Store epoch, resource lifecycle, causal heads, and receipt identity; presentation routes do not limit which content can be transferred. Library List drops compare the observed projection version inside the transfer transaction, so a changed destination rejects the complete gesture before creating Pages.
 
 ## Delete and cursor behavior
 
@@ -51,7 +53,7 @@ Rich-inline non-paragraph Blocks keep their ordinary first-Backspace normalizati
 
 Copying complete Block roots captures an immutable, bounded ownership-closure snapshot at the fenced source head. It includes ordinary selected Blocks, Page Documents and nested owners, Canvas scenes and managed scene assets, Database schema, Data Sources, Views, rows and typed values. Reference edges stay references to their existing targets. A partial inline range remains portable HTML and text and follows the editor's local collaborative history.
 
-The native clipboard carries two complementary presentations. Standard HTML and plain text are the portable fallback. Nodex also writes a bounded descriptor using `application/x-nodex-structural-clipboard+json`; the destination renderer reads that descriptor from its native Paste event and uses its exact write claim to await the application-scoped session. Neither presentation contains the ownership closure or File bytes. A private descriptor, action hint, or ready locator grants no authority by itself: Core verifies Profile and Library scope, Store epoch, manifest hash, capability, current access, destination head, and any available cut claim before paste.
+The native clipboard carries two complementary presentations. Standard HTML and plain text are the portable fallback. Nodex also writes a bounded descriptor using `application/x-nodex-structural-clipboard+json`; the destination renderer reads that descriptor from its native Paste event and uses its exact write claim to await the application-scoped session. Neither presentation contains the ownership closure or File bytes. A private descriptor, action hint, or ready locator grants no authority by itself: Core verifies Profile and Library identity, Store epoch, manifest hash, transport capability, destination head, and any available cut claim before paste.
 
 Electron Main owns one application-scoped, ephemeral Structural Clipboard runtime shared by every Nodex window. It coordinates preparing, ready, failed, and superseded sessions; compares every asynchronous publication with the exact native clipboard slot; supports a target waiter arriving before the source begins; and settles pending work from phase-safe timeout, explicit source outcome, renderer loss, Profile replacement, or host shutdown. Timeout may reject registration or capture before deletion starts, but it never infers that a published in-flight Cut preserved its source. It persists no clipboard session and cannot create a structural bundle, cut claim, history entry, or File relationship change. Those remain durable Core authority.
 
@@ -74,7 +76,7 @@ observation through exact recovery. Temporary view detachment preserves the
 retained editor's presentation; authority loss or editor disposal revokes it.
 Source and target rendering settle independently of each other and of Cut-ready.
 
-The structural participant has the same lifetime as its retained BlockNote editor and joins the window's shared content command queue and history. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Rebinding cannot change Library, authorization scope, Document, generation, or Store epoch; those changes require a new owner. External commands use the same admission, preparation lifetime, and focus-resume rules, never a late result-adoption path. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
+The structural participant has the same lifetime as its retained BlockNote editor and joins the window's shared content command queue and history. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Rebinding cannot change Library, presentation route, Document, generation, or Store epoch; those changes require a new owner. External commands use the same admission, preparation lifetime, and focus-resume rules, never a late result-adoption path. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
 
 Copy never changes the source. Cut follows the fixed order `capture → native clipboard claim verification → source delete and durable cut claim → source LocalCommit admission`. Main exposes a Cut as structurally ready only after the final step. A failure before source deletion leaves the complete source unchanged; if the claimed portable presentation is still valid, Paste inserts that safe copy instead. The first valid paste of an available Core cut claim moves the original identities, whether it inserts at a caret or replaces a selected forest. Later pastes clone the immutable snapshot with fresh Block, Document, Canvas, Database, Data Source, View, and row identities.
 
@@ -121,7 +123,7 @@ ordinary Block is active; structural history retains that Document until the
 action can no longer be undone.
 
 One Undo restores the same Page ID, Page Document ID, rich title, body,
-Properties, grants, projections, and nested-owner parentage. Redo performs the
+Properties, projections, and nested-owner parentage. Redo performs the
 same typed transition again and preserves identity while Document heads remain
 monotonic. A changed active subtree, claimed dormant Document, or conflicting
 nested-owner placement fails closed instead of overwriting concurrent work.
@@ -134,19 +136,20 @@ operation is pending always wins over that default resume target.
 
 ## Undo and redo
 
-Page bodies, Page titles, and Database Board/List actions share one chronological content history within a window's Library, access context, and Store epoch. Local Yjs StackItems and opaque Core structural history tokens appear in the order the user acted, regardless of which participating content surface receives Undo. Remote collaborative changes do not create local entries.
+Page bodies, Page titles, and Database Board/List actions share one chronological content history within a window's Library, presentation route, and Store epoch. Local Yjs StackItems and opaque Core structural history tokens appear in the order the user acted, regardless of which participating content surface receives Undo. Remote collaborative changes do not create local entries.
 
 A local collaborative edit retains its originating editor surface through any
 selection-only transactions appended to that edit. Restoring a Block selection
 must not remove the edit from local history or attribute it to another surface.
 
-Project-bound and trusted Library editor surfaces use the same structural and
-text-history operations. Project surfaces still require their Project's current
-content access; Library surfaces retain Library authority instead of borrowing
-the Project used to attribute a receipt. Capability reads, Cut consumption,
-Undo and release follow the original access scope, and lifecycle changes notify
-the affected recipe's Project even when a Library surface performs the inverse.
-A retained local surface cannot change between Library and Project authority.
+Project and Library presentations use the same structural and text-history
+operations across the current Profile Library. History token lookup, Cut
+consumption, Undo and release validate physical Library and Store identity,
+token integrity, owner lifetime and captured resource revisions. Project
+routing never limits these operations. A receipt retains its original Project
+attribution, and affected resource lifecycles still publish their canonical
+invalidations. Retained local surfaces keep their exact Document and Store
+lifetime.
 
 The body participant follows the retained editor rather than an individual DOM binding. Editor and history resources are acquired together only after their owning surface commits, with the collaborative backend ready before any EditorView mounts. View reattachment binds live callbacks without closing a retained participant; a temporary owner that has closed must be replaced, never reactivated. Final closure finishes structural history cleanup before destroying the editor engine. Embedded Page Documents keep the same local text and structural evidence across provider updates and retained-view remounts. Titles retain one local history resource per canonical title Y.Text, with explicit local view origins. A missing collaborative backend is an initialization error, never permission to create an incomplete structural-only history.
 
@@ -218,7 +221,7 @@ After ordinary Block promotion into Board or List, immediate keyboard Undo remov
 the promoted Pages and restores the original source forest without a focus repair.
 Redo restores the same promoted identities. Newer title or body input reverses
 before that transfer, while earlier input reverses only after it. Other windows
-and different access contexts do not share this timeline. Final participant
+and different presentation routes do not share this timeline. Final participant
 disposal retires the chronological prefix through its lost actions and clears
 dependent Redo; temporary DOM detach does not. Unconfirmed sent actions retain
 an explicit barrier and exact Main recovery responsibility.
@@ -227,7 +230,7 @@ History activity never inserts a section above the editor. The Workbench
 `Content issues` control observes exact unconfirmed actions and failed replays
 without changing focus or retaining another participant. It stays absent during
 routine saves and successful edits with no inverse. Issues retain their source
-Page and access context even after navigation. `Clear undo history` requires a
+Page and presentation route even after navigation. `Clear undo history` requires a
 root-hosted confirmation and rechecks the history revision before clearing it;
 ordinary submission cannot offer that action.
 
@@ -316,7 +319,7 @@ and retention remain independent, even when they share one live Y.Doc.
 
 ## Bounds and recovery
 
-One structural selection is bounded to 10,000 roots and 10,000 Blocks; ordinary replacement trees are additionally bounded to 128 levels; an ownership closure is bounded to 1,024 owned Documents and a 64 MiB canonical payload. Every command is Store-epoch-bound, exact-head-fenced, Project-authorized, and idempotent by operation identity and request hash.
+One structural selection is bounded to 10,000 roots and 10,000 Blocks; ordinary replacement trees are additionally bounded to 128 levels; an ownership closure is bounded to 1,024 owned Documents and a 64 MiB canonical payload. Every command is Store-epoch-bound, exact-head-fenced, Library-owned, and idempotent by operation identity and request hash.
 
 A semantic history patch is bounded to 10,000 changed identities and 8 MiB of
 JSON. Core rejects an invalid patch atomically, without consuming the entry or

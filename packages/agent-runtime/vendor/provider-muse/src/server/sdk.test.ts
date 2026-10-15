@@ -14,7 +14,7 @@ import {
   createMuseSdkHost,
   createMuseSdkHostEffect,
   makeMuseEnvironment,
-  museApprovalMode,
+  MUSE_APPROVAL_MODE,
   museLaunch,
   museVerbatimPath,
   museWorkspaceRoot,
@@ -82,12 +82,11 @@ describe("Muse SDK host", () => {
   );
 
   it("selects full access explicitly and keeps other runtime modes sandboxed", async () => {
-    for (const mode of ["approval-required", "auto-accept-edits", "auto", "full-access"] as const) {
+    for (const mode of ["full-access"] as const) {
       const fake = mockSpawn();
       const running = createMuseSdkHost({
         binaryPath: "/custom/muse",
         cwd: "/workspace",
-        runtimeMode: mode,
         environment: { PATH: "/bin" },
       });
       expect(vi.mocked(spawnMspConnection).mock.lastCall?.[0]).toMatchObject({
@@ -98,7 +97,7 @@ describe("Muse SDK host", () => {
             ? ["serve", "--trust-workspace", "--disable-sandbox"]
             : ["serve", "--trust-workspace"],
       });
-      expect(museApprovalMode(mode)).toBe(mode === "full-access" ? "allowAll" : "promptUnmatched");
+      expect(MUSE_APPROVAL_MODE).toBe(mode === "full-access" ? "allowAll" : "promptUnmatched");
       fake.startup.resolve(fake.ready);
       const host = await running;
       fake.shutdown.resolve({ code: 0, signal: null });

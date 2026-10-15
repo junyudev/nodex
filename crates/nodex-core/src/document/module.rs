@@ -9,26 +9,23 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nodex_core_contracts::agent::{
-    AgentAuthorizationTarget, AgentConsentRequirement, AgentEffectClass,
-    AgentExecutionAuthorization, AgentOperationFootprint, AgentOperationPreparation,
-    AgentOperationPreparationState, AgentOwnershipTransformation, AgentPreparedExecution,
-    AgentProjectResourceAction, AgentResourceKind, AgentResourceTarget, AgentTurnProvenance,
+    AgentEffectClass, AgentExecutionAuthorization, AgentOperationFootprint,
+    AgentOperationPreparation, AgentOperationPreparationState, AgentOwnershipTransformation,
+    AgentPreparedExecution, AgentResourceKind, AgentResourceTarget, AgentTurnProvenance,
 };
 use nodex_core_contracts::document::{
     AgentDocumentBlockGuard, AgentDocumentBlockGuardKind, AgentDocumentSemanticBlock,
-    AgentDocumentSemanticMutation, AgentDocumentSemanticSnapshot,
+    AgentDocumentSemanticMutation, AgentDocumentSemanticSnapshot, ContentRoutingContext,
     DocumentBlockOperation as ContractDocumentBlockOperation, DocumentCheckpointEffect,
     DocumentCommitOutcome, DocumentInvalidationReason, DocumentMutationCoordination,
     DocumentMutationEffect, DocumentOptionalValue, DocumentOwnerCommand, DocumentRevisionKind,
     DocumentSemanticAnchor, DocumentSemanticBlockDraft, DocumentSemanticBlockEtags,
     DocumentSemanticCommand, DocumentSemanticEtags, DocumentUpdateResource,
     DocumentUpdateResourceUnavailable, DocumentUpdateResourceUnavailableReason,
-    OWNED_DOCUMENT_DESCRIPTOR_VERSION, OwnedDocumentAccessContext, OwnedDocumentCommitValue,
-    OwnedDocumentDescriptor, OwnedDocumentIntent, OwnedDocumentOwnerLifecycle, OwnedDocumentRead,
-    OwnedDocumentReadValue, OwnedDocumentReadiness, OwnedDocumentReceipt,
-    OwnedDocumentSyncDescriptor,
+    OWNED_DOCUMENT_DESCRIPTOR_VERSION, OwnedDocumentCommitValue, OwnedDocumentDescriptor,
+    OwnedDocumentIntent, OwnedDocumentOwnerLifecycle, OwnedDocumentRead, OwnedDocumentReadValue,
+    OwnedDocumentReadiness, OwnedDocumentReceipt, OwnedDocumentSyncDescriptor,
 };
-use nodex_core_contracts::events::ResourceKey;
 use nodex_core_contracts::{
     AdapterKind, ApplyResponse, BoundModuleContext, CommittedCoreModuleEvent, CoreError,
     CoreErrorCode, CoreErrorRecovery, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
@@ -60,7 +57,6 @@ use crate::infrastructure::event_log::{
 };
 use crate::infrastructure::metrics::DurationMetricSnapshot;
 use crate::infrastructure::module_receipts::{DurableModuleContext, read_module_receipt};
-use crate::infrastructure::resource_authorization;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use crate::infrastructure::store::SqliteStoreKernel;
 use crate::infrastructure::writer::{StoreReaders, StoreWriter};
@@ -144,7 +140,7 @@ struct DocumentCommitCheckpoint {
 struct AgentSemanticPreflight {
     footprint: AgentOperationFootprint,
     preview_markdown: Option<String>,
-    consent: AgentConsentRequirement,
+
     binding: PreparedAgentOperationBinding,
 }
 
@@ -219,7 +215,7 @@ pub(crate) struct RealtimeDocumentBoundary {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CanvasSceneSyncSnapshot {
     pub library_id: String,
-    pub access_context: OwnedDocumentAccessContext,
+    pub routing_context: ContentRoutingContext,
     pub document_id: String,
     pub store_epoch: String,
     pub generation: i64,
@@ -298,11 +294,16 @@ impl OwnedDocumentModule {
             .read_default(|connection| {
                 let authority = read_document_authority(connection, document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
-                authorize_canvas(connection, context, &authority, DocumentAccessKind::Read)?;
+                validate_canvas_owner(
+                    connection,
+                    context,
+                    &authority,
+                    DocumentOperationKind::Read,
+                )?;
                 let loaded = load_canvas_scene(connection, &authority)?;
                 Ok(CanvasSceneSyncSnapshot {
                     library_id: authority.head.library_id.clone(),
-                    access_context: document_access_context(context),
+                    routing_context: document_routing_context(context),
                     document_id: authority.head.id.clone(),
                     store_epoch: read_store_epoch(connection)?,
                     generation: authority.head.generation,
@@ -335,11 +336,11 @@ impl OwnedDocumentModule {
                 .read_default(|connection| {
                     let authority = read_document_authority(connection, &document_id)?
                         .ok_or_else(|| not_found("Owned Document was not found"))?;
-                    authorize_document_access(
+                    validate_document_owner(
                         connection,
                         context,
                         &authority,
-                        DocumentAccessKind::Read,
+                        DocumentOperationKind::Read,
                     )?;
                     let current_epoch = read_store_epoch(connection)?;
                     if store_epoch.0 != current_epoch || generation != authority.head.generation {
@@ -356,18 +357,11 @@ impl OwnedDocumentModule {
                     )?
                     .ok_or_else(|| not_found("Recovery artifact was not found"))?;
                     let commit_head = read_local_commit_head(connection)?;
-                    let authorization = issue_descriptor_read_stamp(
-                        connection,
-                        context,
-                        &authority,
-                        &current_epoch,
-                        commit_head,
-                    )?;
+
                     Ok(ModuleReadSnapshot {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(current_epoch),
                         commit_head,
-                        authorization: Some(authorization),
                         value: OwnedDocumentReadValue::RecoveryArtifact { artifact },
                     })
                 })
@@ -386,26 +380,19 @@ impl OwnedDocumentModule {
                         .ok_or_else(|| not_found("Owned Document descriptor was not found"))?;
                     let authority = read_document_authority(connection, &authority)?
                         .ok_or_else(|| not_found("Owned Document was not found"))?;
-                    authorize_document_access(
+                    validate_document_owner(
                         connection,
                         context,
                         &authority,
-                        DocumentAccessKind::Read,
+                        DocumentOperationKind::Read,
                     )?;
                     let store_epoch = read_store_epoch(connection)?;
                     let commit_head = read_local_commit_head(connection)?;
-                    let authorization = issue_descriptor_read_stamp(
-                        connection,
-                        context,
-                        &authority,
-                        &store_epoch,
-                        commit_head,
-                    )?;
+
                     Ok(ModuleReadSnapshot {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(store_epoch.clone()),
                         commit_head,
-                        authorization: Some(authorization),
                         value: OwnedDocumentReadValue::Descriptor {
                             descriptor: authority_descriptor(context, &authority, &store_epoch)?,
                         },
@@ -423,7 +410,12 @@ impl OwnedDocumentModule {
                     .call(move |connection| {
                         let authority = read_document_authority(connection, &document_id)?
                             .ok_or_else(|| not_found("Owned Document was not found"))?;
-                        authorize_yjs(connection, &context, &authority, DocumentAccessKind::Read)?;
+                        validate_yjs_owner(
+                            connection,
+                            &context,
+                            &authority,
+                            DocumentOperationKind::Read,
+                        )?;
                         let update = cache
                             .lock()
                             .map_err(|_| internal("Document cache lock failed"))?
@@ -433,7 +425,6 @@ impl OwnedDocumentModule {
                             contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                             store_epoch: StoreEpoch(store_epoch.clone()),
                             commit_head: read_local_commit_head(connection)?,
-                            authorization: None,
                             value: OwnedDocumentReadValue::YjsSync {
                                 descriptor: authority_descriptor(
                                     &context,
@@ -471,11 +462,11 @@ impl OwnedDocumentModule {
                     .read_default(|connection| {
                         let authority = read_document_authority(connection, &document_id)?
                             .ok_or_else(|| not_found("Owned Document was not found"))?;
-                        authorize_yjs(
+                        validate_yjs_owner(
                             connection,
                             context,
                             &authority,
-                            DocumentAccessKind::Read,
+                            DocumentOperationKind::Read,
                         )?;
                         let store_epoch = read_store_epoch(connection)?;
                         let repository = DocumentReadRepository::new(connection);
@@ -553,8 +544,7 @@ impl OwnedDocumentModule {
                             contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                             store_epoch: StoreEpoch(store_epoch),
                             commit_head: read_local_commit_head(connection)?,
-                            authorization: None,
-                            value,
+                                                        value,
                         })
                     })
                     .map_err(core_error)
@@ -568,11 +558,11 @@ impl OwnedDocumentModule {
                 .read_default(|connection| {
                     let authority = read_document_authority(connection, &document_id)?
                         .ok_or_else(|| not_found("Owned Document was not found"))?;
-                    authorize_owned_document(
+                    validate_owned_document(
                         connection,
                         context,
                         &authority,
-                        DocumentAccessKind::Read,
+                        DocumentOperationKind::Read,
                     )?;
                     let (items, next) =
                         list_document_versions(connection, &authority, before.as_ref(), limit)?;
@@ -580,7 +570,6 @@ impl OwnedDocumentModule {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(read_store_epoch(connection)?),
                         commit_head: read_local_commit_head(connection)?,
-                        authorization: None,
                         value: OwnedDocumentReadValue::Versions { items, next },
                     })
                 })
@@ -593,11 +582,11 @@ impl OwnedDocumentModule {
                 .read_default(|connection| {
                     let authority = read_document_authority(connection, &document_id)?
                         .ok_or_else(|| not_found("Owned Document was not found"))?;
-                    authorize_owned_document(
+                    validate_owned_document(
                         connection,
                         context,
                         &authority,
-                        DocumentAccessKind::Read,
+                        DocumentOperationKind::Read,
                     )?;
                     let version = get_document_version(connection, &authority, &version_id)?
                         .ok_or_else(|| not_found("Document version was not found"))?;
@@ -605,7 +594,6 @@ impl OwnedDocumentModule {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(read_store_epoch(connection)?),
                         commit_head: read_local_commit_head(connection)?,
-                        authorization: None,
                         value: OwnedDocumentReadValue::Version {
                             value: json!({
                                 "summary": version.summary,
@@ -620,13 +608,17 @@ impl OwnedDocumentModule {
                 .read_default(|connection| {
                     let authority = read_document_authority(connection, &document_id)?
                         .ok_or_else(|| not_found("Canvas Document was not found"))?;
-                    authorize_canvas(connection, context, &authority, DocumentAccessKind::Read)?;
+                    validate_canvas_owner(
+                        connection,
+                        context,
+                        &authority,
+                        DocumentOperationKind::Read,
+                    )?;
                     let stats = read_canvas_compaction_stats(connection, &authority)?;
                     Ok(ModuleReadSnapshot {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(read_store_epoch(connection)?),
                         commit_head: read_local_commit_head(connection)?,
-                        authorization: None,
                         value: OwnedDocumentReadValue::CanvasCompactionEligibility { stats },
                     })
                 })
@@ -870,11 +862,11 @@ impl OwnedDocumentModule {
                 let transaction = connection.unchecked_transaction()?;
                 let authority = read_document_authority(&transaction, document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
-                authorize_owned_document(
+                validate_owned_document(
                     &transaction,
                     context,
                     &authority,
-                    DocumentAccessKind::Read,
+                    DocumentOperationKind::Read,
                 )?;
                 let boundary = RealtimeDocumentBoundary {
                     store_epoch: StoreEpoch(read_store_epoch(&transaction)?),
@@ -960,13 +952,7 @@ impl OwnedDocumentModule {
                 }
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
-                authorize_agent_page_document(
-                    &transaction,
-                    &context,
-                    &authorization,
-                    &authority,
-                    AgentProjectResourceAction::Read,
-                )?;
+                authorize_agent_page_document(&transaction, &context, &authorization, &authority)?;
                 let engine = cache
                     .lock()
                     .map_err(|_| internal("Document cache lock failed"))?
@@ -1152,7 +1138,6 @@ impl OwnedDocumentModule {
                     contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(store_epoch),
                     commit_head,
-                    authorization: None,
                     value: OwnedDocumentReadValue::AgentSemanticSnapshot {
                         snapshot: Box::new(snapshot),
                     },
@@ -1239,7 +1224,6 @@ impl OwnedDocumentModule {
                     &context,
                     &authorization,
                     &authority,
-                    AgentProjectResourceAction::Write,
                 )?;
                 if authority.head.generation != mutation.generation {
                     return Err(StoreError::new(
@@ -1308,7 +1292,7 @@ impl OwnedDocumentModule {
                     preflight: AgentSemanticPreflight {
                         footprint,
                         preview_markdown,
-                        consent: AgentConsentRequirement::None,
+
                         binding,
                     },
                 })
@@ -1325,11 +1309,10 @@ impl OwnedDocumentModule {
                 contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: OwnedDocumentReadValue::AgentSemanticMutationPreparation {
                     preparation: AgentOperationPreparation {
                         state: AgentOperationPreparationState::CommittedReplay,
-                        consent: AgentConsentRequirement::None,
+
                         footprint,
                         preview_markdown: None,
                         token: None,
@@ -1351,11 +1334,10 @@ impl OwnedDocumentModule {
                     contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(store_epoch),
                     commit_head,
-                    authorization: None,
                     value: OwnedDocumentReadValue::AgentSemanticMutationPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::Prepared,
-                            consent: preflight.consent,
+
                             footprint: preflight.footprint,
                             preview_markdown: preflight.preview_markdown,
                             token: Some(issued.token),
@@ -1392,11 +1374,11 @@ impl OwnedDocumentModule {
                 }
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
-                authorize_yjs(
+                validate_yjs_owner(
                     &transaction,
                     &context,
                     &authority,
-                    DocumentAccessKind::Write,
+                    DocumentOperationKind::Write,
                 )?;
                 assert_document_head(&authority, generation, expected_head_seq)?;
                 let engine = cache
@@ -1628,11 +1610,11 @@ impl OwnedDocumentModule {
                     .ok_or_else(|| not_found("Owned Document owner was not found"))?;
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Owned Document was not found"))?;
-                authorize_document_access(
+                validate_document_owner(
                     &transaction,
                     &context,
                     &authority,
-                    DocumentAccessKind::Write,
+                    DocumentOperationKind::Write,
                 )?;
                 if authority.owner_block_id != owner_block_id
                     || authority.owner_lifecycle != "active"
@@ -1644,11 +1626,11 @@ impl OwnedDocumentModule {
                     ));
                 }
                 if authority.head.sync_engine == DocumentSyncEngine::CanvasScene {
-                    authorize_canvas(
+                    validate_canvas_owner(
                         &transaction,
                         &context,
                         &authority,
-                        DocumentAccessKind::Write,
+                        DocumentOperationKind::Write,
                     )?;
                     let (_, created) = ensure_canvas_scene(&transaction, &authority, &assets_root)?;
                     let commit_head = read_event_head(&transaction)?;
@@ -1722,11 +1704,11 @@ impl OwnedDocumentModule {
                                     let persisted = persist_yjs_genesis_with_local_commit(
                                         &transaction,
                                         PersistYjsGenesis {
-                                            file_access_context: Some(&context),
                                             authority: &authority,
-                                            actor_project_id: Some(bound_actor_project_id(
-                                                &context,
-                                            )?),
+                                            actor_project_id: context
+                                                .project_id
+                                                .as_ref()
+                                                .map(|project| project.0.as_str()),
                                             materialization: &prepared.materialization,
                                             update_id: &operation_id,
                                             client_session_id: &context.connection_id,
@@ -1780,11 +1762,11 @@ impl OwnedDocumentModule {
                             (committed, event, next_head, engine)
                         }
                         (DocumentReadiness::Ready, DocumentAuthority::YdocPrimary) => {
-                            authorize_yjs(
+                            validate_yjs_owner(
                                 &transaction,
                                 &context,
                                 &authority,
-                                DocumentAccessKind::Write,
+                                DocumentOperationKind::Write,
                             )?;
                             let mut engine = cache
                                 .lock()
@@ -1851,11 +1833,11 @@ impl OwnedDocumentModule {
                                     let persisted = persist_yjs_commit_with_local_commit(
                                         &transaction,
                                         PersistYjsCommit {
-                                            file_access_context: Some(&context),
                                             authority: &authority,
-                                            actor_project_id: Some(bound_actor_project_id(
-                                                &context,
-                                            )?),
+                                            actor_project_id: context
+                                                .project_id
+                                                .as_ref()
+                                                .map(|project| project.0.as_str()),
                                             base_materialization: &base_materialization,
                                             materialization: &materialization,
                                             update_id: &operation_id,
@@ -2015,11 +1997,11 @@ impl OwnedDocumentModule {
                 }
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Canvas Document was not found"))?;
-                authorize_canvas(
+                validate_canvas_owner(
                     &transaction,
                     &context,
                     &authority,
-                    DocumentAccessKind::Write,
+                    DocumentOperationKind::Write,
                 )?;
                 let actor_project_id = context.project_id.as_ref().map(|project| project.0.clone());
                 let actor_context = context.clone();
@@ -2072,7 +2054,7 @@ impl OwnedDocumentModule {
                                 Some(scope.evidence()),
                                 &authority,
                                 actor_project_id.as_deref(),
-                                &document_access_context(&context),
+                                &document_routing_context(&context),
                                 &store_epoch,
                                 &operation_id,
                                 base_head_seq,
@@ -2118,7 +2100,7 @@ impl OwnedDocumentModule {
                         None,
                         &authority,
                         actor_project_id.as_deref(),
-                        &document_access_context(&context),
+                        &document_routing_context(&context),
                         &store_epoch,
                         &operation_id,
                         base_head_seq,
@@ -2236,11 +2218,11 @@ impl OwnedDocumentModule {
                 }
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Canvas Document was not found"))?;
-                authorize_canvas(
+                validate_canvas_owner(
                     &transaction,
                     &context,
                     &authority,
-                    DocumentAccessKind::Write,
+                    DocumentOperationKind::Write,
                 )?;
                 let actor_project_id = context.project_id.as_ref().map(|project| project.0.clone());
                 let actor_context = context.clone();
@@ -2363,7 +2345,7 @@ impl OwnedDocumentModule {
                                 "kind": "tombstone_compaction",
                                 "operationId": operation_id,
                                 "libraryId": authority.head.library_id,
-                                "accessContext": document_access_context(&context),
+                                "routingContext": document_routing_context(&context),
                                 "documentId": authority.head.id,
                                 "storeEpoch": store_epoch,
                                 "previousGeneration": authority.head.generation,
@@ -2422,7 +2404,7 @@ impl OwnedDocumentModule {
                         "kind": "tombstone_compaction",
                         "operationId": operation_id,
                         "libraryId": authority.head.library_id,
-                        "accessContext": document_access_context(&context),
+                        "routingContext": document_routing_context(&context),
                         "documentId": authority.head.id,
                         "storeEpoch": store_epoch,
                         "previousGeneration": authority.head.generation,
@@ -3072,11 +3054,11 @@ impl OwnedDocumentModule {
                 };
                 let (yjs_engine, inserted_checkpoint) = match authority.head.sync_engine {
                     DocumentSyncEngine::Yjs => {
-                        authorize_yjs(
+                        validate_yjs_owner(
                             &transaction,
                             &context,
                             &authority,
-                            DocumentAccessKind::Write,
+                            DocumentOperationKind::Write,
                         )?;
                         let engine = cache
                             .lock()
@@ -3093,11 +3075,11 @@ impl OwnedDocumentModule {
                         (Some(engine), inserted)
                     }
                     DocumentSyncEngine::CanvasScene => {
-                        authorize_canvas(
+                        validate_canvas_owner(
                             &transaction,
                             &context,
                             &authority,
-                            DocumentAccessKind::Write,
+                            DocumentOperationKind::Write,
                         )?;
                         let loaded = load_canvas_scene(&transaction, &authority)?;
                         let inserted = insert_canvas_checkpoint(
@@ -3368,11 +3350,11 @@ impl OwnedDocumentModule {
                 }
                 let authority = read_document_authority(&transaction, &document_id)?
                     .ok_or_else(|| not_found("Canvas Document was not found"))?;
-                authorize_canvas(
+                validate_canvas_owner(
                     &transaction,
                     &context,
                     &authority,
-                    DocumentAccessKind::Write,
+                    DocumentOperationKind::Write,
                 )?;
                 assert_document_head(&authority, generation, expected_head_seq)?;
                 let actor_project_id = context
@@ -3464,7 +3446,7 @@ impl OwnedDocumentModule {
                             Some(scope.evidence()),
                             &authority,
                             actor_project_id,
-                            &document_access_context(&context),
+                            &document_routing_context(&context),
                             &store_epoch,
                             &operation_id,
                             authority.head.head_seq,
@@ -3611,19 +3593,16 @@ impl OwnedDocumentModule {
                 let agent_authority_fingerprint = if let Some(prepared_agent) =
                     job.prepared_agent.as_ref()
                 {
-                    Some(authorize_agent_page_document(
-                        &transaction,
-                        &job.context,
-                        &prepared_agent.authorization.authorization,
-                        &authority,
-                        AgentProjectResourceAction::Write,
-                    )?)
+                    Some(authorize_agent_page_document(&transaction,
+&job.context,
+&prepared_agent.authorization.authorization,
+&authority,)?)
                 } else {
-                    authorize_yjs(
+                    validate_yjs_owner(
                         &transaction,
                         &job.context,
                         &authority,
-                        DocumentAccessKind::Write,
+                        DocumentOperationKind::Write,
                     )?;
                     None
                 };
@@ -3812,7 +3791,7 @@ impl OwnedDocumentModule {
                 let revision_now = sqlite_now(&transaction)?;
                 let mut committed_delivery = None;
                 let mut file_events = Vec::new();
-                let authorized_file_ids = file_restore.as_ref().map(|plan| plan.authorized_file_ids()).unwrap_or_default();
+
                 let result = durable_mutation::run(
                     &transaction,
                     OperationIdentity {
@@ -3839,7 +3818,7 @@ impl OwnedDocumentModule {
                         let persisted = persist_yjs_commit_with_local_commit(
                             &transaction,
                             PersistYjsCommit {
-                                file_access_context: Some(&job.context),
+
                                 authority: &authority,
                                 actor_project_id: actor_project_id.as_deref(),
                                 base_materialization: &base_materialization,
@@ -3871,7 +3850,7 @@ impl OwnedDocumentModule {
                                         DocumentPlacementEvidence::STRUCTURAL
                                             .with_exact_moves(block_ids)
                                     }
-                                }).with_authorized_file_ids(&authorized_file_ids),
+                                }),
                             },
                             scope.evidence(),
                         )?;
@@ -4347,7 +4326,10 @@ fn attach_semantic_etags(
         None if job.context.adapter == AdapterKind::NativeCli
             && job.operation_kind == "apply_semantic_mutation" =>
         {
-            Some(bound_actor_project_id(&job.context)?)
+            job.context
+                .project_id
+                .as_ref()
+                .map(|project| project.0.as_str())
         }
         None => return Ok(()),
     };
@@ -4556,12 +4538,12 @@ fn insert_typed_receipt(
     )
 }
 
-fn document_access_context(context: &BoundModuleContext) -> OwnedDocumentAccessContext {
+fn document_routing_context(context: &BoundModuleContext) -> ContentRoutingContext {
     match context.project_id.as_ref() {
-        Some(project_id) => OwnedDocumentAccessContext::Project {
+        Some(project_id) => ContentRoutingContext::Project {
             project_id: project_id.0.clone(),
         },
-        None => OwnedDocumentAccessContext::Library,
+        None => ContentRoutingContext::Library,
     }
 }
 
@@ -4596,7 +4578,7 @@ fn authority_descriptor(
     Ok(OwnedDocumentDescriptor {
         version: OWNED_DOCUMENT_DESCRIPTOR_VERSION,
         library_id: authority.head.library_id.clone(),
-        access_context: document_access_context(context),
+        routing_context: document_routing_context(context),
         owner_block_id: authority.owner_block_id.clone(),
         owner_type: authority.owner_type.clone(),
         owner_lifecycle,
@@ -4609,39 +4591,6 @@ fn authority_descriptor(
         readiness,
         sync,
     })
-}
-
-fn issue_descriptor_read_stamp(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    authority: &DocumentAuthorityRow,
-    store_epoch: &str,
-    commit_head: i64,
-) -> Result<nodex_core_contracts::events::AuthorizedReadStamp, StoreError> {
-    let document = ResourceKey::Document {
-        document_id: authority.head.id.clone(),
-    };
-    let subject = match authority.owner_type.as_str() {
-        "page" => ResourceKey::Page {
-            page_id: authority.owner_block_id.clone(),
-        },
-        "database" => ResourceKey::Database {
-            database_id: authority.owner_block_id.clone(),
-        },
-        "canvas" => ResourceKey::Canvas {
-            canvas_id: authority.owner_block_id.clone(),
-        },
-        _ => document.clone(),
-    };
-    resource_authorization::issue_read_stamp(
-        connection,
-        context,
-        StoreEpoch(store_epoch.to_owned()),
-        commit_head,
-        subject.clone(),
-        vec![subject.clone()],
-        vec![subject, document],
-    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4973,8 +4922,6 @@ fn validate_agent_transport_context(
         AdapterKind::ElectronHost | AdapterKind::Test
     ) && context.profile_id.0 == provenance.profile_id
         && context.library_id.0 == authority.library_id
-        && context.project_id.as_ref().map(|id| id.0.as_str())
-            == authority.actor_project_id.as_deref()
         && !context.connection_id.is_empty()
         && context.connection_id.len() <= 512;
     if valid {
@@ -4993,7 +4940,6 @@ fn authorize_agent_page_document(
     context: &BoundModuleContext,
     authorization: &AgentExecutionAuthorization,
     authority: &DocumentAuthorityRow,
-    action: AgentProjectResourceAction,
 ) -> Result<String, StoreError> {
     if authority.owner_type != "page" || authority.owner_lifecycle != "active" {
         return Err(StoreError::new(
@@ -5034,15 +4980,11 @@ fn authorize_agent_page_document(
         ));
     }
     registered_yjs_schema(authority)?;
-    crate::library::agent_authorization::authorize_execution(
+    crate::library::agent_execution::validate_execution(
         connection,
         context,
         &page_library_id,
         authorization,
-        &AgentAuthorizationTarget::Page {
-            page_id: authority.owner_block_id.clone(),
-        },
-        action,
     )
 }
 
@@ -5529,189 +5471,56 @@ fn exhausted_store(message: &str) -> StoreError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum DocumentAccessKind {
+enum DocumentOperationKind {
     Read,
     Write,
 }
 
-fn authorize_document_access(
+fn validate_document_owner(
     connection: &Connection,
     context: &BoundModuleContext,
     authority: &DocumentAuthorityRow,
-    access: DocumentAccessKind,
+    access: DocumentOperationKind,
 ) -> Result<(), StoreError> {
-    if let Some(project_id) = context.project_id.as_ref() {
-        if authority.owner_type == "canvas" {
-            let (canvas_library_id, host_page_id) = connection
-                .query_row(
-                    "SELECT canvas.library_id, host_page.block_id \
-                     FROM canvas_owners canvas \
-                     JOIN blocks block ON block.id = canvas.block_id \
-                       AND block.library_id = canvas.library_id \
-                     LEFT JOIN document_block_index containing \
-                       ON containing.block_id = block.id \
-                     LEFT JOIN pages host_page \
-                       ON host_page.document_id = containing.document_id \
-                      AND host_page.library_id = block.library_id \
-                     WHERE canvas.block_id = ?1",
-                    [&authority.owner_block_id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
-                )
-                .optional()?
-                .ok_or_else(|| {
-                    StoreError::new(
-                        StoreErrorCode::NotFound,
-                        "Canvas owner metadata is unavailable",
-                        false,
-                    )
-                })?;
-            if canvas_library_id != context.library_id.0 {
-                return Err(StoreError::new(
-                    StoreErrorCode::Unauthorized,
-                    "Canvas is outside the bound Library",
-                    false,
-                ));
-            }
-            if let Some(page_id) = host_page_id {
-                match access {
-                    DocumentAccessKind::Read => crate::library::require_page_read_access(
-                        connection,
-                        &context.library_id.0,
-                        &project_id.0,
-                        &page_id,
-                    )?,
-                    DocumentAccessKind::Write => crate::library::require_page_write_access(
-                        connection,
-                        &context.library_id.0,
-                        &project_id.0,
-                        &page_id,
-                    )?,
-                }
-            } else {
-                match access {
-                    DocumentAccessKind::Read => crate::library::require_canvas_read_access(
-                        connection,
-                        &context.library_id.0,
-                        &project_id.0,
-                        &authority.owner_block_id,
-                    )?,
-                    DocumentAccessKind::Write => crate::library::require_canvas_write_access(
-                        connection,
-                        &context.library_id.0,
-                        &project_id.0,
-                        &authority.owner_block_id,
-                    )?,
-                }
-            }
-            return Ok(());
-        }
-        if authority.owner_type == "page" {
-            match access {
-                DocumentAccessKind::Read => crate::library::require_page_read_access(
-                    connection,
-                    &context.library_id.0,
-                    &project_id.0,
-                    &authority.owner_block_id,
-                )?,
-                DocumentAccessKind::Write => crate::library::require_page_write_access(
-                    connection,
-                    &context.library_id.0,
-                    &project_id.0,
-                    &authority.owner_block_id,
-                )?,
-            }
-        } else {
-            let project_is_available = connection
-                .query_row(
-                    "SELECT 1 FROM projects \
-                     WHERE id = ?1 AND library_id = ?2 AND lifecycle = 'active'",
-                    [&project_id.0, &authority.head.library_id],
-                    |_| Ok(()),
-                )
-                .optional()?
-                .is_some();
-            if !project_is_available {
-                return Err(StoreError::new(
-                    StoreErrorCode::Unauthorized,
-                    "Owned Document is outside the bound Library",
-                    false,
-                ));
-            }
-        }
-        if access == DocumentAccessKind::Write
-            && authority.owner_type == "page"
-            && authority.owner_lifecycle != "active"
-        {
-            return Err(StoreError::new(
-                StoreErrorCode::Unauthorized,
-                "Page Document is not writable",
-                false,
-            ));
-        }
-        return Ok(());
-    }
-    authorize_library_document_scope(context)
-        .map_err(|error| StoreError::new(StoreErrorCode::Unauthorized, error.message, false))?;
-    if authority.owner_type == "canvas" {
-        let available = connection
-            .query_row(
-                "SELECT 1 FROM canvas_owners \
-                 WHERE block_id = ?1 AND library_id = ?2",
-                [&authority.owner_block_id, &context.library_id.0],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        if available {
-            return Ok(());
-        }
+    if authority.head.library_id != context.library_id.0 {
         return Err(StoreError::new(
-            StoreErrorCode::NotFound,
-            "Canvas Document does not exist in the local Library",
+            StoreErrorCode::Unauthorized,
+            "Document belongs to another Library",
             false,
         ));
     }
-    if authority.owner_type != "page"
-        || authority.page_library_id.as_deref() != Some(context.library_id.0.as_str())
-        || authority.owner_lifecycle == "deleted"
+    if authority.owner_lifecycle == "deleted"
+        || (access == DocumentOperationKind::Write && authority.owner_lifecycle != "active")
     {
         return Err(StoreError::new(
             StoreErrorCode::NotFound,
-            "Page Document does not exist in the local Library",
+            "Document owner is unavailable for this operation",
             false,
         ));
     }
-    if access == DocumentAccessKind::Write && authority.owner_lifecycle != "active" {
+    let valid_owner=match authority.owner_type.as_str(){
+        "page"=>authority.page_library_id.as_deref()==Some(context.library_id.0.as_str()),
+        "canvas"=>connection.query_row("SELECT 1 FROM canvas_owners WHERE block_id=?1 AND library_id=?2",rusqlite::params![authority.owner_block_id,context.library_id.0],|_|Ok(())).optional()?.is_some(),
+        "database"|"synced_owner"|"synced_block_source"|"reusable_template_source"=>authority.owner_lifecycle=="active" && connection.query_row("SELECT 1 FROM blocks WHERE id=?1 AND library_id=?2 AND type=?3 AND lifecycle='active'",rusqlite::params![authority.owner_block_id,context.library_id.0,authority.owner_type],|_|Ok(())).optional()?.is_some(),
+        _=>false,
+    };
+    if !valid_owner {
         return Err(StoreError::new(
-            StoreErrorCode::Unauthorized,
-            "Page Document is not writable",
+            StoreErrorCode::NotFound,
+            "Document has no current owner in this Library",
             false,
         ));
     }
     Ok(())
 }
 
-fn authorize_library_document_scope(context: &BoundModuleContext) -> Result<(), CoreError> {
-    if context.project_id.is_some()
-        || matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-        )
-    {
-        return Ok(());
-    }
-    Err(unauthorized_core(
-        "Library Document scope requires a trusted local Adapter",
-    ))
-}
-
-fn authorize_yjs(
+fn validate_yjs_owner(
     connection: &Connection,
     context: &BoundModuleContext,
     authority: &DocumentAuthorityRow,
-    access: DocumentAccessKind,
+    access: DocumentOperationKind,
 ) -> Result<(), StoreError> {
-    authorize_document_access(connection, context, authority, access)?;
+    validate_document_owner(connection, context, authority, access)?;
     if authority.owner_lifecycle == "deleted"
         || authority.head.readiness != DocumentReadiness::Ready
         || authority.head.authority != DocumentAuthority::YdocPrimary
@@ -5727,13 +5536,13 @@ fn authorize_yjs(
     Ok(())
 }
 
-fn authorize_canvas(
+fn validate_canvas_owner(
     connection: &Connection,
     context: &BoundModuleContext,
     authority: &DocumentAuthorityRow,
-    access: DocumentAccessKind,
+    access: DocumentOperationKind,
 ) -> Result<(), StoreError> {
-    authorize_document_access(connection, context, authority, access)?;
+    validate_document_owner(connection, context, authority, access)?;
     if authority.owner_lifecycle == "deleted" {
         return Err(StoreError::new(
             StoreErrorCode::Unauthorized,
@@ -5744,24 +5553,25 @@ fn authorize_canvas(
     validate_canvas_authority(authority)
 }
 
-fn authorize_owned_document(
+fn validate_owned_document(
     connection: &Connection,
     context: &BoundModuleContext,
     authority: &DocumentAuthorityRow,
-    access: DocumentAccessKind,
+    access: DocumentOperationKind,
 ) -> Result<(), StoreError> {
     match authority.head.sync_engine {
-        DocumentSyncEngine::Yjs => authorize_yjs(connection, context, authority, access),
-        DocumentSyncEngine::CanvasScene => authorize_canvas(connection, context, authority, access),
+        DocumentSyncEngine::Yjs => validate_yjs_owner(connection, context, authority, access),
+        DocumentSyncEngine::CanvasScene => {
+            validate_canvas_owner(connection, context, authority, access)
+        }
     }
 }
 
 /// Reuses the canonical post-state read boundary for resource delivery.
 ///
-/// Delivery authorization is intentionally separate from command
-/// authorization, but it must resolve the same Page, granted Page, synced
-/// owner, and Canvas-shell ownership rules as a canonical Document read.
-pub(crate) fn require_owned_document_read_access(
+/// Delivery uses the same canonical owner lifecycle as a Document read.
+/// Project routing does not restrict content access.
+pub(crate) fn require_owned_document_for_live_read(
     connection: &Connection,
     context: &BoundModuleContext,
     document_id: &str,
@@ -5773,7 +5583,34 @@ pub(crate) fn require_owned_document_read_access(
             false,
         )
     })?;
-    authorize_owned_document(connection, context, &authority, DocumentAccessKind::Read)
+    validate_owned_document(connection, context, &authority, DocumentOperationKind::Read)
+}
+
+/// Delivery may refer to a retained Document whose Page was deliberately demoted.
+/// Only exact dormant provenance suppresses its live resource; ordinary reads keep
+/// rejecting unowned Documents as corrupt storage.
+pub(crate) fn require_owned_document_for_live_delivery(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    document_id: &str,
+) -> Result<(), StoreError> {
+    let dormant_candidate = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM structural_dormant_document_sources \
+         WHERE library_id = ?1 AND document_id = ?2) \
+         AND NOT EXISTS(SELECT 1 FROM block_documents WHERE document_id = ?2)",
+        rusqlite::params![context.library_id.0, document_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if dormant_candidate
+        && super::is_known_dormant_document(connection, &context.library_id.0, document_id)?
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::NotFound,
+            "Document is retained without a current content owner",
+            false,
+        ));
+    }
+    require_owned_document_for_live_read(connection, context, document_id)
 }
 
 fn registered_yjs_schema(
@@ -5961,29 +5798,6 @@ fn invalid(message: &str) -> CoreError {
     }
 }
 
-fn unauthorized_core(message: &str) -> CoreError {
-    CoreError {
-        code: CoreErrorCode::Unauthorized,
-        message: message.to_owned(),
-        retryable: false,
-        recovery: CoreErrorRecovery::None,
-    }
-}
-
-fn bound_actor_project_id(context: &BoundModuleContext) -> Result<&str, StoreError> {
-    context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| {
-            StoreError::new(
-                StoreErrorCode::Unauthorized,
-                "Document mutation requires a bound Project",
-                false,
-            )
-        })
-}
-
 fn invalid_store(message: String) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
 }
@@ -6012,10 +5826,6 @@ mod tests {
     mod reference_lifecycle;
     use std::fs;
 
-    use nodex_core_contracts::agent::{
-        AgentProjectResourceAccess, AgentResourceAccessOverlay, AgentResourceAccessOverlayKind,
-        AgentResourceAccessOverlayScope, AgentResourceGrantRoot, AgentResourceGrantSpec,
-    };
     use nodex_core_contracts::document::{
         AgentDocumentSemanticMutation, DeletableOwnedSourceKind,
         DocumentBlockOperation as ContractDocumentBlockOperation,
@@ -6027,8 +5837,7 @@ mod tests {
     use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent};
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
-        ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
-        ProjectWorkspaceTurnAuthoritySource,
+        ProjectWorkspaceTurnAuthority,
     };
     use nodex_core_contracts::{
         AdapterKind, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest, ModuleReadRequest,
@@ -6039,8 +5848,8 @@ mod tests {
 
     use crate::document::{
         BlockDocumentSchema, DocumentAwareness, DocumentBlockOperation, DocumentBlockUpdatePatch,
-        DocumentRealtimeEvent, DocumentSubscriptionEngine, OwnedDocumentRealtimeAdapter,
-        YrsDocumentEngine, prepare_document_operation_update,
+        DocumentRealtimeEvent, OwnedDocumentRealtimeAdapter, YrsDocumentEngine,
+        prepare_document_operation_update,
     };
     use crate::infrastructure::sqlite::{StoreError, with_immediate_transaction};
     use crate::infrastructure::store_validation::validate_current_store;
@@ -6094,22 +5903,6 @@ mod tests {
             project_id: Some(ProjectId(project_id.to_owned())),
             connection_id: connection_id.to_owned(),
             adapter: AdapterKind::Test,
-        }
-    }
-
-    fn native_cli_context_for(connection_id: &str, project_id: &str) -> BoundModuleContext {
-        BoundModuleContext {
-            editor_history_owner: None,
-            adapter: AdapterKind::NativeCli,
-            ..context_for_project(connection_id, project_id)
-        }
-    }
-
-    fn electron_context_for(connection_id: &str, project_id: &str) -> BoundModuleContext {
-        BoundModuleContext {
-            editor_history_owner: None,
-            adapter: AdapterKind::ElectronHost,
-            ..context_for_project(connection_id, project_id)
         }
     }
 
@@ -6196,14 +5989,7 @@ mod tests {
                              ) VALUES (?1, ?2, '7fffffffffffffffffffffffffffffff', 1, ?3, ?3)",
                             params![OWNER_BLOCK_ID, LIBRARY_ID, NOW],
                         )?;
-                        transaction.execute(
-                            "INSERT INTO project_resource_grants(\
-                               id, project_id, library_id, root_kind, root_id, access, recursive, \
-                               revision, lifecycle, created_at, updated_at\
-                             ) VALUES ('grant:document-ready-page', ?1, ?2, 'page', ?3, \
-                               'read_write', 1, 1, 'active', ?4, ?4)",
-                            params![PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                        )?;
+
                         for unit in &materialization.search_units {
                             transaction.execute(
                                 "INSERT INTO blocks(\
@@ -6418,9 +6204,9 @@ mod tests {
                     )?;
                     transaction.execute(
                         "INSERT INTO database_containers(\
-                           block_id, library_id, name, lifecycle, default_view_id, access_revision, \
+                           block_id, library_id, name, lifecycle, default_view_id, \
                            metadata_revision, created_at, updated_at\
-                         ) VALUES (?1, ?2, 'Document test Database', 'active', NULL, 1, 1, ?3, ?3)",
+                         ) VALUES (?1, ?2, 'Document test Database', 'active', NULL, 1, ?3, ?3)",
                         params![DATABASE_ID, LIBRARY_ID, NOW],
                     )?;
                     transaction.execute(
@@ -6599,14 +6385,12 @@ mod tests {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     operation_id: format!("workspace:agent-turn:{actor_project_id}"),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: thread_id.clone(),
                         turn_id: turn_id.clone(),
                         root_thread_id: thread_id.clone(),
                         actor_project_id: Some(actor_project_id.to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
+
                     },
                 },
             )
@@ -6620,8 +6404,6 @@ mod tests {
                 actor_project_id: Some(actor_project_id.to_owned()),
                 library_id: LIBRARY_ID.to_owned(),
                 store_epoch: STORE_EPOCH.to_owned(),
-                scope: ProjectWorkspaceTurnAuthorityScope::Project,
-                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
             },
         }
     }
@@ -6629,33 +6411,11 @@ mod tests {
     fn agent_execution_authorization(
         provenance: AgentTurnProvenance,
     ) -> AgentExecutionAuthorization {
-        let authority = provenance.authority.clone();
+        let _authority = provenance.authority.clone();
         let call_id = "call:agent-document-test".to_owned();
         AgentExecutionAuthorization {
             provenance,
             call_id: call_id.clone(),
-            resource_access: Some(AgentResourceAccessOverlay {
-                kind: AgentResourceAccessOverlayKind::Consent,
-                scope: AgentResourceAccessOverlayScope::Call,
-                thread_id: Some(authority.thread_id.clone()),
-                turn_id: Some(authority.turn_id.clone()),
-                call_id: Some(call_id),
-                root_thread_id: authority.root_thread_id.clone(),
-                actor_project_id: authority
-                    .actor_project_id
-                    .clone()
-                    .expect("Project consent fixture"),
-                library_id: authority.library_id.clone(),
-                store_epoch: authority.store_epoch.clone(),
-                grants: vec![AgentResourceGrantSpec {
-                    root: AgentResourceGrantRoot::Page {
-                        page_id: OWNER_BLOCK_ID.to_owned(),
-                    },
-                    access: AgentProjectResourceAccess::ReadWrite,
-                    library_actions: Vec::new(),
-                }],
-                persist_resulting_page_grants: false,
-            }),
         }
     }
 
@@ -6763,14 +6523,7 @@ mod tests {
                                 NOW,
                             ],
                         )?;
-                        transaction.execute(
-                            "INSERT INTO project_resource_grants(\
-                               id, project_id, library_id, root_kind, root_id, access, recursive, \
-                               revision, lifecycle, created_at, updated_at\
-                             ) VALUES ('grant:document-test', ?1, ?2, 'page', ?3, \
-                               'read_write', 1, 1, 'active', ?4, ?4)",
-                            params![PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                        )?;
+
                     }
                     Ok(())
                 })
@@ -6922,14 +6675,7 @@ mod tests {
                          ) VALUES (?1, ?2, 'a', 1, ?3, ?3)",
                         params![OWNER_BLOCK_ID, LIBRARY_ID, NOW],
                     )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants(\
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at\
-                         ) VALUES ('grant:canvas-test', ?1, ?2, 'canvas', ?3, \
-                           'read_write', 1, 1, 'active', ?4, ?4)",
-                        params![PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                    )?;
+
                     Ok(())
                 })
             })
@@ -7392,7 +7138,7 @@ mod tests {
             .expect("Canvas mutation result");
         assert_eq!(canvas_result["libraryId"], LIBRARY_ID);
         assert_eq!(
-            canvas_result["accessContext"],
+            canvas_result["routingContext"],
             json!({ "kind": "project", "projectId": PROJECT_ID })
         );
         assert!(canvas_result.get("projectId").is_none());
@@ -7826,166 +7572,6 @@ mod tests {
     }
 
     #[test]
-    fn canvas_scene_access_inherits_its_host_page_grant() {
-        const GRANTED_PROJECT_ID: &str = "project:canvas-grantee";
-        const HOST_DOCUMENT_ID: &str = "019bf52d-6870-7000-8000-000000000099";
-        let seeded = canvas_module();
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO projects(id, library_id, name, created, updated) \
-                         VALUES (?1, ?2, 'Canvas grantee', ?3, ?3)",
-                        params![GRANTED_PROJECT_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO documents(\
-                           id, library_id, generation, head_seq, schema_key, schema_version, \
-                           state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine\
-                         ) VALUES (?1, ?2, 1, 0, 'nodex.page', 3, X'', ?3, \
-                           'ready', 'ydoc_primary', ?4, ?4, 'yjs')",
-                        params![HOST_DOCUMENT_ID, LIBRARY_ID, "", NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
-                         VALUES (?1, ?2, ?3, ?4)",
-                        params![TARGET_PAGE_BLOCK_ID, HOST_DOCUMENT_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO pages(\
-                           block_id, library_id, document_id, parent_kind, parent_id, \
-                           created_at, updated_at\
-                         ) VALUES (?1, ?2, ?3, 'library', ?2, ?4, ?4)",
-                        params![TARGET_PAGE_BLOCK_ID, LIBRARY_ID, HOST_DOCUMENT_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO library_block_placements(\
-                           block_id, library_id, rank_key, revision, created_at, updated_at\
-                         ) VALUES (?1, ?2, '7fffffffffffffffffffffffffffffff', 1, ?3, ?3)",
-                        params![TARGET_PAGE_BLOCK_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "DELETE FROM library_block_placements \
-                         WHERE block_id = ?1 AND library_id = ?2",
-                        params![OWNER_BLOCK_ID, LIBRARY_ID],
-                    )?;
-                    transaction.execute(
-                        "UPDATE blocks SET placement_revision = placement_revision + 1, \
-                           updated_at = ?1 WHERE id = ?2 AND library_id = ?3",
-                        params![NOW, OWNER_BLOCK_ID, LIBRARY_ID],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO document_block_index(\
-                           document_id, block_id, parent_block_id, ordinal, block_type, text, projected_seq\
-                         ) VALUES (?1, ?2, NULL, 0, 'canvas', '', 0)",
-                        params![HOST_DOCUMENT_ID, OWNER_BLOCK_ID],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants(\
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at\
-                         ) VALUES \
-                           ('grant:canvas-host-owner', ?1, ?3, 'page', ?4, 'read_write', 1, 1, \
-                            'active', ?5, ?5), \
-                           ('grant:canvas-host-reader', ?2, ?3, 'page', ?4, 'read', 1, 1, \
-                            'active', ?5, ?5)",
-                        params![
-                            PROJECT_ID,
-                            GRANTED_PROJECT_ID,
-                            LIBRARY_ID,
-                            TARGET_PAGE_BLOCK_ID,
-                            NOW,
-                        ],
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("seed hosted Canvas grant");
-
-        seeded
-            .module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    operation_id: "canvas:grantee:prepare".to_owned(),
-                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: OwnedDocumentIntent::PrepareOwner {
-                        owner_block_id: OWNER_BLOCK_ID.to_owned(),
-                    },
-                },
-            )
-            .expect("prepare hosted Canvas scene");
-        let granted = context_for_project("canvas-grantee:read", GRANTED_PROJECT_ID);
-        seeded
-            .module
-            .sync_canvas(&granted, DOCUMENT_ID)
-            .expect("read grant opens the hosted Canvas");
-        seeded
-            .module
-            .apply(
-                &granted,
-                canvas_mutation_request("canvas:grantee:read-denied", 0, 1, "Denied"),
-            )
-            .expect_err("read grant cannot mutate the hosted Canvas");
-
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                connection.execute(
-                    "UPDATE project_resource_grants \
-                     SET access = 'read_write', revision = 2 \
-                     WHERE id = 'grant:canvas-host-reader'",
-                    [],
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        seeded
-            .module
-            .apply(
-                &context_for_project("canvas-grantee:write", GRANTED_PROJECT_ID),
-                canvas_mutation_request("canvas:grantee:write", 0, 1, "Granted"),
-            )
-            .expect("read-write grant mutates the hosted Canvas");
-
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "DELETE FROM document_block_index WHERE block_id = ?1",
-                        [OWNER_BLOCK_ID],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO library_block_placements(\
-                           block_id, library_id, rank_key, revision, created_at, updated_at\
-                         ) VALUES (?1, ?2, 'bfffffffffffffffffffffffffffffff', 1, ?3, ?3)",
-                        params![OWNER_BLOCK_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "UPDATE blocks SET placement_revision = placement_revision + 1, \
-                           updated_at = ?1 WHERE id = ?2 AND library_id = ?3",
-                        params![NOW, OWNER_BLOCK_ID, LIBRARY_ID],
-                    )?;
-                    Ok(())
-                })
-            })
-            .unwrap();
-        seeded
-            .module
-            .sync_canvas(
-                &context_for_project("canvas-grantee:top-level", GRANTED_PROJECT_ID),
-                DOCUMENT_ID,
-            )
-            .expect_err("foreign Project cannot open a top-level Canvas");
-    }
-
-    #[test]
     fn canvas_tombstone_compaction_rotates_generation_with_pinned_history_and_exact_replay() {
         let seeded = canvas_module();
         seeded
@@ -8350,7 +7936,7 @@ mod tests {
         assert!(matches!(
             &deleted.events[0].payload,
             CoreModuleEventPayload::OwnedDocument(OwnedDocumentEvent::DocumentInvalidated {
-                reason: DocumentInvalidationReason::AccessChanged,
+                reason: DocumentInvalidationReason::OwnerDeleted,
                 ..
             })
         ));
@@ -8517,14 +8103,7 @@ mod tests {
                      VALUES (?1, ?2, 'Template grantee', ?3, ?3)",
                     params![TEMPLATE_GRANTEE_PROJECT_ID, LIBRARY_ID, NOW],
                 )?;
-                connection.execute(
-                    "INSERT INTO project_resource_grants(\
-                       id, project_id, library_id, root_kind, root_id, access, recursive, \
-                       revision, lifecycle, created_at, updated_at\
-                     ) VALUES ('grant:template-target', ?1, ?2, 'page', ?3, \
-                       'read', 1, 1, 'active', ?4, ?4)",
-                    params![TEMPLATE_GRANTEE_PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                )?;
+
                 Ok(())
             })
             .expect("grant a second Project the template target Page");
@@ -8764,6 +8343,15 @@ mod tests {
 
     #[test]
     fn prepare_owner_commits_registered_genesis_once() {
+        for bound in [
+            context(),
+            library_context_for("library:prepare", AdapterKind::Test),
+        ] {
+            verify_registered_genesis(&bound);
+        }
+    }
+
+    fn verify_registered_genesis(bound: &BoundModuleContext) {
         for (owner_type, schema_key, schema_version) in [
             ("page", "nodex.page", 3),
             ("synced_block_source", "nodex.synced-block", 2),
@@ -8780,7 +8368,7 @@ mod tests {
             };
             let prepared = seeded
                 .module
-                .apply(&context(), request.clone())
+                .apply(bound, request.clone())
                 .expect("prepare pending owner");
             assert_eq!(prepared.committed.value.head_seq, 1);
             assert_eq!(
@@ -8838,7 +8426,7 @@ mod tests {
 
             let duplicate = seeded
                 .module
-                .apply(&context(), request)
+                .apply(bound, request)
                 .expect("exact prepare retry");
             assert!(duplicate.committed.receipt.mutation.duplicate);
             assert!(duplicate.events.is_empty());
@@ -8846,7 +8434,7 @@ mod tests {
             let no_change = seeded
                 .module
                 .apply(
-                    &context(),
+                    bound,
                     ModuleApplyRequest {
                         contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
                         operation_id: format!("prepare-again:{owner_type}"),
@@ -9414,14 +9002,7 @@ mod tests {
                          VALUES (?1, ?2, 'Document projection grantee', ?3, ?3)",
                         params![GRANTED_PROJECT_ID, LIBRARY_ID, NOW],
                     )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants(\
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at\
-                         ) VALUES ('grant:document-projection', ?1, ?2, 'database', ?3, \
-                           'read', 1, 1, 'active', ?4, ?4)",
-                        params![GRANTED_PROJECT_ID, LIBRARY_ID, DATABASE_ID, NOW],
-                    )?;
+
                     Ok(())
                 })
             })
@@ -9816,226 +9397,6 @@ mod tests {
                 2,
             )
             .expect("compact event update tail");
-    }
-
-    #[test]
-    fn electron_realtime_page_access_uses_recursive_project_grants() {
-        const GRANTED_PROJECT_ID: &str = "project:electron-grantee";
-        let seeded = seeded_module();
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO projects(id, library_id, name, created, updated) \
-                         VALUES (?1, ?2, 'Electron grantee', ?3, ?3)",
-                        params![GRANTED_PROJECT_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants(\
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at\
-                         ) VALUES ('grant:electron-page', ?1, ?2, 'page', ?3, 'read', 1, 1, \
-                           'active', ?4, ?4)",
-                        params![GRANTED_PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("seed Electron Page grant");
-
-        let adapter = OwnedDocumentRealtimeAdapter::new(seeded.module.clone());
-        let granted = electron_context_for("renderer:grantee", GRANTED_PROJECT_ID);
-        adapter
-            .subscribe(
-                &granted,
-                DOCUMENT_ID.to_owned(),
-                "client:grantee".to_owned(),
-            )
-            .expect("read grant subscribes to the foreign Page");
-        adapter
-            .sync_yjs(
-                &granted,
-                "client:grantee",
-                DOCUMENT_ID.to_owned(),
-                Vec::new(),
-                None,
-            )
-            .expect("read grant syncs the foreign Page");
-
-        let request = apply_request(
-            "update:electron-grantee",
-            1,
-            title_update(&seeded.full_state, &seeded.state_vector, "Electron grant"),
-        );
-        let denied = adapter
-            .apply(&granted, "client:grantee", request.clone())
-            .expect_err("read grant cannot mutate the foreign Page");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
-
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                connection.execute(
-                    "UPDATE project_resource_grants SET access = 'read_write', revision = 2 \
-                     WHERE id = 'grant:electron-page'",
-                    [],
-                )?;
-                Ok(())
-            })
-            .expect("upgrade Electron Page grant");
-        let committed = adapter
-            .apply(&granted, "client:grantee", request)
-            .expect("read-write grant mutates the foreign Page");
-        assert_eq!(committed.committed.value.head_seq, 2);
-    }
-
-    #[test]
-    fn trusted_library_realtime_scope_crosses_project_access_paths() {
-        let seeded = seeded_module();
-        let adapter = OwnedDocumentRealtimeAdapter::new(seeded.module.clone());
-        let library_context = library_context_for("renderer:library", AdapterKind::Test);
-        let untrusted_context = library_context_for("agent:library", AdapterKind::Agent);
-        let wrong_project = context_for_project("renderer:wrong", "project:other");
-
-        let canvas = canvas_module();
-        canvas
-            .module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    operation_id: "canvas:library-access:prepare".to_owned(),
-                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: OwnedDocumentIntent::PrepareOwner {
-                        owner_block_id: OWNER_BLOCK_ID.to_owned(),
-                    },
-                },
-            )
-            .expect("prepare Library-accessed Canvas");
-        let canvas_adapter = OwnedDocumentRealtimeAdapter::new(canvas.module);
-        let canvas_subscription = canvas_adapter
-            .subscribe(
-                &library_context,
-                DOCUMENT_ID.to_owned(),
-                "client:library-canvas".to_owned(),
-            )
-            .expect("trusted Library scope resolves a registered Canvas owner");
-        assert_eq!(
-            canvas_subscription.engine,
-            DocumentSubscriptionEngine::CanvasScene
-        );
-        let library_canvas_applied = canvas_adapter
-            .apply(
-                &library_context,
-                "client:library-canvas",
-                canvas_mutation_request("canvas:library-access", 0, 1, "Library access"),
-            )
-            .expect("trusted Library scope mutates the registered Canvas");
-        let library_canvas_result = library_canvas_applied
-            .committed
-            .value
-            .canvas
-            .as_ref()
-            .expect("Library Canvas mutation result");
-        assert_eq!(library_canvas_result["libraryId"], LIBRARY_ID);
-        assert_eq!(
-            library_canvas_result["accessContext"],
-            json!({ "kind": "library" })
-        );
-        assert!(library_canvas_result.get("projectId").is_none());
-
-        let unauthorized_library = adapter
-            .subscribe(
-                &untrusted_context,
-                DOCUMENT_ID.to_owned(),
-                "client:agent".to_owned(),
-            )
-            .expect_err("untrusted Adapter cannot request Library scope");
-        assert_eq!(unauthorized_library.code, CoreErrorCode::Unauthorized);
-        let unauthorized_project = adapter
-            .subscribe(
-                &wrong_project,
-                DOCUMENT_ID.to_owned(),
-                "client:wrong".to_owned(),
-            )
-            .expect_err("another Project cannot discover the foreign Page");
-        assert_eq!(unauthorized_project.code, CoreErrorCode::NotFound);
-
-        adapter
-            .subscribe(
-                &library_context,
-                DOCUMENT_ID.to_owned(),
-                "client:library".to_owned(),
-            )
-            .expect("trusted Library subscription");
-        let synced = adapter
-            .sync_yjs(
-                &library_context,
-                "client:library",
-                DOCUMENT_ID.to_owned(),
-                Vec::new(),
-                None,
-            )
-            .expect("Library-scoped sync");
-        assert!(matches!(
-            synced.value,
-            OwnedDocumentReadValue::YjsSync { .. }
-        ));
-
-        let applied = adapter
-            .apply(
-                &library_context,
-                "client:library",
-                apply_request(
-                    "update:library-scope",
-                    1,
-                    title_update(&seeded.full_state, &seeded.state_vector, "Library scope"),
-                ),
-            )
-            .expect("Library-scoped update");
-        assert_eq!(applied.committed.value.head_seq, 2);
-
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "UPDATE blocks SET lifecycle = 'archived' WHERE id = ?1",
-                        [OWNER_BLOCK_ID],
-                    )?;
-                    transaction.execute(
-                        "UPDATE page_read_model SET lifecycle = 'archived' WHERE page_block_id = ?1",
-                        [OWNER_BLOCK_ID],
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("archive Page authority");
-        adapter
-            .sync_yjs(
-                &library_context,
-                "client:library",
-                DOCUMENT_ID.to_owned(),
-                Vec::new(),
-                None,
-            )
-            .expect("archived Library Page remains readable");
-        let archived_write = adapter
-            .apply(
-                &library_context,
-                "client:library",
-                apply_request(
-                    "update:archived-library-scope",
-                    2,
-                    title_update(&seeded.full_state, &seeded.state_vector, "Archived write"),
-                ),
-            )
-            .expect_err("archived Library Page is not writable");
-        assert_eq!(archived_write.code, CoreErrorCode::Unauthorized);
     }
 
     #[test]
@@ -11240,22 +10601,7 @@ mod tests {
         assert_eq!(artifact.update_id, "update:stale-across-barrier");
         assert!(!artifact.update.is_empty());
         assert_eq!(artifact.update_hash, sha256(&artifact.update));
-        let mut denied = context();
-        denied.project_id = Some(nodex_core_contracts::ProjectId(
-            "project:unrelated".to_owned(),
-        ));
-        assert!(
-            seeded
-                .module
-                .read(
-                    &denied,
-                    ModuleReadRequest {
-                        contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                        read: artifact_read
-                    }
-                )
-                .is_err()
-        );
+
         let repeated = seeded
             .module
             .apply(&context(), request.clone())
@@ -11617,7 +10963,7 @@ mod tests {
             panic!("expected a new prepared Agent operation")
         };
         assert_eq!(preparation.state, AgentOperationPreparationState::Prepared);
-        assert_eq!(preparation.consent, AgentConsentRequirement::None);
+
         assert_eq!(preparation.footprint.effect_class, AgentEffectClass::Write);
         assert_eq!(preparation.footprint.targets[0].id, OWNER_BLOCK_ID);
         assert!(preparation.footprint.created_roots.is_empty());
@@ -12842,140 +12188,6 @@ mod tests {
     }
 
     #[test]
-    fn prepared_agent_execution_binds_one_call_resource_consent() {
-        const ACTOR_PROJECT_ID: &str = "project:agent-consent";
-        let seeded = seeded_module();
-        let connection_id = "electron:agent-consent";
-        let provenance = seed_agent_turn_for_project(&seeded, connection_id, ACTOR_PROJECT_ID);
-        let materialization = materialize_engine(
-            &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
-        )
-        .unwrap();
-        let title_etag = seeded
-            .kernel
-            .readers()
-            .read_default(|connection| {
-                super::super::semantic::mint_etag(
-                    connection,
-                    "title",
-                    Some(ACTOR_PROJECT_ID),
-                    STORE_EPOCH,
-                    &[DOCUMENT_ID],
-                    json!({ "richTitle": materialization.rich_title }),
-                )
-                .map_err(semantic_error)
-            })
-            .unwrap();
-        let operation_id = "agent:consented-title";
-        let mutation = AgentDocumentSemanticMutation {
-            document_id: DOCUMENT_ID.to_owned(),
-            generation: 1,
-            expected_head_seq: 1,
-            commands: vec![DocumentSemanticCommand::SetTitle {
-                inline_markdown: "One-call consent".to_owned(),
-                expected_etag: title_etag,
-            }],
-        };
-        let denied = seeded
-            .module
-            .read(
-                &context_for_project(connection_id, ACTOR_PROJECT_ID),
-                ModuleReadRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    read: OwnedDocumentRead::PrepareAgentSemanticMutation {
-                        operation_id: "agent:unconsented-title".to_owned(),
-                        store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                        authorization: Box::new(AgentExecutionAuthorization {
-                            provenance: provenance.clone(),
-                            call_id: "call:agent-document-test".to_owned(),
-                            resource_access: None,
-                        }),
-                        mutation: Box::new(mutation.clone()),
-                    },
-                },
-            )
-            .expect_err("ungranted Page write requires bound resource consent");
-        assert_eq!(denied.code, CoreErrorCode::Unauthorized);
-        let mut mismatched_authorization = agent_execution_authorization(provenance.clone());
-        mismatched_authorization.call_id = "call:another-agent-call".to_owned();
-        let mismatched = seeded
-            .module
-            .read(
-                &context_for_project(connection_id, ACTOR_PROJECT_ID),
-                ModuleReadRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    read: OwnedDocumentRead::PrepareAgentSemanticMutation {
-                        operation_id: "agent:mismatched-consent-title".to_owned(),
-                        store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                        authorization: Box::new(mismatched_authorization),
-                        mutation: Box::new(mutation.clone()),
-                    },
-                },
-            )
-            .expect_err("one-call consent cannot authorize another call");
-        assert_eq!(mismatched.code, CoreErrorCode::Unauthorized);
-        let prepared = seeded
-            .module
-            .read(
-                &context_for_project(connection_id, ACTOR_PROJECT_ID),
-                ModuleReadRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    read: OwnedDocumentRead::PrepareAgentSemanticMutation {
-                        operation_id: operation_id.to_owned(),
-                        store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                        authorization: Box::new(agent_execution_authorization(provenance.clone())),
-                        mutation: Box::new(mutation.clone()),
-                    },
-                },
-            )
-            .expect("same-Library Page is consent-eligible");
-        let OwnedDocumentReadValue::AgentSemanticMutationPreparation {
-            preparation,
-            committed: None,
-        } = prepared.value
-        else {
-            panic!("expected prepared consent operation")
-        };
-        assert_eq!(preparation.consent, AgentConsentRequirement::None);
-        let committed = seeded
-            .module
-            .apply(
-                &context_for_project(connection_id, ACTOR_PROJECT_ID),
-                ModuleApplyRequest {
-                    contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-                    operation_id: operation_id.to_owned(),
-                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: OwnedDocumentIntent::ExecutePreparedAgentSemanticMutation {
-                        authorization: Box::new(AgentPreparedExecution {
-                            authorization: agent_execution_authorization(provenance),
-                            token: preparation.token,
-                        }),
-                        mutation: Box::new(mutation),
-                    },
-                },
-            )
-            .expect("single-use token binds the consented resource footprint");
-        assert_eq!(committed.committed.value.head_seq, 2);
-        seeded
-            .kernel
-            .readers()
-            .read_default(|connection| {
-                let evidence: (String, i64) = connection.query_row(
-                    "SELECT materialization.title, \
-                       (SELECT count(*) FROM project_resource_grants \
-                        WHERE project_id = ?2) \
-                     FROM document_materializations materialization WHERE document_id = ?1",
-                    params![DOCUMENT_ID, ACTOR_PROJECT_ID],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )?;
-                assert_eq!(evidence, ("One-call consent".to_owned(), 0));
-                Ok::<_, StoreError>(())
-            })
-            .unwrap();
-    }
-
-    #[test]
     fn semantic_title_and_body_guards_commit_atomically() {
         let seeded = seeded_module();
         let materialization = materialize_engine(
@@ -13158,6 +12370,12 @@ mod tests {
 
     #[test]
     fn native_cli_semantic_replay_is_connection_and_head_independent() {
+        for project_id in [Some(PROJECT_ID), None] {
+            verify_native_cli_semantic_replay(project_id);
+        }
+    }
+
+    fn verify_native_cli_semantic_replay(project_id: Option<&str>) {
         let seeded = seeded_module();
         let materialization = materialize_engine(
             &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
@@ -13171,7 +12389,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    Some(PROJECT_ID),
+                    project_id,
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -13179,6 +12397,11 @@ mod tests {
                 .map_err(semantic_error)
             })
             .unwrap();
+        let caller = |connection_id| BoundModuleContext {
+            adapter: AdapterKind::NativeCli,
+            project_id: project_id.map(|id| ProjectId(id.to_owned())),
+            ..context_for(connection_id)
+        };
         let command = DocumentSemanticCommand::SetTitle {
             inline_markdown: "Native CLI title".to_owned(),
             expected_etag: title_etag,
@@ -13197,10 +12420,7 @@ mod tests {
 
         let committed = seeded
             .module
-            .apply(
-                &native_cli_context_for("native-cli:first", PROJECT_ID),
-                request(1),
-            )
+            .apply(&caller("native-cli:first"), request(1))
             .expect("native CLI semantic mutation");
         let etags = committed
             .committed
@@ -13213,105 +12433,11 @@ mod tests {
 
         let replay = seeded
             .module
-            .apply(
-                &native_cli_context_for("native-cli:retry", PROJECT_ID),
-                request(2),
-            )
+            .apply(&caller("native-cli:retry"), request(2))
             .expect("lost-response replay from a new CLI process");
         assert!(replay.committed.receipt.mutation.duplicate);
         assert_eq!(replay.committed.value.semantic_etags, Some(etags));
         assert!(replay.events.is_empty());
-    }
-
-    #[test]
-    fn native_cli_semantic_write_uses_recursive_project_grant_authority() {
-        const CLI_PROJECT_ID: &str = "project:native-cli-grant";
-        let seeded = seeded_module();
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO projects(id, library_id, name, created, updated) \
-                         VALUES (?1, ?2, 'CLI project', ?3, ?3)",
-                        params![CLI_PROJECT_ID, LIBRARY_ID, NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants(\
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at\
-                         ) VALUES ('grant:native-cli-page', ?1, ?2, 'page', ?3, 'read', 1, 1, \
-                           'active', ?4, ?4)",
-                        params![CLI_PROJECT_ID, LIBRARY_ID, OWNER_BLOCK_ID, NOW],
-                    )?;
-                    Ok(())
-                })
-            })
-            .unwrap();
-        let materialization = materialize_engine(
-            &YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &seeded.full_state).unwrap(),
-            BlockDocumentSchema::PageV3,
-        )
-        .unwrap();
-        let title_etag = seeded
-            .kernel
-            .readers()
-            .read_default(|connection| {
-                super::super::semantic::mint_etag(
-                    connection,
-                    "title",
-                    Some(CLI_PROJECT_ID),
-                    STORE_EPOCH,
-                    &[DOCUMENT_ID],
-                    json!({ "richTitle": materialization.rich_title }),
-                )
-                .map_err(semantic_error)
-            })
-            .unwrap();
-        let request = |operation_id: &str| ModuleApplyRequest {
-            contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
-            operation_id: operation_id.to_owned(),
-            store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-            intent: OwnedDocumentIntent::ApplySemanticMutation {
-                document_id: DOCUMENT_ID.to_owned(),
-                generation: 1,
-                expected_head_seq: 1,
-                commands: vec![DocumentSemanticCommand::SetTitle {
-                    inline_markdown: "Granted CLI title".to_owned(),
-                    expected_etag: title_etag.clone(),
-                }],
-            },
-        };
-        let denied = seeded
-            .module
-            .apply(
-                &native_cli_context_for("native-cli:read-grant", CLI_PROJECT_ID),
-                request("cli:read-grant-denied"),
-            )
-            .expect_err("read-only recursive grant cannot mutate");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
-
-        seeded
-            .kernel
-            .writer()
-            .call(|connection| {
-                connection.execute(
-                    "UPDATE project_resource_grants SET access = 'read_write', revision = 2 \
-                     WHERE id = 'grant:native-cli-page'",
-                    [],
-                )?;
-                Ok(())
-            })
-            .unwrap();
-        let committed = seeded
-            .module
-            .apply(
-                &native_cli_context_for("native-cli:write-grant", CLI_PROJECT_ID),
-                request("cli:write-grant-accepted"),
-            )
-            .expect("read-write recursive grant authorizes the Page mutation");
-        assert_eq!(committed.committed.value.head_seq, 2);
     }
 
     #[test]

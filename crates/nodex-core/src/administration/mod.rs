@@ -466,7 +466,6 @@ impl StoreAdministrationModule {
                     contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(store_epoch),
                     commit_head: commit_seq,
-                    authorization: None,
                     value,
                 })
             })

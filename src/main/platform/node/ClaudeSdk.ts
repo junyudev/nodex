@@ -1,34 +1,21 @@
+import { readClaudeHistoryRecords, readClaudeHistoryRecord } from "./ClaudeHistoryRecords";
 // @effect-diagnostics asyncFunction:off
-import { isDeepStrictEqual } from "node:util";
 import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import {
   query,
-  type CanUseTool,
   type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type PermissionUpdate,
-  type SDKMessage,
-  type SDKUserMessage,
   type SessionMessage,
   type SDKSessionInfo,
   type ModelInfo,
   type SlashCommand,
-  type UserDialogRequest,
-  type UserDialogResult,
-  type ElicitationRequest,
-  type ElicitationResult,
-  type SDKControlInterruptResponse,
   type Settings,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
-import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -40,12 +27,9 @@ import {
 } from "../../../shared/agent-tool-output";
 import type { ClaudeAgentInstanceConfig } from "../../../shared/types";
 import type {
-  ClaudeEffortLevel,
-  ClaudeModelSelection,
   ClaudeRuntimeDiagnostics,
   ClaudeResolvedIntelligence,
 } from "../../../shared/claude-models";
-import { claudeModelWithContext } from "../../../shared/claude-models";
 import { agentRuntimeError, AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 import { isClaudeHistoryPrompt } from "../../../shared/claude-history";
 import { claudeNativeHome, resolveClaudeLaunch } from "./ClaudeExecutable";
@@ -53,82 +37,27 @@ import { resolveClaudeIntelligence } from "./ClaudeIntelligence";
 import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
 import { MainConfig } from "../../app/MainConfig";
 
-export interface ClaudeToolRequest {
-  readonly name: string;
-  readonly input: Record<string, unknown>;
-  readonly title?: string;
-  readonly toolUseId: string;
-  readonly agentId?: string;
-  readonly suggestions?: PermissionUpdate[];
-  readonly blockedPath?: string;
-  readonly decisionReason?: string;
-  readonly mcpServer?: { name: string; source?: string };
-  readonly displayName?: string;
-  readonly description?: string;
-  readonly defaultToNo?: boolean;
-  readonly suppressAlwaysAllowRule?: boolean;
-}
 export interface ClaudeNativeHistoryPage {
   readonly messages: readonly SessionMessage[];
   readonly before: string | null;
   readonly hasMore: boolean;
 }
-export interface ClaudeLaunchContext {
-  readonly systemPromptAppend?: string;
-  readonly mcpServers?: Options["mcpServers"];
-  readonly additionalDirectories?: readonly string[];
-}
-export interface ClaudeSdkSession {
-  readonly messages: Stream.Stream<SDKMessage, AgentRuntimeError>;
+export interface ClaudeSdkDiscovery {
   readonly models: readonly ModelInfo[];
   readonly commands: readonly SlashCommand[];
   readonly diagnostics: ClaudeRuntimeDiagnostics;
   readonly intelligence: ClaudeResolvedIntelligence;
-  readonly inspectIntelligence: Effect.Effect<ClaudeResolvedIntelligence, AgentRuntimeError>;
-  readonly send: (
-    text: string,
-    messageId?: string,
-    sessionId?: string,
-    priority?: "now" | "next" | "later",
-    images?: readonly AgentPromptImage[],
-  ) => Effect.Effect<void, AgentRuntimeError>;
-  readonly interrupt: Effect.Effect<SDKControlInterruptResponse | undefined, AgentRuntimeError>;
-  readonly terminate: Effect.Effect<void>;
-  readonly setIntelligence: (
-    selection: ClaudeModelSelection,
-  ) => Effect.Effect<void, AgentRuntimeError>;
-  readonly setMode: (mode: PermissionMode) => Effect.Effect<void, AgentRuntimeError>;
-  readonly stopTask: (taskId: string) => Effect.Effect<void, AgentRuntimeError>;
-  readonly inspectRuntime: Effect.Effect<ClaudeRuntimeDiagnostics, AgentRuntimeError>;
 }
-export interface ClaudeSdkOpenInput {
+export interface ClaudeSdkDiscoveryInput {
   readonly instance: ClaudeAgentInstanceConfig;
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly allowPathDiscovery?: boolean;
   readonly cwd: string;
-  readonly sessionId: string;
-  readonly resume: boolean;
-  readonly persistSession?: boolean;
-  readonly purpose?: "session" | "discovery" | "helper";
-  readonly launchContext?: ClaudeLaunchContext;
-  readonly model?: string;
-  readonly effort?: ClaudeEffortLevel;
-  readonly fast?: boolean;
-  readonly thinking?: boolean;
-  readonly outputSchema?: Record<string, unknown>;
-  readonly permissionMode: PermissionMode;
-  readonly canUseTool: (
-    request: ClaudeToolRequest,
-  ) => Effect.Effect<PermissionResult, AgentRuntimeError>;
-  readonly onUserDialog?: (
-    request: UserDialogRequest,
-  ) => Effect.Effect<UserDialogResult, AgentRuntimeError>;
-  readonly onElicitation?: (
-    request: ElicitationRequest,
-  ) => Effect.Effect<ElicitationResult, AgentRuntimeError>;
 }
-type HistoryInput = Omit<ClaudeSdkOpenInput, "canUseTool" | "permissionMode">;
-export type ClaudeNativeScopeInput = Pick<ClaudeSdkOpenInput, "instance" | "environment">;
+interface HistoryInput extends ClaudeSdkDiscoveryInput {
+  readonly sessionId: string;
+}
+export type ClaudeNativeScopeInput = Pick<ClaudeSdkDiscoveryInput, "instance" | "environment">;
 export class ClaudeSdk extends Context.Service<
   ClaudeSdk,
   {
@@ -143,20 +72,16 @@ export class ClaudeSdk extends Context.Service<
       input: ClaudeNativeScopeInput,
       sessionId: string,
     ) => Effect.Effect<SDKSessionInfo | null, AgentRuntimeError>;
-    readonly open: (
-      input: ClaudeSdkOpenInput,
-    ) => Effect.Effect<ClaudeSdkSession, AgentRuntimeError, Scope.Scope>;
+    readonly discover: (
+      input: ClaudeSdkDiscoveryInput,
+    ) => Effect.Effect<ClaudeSdkDiscovery, AgentRuntimeError, Scope.Scope>;
     readonly configuration: (
-      input: Pick<ClaudeSdkOpenInput, "instance" | "environment" | "cwd">,
+      input: Pick<ClaudeSdkDiscoveryInput, "instance" | "environment" | "cwd">,
     ) => Effect.Effect<Pick<Settings, "skillOverrides">, AgentRuntimeError>;
-    readonly history: (
-      input: HistoryInput,
-    ) => Effect.Effect<readonly SessionMessage[], AgentRuntimeError>;
     readonly historyPage: (
       input: HistoryInput,
-      page?: { readonly before?: string; readonly limit?: number; readonly all?: boolean },
+      page?: { readonly before?: string; readonly limit?: number },
     ) => Effect.Effect<ClaudeNativeHistoryPage, AgentRuntimeError>;
-    readonly hasSession: (input: HistoryInput) => Effect.Effect<boolean, AgentRuntimeError>;
     readonly historyImage: (
       input: HistoryInput,
       nativeMessageId: string,
@@ -167,13 +92,6 @@ export class ClaudeSdk extends Context.Service<
       nativeMessageId: string,
       toolUseId: string,
     ) => Effect.Effect<AgentToolOutput, AgentRuntimeError>;
-    readonly fork: (
-      input: HistoryInput,
-      upToMessageId?: string,
-    ) => Effect.Effect<
-      { readonly sessionId: string; readonly messageIdMap?: Readonly<Record<string, string>> },
-      AgentRuntimeError
-    >;
   }
 >()("nodex/main/platform/node/ClaudeSdk") {}
 
@@ -220,130 +138,42 @@ export const claudeEnvironment = (
   result.CLAUDE_CONFIG_DIR = directory;
   return result;
 };
-export const claudeQueryOptions = (input: ClaudeSdkOpenInput, executable: string): Options => {
-  const isolated = input.purpose === "discovery" || input.purpose === "helper";
+/** Native discovery can inspect configuration but cannot submit work or acquire application tools. */
+export const claudeDiscoveryOptions = (
+  input: ClaudeSdkDiscoveryInput,
+  executable: string,
+): Options => {
   const environment = claudeEnvironment(input.environment, input.instance);
-  if (isolated) {
-    environment.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
-    delete environment.FORCE_CODE_TERMINAL;
-    environment.CLAUDE_CODE_AUTO_CONNECT_IDE = "0";
-    environment.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL = "1";
-  }
+  environment.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
+  delete environment.FORCE_CODE_TERMINAL;
+  environment.CLAUDE_CODE_AUTO_CONNECT_IDE = "0";
+  environment.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL = "1";
   return {
     cwd: input.cwd,
     pathToClaudeCodeExecutable: executable,
     env: environment,
     settingSources: ["user", "project", "local"],
-    systemPrompt: {
-      type: "preset",
-      preset: "claude_code",
-      ...(input.launchContext?.systemPromptAppend
-        ? { append: input.launchContext.systemPromptAppend }
-        : {}),
-    },
-    tools: isolated ? [] : { type: "preset", preset: "claude_code" },
-    includePartialMessages: true,
-    permissionMode: input.permissionMode,
-    // Enables the host's explicit live Full access control; the initial mode still governs tools.
-    allowDangerouslySkipPermissions: !isolated,
-    persistSession: isolated ? false : (input.persistSession ?? true),
-    ...(isolated
-      ? {
-          settings: { disableAllHooks: true },
-          mcpServers: {},
-          strictMcpConfig: true,
-          allowedTools: [],
-        }
-      : {}),
-    ...(input.purpose === "helper"
-      ? {
-          maxTurns: 1,
-          ...(input.outputSchema
-            ? { outputFormat: { type: "json_schema", schema: input.outputSchema } as const }
-            : {}),
-        }
-      : {}),
-    ...(!isolated && input.launchContext?.mcpServers
-      ? { mcpServers: input.launchContext.mcpServers }
-      : {}),
-    ...(!isolated && input.launchContext?.additionalDirectories
-      ? { additionalDirectories: [...input.launchContext.additionalDirectories] }
-      : {}),
-    ...(input.model ? { model: input.model } : {}),
-    ...(input.effort ? { effort: input.effort } : {}),
-    ...(input.fast !== undefined || input.thinking !== undefined
-      ? {
-          settings: {
-            ...(isolated ? { disableAllHooks: true } : {}),
-            ...(input.fast !== undefined ? { fastMode: input.fast } : {}),
-            ...(input.thinking !== undefined ? { alwaysThinkingEnabled: input.thinking } : {}),
-          },
-        }
-      : {}),
-    ...(input.resume ? { resume: input.sessionId } : { sessionId: input.sessionId }),
+    systemPrompt: { type: "preset", preset: "claude_code" },
+    tools: [],
+    allowedTools: [],
+    permissionMode: "dontAsk",
+    allowDangerouslySkipPermissions: false,
+    persistSession: false,
+    settings: { disableAllHooks: true },
+    mcpServers: {},
+    strictMcpConfig: true,
   };
 };
-const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput, executable: string) {
-  const runPermission = yield* FiberSet.makeRuntimePromise<
-    never,
-    PermissionResult,
-    AgentRuntimeError
-  >();
-  const runDialog = yield* FiberSet.makeRuntimePromise<
-    never,
-    UserDialogResult,
-    AgentRuntimeError
-  >();
-  const runElicitation = yield* FiberSet.makeRuntimePromise<
-    never,
-    ElicitationResult,
-    AgentRuntimeError
-  >();
-  const messages = yield* Queue.bounded<SDKUserMessage>(16);
-  yield* Effect.addFinalizer(() => Queue.shutdown(messages));
-  const canUseTool: CanUseTool = (name, toolInput, options) =>
-    runPermission(
-      input.canUseTool({
-        name,
-        input: toolInput,
-        toolUseId: options.toolUseID,
-        ...(options.title ? { title: options.title } : {}),
-        ...(options.agentID ? { agentId: options.agentID } : {}),
-        ...(options.suggestions ? { suggestions: options.suggestions } : {}),
-        ...(options.blockedPath ? { blockedPath: options.blockedPath } : {}),
-        ...(options.decisionReason ? { decisionReason: options.decisionReason } : {}),
-        ...(options.mcpServer ? { mcpServer: options.mcpServer } : {}),
-        ...(options.displayName ? { displayName: options.displayName } : {}),
-        ...(options.description ? { description: options.description } : {}),
-        ...(options.defaultToNo !== undefined ? { defaultToNo: options.defaultToNo } : {}),
-        ...(options.suppressAlwaysAllowRule !== undefined
-          ? { suppressAlwaysAllowRule: options.suppressAlwaysAllowRule }
-          : {}),
-      }),
-      { signal: options.signal },
-    );
+const discover = Effect.fn("ClaudeSdk.discover")(function* (
+  input: ClaudeSdkDiscoveryInput,
+  executable: string,
+) {
   const session = yield* Effect.acquireRelease(
     Effect.try({
       try: () =>
         query({
-          prompt: Stream.toAsyncIterable(Stream.fromQueue(messages)),
-          options: {
-            ...claudeQueryOptions(input, executable),
-            canUseTool,
-            ...(input.onUserDialog
-              ? {
-                  supportedDialogKinds: ["resume_return"],
-                  onUserDialog: (request, options) =>
-                    runDialog(input.onUserDialog!(request), { signal: options.signal }),
-                }
-              : {}),
-            ...(input.onElicitation
-              ? {
-                  onElicitation: (request, options) =>
-                    runElicitation(input.onElicitation!(request), { signal: options.signal }),
-                }
-              : {}),
-          },
+          prompt: Stream.toAsyncIterable(Stream.never),
+          options: claudeDiscoveryOptions(input, executable),
         }),
       catch: (cause) => failure("launch", cause),
     }),
@@ -355,213 +185,41 @@ const open = Effect.fn("ClaudeSdk.open")(function* (input: ClaudeSdkOpenInput, e
       Effect.mapError((cause) => failure(operation, cause)),
     );
   const initialized = yield* call("initialize", () => session.initializationResult());
-  let flags = {
-    model: input.model,
-    effort: input.effort,
-    fast: input.fast,
-    thinking: input.thinking,
-  };
-  let fastState = initialized.fast_mode_state;
-  // This installed SDK exposes the native read on Query even though its public declaration omits
-  // it. Keep the feature check and response validation at this version-sensitive platform seam.
   const nativeSettings = session as typeof session & { getSettings?: () => Promise<unknown> };
-  const inspectIntelligence = Effect.suspend(() =>
+  const settings =
     typeof nativeSettings.getSettings === "function"
-      ? call("intelligence read", () => nativeSettings.getSettings!()).pipe(
+      ? yield* call("intelligence read", () => nativeSettings.getSettings!()).pipe(
           Effect.catch(() => Effect.void),
         )
-      : Effect.void,
-  ).pipe(
-    Effect.map((settings) =>
-      resolveClaudeIntelligence({
-        settings,
-        models: initialized.models ?? [],
-        customModels: input.instance.customModels,
-        environment: claudeEnvironment(input.environment, input.instance),
-        acknowledged: flags,
-        ...(fastState ? { fastState } : {}),
-      }),
-    ),
-  );
-  let intelligence = yield* inspectIntelligence;
-  // Capture the model selected by this Query's native configuration before any flag override.
-  const inheritedModel = input.model === undefined ? intelligence.model : null;
-  const diagnostics: ClaudeRuntimeDiagnostics = {
-    health: {
-      status: "unknown",
-      executable,
-      version: null,
-      account: initialized.account ?? null,
-      error: null,
-    },
-    agents: (initialized.agents ?? []).map((agent) => ({
-      name: agent.name,
-      description: agent.description,
-    })),
-    mcpServers: [],
-    capabilities: [],
-  };
+      : undefined;
   return {
-    messages: Stream.fromAsyncIterable(session, (cause) => failure("stream", cause)).pipe(
-      Stream.tap((message) =>
-        Effect.sync(() => {
-          if (!("fast_mode_state" in message) || !message.fast_mode_state) return;
-          fastState = message.fast_mode_state;
-          intelligence = { ...intelligence, fast: fastState === "on" };
-        }),
-      ),
-      Stream.ensuring(Effect.sync(() => session.close())),
-    ),
-    get intelligence() {
-      return intelligence;
-    },
-    inspectIntelligence: inspectIntelligence.pipe(
-      Effect.tap((resolved) =>
-        Effect.sync(() => {
-          intelligence = resolved;
-        }),
-      ),
-    ),
-    terminate: Effect.sync(() => session.close()),
     models: initialized.models ?? [],
     commands: initialized.commands ?? [],
-    diagnostics,
-    send: (text, messageId, sessionId, priority, images) =>
-      Queue.offer(messages, {
-        type: "user",
-        ...(priority ? { priority } : {}),
-        session_id: sessionId ?? input.sessionId,
-        parent_tool_use_id: null,
-        message: {
-          role: "user",
-          content: images?.length
-            ? [
-                ...images.map((image) => ({
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: image.mediaType,
-                    data: image.data,
-                  },
-                })),
-                ...(text ? [{ type: "text" as const, text }] : []),
-              ]
-            : text,
-        },
-        ...(messageId
-          ? { uuid: messageId as `${string}-${string}-${string}-${string}-${string}` }
-          : {}),
-      }).pipe(Effect.asVoid),
-    interrupt: call("interrupt", () => session.interrupt()),
-    setIntelligence: (selection) =>
-      Effect.suspend(() => {
-        const model =
-          selection.model !== "default"
-            ? claudeModelWithContext(selection.model, selection.context)
-            : selection.context && inheritedModel
-              ? claudeModelWithContext(inheritedModel, selection.context)
-              : undefined;
-        if (selection.model === "default" && selection.context && !inheritedModel)
-          return Effect.fail(
-            failure("intelligence", new Error("Claude has not reported the inherited model.")),
-          );
-        if (
-          (flags.model !== undefined && model === undefined) ||
-          (flags.effort !== undefined && selection.effort === "default")
-        )
-          return Effect.fail(
-            failure(
-              "intelligence",
-              new Error(
-                "Restoring Claude defaults requires reopening the query without overrides.",
-              ),
-            ),
-          );
-        return call("intelligence", () =>
-          session.applyFlagSettings({
-            ...(model !== undefined ? { model } : {}),
-            ...(selection.effort !== "default" ? { effortLevel: selection.effort } : {}),
-            ...(selection.fast !== undefined
-              ? { fastMode: selection.fast }
-              : flags.fast !== undefined
-                ? { fastMode: null }
-                : {}),
-            ...(selection.thinking !== undefined
-              ? { alwaysThinkingEnabled: selection.thinking }
-              : flags.thinking !== undefined
-                ? { alwaysThinkingEnabled: null }
-                : {}),
-          }),
-        ).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              if (selection.fast !== flags.fast) fastState = undefined;
-              flags = {
-                model,
-                effort: selection.effort === "default" ? undefined : selection.effort,
-                fast: selection.fast,
-                thinking: selection.thinking,
-              };
-            }),
-          ),
-        );
-      }),
-    setMode: (mode) => call("mode", () => session.setPermissionMode(mode)),
-    stopTask: (taskId) => call("stop task", () => session.stopTask(taskId)),
-    inspectRuntime: call("diagnostics", () => session.mcpServerStatus()).pipe(
-      Effect.map((servers) => ({
-        ...diagnostics,
-        mcpServers: servers.map(({ name, status, error }) => ({
-          name,
-          status,
-          ...(error ? { error } : {}),
-        })),
-      })),
-    ),
-  } satisfies ClaudeSdkSession;
-});
-
-/** Turn boundaries prevent a page from starting with an orphaned assistant/tool continuation. */
-export const claudeHistoryWindow = (
-  messages: readonly SessionMessage[],
-  options: { readonly before?: string; readonly limit?: number; readonly all?: boolean } = {},
-  isPrompt = isClaudeHistoryPrompt,
-): ClaudeNativeHistoryPage => {
-  const end = options.before
-    ? messages.findIndex(({ uuid }) => uuid === options.before)
-    : messages.length;
-  if (end < 0) throw new Error("This history cursor no longer belongs to the native conversation.");
-  if (options.all) return { messages: messages.slice(0, end), before: null, hasMore: false };
-  const limit = Math.max(1, Math.min(2048, options.limit ?? 512));
-  let start = Math.max(0, end - limit);
-  while (start > 0 && !isPrompt(messages[start]!)) start -= 1;
-  return {
-    messages: messages.slice(start, end),
-    before: start > 0 ? messages[start]!.uuid : null,
-    hasMore: start > 0,
-  };
-};
-
-/** UUID remapping is accepted only for the matching native content and actor. */
-export const claudeForkMessageIds = (
-  source: readonly SessionMessage[],
-  forked: readonly SessionMessage[],
-  equal = isDeepStrictEqual,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(
-    forked.flatMap((entry, index) => {
-      const previous = source[index];
-      if (
-        !previous ||
-        previous.type !== entry.type ||
-        previous.parent_tool_use_id !== entry.parent_tool_use_id ||
-        previous.parent_agent_id !== entry.parent_agent_id ||
-        !equal(previous.message, entry.message)
-      )
-        return [];
-      return [[previous.uuid, entry.uuid]];
+    intelligence: resolveClaudeIntelligence({
+      settings,
+      models: initialized.models ?? [],
+      customModels: input.instance.customModels,
+      environment: claudeEnvironment(input.environment, input.instance),
+      acknowledged: {},
+      ...(initialized.fast_mode_state ? { fastState: initialized.fast_mode_state } : {}),
     }),
-  );
+    diagnostics: {
+      health: {
+        status: "unknown",
+        executable,
+        version: null,
+        account: initialized.account ?? null,
+        error: null,
+      },
+      agents: (initialized.agents ?? []).map((agent) => ({
+        name: agent.name,
+        description: agent.description,
+      })),
+      mcpServers: [],
+      capabilities: [],
+    },
+  } satisfies ClaudeSdkDiscovery;
+});
 
 /** Lazy image reads stay at the native history boundary; snapshots only contain descriptors. */
 export const claudeHistoryImage = (
@@ -656,30 +314,25 @@ const nativeOperation = <A>(
     | "catalog"
     | "session-info"
     | "history"
-    | "fork"
     | "configuration"
     | "image"
-    | "exists"
     | "tool-output",
   options: {
-    readonly before?: string;
+    readonly before?: string | null;
     readonly limit?: number;
-    readonly all?: boolean;
-    readonly upToMessageId?: string;
     readonly nativeMessageId?: string;
     readonly index?: number;
     readonly toolUseId?: string;
     readonly offset?: number;
+    readonly records?: readonly import("@anthropic-ai/claude-agent-sdk").SessionStoreEntry[];
+    readonly hasMore?: boolean;
   } = {},
 ) =>
   Effect.callback<A, AgentRuntimeError>((resume) => {
     const worker = new Worker(
       `
     const { parentPort, workerData } = require("node:worker_threads");
-    const {isDeepStrictEqual} = require("node:util");
     const isPrompt = ${isClaudeHistoryPrompt.toString()};
-    const windowHistory = ${claudeHistoryWindow.toString()};
-    const mapFork = ${claudeForkMessageIds.toString()};
     const readImage = ${claudeHistoryImage.toString()};
     const AGENT_TOOL_OUTPUT_MAX_BYTES = ${AGENT_TOOL_OUTPUT_MAX_BYTES};
     const boundOutput = ${boundAgentToolOutput.toString()};
@@ -728,22 +381,12 @@ const nativeOperation = <A>(
         post({skillOverrides:resolved.effective.skillOverrides??{}}); return;
       }
       // Exact native identity is account-scoped; moving execution must not move or lose history.
-      const info = await sdk.getSessionInfo(workerData.sessionId);
-      if (workerData.operation === "session-info") {post(metadata(info));return;}
-      if (workerData.operation === "exists") {post(Boolean(info));return;}
-      if (!info) {const error=new Error("Claude Code no longer has this session. Start a new task.");error.code="NODEX_NATIVE_SESSION_NOT_FOUND";throw error;}
-      if (workerData.operation === "fork") {
-        const entries = await sdk.getSessionMessages(workerData.sessionId,{includeSystemMessages:true});
-        if (workerData.options.upToMessageId && !entries.some(entry=>entry.uuid===workerData.options.upToMessageId)) throw new Error("The selected message is no longer in native history.");
-        const forked = await sdk.forkSession(workerData.sessionId,{upToMessageId:workerData.options.upToMessageId});
-        const retained = await sdk.getSessionMessages(forked.sessionId,{includeSystemMessages:true});
-        post({...forked,messageIdMap:mapFork(entries,retained,isDeepStrictEqual)}); return;
-      }
-
-      const entries = await sdk.getSessionMessages(workerData.sessionId,{includeSystemMessages:true});
+      if (workerData.operation === "session-info") {post(metadata(await sdk.getSessionInfo(workerData.sessionId)));return;}
+      const store = { append: async()=>{throw new Error("History cannot write native records");}, load: async(key)=>key.sessionId===workerData.sessionId ? workerData.options.records : null };
+      const entries = await sdk.getSessionMessages(workerData.sessionId,{includeSystemMessages:true,limit:workerData.options.records.length,offset:0,sessionStore:store});
       if (workerData.operation === "image") { post(readImage(entries,workerData.options.nativeMessageId,workerData.options.index,isPrompt));return; }
       if (workerData.operation === "tool-output") { post(readToolOutput(entries,workerData.options.nativeMessageId,workerData.options.toolUseId,boundOutput));return; }
-      post(withoutInlineImages(windowHistory(entries,workerData.options,isPrompt)));
+      post(withoutInlineImages({messages:entries,before:workerData.options.before??null,hasMore:workerData.options.hasMore===true}));
     }).catch(error=>{ parentPort.postMessage({nodexWorkerFailure:{message:String(error?.message??"Native operation failed").slice(0,2048),code:error?.code}}); });
   `,
       {
@@ -792,21 +435,50 @@ const nativeOperation = <A>(
     Effect.mapError((cause) => failure(operation, cause)),
   );
 const historyPage: ClaudeSdk["Service"]["historyPage"] = (input, page) =>
-  nativeOperation(input, "history", page);
-const history: ClaudeSdk["Service"]["history"] = (input) =>
-  historyPage(input).pipe(Effect.map(({ messages }) => messages));
-const fork: ClaudeSdk["Service"]["fork"] = (input, upToMessageId) =>
-  nativeOperation(input, "fork", { ...(upToMessageId ? { upToMessageId } : {}) });
-const hasSession: ClaudeSdk["Service"]["hasSession"] = (input) => nativeOperation(input, "exists");
+  Effect.gen(function* () {
+    const home = yield* nativeHome(input);
+    const selected = yield* Effect.tryPromise({
+      try: () => readClaudeHistoryRecords({ home, sessionId: input.sessionId, ...page }),
+      catch: (cause) => failure("history", cause),
+    });
+    return yield* nativeOperation<ClaudeNativeHistoryPage>(input, "history", {
+      records: selected.entries,
+      before: selected.before,
+      hasMore: selected.hasMore,
+    });
+  });
 const historyImage: ClaudeSdk["Service"]["historyImage"] = (input, nativeMessageId, index) =>
-  nativeOperation(input, "image", { nativeMessageId, index });
+  Effect.gen(function* () {
+    const home = yield* nativeHome(input);
+    const records = yield* Effect.tryPromise({
+      try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
+      catch: (cause) => failure("image", cause),
+    });
+    return yield* nativeOperation<AgentPromptImage>(input, "image", {
+      records,
+      nativeMessageId,
+      index,
+    });
+  });
 const historyToolOutput: ClaudeSdk["Service"]["historyToolOutput"] = (
   input,
   nativeMessageId,
   toolUseId,
-) => nativeOperation(input, "tool-output", { nativeMessageId, toolUseId });
+) =>
+  Effect.gen(function* () {
+    const home = yield* nativeHome(input);
+    const records = yield* Effect.tryPromise({
+      try: () => readClaudeHistoryRecord({ home, sessionId: input.sessionId, nativeMessageId }),
+      catch: (cause) => failure("tool-output", cause),
+    });
+    return yield* nativeOperation<AgentToolOutput>(input, "tool-output", {
+      records,
+      nativeMessageId,
+      toolUseId,
+    });
+  });
 const configuration: ClaudeSdk["Service"]["configuration"] = (input) =>
-  nativeOperation({ ...input, sessionId: "", resume: false }, "configuration");
+  nativeOperation({ ...input, sessionId: "" }, "configuration");
 const nativeHome: ClaudeSdk["Service"]["nativeHome"] = (input) => nativeOperation(input, "home");
 const listSessions: ClaudeSdk["Service"]["listSessions"] = (input, offset) =>
   nativeOperation(input, "catalog", { offset });
@@ -817,7 +489,9 @@ export const live = Layer.effect(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const shellEnvironment = yield* WorktreeShellEnvironmentRuntime;
-    const openSession = Effect.fn("ClaudeSdk.openSession")(function* (input: ClaudeSdkOpenInput) {
+    const discoverMetadata = Effect.fn("ClaudeSdk.discoverMetadata")(function* (
+      input: ClaudeSdkDiscoveryInput,
+    ) {
       const explicitPath = input.instance.environment.some(({ name }) =>
         config.platform === "win32" ? name.toUpperCase() === "PATH" : name === "PATH",
       );
@@ -831,20 +505,17 @@ export const live = Layer.effect(
         },
         shellEnvironment.load,
       ).pipe(Effect.mapError((cause) => failure("launch", cause)));
-      return yield* open({ ...input, environment: launch.environment }, launch.executable);
+      return yield* discover({ ...input, environment: launch.environment }, launch.executable);
     });
     return ClaudeSdk.of({
       nativeHome,
       listSessions,
       sessionInfo,
-      open: openSession,
-      history,
+      discover: discoverMetadata,
       historyPage,
-      fork,
       configuration,
       historyImage,
       historyToolOutput,
-      hasSession,
     });
   }),
 );

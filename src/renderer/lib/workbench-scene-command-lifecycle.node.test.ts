@@ -119,7 +119,7 @@ describe("Workbench Scene content and runtime close boundary", () => {
       {
         ...common("page-tab"),
         kind: "page_stage",
-        config: { accessContext: { kind: "library" }, pageId: "page-a" },
+        config: { routingContext: { kind: "library" }, pageId: "page-a" },
       },
     ]);
     runtime.persistPage.mockResolvedValueOnce({
@@ -164,7 +164,7 @@ describe("Workbench Scene content and runtime close boundary", () => {
       {
         ...common("canvas-tab"),
         kind: "canvas_stage",
-        config: { accessContext: { kind: "library" }, canvasBlockId: "canvas-a" },
+        config: { routingContext: { kind: "library" }, canvasBlockId: "canvas-a" },
       },
     ]);
     runtime.flushCanvas.mockRejectedValueOnce(new Error("offline"));

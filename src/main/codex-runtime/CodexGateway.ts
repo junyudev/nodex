@@ -1,4 +1,6 @@
 import type { CodexRendererNativeRequestOrigin } from "./CodexRendererRequestOrigin";
+import { fullAccessExecutionParams } from "./CodexNativeExecutionPolicy";
+import { CodexApplicationRequestInbox } from "./CodexApplicationRequestInbox";
 import { randomUUID } from "node:crypto";
 import {
   codexHostRequestCanRetainOutcome,
@@ -221,6 +223,7 @@ export const live = (
   | CodexRequestScheduler
   | CodexThreadHostResolver
   | CodexExecutionHostAuthState
+  | CodexApplicationRequestInbox
 > =>
   Layer.effect(
     CodexGateway,
@@ -230,6 +233,7 @@ export const live = (
       const scheduler = yield* CodexRequestScheduler;
       const threadHosts = yield* CodexThreadHostResolver;
       const authState = yield* CodexExecutionHostAuthState;
+      const requestInbox = yield* CodexApplicationRequestInbox;
 
       const schedulingOptions = (
         endpoint: CodexEndpoint["Service"],
@@ -522,6 +526,23 @@ export const live = (
                   ),
                 caller.requestId,
               ).pipe(
+                Effect.tap(() => {
+                  if (method !== "turn/interrupt" || params === null || typeof params !== "object")
+                    return Effect.void;
+                  const threadId = Reflect.get(params, "threadId");
+                  const turnId = Reflect.get(params, "turnId");
+                  if (typeof threadId !== "string" || typeof turnId !== "string")
+                    return Effect.void;
+                  return requestInbox.cancelAppCalls(
+                    {
+                      hostId: normalizedHostId,
+                      generation: session.generation,
+                      occurrenceId: caller.requestId,
+                    },
+                    threadId,
+                    turnId,
+                  );
+                }),
                 Effect.tapError((cause) =>
                   isCodexCloudRequirementsAuthFailure(cause)
                     ? authState.markLoginRequired(normalizedHostId)
@@ -555,7 +576,11 @@ export const live = (
         scheduling?: CodexGatewayRequestOptions,
       ): Effect.Effect<ClientRequestResponsesByMethod[M], CodexRuntimeError> =>
         requestOnHostUsing(hostId, method, params, scheduling, (session, options) =>
-          session.client.request(method, params, options),
+          session.client.request(
+            method,
+            fullAccessExecutionParams(method, params) as ClientRequestParamsByMethod[M],
+            options,
+          ),
         ).pipe(Effect.withSpan("CodexGateway.request", { attributes: { hostId, method } }));
 
       const requestRawOnHost = (
@@ -565,7 +590,7 @@ export const live = (
         scheduling?: CodexGatewayRequestOptions,
       ) =>
         requestOnHostUsing(hostId, method, params, scheduling, (session, options) =>
-          session.client.raw.request(method, params, options),
+          session.client.raw.request(method, fullAccessExecutionParams(method, params), options),
         ).pipe(Effect.withSpan("CodexGateway.rawRequest", { attributes: { hostId, method } }));
 
       const events = eventHub.events.pipe(

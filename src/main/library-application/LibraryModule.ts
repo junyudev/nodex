@@ -3,7 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryModuleApplyRequest,
   LibraryModuleApplyResult,
@@ -64,11 +64,11 @@ export class LibraryModule extends Context.Service<
   LibraryModule,
   {
     readonly read: (
-      accessContext: ContentAccessContext,
+      routingContext: ContentRoutingContext,
       request: LibraryModuleReadRequest,
     ) => LibraryEffect<LibraryModuleReadResult>;
     readonly apply: (
-      accessContext: ContentAccessContext,
+      routingContext: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
       editorHistoryOwnerId?: string,
     ) => LibraryEffect<LibraryModuleApplyResult>;
@@ -77,13 +77,13 @@ export class LibraryModule extends Context.Service<
       operationId: string,
     ) => LibraryEffect<void | "identity_expired">;
     readonly prepareFileBlob: (
-      accessContext: ContentAccessContext,
+      routingContext: ContentRoutingContext,
       operationId: string,
       idempotencySlot: string,
       bytes: Uint8Array,
     ) => LibraryEffect<PreparedBlobReceipt>;
     readonly readFileBlob: (
-      accessContext: ContentAccessContext,
+      routingContext: ContentRoutingContext,
       input: ReadFileBytesInput,
     ) => LibraryEffect<ManagedBlobBytes>;
     readonly readProjectPageDetail: (
@@ -121,7 +121,7 @@ export class LibraryModule extends Context.Service<
       readonly projectId: string;
     } | null>;
     readonly readPageLifecyclePreflight: (
-      projectId: string,
+      projectId: string | null,
       pageId: string,
     ) => LibraryEffect<PageLifecyclePreflightResultV2>;
     readonly applyPageLifecycleMutation: (
@@ -176,7 +176,7 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
         run: (adapter: CoreLibraryModuleAdapter, signal: AbortSignal) => Promise<A>,
       ): LibraryEffect<A> =>
         useClient(operation, projectId, (client, signal) => run(adapter(client), signal));
-      const projectIdForAccess = (access: ContentAccessContext): string | undefined =>
+      const projectIdForAccess = (access: ContentRoutingContext): string | undefined =>
         access.kind === "project" ? access.projectId : undefined;
       const readPageDetailAtLeast = <A extends PageDetailResult | LibraryPageDetailResult>(
         read: LibraryEffect<A>,
@@ -196,10 +196,10 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
         );
 
       return LibraryModule.of({
-        read: (accessContext, request) =>
-          use("library.read", projectIdForAccess(accessContext), (core) => core.read(request)),
-        apply: (accessContext, request, editorHistoryOwnerId) =>
-          useClient("library.apply", projectIdForAccess(accessContext), (client) =>
+        read: (routingContext, request) =>
+          use("library.read", projectIdForAccess(routingContext), (core) => core.read(request)),
+        apply: (routingContext, request, editorHistoryOwnerId) =>
+          useClient("library.apply", projectIdForAccess(routingContext), (client) =>
             adapter(client, editorHistoryOwnerId).apply(request),
           ),
         closeEditorHistoryOwner: (ownerId, operationId) =>
@@ -218,15 +218,15 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
               throw error;
             }
           }),
-        prepareFileBlob: (accessContext, operationId, idempotencySlot, bytes) =>
+        prepareFileBlob: (routingContext, operationId, idempotencySlot, bytes) =>
           useClient(
             "library.prepareFileBlob",
-            projectIdForAccess(accessContext),
+            projectIdForAccess(routingContext),
             (client, signal) =>
               client.prepareFileBlob({ operationId, idempotencySlot, bytes }, { signal }),
           ),
-        readFileBlob: (accessContext, input) =>
-          useClient("library.readFileBlob", projectIdForAccess(accessContext), (client, signal) =>
+        readFileBlob: (routingContext, input) =>
+          useClient("library.readFileBlob", projectIdForAccess(routingContext), (client, signal) =>
             client.readFileBlob(input, { signal }),
           ),
         readProjectPageDetail: (projectId, pageId, minimumCommitSeq) =>
@@ -256,23 +256,25 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
         pageSearchFacets: (projectIds) =>
           use("library.pageSearchFacets", undefined, (core) => core.pageSearchFacets(projectIds)),
         resolvePageTarget: (input) =>
-          use("library.resolvePageTarget", projectIdForAccess(input.accessContext), (core) =>
+          use("library.resolvePageTarget", projectIdForAccess(input.routingContext), (core) =>
             core.resolvePageTarget(input),
           ),
         resolvePageOwnershipPath: (input) =>
-          use("library.resolvePageOwnershipPath", projectIdForAccess(input.accessContext), (core) =>
-            core.resolvePageOwnershipPath(input),
+          use(
+            "library.resolvePageOwnershipPath",
+            projectIdForAccess(input.routingContext),
+            (core) => core.resolvePageOwnershipPath(input),
           ),
         findPageLocation: (pageId) =>
           use("library.findPageLocation", undefined, (core) => core.findPageLocation(pageId)),
         findViewLocation: (viewId) =>
           use("library.findViewLocation", undefined, (core) => core.findViewLocation(viewId)),
         readPageLifecyclePreflight: (projectId, pageId) =>
-          use("library.readPageLifecyclePreflight", projectId, (core) =>
+          use("library.readPageLifecyclePreflight", projectId ?? undefined, (core) =>
             core.readPageLifecyclePreflight(projectId, pageId),
           ),
         applyPageLifecycleMutation: (request) =>
-          use("library.applyPageLifecycleMutation", request.projectId, (core) =>
+          use("library.applyPageLifecycleMutation", request.projectId ?? undefined, (core) =>
             core.applyPageLifecycleMutation(request),
           ),
         applyBlockPropertyMutation: (request) =>

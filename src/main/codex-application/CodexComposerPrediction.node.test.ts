@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -1176,6 +1177,72 @@ it.effect.each(["account-mutation", "logout", "host-generation"] as const)(
         }
         assert.strictEqual((yield* owner.request(input))?.text, "next action");
         assert.strictEqual(calls.filter(({ method }) => method === "thread/fork").length, 2);
+      }),
+    ),
+);
+
+it.effect("clears Runtime prediction caches only for local or global scope", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const { gateway } = fixture(events);
+      const registry = yield* makeRegistry;
+      const cleared: Array<string | undefined> = [];
+      const owner = yield* provide(
+        make({ configurationForHost: () => Effect.succeed(configuration) }),
+        gateway,
+        registry,
+      ).pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          clearPredictions: (threadId?: string) =>
+            Effect.sync(() => {
+              cleared.push(threadId);
+            }),
+        } as unknown as AgentRuntimeApplication["Service"]),
+      );
+      yield* owner.clear({ hostId: "remote" });
+      yield* owner.clear({ hostId: "remote", threadId: "parent" });
+      assert.deepEqual(cleared, []);
+      yield* owner.clear({ hostId: "local", threadId: "parent" });
+      yield* owner.clear({ hostId: "local" });
+      yield* owner.clear();
+      assert.deepEqual(cleared, ["parent", undefined, undefined]);
+    }),
+  ),
+);
+
+it.effect(
+  "uses the Runtime facade captured at construction when a later callback has no Runtime Context",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const { gateway, calls } = fixture(events);
+        const registry = yield* makeRegistry;
+        const nativeCalls: string[] = [];
+        const owner = yield* provide(
+          make({ configurationForHost: () => Effect.succeed(configuration) }),
+          gateway,
+          registry,
+        ).pipe(
+          Effect.provideService(AgentRuntimeApplication, {
+            nativeThread: (threadId: string) => {
+              assert.equal(threadId, input.threadId);
+              return Effect.succeed({
+                connection: {
+                  request: (method: string) =>
+                    Effect.sync(() => {
+                      nativeCalls.push(method);
+                      return null;
+                    }),
+                },
+              });
+            },
+          } as unknown as AgentRuntimeApplication["Service"]),
+        );
+        assert.isNull(yield* owner.request(input));
+        assert.deepEqual(nativeCalls, ["native.prediction.request"]);
+        assert.deepEqual(calls, []);
       }),
     ),
 );

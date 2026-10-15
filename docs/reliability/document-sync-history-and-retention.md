@@ -2,8 +2,8 @@
 
 ## Exact live boundary
 
-An exact Document subscription is both authorization and resource routing. Core
-installs the addressed live receiver before reading authorization, Store epoch,
+An exact Document subscription binds connection identity and resource routing. Core
+installs the addressed live receiver before reading Profile/Library identity, Store epoch,
 engine, generation, Document head, and LocalCommit head from one snapshot. The
 resulting barrier guarantees that later addressed commits are buffered or
 delivered after canonical synchronization adopts that boundary.
@@ -216,7 +216,7 @@ cannot accept the extra early-release handoff. The original admitted attempt and
 its durable window owner remain responsible for outcome recovery and retention;
 the renderer does not build an unbounded second cleanup queue.
 
-Recipe lifecycle uses an authorized Project history projection or, for recipes
+Recipe lifecycle uses the exact Project history route or, for recipes
 without an actor Project, a Library projection. Release, supersession and owner
 cleanup preserve that absent actor instead of selecting an arbitrary Project.
 Library history surfaces reconcile Library repair signals. Notifications carry
@@ -330,7 +330,7 @@ unavailable schemas, resource closures, changed ownership and structural barrier
 
 Yjs recovery merges the retained causal state before remapping File occurrences.
 Changed Files are forked once per retained identity, so restoring or copying a
-draft cannot rewind another Page's shared content. File creation, grants, Page
+draft cannot rewind another Page's shared content. File creation, Page
 or Document changes, and resolution commit together. A recovered Page combines
 its File and Page effects in one Library event within the same LocalCommit.
 Canvas recovery keeps live fixed-version bindings and forks trashed targets per
@@ -424,7 +424,7 @@ receipt followed by a compare-and-delete retires the source. Discovery does not
 require Core availability; a persistent bounded cursor gives later packages a
 turn despite earlier permanent failures. Invalid historical rows remain visible
 and exportable. Unverifiable Library provenance prevents automatic submission.
-User resolution intents are validated and scoped by Library, access and epoch;
+User resolution intents are validated by Library identity, routing and Store epoch;
 late acknowledgements cannot delete a newer intent. An unsuccessful containment
 check does not create another receipt or content commit.
 

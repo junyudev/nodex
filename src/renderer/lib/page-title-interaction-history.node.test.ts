@@ -9,7 +9,7 @@ import {
 
 const scope: ContentInteractionHistoryScope = {
   libraryId: "title-test-library",
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   storeEpoch: "title-test-epoch",
 };
 
@@ -149,7 +149,7 @@ describe("Page title interaction history", () => {
     const shared = acquireContentInteractionHistory({ ...scope });
     const project = acquireContentInteractionHistory({
       ...scope,
-      accessContext: { kind: "project", projectId: "p" },
+      routingContext: { kind: "project", projectId: "p" },
     });
     expect(shared.history).toBe(first.history);
     expect(project.history).not.toBe(first.history);

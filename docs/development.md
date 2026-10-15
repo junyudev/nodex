@@ -441,7 +441,7 @@ source.
 `config/test-suites.ts` owns runtime, tier, file selection, and native
 prerequisites. The thin `scripts/testing/run-tests.ts` entrypoint consumes that
 catalog for aggregate, focused, related, and standalone execution. Every run is
-uncached. The standard aggregate runs unit, effect-codex, core-client, Main,
+uncached. The standard aggregate runs unit, effect-codex, Agent Runtime, core-client, Main,
 renderer, and integration serially; Chromium remains an explicit browser gate.
 Main and integration run Vitest under Electron so native addons use its ABI.
 Renderer uses up to four workers in CI, and locally on machines with at least
@@ -485,6 +485,10 @@ The test commands follow production boundaries:
   also the owner for new Main application directories. Stateful tests seed
   disposable Stores only through public Core APIs.
 - `vp run test:effect-codex` runs the companion app-server package contracts.
+- `vp run test:agent-runtime` runs the execution package contracts in host Node,
+  including persistence, native adapters, delegation and process recovery.
+  Copied vendor tests remain upstream fixtures; Nodex behavior is covered by the
+  owning runtime tests.
 - `vp run test:main` runs Electron main-process adapter and host tests.
 - `vp run test:renderer` runs ordinary `.test.tsx` React behavior and explicit
   `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on

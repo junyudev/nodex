@@ -268,7 +268,7 @@ impl QueryContext<'_> {
             for target in value.targets.items {
                 targets.push(match target {
                     DatabaseRelationTargetItem::Visible { page_id, .. } => Value::String(page_id),
-                    DatabaseRelationTargetItem::Restricted { .. } => Value::Null,
+                    DatabaseRelationTargetItem::Unavailable { .. } => Value::Null,
                 })?;
             }
             after = value.targets.next_cursor;
@@ -325,7 +325,7 @@ impl QueryContext<'_> {
         if relation == "databases" {
             for database in self.databases(text(equalities, "database_id"))? {
                 output.push(json!({ "database_id": database.database_id, "name": database.name,
-                    "metadata_revision": database.metadata_revision, "access_revision": database.access_revision,
+                    "metadata_revision": database.metadata_revision,
                     "default_view_id": database.default_view_id, "created_at": database.created_at, "updated_at": database.updated_at }))?;
             }
             return Ok(output.rows);

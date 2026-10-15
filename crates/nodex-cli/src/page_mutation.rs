@@ -496,7 +496,6 @@ fn apply_semantic_write(
         let response = client
             .document_apply(
                 Some(project_id),
-                false,
                 ModuleApplyRequest {
                     contract_version: OwnedDocumentContract::VERSION,
                     operation_id: operation_id.clone(),

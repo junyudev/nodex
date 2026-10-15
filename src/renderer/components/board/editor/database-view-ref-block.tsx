@@ -4,7 +4,7 @@ import { useBlockReferenceHostRuntime } from "@/components/block-documents/block
 import { DatabaseViewReferenceSurface } from "@/components/block-documents/reference-block-surfaces";
 import { useDatabaseViewReadModel } from "@/lib/block-reference-queries";
 import { databaseViewRefBlockConfig } from "../../../../shared/block-documents/blocknote-schema-config";
-import { libraryContentAccess } from "../../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 
 const EmbeddedReferencedPageDocument = lazy(() =>
   import("./embedded-referenced-page-document").then((module) => ({
@@ -23,7 +23,7 @@ function DatabaseViewRefBlock({
 }) {
   const host = useBlockReferenceHostRuntime();
   const view = useDatabaseViewReadModel(
-    host?.contentAccessContext ?? libraryContentAccess,
+    host?.contentRoutingContext ?? libraryContentRoute,
     host ? databaseViewId.trim() : "",
     host?.hostPageId ?? undefined,
   );
@@ -32,7 +32,7 @@ function DatabaseViewRefBlock({
       referenceKey={`database-view-ref:${blockId}`}
       displayHint={displayHint}
       model={view.data}
-      accessContext={host?.contentAccessContext}
+      routingContext={host?.contentRoutingContext}
       loading={view.loading}
       error={view.error}
       hostPageId={host?.hostPageId}

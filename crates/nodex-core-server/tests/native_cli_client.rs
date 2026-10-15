@@ -7,11 +7,10 @@ use std::time::{Duration, Instant};
 
 use nodex_core::infrastructure::schema::CURRENT_STORE_REVISION;
 use nodex_core_contracts::administration::{StoreAdministrationRead, StoreAdministrationReadValue};
-use nodex_core_contracts::events::DeliveryAuthorizationScope;
+use nodex_core_contracts::events::DeliveryAddress;
 use nodex_core_contracts::library::{
-    LibraryAccess, LibraryIntent, LibraryPageFileEntryChange, LibraryPagePrepareKind,
-    LibraryPageProjectionFileKind, LibraryRead, LibraryReadValue, LibraryResourceTarget,
-    LibraryWriteParent,
+    LibraryIntent, LibraryPageFileEntryChange, LibraryPagePrepareKind,
+    LibraryPageProjectionFileKind, LibraryRead, LibraryReadValue, LibraryWriteParent,
 };
 use nodex_core_contracts::workspace::{ProjectWorkspaceIntent, ProjectWorkspaceStarterPage};
 use nodex_core_contracts::{
@@ -124,31 +123,13 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
         panic!("expected committed Page creation with fast-path delivery")
     };
     assert!(matches!(
-        delivery.authorization_scope,
-        DeliveryAuthorizationScope::Project {
+        delivery.delivery_address,
+        DeliveryAddress::Project {
             ref library_id,
             project_id: ref delivery_project_id,
         } if library_id == &client.handshake.library_id && delivery_project_id == project_id
     ));
     verify_native_recovery_bundle(&client, document_id);
-    let granted = client
-        .library_apply(
-            None,
-            ModuleApplyRequest {
-                contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
-                operation_id: "native-client:grant-page".to_owned(),
-                store_epoch,
-                intent: LibraryIntent::GrantProjectAccess {
-                    project_id: project_id.to_owned(),
-                    target: LibraryResourceTarget::Page {
-                        page_id: page_id.to_owned(),
-                    },
-                    access: LibraryAccess::ReadWrite,
-                },
-            },
-        )
-        .expect("grant Page through native client");
-    assert!(matches!(granted.0, ResponseEnvelope::Ok(_)));
     let page_projection_file = client
         .library_read(
             Some(project_id),
@@ -456,7 +437,7 @@ fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
             capture: Box::new(capture),
         },
     };
-    let result = client.document_apply(None, true, command.clone()).unwrap();
+    let result = client.document_apply(None, command.clone()).unwrap();
     let ResponseEnvelope::Ok(result) = result.0 else {
         panic!("native capture failed")
     };
@@ -470,11 +451,11 @@ fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
         recovery_bundle::payload_hash(&frozen)
     );
     assert!(matches!(
-        client.document_apply(None, true, command).unwrap().0,
+        client.document_apply(None, command).unwrap().0,
         ResponseEnvelope::Ok(_)
     ));
     let exported = client
-        .document_export_recovery(None, true, "draft:native-bytes")
+        .document_export_recovery(None, "draft:native-bytes")
         .unwrap();
     assert_eq!(&exported[..4], b"NDRE");
     let size = u32::from_le_bytes(exported[8..12].try_into().unwrap()) as usize;
@@ -486,7 +467,6 @@ fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
     let response = client
         .document_read(
             None,
-            true,
             OwnedDocumentRead::SyncYjs {
                 document_id: document_id.into(),
                 state_vector: vec![],

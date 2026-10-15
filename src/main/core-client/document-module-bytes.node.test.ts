@@ -107,7 +107,7 @@ test("large Canvas content uses binary commands and limited previews retain reco
           documentId,
           clientSessionId,
           syncRequestId: crypto.randomUUID(),
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
         });
       const initial = await sync();
       let head = initial.headSeq;

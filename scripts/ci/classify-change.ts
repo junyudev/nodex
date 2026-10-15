@@ -174,6 +174,10 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("unit", "renderer", "browser");
       continue;
     }
+    if (path.startsWith("packages/agent-runtime/")) {
+      add("agent-runtime", "unit", "core-client", "main", "renderer", "integration");
+      continue;
+    }
     if (path.startsWith("packages/effect-codex-app-server/")) {
       add("effect-codex", "core-client", "main", "integration");
       continue;

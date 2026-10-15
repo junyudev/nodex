@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
-use nodex_core_contracts::events::ResourceKey;
 use nodex_core_contracts::library::{
     LibraryBlockRelocationDirection, LibraryDocumentRevisionKind, LibraryDocumentVersionMetadata,
     LibraryPageHistoryCategory, LibraryPageHistoryCursor, LibraryPageHistoryDisplay,
@@ -103,209 +102,104 @@ struct RelocationEvidence {
 pub(crate) fn require_page_read_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     page_id: &str,
 ) -> Result<(), StoreError> {
-    require_page_access(connection, library_id, project_id, page_id, false)
+    require_content_owner(connection, library_id, page_id, "pages", false, false)
 }
-
-pub(crate) fn page_read_authorization_roots(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    page_id: &str,
-) -> Result<Option<Vec<ResourceKey>>, StoreError> {
-    page_authorization_roots(connection, library_id, project_id, page_id, false, false)
-}
-
-/// Lifecycle tooling must be able to inspect an authorized tombstone in order
-/// to present and execute its durable restore coordinates. Ordinary Page reads
-/// continue to treat deleted Pages as unavailable.
-pub(crate) fn require_page_lifecycle_read_access(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    page_id: &str,
-) -> Result<(), StoreError> {
-    if page_authorization_roots(connection, library_id, project_id, page_id, false, true)?.is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Page is not available to the bound Project"))
-}
-
 pub(crate) fn require_page_write_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     page_id: &str,
 ) -> Result<(), StoreError> {
-    require_page_access(connection, library_id, project_id, page_id, true)
+    require_content_owner(connection, library_id, page_id, "pages", true, false)
 }
-
+pub(crate) fn require_page_lifecycle_read_access(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<(), StoreError> {
+    require_content_owner(connection, library_id, page_id, "pages", false, true)
+}
 pub(crate) fn require_canvas_read_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     canvas_id: &str,
 ) -> Result<(), StoreError> {
-    require_canvas_access(connection, library_id, project_id, canvas_id, false)
+    require_content_owner(
+        connection,
+        library_id,
+        canvas_id,
+        "canvas_owners",
+        false,
+        false,
+    )
 }
-
 pub(crate) fn require_canvas_write_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     canvas_id: &str,
 ) -> Result<(), StoreError> {
-    require_canvas_access(connection, library_id, project_id, canvas_id, true)
+    require_content_owner(
+        connection,
+        library_id,
+        canvas_id,
+        "canvas_owners",
+        true,
+        false,
+    )
 }
-
 pub(crate) fn require_canvas_lifecycle_read_access(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     canvas_id: &str,
 ) -> Result<(), StoreError> {
-    if super::canvas_lifecycle_grant_authorization_proof(
-        connection, library_id, project_id, canvas_id,
-    )?
-    .is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Canvas is not available to the bound Project"))
-}
-
-fn require_canvas_access(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    canvas_id: &str,
-    write_required: bool,
-) -> Result<(), StoreError> {
-    if super::canvas_grant_authorization_proof(
+    require_content_owner(
         connection,
         library_id,
-        project_id,
         canvas_id,
-        write_required,
-    )?
-    .is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Canvas is not available to the bound Project"))
-}
-
-fn require_page_access(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    page_id: &str,
-    write_required: bool,
-) -> Result<(), StoreError> {
-    if page_authorization_roots(
-        connection,
-        library_id,
-        project_id,
-        page_id,
-        write_required,
+        "canvas_owners",
         false,
-    )?
-    .is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Page is not available to the bound Project"))
+        true,
+    )
 }
-
-fn page_authorization_roots(
+fn require_content_owner(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
-    page_id: &str,
-    write_required: bool,
+    owner_id: &str,
+    owner_table: &str,
+    write: bool,
     include_deleted: bool,
-) -> Result<Option<Vec<ResourceKey>>, StoreError> {
-    let project: Option<Option<String>> = connection
-        .query_row(
-            "SELECT database_block_id FROM projects WHERE id = ?1 AND library_id = ?2",
-            params![project_id, library_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?;
-    let Some(primary_database_id) = project else {
-        return Ok(None);
-    };
-    let page_lifecycle = connection
-        .query_row(
-            "SELECT block.lifecycle FROM pages page \
-             JOIN blocks block ON block.id = page.block_id AND block.type = 'page' \
-             WHERE page.block_id = ?1 AND page.library_id = ?2 \
-               AND block.library_id = page.library_id",
-            params![page_id, library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let Some(page_lifecycle) = page_lifecycle else {
-        return Ok(None);
-    };
-    if page_lifecycle == "deleted" && !include_deleted {
-        return Ok(None);
+) -> Result<(), StoreError> {
+    let statement = format!(
+        "SELECT block.lifecycle FROM {owner_table} owner JOIN blocks block ON block.id=owner.block_id AND block.library_id=owner.library_id WHERE owner.block_id=?1 AND owner.library_id=?2"
+    );
+    let lifecycle = connection
+        .query_row(&statement, params![owner_id, library_id], |row| {
+            row.get::<_, String>(0)
+        })
+        .optional()?
+        .ok_or_else(|| not_found("Content owner is unavailable in this Library"))?;
+    if (!include_deleted && lifecycle == "deleted") || (write && lifecycle != "active") {
+        return Err(not_found("Content owner is unavailable for this operation"));
     }
-    let database_id = owning_database(connection, library_id, page_id)?;
-    let mut roots = BTreeSet::from([ResourceKey::Page {
-        page_id: page_id.to_owned(),
-    }]);
-    let primary_database = database_id.is_some() && database_id == primary_database_id;
-    let mut database_grant = false;
-    if let Some(database_id) = database_id.as_ref() {
-        database_grant = connection
-            .query_row(
-                "SELECT 1 FROM project_resource_grants WHERE project_id = ?1 \
-                 AND root_kind = 'database' AND root_id = ?2 AND lifecycle = 'active' \
-                 AND (?3 = 0 OR access = 'read_write')",
-                params![project_id, database_id, i64::from(write_required)],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        if primary_database || database_grant {
-            roots.insert(ResourceKey::Database {
-                database_id: database_id.clone(),
-            });
-        }
-    }
-    let page_grant_proof =
-        super::page_grant_ownership_proof(connection, project_id, page_id, write_required)?;
-    if let Some(proof) = &page_grant_proof {
-        roots.extend(proof.iter().cloned());
-    }
-    if primary_database || database_grant || page_grant_proof.is_some() {
-        return Ok(Some(roots.into_iter().collect()));
-    }
-    Ok(None)
+    Ok(())
 }
 
 pub(super) fn page_history(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
+    _requesting_project_id: Option<&str>,
     page_id: &str,
     before: Option<LibraryPageHistoryCursor>,
     limit: Option<u32>,
 ) -> Result<LibraryPageHistoryPage, StoreError> {
     validate_id(page_id, "page_id")?;
-    let project_id = requesting_project_id
-        .ok_or_else(|| unauthorized("Page history requires a bound Project"))?;
-    validate_id(project_id, "project_id")?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT);
     if limit == 0 || limit > MAX_LIMIT {
         return Err(invalid("Page history limit must be between 1 and 100"));
     }
     validate_cursor(before.as_ref())?;
-    let scope = read_scope(connection, library_id, project_id, page_id)?;
+    let scope = read_scope(connection, library_id, page_id)?;
     let candidate_limit = i64::from(limit) + 1;
     let mut entries = read_versions(connection, &scope, before.as_ref(), candidate_limit)?
         .into_iter()
@@ -335,12 +229,10 @@ pub(super) fn page_history(
 fn read_scope(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     page_id: &str,
 ) -> Result<PageScope, StoreError> {
-    if page_read_authorization_roots(connection, library_id, project_id, page_id)?.is_none() {
-        return Err(not_found("Page is not available to the bound Project"));
-    }
+    require_page_read_access(connection, library_id, page_id)?;
+
     let row = connection
         .query_row(
             "SELECT page.document_id, document.library_id, document.generation, \
@@ -364,7 +256,7 @@ fn read_scope(
             },
         )
         .optional()?
-        .ok_or_else(|| not_found("Page is not available to the bound Project"))?;
+        .ok_or_else(|| not_found("Page is unavailable in this Library"))?;
     if row.1.as_deref() != Some(library_id)
         || row.2.is_none_or(|generation| !safe_integer(generation, 1))
         || row.3.as_deref() != Some("ready")
@@ -380,7 +272,7 @@ fn read_scope(
     })
 }
 
-fn owning_database(
+pub(super) fn owning_database(
     connection: &Connection,
     library_id: &str,
     page_id: &str,
@@ -403,7 +295,7 @@ fn owning_database(
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
         )
         .optional()?
-        .ok_or_else(|| not_found("Page is not available to the bound Project"))?;
+        .ok_or_else(|| not_found("Page is unavailable in this Library"))?;
     match terminal.0.as_str() {
         "library" if terminal.1 == library_id => Ok(None),
         "data_source" => connection
@@ -415,8 +307,8 @@ fn owning_database(
             )
             .optional()?
             .map(Some)
-            .ok_or_else(|| not_found("Page is not available to the bound Project")),
-        _ => Err(not_found("Page is not available to the bound Project")),
+            .ok_or_else(|| not_found("Page is unavailable in this Library")),
+        _ => Err(not_found("Page is unavailable in this Library")),
     }
 }
 
@@ -1334,10 +1226,6 @@ fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
 }
 
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
-}
-
 fn not_found(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::NotFound, message, false)
 }
@@ -1663,8 +1551,8 @@ mod tests {
             .read_default(|connection| {
                 page_history(connection, LIBRARY, Some(OTHER_PROJECT), PAGE, None, None)
             })
-            .expect_err("unbound Project cannot read history");
-        assert_eq!(unauthorized.code, StoreErrorCode::NotFound);
+            .expect("history is independent of Project route");
+        assert_eq!(unauthorized.page_id, PAGE);
     }
 
     #[test]

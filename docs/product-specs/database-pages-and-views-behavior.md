@@ -40,7 +40,7 @@ Allocation is monotonic and may contain gaps. Archive, delete, retry, and
 movement never recycle a committed number. Moving among Views or Data Sources
 inside one Database retains the assignment. A cross-Database move receives or
 recovers the target Database assignment while every previously allocated key
-remains an authorized historical locator for the same Page UUID.
+remains a historical locator for the same Page UUID.
 
 Page Stage does not repeat the contextual Database key in its Page identity.
 In Board and List Display Options the Page key is labeled **ID**. The canonical
@@ -60,6 +60,11 @@ Board and List expose one shared Page context menu. Its Page actions are
 `Open in`, `Copy`, `Move to`, and a final separated `Delete` action. `Move to`
 relocates the Page to another Database, another Page, or Pages top level as
 specified by [Page Relocation](page-relocation-behavior.md).
+Page actions remain available on both Project and Library presentations. Delete,
+restore and archive use the Library lifecycle owner, exact Page and parent
+revisions, and durable operation receipts. A Library presentation never infers a
+Project for these operations. Project-default creation retains its explicit
+Data Source and status route; deleting a Page does not require that route.
 The development-only `database-page-reorder-menu` capability adds a `Reorder`
 submenu containing top, up, down, and bottom positions; ordinary launches omit
 that submenu, and unavailable edge positions remain disabled when it is
@@ -68,14 +73,14 @@ bulk-selection ordering. `Copy` contains `Copy ID` whenever a current Page
 key exists, plus `Copy deeplink`, `Copy title`, and `Copy content as Markdown`.
 `Copy ID` copies only the user-facing Page key and never falls back to UUID;
 `Copy deeplink` remains the distinct UUID-based action. Markdown copy reads the
-canonical owned Page Document through the View's current Library or Project
-access context rather than a visible View projection. `Open in` contains `Open
+canonical owned Page Document in the current Library through the View's
+presentation route rather than a visible View projection. `Open in` contains `Open
 in new chat` and `Send to chat…`. Open in new chat atomically creates an
 ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
 `Send to chat…` hands off to a Window-owned chooser after the context menu
 closes. The chooser retains the selected Page and remains usable if its source
-View unmounts. Page image inputs follow the authorized byte-snapshot contract
+View unmounts. Page image inputs follow the verified exact-version byte-snapshot contract
 in [Page prompt image inputs](./nfm-thread-section-image-inputs.md).
 
 Each Board or List surface owns one short-lived Page menu session. Right-click
@@ -143,8 +148,8 @@ optional leading `#`, outer whitespace, and no-hyphen shorthand. Key matching
 is exact or prefix-oriented, never fuzzy within the key token; explicit `#`
 intent never falls back to title or body. Loaded Board/List rows do not carry
 historical aliases. Global search, destination pickers, CLI, and Agent reads use
-the authorized Core resolver when historical lookup is required. A compact
-query that maps to multiple authorized Pages shows every candidate; a direct
+the canonical Core resolver when historical lookup is required. A compact
+query that maps to multiple matching Pages in the current Library shows every candidate; a direct
 selector reports ambiguity and never chooses the first match. Results keep the
 current key in the primary identity slot and show `Matched OLD-13` only when a
 historical key matched. Prefix changes refresh current View, Page Detail, and
@@ -204,7 +209,7 @@ results. Its explicit empty operand remains present across personal preference
 storage and Core events, while value-less operators omit the operand entirely;
 Core validates that distinction before committing either durable or personal
 rules. Operators and value controls follow the Property type; Relation values
-are selected from authorized Pages rather than entered as Page IDs. Search is
+are selected from Pages in the current Library rather than entered as Page IDs. Search is
 window-local and does not become a saved rule.
 
 Rules and presentation may resolve through independent sparse fields in one
@@ -269,7 +274,7 @@ A quick filter opens one Property-specific editor rather than a generic form.
 Its compact header owns Property, operator, and a More menu; the More menu puts
 Delete filter before Add to advanced filter. Text and number use a direct input,
 checkbox exposes Checked and Unchecked rows, select and multi-select expose the
-searchable option list directly, Relation exposes the authorized Page search
+searchable option list directly, Relation exposes the current Library Page search
 directly, and Date/DateTime embed the calendar. No quick editor adds a second
 value-trigger popover around that content. Editors with no value operand render
 only the header.
@@ -376,7 +381,7 @@ time. Inline option editors remain visually lighter where the surrounding row
 already owns the interaction boundary.
 
 Personal presentation and disclosure changes converge across mounted windows as
-typed deltas authorized by the durable View. They do not claim a shared View,
+typed deltas bound to the durable View identity. They do not claim a shared View,
 Data Source, Database, or Page projection change, so a personal toggle cannot
 refresh Board/List content or invalidate Library navigation. Reconnect replay
 preserves those deltas; a Store-epoch replacement rehydrates both personal
@@ -410,9 +415,9 @@ controls, menus, and drag gestures keep their own interaction instead of
 opening the Page.
 
 Data Source queries accept typed filters, sorts, and an explicit Property
-projection without creating or changing a View. Native CLI calls authorize the
-selected Project through Core; Agent calls validate their bound Turn before
-entering the same query implementation. An omitted projection includes active
+projection without creating or changing a View. Native CLI calls retain their selected routing context; Agent calls validate
+their exact execution identity before entering the same Profile-wide query
+implementation. A Project routing context does not restrict explicit resource reads. An omitted projection includes active
 Properties; an empty projection includes none, including Relation previews.
 Saved View display fields and manual ordering never expand an explicit Data
 Source projection. Continuation cursors bind query rules and projected Property
@@ -537,14 +542,14 @@ window confirms the same parent, group, and order semantics. A typed revision
 conflict rolls back without clearing the readable List; a new gesture uses fresh
 occurrence authority. Successful moves are silent.
 Their opaque Core recipe enters the window's bounded content history for the
-same Library, access context, and Store epoch. Page body, Page title, Board and
+same Library, presentation route, and Store epoch. Page body, Page title, Board and
 List shortcuts replay this same interaction order; native input drafts,
 comboboxes, menus and independent editors retain their input boundaries.
 
 The content owner reserves each data gesture before asynchronous preparation and
 serializes its forward commands and inverses. Later replies fill their original
 slots; a queued Undo cannot wait for a gesture admitted behind it. Each View
-participant validates Library, access context, Store epoch and View identity for
+participant validates Library, presentation route, Store epoch and View identity for
 admission; View identity is a command target, not a separate chronology. A ready
 View preserves its participant during ordinary projection refresh or presentation
 rerender. Authority changes cannot attach old actions to the new scope.
@@ -568,11 +573,11 @@ Scalar Property values (including Status), multi-select patches and manual View
 positions produce one Core inverse for the entire data gesture. A mixed batch of
 these operations is atomic during both execution and Undo. Core records canonical
 before/after values and logical position runs, not physical rank keys. It validates
-the complete target set's current write authority before reading or comparing
-Property or position post-images. This also applies to List inverses and mixed
-inverse batches: an unauthorized target cannot expose its values through a
-different conflict result, and no permitted part is written first. Changed Property
-types, deleted options, changed View direction or ambiguous positions block the
+the complete target set's current Library identity and lifecycle before reading
+or comparing Property or position post-images. This also applies to List inverses
+and mixed inverse batches: unavailable or mismatched targets reject the whole
+operation before any inverse is written. Project ownership does not limit replay.
+Changed Property types, deleted options, changed View direction or ambiguous positions block the
 whole inverse. Unrelated values remain untouched. Successful inverse replies are
 idempotent under their original operation ID, including after a lost reply.
 Position commands always use visual order; Core alone converts descending order
@@ -650,7 +655,7 @@ identity through exact recovery.
 A receipt normally leaves the visible result unchanged and begins canonical
 retirement. Retirement requires that consumer's complete bounded query at or
 beyond the receipt and a matching React render. The query must retain the same
-Library/access, Store epoch, View and effective rules. Loaded-window coordinates
+Library/presentation route, Store epoch, View and effective rules. Loaded-window coordinates
 are current materialization evidence rather than presentation-owner identity:
 pagination, refresh, or another bounded-window reshape cannot revoke an admitted
 promotion between its predicted frame and canonical handoff. The currently
@@ -673,8 +678,10 @@ means Copy for Block transfer. At a root gap under writable Property sorts,
 Core adopts the visible neighbors' writable sort prefix for both Page moves and
 Block promotion. Under title or created sorting, the destination group is exact
 but the intrinsic sort owns the final visible position.
-Free-text search, read-only Views, non-Project contexts, incomplete or stale
-Core projections, and cross-Project/store sessions fail closed. The renderer
+Free-text search, inactive Views, missing destination coordinates, incomplete or
+stale Core projections, and mismatched Profile/Store identities fail closed.
+Explicit source and destination resources may belong to different Projects or use
+the Library route. The renderer
 sends only the raw occurrence target, exact projection expectation, and
 effective List presentation; Core atomically resolves group/subgroup and sorted
 Property values, root placement, shorthand, source Move/Copy, receipt, and Undo.
@@ -693,9 +700,8 @@ opening screen. Background reads update only the affected projection and hand
 over atomically. An inactive alternative layout does not preload or refresh its
 windows; selecting List starts its Core occurrence projection on demand and then
 retains the last accepted window. List ordering never passes through a temporary
-Board-derived order. Permission
-revocation, checkpoint/reset, authorization loss, and Store replacement remain
-hard-clear boundaries.
+Board-derived order. Resource removal, checkpoint/reset, invalid delivery
+identity, and Profile/Store replacement remain hard-clear boundaries.
 
 Rapid List coordinate replacements keep one first-window read in flight and
 skip obsolete intermediate targets. Board group-window reads and load-more-all
@@ -781,9 +787,10 @@ its current parent. Library-, Page-, and Data Source-parented Pages all expose
 the same title, body, history, Threads, and Page-intrinsic run/schedule controls.
 Opening a Page never creates membership or moves it into a Database.
 
-Title and body mount only after a ready authorized Document descriptor and
-initial sync barrier. They edit the canonical collaborative Document directly;
-there is no ordinary whole-body autosave, projection-seeded initialization, or
+Title and body mount only after a ready Document descriptor with the exact
+Library identity and live owner, followed by the initial sync barrier. They edit
+the canonical collaborative Document directly; there is no ordinary whole-body
+autosave, projection-seeded initialization, or
 whole-Page conflict overwrite. A title-only Page opens with a valid empty-body
 editor while NFM/plain-text export remains empty.
 
@@ -847,12 +854,11 @@ unique set with idempotent edge patches plus a distinct revision-fenced whole-se
 clear command. A one Relation rejects set patches; a many Relation rejects
 single-target replacement. Both use the same normalized edge table and a
 JSON-null value revision header. Relation never
-changes ownership or grants access. Compact values show visible targets plus
-hidden/restricted counts; inaccessible targets disclose neither identity nor
-title. Candidate and selected lists are bounded and paged. Removal of a
-restricted target uses a Core-authored opaque edge handle rather than a guessed
-Page ID; the many-Relation clear command can remove every edge without
-disclosing targets. Generic Relation references survive target membership and
+changes ownership. Compact values show live targets across Projects plus an
+unavailable count for missing, deleted or foreign-Library targets. Candidate and
+selected lists are bounded and paged. Removing an unavailable target uses a
+Core-authored opaque edge handle; the many-Relation clear command removes every
+edge without resolving targets. Generic Relation references survive target membership and
 lifecycle changes until explicitly removed. The standard `task_parent` Relation
 adds same-Source activity, acyclicity, depth, sibling-order, copy-as-root, and
 parent-removal promotion policy without creating another storage authority.
@@ -925,7 +931,7 @@ Every document-bearing owner shell is childless. Indenting, inserting, or moving
 an ordinary Block beneath one is rejected.
 This invariant is enforced on the actual local Block transaction before it
 enters the collaborative Y.Doc, not only on keyboard or side-menu commands.
-Remote Core delivery is admitted so authorized structural commits converge.
+Remote Core delivery is admitted so verified structural commits converge.
 The complete parent capability and presentation contract is defined in
 [NFM Editor Block Children Behavior](nfm-editor-block-children-behavior.md).
 

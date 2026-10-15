@@ -976,11 +976,13 @@ export const make = Effect.fn("resourceTelemetry.nativeTelemetryClient.make")(fu
       });
     }
 
-    const requestId = yield* crypto.randomUUIDv4().pipe(
-      Effect.mapError(
-        (cause) => new NativeTelemetryCommandFailed({ operation: "createRequestId", cause }),
-      ),
-    );
+    const requestId = yield* crypto
+      .randomUUIDv4()
+      .pipe(
+        Effect.mapError(
+          (cause) => new NativeTelemetryCommandFailed({ operation: "createRequestId", cause }),
+        ),
+      );
     const deferred = yield* Deferred.make<
       ReadonlyArray<ResourceMonitorProcessTableEntry>,
       NativeTelemetryClientError

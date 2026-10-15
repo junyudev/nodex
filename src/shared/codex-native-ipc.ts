@@ -9,8 +9,6 @@ import { CodexTurnDeliveryError } from "./codex-conversation-state/codex-turn-de
 export const CODEX_NATIVE_IPC_CHANNELS = [
   "codex:app-server:request",
   "codex:turn:native:execute",
-  "codex:thread:native-session:execute",
-  "codex:turn:native-fresh:execute",
   "codex:thread:native-fork:execute",
   "codex:turn:native:inject",
   "codex:turn:native-steer:execute",
@@ -24,8 +22,6 @@ export const isCodexNativeIpcChannel = (channel: string): channel is CodexNative
 const nativeMethods: Record<CodexNativeIpcChannel, string> = {
   "codex:app-server:request": "",
   "codex:turn:native:execute": "turn/start",
-  "codex:thread:native-session:execute": "thread/start",
-  "codex:turn:native-fresh:execute": "turn/start",
   "codex:thread:native-fork:execute": "thread/fork",
   "codex:turn:native:inject": "thread/inject_items",
   "codex:turn:native-steer:execute": "turn/steer",

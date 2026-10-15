@@ -183,7 +183,6 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
           title: "Companion Page",
           nfm: "This Page stays in the original group.",
         });
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         threadId = await sendAgentPrompt(page, draft.projectSessionId, "WORKBENCH_CONTROL_PROBE");
         await waitForFinalMarker(page, "WORKBENCH_CONTROL_OK");
         await waitForCompletedAgentTurn(page, threadId, 60_000);

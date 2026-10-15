@@ -523,7 +523,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
         matches!(created_project.0, ResponseEnvelope::Ok(_)),
         "{created_project:?}"
     );
-    let denied = client
+    let cross_project = client
         .query_read(
             Some(other_project),
             nodex_core_contracts::query::QueryRead::Query {
@@ -541,9 +541,13 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             },
         )
         .unwrap();
-    assert!(
-        matches!(denied.0, ResponseEnvelope::Error(error) if error.code == nodex_core_contracts::CoreErrorCode::Unauthorized)
-    );
+    let ResponseEnvelope::Ok(snapshot) = cross_project.0 else {
+        panic!("same Profile query: {cross_project:?}")
+    };
+    let nodex_core_contracts::query::QueryReadValue::Query { value } = snapshot.value else {
+        panic!("SQL rows")
+    };
+    assert_eq!(value.returned_count, 3);
 }
 
 #[test]
@@ -1496,4 +1500,108 @@ fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets(
         saved.replace("Monday", "Tuesday")
     );
     assert!(!observed.join("apply.json").exists());
+}
+
+#[test]
+fn profile_sql_and_schema_work_without_project_routing_from_an_unrelated_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    let cwd = directory.path().join("unrelated");
+    fs::create_dir(&home).unwrap();
+    fs::create_dir(&cwd).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client =
+        connect_or_launch(&home, "profile-sql-cli-integration", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    let invoke = |args: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
+            .arg("--json")
+            .args(args)
+            .env("NODEX_HOME", &home)
+            .current_dir(&cwd)
+            .output()
+            .unwrap();
+        let encoded = if output.status.success() {
+            &output.stdout
+        } else {
+            &output.stderr
+        };
+        let envelope: Value = serde_json::from_slice(encoded).unwrap();
+        assert_eq!(
+            output.status.success(),
+            envelope["ok"] == true,
+            "{args:?}: {envelope}"
+        );
+        envelope
+    };
+    let empty = invoke(&["sql", "query", "SELECT COUNT(*) FROM pages"]);
+    assert_eq!(empty["result"]["rows"], serde_json::json!([[0]]));
+    assert_eq!(invoke(&["sql", "schema", "pages"])["ok"], true);
+    let database_id = "019b1000-1000-7000-8000-000000000080";
+    let source_id = "019b1000-1000-7000-8000-000000000081";
+    let created = client
+        .library_apply(
+            None,
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "profile-sql:create-database".into(),
+                store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                intent: LibraryIntent::CreateDatabase {
+                    database_id: database_id.into(),
+                    data_source_id: source_id.into(),
+                    view_id: "019b1000-1000-7000-8000-000000000082".into(),
+                    name: "Library data".into(),
+                    parent: LibraryWriteParent::Library { before: None },
+                },
+            },
+        )
+        .unwrap();
+    assert!(matches!(created.0, ResponseEnvelope::Ok(_)), "{created:?}");
+    let binding = format!("tasks={source_id}");
+    let count = invoke(&[
+        "sql",
+        "query",
+        "SELECT COUNT(*) FROM tasks",
+        "--bind",
+        &binding,
+    ]);
+    assert_eq!(count["result"]["rows"], serde_json::json!([[0]]));
+    for database in [database_id, "Library data"] {
+        let described = invoke(&[
+            "--database",
+            database,
+            "sql",
+            "schema",
+            "tasks",
+            "--bind",
+            &binding,
+        ]);
+        assert_eq!(
+            described["result"]["tables"][0]["data_source_id"],
+            source_id
+        );
+    }
+    seed(&client, &home);
+    let explicit_project = invoke(&[
+        "--project",
+        PROJECT,
+        "sql",
+        "query",
+        "SELECT COUNT(*) FROM tasks",
+        "--bind",
+        &binding,
+    ]);
+    assert_eq!(explicit_project["result"]["rows"], serde_json::json!([[0]]));
+    let named_project = invoke(&["--project", "Data primitives CLI", "sql", "schema", "pages"]);
+    assert_eq!(named_project["ok"], true);
+    let missing_project = invoke(&["--project", "missing", "sql", "query", "SELECT 1"]);
+    assert_eq!(missing_project["error"]["code"], "PROJECT_NOT_FOUND");
+    let stale_identity = invoke(&[
+        "--expect-profile",
+        "foreign-profile",
+        "sql",
+        "schema",
+        "pages",
+    ]);
+    assert_eq!(stale_identity["error"]["code"], "PROFILE_MISMATCH");
 }

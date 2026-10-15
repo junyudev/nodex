@@ -139,7 +139,7 @@ const command = (
   preparation: CoreMovePreparation,
 ): NodexAgentMovePagesCommand => {
   if (!request.authority) {
-    throw new Error("Native Agent Page movement requires frozen Turn authority");
+    throw new Error("Native Agent Page movement requires captured execution provenance");
   }
   if (preparation.pages.length !== request.input.pageIds.length) {
     throw new Error("Core Agent Page movement returned a divergent Page batch");
@@ -180,7 +180,7 @@ export const prepareNativeNodexAgentPageMove = async (
   const operationId = nativeNodexAgentPageMoveOperationId(request);
   try {
     if (!request.authority) {
-      throw new Error("Native Agent Page movement requires frozen Turn authority");
+      throw new Error("Native Agent Page movement requires captured execution provenance");
     }
     const moveRequest = coreRequest(request);
     const snapshot = await nativeAgentClient(runtime, request.projectId).libraryRead(
@@ -192,7 +192,6 @@ export const prepareNativeNodexAgentPageMove = async (
           runtime.identity.profileId,
           request.authority,
           request.callId,
-          request.resourceAccess,
         ),
         request: moveRequest,
       },
@@ -289,7 +288,7 @@ export const executeNativeNodexAgentPageMove = async (
         ok: false,
         error: {
           code: "authorization_denied",
-          message: "Native Agent Page movement lost its frozen Turn authority",
+          message: "Native Agent Page movement lost its captured execution provenance",
           retryable: false,
           recovery: "start_new_task",
         },
@@ -308,7 +307,6 @@ export const executeNativeNodexAgentPageMove = async (
               runtime.identity.profileId,
               authority,
               pending.request.callId,
-              pending.request.resourceAccess,
             ),
             token: pending.token,
           },

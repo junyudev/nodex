@@ -21,7 +21,7 @@ For independent implementation or a PR stack in its own worktree, use \`t3_threa
 - Existing worktree: \`{"title":"Continue cleanup","workspaceStrategy":{"type":"existing_worktree","worktreePath":"/absolute/path/to/worktree","branch":"feature/ui-cleanup"},"message":"Continue the cleanup."}\`
 - Project's main checkout: \`workspaceStrategy:{"type":"root"}\`. Omitting workspaceStrategy also selects root; it does not inherit the caller's worktree.
 
-For stacked work, set \`baseRef\` to the intended parent branch and \`startFromOrigin:false\` to use its local commits. Use \`startFromOrigin:true\` when you intend to fetch and start from origin. Uncommitted edits are not copied. Use \`t3_worktree_list\` to discover existing checkout paths. Project, model selection, and modes inherit unless supplied; a launched thread may not run with broader modes than yours.
+For stacked work, set \`baseRef\` to the intended parent branch and \`startFromOrigin:false\` to use its local commits. Use \`startFromOrigin:true\` when you intend to fetch and start from origin. Uncommitted edits are not copied. Use \`t3_worktree_list\` to discover existing checkout paths. Project, model selection, and interaction mode inherit unless supplied. Agent resources are available across Projects and Sessions in the current Profile.
 
 \`t3_thread_launch\` is the single-thread launch tool. Use \`create_threads\` only for a batch of threads intentionally sharing the caller's checkout: it always inherits the caller's project, branch, and worktree and has no workspace override. Asking an agent to run \`git worktree add\` or \`cd\` in its prompt does not update T3's thread binding. Select the workspace in the launch call instead. \`t3_worktree_handoff\` moves the calling thread, not another thread, and cannot move a thread already attached to a worktree.
 
@@ -58,7 +58,13 @@ Prefer making reasonable assumptions and carrying out the user's request. Ask a 
 
 const T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS = `## T3 Code interaction mode: Plan
 
-Investigate with read-only actions and do not edit files or otherwise execute the implementation. Resolve discoverable facts before asking questions. When the requirements are decision complete, return a concrete implementation plan and do not start implementing it. Treat this mode as active until T3 Code supplies a different interaction-mode instruction.`;
+Investigate the requested work and resolve discoverable facts before asking questions. Use application tools as needed to gather context and maintain planning content. When the requirements are clear, return a concrete implementation plan. Keep implementation work for an implementation request. Treat this mode as active until T3 Code supplies a different interaction-mode instruction.`;
+
+/** Planning intent changes the prompt without narrowing native execution access. */
+export function providerPromptForInteraction(prompt: string, mode: ProviderInteractionMode): string {
+  if (mode !== "plan" || prompt.trimStart().startsWith("/")) return prompt;
+  return `<interaction_mode>\n${T3_CODE_ACP_PLAN_MODE_INSTRUCTIONS}\n</interaction_mode>\n\n${prompt}`;
+}
 
 export interface T3AcpInstructionState {
   readonly interactionMode: ProviderInteractionMode;

@@ -1,6 +1,20 @@
 import type { ToolActivityIcon, ToolActivitySource } from "@t3tools/contracts";
 import { resolveT3McpToolDefinition } from "@t3tools/shared/t3McpToolPresentation";
 
+/** Native routing stamps stay at the transport boundary, outside tool transcripts. */
+export function publicMcpToolInput(input: Record<string, unknown>): Record<string, unknown>;
+export function publicMcpToolInput(input: unknown): unknown;
+export function publicMcpToolInput(input: unknown): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return input;
+  if (!("__nodexExecutionCall" in input) && !("__nodexNativeExecution" in input)) return input;
+  const {
+    __nodexExecutionCall: _executionCall,
+    __nodexNativeExecution: _nativeExecution,
+    ...publicInput
+  } = input as Record<string, unknown>;
+  return publicInput;
+}
+
 export function normalizeMcpText(value: unknown, maxLength = 160): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim().replace(/\s+/gu, " ");

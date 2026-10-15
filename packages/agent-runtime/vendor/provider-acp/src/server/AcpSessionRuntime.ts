@@ -1,3 +1,4 @@
+import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
@@ -1233,9 +1234,9 @@ export class AcpSessionRuntime extends Context.Service<
      */
     readonly start: () => Effect.Effect<AcpSessionRuntimeStartResult, EffectAcpErrors.AcpError>;
     /** Stream of parsed root-session events and connection failures. */
-    readonly getEvents: () => Stream.Stream<AcpSessionRuntimeEvent, never>;
+    readonly getEvents: () => Stream.Stream<AcpSessionRuntimeEvent, EffectAcpErrors.AcpError>;
     /** Waits for queued events to be processed, or for the runtime scope to close. */
-    readonly drainEvents: Effect.Effect<void>;
+    readonly drainEvents: Effect.Effect<void, EffectAcpErrors.AcpError>;
     /** Latest mode state observed from session setup and `session/update` notifications. */
     readonly getModeState: Effect.Effect<AcpSessionModeState | undefined>;
     /** Latest configuration options observed from session setup and configuration writes. */
@@ -1388,7 +1389,13 @@ export const make = (
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     // A child of the caller's scope, so termination can close the runtime without closing the caller's.
     const runtimeScope = yield* Scope.fork(yield* Scope.Scope);
-    const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
+    const eventQueue = yield* BoundedQueue.make<AcpSessionRuntimeEvent, EffectAcpErrors.AcpError>({
+      label: "ACP native events",
+      sizeOf: (event) =>
+        event._tag === "EventStreamBarrier" ? 128 : BoundedQueue.encodedBytes(event),
+      mapOverflow: (cause) =>
+        new EffectAcpErrors.AcpTransportError({ detail: cause.message, cause }),
+    });
     const modeStateRef = yield* Ref.make<AcpSessionModeState | undefined>(undefined);
     const toolCallsRef = yield* Ref.make(new Map<string, AcpToolCallTrackedState>());
     // Recently shown tool calls. A late update to a finished call is not a new
@@ -1478,7 +1485,7 @@ export const make = (
         return;
       }
       yield* closeActiveAssistantSegment({ queue: eventQueue, assistantSegmentRef });
-      yield* Queue.offer(eventQueue, { _tag: "ConnectionTerminated", error: enriched });
+      yield* BoundedQueue.offer(eventQueue, { _tag: "ConnectionTerminated", error: enriched });
     });
 
     const logRequest = (event: AcpSessionRequestLogEvent) =>
@@ -1911,7 +1918,10 @@ export const make = (
     );
     yield* Scope.addFinalizer(
       runtimeScope,
-      Ref.set(stoppingRef, true).pipe(Effect.andThen(Deferred.succeed(runtimeClosed, undefined))),
+      Ref.set(stoppingRef, true).pipe(
+        Effect.andThen(Deferred.succeed(runtimeClosed, undefined)),
+        Effect.andThen(BoundedQueue.shutdown(eventQueue)),
+      ),
     );
     const initializeClientCapabilities = {
       fs: {
@@ -1998,7 +2008,7 @@ export const make = (
     ) {
       const configOptions = sessionConfigOptionsFromSetup(response);
       yield* Ref.set(configOptionsRef, configOptions);
-      yield* Queue.offer(eventQueue, {
+      yield* BoundedQueue.offer(eventQueue, {
         _tag: "ConfigOptionsUpdated",
         configOptions,
         rawPayload: response,
@@ -2440,10 +2450,13 @@ export const make = (
             yield* Ref.set(assistantUpdatesOpenRef, false);
             yield* closeActiveAssistantSegment({ queue: eventQueue, assistantSegmentRef });
           }
-          yield* Queue.offer(eventQueue, { _tag: "EventStreamBarrier", acknowledge });
+          yield* BoundedQueue.offer(eventQueue, { _tag: "EventStreamBarrier", acknowledge });
         }),
       );
-      yield* Effect.raceFirst(Deferred.await(acknowledge), Deferred.await(runtimeClosed));
+      yield* Effect.raceFirst(
+        Deferred.await(acknowledge),
+        Effect.raceFirst(Deferred.await(runtimeClosed), Deferred.await(eventQueue.failed)),
+      );
     });
 
     const retireRuntime = Effect.fn("AcpSessionRuntime.retireRuntime")(function* (
@@ -2452,6 +2465,11 @@ export const make = (
       yield* recordTermination(error);
       yield* child.kill({ forceKillAfter: "1 second" }).pipe(Effect.ignore);
     });
+
+    yield* Deferred.await(eventQueue.failed).pipe(
+      Effect.catch(retireRuntime),
+      Effect.forkIn(runtimeScope),
+    );
 
     const cancel = Effect.gen(function* () {
       const started = yield* getStartedState;
@@ -2536,7 +2554,7 @@ export const make = (
           Effect.asVoid,
         ),
       start: () => start,
-      getEvents: () => Stream.fromQueue(eventQueue),
+      getEvents: () => BoundedQueue.stream(eventQueue),
       drainEvents,
       getModeState: Ref.get(modeStateRef),
       getConfigOptions: Ref.get(configOptionsRef),
@@ -2882,7 +2900,7 @@ const handleSessionUpdate = ({
   assistantItemRuntimeId,
   params,
 }: {
-  readonly queue: Queue.Queue<AcpSessionRuntimeEvent>;
+  readonly queue: BoundedQueue.BoundedQueue<AcpSessionRuntimeEvent, EffectAcpErrors.AcpError>;
   readonly modeStateRef: Ref.Ref<AcpSessionModeState | undefined>;
   readonly configOptionsRef: Ref.Ref<ReadonlyArray<EffectAcpSchema.SessionConfigOption>>;
   readonly toolCallsRef: Ref.Ref<Map<string, AcpToolCallTrackedState>>;
@@ -2946,7 +2964,7 @@ const handleSessionUpdate = ({
           // A call still running is already on screen, even if it aged out.
           if (!active) yield* closeActiveAssistantSegment({ queue, assistantSegmentRef });
         }
-        yield* Queue.offer(queue, {
+        yield* BoundedQueue.offer(queue, {
           _tag: "ToolCallUpdated",
           toolCall: merged,
           rawPayload: event.rawPayload,
@@ -2966,13 +2984,13 @@ const handleSessionUpdate = ({
           sessionId: params.sessionId,
           assistantItemRuntimeId,
         });
-        yield* Queue.offer(queue, {
+        yield* BoundedQueue.offer(queue, {
           ...event,
           itemId,
         });
         continue;
       }
-      yield* Queue.offer(queue, event);
+      yield* BoundedQueue.offer(queue, event);
     }
   });
 
@@ -2998,7 +3016,7 @@ const ensureActiveAssistantSegment = ({
   sessionId,
   assistantItemRuntimeId,
 }: {
-  readonly queue: Queue.Queue<AcpSessionRuntimeEvent>;
+  readonly queue: BoundedQueue.BoundedQueue<AcpSessionRuntimeEvent, EffectAcpErrors.AcpError>;
   readonly assistantSegmentRef: Ref.Ref<AcpAssistantSegmentState>;
   readonly sessionId: string;
   readonly assistantItemRuntimeId: string;
@@ -3027,7 +3045,7 @@ const ensureActiveAssistantSegment = ({
   ).pipe(
     Effect.flatMap((result) =>
       result.startedEvent
-        ? Queue.offer(queue, result.startedEvent).pipe(Effect.as(result.itemId))
+        ? BoundedQueue.offer(queue, result.startedEvent).pipe(Effect.as(result.itemId))
         : Effect.succeed(result.itemId),
     ),
   );
@@ -3036,7 +3054,7 @@ const closeActiveAssistantSegment = ({
   queue,
   assistantSegmentRef,
 }: {
-  readonly queue: Queue.Queue<AcpSessionRuntimeEvent>;
+  readonly queue: BoundedQueue.BoundedQueue<AcpSessionRuntimeEvent, EffectAcpErrors.AcpError>;
   readonly assistantSegmentRef: Ref.Ref<AcpAssistantSegmentState>;
 }) =>
   Ref.modify(assistantSegmentRef, (current) => {
@@ -3052,4 +3070,4 @@ const closeActiveAssistantSegment = ({
         nextSegmentIndex: current.nextSegmentIndex,
       } satisfies AcpAssistantSegmentState,
     ] as const;
-  }).pipe(Effect.flatMap((event) => (event ? Queue.offer(queue, event) : Effect.void)));
+  }).pipe(Effect.flatMap((event) => (event ? BoundedQueue.offer(queue, event) : Effect.void)));

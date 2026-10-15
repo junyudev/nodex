@@ -12,11 +12,10 @@ notifications, and remote cloud-task watchers are separate features.
 
 ## Notification Families
 
-Nodex has three task notification families:
+Native execution permission requests are approved automatically and produce no task notification. Nodex has two task notification families:
 
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
-- `permission`: a command, file-change, or permissions request became pending.
 - `question`: an asynchronous question arrived or a user-input request became pending, including ordinary
   questions and supported option/onboarding/setup inputs with no question
   rows.
@@ -38,7 +37,7 @@ The feature has four owners:
 3. `DesktopNotificationRuntime` owns Electron `Notification` instances, exact
    occurrence records, and their native callback lifecycle.
 4. `WorkbenchCommandIngress` owns renderer action ingress. Workbench session
-   and panel commands perform navigation before any reply or approval action.
+   and panel commands perform navigation before any reply or question action.
 
 One raw lifecycle occurrence emits at most one domain event. Owner/follower
 renderer state, cold snapshots, and repeated projections cannot create another
@@ -53,7 +52,7 @@ A conversation is a child when either source of provenance is present:
 - app-server `source.subAgent.thread_spawn.parent_thread_id` is non-empty.
 
 Every notification family is suppressed for real child conversations. A child
-approval or question is not relabeled as a parent-task notification.
+question is not relabeled as a parent-task notification.
 
 No blanket exclusion applies merely because a top-level conversation is
 ephemeral, system-sourced, or a side conversation. `realtime_voice` suppresses
@@ -62,20 +61,18 @@ by provenance.
 
 ## Settings
 
-The three app preferences are independent:
+The two app preferences are independent:
 
 - `turnMode: "off" | "unfocused" | "always"`
-- `permissionsEnabled: boolean`
 - `questionsEnabled: boolean`
 
-Defaults are `unfocused`, `true`, and `true`. They persist under:
+Defaults are `unfocused` and `true`. They persist under:
 
 - `thread_notifications_turn_mode`
-- `thread_notifications_permissions_enabled`
 - `thread_notifications_questions_enabled`
 
 System notification permission is separate from these preferences. A denied
-OS permission does not rewrite app preferences, and disabling approval
+OS permission does not rewrite app preferences, and disabling task
 notifications does not change OS permission.
 
 ## Turn Policy
@@ -119,7 +116,7 @@ notifications may expose native inline reply.
 
 ## Request Policy
 
-An approval or input request is shown only when:
+An input request is shown only when:
 
 - the corresponding app preference is enabled;
 - the conversation is not a real child; and
@@ -135,12 +132,9 @@ is not presentation.
 
 Request presentation is:
 
-| Raw request          | Title                           | Body                           | Native actions                        |
-| -------------------- | ------------------------------- | ------------------------------ | ------------------------------------- |
-| command approval     | `Command approval`              | reason or `Approval required`  | Approve, Approve for session, Decline |
-| file-change approval | `File edit approval`            | reason or `Approval required`  | Approve, Approve for session, Decline |
-| permissions approval | `Permission approval`           | reason or `Approval required`  | none; open only                       |
-| input request        | task title or `Need your input` | singular/plural question count | none; open only                       |
+| Raw request   | Title                           | Body                           | Native actions  |
+| ------------- | ------------------------------- | ------------------------------ | --------------- |
+| input request | task title or `Need your input` | singular/plural question count | none; open only |
 
 The current production app-server source is the singleton local host. Request
 events and actions retain a host-qualified contract so a future real host
@@ -152,9 +146,8 @@ turn completion.
 
 Every raw `serverRequest/resolved` withdraws native request UI, including when
 the canonical request reducer has no matching live request. Main attempts exact
-dismissal of both possible families:
+dismissal of the question family:
 
-- `approval-${hostId}-${requestId}`
 - `question-${hostId}-${requestId}`
 
 Presenting a conversation in a foreground renderer dismisses all notifications
@@ -167,7 +160,6 @@ navigation-path dismissal.
 Stable public IDs are:
 
 - `turn-${turnId}`
-- `approval-${hostId}-${requestId}`
 - `question-${hostId}-${requestId}`
 
 Public IDs intentionally preserve the native contract. Main separately indexes
@@ -177,7 +169,7 @@ cannot replace or resolve one another.
 
 Main converts title and body to bounded single-line plain text, removing
 script/style blocks, HTML tags, Markdown decoration, and excess whitespace.
-It caps native buttons at four, uses `timeoutType: "never"` for approval and
+It caps native buttons at four, uses `timeoutType: "never"` for
 question notifications, enables reply for turn notifications only, and uses
 the Nodex notification sound on macOS when the packaged resource can be
 staged.
@@ -210,13 +202,10 @@ Every native callback carries `hostId`, actual `conversationId`,
 - A side-conversation notification navigates to the saved parent path and
   activates `sidechat:${conversationId}`. If the ready side tab is not mounted,
   Workbench materializes it without starting a new side conversation.
-- Navigation must complete before reply or approval execution.
+- Navigation must complete before reply or question execution.
 - Reply trims only surrounding whitespace, preserves the user's Markdown and
   type-like text, and starts a turn through the manager for the payload's exact
   host.
-- Approval re-reads the live canonical request by strict scalar ID and accepts
-  only command/file approval methods. Resolved, missing, permission, or
-  replaced requests fail closed.
 
 Native ingress enters through `WorkbenchCommandIngress`; it is not converted
 into request-tick props or handled by a global conversation controller.

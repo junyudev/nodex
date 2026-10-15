@@ -207,6 +207,7 @@ export const replayServer = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly replaceConnectionOnReconnect?: boolean;
     readonly replayGate?: ProviderReplayGate;
     /** Counts the connections currently lent out, as the server owner's borrowers. */
     readonly borrowers?: { current: number };
@@ -233,20 +234,27 @@ export const replayServer = (
       external: options?.external ?? false,
     };
     const borrowers = options?.borrowers;
+    let borrows = 0;
     return OpenCode2Server.OpenCode2Server.of({
       withConnection: (use) =>
-        borrowers === undefined
-          ? use(connection)
-          : Effect.acquireUseRelease(
-              Effect.sync(() => {
-                borrowers.current += 1;
-              }),
-              () => use(connection),
-              () =>
+        Effect.suspend(() => {
+          const next =
+            options?.replaceConnectionOnReconnect === true && borrows++ > 0
+              ? { ...connection }
+              : connection;
+          return borrowers === undefined
+            ? use(next)
+            : Effect.acquireUseRelease(
                 Effect.sync(() => {
-                  borrowers.current -= 1;
+                  borrowers.current += 1;
                 }),
-            ),
+                () => use(next),
+                () =>
+                  Effect.sync(() => {
+                    borrowers.current -= 1;
+                  }),
+              );
+        }),
     });
   });
 
@@ -255,6 +263,7 @@ const makeReplayAdapter = (
   transcript: ProviderReplayTranscript,
   options?: {
     readonly external?: boolean;
+    readonly replaceConnectionOnReconnect?: boolean;
     readonly replayGate?: ProviderReplayGate;
     /** Counts the connections currently lent out, as the server owner's borrowers. */
     readonly borrowers?: { current: number };
@@ -288,6 +297,7 @@ export const openCode2ReplayRuntime = (
   entries: ReadonlyArray<ProviderReplayEntry>,
   options?: {
     readonly external?: boolean;
+    readonly replaceConnectionOnReconnect?: boolean;
     readonly borrowers?: { current: number };
     readonly replayGate?: ProviderReplayGate;
   },

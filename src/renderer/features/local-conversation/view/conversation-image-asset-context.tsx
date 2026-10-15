@@ -9,6 +9,9 @@ interface ConversationImageAssetContextValue {
   resolveHistoryImage?: (
     reference: import("../../../../shared/agent-history-images").AgentHistoryImageReference,
   ) => Promise<string>;
+  resolveRuntimeAttachment?: (
+    reference: import("../../../../shared/agent-runtime-attachments").AgentRuntimeAttachmentReference,
+  ) => Promise<string>;
 }
 
 const ConversationImageAssetContext = createContext<ConversationImageAssetContextValue>({
@@ -23,13 +26,20 @@ export function ConversationImageAssetProvider({
   conversationId,
   hostId,
   resolveHistoryImage,
+  resolveRuntimeAttachment,
 }: Omit<ConversationImageAssetContextValue, "composerTarget"> & {
   children: ReactNode;
   composerTarget?: ImageEditComposerTarget | null;
 }) {
   const value = useMemo(
-    () => ({ composerTarget, conversationId, hostId, resolveHistoryImage }),
-    [composerTarget, conversationId, hostId, resolveHistoryImage],
+    () => ({
+      composerTarget,
+      conversationId,
+      hostId,
+      resolveHistoryImage,
+      resolveRuntimeAttachment,
+    }),
+    [composerTarget, conversationId, hostId, resolveHistoryImage, resolveRuntimeAttachment],
   );
   return (
     <ConversationImageAssetContext.Provider value={value}>

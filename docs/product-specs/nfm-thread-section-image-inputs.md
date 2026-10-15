@@ -76,15 +76,14 @@ Image inputs:
 
 The renderer compiles text and ordered image occurrences as `promptInput.images[]`.
 Before creating a Chat or submitting to an existing Chat, the shared Page prompt
-boundary reads each Library image through its source Page and content access
-context. Current Page edits are flushed before a selected-Block send so newly
-inserted File occurrences are authorized by the committed Document.
+boundary reads each Library image through its exact source Page and File identity. Current Page edits are flushed before a selected-Block send so newly
+inserted File occurrences are represented by the committed Document.
 
 Each distinct File is read once per submission and encoded with its authoritative
 image MIME type. Repeated occurrences keep their individual position and caption.
 The capture belongs to that submission: a later File update or removal cannot
-change bytes already submitted or queued. A later send reauthorizes and reads
-again. Cached display URLs never substitute for this read, and a denied, missing,
+change bytes already submitted or queued. A later send validates the current
+source identity, lifecycle and version, then reads again. Cached display URLs never substitute for this read, and a missing, cross-Library,
 or non-image File fails the complete send before a new Chat is created.
 
 Main resolves the resulting portable image inputs into official Codex app-server

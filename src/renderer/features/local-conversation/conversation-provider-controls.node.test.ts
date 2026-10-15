@@ -10,10 +10,7 @@ test("native controls require a positive advertised capability", () => {
     supportsConversationProviderControl({ kind: "acp", controls: { skills: true } }, "skills"),
   ).toBe(true);
   expect(
-    supportsConversationProviderControl(
-      { kind: "claude", controls: { steer: true } },
-      "permissionMode",
-    ),
+    supportsConversationProviderControl({ kind: "claude", controls: { steer: true } }, "stopTask"),
   ).toBe(false);
   expect(supportsConversationProviderControl(undefined, "steer")).toBe(true);
   expect(supportsConversationProviderControl({ kind: "claude" }, "images")).toBe(false);

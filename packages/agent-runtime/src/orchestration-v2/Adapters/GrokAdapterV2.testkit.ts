@@ -21,8 +21,7 @@ import {
   type AcpReplayTranscript,
   AcpReplayTranscriptDecodeError,
   decodeAcpReplayTranscript,
-  makeAcpReplayCompletenessAssertion,
-  makeAcpReplayRuntime,
+  makeAcpReplayRuntimeSequence,
 } from "./AcpAdapterV2.testkit.ts";
 import {
   GROK_DEFAULT_INSTANCE_ID,
@@ -56,6 +55,17 @@ function layerGrokProviderAdapterRegistryReplay(
       const scriptPath = yield* path
         .fromFileUrl(new URL("../../../scripts/acp-replay-agent.ts", import.meta.url))
         .pipe(Effect.orDie);
+      const replay = makeAcpReplayRuntimeSequence({
+        transcript,
+        statusPath,
+        scriptPath,
+        childProcessSpawner,
+        fileSystem,
+        ...(replayGate === undefined ? {} : { replayGate }),
+        cancelMeta: GROK_ACP_CANCEL_META,
+        initializeMeta: GROK_ACP_INITIALIZE_META,
+      });
+      yield* Effect.addFinalizer(() => replay.assertAllComplete.pipe(Effect.orDie));
       const adapter = yield* makeGrokAdapterV2({
         instanceId: GROK_DEFAULT_INSTANCE_ID,
         settings: DEFAULT_GROK_SETTINGS,
@@ -66,18 +76,9 @@ function layerGrokProviderAdapterRegistryReplay(
         // metadata and the x.ai prompt-completion race, so replay sends what
         // production sends.
         makeRuntime: (runtimeInput) =>
-          makeAcpReplayRuntime({
-            transcript,
-            statusPath,
-            scriptPath,
-            childProcessSpawner,
-            fileSystem,
-            ...(replayGate === undefined ? {} : { replayGate }),
-            cancelMeta: GROK_ACP_CANCEL_META,
-            initializeMeta: GROK_ACP_INITIALIZE_META,
-          })(runtimeInput).pipe(Effect.flatMap(makeXAiPromptCompletionRuntime)),
+          replay.makeRuntime(runtimeInput).pipe(Effect.flatMap(makeXAiPromptCompletionRuntime)),
         continuationRequests,
-        assertComplete: makeAcpReplayCompletenessAssertion(fileSystem, statusPath, transcript),
+        assertComplete: replay.assertComplete,
         ...(replayGate === undefined
           ? {}
           : {

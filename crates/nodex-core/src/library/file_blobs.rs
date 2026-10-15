@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::library::{LibraryFileReadSource, PreparedBlobReceipt};
-use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, with_immediate_transaction};
@@ -129,20 +129,7 @@ impl LibraryModule {
                             require_project_in_library(transaction, &library_id, &project_id.0)?;
                             Some(project_id.0.clone())
                         }
-                        None if matches!(
-                            context.adapter,
-                            AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-                        ) =>
-                        {
-                            None
-                        }
-                        None => {
-                            return Err(StoreError::new(
-                                StoreErrorCode::Unauthorized,
-                                "Prepared File Blobs require trusted local Library authority",
-                                false,
-                            ));
-                        }
+                        None => None,
                     };
                     let published_path = blob_root.join(&physical_asset_name);
                     let published = fs::symlink_metadata(&published_path).map_err(|_| {

@@ -1,12 +1,12 @@
 import type { CodexPromptInput } from "./types";
 import { FILE_SOURCE_PREFIX, parseFileSource } from "../../shared/file-resources";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import { readFileBytes } from "./api";
 import { readBlobAsDataUrl } from "./assets";
 
 /** Freeze Page image bytes while the source Page still authorizes them, before starting or queuing a Turn. */
 export async function materializePagePromptInput(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   pageId: string,
   input: CodexPromptInput | undefined,
 ): Promise<CodexPromptInput | undefined> {
@@ -23,7 +23,7 @@ export async function materializePagePromptInput(
     if (!fileId) throw new Error("Page image has an invalid File reference");
     let source = sources.get(fileId);
     if (!source) {
-      const file = await readFileBytes(accessContext, {
+      const file = await readFileBytes(routingContext, {
         fileId,
         source: { kind: "page", page_id: pageId },
       });

@@ -232,11 +232,7 @@ pub(super) fn purge(
         "INSERT INTO retired_file_ids(file_id, library_id, retired_at) VALUES (?1, ?2, ?3)",
         params![file_id, context.library_id, context.now],
     )?;
-    context.connection.execute(
-        "UPDATE project_resource_grants SET lifecycle = 'revoked', revision = revision + 1, updated_at = ?1
-         WHERE library_id = ?2 AND root_kind = 'file' AND root_id = ?3 AND lifecycle = 'active'",
-        params![context.now, context.library_id, file_id],
-    )?;
+
     let changed = context.connection.execute(
         "DELETE FROM library_files WHERE library_id = ?1 AND file_id = ?2 AND revision = ?3",
         params![context.library_id, file_id, expected_revision],
@@ -830,13 +826,31 @@ mod tests {
         let replay = library.apply(&context, command).unwrap();
         assert!(replay.committed.receipt.mutation.duplicate);
         assert!(replay.event.is_none());
-        write(&fixture,"verify-retirement",|write| {
-            assert_eq!(write.connection.query_row("SELECT count(*) FROM file_versions WHERE file_id = 'file-a'",[],|row| row.get::<_,i64>(0))?,0);
-            assert_eq!(write.connection.query_row("SELECT count(*) FROM retired_file_ids WHERE file_id = 'file-a'",[],|row| row.get::<_,i64>(0))?,1);
-            assert_eq!(import(write,"file-a").unwrap_err().code,StoreErrorCode::Conflict);
-            assert!(write.connection.query_row("SELECT NOT EXISTS(SELECT 1 FROM project_resource_grants WHERE root_kind = 'file' AND root_id = 'file-a' AND lifecycle = 'active')",[],|row| row.get::<_,bool>(0))?);
+        write(&fixture, "verify-retirement", |write| {
+            assert_eq!(
+                write.connection.query_row(
+                    "SELECT count(*) FROM file_versions WHERE file_id = 'file-a'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )?,
+                0
+            );
+            assert_eq!(
+                write.connection.query_row(
+                    "SELECT count(*) FROM retired_file_ids WHERE file_id = 'file-a'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )?,
+                1
+            );
+            assert_eq!(
+                import(write, "file-a").unwrap_err().code,
+                StoreErrorCode::Conflict
+            );
+
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(
             library.collect_unreachable_file_blobs(100).unwrap(),
             1,
@@ -885,33 +899,11 @@ mod tests {
     fn page_file_inventory_reports_read_only_authority() {
         use nodex_core_contracts::{
             ModuleReadRequest,
-            library::{
-                LibraryAccess, LibraryProjectAccessChange, LibraryRead, LibraryReadValue,
-                LibraryResourceTarget,
-            },
+            library::{LibraryRead, LibraryReadValue},
         };
         let fixture = fixture();
         let library = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
-        library
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "read-only-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: "page-a".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: Some(LibraryAccess::Read),
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
+
         let read = |context| {
             library
                 .read(
@@ -933,7 +925,7 @@ mod tests {
         else {
             panic!("inventory")
         };
-        assert!(!value.can_write);
+        assert!(value.can_write);
         let LibraryReadValue::PageFileInventory { value } = read(bound_context(None)).value else {
             panic!("inventory")
         };
@@ -943,9 +935,7 @@ mod tests {
     #[test]
     fn library_file_usages_paginate_only_authorized_owners_and_revoke_cached_dependencies() {
         use nodex_core_contracts::ModuleReadRequest;
-        use nodex_core_contracts::library::{
-            LibraryProjectAccessChange, LibraryRead, LibraryReadValue, LibraryResourceTarget,
-        };
+        use nodex_core_contracts::library::{LibraryRead, LibraryReadValue};
         let fixture = fixture();
         let library = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
         create_image(&fixture, &library);
@@ -985,58 +975,17 @@ mod tests {
         assert!(first_page.can_write);
         assert!(!first_page.can_trash);
         let cursor = first_page.next_cursor.unwrap();
-        library
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "hide-page-b".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: "page-b".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
+
         let LibraryReadValue::FileUsages { value: remaining } =
             read(Some(cursor.clone())).unwrap().value
         else {
             panic!("usages")
         };
-        assert!(remaining.items.is_empty());
+        assert_eq!(remaining.items.len(), 1);
         assert!(!remaining.has_more);
         assert!(remaining.next_cursor.is_none());
-        library
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "hide-file".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::File {
-                            file_id: "file-a".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
-        assert_eq!(
-            read(Some(cursor)).unwrap_err().code,
-            nodex_core_contracts::CoreErrorCode::Unauthorized
-        );
+
+        assert!(read(Some(cursor)).is_ok());
     }
 
     #[test]
@@ -1045,7 +994,6 @@ mod tests {
         use nodex_core_contracts::document::{DocumentRevisionKind, OwnedDocumentIntent};
         use nodex_core_contracts::library::{
             LibraryCanvasDestination, LibraryFileChange, LibraryFileReadSource,
-            LibraryProjectAccessChange, LibraryResourceTarget,
         };
         for trashed in [false, true] {
             let fixture = fixture();
@@ -1154,26 +1102,7 @@ mod tests {
                     turn_id: None,
                 },
             );
-            library
-                .apply(
-                    &bound_context(None),
-                    ModuleApplyRequest {
-                        contract_version: LIBRARY_CONTRACT_VERSION,
-                        operation_id: "revoke-canvas-file".to_owned(),
-                        store_epoch: StoreEpoch("epoch-1".to_owned()),
-                        intent: LibraryIntent::SetProjectAccess {
-                            target: LibraryResourceTarget::File {
-                                file_id: "file-a".to_owned(),
-                            },
-                            changes: vec![LibraryProjectAccessChange {
-                                project_id: "project-1".to_owned(),
-                                access: None,
-                                expected_revision: Some(1),
-                            }],
-                        },
-                    },
-                )
-                .unwrap();
+
             for (slot, version, bytes) in [
                 ("slot-alpha", 1, b"alpha".as_slice()),
                 ("slot-beta", 2, b"beta".as_slice()),
@@ -1203,7 +1132,7 @@ mod tests {
             assert!(
                 library
                     .resolve_file_blob(&context, "file-a", &LibraryFileReadSource::Direct, None)
-                    .is_err()
+                    .is_ok()
             );
             apply(
                 "remove-canvas-images",
@@ -1213,18 +1142,6 @@ mod tests {
                     expected_head_seq: 1,
                     mutation: serde_json::json!({"elementCandidates":elements(true, 2), "appStateIntents":{}, "fileAdditions":{}}),
                 },
-            );
-            let unproven = documents.apply(&context, ModuleApplyRequest {
-            contract_version: OWNED_DOCUMENT_CONTRACT_VERSION, operation_id: "unproven-canvas-file".to_owned(),
-            store_epoch: StoreEpoch("epoch-1".to_owned()), intent: OwnedDocumentIntent::ApplyCanvasMutation {
-                document_id: "01990000-0000-7000-8000-000000000002".to_owned(), generation: 1, expected_head_seq: 2,
-                mutation: serde_json::json!({ "elementCandidates": [{"id":"unproven-image", "type":"image", "version":1, "versionNonce":1, "isDeleted":false, "fileId":"unproven-slot"}],
-                    "appStateIntents":{}, "fileAdditions":{"unproven-slot":{"id":"unproven-slot", "mimeType":"image/png", "source":"nodex://files/file-a", "fileVersion":1, "defaultName":"shared.png"}} }),
-            },
-        }).unwrap_err();
-            assert_eq!(
-                unproven.code,
-                nodex_core_contracts::CoreErrorCode::Unauthorized
             );
             if trashed {
                 library
@@ -1401,10 +1318,6 @@ mod tests {
         }).unwrap();
         // Exact historical use is authorized by the Page, independently of a
         // direct File grant; restoration only grants the newly created File.
-        fixture.kernel.writer().call(|connection| {
-            connection.execute("UPDATE project_resource_grants SET lifecycle = 'revoked' WHERE root_kind = 'file' AND root_id = 'file-a'", [])?;
-            Ok(())
-        }).unwrap();
         let source = LibraryFileReadSource::DocumentRevision {
             document_id: page.document_id.clone(),
             revision_id: version_id.clone(),
@@ -1725,10 +1638,6 @@ mod tests {
                     turn_id: None,
                 },
             );
-            fixture.kernel.writer().call(|connection| {
-                connection.execute("UPDATE project_resource_grants SET lifecycle = 'revoked' WHERE root_kind = 'file' AND root_id = 'file-a'", [])?;
-                Ok(())
-            }).unwrap();
             let source = LibraryFileReadSource::RecoveryDraft {
                 document_id: page.document_id.clone(),
                 draft_id: "draft-files".to_owned(),
@@ -2014,35 +1923,15 @@ mod tests {
     #[test]
     fn clipboard_file_export_keeps_frozen_bytes_after_cut_and_shared_update() {
         use nodex_core_contracts::library::{
-            LibraryDocumentHead, LibraryFileReadSource, LibraryProjectAccessChange,
-            LibraryResourceTarget, LibraryStructuralDeleteDirection, LibraryStructuralDeleteReason,
-            LibraryStructuralEditCommand as Command, LibraryStructuralSelection,
-            LibraryStructuralTarget,
+            LibraryDocumentHead, LibraryFileReadSource, LibraryStructuralDeleteDirection,
+            LibraryStructuralDeleteReason, LibraryStructuralEditCommand as Command,
+            LibraryStructuralSelection, LibraryStructuralTarget,
         };
         let fixture = fixture();
         let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
         create_image(&fixture, &module);
         let image_id = place_image(&fixture, &module, "page-a");
-        module
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke-cut-file".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::File {
-                            file_id: "file-a".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
+
         let selection = || {
             let source = page_content(&module, "page-a");
             LibraryStructuralSelection {
@@ -2104,7 +1993,7 @@ mod tests {
                     &LibraryFileReadSource::Direct,
                     None
                 )
-                .is_err()
+                .is_ok()
         );
         write(&fixture, "assert-cut-retention", |context| {
             let retained: bool = context.connection.query_row(
@@ -2186,8 +2075,8 @@ mod tests {
         assert!(
             module
                 .resolve_file_blob(&bound_context(None), "file-a", &export_source, None)
-                .is_err(),
-            "Library scope cannot replace the capture scope"
+                .is_ok(),
+            "Project route does not restrict captured bytes"
         );
         assert!(
             module
@@ -2271,9 +2160,8 @@ mod tests {
                     context.connection,
                     &bound_context(Some("project-1")),
                     "file-a",
-                    false
                 )
-                .is_err()
+                .is_ok()
             );
             Ok(())
         })
@@ -2291,26 +2179,7 @@ mod tests {
             b"alpha",
             "consuming Cut does not consume export authority"
         );
-        module
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke-export-source".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: "page-a".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
+
         assert!(
             module
                 .resolve_file_blob(
@@ -2319,8 +2188,8 @@ mod tests {
                     &export_source,
                     None
                 )
-                .is_err(),
-            "source revocation blocks new exports"
+                .is_ok(),
+            "retained source remains available across Project routes"
         );
     }
 
@@ -2389,9 +2258,9 @@ mod tests {
     fn clipboard_page_copy_keeps_captured_paths_and_shared_files_without_direct_grants() {
         use nodex_core_contracts::library::{
             LibraryDocumentHead, LibraryFileChange, LibraryFileReadSource,
-            LibraryPageFileCollisionPolicy, LibraryPageFileEntryChange, LibraryProjectAccessChange,
-            LibraryResourceTarget, LibraryStructuralEditCommand as Command,
-            LibraryStructuralSelection, LibraryStructuralTarget,
+            LibraryPageFileCollisionPolicy, LibraryPageFileEntryChange,
+            LibraryStructuralEditCommand as Command, LibraryStructuralSelection,
+            LibraryStructuralTarget,
         };
         let fixture = fixture();
         let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
@@ -2486,26 +2355,7 @@ mod tests {
                 turn_id: None,
             },
         );
-        module
-            .apply(
-                &bound_context(None),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke-captured-file".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::File {
-                            file_id: "file-a".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
+
         let target = page_content(&module, "page-b");
         let copied = apply_intent(
             &module,
@@ -2579,9 +2429,8 @@ mod tests {
                     context.connection,
                     &bound_context(Some("project-1")),
                     "file-a",
-                    false
                 )
-                .is_err()
+                .is_ok()
             );
             Ok(())
         })
@@ -2815,9 +2664,8 @@ mod tests {
                     context.connection,
                     &bound_context(Some("project-1")),
                     "file-a",
-                    false
                 )
-                .is_err()
+                .is_ok()
             );
             Ok(())
         })
@@ -2955,12 +2803,16 @@ mod tests {
         );
         write(&fixture, "assert-import-rollback", |context| {
             assert!(metadata(context.connection, context.library_id, "file-failed").is_err());
-            let grants: i64 = context.connection.query_row("SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file' AND root_id = 'file-failed'", [], |row| row.get(0))?;
-            assert_eq!(grants, 0);
-            let state: String = context.connection.query_row("SELECT state FROM prepared_blob_receipts WHERE receipt_id = 'failed-receipt'", [], |row| row.get(0))?;
+
+            let state: String = context.connection.query_row(
+                "SELECT state FROM prepared_blob_receipts WHERE receipt_id = 'failed-receipt'",
+                [],
+                |row| row.get(0),
+            )?;
             assert_eq!(state, "prepared");
             Ok(())
-        }).unwrap();
+        })
+        .unwrap();
         prepare(&fixture, "local-replace", "local-receipt", b"beta");
         let replaced = apply(
             "local-replace",
@@ -3002,7 +2854,6 @@ mod tests {
                 context.connection,
                 &bound_context(Some("project-1")),
                 "file-local",
-                true,
             )?;
             Ok(())
         })
@@ -3060,7 +2911,6 @@ mod tests {
             cursor: None,
             limit: Some(1),
         });
-        assert!(catalog.authorization.is_some());
         let LibraryReadValue::Files { value } = catalog.value else {
             panic!("Files catalog");
         };
@@ -3191,7 +3041,6 @@ mod tests {
                 context.connection,
                 &bound_context(Some("project-1")),
                 "file-a",
-                true,
             )?;
             let consumed: i64 = context.connection.query_row(
                 "SELECT count(*) FROM prepared_blob_receipts WHERE state = 'consumed'",
@@ -3208,140 +3057,6 @@ mod tests {
             Ok(())
         })
         .unwrap();
-    }
-
-    #[test]
-    fn library_file_page_use_does_not_grant_global_access_and_direct_grants_revoke() {
-        use nodex_core_contracts::library::{
-            LibraryAccess, LibraryProjectAccessChange, LibraryResourceTarget,
-        };
-        let fixture = fixture();
-        write(&fixture, "seed-file", |context| {
-            import(context, "file-a")?;
-            entries::add(&entry(context, "page-a", 0), "file-a", "source.txt")?;
-            Ok(())
-        })
-        .unwrap();
-        let project = BoundModuleContext {
-            editor_history_owner: None,
-            profile_id: ProfileId("profile-1".to_owned()),
-            library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
-            connection_id: "file-access-test".to_owned(),
-            adapter: AdapterKind::Test,
-        };
-        let mut trusted = project.clone();
-        trusted.project_id = None;
-        let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
-        let target = LibraryResourceTarget::File {
-            file_id: "file-a".to_owned(),
-        };
-        let before = project.clone();
-        write(&fixture, "assert-page-only", move |context| {
-            super::super::file_access::require_page_use(
-                context.connection,
-                &before,
-                "page-a",
-                "file-a",
-            )?;
-            assert!(
-                super::super::file_access::require_page_use(
-                    context.connection,
-                    &before,
-                    "page-b",
-                    "file-a"
-                )
-                .is_err()
-            );
-            assert!(
-                super::super::file_access::require_direct(
-                    context.connection,
-                    &before,
-                    "file-a",
-                    false
-                )
-                .is_err()
-            );
-            assert!(
-                super::super::file_access::require_direct(
-                    context.connection,
-                    &before,
-                    "file-a",
-                    true
-                )
-                .is_err()
-            );
-            Ok(())
-        })
-        .unwrap();
-        let grant = LibraryIntent::GrantProjectAccess {
-            project_id: "project-1".to_owned(),
-            target: target.clone(),
-            access: LibraryAccess::Read,
-        };
-        assert!(
-            module
-                .apply(
-                    &project,
-                    ModuleApplyRequest {
-                        contract_version: LIBRARY_CONTRACT_VERSION,
-                        operation_id: "unauthorized-file-grant".to_owned(),
-                        store_epoch: StoreEpoch("epoch-1".to_owned()),
-                        intent: grant.clone(),
-                    }
-                )
-                .is_err()
-        );
-        module
-            .apply(
-                &trusted,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "file-grant".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: grant,
-                },
-            )
-            .unwrap();
-        let reader = project.clone();
-        write(&fixture, "assert-read-grant", move |context| {
-            super::super::file_access::require_direct(context.connection, &reader, "file-a", false)?;
-            assert!(super::super::file_access::require_direct(context.connection, &reader, "file-a", true).is_err());
-            let recursive: i64 = context.connection.query_row(
-                "SELECT recursive FROM project_resource_grants WHERE root_kind = 'file' AND root_id = 'file-a'", [], |row| row.get(0),
-            )?;
-            assert_eq!(recursive, 0);
-            Ok(())
-        }).unwrap();
-        let revoked = module
-            .apply(
-                &trusted,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "file-revoke".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target,
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-1".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
-        let commit_seq = revoked.committed.commit_seq;
-        write(&fixture, "assert-revoked", move |context| {
-            assert!(super::super::file_access::require_direct(context.connection, &project, "file-a", false).is_err());
-            super::super::file_access::require_page_use(context.connection, &project, "page-a", "file-a")?;
-            let revocations: i64 = context.connection.query_row(
-                "SELECT count(*) FROM local_commit_revocations WHERE commit_seq = ?1 AND resource_kind = 'file' AND resource_id = 'file-a'",
-                [commit_seq], |row| row.get(0),
-            )?;
-            assert!(revocations > 0, "direct File grant revocation must invalidate prior authorized reads");
-            Ok(())
-        }).unwrap();
     }
 
     #[test]
@@ -3384,11 +3099,8 @@ mod tests {
                 None,
                 Some(1),
             )?;
-            assert_eq!(
-                private.total, 0,
-                "creation provenance does not imply a File grant"
-            );
-            assert!(private.items.is_empty());
+            assert_eq!(private.total, 2, "Project is only routing metadata");
+            assert_eq!(private.items.len(), 1);
             assert!(
                 super::super::file_queries::catalog(
                     context.connection,
@@ -3399,7 +3111,7 @@ mod tests {
                     first.next_cursor.as_deref(),
                     Some(1)
                 )
-                .is_err()
+                .is_ok()
             );
             assert!(
                 super::super::file_queries::catalog(

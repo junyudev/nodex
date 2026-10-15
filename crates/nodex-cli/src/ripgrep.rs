@@ -578,7 +578,7 @@ mod tests {
                 version: 1,
                 projection_version: 1,
                 library_id: "library-1".to_owned(),
-                access_project_id: "project-1".to_owned(),
+                project_id: Some("project-1".to_owned()),
                 store_epoch: "epoch-1".to_owned(),
                 commit_head: 1,
                 scope: nodex_core_contracts::library::LibrarySearchSnapshotScope::Page {
@@ -641,7 +641,7 @@ mod tests {
                 version: 1,
                 projection_version: 1,
                 library_id: "library-1".to_owned(),
-                access_project_id: "project-1".to_owned(),
+                project_id: Some("project-1".to_owned()),
                 store_epoch: "epoch-1".to_owned(),
                 commit_head: 1,
                 scope: nodex_core_contracts::library::LibrarySearchSnapshotScope::Page {

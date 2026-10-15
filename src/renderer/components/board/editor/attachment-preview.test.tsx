@@ -28,7 +28,7 @@ afterEach(() => {
 const createFileRuntime = (read: FilePlacementRuntime["read"]): FilePlacementRuntime => {
   const authority = {
     libraryId: "library-1",
-    contentAccessContext: { kind: "project", projectId: "project-1" },
+    contentRoutingContext: { kind: "project", projectId: "project-1" },
     readSource: { kind: "page", page_id: "page-1" },
     storeEpoch: "store-1",
   } as const;

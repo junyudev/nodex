@@ -18,6 +18,7 @@ import * as HttpClientError from "effect/http/HttpClientError";
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import * as OpenCode2Client from "./OpenCode2Client.ts";
+import * as NativeExecutionPlugin from "../NativeExecutionPlugin.ts";
 
 const INFO_TIMEOUT = "5 seconds";
 
@@ -176,10 +177,17 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
   }
 
   const password = yield* generatePassword;
+  const environment = yield* NativeExecutionPlugin.environment(input.environment).pipe(
+    Effect.mapError((cause) => new OpenCodeRuntime.OpenCodeRuntimeError({
+      operation: "native-execution-plugin",
+      detail: "Could not prepare the native execution bridge.",
+      cause,
+    })),
+  );
   const owner = yield* OpenCodeServerOwner.make({
     binaryPath: input.binaryPath,
     directory: input.directory,
-    environment: serverEnvironment(input.environment, password),
+    environment: serverEnvironment(environment, password),
     verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
   });
   return OpenCode2Server.of({

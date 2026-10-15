@@ -9,6 +9,11 @@ import * as FiberSet from "effect/FiberSet";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type { CodexEndpoint } from "../../codex-runtime/CodexEndpoint";
+import type { AgentRuntimeProfileSnapshotSource } from "../../agent-runtime/AgentRuntimeProfileSnapshot";
+
+export type WithExecutionSnapshot = <A, E, R>(
+  capture: (snapshot?: AgentRuntimeProfileSnapshotSource) => Effect.Effect<A, E, R>,
+) => Effect.Effect<A, E | unknown, R>;
 
 export class ProfileSnapshotControlError extends Schema.TaggedError<ProfileSnapshotControlError>()(
   "ProfileSnapshotControlError",
@@ -17,6 +22,7 @@ export class ProfileSnapshotControlError extends Schema.TaggedError<ProfileSnaps
 
 const failure = (cause: unknown) =>
   new ProfileSnapshotControlError({ message: "Profile snapshot coordination failed", cause });
+const MAX_RESPONSE_BYTES = 1024 * 1024;
 const requestSchema = Schema.fromJsonString(Schema.Struct({ version: Schema.Literal(1) }));
 const releaseSchema = Schema.fromJsonString(
   Schema.Struct({ version: Schema.Literal(1), release: Schema.Literal(true) }),
@@ -27,6 +33,24 @@ const encodeResponse = Schema.encodeSync(
       version: Schema.Literal(1),
       status: Schema.Literals(["ready", "resumed", "error"]),
       message: Schema.optionalKey(Schema.String),
+      executionSnapshot: Schema.optionalKey(
+        Schema.Struct({
+          leaseId: Schema.String,
+          runtimeId: Schema.String,
+          runtimeGeneration: Schema.String,
+          sequence: Schema.Number,
+          databasePath: Schema.String,
+          attachmentsPath: Schema.String,
+          environmentIdPath: Schema.String,
+          nativeHistories: Schema.Array(
+            Schema.Struct({
+              providerInstanceId: Schema.String,
+              driver: Schema.String,
+              homePath: Schema.NullOr(Schema.String),
+            }),
+          ),
+        }),
+      ),
     }),
   ),
 );
@@ -66,6 +90,7 @@ const prepareSocket = async (profileHome: string): Promise<string> => {
 const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(function* (
   socket: Socket,
   withSnapshot: CodexEndpoint["Service"]["withProfileSnapshot"],
+  withExecutionSnapshot?: WithExecutionSnapshot,
 ) {
   const messages = yield* Queue.bounded<string, ProfileSnapshotControlError>(2);
   const disconnected = yield* Deferred.make<void>();
@@ -100,24 +125,32 @@ const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(fu
     }),
   );
   socket.resume();
-  const send = (status: "ready" | "resumed" | "error", message?: string) =>
+  const send = (
+    status: "ready" | "resumed" | "error",
+    message?: string,
+    executionSnapshot?: AgentRuntimeProfileSnapshotSource,
+  ) =>
     Effect.callback<void, ProfileSnapshotControlError>((resume) => {
-      socket.write(
-        `${encodeResponse({ version: 1, status, ...(message ? { message } : {}) })}\n`,
-        (error) => resume(error ? Effect.fail(failure(error)) : Effect.void),
-      );
+      const line = `${encodeResponse({ version: 1, status, ...(message ? { message } : {}), ...(executionSnapshot ? { executionSnapshot } : {}) })}\n`;
+      if (Buffer.byteLength(line) > MAX_RESPONSE_BYTES) {
+        resume(Effect.fail(failure("Snapshot configuration exceeds its response bound")));
+        return;
+      }
+      socket.write(line, (error) => resume(error ? Effect.fail(failure(error)) : Effect.void));
     });
   yield* Queue.take(messages).pipe(
     Effect.flatMap(Schema.decodeEffect(requestSchema)),
     Effect.timeout("5 seconds"),
   );
-  yield* withSnapshot(
-    send("ready").pipe(
-      Effect.andThen(Queue.take(messages)),
-      Effect.flatMap(Schema.decodeEffect(releaseSchema)),
-      Effect.timeout("5 minutes"),
-    ),
-  ).pipe(
+  const capture = (snapshot?: AgentRuntimeProfileSnapshotSource) =>
+    withSnapshot(
+      send("ready", undefined, snapshot).pipe(
+        Effect.andThen(Queue.take(messages)),
+        Effect.flatMap(Schema.decodeEffect(releaseSchema)),
+        Effect.timeout("5 minutes"),
+      ),
+    );
+  yield* (withExecutionSnapshot ? withExecutionSnapshot(capture) : capture()).pipe(
     Effect.raceFirst(
       Deferred.await(disconnected).pipe(
         Effect.andThen(Effect.fail(failure("Client disconnected"))),
@@ -138,6 +171,7 @@ const handleConnection = Effect.fn("ProfileSnapshotControl.handleConnection")(fu
 export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotControl")(function* (
   profileHome: string,
   withSnapshot: CodexEndpoint["Service"]["withProfileSnapshot"],
+  withExecutionSnapshot?: WithExecutionSnapshot,
 ) {
   const filename = yield* Effect.tryPromise({
     try: () => prepareSocket(profileHome),
@@ -162,7 +196,11 @@ export const serveProfileSnapshotControl = Effect.fn("serveProfileSnapshotContro
     }
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
-    run(Effect.scoped(handleConnection(socket, withSnapshot)).pipe(Effect.ignore));
+    run(
+      Effect.scoped(handleConnection(socket, withSnapshot, withExecutionSnapshot)).pipe(
+        Effect.ignore,
+      ),
+    );
   });
   yield* Effect.tryPromise({
     try: () =>

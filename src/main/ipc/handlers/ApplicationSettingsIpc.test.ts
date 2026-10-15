@@ -8,6 +8,7 @@ import path from "node:path";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
+import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
 import { CodexHomeContinuityError } from "../../platform/node/CodexHomeContinuity";
 import { toElectronIpcRendererError } from "../../platform/electron/electron-ipc-error";
@@ -31,6 +32,7 @@ type Handler = (
 it.effect("owns the complete application settings ingress with the Main Scope", () =>
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
+    let providerRefreshes = 0;
     const settingsRoot = mkdtempSync(path.join(tmpdir(), "nodex-application-settings-ipc-"));
     const settingsPath = path.join(settingsRoot, "config.toml");
     const settings = yield* makeApplicationSettings({
@@ -100,6 +102,11 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
           Layer.mergeAll(
             Layer.succeed(ApplicationMenuRuntime, menus),
             Layer.succeed(ApplicationSettings, settings),
+            Layer.succeed(AgentRuntimeProviderConfiguration, {
+              refresh: Effect.sync(() => {
+                providerRefreshes += 1;
+              }),
+            }),
             Layer.succeed(CodexHomeContinuity, homeContinuity),
             Layer.succeed(DictationRuntime, dictation),
             Layer.succeed(StoreAdministrationSchedulerRuntime, schedulers),
@@ -151,6 +158,14 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    assert.strictEqual(providerRefreshes, 0);
+    for (const channel of [
+      "settings:claude-agents:update",
+      "settings:opencode-agents:update",
+      "settings:acp-agents:update",
+    ] as const)
+      yield* handlers.get(channel)!(event, { instances: [] });
+    assert.strictEqual(providerRefreshes, 3);
     const rejectedShortcut = (yield* handlers.get("set-codex-command-keybinding")!(
       event,
       "globalDictationHold",

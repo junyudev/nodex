@@ -85,7 +85,7 @@ export const CursorProviderCapabilitiesV2 = {
     supportsMultipleProviderThreadsPerSession: false,
     supportsModelSwitchInSession: true,
     supportsProviderSwitchingViaHandoff: true,
-    supportsRuntimeModeSwitchInSession: false,
+
     pendingRequestsSurviveRestart: false,
   },
   threads: {
@@ -174,32 +174,7 @@ export const CursorProviderCapabilitiesV2 = {
   },
 } satisfies OrchestrationV2ProviderCapabilities;
 
-export interface CursorRuntimeAgentPolicy {
-  readonly autoReview: boolean;
-  readonly sandboxEnabled: boolean;
-}
-
-export function cursorRuntimeAgentPolicy(
-  runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
-): CursorRuntimeAgentPolicy {
-  const sandboxPolicyType =
-    typeof runtimePolicy.sandboxPolicy === "object" &&
-    runtimePolicy.sandboxPolicy !== null &&
-    "type" in runtimePolicy.sandboxPolicy &&
-    typeof runtimePolicy.sandboxPolicy.type === "string"
-      ? runtimePolicy.sandboxPolicy.type
-      : undefined;
-  return {
-    autoReview:
-      runtimePolicy.approvalPolicy === undefined
-        ? runtimePolicy.runtimeMode === "approval-required"
-        : runtimePolicy.approvalPolicy !== "never",
-    sandboxEnabled:
-      runtimePolicy.sandboxPolicy === undefined
-        ? runtimePolicy.runtimeMode !== "full-access"
-        : sandboxPolicyType !== "dangerFullAccess",
-  };
-}
+const CURSOR_EXECUTION_POLICY = { autoReview: false, sandboxEnabled: false } as const;
 
 export function cursorMcpServers(
   session: McpProviderSession.McpProviderSessionConfig | undefined,
@@ -309,7 +284,7 @@ export function makeCursorAgentOptions(input: {
   readonly threadId: ThreadId;
   readonly mcpSession: McpProviderSession.McpProviderSessionConfig | undefined;
 }): AgentOptions {
-  const policy = cursorRuntimeAgentPolicy(input.runtimePolicy);
+  const policy = CURSOR_EXECUTION_POLICY;
   const mcpServers = cursorMcpServers(input.mcpSession);
   return {
     model: cursorSdkModelSelection(input.modelSelection),

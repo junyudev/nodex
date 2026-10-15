@@ -12,7 +12,8 @@ import type {
 import { MainConfig } from "../../app/MainConfig";
 import { AutomationApplication } from "../../automation-application/AutomationApplication";
 import { AutomationExecution } from "../../automation-application/AutomationExecution";
-import { ConversationCommands } from "../../codex-application/ConversationCommands";
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
+import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
@@ -128,7 +129,7 @@ export const live: Layer.Layer<
   never,
   | AutomationApplication
   | AutomationExecution
-  | ConversationCommands
+  | AgentRuntimeApplication
   | ElectronIpc
   | MainConfig
   | RendererClientRuntime
@@ -138,7 +139,7 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const automation = yield* AutomationApplication;
     const execution = yield* AutomationExecution;
-    const conversationCommands = yield* ConversationCommands;
+    const sessions = yield* AgentRuntimeApplication;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const scheduledAutomations = yield* ScheduledAutomationRuntime;
@@ -189,12 +190,12 @@ export const live: Layer.Layer<
 
     const broadcastDefinitionChanged = (
       automationId: string,
-      targetThreadId: string | null,
+      targetSessionId: string | null,
       reason: "upsert" | "delete",
     ) =>
       Effect.sync(() => {
         safeBroadcastToWindows(windows.all(), "codex:scheduled-automations:changed", [
-          { automationId, targetThreadId, reason },
+          { automationId, targetSessionId, reason },
         ]);
       });
     const broadcastRunsUpdated = (event: CodexAutomationRunsUpdatedEvent) =>
@@ -219,7 +220,7 @@ export const live: Layer.Layer<
     yield* handlePlainCommand("codex:scheduled-automations:create", (_, input) =>
       execution.prepareDefinition(input).pipe(
         Effect.flatMap(automation.definitions.create),
-        Effect.tap((item) => broadcastDefinitionChanged(item.id, item.targetThreadId, "upsert")),
+        Effect.tap((item) => broadcastDefinitionChanged(item.id, item.targetSessionId, "upsert")),
         Effect.map((item) => ({ item })),
       ),
     );
@@ -229,7 +230,7 @@ export const live: Layer.Layer<
         Effect.provideService(AutomationExecution, execution),
         Effect.flatMap((item) =>
           item
-            ? broadcastDefinitionChanged(item.id, item.targetThreadId, "upsert").pipe(
+            ? broadcastDefinitionChanged(item.id, item.targetSessionId, "upsert").pipe(
                 Effect.as({ item }),
               )
             : Effect.fail(
@@ -250,13 +251,13 @@ export const live: Layer.Layer<
                   result.deletedRunCount > 0
                     ? broadcastRunsUpdated({
                         automationId: result.item?.id ?? input.id,
-                        threadId: null,
+                        runId: null,
                         reason: "delete",
                       })
                     : Effect.void,
                   broadcastDefinitionChanged(
                     result.item?.id ?? input.id,
-                    result.item?.targetThreadId ?? null,
+                    result.item?.targetSessionId ?? null,
                     "delete",
                   ),
                 ],
@@ -292,41 +293,39 @@ export const live: Layer.Layer<
           .pipe(Effect.as({ success: true })),
     );
     yield* handlePlainCommand("codex:automation-runs:archive", (_, input) =>
-      Effect.all({
-        run: automation.runs.get(input.threadId),
-        messages:
-          input.archivedAssistantMessage != null || input.archivedUserMessage != null
-            ? Effect.succeed({
-                archivedAssistantMessage: input.archivedAssistantMessage ?? null,
-                archivedUserMessage: input.archivedUserMessage ?? null,
-              })
-            : execution.resolveArchiveMessages(input.threadId),
-      }).pipe(
-        Effect.flatMap(({ run: item, messages }) =>
-          automation.runs.archive({ ...input, ...messages }).pipe(
-            Effect.tap((success) =>
-              item && success
-                ? broadcastRunChanged({
-                    automationId: item.automationId,
-                    threadId: input.threadId,
-                    reason: "archive",
-                  })
-                : Effect.void,
-            ),
-            Effect.map((success) => ({ success })),
-          ),
+      automation.runs.get(input.runId).pipe(
+        Effect.flatMap((item) =>
+          Effect.gen(function* () {
+            const messages =
+              input.archivedAssistantMessage != null || input.archivedUserMessage != null
+                ? {
+                    archivedAssistantMessage: input.archivedAssistantMessage ?? null,
+                    archivedUserMessage: input.archivedUserMessage ?? null,
+                  }
+                : item?.sessionId
+                  ? yield* execution.resolveArchiveMessages(item.sessionId)
+                  : { archivedAssistantMessage: null, archivedUserMessage: null };
+            const success = yield* automation.runs.archive({ ...input, ...messages });
+            if (success && item)
+              yield* broadcastRunChanged({
+                automationId: item.automationId,
+                runId: input.runId,
+                reason: "archive",
+              });
+            return { success };
+          }),
         ),
       ),
     );
     yield* handlePlainCommand("codex:automation-runs:delete", (_, input) =>
-      automation.runs.get(input.threadId).pipe(
+      automation.runs.get(input.runId).pipe(
         Effect.flatMap((item) =>
-          automation.runs.delete(input.threadId).pipe(
+          automation.runs.delete(input.runId).pipe(
             Effect.tap((success) =>
               success && item
                 ? broadcastRunChanged({
                     automationId: item.automationId,
-                    threadId: input.threadId,
+                    runId: input.runId,
                     reason: "delete",
                   })
                 : Effect.void,
@@ -337,21 +336,23 @@ export const live: Layer.Layer<
       ),
     );
     yield* handlePlainCommand("codex:automation-runs:unarchive", (_, input) =>
-      automation.runs.get(input.threadId).pipe(
+      automation.runs.get(input.runId).pipe(
         Effect.flatMap((item) =>
-          conversationCommands.unarchive(input.threadId).pipe(
-            Effect.andThen(automation.runs.unarchive(input.threadId)),
-            Effect.tap((success) =>
-              success && item
-                ? broadcastRunChanged({
-                    automationId: item.automationId,
-                    threadId: input.threadId,
-                    reason: "unarchive",
-                  })
-                : Effect.void,
-            ),
-            Effect.map((success) => ({ success })),
-          ),
+          Effect.gen(function* () {
+            if (item?.sessionId)
+              yield* sessions.unarchiveSession({
+                operationId: createBoundedOperationId("session.unarchive"),
+                payload: { sessionId: item.sessionId },
+              });
+            const success = yield* automation.runs.unarchive(input.runId);
+            if (success && item)
+              yield* broadcastRunChanged({
+                automationId: item.automationId,
+                runId: input.runId,
+                reason: "unarchive",
+              });
+            return { success };
+          }),
         ),
       ),
     );
@@ -364,7 +365,7 @@ export const live: Layer.Layer<
           item
             ? broadcastRunChanged({
                 automationId: item.automationId,
-                threadId: input.threadId,
+                runId: input.runId,
                 reason: "read-state",
               })
             : Effect.void,
@@ -377,7 +378,7 @@ export const live: Layer.Layer<
           changedCount > 0
             ? broadcastRunsUpdated({
                 automationId: null,
-                threadId: null,
+                runId: null,
                 reason: "mark-all-read",
               })
             : Effect.void,

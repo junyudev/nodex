@@ -113,7 +113,7 @@ test("semantic Undo and Redo restore the original inline selections after addres
     editor,
     apply,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:history",
       source: { documentId: doc.guid, generation: 1, storeEpoch: "epoch:history" },
       participant: {

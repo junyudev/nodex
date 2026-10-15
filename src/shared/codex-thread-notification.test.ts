@@ -1,12 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  buildCodexApprovalNotificationId,
   buildCodexQuestionNotificationId,
   buildCodexRequestNotificationOccurrenceId,
   decideCodexRequestNotification,
   decideCodexTurnNotification,
   isCodexNotificationChildConversation,
-  resolveCodexApprovalNotificationCopy,
   resolveCodexQuestionNotificationBody,
   resolveCodexTurnNotificationBody,
   type CodexNotificationConversationFacts,
@@ -223,27 +221,15 @@ describe("codex thread notification policy", () => {
     expect(resolveCodexTurnNotificationBody(turn({ lastAgentMessage: null }))).toBe(
       "Nodex finished a turn.",
     );
-    expect(
-      resolveCodexApprovalNotificationCopy({
-        approvalKind: "permissionRequest",
-        reason: null,
-      }),
-    ).toEqual({
-      title: "Permission approval",
-      body: "Approval required",
-      hasActions: false,
-    });
     expect(resolveCodexQuestionNotificationBody(0)).toBe("Answer a question to proceed.");
     expect(resolveCodexQuestionNotificationBody(1)).toBe("Answer 1 question to proceed.");
     expect(resolveCodexQuestionNotificationBody(3)).toBe("Answer 3 questions to proceed.");
   });
 
   test("builds host-qualified public IDs while preserving strict IDs internally", () => {
-    expect(buildCodexApprovalNotificationId("remote-a", 73)).toBe("approval-remote-a-73");
-    expect(buildCodexApprovalNotificationId("remote-a", "73")).toBe("approval-remote-a-73");
     expect(buildCodexQuestionNotificationId("local", "request-1")).toBe("question-local-request-1");
     expect(
-      buildCodexRequestNotificationOccurrenceId("approval", "remote-a", "thread-1", 73),
-    ).not.toBe(buildCodexRequestNotificationOccurrenceId("approval", "remote-a", "thread-1", "73"));
+      buildCodexRequestNotificationOccurrenceId("question", "remote-a", "thread-1", 73),
+    ).not.toBe(buildCodexRequestNotificationOccurrenceId("question", "remote-a", "thread-1", "73"));
   });
 });

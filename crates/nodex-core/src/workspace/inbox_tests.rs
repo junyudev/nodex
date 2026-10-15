@@ -10,8 +10,7 @@ use nodex_core_contracts::inbox::{
 };
 use nodex_core_contracts::workspace::{
     ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
-    ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
-    ProjectWorkspaceTurnAuthoritySource,
+    ProjectWorkspaceTurnAuthority,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreErrorCode, ModuleReadRequest,
@@ -214,26 +213,24 @@ fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
 }
 
 #[test]
-fn inbox_requires_trusted_local_authority() {
+fn project_selection_preserves_the_profile_inbox() {
     let workspace = seeded_workspace();
-    let project_scoped = workspace
-        .module
+    let module = &workspace.module;
+    module
         .apply(
             &context(),
             request(
                 "project-send",
                 ProjectWorkspaceIntent::SendInboxMessage {
-                    page_id: "page:x".into(),
-                    document_id: "document:x".into(),
-                    text: "hello".into(),
+                    page_id: "page:cross-project".into(),
+                    document_id: "document:cross-project".into(),
+                    text: "Shared Profile message".into(),
                     title: None,
                 },
             ),
         )
-        .expect_err("Project-scoped connections cannot write the Inbox");
-    assert_eq!(project_scoped.code, CoreErrorCode::Unauthorized);
-    let read = workspace
-        .module
+        .expect("selected Project does not fence the Inbox");
+    let read = module
         .read(
             &context(),
             ModuleReadRequest {
@@ -241,8 +238,15 @@ fn inbox_requires_trusted_local_authority() {
                 read: ProjectWorkspaceRead::InboxSummary,
             },
         )
-        .expect_err("Project-scoped connections cannot read the Inbox");
-    assert_eq!(read.code, CoreErrorCode::Unauthorized);
+        .expect("same Profile Inbox");
+    let ProjectWorkspaceReadValue::InboxSummary { summary } = read.value else {
+        panic!("summary")
+    };
+    assert_eq!(summary.entry_count, 1);
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)[0].body,
+        "Shared Profile message"
+    );
 }
 
 #[test]
@@ -526,7 +530,7 @@ fn move_suggestions_complete_only_after_the_page_moves() {
 }
 
 #[test]
-fn agents_append_with_provenance_and_read_only_turns_cannot() {
+fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     create_session_thread(
@@ -537,21 +541,16 @@ fn agents_append_with_provenance_and_read_only_turns_cannot() {
         Some("project:default"),
         1,
     );
-    for (turn, read_only) in [("write", false), ("read", true)] {
-        super::test_support::apply(
-            module,
-            &format!("freeze:{turn}"),
-            ProjectWorkspaceIntent::FreezeTurnAuthority {
-                thread_id: "thread:source".into(),
-                turn_id: turn.into(),
-                root_thread_id: "thread:source".into(),
-                actor_project_id: Some("project:default".into()),
-                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                read_only,
-                inherited_from: None,
-            },
-        );
-    }
+    super::test_support::apply(
+        module,
+        "admit:write",
+        ProjectWorkspaceIntent::AdmitTurnAuthority {
+            thread_id: "thread:source".into(),
+            turn_id: "write".into(),
+            root_thread_id: "thread:source".into(),
+            actor_project_id: Some("project:default".into()),
+        },
+    );
     let command = |turn: &str, id: &str| ProjectWorkspaceIntent::AgentCommand {
         provenance: Box::new(AgentTurnProvenance {
             profile_id: "profile-1".into(),
@@ -562,8 +561,6 @@ fn agents_append_with_provenance_and_read_only_turns_cannot() {
                 actor_project_id: Some("project:default".into()),
                 library_id: "library-1".into(),
                 store_epoch: "epoch-1".into(),
-                scope: ProjectWorkspaceTurnAuthorityScope::Project,
-                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
             },
         }),
         intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
@@ -577,13 +574,6 @@ fn agents_append_with_provenance_and_read_only_turns_cannot() {
         adapter: AdapterKind::Agent,
         ..context()
     };
-    assert_eq!(
-        module
-            .apply(&agent, request("agent:read", command("read", "denied")))
-            .expect_err("read-only Turn")
-            .code,
-        CoreErrorCode::Unauthorized
-    );
     module
         .apply(&agent, request("agent:write", command("write", "agent")))
         .expect("Agent Inbox drop");
@@ -600,6 +590,7 @@ fn agents_append_with_provenance_and_read_only_turns_cannot() {
         ProjectWorkspaceInboxSource::Agent {
             session_id: Some("session:source".into()),
             thread_id: Some("thread:source".into()),
+            run_id: Some("write".into()),
             project_id: Some("project:default".into()),
             label: "thread:source".into(),
         }
@@ -683,35 +674,34 @@ fn command_line_sends_are_labeled_with_their_project() {
         }
     );
 
-    // Project-scoped command line connections may only append.
-    assert_eq!(
-        module
-            .read(
-                &command_line(true),
-                ModuleReadRequest {
-                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    read: ProjectWorkspaceRead::InboxSummary,
+    let read = module
+        .read(
+            &command_line(true),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::InboxSummary,
+            },
+        )
+        .expect("command line reads the current Profile Inbox");
+    let ProjectWorkspaceReadValue::InboxSummary { summary } = read.value else {
+        panic!("summary")
+    };
+    assert_eq!(summary.entry_count, 2);
+    module
+        .apply(
+            &command_line(true),
+            request(
+                "cli:keep",
+                ProjectWorkspaceIntent::SetInboxEntryState {
+                    page_ids: vec!["page:project".into()],
+                    state: ProjectWorkspaceInboxEntryState::Kept,
                 },
-            )
-            .expect_err("Project-scoped Inbox read")
-            .code,
-        CoreErrorCode::Unauthorized
-    );
+            ),
+        )
+        .expect("selected Project does not fence triage");
     assert_eq!(
-        module
-            .apply(
-                &command_line(true),
-                request(
-                    "cli:keep",
-                    ProjectWorkspaceIntent::SetInboxEntryState {
-                        page_ids: vec!["page:project".into()],
-                        state: ProjectWorkspaceInboxEntryState::Kept,
-                    },
-                ),
-            )
-            .expect_err("Project-scoped Inbox triage")
-            .code,
-        CoreErrorCode::Unauthorized
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].page_id,
+        "page:project"
     );
 }
 
@@ -856,16 +846,11 @@ fn deleting_a_message_erases_it_and_every_suggestion_that_names_it() {
         1
     );
 
-    // Store maintenance collects it at once, however much trash retention would keep, and
-    // without the test Store's standing maintenance visibility context.
+    // Privacy erasure bypasses ordinary trash retention while preserving the transaction.
     workspace
         .kernel
         .writer()
         .call(|connection| {
-            connection.execute(
-                "DELETE FROM local_commit_visibility_context WHERE mode = 'maintenance'",
-                [],
-            )?;
             crate::document::run_block_retention_pass(connection, 10_000)?;
             Ok(())
         })
@@ -930,4 +915,298 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
         ),
         CoreErrorCode::NotFound
     );
+}
+
+fn runtime_session(module: &ProjectWorkspaceModule) {
+    apply_host(
+        module,
+        "runtime-session",
+        ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+            session_id: "session:runtime-source".into(),
+            replacement_default_session_id: "session:draft-replacement".into(),
+            project_id: Some("project:default".into()),
+            title: "Background work".into(),
+            initial_page_ids: vec![],
+            runtime_id: "runtime:inbox".into(),
+            runtime_thread_id: "thread:runtime-root".into(),
+            launch_request_id: "launch:runtime-source".into(),
+        },
+    );
+}
+
+fn agent_send(
+    module: &ProjectWorkspaceModule,
+    provenance: &AgentTurnProvenance,
+    id: &str,
+) -> Result<super::ProjectWorkspaceApplyOutcome, nodex_core_contracts::CoreError> {
+    module.apply(
+        &BoundModuleContext {
+            adapter: AdapterKind::Agent,
+            ..context()
+        },
+        request(
+            &format!("runtime-send:{id}"),
+            ProjectWorkspaceIntent::AgentCommand {
+                provenance: Box::new(provenance.clone()),
+                intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    page_id: format!("page:{id}"),
+                    document_id: format!("document:{id}"),
+                    text: "A background result".into(),
+                    title: None,
+                }),
+            },
+        ),
+    )
+}
+
+#[test]
+fn runtime_child_capture_uses_its_admitted_session_and_run_after_other_sessions_start() {
+    use nodex_core_contracts::workspace::{
+        ProjectWorkspaceAgentRuntimeNativeSource, ProjectWorkspaceAgentRuntimeTurnIdentity,
+    };
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    runtime_session(module);
+    let identity = ProjectWorkspaceAgentRuntimeTurnIdentity {
+        runtime_id: "runtime:inbox".into(),
+        thread_id: "thread:child-without-sidebar-session".into(),
+        run_id: "run:child".into(),
+        lease_id: "lease:first".into(),
+    };
+    let admit = |id: ProjectWorkspaceAgentRuntimeTurnIdentity| {
+        ProjectWorkspaceIntent::AdmitAgentRuntimeTurnAuthority {
+            session_id: "session:runtime-source".into(),
+            identity: id,
+            native_source: ProjectWorkspaceAgentRuntimeNativeSource {
+                provider_session_id: "provider:child".into(),
+                native_generation: 1,
+            },
+            parent: None,
+        }
+    };
+    apply_host(module, "runtime-admit", admit(identity.clone()));
+    let ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority { resolution } = read_host(
+        module,
+        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
+            identity: identity.clone(),
+        },
+    ) else {
+        panic!("authority")
+    };
+    let provenance = AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: resolution.authority.expect("admitted"),
+    };
+    create_session_thread(module, "other", "session:other", "thread:other", None, 2);
+    agent_send(module, &provenance, "runtime-child")
+        .expect("child can capture while another Session runs");
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    assert_eq!(
+        item.source,
+        ProjectWorkspaceInboxSource::Agent {
+            session_id: Some("session:runtime-source".into()),
+            thread_id: Some(identity.thread_id.clone()),
+            run_id: Some(identity.run_id.clone()),
+            project_id: Some("project:default".into()),
+            label: "Background work".into()
+        }
+    );
+    for i in 1..super::inbox::MAX_AGENT_MESSAGES_PER_TURN {
+        agent_send(module, &provenance, &format!("runtime-child:{i}")).expect("within cap");
+    }
+    let mut retried_identity = identity.clone();
+    retried_identity.lease_id = "lease:retry".into();
+    apply_host(
+        module,
+        "runtime-admit-retry",
+        admit(retried_identity.clone()),
+    );
+    let ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority { resolution } = read_host(
+        module,
+        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
+            identity: retried_identity,
+        },
+    ) else {
+        panic!("authority")
+    };
+    let retry = AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: resolution.authority.unwrap(),
+    };
+    assert_eq!(
+        agent_send(module, &retry, "runtime-over")
+            .expect_err("same Run retains capture capacity across retry leases")
+            .code,
+        CoreErrorCode::ResourceExhausted
+    );
+    assert!(
+        agent_send(module, &provenance, "runtime-child")
+            .unwrap()
+            .committed
+            .receipt
+            .mutation
+            .duplicate
+    );
+    apply_host(
+        module,
+        "runtime-revoke",
+        ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity },
+    );
+    assert_eq!(
+        agent_send(module, &provenance, "runtime-stale")
+            .expect_err("cancelled credential is stale")
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+}
+
+#[test]
+fn native_connection_capture_keeps_unknown_run_empty_and_retires_with_the_connection() {
+    use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeNativeSessionIdentity;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    runtime_session(module);
+    let identity = ProjectWorkspaceAgentRuntimeNativeSessionIdentity {
+        runtime_id: "runtime:inbox".into(),
+        thread_id: "thread:acp-child".into(),
+        lease_id: "lease:native".into(),
+        provider_session_id: "provider:acp".into(),
+        native_generation: 1,
+        incarnation_id: "connection:one".into(),
+    };
+    apply_host(
+        module,
+        "native-admit",
+        ProjectWorkspaceIntent::AdmitAgentRuntimeNativeSessionAuthority {
+            session_id: "session:runtime-source".into(),
+            identity: identity.clone(),
+        },
+    );
+    let ProjectWorkspaceReadValue::AgentRuntimeNativeSessionAuthority { resolution } = read_host(
+        module,
+        ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority {
+            identity: identity.clone(),
+        },
+    ) else {
+        panic!("authority")
+    };
+    let provenance = AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: resolution.authority.unwrap(),
+    };
+    agent_send(module, &provenance, "native-unknown").expect("native caller");
+    let ProjectWorkspaceInboxSource::Agent {
+        session_id,
+        thread_id,
+        run_id,
+        ..
+    } = window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
+        .remove(0)
+        .source
+    else {
+        panic!("source")
+    };
+    assert_eq!(session_id.as_deref(), Some("session:runtime-source"));
+    assert_eq!(thread_id.as_deref(), Some("thread:acp-child"));
+    assert_eq!(run_id, None);
+    for i in 1..super::inbox::MAX_AGENT_MESSAGES_PER_TURN {
+        agent_send(module, &provenance, &format!("native:{i}")).expect("connection cap");
+    }
+    assert_eq!(
+        agent_send(module, &provenance, "native-over")
+            .unwrap_err()
+            .code,
+        CoreErrorCode::ResourceExhausted
+    );
+    assert!(
+        agent_send(module, &provenance, "native-unknown")
+            .unwrap()
+            .committed
+            .receipt
+            .mutation
+            .duplicate
+    );
+    apply_host(
+        module,
+        "native-revoke",
+        ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSessionAuthority { identity },
+    );
+    assert_eq!(
+        agent_send(module, &provenance, "native-stale")
+            .unwrap_err()
+            .code,
+        CoreErrorCode::Unauthorized
+    );
+}
+
+#[test]
+fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    runtime_session(module);
+    send(
+        module,
+        "runtime-target",
+        "Continue the background investigation",
+    );
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:runtime-target".into()],
+        },
+    ) else {
+        panic!("context")
+    };
+    assert!(
+        context
+            .sessions
+            .iter()
+            .any(|session| session.session_id == "session:runtime-source")
+    );
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:runtime-target",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::SendToChat {
+            session_id: "session:runtime-source".into(),
+            prompt: "Continue".into(),
+        },
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_proposals WHERE state='dispatching'"
+        ),
+        0
+    );
+    apply_host(
+        module,
+        "confirm:runtime-target",
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            proposal_id: "proposal:runtime-target".into(),
+            expected_revision: 1,
+            action: None,
+            session_id: None,
+        },
+    );
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 8 },
+    ) else {
+        panic!("outbox")
+    };
+    assert_eq!(dispatches.len(), 1);
+    assert_eq!(
+        dispatches[0].thread_id.as_deref(),
+        Some("thread:runtime-root")
+    );
+    let chat = window(module, ProjectWorkspaceInboxWindowFilter::Processed)
+        .remove(0)
+        .proposal
+        .unwrap()
+        .chat
+        .unwrap();
+    assert_eq!(chat.thread_id.as_deref(), Some("thread:runtime-root"));
+    assert_eq!(chat.status, None);
 }

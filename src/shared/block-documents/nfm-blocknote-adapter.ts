@@ -357,7 +357,6 @@ function nfmInlineToBN(items: NfmInlineContent[]): BNInlineContent[] {
           model: item.model ?? "",
           reasoning: item.reasoning ?? "",
           speed: item.speed ?? "",
-          permission: item.permission ?? "",
           unknownAttributes: item.unknownAttributes?.join(",") ?? "",
           rawAttributes: item.rawAttributes ?? "",
         },
@@ -906,7 +905,6 @@ function bnInlineToNfm(content: unknown): NfmInlineContent[] {
       const model = normalizeString(props.model);
       const reasoning = normalizeString(props.reasoning);
       const speed = normalizeString(props.speed);
-      const permission = normalizeString(props.permission);
       const unknownAttributes = (normalizeString(props.unknownAttributes) ?? "")
         .split(",")
         .map((value) => value.trim())
@@ -920,7 +918,6 @@ function bnInlineToNfm(content: unknown): NfmInlineContent[] {
         ...(model ? { model } : {}),
         ...(reasoning ? { reasoning } : {}),
         ...(speed ? { speed } : {}),
-        ...(permission ? { permission } : {}),
         ...(unknownAttributes.length > 0 ? { unknownAttributes } : {}),
         ...(rawAttributes ? { rawAttributes } : {}),
       });

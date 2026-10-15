@@ -5,11 +5,10 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::workspace::{
-    CodexPermissionMode, ProjectWorkspaceBackgroundProcess,
-    ProjectWorkspaceBackgroundProcessSource, ProjectWorkspaceThreadWorkspace,
-    ProjectWorkspaceThreadWorkspaceState, ProjectWorkspaceThreadWorkspaceTransition,
-    ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityResolution,
-    ProjectWorkspaceTurnAuthorityScope, ProjectWorkspaceTurnAuthoritySource,
+    ProjectWorkspaceBackgroundProcess, ProjectWorkspaceBackgroundProcessSource,
+    ProjectWorkspaceThreadWorkspace, ProjectWorkspaceThreadWorkspaceState,
+    ProjectWorkspaceThreadWorkspaceTransition, ProjectWorkspaceTurnAuthority,
+    ProjectWorkspaceTurnAuthorityResolution,
 };
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::types::Value as SqlValue;
@@ -26,10 +25,8 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{WorkspaceMutationEffects, finish_mutation};
 use super::session_mutation::sqlite_now;
-use super::thread::{read_permission_mode, read_projectless_permission_mode};
 
-const AUTHORITY_PROVENANCE_VERSION: i64 = 1;
-const FULL_ACCESS_PERMISSION_PROFILE_ID: &str = ":danger-full-access";
+const AUTHORITY_PROVENANCE_VERSION: i64 = 2;
 const MAX_ID_BYTES: usize = 512;
 const MAX_WRITABLE_ROOTS: usize = 128;
 const MAX_WRITABLE_ROOT_INPUTS: usize = 1_024;
@@ -48,17 +45,12 @@ struct AuthorityRow {
     thread_id: String,
     turn_id: String,
     root_thread_id: String,
-    actor_project_id: Option<String>,
     library_id: String,
     profile_id: String,
     store_epoch: String,
-    scope: String,
-    source: String,
-    permission_profile_id: Option<String>,
     authority_fingerprint: String,
     provenance_version: i64,
     created_at: String,
-    read_only: bool,
 }
 
 pub(super) fn read_writable_roots(
@@ -282,27 +274,6 @@ pub(super) fn resolve_turn_authority(
         turn_id,
         root_thread_id,
         actor_project_id,
-        true,
-    )
-}
-
-/// Retained policy is inheritance evidence; it never admits a content credential.
-pub(super) fn resolve_retained_turn_restrictions(
-    connection: &Connection,
-    library_id: &str,
-    thread_id: &str,
-    turn_id: &str,
-    root_thread_id: &str,
-    actor_project_id: Option<&str>,
-) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
-    resolve_authority_record(
-        connection,
-        library_id,
-        thread_id,
-        turn_id,
-        root_thread_id,
-        actor_project_id,
-        false,
     )
 }
 
@@ -314,7 +285,6 @@ fn resolve_authority_record(
     turn_id: &str,
     root_thread_id: &str,
     actor_project_id: Option<&str>,
-    require_current_epoch: bool,
 ) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
     for (name, value) in [
         ("thread_id", thread_id),
@@ -328,41 +298,26 @@ fn resolve_authority_record(
     }
     let coordinates = require_authority_coordinates(connection, library_id, actor_project_id)?;
     let Some(row) = read_authority_row(connection, thread_id, turn_id)? else {
-        if actor_project_id.is_none() {
-            return Ok(ProjectWorkspaceTurnAuthorityResolution {
-                authority: None,
-                persisted: false,
-                read_only: true,
-                frozen_at_ms: None,
-            });
-        }
         return Ok(ProjectWorkspaceTurnAuthorityResolution {
-            authority: Some(ProjectWorkspaceTurnAuthority {
-                thread_id: thread_id.to_owned(),
-                turn_id: turn_id.to_owned(),
-                root_thread_id: root_thread_id.to_owned(),
-                actor_project_id: actor_project_id.map(str::to_owned),
-                library_id: coordinates.library_id,
-                store_epoch: coordinates.store_epoch,
-                scope: ProjectWorkspaceTurnAuthorityScope::Project,
-                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-            }),
+            authority: None,
             persisted: false,
-            read_only: true,
-            frozen_at_ms: None,
+            admitted_at_ms: None,
         });
     };
-    let authority = validate_authority_row(&row)?;
+    let mut authority = validate_authority_row(&row)?;
+    authority.actor_project_id = if thread_id.starts_with("runtime:") {
+        super::agent_runtime_authority::validate_admission(connection, library_id, &authority)?
+    } else {
+        require_visible_thread(connection, library_id, root_thread_id)?
+    };
     let matches_current_coordinates = authority.root_thread_id == root_thread_id
-        && authority.actor_project_id.as_deref() == actor_project_id
         && authority.library_id == coordinates.library_id
         && row.profile_id == coordinates.profile_id
-        && (!require_current_epoch || authority.store_epoch == coordinates.store_epoch);
+        && authority.store_epoch == coordinates.store_epoch;
     Ok(ProjectWorkspaceTurnAuthorityResolution {
         authority: matches_current_coordinates.then_some(authority),
         persisted: true,
-        read_only: row.read_only,
-        frozen_at_ms: matches_current_coordinates
+        admitted_at_ms: matches_current_coordinates
             .then(|| timestamp_millis(&row.created_at))
             .transpose()?,
     })
@@ -401,37 +356,20 @@ pub(crate) fn validate_persisted_turn_authority(
     if supplied.thread_id.starts_with("runtime:") {
         super::agent_runtime_authority::validate_admission(connection, library_id, supplied)?;
     } else {
-        require_thread_project(
-            connection,
-            library_id,
-            &supplied.thread_id,
-            supplied.actor_project_id.as_deref(),
-        )?;
-        require_thread_project(
-            connection,
-            library_id,
-            &supplied.root_thread_id,
-            supplied.actor_project_id.as_deref(),
-        )?;
+        require_visible_thread(connection, library_id, &supplied.thread_id)?;
+        require_visible_thread(connection, library_id, &supplied.root_thread_id)?;
     }
     let row = read_authority_row(connection, &supplied.thread_id, &supplied.turn_id)?
         .ok_or_else(|| unauthorized("Agent Turn has no persisted authority"))?;
     let persisted = validate_authority_row(&row)?;
-    if persisted != *supplied || row.profile_id != provenance.profile_id {
+    let mut identity = supplied.clone();
+    identity.actor_project_id = None;
+    if persisted != identity || row.profile_id != provenance.profile_id {
         return Err(unauthorized(
             "Agent Turn provenance does not match its persisted authority",
         ));
     }
     Ok(row.authority_fingerprint)
-}
-
-/// Called after validating exact persisted provenance in the same transaction.
-pub(crate) fn turn_is_read_only(
-    connection: &Connection,
-    thread_id: &str,
-    turn_id: &str,
-) -> Result<bool, StoreError> {
-    Ok(read_authority_row(connection, thread_id, turn_id)?.is_none_or(|row| row.read_only))
 }
 
 pub(super) fn read_background_process_window(
@@ -552,7 +490,7 @@ pub(super) fn read_background_process_window(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn freeze_turn_authority(
+pub(super) fn admit_turn_authority(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
@@ -563,9 +501,6 @@ pub(super) fn freeze_turn_authority(
     turn_id: &str,
     root_thread_id: &str,
     actor_project_id: Option<&str>,
-    source: ProjectWorkspaceTurnAuthoritySource,
-    mut read_only: bool,
-    inherited_from: Option<(&str, &str)>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_host_adapter(context)?;
     for (name, value) in [
@@ -575,84 +510,23 @@ pub(super) fn freeze_turn_authority(
     ] {
         validate_id(name, value)?;
     }
-    if context.project_id.as_ref().map(|id| id.0.as_str()) != actor_project_id {
-        return Err(unauthorized(
-            "Turn authority actor does not match the bound Project identity",
-        ));
-    }
     if let Some(project_id) = actor_project_id {
         validate_id("actor_project_id", project_id)?;
     }
-    let coordinates = require_authority_coordinates(connection, library_id, actor_project_id)?;
-    require_thread_project(connection, library_id, thread_id, actor_project_id)?;
-    require_thread_project(connection, library_id, root_thread_id, actor_project_id)?;
+    let current_project_id = require_mutable_thread(connection, library_id, thread_id)?;
+    let coordinates =
+        require_authority_coordinates(connection, library_id, current_project_id.as_deref())?;
+    require_visible_thread(connection, library_id, root_thread_id)?;
 
-    let scope = match source {
-        ProjectWorkspaceTurnAuthoritySource::ProjectTurn => {
-            if actor_project_id.is_none() {
-                return Err(unauthorized("Project authority requires an actor Project"));
-            }
-            if inherited_from.is_some() {
-                return Err(invalid(
-                    "project_turn authority cannot name inherited provenance",
-                ));
-            }
-            ProjectWorkspaceTurnAuthorityScope::Project
-        }
-        ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess => {
-            if inherited_from.is_some() {
-                return Err(invalid(
-                    "builtin_full_access authority cannot name inherited provenance",
-                ));
-            }
-            let mode = match actor_project_id {
-                Some(project_id) => read_permission_mode(connection, project_id)?,
-                None => read_projectless_permission_mode(connection)?,
-            };
-            if mode != Some(CodexPermissionMode::FullAccess) {
-                return Err(unauthorized(
-                    "builtin full access requires the persisted full-access permission mode",
-                ));
-            }
-            ProjectWorkspaceTurnAuthorityScope::Library
-        }
-        ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess => {
-            let (parent_thread_id, parent_turn_id) = inherited_from.ok_or_else(|| {
-                invalid("inherited authority requires an exact parent Turn coordinate")
-            })?;
-            validate_id("inherited_from.thread_id", parent_thread_id)?;
-            validate_id("inherited_from.turn_id", parent_turn_id)?;
-            require_thread_project(connection, library_id, parent_thread_id, actor_project_id)?;
-            let parent_row = read_authority_row(connection, parent_thread_id, parent_turn_id)?
-                .ok_or_else(|| not_found("Inherited parent Turn authority is unavailable"))?;
-            let parent = validate_authority_row(&parent_row)?;
-            read_only |= parent_row.read_only;
-            let inherits_current_library_authority = parent.scope
-                == ProjectWorkspaceTurnAuthorityScope::Library
-                && parent.root_thread_id == root_thread_id
-                && parent.actor_project_id.as_deref() == actor_project_id
-                && parent.library_id == coordinates.library_id
-                && parent_row.profile_id == coordinates.profile_id
-                && parent.store_epoch == coordinates.store_epoch;
-            if !inherits_current_library_authority {
-                return Err(unauthorized(
-                    "Inherited parent Turn has no current Library authority",
-                ));
-            }
-            ProjectWorkspaceTurnAuthorityScope::Library
-        }
-    };
     let authority = ProjectWorkspaceTurnAuthority {
         thread_id: thread_id.to_owned(),
         turn_id: turn_id.to_owned(),
         root_thread_id: root_thread_id.to_owned(),
-        actor_project_id: actor_project_id.map(str::to_owned),
+        actor_project_id: current_project_id.clone(),
         library_id: coordinates.library_id,
         store_epoch: coordinates.store_epoch,
-        scope,
-        source,
     };
-    persist_turn_authority(connection, &coordinates.profile_id, &authority, read_only)?;
+    persist_turn_authority(connection, &coordinates.profile_id, &authority)?;
     finish_execution_mutation(
         connection,
         library_id,
@@ -660,8 +534,8 @@ pub(super) fn freeze_turn_authority(
         store_epoch,
         operation_id,
         request_hash,
-        "freeze_turn_authority",
-        actor_project_id,
+        "admit_turn_authority",
+        current_project_id.as_deref(),
         thread_id,
     )
 }
@@ -823,6 +697,7 @@ pub(super) fn upsert_background_process(
 
 #[derive(Debug)]
 struct AuthorityBackgroundRow {
+    source: String,
     id: String,
     thread_id: String,
     thread_title: Option<String>,
@@ -833,7 +708,6 @@ struct AuthorityBackgroundRow {
     process_id: Option<String>,
     os_pid: Option<i64>,
     terminal_session_id: Option<String>,
-    source: String,
     started_at_ms: i64,
     updated_at_ms: i64,
 }
@@ -916,91 +790,32 @@ fn read_authority_row(
     thread_id: &str,
     turn_id: &str,
 ) -> Result<Option<AuthorityRow>, StoreError> {
-    connection
-        .query_row(
-            "SELECT thread_id, turn_id, root_thread_id, actor_project_id, library_id, \
-               profile_id, store_epoch, scope, source, permission_profile_id, \
-               authority_fingerprint, provenance_version, created_at, read_only \
-             FROM nodex_agent_turn_authorities \
-             WHERE thread_id = ?1 AND turn_id = ?2",
-            params![thread_id, turn_id],
-            |row| {
-                Ok(AuthorityRow {
-                    thread_id: row.get(0)?,
-                    turn_id: row.get(1)?,
-                    root_thread_id: row.get(2)?,
-                    actor_project_id: row.get(3)?,
-                    library_id: row.get(4)?,
-                    profile_id: row.get(5)?,
-                    store_epoch: row.get(6)?,
-                    scope: row.get(7)?,
-                    source: row.get(8)?,
-                    permission_profile_id: row.get(9)?,
-                    authority_fingerprint: row.get(10)?,
-                    provenance_version: row.get(11)?,
-                    created_at: row.get(12)?,
-                    read_only: row.get(13)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(Into::into)
+    connection.query_row(
+        "SELECT thread_id,turn_id,root_thread_id,library_id,profile_id,store_epoch,authority_fingerprint,provenance_version,created_at FROM nodex_agent_turn_authorities WHERE thread_id=?1 AND turn_id=?2",
+        params![thread_id,turn_id],
+        |row| Ok(AuthorityRow {
+            thread_id: row.get(0)?, turn_id: row.get(1)?, root_thread_id: row.get(2)?,
+            library_id: row.get(3)?, profile_id: row.get(4)?,
+            store_epoch: row.get(5)?, authority_fingerprint: row.get(6)?,
+            provenance_version: row.get(7)?, created_at: row.get(8)?,
+        }),
+    ).optional().map_err(Into::into)
 }
 
 fn validate_authority_row(row: &AuthorityRow) -> Result<ProjectWorkspaceTurnAuthority, StoreError> {
-    let scope = match row.scope.as_str() {
-        "project" => ProjectWorkspaceTurnAuthorityScope::Project,
-        "library" => ProjectWorkspaceTurnAuthorityScope::Library,
-        _ => return Err(corrupt("Turn authority has an invalid scope")),
-    };
-    let source = match row.source.as_str() {
-        "project_turn" => ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-        "builtin_full_access" => ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
-        "inherited_builtin_full_access" => {
-            ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess
-        }
-        _ => return Err(corrupt("Turn authority has an invalid source")),
-    };
-    let source_matches_scope = matches!(
-        (scope, source),
-        (
-            ProjectWorkspaceTurnAuthorityScope::Project,
-            ProjectWorkspaceTurnAuthoritySource::ProjectTurn
-        ) | (
-            ProjectWorkspaceTurnAuthorityScope::Library,
-            ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess
-                | ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess
-        )
-    );
-    let permission_matches_scope = match scope {
-        ProjectWorkspaceTurnAuthorityScope::Project => row.permission_profile_id.is_none(),
-        ProjectWorkspaceTurnAuthorityScope::Library => {
-            row.permission_profile_id.as_deref() == Some(FULL_ACCESS_PERMISSION_PROFILE_ID)
-        }
-    };
-    if row.provenance_version != AUTHORITY_PROVENANCE_VERSION
-        || !source_matches_scope
-        || !permission_matches_scope
-        || (row.actor_project_id.is_none() && scope != ProjectWorkspaceTurnAuthorityScope::Library)
-        || row
-            .actor_project_id
-            .as_deref()
-            .is_some_and(|id| validate_id("actor_project_id", id).is_err())
-    {
-        return Err(corrupt("Turn authority provenance is invalid"));
+    if row.provenance_version != AUTHORITY_PROVENANCE_VERSION {
+        return Err(corrupt("Turn execution provenance is invalid"));
     }
     let authority = ProjectWorkspaceTurnAuthority {
         thread_id: row.thread_id.clone(),
         turn_id: row.turn_id.clone(),
         root_thread_id: row.root_thread_id.clone(),
-        actor_project_id: row.actor_project_id.clone(),
+        actor_project_id: None,
         library_id: row.library_id.clone(),
         store_epoch: row.store_epoch.clone(),
-        scope,
-        source,
     };
     if authority_fingerprint(&authority)? != row.authority_fingerprint {
-        return Err(corrupt("Turn authority fingerprint is invalid"));
+        return Err(corrupt("Turn execution fingerprint is invalid"));
     }
     Ok(authority)
 }
@@ -1009,62 +824,35 @@ pub(super) fn persist_turn_authority(
     connection: &Connection,
     profile_id: &str,
     authority: &ProjectWorkspaceTurnAuthority,
-    read_only: bool,
 ) -> Result<(), StoreError> {
     let existing = read_authority_row(connection, &authority.thread_id, &authority.turn_id)?;
     let created_at = existing
         .as_ref()
         .map(|row| row.created_at.clone())
         .unwrap_or(sqlite_now(connection)?);
-    let fingerprint = authority_fingerprint(authority)?;
     let proposed = AuthorityRow {
         thread_id: authority.thread_id.clone(),
         turn_id: authority.turn_id.clone(),
         root_thread_id: authority.root_thread_id.clone(),
-        actor_project_id: authority.actor_project_id.clone(),
         library_id: authority.library_id.clone(),
         profile_id: profile_id.to_owned(),
         store_epoch: authority.store_epoch.clone(),
-        scope: authority_scope_literal(authority.scope).to_owned(),
-        source: authority_source_literal(authority.source).to_owned(),
-        permission_profile_id: (authority.scope == ProjectWorkspaceTurnAuthorityScope::Library)
-            .then(|| FULL_ACCESS_PERMISSION_PROFILE_ID.to_owned()),
-        authority_fingerprint: fingerprint,
+        authority_fingerprint: authority_fingerprint(authority)?,
         provenance_version: AUTHORITY_PROVENANCE_VERSION,
         created_at,
-        read_only,
     };
     if let Some(existing) = existing {
         if !authority_rows_match(&existing, &proposed) {
             return Err(conflict(
-                "Turn is already frozen with different authority provenance",
+                "Turn is already bound to a different execution identity",
             ));
         }
-    } else {
-        connection.execute(
-            "INSERT INTO nodex_agent_turn_authorities(\
-               thread_id, turn_id, root_thread_id, actor_project_id, library_id, profile_id, \
-               store_epoch, scope, source, permission_profile_id, authority_fingerprint, \
-               provenance_version, created_at, read_only\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                proposed.thread_id,
-                proposed.turn_id,
-                proposed.root_thread_id,
-                proposed.actor_project_id,
-                proposed.library_id,
-                proposed.profile_id,
-                proposed.store_epoch,
-                proposed.scope,
-                proposed.source,
-                proposed.permission_profile_id,
-                proposed.authority_fingerprint,
-                proposed.provenance_version,
-                proposed.created_at,
-                proposed.read_only,
-            ],
-        )?;
+        return Ok(());
     }
+    connection.execute(
+        "INSERT INTO nodex_agent_turn_authorities(thread_id,turn_id,root_thread_id,library_id,profile_id,store_epoch,authority_fingerprint,provenance_version,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![proposed.thread_id,proposed.turn_id,proposed.root_thread_id,proposed.library_id,proposed.profile_id,proposed.store_epoch,proposed.authority_fingerprint,proposed.provenance_version,proposed.created_at],
+    )?;
     Ok(())
 }
 
@@ -1074,13 +862,10 @@ fn authority_fingerprint(authority: &ProjectWorkspaceTurnAuthority) -> Result<St
         authority.thread_id,
         authority.turn_id,
         authority.root_thread_id,
-        authority.actor_project_id,
         authority.library_id,
-        authority.store_epoch,
-        authority_scope_literal(authority.scope),
-        authority_source_literal(authority.source),
+        authority.store_epoch
     ]))
-    .map_err(|_| internal("Turn authority cannot be fingerprinted"))?;
+    .map_err(|_| internal("Turn execution identity cannot be fingerprinted"))?;
     Ok(sha256(&bytes))
 }
 
@@ -1088,14 +873,9 @@ fn authority_rows_match(left: &AuthorityRow, right: &AuthorityRow) -> bool {
     left.thread_id == right.thread_id
         && left.turn_id == right.turn_id
         && left.root_thread_id == right.root_thread_id
-        && left.actor_project_id == right.actor_project_id
         && left.library_id == right.library_id
         && left.profile_id == right.profile_id
         && left.store_epoch == right.store_epoch
-        && left.scope == right.scope
-        && left.read_only == right.read_only
-        && left.source == right.source
-        && left.permission_profile_id == right.permission_profile_id
         && left.authority_fingerprint == right.authority_fingerprint
         && left.provenance_version == right.provenance_version
 }
@@ -1112,10 +892,8 @@ pub(super) fn require_authority_coordinates(
         .query_row(
             "SELECT library.id, library.profile_id, metadata.store_epoch \
          FROM libraries library JOIN block_store_metadata metadata ON metadata.id = 1 \
-         WHERE library.id = ?1 AND (?2 IS NULL OR EXISTS( \
-           SELECT 1 FROM projects project WHERE project.id = ?2 \
-           AND project.library_id = library.id AND project.lifecycle = 'active'))",
-            params![library_id, project_id],
+         WHERE library.id = ?1",
+            params![library_id],
             |row| {
                 Ok(AuthorityCoordinates {
                     library_id: row.get(0)?,
@@ -1135,7 +913,17 @@ fn require_mutable_thread(
 ) -> Result<Option<String>, StoreError> {
     let project_id = require_visible_thread(connection, library_id, thread_id)?;
     if let Some(project_id) = project_id.as_deref() {
-        require_authority_coordinates(connection, library_id, Some(project_id))?;
+        let active = connection
+            .query_row(
+                "SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2 AND lifecycle = 'active'",
+                params![project_id, library_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        if !active {
+            return Err(not_found("Codex Thread belongs to an inactive Project"));
+        }
     }
     Ok(project_id)
 }
@@ -1156,21 +944,6 @@ fn require_visible_thread(
         )
         .optional()?
         .ok_or_else(|| not_found("Codex Thread is unavailable in this Library"))
-}
-
-fn require_thread_project(
-    connection: &Connection,
-    library_id: &str,
-    thread_id: &str,
-    expected_project_id: Option<&str>,
-) -> Result<(), StoreError> {
-    let project_id = require_visible_thread(connection, library_id, thread_id)?;
-    if project_id.as_deref() == expected_project_id {
-        return Ok(());
-    }
-    Err(unauthorized(
-        "Turn authority Thread does not belong to the actor Project",
-    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1296,23 +1069,6 @@ fn require_host_adapter(context: &BoundModuleContext) -> Result<(), StoreError> 
     Err(unauthorized(
         "Only a trusted Electron Host Adapter may freeze Turn authority",
     ))
-}
-
-fn authority_scope_literal(scope: ProjectWorkspaceTurnAuthorityScope) -> &'static str {
-    match scope {
-        ProjectWorkspaceTurnAuthorityScope::Project => "project",
-        ProjectWorkspaceTurnAuthorityScope::Library => "library",
-    }
-}
-
-fn authority_source_literal(source: ProjectWorkspaceTurnAuthoritySource) -> &'static str {
-    match source {
-        ProjectWorkspaceTurnAuthoritySource::ProjectTurn => "project_turn",
-        ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess => "builtin_full_access",
-        ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess => {
-            "inherited_builtin_full_access"
-        }
-    }
 }
 
 fn background_source_literal(source: ProjectWorkspaceBackgroundProcessSource) -> &'static str {

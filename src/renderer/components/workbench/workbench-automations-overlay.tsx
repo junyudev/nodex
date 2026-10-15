@@ -162,7 +162,7 @@ interface WorkbenchAutomationsRouteShellProps {
   detailRailPortalTarget?: HTMLElement | null;
   onDetailRailOpenChange?: (open: boolean) => void;
   onPathChange: (path: string) => void;
-  onOpenThread?: (threadId: string) => Promise<void | boolean> | void | boolean;
+  onOpenSession?: (sessionId: string) => Promise<void | boolean> | void | boolean;
   onCreateWithChat?: (prompt: string) => Promise<void> | void;
   onPersonalizeTemplate?: (prompt: string) => Promise<void> | void;
   onOpenLocalEnvironmentsSettings?: (input: {
@@ -232,7 +232,7 @@ function applyOptimisticAutomationUpdate(
       kind: update.kind,
       status: update.status,
       projectId: isCron ? (update.projectId ?? null) : null,
-      targetThreadId: isCron ? null : (update.targetThreadId ?? null),
+      targetSessionId: isCron ? null : (update.targetSessionId ?? null),
       name: update.name,
       prompt: update.prompt ?? "",
       rrule: update.rrule ?? null,
@@ -264,7 +264,7 @@ function buildAutomationStatusUpdateInput(
     kind: automation.kind,
     projectId: automation.projectId,
     status,
-    targetThreadId: automation.targetThreadId,
+    targetSessionId: automation.targetSessionId,
     name: automation.name,
     prompt: automation.prompt,
     rrule: automation.rrule,
@@ -1082,13 +1082,13 @@ function AutomationPreviousRunsContextMenu({
   children: ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [targetThreadId, setTargetThreadId] = useState<string | null>(null);
+  const [targetRunId, setTargetRunId] = useState<string | null>(null);
   const targetRow =
-    targetThreadId === null ? null : (rows.find((row) => row.threadId === targetThreadId) ?? null);
+    targetRunId === null ? null : (rows.find((row) => row.runId === targetRunId) ?? null);
 
   const handleMenuOpenChange = (open: boolean): void => {
     setMenuOpen(open);
-    if (!open) setTargetThreadId(null);
+    if (!open) setTargetRunId(null);
   };
 
   const handleContextMenu = (event: MouseEvent<HTMLSpanElement>): void => {
@@ -1099,12 +1099,12 @@ function AutomationPreviousRunsContextMenu({
     const target = event.target.closest<HTMLElement>(
       `[${AUTOMATION_PREVIOUS_RUN_MENU_TARGET_ATTRIBUTE}]`,
     );
-    const nextTargetThreadId = target?.getAttribute(AUTOMATION_PREVIOUS_RUN_MENU_TARGET_ATTRIBUTE);
-    if (!nextTargetThreadId || !rows.some((row) => row.threadId === nextTargetThreadId)) {
+    const nextTargetRunId = target?.getAttribute(AUTOMATION_PREVIOUS_RUN_MENU_TARGET_ATTRIBUTE);
+    if (!nextTargetRunId || !rows.some((row) => row.runId === nextTargetRunId)) {
       event.stopPropagation();
       return;
     }
-    setTargetThreadId(nextTargetThreadId);
+    setTargetRunId(nextTargetRunId);
   };
 
   if (disabled) return <>{children}</>;
@@ -1175,8 +1175,8 @@ function AutomationPreviousRunRow({
   return (
     <div
       role="listitem"
-      data-testid={`automation-previous-run-${row.threadId}`}
-      data-automation-previous-run-menu-target={row.threadId}
+      data-testid={`automation-previous-run-${row.runId}`}
+      data-automation-previous-run-menu-target={row.runId}
       className="group relative min-w-0"
     >
       <div
@@ -1347,7 +1347,7 @@ function AutomationPreviousRunsSection({
             >
               {rows.map((row) => (
                 <AutomationPreviousRunRow
-                  key={row.threadId}
+                  key={row.runId}
                   row={row}
                   disabled={actionBusy}
                   onOpenRun={onOpenRun}
@@ -2382,7 +2382,7 @@ function AutomationDraftEditor({
           ...current,
           kind: "heartbeat",
           projectId: null,
-          targetThreadId: current.targetThreadId,
+          targetSessionId: current.targetSessionId,
           cwds: [],
           model: "",
           reasoningEffort: "",
@@ -2394,8 +2394,7 @@ function AutomationDraftEditor({
       const nextDraft: WorkbenchAutomationDraft = {
         ...current,
         kind: "cron",
-        targetThreadId: "",
-        targetSessionId: undefined,
+        targetSessionId: "",
         executionEnvironment: target,
         localEnvironmentConfigPath: target === "worktree" ? current.localEnvironmentConfigPath : "",
         model: current.model,
@@ -2546,17 +2545,11 @@ function AutomationDraftEditor({
             <AutomationDetailRow label="Chat">
               <Input
                 aria-label="Chat"
-                value={draft.targetSessionId ?? draft.targetThreadId}
+                value={draft.targetSessionId}
                 disabled={isMutating}
                 placeholder="Select chat"
                 className={AUTOMATION_FIELD_INPUT_CLASS}
-                onInput={(event) =>
-                  updateDraft(
-                    draft.targetSessionId !== undefined && draft.targetSessionId !== null
-                      ? { targetSessionId: event.currentTarget.value, targetThreadId: "" }
-                      : { targetThreadId: event.currentTarget.value },
-                  )
-                }
+                onInput={(event) => updateDraft({ targetSessionId: event.currentTarget.value })}
               />
             </AutomationDetailRow>
           ) : (
@@ -2964,7 +2957,7 @@ export function WorkbenchAutomationsRouteShell({
   detailRailPortalTarget = null,
   onDetailRailOpenChange,
   onPathChange,
-  onOpenThread,
+  onOpenSession,
   onCreateWithChat,
   onPersonalizeTemplate,
   onOpenLocalEnvironmentsSettings,
@@ -3557,7 +3550,7 @@ export function WorkbenchAutomationsRouteShell({
       let failedCount = 0;
       for (const row of rows) {
         const response = await archiveCodexAutomationRun({
-          threadId: row.threadId,
+          runId: row.runId,
           archivedReason: "manual",
         });
         if (!response.success) failedCount += 1;
@@ -3590,7 +3583,7 @@ export function WorkbenchAutomationsRouteShell({
     setRunActionPending(true);
     try {
       const response = await unarchiveCodexAutomationRun({
-        threadId: row.threadId,
+        runId: row.runId,
       });
       await invalidateAutomationRunsInbox();
       if (!response.success) {
@@ -3617,7 +3610,7 @@ export function WorkbenchAutomationsRouteShell({
     try {
       for (const row of rows) {
         await setCodexAutomationRunReadState({
-          threadId: row.threadId,
+          runId: row.runId,
           readAt,
         });
       }
@@ -3638,9 +3631,10 @@ export function WorkbenchAutomationsRouteShell({
   };
 
   const openAutomationRun = (row: WorkbenchAutomationPreviousRunRowModel) => {
-    if (!row.canOpen || !onOpenThread) return;
+    const sessionId = row.sessionId;
+    if (!row.canOpen || !sessionId || !onOpenSession) return;
     runAfterAutomationRouteGuard(() => {
-      void onOpenThread(row.threadId);
+      void onOpenSession(sessionId);
     });
   };
 

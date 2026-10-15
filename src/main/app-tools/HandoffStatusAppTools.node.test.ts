@@ -55,7 +55,7 @@ const setup = (
             actorProjectId: "project",
             libraryId: "library",
             storeEpoch: "epoch",
-            frozenAtMs: 1,
+            admittedAtMs: 1,
             readOnly: true,
             scope: "project",
             source: "project_turn",

@@ -3,7 +3,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::agent::AgentExecutionAuthorization;
 use nodex_core_contracts::library::{
     LibraryAgentPageLocation, LibraryAgentPageSearchMatch, LibraryAgentSearchMatchQuality,
     LibraryAgentSearchResult, LibraryAgentSearchScope, LibraryPageReferenceCandidate,
@@ -87,7 +86,7 @@ struct IndexedPage {
     priority: Option<String>,
     tags: Vec<LibraryPageSearchOption>,
     assignee: Option<String>,
-    authorized_project_ids: BTreeSet<String>,
+    project_ids: BTreeSet<String>,
     page_key: Option<String>,
     location_label: String,
     data_source_ids: BTreeSet<String>,
@@ -154,7 +153,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
                 priority: None,
                 tags: Vec::new(),
                 assignee: None,
-                authorized_project_ids: BTreeSet::new(),
+                project_ids: BTreeSet::new(),
                 page_key: None,
                 location_label: String::new(),
             })
@@ -240,7 +239,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
         .prepare("SELECT id, home_database_block_id FROM data_sources WHERE library_id = ?1")?
         .query_map([library_id], |row| Ok((row.get(0)?, row.get(1)?)))?
         .collect::<rusqlite::Result<HashMap<_, _>>>()?;
-    populate_authorized_projects(connection, library_id, &data_source_databases, &mut pages)?;
+    populate_project_associations(connection, library_id, &data_source_databases, &mut pages)?;
     let page_keys = current_page_keys_in_library(connection, library_id)?;
     let data_source_names = connection
         .prepare(
@@ -292,7 +291,7 @@ fn build_index(connection: &Connection, library_id: &str) -> Result<PageSearchIn
                     text: property.text.clone(),
                 })
                 .collect(),
-            authorized_project_ids: page.authorized_project_ids.iter().cloned().collect(),
+            project_ids: page.project_ids.iter().cloned().collect(),
             data_source_ids: page.data_source_ids.iter().cloned().collect(),
         })
         .collect::<Vec<_>>();
@@ -367,84 +366,28 @@ fn kernel_option(option: &LibraryPageSearchOption) -> KernelOption {
     }
 }
 
-/// Materializes the same Project read roots used by ordinary Page reads into
-/// the commit-fenced search projection. Queries can then authorize the whole
-/// corpus before top-K selection without issuing SQL once per Page.
-fn populate_authorized_projects(
+/// Records physical Project associations for explicitly scoped search and facets.
+fn populate_project_associations(
     connection: &Connection,
     library_id: &str,
     data_source_databases: &HashMap<String, String>,
     pages: &mut BTreeMap<String, IndexedPage>,
 ) -> Result<(), StoreError> {
     let mut database_projects = HashMap::<String, BTreeSet<String>>::new();
-    for (project_id, primary_database_id) in connection
-        .prepare("SELECT id, database_block_id FROM projects WHERE library_id = ?1 ORDER BY id")?
-        .query_map([library_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-    {
-        if let Some(database_id) = primary_database_id {
-            database_projects
-                .entry(database_id)
-                .or_default()
-                .insert(project_id);
-        }
+    for (project_id, database_id) in connection.prepare("SELECT id, database_block_id FROM projects WHERE library_id = ?1 AND lifecycle <> 'deleted' ORDER BY id")?.query_map([library_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()? {
+        if let Some(database_id) = database_id { database_projects.entry(database_id).or_default().insert(project_id); }
     }
-
-    let mut page_grants = HashMap::<String, BTreeSet<String>>::new();
-    for (project_id, root_kind, root_id) in connection
-        .prepare(
-            "SELECT grant_row.project_id, grant_row.root_kind, grant_row.root_id \
-             FROM project_resource_grants grant_row \
-             JOIN projects project ON project.id = grant_row.project_id \
-               AND project.library_id = grant_row.library_id \
-               AND project.library_id = ?1 \
-             WHERE grant_row.lifecycle = 'active' ORDER BY grant_row.project_id, grant_row.id",
-        )?
-        .query_map([library_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?
-    {
-        match root_kind.as_str() {
-            "database" => {
-                database_projects
-                    .entry(root_id)
-                    .or_default()
-                    .insert(project_id);
-            }
-            "page" => {
-                page_grants.entry(root_id).or_default().insert(project_id);
-            }
-            _ => {}
-        }
-    }
-
-    let page_ids = pages.keys().cloned().collect::<Vec<_>>();
-    for page_id in page_ids {
-        let Some((ancestors, database_id)) =
+    for page_id in pages.keys().cloned().collect::<Vec<_>>() {
+        let Some((_, Some(database_id))) =
             page_access_coordinates(pages, data_source_databases, library_id, &page_id)
         else {
             continue;
         };
-        let mut authorized = BTreeSet::new();
-        if let Some(database_id) = database_id
-            && let Some(projects) = database_projects.get(&database_id)
-        {
-            authorized.extend(projects.iter().cloned());
-        }
-        for ancestor_id in ancestors {
-            if let Some(projects) = page_grants.get(&ancestor_id) {
-                authorized.extend(projects.iter().cloned());
-            }
-        }
         if let Some(page) = pages.get_mut(&page_id) {
-            page.authorized_project_ids = authorized;
+            page.project_ids = database_projects
+                .get(&database_id)
+                .cloned()
+                .unwrap_or_default();
         }
     }
     Ok(())
@@ -640,8 +583,6 @@ pub(super) struct ProjectSearchRequest<'a> {
 }
 
 pub(super) struct AgentSearchRequest<'a> {
-    pub context: &'a BoundModuleContext,
-    pub authorization: &'a AgentExecutionAuthorization,
     pub query: &'a str,
     pub scope: &'a LibraryAgentSearchScope,
     pub include_archived: bool,
@@ -688,18 +629,25 @@ fn rank_project_outcomes(
         }
         let mut project_id = None;
         for candidate_project_id in &projects {
-            if page.authorized_project_ids.contains(candidate_project_id) {
+            if page.project_ids.contains(candidate_project_id) {
                 project_id = Some(candidate_project_id.clone());
                 break;
             }
         }
-        let Some(project_id) = project_id else {
+        if project_id.is_none() && !request.project_ids.is_empty() {
             continue;
-        };
+        }
+        let project_id = project_id.or_else(|| {
+            request
+                .preferred_project_id
+                .filter(|id| page.project_ids.contains(*id))
+                .map(str::to_owned)
+                .or_else(|| page.project_ids.iter().next().cloned())
+        });
         outcomes.push(SearchOutcome {
             recent_index: recent.get(page.id.as_str()).copied(),
             aggregate,
-            project_id: Some(project_id),
+            project_id,
         });
     }
     outcomes
@@ -721,7 +669,7 @@ pub(super) fn project_facets(
     {
         if !project_ids
             .iter()
-            .any(|project_id| page.authorized_project_ids.contains(project_id))
+            .any(|project_id| page.project_ids.contains(project_id))
         {
             continue;
         }
@@ -779,14 +727,14 @@ pub(super) fn project_metadata(
                 .is_none_or(|ids| ids.contains(page.id.as_str()))
         })
         .filter_map(|page| {
-            let authorized_project_ids = project_ids
+            let project_ids = project_ids
                 .iter()
-                .filter(|project_id| page.authorized_project_ids.contains(*project_id))
+                .filter(|project_id| page.project_ids.contains(*project_id))
                 .cloned()
                 .collect::<Vec<_>>();
-            (!authorized_project_ids.is_empty()).then_some((page, authorized_project_ids))
+            (!project_ids.is_empty()).then_some((page, project_ids))
         })
-        .map(|(page, authorized_project_ids)| {
+        .map(|(page, project_ids)| {
             Ok(LibraryPageSearchMetadataDocument {
                 page_id: page.id.clone(),
                 page_key: page.page_key.clone(),
@@ -807,7 +755,7 @@ pub(super) fn project_metadata(
                         text: property.text.clone(),
                     })
                     .collect(),
-                authorized_project_ids,
+                project_ids,
                 data_source_ids: page.data_source_ids.iter().cloned().collect(),
             })
         })
@@ -818,7 +766,26 @@ pub(super) fn search_references(
     connection: &Connection,
     index: &PageSearchIndex,
     library_id: &str,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
+    query: &str,
+    requested_limit: Option<u32>,
+    source_page_id: Option<&str>,
+) -> Result<Vec<LibraryPageReferenceCandidate>, StoreError> {
+    result_limit(requested_limit)?;
+    search_library(
+        connection,
+        index,
+        library_id,
+        query,
+        Some(requested_limit.unwrap_or(20).min(60)),
+        source_page_id,
+    )
+}
+
+pub(super) fn search_library(
+    connection: &Connection,
+    index: &PageSearchIndex,
+    library_id: &str,
     query: &str,
     requested_limit: Option<u32>,
     source_page_id: Option<&str>,
@@ -848,11 +815,7 @@ pub(super) fn search_references(
         if page.lifecycle != "active" {
             continue;
         }
-        if let Some(project_id) = context.project_id.as_ref()
-            && !page.authorized_project_ids.contains(&project_id.0)
-        {
-            continue;
-        }
+
         outcomes.push(SearchOutcome {
             aggregate,
             project_id: None,
@@ -860,7 +823,7 @@ pub(super) fn search_references(
         });
     }
     outcomes.sort_by(|left, right| compare_outcomes(left, right, index, None));
-    let limit = result_limit(requested_limit)?.min(60);
+    let limit = result_limit(requested_limit)?;
     outcomes
         .into_iter()
         .take(limit)
@@ -877,23 +840,8 @@ pub(super) fn search_agent_pages(
     let query = normalize_query(request.query)?;
     let terms = unique_terms(&query)?;
     let aggregates = search_index(connection, index, library_id, &query, &terms)?;
-    let candidate_ids = aggregates
-        .iter()
-        .filter_map(|aggregate| index.pages.get(&aggregate.page_id))
-        .filter(|page| request.include_archived || page.lifecycle == "active")
-        .filter(|page| page_in_agent_scope(index, page, request.scope))
-        .map(|page| page.id.clone())
-        .collect::<Vec<_>>();
-    let authorized = super::agent_authorization::authorized_page_ids(
-        connection,
-        request.context,
-        library_id,
-        request.authorization,
-        &candidate_ids,
-    )?;
     let mut outcomes = aggregates
         .into_iter()
-        .filter(|aggregate| authorized.contains(&aggregate.page_id))
         .filter(|aggregate| {
             index.pages.get(&aggregate.page_id).is_some_and(|page| {
                 (request.include_archived || page.lifecycle == "active")
@@ -1430,9 +1378,7 @@ fn project_hit(
     let title_parts = title_parts(page, &outcome.aggregate.evidence);
     let (excerpt, excerpt_parts) = excerpt_parts(page, &outcome.aggregate.evidence);
     Ok(LibraryProjectPageSearchHit {
-        project_id: outcome
-            .project_id
-            .ok_or_else(|| corrupt("Project Page search result has no access context"))?,
+        project_id: outcome.project_id,
         page_id: page.id.clone(),
         page_key: page.page_key.clone(),
         title: page.title.clone(),
@@ -1872,20 +1818,23 @@ fn terminal_parent<'a>(
 }
 
 fn validate_project_request(request: &ProjectSearchRequest<'_>) -> Result<(), StoreError> {
-    validate_project_ids(request.project_ids)?;
+    if !request.project_ids.is_empty() {
+        validate_project_ids(request.project_ids)?;
+    }
     validate_filters(request.filters)?;
     if request.recent_page_ids.len() > MAX_RECENT_HINTS {
         return Err(invalid("Page search has too many recent Page hints"));
     }
     validate_unique_identities(request.recent_page_ids, "Page search recent Page")?;
     if let Some(preferred) = request.preferred_project_id
+        && !request.project_ids.is_empty()
         && !request
             .project_ids
             .iter()
             .any(|project_id| project_id == preferred)
     {
         return Err(invalid(
-            "Page search preferred Project is outside its scope",
+            "Page search preferred Project is outside its explicit filter",
         ));
     }
     Ok(())
@@ -1893,7 +1842,7 @@ fn validate_project_request(request: &ProjectSearchRequest<'_>) -> Result<(), St
 
 fn validate_project_ids(project_ids: &[String]) -> Result<(), StoreError> {
     if project_ids.is_empty() || project_ids.len() > MAX_PROJECT_SCOPES {
-        return Err(invalid("Page search Project scope is out of range"));
+        return Err(invalid("Page search Project filter is out of range"));
     }
     let mut unique = HashSet::new();
     for project_id in project_ids {
@@ -2177,7 +2126,7 @@ mod tests {
             page_key: None,
             location_label: "Pages".to_owned(),
             data_source_ids: BTreeSet::new(),
-            authorized_project_ids: BTreeSet::from(["project:test".to_owned()]),
+            project_ids: BTreeSet::from(["project:test".to_owned()]),
         };
         let index = PageSearchIndex {
             pages: BTreeMap::from([
@@ -2463,7 +2412,7 @@ mod tests {
                     page_key: None,
                     location_label: "Pages".to_owned(),
                     data_source_ids: BTreeSet::new(),
-                    authorized_project_ids: if index >= 3_000 {
+                    project_ids: if index >= 3_000 {
                         BTreeSet::from(["project:test".to_owned()])
                     } else {
                         BTreeSet::new()

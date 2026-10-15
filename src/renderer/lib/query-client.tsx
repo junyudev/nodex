@@ -4,7 +4,6 @@ import { subscribeCodexEvents } from "./api";
 import { queryKeys } from "./query-keys";
 import type { CodexEvent } from "./types";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
-import { ResourceAuthorityQueryCacheBridge } from "./resource-authority-query-cache";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
 import { useDevelopmentFeature } from "./development-features-context";
 
@@ -70,7 +69,6 @@ export function NodexQueryProvider({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <ProjectionInvalidationProvider>
-        <ResourceAuthorityQueryCacheBridge />
         <PageFileQueryCacheBridge queryClient={queryClient} />
         {children}
       </ProjectionInvalidationProvider>

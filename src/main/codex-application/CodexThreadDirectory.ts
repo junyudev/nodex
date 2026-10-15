@@ -1100,14 +1100,12 @@ export const make: Effect.Effect<
     const canonical = conversations.current(threadId)?.readCanonicalState();
     const workspaceState = durable ? yield* readDurableWorkspaceState(threadId) : null;
     const appliedWorkspace = workspaceState?.applied ?? null;
-    const durablePermissions = createCodexCanonicalWorkspacePermissionContext(
-      durable?.raw.writable_roots ?? [],
-    );
+    const durableWorkspaceRoots = durable?.raw.writable_roots ?? [];
     const preparation = canonicalResumePreparation(canonical, {
       cwd: durable?.thread.cwd ?? null,
       metadataCwd: metadata?.cwd ?? null,
-      resumeWorkspaceRoots: options.workspaceRoots ?? durablePermissions.runtimeWorkspaceRoots,
-      permissions: durablePermissions,
+      resumeWorkspaceRoots: options.workspaceRoots ?? durableWorkspaceRoots,
+      runtimeWorkspaceRoots: durableWorkspaceRoots,
       ...(appliedWorkspace
         ? {
             appliedWorkspace: {

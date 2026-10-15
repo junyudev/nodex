@@ -9,7 +9,7 @@ import { decodeRecoverySource } from "../../shared/block-documents/recovery-bund
 import type { RecoveryCaptureReceipt } from "../../shared/block-documents/document-recovery";
 import type { FrozenRecoveryRecord } from "./document-recovery-staging";
 
-const scope = { libraryId: "library:one", accessContext: { kind: "library" as const } };
+const scope = { libraryId: "library:one", routingContext: { kind: "library" as const } };
 const snapshot = (title = "x".repeat(70_020)): DocumentRecoverySnapshot => {
   const document = new Y.Doc();
   document.getText("title").insert(0, title);
@@ -109,7 +109,7 @@ test("legacy rows without a verified Library stay discoverable and exportable", 
   expect(
     (
       await store.staging.listSummaries(
-        { ...scope, accessContext: { kind: "project", projectId: "project:other" } },
+        { ...scope, routingContext: { kind: "project", projectId: "project:other" } },
         null,
         null,
       )

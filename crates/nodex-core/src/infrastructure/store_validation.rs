@@ -332,7 +332,6 @@ fn validate_store_semantics_for_view_contract(
     validate_database_relation_invariants(connection)?;
     validate_database_priority_invariants_for_view_contract(connection, view_contract)?;
     validate_library_content_ownership(connection)?;
-    validate_project_resource_grants(connection, has_library_files)?;
     validate_document_block_tombstones(connection)?;
     validate_document_page_references(connection)?;
     validate_block_transfer_undo(connection)?;
@@ -902,46 +901,6 @@ fn validate_library_content_ownership(connection: &Connection) -> Result<(), Sto
         |row| row.get(0),
     )?;
     expect_zero(invalid, "Library content ownership mismatches")
-}
-
-fn validate_project_resource_grants(
-    connection: &Connection,
-    has_library_files: bool,
-) -> Result<(), StoreError> {
-    if !has_library_files {
-        let invalid: i64 = connection.query_row(
-            "SELECT count(*) FROM project_resource_grants grant_row \
-             LEFT JOIN projects project ON project.id = grant_row.project_id \
-             LEFT JOIN blocks block ON block.id = grant_row.root_id \
-             WHERE grant_row.lifecycle = 'active' AND ( \
-               project.id IS NULL OR project.library_id <> grant_row.library_id \
-               OR block.id IS NULL OR block.library_id <> grant_row.library_id \
-               OR block.type <> grant_row.root_kind \
-             )",
-            [],
-            |row| row.get(0),
-        )?;
-        return expect_zero(invalid, "invalid active Project resource grants");
-    }
-    let invalid: i64 = connection.query_row(
-        "SELECT count(*) FROM project_resource_grants grant_row \
-         LEFT JOIN projects project ON project.id = grant_row.project_id \
-         LEFT JOIN blocks block \
-           ON grant_row.root_kind <> 'file' AND block.id = grant_row.root_id \
-         LEFT JOIN library_files file \
-           ON grant_row.root_kind = 'file' AND file.file_id = grant_row.root_id \
-         WHERE grant_row.lifecycle = 'active' AND ( \
-           project.id IS NULL OR project.library_id <> grant_row.library_id \
-           OR (grant_row.root_kind = 'file' AND ( \
-                file.file_id IS NULL OR file.library_id <> grant_row.library_id)) \
-           OR (grant_row.root_kind <> 'file' AND ( \
-                block.id IS NULL OR block.library_id <> grant_row.library_id \
-                OR block.type <> grant_row.root_kind)) \
-         )",
-        [],
-        |row| row.get(0),
-    )?;
-    expect_zero(invalid, "invalid active Project resource grants")
 }
 
 fn validate_document_block_tombstones(connection: &Connection) -> Result<(), StoreError> {

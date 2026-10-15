@@ -72,18 +72,19 @@ describe("AntigravityAdapterV2 flavor", () => {
     assert.isTrue(flavor.subagentsIdleOnTurnCompletion);
   });
 
-  it("maps runtime modes to the agent's native permission modes", () => {
-    const mode = (runtimeMode: "approval-required" | "auto-accept-edits" | "full-access") =>
-      flavor.sessionModeForPolicy?.(
-        ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          runtimeMode,
-          interactionMode: "default",
-          cwd: "/workspace",
-        }),
+  it("uses native full access during default and planning interaction", () => {
+    for (const interactionMode of ["default", "plan"] as const) {
+      assert.equal(
+        flavor.sessionModeForPolicy?.(
+          ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            runtimeMode: "full-access",
+            interactionMode,
+            cwd: "/workspace",
+          }),
+        ),
+        "yolo",
       );
-    assert.equal(mode("approval-required"), "default");
-    assert.equal(mode("auto-accept-edits"), "auto_edit");
-    assert.equal(mode("full-access"), "yolo");
+    }
   });
 
   it("exposes Antigravity's /compact command through the v2 compaction path", () => {
@@ -112,19 +113,6 @@ describe("AntigravityAdapterV2 flavor", () => {
       ),
     );
   });
-
-  it("advertises only the approval decisions the request can honor", () => {
-    const options = flavor.approvalOptions?.(
-      permissionRequest("tool_1", [
-        { optionId: "once", name: "Allow", kind: "allow_once" },
-        { optionId: "deny", name: "Deny", kind: "reject_once" },
-      ]),
-    );
-    assert.deepEqual(
-      options?.map((option) => option.decision),
-      ["accept", "decline", "cancel"],
-    );
-  });
 });
 
 const layerSession = Layer.mergeAll(
@@ -135,7 +123,7 @@ const layerSession = Layer.mergeAll(
 );
 
 describe("AntigravityAdapterV2 client file system", () => {
-  it.effect("confines agent file requests to the workspace under full access", () =>
+  it.effect("reads and writes native file paths outside the working directory", () =>
     Effect.gen(function* () {
       const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -226,30 +214,29 @@ describe("AntigravityAdapterV2 client file system", () => {
         { sessionId: "mock-session-1", path: outsideFile },
         context("fs/read_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(outsideRead));
+      assert.isTrue(Exit.isSuccess(outsideRead));
       const outsideWrite = yield* writeTextFile(
         { sessionId: "mock-session-1", path: path.join(outside, "planted.txt"), content: "x" },
         context("fs/write_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(outsideWrite));
-      assert.isFalse(yield* fileSystem.exists(path.join(outside, "planted.txt")));
+      assert.isTrue(Exit.isSuccess(outsideWrite));
+      assert.equal(yield* fileSystem.readFileString(path.join(outside, "planted.txt")), "x");
 
-      // An in-workspace symlink to an outside file must not carry a read or
-      // write out of the workspace.
+      // Native file paths keep ordinary filesystem symlink semantics.
       const linkPath = path.join(workspace, "linked-secret.txt");
       yield* fileSystem.symlink(outsideFile, linkPath);
       const linkedRead = yield* readTextFile(
         { sessionId: "mock-session-1", path: linkPath },
         context("fs/read_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(linkedRead), "a read through an escaping symlink is denied");
+      assert.isTrue(Exit.isSuccess(linkedRead));
       const linkedWrite = yield* writeTextFile(
         { sessionId: "mock-session-1", path: linkPath, content: "overwritten" },
         context("fs/write_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(linkedWrite), "a write through an escaping symlink is denied");
-      assert.equal(yield* fileSystem.readFileString(outsideFile), "secret");
-      // A dangling in-workspace symlink to an outside path must not create it.
+      assert.isTrue(Exit.isSuccess(linkedWrite));
+      assert.equal(yield* fileSystem.readFileString(outsideFile), "overwritten");
+      // Writes through a dangling symlink create its target.
       const plantedTarget = path.join(outside, "created-through-link.txt");
       const danglingLink = path.join(workspace, "dangling.txt");
       yield* fileSystem.symlink(plantedTarget, danglingLink);
@@ -257,8 +244,8 @@ describe("AntigravityAdapterV2 client file system", () => {
         { sessionId: "mock-session-1", path: danglingLink, content: "planted" },
         context("fs/write_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(danglingWrite), "a write through a dangling symlink is denied");
-      assert.isFalse(yield* fileSystem.exists(plantedTarget));
+      assert.isTrue(Exit.isSuccess(danglingWrite));
+      assert.equal(yield* fileSystem.readFileString(plantedTarget), "planted");
       // A new file under an in-workspace directory link to outside is denied.
       yield* fileSystem.symlink(outside, path.join(workspace, "linked-dir"));
       const linkedDirWrite = yield* writeTextFile(
@@ -269,8 +256,21 @@ describe("AntigravityAdapterV2 client file system", () => {
         },
         context("fs/write_text_file"),
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(linkedDirWrite), "a write under an escaping directory link");
-      assert.isFalse(yield* fileSystem.exists(path.join(outside, "new.txt")));
+      assert.isTrue(Exit.isSuccess(linkedDirWrite));
+      assert.equal(yield* fileSystem.readFileString(path.join(outside, "new.txt")), "planted");
+      const nestedLinkedWrite = yield* writeTextFile(
+        {
+          sessionId: "mock-session-1",
+          path: path.join(workspace, "linked-dir", "missing", "nested", "new.txt"),
+          content: "planted",
+        },
+        context("fs/write_text_file"),
+      ).pipe(Effect.exit);
+      assert.isTrue(Exit.isSuccess(nestedLinkedWrite));
+      assert.equal(
+        yield* fileSystem.readFileString(path.join(outside, "missing", "nested", "new.txt")),
+        "planted",
+      );
       // A symlink that stays inside the workspace keeps working.
       const insideLink = path.join(workspace, "inside-link.ts");
       yield* fileSystem.symlink(insidePath, insideLink);
@@ -284,7 +284,7 @@ describe("AntigravityAdapterV2 client file system", () => {
 });
 
 describe("AntigravityAdapterV2 workspace changes", () => {
-  it.effect("confines file requests to the workspace of the turn in progress", () =>
+  it.effect("retains full native file access when the working directory changes", () =>
     Effect.gen(function* () {
       const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const fileSystem = yield* FileSystem.FileSystem;
@@ -407,114 +407,7 @@ describe("AntigravityAdapterV2 workspace changes", () => {
         { sessionId: "mock-session-1", path: path.join(workspaceA, "a.txt") },
         context,
       ).pipe(Effect.exit);
-      assert.isTrue(Exit.isFailure(fromA), "the previous workspace is no longer readable");
-    }).pipe(Effect.provide(layerSession), Effect.scoped),
-  );
-});
-
-describe("AntigravityAdapterV2 client file system under restrictive policies", () => {
-  // Antigravity asks before each of its own edits, so T3 serves an opted-in
-  // write whatever the thread's policy says, confined to the workspace.
-  it.effect("serves in-workspace reads and writes and still refuses outside paths", () =>
-    Effect.gen(function* () {
-      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const crypto = yield* Crypto.Crypto;
-      const mockAgentPath = yield* path.fromFileUrl(
-        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
-      );
-      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
-      const policies = [
-        {
-          name: "read-only sandbox",
-          policy: {
-            runtimeMode: "full-access",
-            approvalPolicy: "never",
-            sandboxPolicy: { type: "readOnly" },
-          },
-        },
-        { name: "approval-required", policy: { runtimeMode: "approval-required" } },
-      ] as const;
-      for (const { name, policy } of policies) {
-        let readTextFile: Parameters<RuntimeService["handleReadTextFile"]>[0] | undefined;
-        let writeTextFile: Parameters<RuntimeService["handleWriteTextFile"]>[0] | undefined;
-        const instanceId = ProviderInstanceId.make(`antigravity-restrictive-${policy.runtimeMode}`);
-        const adapter = yield* makeAntigravityAdapterV2({
-          instanceId,
-          selfInvocation: yield* resolveSelfInvocation(),
-          makeRuntime: (input) =>
-            makeAntigravityAcpRuntime({
-              ...input,
-              childProcessSpawner,
-              spawn: {
-                command: process.execPath,
-                args: [mockAgentPath],
-                cwd: input.cwd,
-                env: { T3_ACP_ANTIGRAVITY: "1" },
-              },
-            }).pipe(
-              Effect.provideService(Crypto.Crypto, crypto),
-              Effect.map((runtime): RuntimeService => ({
-                ...runtime,
-                handleReadTextFile: (handler) =>
-                  Effect.sync(() => {
-                    readTextFile = handler;
-                  }).pipe(Effect.andThen(runtime.handleReadTextFile(handler))),
-                handleWriteTextFile: (handler) =>
-                  Effect.sync(() => {
-                    writeTextFile = handler;
-                  }).pipe(Effect.andThen(runtime.handleWriteTextFile(handler))),
-              })),
-            ),
-          withProcess: (_stop, task) => task,
-          defaultModel: Effect.succeed(undefined),
-        });
-        const workspace = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-ag-restrictive-",
-        });
-        const outside = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-ag-restrictive-outside-",
-        });
-        yield* fileSystem.writeFileString(path.join(workspace, "existing.ts"), "existing");
-        const threadId = ThreadId.make(`thread-antigravity-restrictive-${policy.runtimeMode}`);
-        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
-          ...policy,
-          interactionMode: "default",
-          cwd: workspace,
-        });
-        const modelSelection = { instanceId, model: "gemini-test-low" } as const;
-        const session = yield* adapter.openSession({
-          threadId,
-          providerSessionId: ProviderSessionId.make(
-            `provider-session-antigravity-restrictive-${policy.runtimeMode}`,
-          ),
-          modelSelection,
-          runtimePolicy,
-        });
-        yield* session.ensureThread({ threadId, modelSelection, runtimePolicy });
-        if (readTextFile === undefined || writeTextFile === undefined) {
-          return yield* Effect.die("Antigravity sessions must serve client file requests");
-        }
-        const context = (method: string) => ({ requestId: `test-${method}`, method });
-        const read = yield* readTextFile(
-          { sessionId: "mock-session-1", path: path.join(workspace, "existing.ts") },
-          context("fs/read_text_file"),
-        );
-        assert.equal(read.content, "existing", name);
-        const written = path.join(workspace, "src", "edited.ts");
-        yield* writeTextFile(
-          { sessionId: "mock-session-1", path: written, content: "edited" },
-          context("fs/write_text_file"),
-        );
-        assert.equal(yield* fileSystem.readFileString(written), "edited", name);
-        const outsideWrite = yield* writeTextFile(
-          { sessionId: "mock-session-1", path: path.join(outside, "x.ts"), content: "x" },
-          context("fs/write_text_file"),
-        ).pipe(Effect.exit);
-        assert.isTrue(Exit.isFailure(outsideWrite), name);
-        assert.isFalse(yield* fileSystem.exists(path.join(outside, "x.ts")), name);
-      }
+      assert.isTrue(Exit.isSuccess(fromA));
     }).pipe(Effect.provide(layerSession), Effect.scoped),
   );
 });

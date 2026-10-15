@@ -28,6 +28,7 @@ export interface CodexAppServerClientOptions {
 }
 
 interface CodexAppServerClientRaw {
+  readonly termination?: CodexProtocol.CodexAppServerPatchedProtocol["termination"];
   readonly notifications: CodexProtocol.CodexAppServerPatchedProtocol["incomingNotifications"];
   readonly requests: CodexProtocol.CodexAppServerPatchedProtocol["incomingRequests"];
   readonly request: CodexProtocol.CodexAppServerPatchedProtocol["request"];
@@ -231,6 +232,7 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
 
   return CodexAppServerClient.of({
     raw: {
+      termination: transport.termination,
       notifications: transport.incomingNotifications,
       requests: transport.incomingRequests,
       request: transport.request,

@@ -1139,7 +1139,6 @@ describe("NodexYProvider", () => {
   test.each([
     ["resource-integrity-failure", "recovery_required"],
     ["identity-boundary-changed", "recovery_required"],
-    ["access-revoked", "unauthorized"],
   ] as const)("resets the DocumentSession on %s", async (reason, code) => {
     const adapter = new MemoryDocumentSyncAdapter();
     const document = new Y.Doc({ guid: "document-1" });

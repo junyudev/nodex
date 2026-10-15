@@ -113,6 +113,24 @@ function timelineProjection(itemCount: number): OrchestrationV2ThreadProjection 
 }
 
 describe("decideThreadResume", () => {
+  it.each([false, true])(
+    "refuses an oversized control envelope instead of bypassing the public budget (compact %s)",
+    (compactTurnItems) => {
+      const projection = timelineProjection(1);
+      const source = {
+        ...projection,
+        thread: { ...projection.thread, title: "x".repeat(2 * 1_048_576) },
+      };
+      expect(() =>
+        buildBoundedThreadStreamSnapshot({
+          snapshotSequence: 1,
+          projection: source,
+          compactTurnItems,
+        }),
+      ).toThrow("snapshot transport budget");
+      expect(source.thread.title.length).toBe(2 * 1_048_576);
+    },
+  );
   it("replays when the gap is zero", () => {
     expect(
       decideThreadResume({

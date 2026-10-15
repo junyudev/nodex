@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createBoundedOperationId } from "../../shared/operation-identity";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
@@ -16,19 +16,20 @@ import {
 } from "../project-application/ProjectSessionCommands";
 import { make } from "./WorkspaceAppTools";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread:a",
   turnId: "turn:a",
   rootThreadId: "thread:a",
   actorProjectId: "project:a",
   libraryId: "library:a",
   storeEpoch: "epoch:a",
-  frozenAtMs: Date.now(),
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: Date.now(),
 };
-const input = (name: string, args: Record<string, unknown>): AppToolInvocation => ({
+const input = (
+  name: string,
+  args: Record<string, unknown>,
+  isActive = () => true,
+): AppToolInvocation => ({
   name,
   arguments: args,
   caller: {
@@ -37,12 +38,11 @@ const input = (name: string, args: Record<string, unknown>): AppToolInvocation =
     callId: "call:a",
     hostId: "local",
     generation: 1,
-    isActive: () => true,
+    isActive,
   },
 });
 const setup = (
   workspace: Partial<ProjectWorkspaceService>,
-  readOnly = false,
   sessions: Partial<ProjectSessionCommands["Service"]> = {},
 ) =>
   make.pipe(
@@ -50,33 +50,39 @@ const setup = (
     Effect.provideService(ProjectSessionCommands, sessions as ProjectSessionCommands["Service"]),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
     Effect.provideService(CodexTurnAuthority, {
-      capture: () => Effect.succeed({ ...authority, readOnly }),
+      capture: () => Effect.succeed(authority),
     } as never),
   );
 
-it.effect("rejects read-only writes and caller identity arguments before mutation", () =>
-  Effect.gen(function* () {
-    let calls = 0;
-    const workspace = {
-      createSidebarSection: () =>
-        Effect.sync(() => {
-          calls++;
-          return {} as never;
-        }),
-    };
-    const readonly = yield* setup(workspace, true);
-    assert.deepStrictEqual(
-      (yield* readonly(input("create_sidebar_section", { name: "Research" }))).structuredContent,
-      { error: { code: "read_only_turn" } },
-    );
-    const writable = yield* setup(workspace);
-    assert.deepStrictEqual(
-      (yield* writable(input("create_sidebar_section", { name: "Research", projectId: "other" })))
-        .structuredContent,
-      { error: { code: "invalid_arguments" } },
-    );
-    assert.strictEqual(calls, 0);
-  }),
+it.effect(
+  "creates Sections through live execution identity and rejects forged or withdrawn calls",
+  () =>
+    Effect.gen(function* () {
+      let calls = 0;
+      const workspace = {
+        createSidebarSection: () =>
+          Effect.sync(() => {
+            calls++;
+            return { value: { sectionId: "created", name: "Research" }, apply: {} } as never;
+          }),
+      };
+      const execute = yield* setup(workspace);
+      assert.deepInclude(
+        (yield* execute(input("create_sidebar_section", { name: "Research" }))).structuredContent,
+        { section: { sectionId: "created", name: "Research" } },
+      );
+      assert.deepStrictEqual(
+        (yield* execute(input("create_sidebar_section", { name: "Research", projectId: "other" })))
+          .structuredContent,
+        { error: { code: "invalid_arguments" } },
+      );
+      assert.deepStrictEqual(
+        (yield* execute(input("create_sidebar_section", { name: "Withdrawn" }, () => false)))
+          .structuredContent,
+        { error: { code: "call_withdrawn" } },
+      );
+      assert.strictEqual(calls, 1);
+    }),
 );
 
 it.effect("keeps create identity stable for the same native call and carries its provenance", () =>
@@ -109,8 +115,6 @@ it.effect("keeps create identity stable for the same native call and carries its
         actor_project_id: "project:a",
         library_id: "library:a",
         store_epoch: "epoch:a",
-        scope: "project",
-        source: "project_turn",
       },
     });
     assert.strictEqual(yield* CoreApplicationAgent, null);
@@ -133,8 +137,9 @@ it.effect(
           }),
       };
       const execute = yield* setup(
-        { getThread: () => Effect.succeed({ sessionId: "self" } as never) },
-        false,
+        {
+          getThread: () => Effect.succeed({ sessionId: "self", executionHostId: "local" } as never),
+        },
         sessions,
       );
       const own = yield* execute(input("set_session_title", { title: "Renamed" }));
@@ -155,11 +160,11 @@ it.effect(
         "command.payload.sessionId": "self",
         "command.payload.input.title": "Renamed",
       });
-      const readonly = yield* setup({}, true, sessions);
-      assert.strictEqual(
-        (yield* readonly(input("set_session_title", { sessionId: "threadless", title: "Denied" })))
-          .isError,
-        true,
+      assert.deepStrictEqual(
+        (yield* execute(
+          input("set_session_title", { sessionId: "threadless", title: "Withdrawn" }, () => false),
+        )).structuredContent,
+        { error: { code: "call_withdrawn" } },
       );
       assert.strictEqual(
         (yield* execute(input("set_session_title", { title: "Denied", threadId: "forged" })))
@@ -227,11 +232,14 @@ it.effect(
           calls.push(name);
           return { value: { id: "draft", archived, pinned }, apply: {} } as never;
         });
-      const execute = yield* setup({}, false, {
-        archive: mutation("archive", true, false),
-        unarchive: mutation("restore", false, false),
-        setPinned: mutation("pin", false, true),
-      });
+      const execute = yield* setup(
+        {},
+        {
+          archive: mutation("archive", true, false),
+          unarchive: mutation("restore", false, false),
+          setPinned: mutation("pin", false, true),
+        },
+      );
       assert.strictEqual(
         (yield* execute(input("set_session_archived", { sessionId: "draft", archived: true })))
           .structuredContent?.archived,
@@ -248,16 +256,19 @@ it.effect(
         true,
       );
       assert.deepStrictEqual(calls, ["archive", "restore", "pin"]);
-      const failed = yield* setup({}, false, {
-        archive: () =>
-          Effect.fail(
-            new ProjectSessionCommandsError({
-              operation: "archive-conversation",
-              cause: new Error("offline"),
-              committedOperationId: "operation:retry",
-            }),
-          ),
-      });
+      const failed = yield* setup(
+        {},
+        {
+          archive: () =>
+            Effect.fail(
+              new ProjectSessionCommandsError({
+                operation: "archive-conversation",
+                cause: new Error("offline"),
+                committedOperationId: "operation:retry",
+              }),
+            ),
+        },
+      );
       const result = yield* failed(
         input("set_session_archived", { sessionId: "draft", archived: true }),
       );
@@ -272,7 +283,7 @@ it.effect(
 );
 
 it.effect(
-  "lists complete mixed placements without transcripts and carries observed order into authorized mutation",
+  "lists complete mixed placements without transcripts and carries observed order into execution-bound mutation",
   () =>
     Effect.gen(function* () {
       const reads: unknown[] = [];
@@ -314,8 +325,8 @@ it.effect(
             return { value: undefined, apply: {} } as never;
           }),
       };
-      const readonly = yield* setup(workspace, true);
-      const listed = yield* readonly(
+      const execute = yield* setup(workspace);
+      const listed = yield* execute(
         input("list_sidebar_section_items", { sectionId: "mixed", first: 2 }),
       );
       assert.deepEqual(listed.structuredContent, {
@@ -353,10 +364,7 @@ it.effect(
           { placementId: "project:p", expectedRevision: 2, expectedRankKey: 0 },
         ],
       };
-      assert.isTrue((yield* readonly(input("reorder_section", args))).isError);
-      assert.lengthOf(writes, 0);
-      const writable = yield* setup(workspace);
-      const result = yield* writable(input("reorder_section", args));
+      const result = yield* execute(input("reorder_section", args));
       assert.isUndefined(result.isError);
       assert.deepNestedInclude(writes[0], {
         "command.payload": args,
@@ -388,23 +396,20 @@ const builtinSections = () =>
 it.effect("discovers exact built-in Project and Session lanes through canonical Section IDs", () =>
   Effect.gen(function* () {
     const reads: unknown[] = [];
-    const execute = yield* setup(
-      {
-        listSidebarSections: builtinSections,
-        listBuiltinSidebarOrder: (lane, window) =>
-          Effect.sync(() => {
-            reads.push({ lane, window });
-            return {
-              items: [{ kind: "session", sessionId: "draft:a", title: "Draft" }],
-              orderRevision: "order:a",
-              nextCursor: "after:a",
-              hasMore: true,
-              projectionRevision: 1,
-            };
-          }),
-      },
-      true,
-    );
+    const execute = yield* setup({
+      listSidebarSections: builtinSections,
+      listBuiltinSidebarOrder: (lane, window) =>
+        Effect.sync(() => {
+          reads.push({ lane, window });
+          return {
+            items: [{ kind: "session", sessionId: "draft:a", title: "Draft" }],
+            orderRevision: "order:a",
+            nextCursor: "after:a",
+            hasMore: true,
+            projectionRevision: 1,
+          };
+        }),
+    });
     const result = yield* execute(
       input("list_sidebar_order", { sectionId: "canonical:pinned", itemKind: "session", first: 1 }),
     );

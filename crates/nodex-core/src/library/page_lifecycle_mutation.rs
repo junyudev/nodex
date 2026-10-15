@@ -120,12 +120,9 @@ pub(super) fn apply(
     request_hash: &str,
     mutation: &LibraryPageLifecycleMutation,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page lifecycle mutation requires a bound Project"))?;
-    require_project_in_library(connection, project_id, library_id)?;
+    if let Some(project_id) = context.project_id.as_ref() {
+        require_project_in_library(connection, &project_id.0, library_id)?;
+    }
     match mutation {
         LibraryPageLifecycleMutation::ArchivePage {
             page_id,
@@ -233,18 +230,18 @@ pub(super) fn delete_with_etag(
     page_id: &str,
     expected_etag: &str,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page deletion requires a bound Project"))?;
-    require_project_in_library(connection, project_id, library_id)?;
+    if let Some(project_id) = context.project_id.as_ref() {
+        require_project_in_library(connection, &project_id.0, library_id)?;
+    }
     let page = read_page(connection, library_id, page_id)?;
     authorize_page_write(connection, context, library_id, &page)?;
     let current_etag = super::page_projection::mint_page_shell_etag(
         connection,
         library_id,
-        Some(project_id),
+        context
+            .project_id
+            .as_ref()
+            .map(|project_id| project_id.0.as_str()),
         store_epoch,
         page_id,
     )?;
@@ -514,7 +511,6 @@ fn create_page(
             let persisted = persist_yjs_genesis_with_local_commit(
                 connection,
                 PersistYjsGenesis {
-                    file_access_context: Some(context),
                     authority: &authority,
                     actor_project_id: Some(project_id),
                     materialization: &prepared.materialization,
@@ -1288,7 +1284,7 @@ fn transition_lifecycle(
     restore: bool,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let page = read_page(connection, library_id, page_id)?;
-    authorize_page_write(connection, context, library_id, &page)?;
+    super::history::require_page_lifecycle_read_access(connection, library_id, &page.page_id)?;
     let membership = read_active_membership(connection, page_id)?;
     validate_parent_membership(&page, membership.as_ref())?;
     let (from, to, operation_kind, state) = if restore {
@@ -1598,14 +1594,10 @@ fn delete_page(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            context,
-                            actor_project_id: Some(
-                                context
-                                    .project_id
-                                    .as_ref()
-                                    .map(|project_id| project_id.0.as_str())
-                                    .ok_or_else(|| corrupt("Page delete lost its actor Project"))?,
-                            ),
+                            actor_project_id: context
+                                .project_id
+                                .as_ref()
+                                .map(|project_id| project_id.0.as_str()),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -2076,16 +2068,10 @@ fn restore_page(
                     Some(persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            context,
-                            actor_project_id: Some(
-                                context
-                                    .project_id
-                                    .as_ref()
-                                    .map(|project_id| project_id.0.as_str())
-                                    .ok_or_else(|| {
-                                        corrupt("Page restore lost its actor Project")
-                                    })?,
-                            ),
+                            actor_project_id: context
+                                .project_id
+                                .as_ref()
+                                .map(|project_id| project_id.0.as_str()),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -3150,54 +3136,21 @@ fn validate_parent_membership(
 
 fn authorize_page_write(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     page: &PageAuthority,
 ) -> Result<(), StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page lifecycle mutation requires a bound Project"))?;
-    super::history::require_page_write_access(connection, library_id, project_id, &page.page_id)
+    super::history::require_page_write_access(connection, library_id, &page.page_id)
 }
 
 fn authorize_page_restore(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     page: &PageAuthority,
-    evidence: &LibraryPageLifecycleDeleteEvidence,
+    _evidence: &LibraryPageLifecycleDeleteEvidence,
 ) -> Result<(), StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page restore requires a bound Project"))?;
-    if super::page_grant_ownership_proof(connection, project_id, &page.page_id, true)?.is_some() {
-        return Ok(());
-    }
-    let Some(membership) = evidence.membership.as_ref() else {
-        return Err(not_found("Page is not available to the bound Project"));
-    };
-    let database_access = connection
-        .query_row(
-            "SELECT 1 FROM projects project \
-             WHERE project.id = ?1 AND project.library_id = ?2 AND project.lifecycle = 'active' \
-               AND (project.database_block_id = ?3 OR EXISTS( \
-                 SELECT 1 FROM project_resource_grants grant_row \
-                 WHERE grant_row.project_id = project.id AND grant_row.root_kind = 'database' \
-                   AND grant_row.root_id = ?3 AND grant_row.access = 'read_write' \
-                   AND grant_row.lifecycle = 'active' \
-               ))",
-            params![project_id, library_id, membership.database_id],
-            |_| Ok(()),
-        )
-        .optional()?;
-    if database_access.is_some() {
-        return Ok(());
-    }
-    Err(not_found("Page is not available to the bound Project"))
+    super::history::require_page_lifecycle_read_access(connection, library_id, &page.page_id)
 }
 
 fn synchronize_page_lifecycle(
@@ -3328,13 +3281,10 @@ fn seal_page_lifecycle(
             page_file_entries: Vec::new(),
             file_revisions: BTreeMap::new(),
             file_mutation: Default::default(),
-            project_id: Some(
-                context
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.0.clone())
-                    .ok_or_else(|| corrupt("Page lifecycle commit lost its actor Project"))?,
-            ),
+            project_id: context
+                .project_id
+                .as_ref()
+                .map(|project_id| project_id.0.clone()),
             operation_kind,
             change_kind: "library.changed",
             did_mutate: true,
@@ -3438,10 +3388,6 @@ fn conflict(message: &str) -> StoreError {
 
 fn unauthorized(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Unauthorized, message, false)
-}
-
-fn not_found(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::NotFound, message, false)
 }
 
 fn corrupt(message: &str) -> StoreError {

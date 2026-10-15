@@ -18,11 +18,10 @@ function makeAutomation(id: string): CodexScheduledAutomation {
     id,
     definitionRevision: 1,
     projectId: null,
-    targetSessionId: null,
     notificationPolicy: null,
     kind: "cron",
     status: "ACTIVE",
-    targetThreadId: null,
+    targetSessionId: null,
     name: id,
     prompt: "Run.",
     rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
@@ -40,9 +39,9 @@ function makeAutomation(id: string): CodexScheduledAutomation {
   };
 }
 
-function makeInboxItem(threadId: string): CodexAutomationInboxItem {
+function makeInboxItem(runId: string): CodexAutomationInboxItem {
   return {
-    id: threadId,
+    id: runId,
     automationId: "daily-report",
     automationName: "Daily report",
     title: "Daily report",
@@ -51,7 +50,8 @@ function makeInboxItem(threadId: string): CodexAutomationInboxItem {
     archivedUserMessage: null,
     archivedReason: null,
     sourceCwd: "/tmp/codex",
-    threadId,
+    runId,
+    sessionId: "session:shared",
     readAt: null,
     createdAt: 1,
     status: "PENDING_REVIEW",
@@ -118,7 +118,7 @@ describe("scheduled automation run update invalidation", () => {
               automationIds: ["daily-report"],
               unreadRuns: inboxItems.map((item) => ({
                 automationId: item.automationId,
-                threadId: item.threadId,
+                runId: item.runId,
               })),
             },
           };
@@ -182,7 +182,8 @@ describe("scheduled automation run update invalidation", () => {
       for (const listener of [...runUpdateListeners]) {
         listener({
           automationId: "daily-report",
-          threadId: "thread-run-2",
+          runId: "thread-run-2",
+          sessionId: "session:shared",
           reason: "turn-completed",
         });
       }

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -17,11 +17,10 @@ import {
   createAgentSmokeDraft,
   invokeIpc,
   requireRecord,
-  sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
+import { waitForDraftScene } from "./support/new-chat-draft";
 
 const outputRecords = (value: unknown) =>
   collectRecords(value).flatMap((record) => {
@@ -35,7 +34,26 @@ const outputRecords = (value: unknown) =>
 const unwrap =
   'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };';
 
-test("projectless native tools preserve Library authority and Plan Mode through content and Automation operations", async () => {
+const waitForCompletedSession = async (page: Page, sessionId: string) => {
+  await expect
+    .poll(
+      async () => {
+        const conversation = requireRecord(
+          await invokeIpc(page, "agent-runtime:session:control", { sessionId }),
+          "Session control",
+        );
+        const snapshot = requireRecord(conversation.snapshot, "Session snapshot");
+        const projection = requireRecord(snapshot.projection, "Session projection");
+        return Array.isArray(projection.runs)
+          ? requireRecord(projection.runs.at(-1), "Latest Run").status
+          : null;
+      },
+      { timeout: 60_000 },
+    )
+    .toBe("completed");
+};
+
+test("projectless agents use Profile content and Automation tools in both interaction modes", async () => {
   test.setTimeout(180_000);
   const pageId = createUuidV7();
   let viewId = "";
@@ -79,9 +97,9 @@ test("projectless native tools preserve Library authority and Plan Mode through 
                   ]
                 : [
                     ...common,
-                    `text({deniedWrite:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Forbidden Plan write"}}))});`,
+                    `text({planWrite:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Planned content update"}}))});`,
                     `text({automationRead:unwrap(await tools.mcp__nodex_app__automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
-                    `text({deniedAutomation:unwrap(await tools.mcp__nodex_app__automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
+                    `text({deletedAutomation:unwrap(await tools.mcp__nodex_app__automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
                   ];
             return responses.stream([
               responses.created(callId),
@@ -97,8 +115,8 @@ test("projectless native tools preserve Library authority and Plan Mode through 
           if (phase === "write") {
             expect(result("updated")).toHaveProperty("data");
             expect(result("created")).toHaveProperty("data.pages");
-            expect(result("sql")).toEqual({ error: { code: "project_context_required" } });
-            expect(result("schema")).toEqual({ error: { code: "project_context_required" } });
+            expect(result("sql")).toHaveProperty("rows");
+            expect(result("schema")).toHaveProperty("tables");
             expect(result("session")).toMatchObject({
               projectId: null,
               executionProjectId: null,
@@ -118,10 +136,8 @@ test("projectless native tools preserve Library authority and Plan Mode through 
             automationId = saved.id as string;
             automationRevision = saved.definitionRevision as number;
           } else {
-            expect(result("deniedWrite")).toMatchObject({
-              error: { code: "authorization_denied" },
-            });
-            expect(result("deniedAutomation")).toEqual({ error: { code: "read_only_turn" } });
+            expect(result("planWrite")).toHaveProperty("data");
+            expect(result("deletedAutomation")).not.toHaveProperty("error");
             expect(result("automationRead")).toMatchObject({
               item: { id: automationId, projectId: null },
             });
@@ -140,7 +156,7 @@ test("projectless native tools preserve Library authority and Plan Mode through 
     },
     async (model) => {
       const harness = await ElectronScenarioHarness.create({
-        label: "native-projectless-authority",
+        label: "native-projectless-content",
         cwd: process.cwd(),
         prepareAgentRuntime: false,
         environment: {
@@ -158,7 +174,6 @@ test("projectless native tools preserve Library authority and Plan Mode through 
       let threadId: string | null = null;
       try {
         const page = await harness.launch();
-        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const seedProject = await createAgentSmokeDraft(
           page,
           harness.profile.initialProjectsDirectory,
@@ -201,29 +216,54 @@ test("projectless native tools preserve Library authority and Plan Mode through 
             return callerSession.id;
           })
           .not.toBe("");
-        await invokeIpc(page, "codex:permission:mode:set", null, "full-access");
-        threadId = await sendAgentPrompt(page, callerSession.id, "PROJECTLESS_write");
+        const scene = await waitForDraftScene(page, callerSession.id);
+        await setAgentExecutionProfile(page);
+        const composer = scene.locator('[data-codex-composer="true"]:visible');
+        await composer.fill("PROJECTLESS_write");
+        await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+        await expect
+          .poll(async () => {
+            const session = requireRecord(
+              await invokeIpc(page, "project-sessions:get", callerSession.id),
+              "Product Session",
+            );
+            const execution =
+              session.executionRef && typeof session.executionRef === "object"
+                ? requireRecord(session.executionRef, "Execution reference")
+                : null;
+            threadId = typeof execution?.threadId === "string" ? execution.threadId : null;
+            return threadId;
+          })
+          .toBeTruthy();
         await waitForFinalMarker(page, "PROJECTLESS_write_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
-        const composer = page.locator('[data-codex-composer="true"]:visible');
+        await waitForCompletedSession(page, callerSession.id);
         await composer.focus();
         await composer.press("Shift+Tab");
         await expect(page.getByLabel("Plan", { exact: true })).toBeVisible();
         await composer.fill("PROJECTLESS_plan");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "PROJECTLESS_plan_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
-        expect((await seed.readPage(seedProject.projectId, pageId)).title).toBe(
-          "Projectless content",
+        await waitForCompletedSession(page, callerSession.id);
+        expect((await seed.readPage(seedProject.projectId, pageId)).descriptionPreview).toContain(
+          "Planned content update",
         );
       } catch (error) {
-        const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
+        const presented = await harness.page
+          .locator("body")
+          .innerText()
+          .catch(() => "");
+        const product = callerSession.id
+          ? await invokeIpc(harness.page, "project-sessions:get", callerSession.id).catch(
               () => null,
             )
           : null;
+        const snapshot = threadId
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: callerSession.id,
+            }).catch(() => null)
+          : null;
         throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-36_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
+          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify({ product, snapshot }).slice(-36_000)}\n${presented.slice(-16_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
           { cause: error },
         );
       } finally {

@@ -28,7 +28,6 @@ import {
   RESTORE_PANEL_ICON_PREFIX,
   clickMenuItem,
   discardSideChatCalls,
-  emitCodexEvent,
   executeCommandPaletteCommand,
   getBottomPanelContentSizer,
   getConnectedThreadStagePropsByThreadId,
@@ -40,10 +39,13 @@ import {
   getThreadRow,
   getWorkbenchTabProjectionDeleteTabIds,
   hydrateSelectedSubagentCalls,
-  refreshSelectedSubagentAuthorityCalls,
   installReducedMotionMatchMediaForTest,
   installTerminalEventApiMock,
   invokeCalls,
+  agentRuntimeLaunchCalls,
+  rendererCommandPayload,
+  mockInvokeImpl,
+  setMockInvokeImpl,
   moveSidebarPointer,
   openBottomPanel,
   openPanelMenu,
@@ -52,22 +54,16 @@ import {
   releasePointerDrag,
   renderWorkbench,
   requestPageCreateFromContextMock,
-  setComposerIntentCalls,
-  setHydrateSelectedSubagentImpl,
-  setRefreshSelectedSubagentAuthorityImpl,
   setWindowInnerWidthForTest,
   sideChatConversations,
   startSideChatCalls,
   setInvokeCalls,
-  setSideChatConversationProjectId,
-  setStartSideChatError,
   waitForLastThreadStageActions,
   waitForThreadRow,
 } from "./workbench-testkit/workbench-shell-harness";
 
 describe("workbench session shell / layout-panel-actions", () => {
   test("settles a failed side chat open into a closable retry surface", async () => {
-    setStartSideChatError(new Error("Side chat fork timed out"));
     const session = makeAttachedSession({
       id: "session:alpha:side-chat-failure",
       projectId: "alpha",
@@ -82,19 +78,31 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Core Session transport");
+    let failure = true;
+    setMockInvokeImpl(async (channel, ...args) => {
+      if (channel === "project-sessions:create" && failure)
+        throw new Error("Session creation timed out");
+      return base(channel, ...args);
+    });
     const menu = await openPanelMenu(screen, "Open side panel tab");
     await clickMenuItem(menu, "Side chat");
 
     expect(textContent(await screen.findByRole("alert"))).toContain(
       "Side chat could not be opened",
     );
-    expect(screen.getByText("Side chat fork timed out")).toBeTruthy();
-    setStartSideChatError(null);
+    expect(screen.getByText("Session creation timed out")).toBeTruthy();
+    failure = false;
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(startSideChatCalls).toHaveLength(2));
+    await waitFor(() =>
+      expect(invokeCalls.filter(([channel]) => channel === "project-sessions:create")).toHaveLength(
+        2,
+      ),
+    );
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
   });
@@ -839,7 +847,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "db-tab",
           kind: "db_view",
           title: "DB View",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "terminal-tab",
@@ -948,7 +956,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           kind: "page_stage",
           title: "Card One",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -997,7 +1005,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           kind: "page_stage",
           title: "Card One",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1060,14 +1068,14 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "db-tab",
           kind: "db_view",
           title: "DB View",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "page-stage-tab",
           kind: "page_stage",
           title: "Card One",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -2144,13 +2152,12 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     await clickMenuItem(menu, "Side chat");
     await settleAsyncRender();
-    expect(startSideChatCalls).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
-    const sideChatInput = startSideChatCalls[0] as Record<string, unknown>;
-    expect("projectId" in sideChatInput).toBe(false);
-    expect(sideChatInput.parentNavigationPath).toBe(
-      "session:session:projectless:tools/thread:thread-projectless-tools",
+    const created = rendererCommandPayload(
+      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
     );
+    expect(created?.input).toMatchObject({ projectId: null, initialPageIds: [] });
+    expect(agentRuntimeLaunchCalls).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Close Side chat tab" })).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Close Side chat tab" }));
       await Promise.resolve();
@@ -2380,7 +2387,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       title: "Planning",
       kind: "db_view",
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         target: { kind: "database-view", databaseViewId: "view:planning" },
       },
     });
@@ -2389,7 +2396,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       title: "Other",
       kind: "db_view",
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         target: { kind: "database-view", databaseViewId: "view:other" },
       },
     });
@@ -2695,21 +2702,21 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     expect(screen.getByRole("tab", { name: "Side chat" }) !== null).toBe(true);
     expect(screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]')).toBe(null);
-    expect(String(startSideChatCalls.length)).toBe("1");
-    expect(JSON.stringify(startSideChatCalls[0]).includes('"parentThreadId":"thread-alpha"')).toBe(
-      true,
+    expect(invokeCalls.filter(([channel]) => channel === "project-sessions:create")).toHaveLength(
+      1,
     );
+    expect(agentRuntimeLaunchCalls).toHaveLength(0);
     expect(invokeCalls.filter((call) => call[0] === "window-session-view:tab-create")).toHaveLength(
       durableTabCreateCount,
     );
-    expect(textContent(screen.container).includes("Thread:side-thread-1")).toBe(true);
+    expect(screen.getByRole("textbox", { name: "Prompt" })).toBeTruthy();
     const stageProps = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
       .__lastConnectedThreadStageProps;
     expect(JSON.stringify(stageProps?.sideChatContext ?? null)).toBe(
       '{"parentThreadId":"thread-alpha","tabTitle":"Side chat"}',
     );
     expect(typeof stageProps?.composerScopeIdentity).toBe("string");
-    expect(String(stageProps?.composerScopeIdentity).startsWith("side-chat:")).toBe(true);
+    expect(String(stageProps?.composerScopeIdentity).startsWith("side-chat-session:")).toBe(true);
     expect(stageProps?.isQueueingEnabled).toBe(false);
     expect(stageProps?.composerEnterBehavior).toBe("cmdIfMultiline");
     expect(Boolean(stageProps?.summaryPanelMounted)).toBe(false);
@@ -2720,88 +2727,166 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
-    expect(String(discardSideChatCalls.length)).toBe("1");
-    expect(discardSideChatCalls[0] ?? "").toBe("side-thread-1");
-  });
-
-  test("ready Side chat keeps its explicit projectless conversation context after parent rehome", async () => {
-    setSideChatConversationProjectId(null);
-    const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession()] },
-    });
-    await settleAsyncRender();
-    await openBottomPanel(screen);
-
-    const menu = await openPanelMenu(screen, "Open bottom panel tab");
-    await clickMenuItem(menu, "Side chat");
-
-    await waitFor(() => {
-      expect(getConnectedThreadStagePropsByThreadId("side-thread-1")?.projectId).toBe(null);
-    });
-    expect(getConnectedThreadStagePropsByThreadId("side-thread-1")?.projectWorkspacePath).toBe(
-      null,
+    expect(discardSideChatCalls).toHaveLength(0);
+    expect(invokeCalls.filter(([channel]) => channel === "project-sessions:delete")).toHaveLength(
+      0,
     );
   });
 
-  test("selected-text side chat drafts prefill the side composer without submitting a prompt", async () => {
-    renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession()] },
+  test("projectless side chat creates its own projectless Session and draft", async () => {
+    const source = makeAttachedSession({
+      id: "source:projectless",
+      projectId: null,
+      threadId: "source-thread",
+      tabs: [],
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const actions = getLastThreadStageActions();
-    const openSideChat = actions.onOpenSideChat as
-      | ((input?: { kind: "draft"; draftPrompt: string }) => Promise<void>)
-      | undefined;
-    expect(typeof openSideChat).toBe("function");
-
+    const screen = renderWorkbench({
+      projects: [],
+      sessionsByProject: {},
+      projectlessSessions: [source],
+      initialSelectedSessionId: source.id,
+    });
+    const actions = await waitForLastThreadStageActions();
     await act(async () => {
-      await openSideChat?.({
-        kind: "draft",
-        draftPrompt: "Use this selected paragraph",
-      });
-      await Promise.resolve();
+      await (
+        actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"]
+      )?.({ kind: "draft", draftPrompt: "Independent context" });
     });
-    await settleAsyncRender();
-
-    const startInput = startSideChatCalls[0] as
-      | { prompt?: unknown; promptInput?: unknown }
-      | undefined;
-    expect(String(startSideChatCalls.length)).toBe("1");
-    expect(Boolean(startInput && "prompt" in startInput)).toBe(false);
-    expect(Boolean(startInput && "promptInput" in startInput)).toBe(false);
-    expect(String(setComposerIntentCalls.length)).toBe("1");
-    expect(setComposerIntentCalls[0]?.[0]).toBe("side-thread-1");
-    expect((setComposerIntentCalls[0]?.[1] as { prompt?: string } | undefined)?.prompt).toBe(
-      "Use this selected paragraph",
+    await screen.findByDisplayValue("Independent context");
+    const created = rendererCommandPayload(
+      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
     );
-    expect(
-      typeof (setComposerIntentCalls[0]?.[1] as { focusNonce?: number } | undefined)?.focusNonce,
-    ).toBe("number");
+    expect(created?.sessionId).not.toBe(source.id);
+    expect(created?.input).toMatchObject({ projectId: null, initialPageIds: [] });
+    expect(agentRuntimeLaunchCalls).toHaveLength(0);
   });
 
-  test("opens interactive children in separate hydrated tabs", async () => {
+  test.each(["runtime", "native-import"] as const)(
+    "selected-text side chat from %s starts only after Send and keeps its product Session",
+    async (sourceKind) => {
+      const browserTab = makeSessionTab({
+        id: "selection-source:browser",
+        sessionId: "selection-source",
+        kind: "browser",
+        title: "Browser",
+        config: { projectId: "alpha" },
+      });
+      const source = makeAttachedSession({
+        id: "selection-source",
+        tabs: [browserTab],
+        rightLayout: makePanelLayout([browserTab.id], browserTab.id),
+      });
+      if (sourceKind === "native-import") {
+        source.executionRef = null;
+        source.thread = {
+          ...source.thread!,
+          backendBinding: { kind: "claude", instanceConfigId: "native-claude" },
+        };
+      }
+      const screen = renderWorkbench({
+        sessionsByProject: { alpha: [source] },
+        initialSelectedSessionId: source.id,
+      });
+      if (sourceKind === "native-import")
+        await pointerActivate(await waitForThreadRow(screen.container, source.displayTitle));
+      const actions = await waitForLastThreadStageActions();
+      await act(async () => {
+        await (
+          actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"]
+        )?.({ kind: "draft", draftPrompt: "Use this selected paragraph" });
+      });
+      await screen.findByDisplayValue("Use this selected paragraph");
+      const created = rendererCommandPayload(
+        invokeCalls.find(([channel]) => channel === "project-sessions:create"),
+      );
+      expect(created?.sessionId).not.toBe(source.id);
+      expect(agentRuntimeLaunchCalls).toHaveLength(0);
+      expect(startSideChatCalls).toHaveLength(0);
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+      ).toHaveLength(0);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(agentRuntimeLaunchCalls).toHaveLength(1));
+      expect(agentRuntimeLaunchCalls[0]).toMatchObject({
+        sessionId: created?.sessionId,
+        projectId: "alpha",
+        runInTarget: "localProject",
+        message: { text: "Use this selected paragraph" },
+      });
+      expect(screen.queryByRole("tab", { name: "Side chat" })).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("tab", { name: "Browser" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("tab", { name: "Side chat" }));
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        const sideChat = getConnectedThreadStagePropsByThreadId(
+          `engine:${agentRuntimeLaunchCalls[0]!.sessionId}`,
+        );
+        expect(sideChat?.isNewThreadTab).toBe(false);
+      });
+      expect(agentRuntimeLaunchCalls).toHaveLength(1);
+    },
+  );
+
+  test("an explicit side-chat prompt launches its new Session without sending the parent history", async () => {
+    const source = makeAttachedSession({ id: "explicit-side-source", tabs: [] });
     const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession({ rightCollapsed: true })] },
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: source.id,
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
-    setHydrateSelectedSubagentImpl(async (input) => ({
-      ...input,
-      revision: 1,
-      fidelity: "attachedSparse",
-      checkpoint: null,
-      canInteract: true,
-      outcome: "ready",
-      errorMessage: null,
-    }));
-    const openThread = getLastThreadStageActions()
-      .onOpenThread as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenThread"];
-    expect(openThread).toBeDefined();
+    const actions = await waitForLastThreadStageActions();
+    await act(async () => {
+      await (
+        actions.onOpenSideChat as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenSideChat"]
+      )?.({ prompt: "Answer this separate question" });
+    });
+    await waitFor(() => expect(agentRuntimeLaunchCalls).toHaveLength(1));
+    const created = rendererCommandPayload(
+      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
+    );
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
+      sessionId: created?.sessionId,
+      projectId: "alpha",
+      message: { text: "Answer this separate question" },
+    });
+    expect(startSideChatCalls).toHaveLength(0);
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+    ).toHaveLength(0);
+    expect(screen.getByRole("tab", { name: "Side chat" })).toBeTruthy();
+  });
+
+  test("opens each interactive child in its owning root detail without native hydration", async () => {
+    const root = makeAttachedSession({
+      id: "root-session",
+      threadId: "root-thread",
+      tabs: [],
+      rightCollapsed: true,
+    });
+    for (const id of ["interactive-a", "interactive-b"])
+      sideChatConversations[id] = {
+        threadId: id,
+        source: { parentThreadId: "root-thread" },
+        threadName: id,
+      };
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [root] },
+      initialSelectedSessionId: root.id,
+    });
+    const actions = await waitForLastThreadStageActions();
+    const open =
+      actions.onOpenThread as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenThread"];
     for (const id of ["interactive-a", "interactive-b"]) {
       await act(async () => {
-        await openThread?.(id, {
+        await open(id, {
+          runtimeSessionId: root.id,
           subagent: {
             conversationId: id,
             displayName: id,
@@ -2813,627 +2898,82 @@ describe("workbench session shell / layout-panel-actions", () => {
             canInteract: true,
           },
         });
-        await settleAsyncRender();
       });
+      await waitFor(() =>
+        expect(getConnectedThreadStagePropsByThreadId(id)?.backgroundAgentCanInteract).toBe(true),
+      );
     }
-    expect(getPanelTabById(screen.container, "background-agent:interactive-a")).toBeDefined();
     expect(
-      getPanelTabById(screen.container, "background-agent:interactive-b").getAttribute(
-        "aria-selected",
-      ),
+      getPanelTabById(screen.container, "subagents:root-thread").getAttribute("aria-selected"),
     ).toBe("true");
-    expect(screen.container.querySelector("[data-subagents-side-panel-tab]")).toBeNull();
+    expect(hydrateSelectedSubagentCalls).toHaveLength(0);
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+    ).toHaveLength(0);
   });
 
-  test("routes read-only subagent selection through the root overview tab", async () => {
-    sideChatConversations["thread-child"] = {
-      threadId: "thread-child",
-      projectId: "alpha",
-      source: {
-        parentThreadId: "thread-alpha",
-        agentNickname: "Scout",
-      },
-      threadName: "Scout",
-      threadPreview: "Checking the repo",
-      modelProvider: "openai",
-      cwd: "/Users/asc/repo/nodex",
-      statusType: "idle",
-      statusActiveFlags: [],
-      archived: false,
-      createdAt: 1,
-      updatedAt: 1,
-      linkedAt: "",
-      resumeState: "resumed",
-      turns: [],
-      requests: [],
-      pendingSteers: [],
-      queuedFollowUps: {
-        status: "ready",
-        ledgerRevision: 0,
-        projectionRevision: 0,
-        entries: [],
-        inFlightFollowUpId: null,
-        editingFollowUpId: null,
-        error: null,
-      },
-      backgroundTerminalRows: [],
-      capabilityFlags: {
-        canEditLastUserTurn: false,
-        canForkFromTurn: false,
-        canSearch: true,
-        canCollapseTurns: true,
-      },
-      ephemeral: true,
-    };
-    sideChatConversations["thread-legacy"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-legacy",
-      threadName: "Legacy worker",
-      source: { parentThreadId: "thread-alpha" },
-    };
-    sideChatConversations["thread-child-2"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-child-2",
-      threadName: "Reviewer",
-      source: { parentThreadId: "thread-alpha" },
-    };
-
+  test("a late child inspection cannot replace a newer selected child", async () => {
+    const root = makeAttachedSession({ id: "latest-root", threadId: "root-thread", tabs: [] });
+    for (const id of ["late-child", "latest-child"])
+      sideChatConversations[id] = {
+        threadId: id,
+        source: { parentThreadId: "root-thread" },
+        threadName: id,
+      };
     const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession({ rightCollapsed: true })] },
+      sessionsByProject: { alpha: [root] },
+      initialSelectedSessionId: root.id,
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const actions = getLastThreadStageActions();
-    const openThread = actions.onOpenThread as
-      | ((
-          threadId: string,
-          context?: {
-            subagent?: {
-              conversationId: string;
-              displayName: string;
-              agentRole: string | null;
-              spawnModel: string | null;
-              status: "active" | "waiting" | "done";
-              statusSummary: string | null;
-              showInlineActivity?: boolean;
-              diffStats: { linesAdded: number; linesRemoved: number } | null;
-            };
-          },
-        ) => Promise<void>)
-      | undefined;
-    expect(typeof openThread).toBe("function");
-    if (!openThread) return;
-
-    let releaseSelectedHydration: () => void = () => undefined;
-    const selectedHydrationGate = new Promise<void>((resolve) => {
-      releaseSelectedHydration = resolve;
+    const actions = await waitForLastThreadStageActions();
+    const open =
+      actions.onOpenThread as import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onOpenThread"];
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Runtime metadata transport");
+    let release = () => {};
+    let entered = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    setHydrateSelectedSubagentImpl(async (input) => {
-      if (input.threadId === "thread-child") await selectedHydrationGate;
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 3,
-        fidelity: "attachedSparse",
-        checkpoint: `checkpoint:${input.threadId}`,
-        canInteract: input.threadId === "thread-child" || input.threadId === "thread-child-2",
-        outcome: "ready",
-        errorMessage: null,
-      };
-    });
-    setInvokeCalls([]);
-    let childOpen: Promise<void> | null = null;
-    await act(async () => {
-      childOpen = openThread("thread-child", {
-        subagent: {
-          conversationId: "thread-child",
-          displayName: "Scout",
-          agentRole: "explorer",
-          spawnModel: "gpt-5.5",
-          status: "active",
-          statusSummary: "checking files",
-          showInlineActivity: true,
-          diffStats: { linesAdded: 2, linesRemoved: 1 },
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    const pendingDetail = screen.container.querySelector(
-      '[data-subagents-side-panel-tab="subagents:thread-alpha"]',
-    );
-    expect(pendingDetail?.getAttribute("data-subagents-selected-hydration")).toBe("pending");
-    expect(getConnectedThreadStagePropsByThreadId("thread-child")).toBeUndefined();
-
-    await act(async () => {
-      emitCodexEvent({ type: "threadDeleted", hostId: "remote", threadId: "thread-child" });
-      emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "unrelated-child" });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      screen.container
-        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
-        ?.getAttribute("data-subagents-selected-hydration"),
-    ).toBe("pending");
-
-    await act(async () => {
-      releaseSelectedHydration();
-      await childOpen;
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const tab = getPanelTabById(screen.container, "subagents:thread-alpha");
-    expect(tab.textContent?.includes("Subagents")).toBe(true);
-    expect(tab.getAttribute("aria-selected")).toBe("true");
-    expect(tab.querySelector('[data-subagent-glyph-icon="true"]') !== null).toBe(true);
-    expect(
-      screen.container.querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]') !==
-        null,
-    ).toBe(true);
-    expect(
-      screen.container
-        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
-        ?.getAttribute("data-subagents-selected-hydration"),
-    ).toBe("ready");
-    expect(textContent(screen.container).includes("Thread:thread-child")).toBe(true);
-    const detailStageProps = (
-      globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> }
-    ).__lastConnectedThreadStageProps;
-    expect(detailStageProps?.backgroundAgentDetail).toBe(true);
-    expect(detailStageProps?.backgroundAgentCanInteract).toBe(true);
-    expect(detailStageProps?.composerScopeIdentity).toBe(
-      "background-agent:subagents:thread-alpha:detail:thread-child",
-    );
-    const globalHeaderTitles = within(screen.getByTestId("workbench-global-header")).getAllByTestId(
-      "thread-stage-title",
-    );
-    expect(globalHeaderTitles).toHaveLength(1);
-    expect(globalHeaderTitles[0]?.textContent).toBe("Alpha thread");
-    expect(invokeCalls.some((call) => call[0] === "codex:thread:ensure-session")).toBe(false);
-
-    await act(async () => {
-      await openThread("thread-child-2", {
-        subagent: {
-          conversationId: "thread-child-2",
-          displayName: "Reviewer",
-          agentRole: "reviewer",
-          spawnModel: null,
-          status: "done",
-          statusSummary: null,
-          showInlineActivity: true,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(
-      screen
-        .getAllByRole("tab")
-        .filter((candidate) => candidate.textContent?.includes("Subagents")),
-    ).toHaveLength(1);
-    expect(textContent(screen.container).includes("Thread:thread-child-2")).toBe(true);
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-child-2")?.backgroundAgentCanInteract,
-    ).toBe(true);
-    expect(hydrateSelectedSubagentCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadId: "thread-child", expectedHostId: "local" },
-      { rootThreadId: "thread-alpha", threadId: "thread-child-2", expectedHostId: "local" },
-    ]);
-
-    await act(async () => {
-      emitCodexEvent({ type: "threadDeleted", hostId: "remote", threadId: "thread-child-2" });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-child-2")?.backgroundAgentCanInteract,
-    ).toBe(true);
-
-    await act(async () => {
-      emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "thread-child-2" });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
-    ).toBeTruthy();
-    expect(getConnectedThreadStagePropsByThreadId("thread-child-2")).toBeUndefined();
-
-    await act(async () => {
-      await openThread("thread-legacy", {
-        subagent: {
-          conversationId: "thread-legacy",
-          displayName: "Legacy worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "done",
-          statusSummary: null,
-          showInlineActivity: false,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(getPanelTabById(screen.container, "subagents:thread-alpha")).toBeTruthy();
-    expect(hydrateSelectedSubagentCalls).toEqual([
-      { rootThreadId: "thread-alpha", threadId: "thread-child", expectedHostId: "local" },
-      { rootThreadId: "thread-alpha", threadId: "thread-child-2", expectedHostId: "local" },
-      { rootThreadId: "thread-alpha", threadId: "thread-legacy", expectedHostId: "local" },
-    ]);
-
-    sideChatConversations["thread-stale"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-stale",
-      threadName: "Stale worker",
-    };
-    sideChatConversations["thread-latest"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-latest",
-      threadName: "Latest worker",
-    };
-    let releaseStaleHydrate: () => void = () => undefined;
-    setHydrateSelectedSubagentImpl(async (input) => {
-      if (input.threadId === "thread-stale") {
-        await new Promise<void>((resolve) => {
-          releaseStaleHydrate = () => resolve();
-        });
-        return {
-          rootThreadId: input.rootThreadId,
-          threadId: input.threadId,
-          revision: 4,
-          fidelity: "metadata",
-          checkpoint: null,
-          canInteract: false,
-          outcome: "unavailable",
-          errorMessage: "Stale worker is unavailable",
-        };
+    setMockInvokeImpl(async (channel, ...args) => {
+      if (
+        channel === "agent-runtime:session:inspect" &&
+        (args[0] as { threadId: string }).threadId === "late-child"
+      ) {
+        entered = true;
+        await gate;
       }
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 5,
-        fidelity: "attachedSparse",
-        checkpoint: "latest-checkpoint",
-        canInteract: true,
-        outcome: "ready",
-        errorMessage: null,
-      };
+      return base(channel, ...args);
     });
-
-    let staleOpen: Promise<void> | null = null;
-    await act(async () => {
-      staleOpen = openThread("thread-stale", {
-        subagent: {
-          conversationId: "thread-stale",
-          displayName: "Stale worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "active",
-          statusSummary: null,
-          showInlineActivity: true,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(getConnectedThreadStagePropsByThreadId("thread-stale")).toBeUndefined();
-    expect(textContent(screen.container).includes("Stale worker")).toBe(true);
-
-    await act(async () => {
-      await openThread("thread-latest", {
-        subagent: {
-          conversationId: "thread-latest",
-          displayName: "Latest worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "active",
-          statusSummary: null,
-          showInlineActivity: true,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(textContent(screen.container).includes("Thread:thread-latest")).toBe(true);
-
-    await act(async () => {
-      releaseStaleHydrate();
-      await staleOpen;
-    });
-    await settleAsyncRender();
-    expect(textContent(screen.container).includes("Thread:thread-latest")).toBe(true);
-    expect(textContent(screen.container).includes("Thread:thread-stale")).toBe(false);
-
-    let releaseDeletedHydration: () => void = () => undefined;
-    const deletedHydrationGate = new Promise<void>((resolve) => {
-      releaseDeletedHydration = resolve;
-    });
-    setHydrateSelectedSubagentImpl(async (input) => {
-      await deletedHydrationGate;
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 6,
-        fidelity: "attachedSparse",
-        checkpoint: "deleted-child-checkpoint",
-        canInteract: true,
-        outcome: "ready",
-        errorMessage: null,
-      };
-    });
-    let deletedOpen: Promise<void> | null = null;
+    let late: Promise<void> = Promise.resolve();
     try {
       await act(async () => {
-        deletedOpen = openThread("thread-latest", {
-          subagent: {
-            conversationId: "thread-latest",
-            displayName: "Latest worker",
-            agentRole: null,
-            spawnModel: null,
-            status: "active",
-            statusSummary: null,
-            showInlineActivity: true,
-            diffStats: null,
-          },
-        });
+        late = Promise.resolve(open("late-child", { runtimeSessionId: root.id }));
         await Promise.resolve();
       });
-      await settleAsyncRender();
+      await waitFor(() => expect(entered).toBe(true));
       await act(async () => {
-        emitCodexEvent({ type: "threadDeleted", hostId: "local", threadId: "thread-latest" });
-        await Promise.resolve();
+        await open("latest-child", { runtimeSessionId: root.id });
       });
-      await settleAsyncRender();
-      expect(
-        screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
-      ).toBeTruthy();
+      await waitFor(() =>
+        expect(getConnectedThreadStagePropsByThreadId("latest-child")).toBeDefined(),
+      );
       await act(async () => {
-        releaseDeletedHydration();
-        await deletedOpen;
+        release();
+        await late;
       });
-      await settleAsyncRender();
+      expect(getConnectedThreadStagePropsByThreadId("late-child")).toBeUndefined();
+      expect(getConnectedThreadStagePropsByThreadId("latest-child")).toBeDefined();
       expect(
-        screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
+        screen.container.querySelector('[data-subagents-side-panel-tab="subagents:root-thread"]'),
       ).toBeTruthy();
-      expect(getConnectedThreadStagePropsByThreadId("thread-latest")).toBeUndefined();
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+      ).toHaveLength(0);
     } finally {
       await act(async () => {
-        releaseDeletedHydration();
-        await deletedOpen;
+        release();
+        await late;
       });
     }
-
-    setHydrateSelectedSubagentImpl(async (input) => ({
-      rootThreadId: input.rootThreadId,
-      threadId: input.threadId,
-      revision: 6,
-      fidelity: "metadata",
-      checkpoint: null,
-      canInteract: false,
-      outcome: "unavailable",
-      errorMessage: "That subagent is no longer available",
-    }));
-    await act(async () => {
-      await openThread("thread-unavailable", {
-        subagent: {
-          conversationId: "thread-unavailable",
-          displayName: "Unavailable worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "waiting",
-          statusSummary: null,
-          showInlineActivity: false,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      screen.container.querySelector('[data-subagents-panel-overview="thread-alpha"]'),
-    ).toBeTruthy();
-    expect(textContent(screen.container).includes("Thread:thread-unavailable")).toBe(false);
-    expect(
-      __getNodexToastSnapshotForTests().some(
-        (toastItem) =>
-          toastItem.kind === "plain" && toastItem.title === "That subagent is no longer available",
-      ),
-    ).toBe(true);
-
-    sideChatConversations["thread-authority"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-authority",
-      threadName: "Authority worker",
-      source: { parentThreadId: "thread-alpha" },
-    };
-    setHydrateSelectedSubagentImpl(async (input) => ({
-      rootThreadId: input.rootThreadId,
-      threadId: input.threadId,
-      revision: 7,
-      fidelity: "attachedSparse",
-      checkpoint: "authority-checkpoint",
-      canInteract: true,
-      outcome: "ready",
-      errorMessage: null,
-    }));
-    let releaseAuthorityRefresh: () => void = () => undefined;
-    const authorityRefreshGate = new Promise<void>((resolve) => {
-      releaseAuthorityRefresh = resolve;
-    });
-    setRefreshSelectedSubagentAuthorityImpl(async (input) => {
-      await authorityRefreshGate;
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 8,
-        fidelity: "attachedSparse",
-        checkpoint: "authority-checkpoint",
-        canInteract: true,
-        outcome: "ready",
-        errorMessage: null,
-      };
-    });
-
-    await act(async () => {
-      await openThread("thread-authority", {
-        subagent: {
-          conversationId: "thread-authority",
-          displayName: "Authority worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "active",
-          statusSummary: null,
-          showInlineActivity: true,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
-    ).toBe(false);
-
-    await act(async () => {
-      releaseAuthorityRefresh();
-      await authorityRefreshGate;
-    });
-    await waitFor(() => {
-      expect(
-        getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
-      ).toBe(true);
-    });
-
-    const hydrateCallCountBeforeInvalidation = hydrateSelectedSubagentCalls.length;
-    const authorityCallCountBeforeInvalidation = refreshSelectedSubagentAuthorityCalls.length;
-    let releaseStaleAuthorityRefresh: () => void = () => undefined;
-    const staleAuthorityRefreshGate = new Promise<void>((resolve) => {
-      releaseStaleAuthorityRefresh = resolve;
-    });
-    setRefreshSelectedSubagentAuthorityImpl(async (input) => {
-      await staleAuthorityRefreshGate;
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 9,
-        fidelity: "attachedSparse",
-        checkpoint: "stale-authority-checkpoint",
-        canInteract: true,
-        outcome: "ready",
-        errorMessage: null,
-      };
-    });
-    await act(async () => {
-      emitCodexEvent({ type: "subagentOverviewInvalidated", rootThreadId: "thread-alpha" });
-      await Promise.resolve();
-    });
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
-    ).toBe(false);
-    await waitFor(() => {
-      expect(refreshSelectedSubagentAuthorityCalls.length).toBeGreaterThan(
-        authorityCallCountBeforeInvalidation,
-      );
-    });
-    const staleAuthorityCallCount = refreshSelectedSubagentAuthorityCalls.length;
-    setRefreshSelectedSubagentAuthorityImpl(async (input) => ({
-      rootThreadId: input.rootThreadId,
-      threadId: input.threadId,
-      revision: 10,
-      fidelity: "metadata",
-      checkpoint: null,
-      canInteract: false,
-      outcome: "failed",
-      errorMessage: "Authority is unavailable",
-    }));
-    await act(async () => {
-      emitCodexEvent({ type: "subagentOverviewInvalidated", rootThreadId: "thread-alpha" });
-      releaseStaleAuthorityRefresh();
-      await staleAuthorityRefreshGate;
-      await Promise.resolve();
-    });
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
-    ).toBe(false);
-    await waitFor(() => {
-      expect(refreshSelectedSubagentAuthorityCalls.length).toBeGreaterThan(staleAuthorityCallCount);
-    });
-    expect(hydrateSelectedSubagentCalls).toHaveLength(hydrateCallCountBeforeInvalidation);
-    expect(
-      getConnectedThreadStagePropsByThreadId("thread-authority")?.backgroundAgentCanInteract,
-    ).toBe(false);
-
-    sideChatConversations["thread-close-pending"] = {
-      ...sideChatConversations["thread-child"],
-      threadId: "thread-close-pending",
-      threadName: "Closing worker",
-      source: { parentThreadId: "thread-alpha" },
-    };
-    let releaseClosingHydration: () => void = () => undefined;
-    const closingHydrationGate = new Promise<void>((resolve) => {
-      releaseClosingHydration = resolve;
-    });
-    setHydrateSelectedSubagentImpl(async (input) => {
-      if (input.threadId === "thread-close-pending") await closingHydrationGate;
-      return {
-        rootThreadId: input.rootThreadId,
-        threadId: input.threadId,
-        revision: 10,
-        fidelity: "attachedSparse",
-        checkpoint: "closing-checkpoint",
-        canInteract: true,
-        outcome: "ready",
-        errorMessage: null,
-      };
-    });
-    let closingOpen: Promise<void> | null = null;
-    await act(async () => {
-      closingOpen = openThread("thread-close-pending", {
-        subagent: {
-          conversationId: "thread-close-pending",
-          displayName: "Closing worker",
-          agentRole: null,
-          spawnModel: null,
-          status: "active",
-          statusSummary: null,
-          showInlineActivity: true,
-          diffStats: null,
-        },
-      });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(
-      screen.container
-        .querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]')
-        ?.getAttribute("data-subagents-selected-hydration"),
-    ).toBe("pending");
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Close Subagents tab" }));
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(screen.queryByRole("button", { name: "Close Subagents tab" })).toBeNull();
-
-    await act(async () => {
-      releaseClosingHydration();
-      await closingOpen;
-    });
-    await settleAsyncRender();
-    expect(screen.queryByRole("button", { name: "Close Subagents tab" })).toBeNull();
-    expect(
-      screen.container.querySelector('[data-subagents-side-panel-tab="subagents:thread-alpha"]'),
-    ).toBeNull();
   });
 });

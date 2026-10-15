@@ -64,7 +64,6 @@ import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { CodexAutomationRunAcceptance } from "./CodexAutomationRunAcceptance";
 import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexConversationMaterialization } from "./CodexConversationMaterialization";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -123,7 +122,7 @@ const plan = (attempt: number): CodexTurnStartPlan =>
     permissions: conversationFixture("thread-a").currentPermissions,
     clientUserMessageId: `client-${attempt}`,
     rendererOwnsState: false,
-    verifiedBuiltinFullAccess: false,
+
     executionReadOnly: false,
     promptText: "ship",
     startedAtMs: attempt,
@@ -357,11 +356,7 @@ const makeHarness = (input: {
       bind: () => Effect.sync(() => events.push("authority:bind")),
       observeStarted: () => Effect.die("unused"),
       capture: () => Effect.die("unused"),
-      inherit: () => Effect.die("unused"),
       abort: () => events.push("authority:abort"),
-    });
-    const automation = CodexAutomationRunAcceptance.of({
-      accept: () => Effect.sync(() => (events.push("automation:accept"), true)),
     });
     const conversationsContext = yield* Layer.buildWithScope(conversationRuntimeMapLive, scope);
     const conversations = Context.get(conversationsContext, ConversationEntityMap);
@@ -401,7 +396,7 @@ const makeHarness = (input: {
           thread: {} as never,
           projectId: null,
           project: null,
-          permissionMode: null,
+
           workspaceState: null,
         }),
     } as unknown as ProjectWorkspace["Service"]);
@@ -515,7 +510,6 @@ const makeHarness = (input: {
         clearThread: () => Effect.die("unused"),
         readPassiveContext: input.readPassiveContext ?? (() => Effect.succeed(undefined)),
       }),
-      Effect.provideService(CodexAutomationRunAcceptance, automation),
       Effect.provideService(
         CodexAutoThreadTitle,
         CodexAutoThreadTitle.of({
@@ -664,7 +658,7 @@ const executionStateFixture = (hadPermissions = true) => {
       permissions: null,
       sandboxPolicy: { type: "readOnly", networkAccess: false },
       runtimeWorkspaceRoots: [],
-      useAppServerPermissionDefault: false,
+
       attachments: [],
       commentAttachments: [],
     },
@@ -1062,7 +1056,6 @@ it.effect("rematerializes once after thread-not-found and retries a fresh transa
       "request:2",
       "authority:bind",
       "accept",
-      "automation:accept",
     ]);
     assert.deepEqual(harness.aggregate.readQueuedFollowUpProjection().entries[0]?.pause, {
       kind: "failed",
@@ -1087,23 +1080,7 @@ it.effect("returns the accepted protocol outcome when a secondary projection fai
       status: "inProgress",
       itemIds: ["item-user"],
     });
-    assert.isTrue(harness.events.includes("automation:accept"));
     assert.isFalse(harness.events.includes("reject"));
-    yield* Scope.close(harness.scope, Exit.void);
-  }),
-);
-
-it.effect("starts a system Automation turn without accepting its inbox run", () =>
-  Effect.gen(function* () {
-    const harness = yield* makeHarness({
-      request: () => Effect.succeed(response()),
-    });
-
-    const result = yield* harness.commands.startAutomation("thread-a", "ship");
-
-    assert.strictEqual(result?.turnId, "turn-accepted");
-    assert.isFalse(harness.events.includes("automation:accept"));
-    assert.isTrue(harness.events.includes("accept"));
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );
@@ -1147,7 +1124,7 @@ it.effect("rejects a fresh native Thread from a retired generation", () =>
   }),
 );
 
-for (const entrypoint of ["start", "startAutomation"] as const) {
+for (const entrypoint of ["start"] as const) {
   it.effect(`defers Main ${entrypoint} before preparation while the owner is recovering`, () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
@@ -1179,7 +1156,6 @@ for (const entrypoint of ["start", "startAutomation"] as const) {
       assert.strictEqual(harness.forwarded[0]?.request.serviceTier, null);
       assert.strictEqual(harness.requests(), 1);
       assert.strictEqual(harness.events.filter((event) => event === "authority:begin").length, 1);
-      assert.strictEqual(harness.events.includes("automation:accept"), entrypoint === "start");
       for (const projection of ["configure", "admit", "accept"])
         assert.isFalse(harness.events.includes(projection));
       const replay = yield* harness.commands
@@ -1798,7 +1774,6 @@ it.effect("admits native steering once while its current owner controls optimist
 
 const queuedPreparationContext = {
   runtimeWorkspaceRoots: ["/repo"],
-  usePermissionSelection: false,
 } as const;
 
 const nativeQueueReceipt = (): QueuedSubmission => ({
@@ -2434,185 +2409,6 @@ for (const owner of ["main", "renderer"] as const)
         }),
     );
 
-for (const permissionMode of ["auto", "guardian-approvals", "full-access", "custom"] as const) {
-  it.effect(
-    `materializes a queued permission choice after owner replacement: ${permissionMode}`,
-    () =>
-      Effect.gen(function* () {
-        const harness = yield* makeHarness({ request: () => Effect.succeed(response()) });
-        const message = {
-          id: "captured-permission",
-          cwd: "/repo",
-          context: {
-            prompt: "queued",
-            fileAttachments: [],
-            addedFiles: [],
-            commentAttachments: [],
-            imageAttachments: [],
-          },
-          submissionOptions: { agentMode: permissionMode, shouldSendPermissionOverrides: true },
-        };
-        try {
-          const prepared = yield* harness.commands.prepareNativeQueuedMessage(
-            "thread-a",
-            message,
-            "start",
-            queuedPreparationContext,
-          );
-          assert.ok(prepared.start);
-          assert.deepEqual(harness.configReads, [{ includeLayers: false, cwd: "/repo" }]);
-          if (permissionMode === "auto") {
-            assert.strictEqual(prepared.start.request.approvalPolicy, "on-request");
-            assert.strictEqual(prepared.start.request.permissions, ":workspace");
-            assert.strictEqual(prepared.start.request.approvalsReviewer, "user");
-          } else if (permissionMode === "guardian-approvals") {
-            assert.strictEqual(prepared.start.request.approvalPolicy, "on-request");
-            assert.isUndefined(prepared.start.request.permissions);
-            assert.strictEqual(prepared.start.request.approvalsReviewer, "guardian_subagent");
-            assert.strictEqual(prepared.start.request.sandboxPolicy?.type, "workspaceWrite");
-          } else if (permissionMode === "full-access") {
-            assert.strictEqual(prepared.start.request.approvalPolicy, "never");
-            assert.strictEqual(prepared.start.request.permissions, ":danger-full-access");
-            assert.strictEqual(prepared.start.request.approvalsReviewer, "user");
-          } else {
-            assert.strictEqual(prepared.start.request.approvalPolicy, "on-request");
-            assert.isUndefined(prepared.start.request.permissions);
-            assert.strictEqual(prepared.start.request.approvalsReviewer, "user");
-            assert.strictEqual(prepared.start.request.sandboxPolicy?.type, "workspaceWrite");
-          }
-          yield* harness.commands.inspectPreparedNativeStart(prepared.start);
-          assert.deepEqual(
-            harness.preparationInputs.at(-1)?.originalRequest,
-            prepared.start.request,
-          );
-          assert.isUndefined(harness.preparationInputs.at(-1)?.overrides?.permissionMode);
-          harness.changeOwner();
-          yield* harness.commands.inspectPreparedNativeStart(prepared.start, "renderer-owner");
-          assert.strictEqual(harness.preparationInputs.length, 2);
-          assert.deepEqual(
-            harness.preparationInputs.at(-1)?.originalRequest,
-            prepared.start.request,
-          );
-          assert.isUndefined(harness.preparationInputs.at(-1)?.overrides?.permissionMode);
-          assert.strictEqual(
-            harness.preparationInputs.at(-1)?.overrides?.clientUserMessageId,
-            message.id,
-          );
-        } finally {
-          yield* Scope.close(harness.scope, Exit.void);
-        }
-      }),
-  );
-}
-
-it.effect(
-  "a captured display mode without override intent does not replace current permissions",
-  () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ request: () => Effect.succeed(response()) });
-      try {
-        const prepared = yield* harness.commands.prepareNativeQueuedMessage(
-          "thread-a",
-          {
-            id: "implicit-permission",
-            cwd: "/repo",
-            context: {
-              prompt: "queued",
-              fileAttachments: [],
-              addedFiles: [],
-              commentAttachments: [],
-              imageAttachments: [],
-            },
-            submissionOptions: { agentMode: "full-access", shouldSendPermissionOverrides: false },
-          },
-          "start",
-          queuedPreparationContext,
-        );
-        assert.ok(prepared.start);
-        assert.lengthOf(harness.configReads, 0);
-        yield* harness.commands.inspectPreparedNativeStart(prepared.start);
-        assert.strictEqual(harness.preparationInputs.at(-1)?.overrides?.permissionMode, undefined);
-      } finally {
-        yield* Scope.close(harness.scope, Exit.void);
-      }
-    }),
-);
-
-for (const selection of [
-  { kind: "agent-mode", agentMode: "granular" },
-  { kind: "profile", profileId: "team-profile" },
-  { kind: "custom" },
-  { kind: "server-default" },
-] as const) {
-  it.effect(`materializes queued modern permission selection: ${selection.kind}`, () =>
-    Effect.gen(function* () {
-      const harness = yield* makeHarness({ request: () => Effect.succeed(response()) });
-      try {
-        const prepared = yield* harness.commands.prepareNativeQueuedMessage(
-          "thread-a",
-          {
-            id: `modern-${selection.kind}`,
-            cwd: "/repo",
-            context: {
-              prompt: "queued",
-              fileAttachments: [],
-              addedFiles: [],
-              commentAttachments: [],
-              imageAttachments: [],
-            },
-            submissionOptions: { permissionSelection: selection },
-          },
-          "start",
-          { runtimeWorkspaceRoots: ["/repo"], usePermissionSelection: true },
-        );
-        assert.ok(prepared.start);
-        const { request, context } = prepared.start;
-        assert.strictEqual(harness.configReads.length, selection.kind === "custom" ? 1 : 0);
-        if (selection.kind === "agent-mode") {
-          assert.strictEqual(request.permissions, ":workspace");
-          assert.deepEqual(request.approvalPolicy, {
-            granular: {
-              sandbox_approval: false,
-              rules: false,
-              skill_approval: false,
-              request_permissions: true,
-              mcp_elicitations: false,
-            },
-          });
-          assert.strictEqual(request.approvalsReviewer, "user");
-          assert.isUndefined(request.runtimeWorkspaceRoots);
-          assert.isFalse(context?.usePermissionSelection ?? true);
-          assert.isFalse(context?.useAppServerPermissionDefault ?? true);
-        } else if (selection.kind === "profile") {
-          assert.strictEqual(request.permissions, "team-profile");
-          assert.isUndefined(request.approvalPolicy);
-          assert.isUndefined(request.approvalsReviewer);
-          assert.isUndefined(request.runtimeWorkspaceRoots);
-          assert.isFalse(context?.usePermissionSelection ?? true);
-          assert.isFalse(context?.useAppServerPermissionDefault ?? true);
-        } else if (selection.kind === "custom") {
-          assert.isUndefined(request.permissions);
-          assert.strictEqual(request.approvalPolicy, "on-request");
-          assert.strictEqual(request.approvalsReviewer, "user");
-          assert.strictEqual(request.sandboxPolicy?.type, "workspaceWrite");
-          assert.isUndefined(request.runtimeWorkspaceRoots);
-          assert.isFalse(context?.usePermissionSelection ?? true);
-          assert.isFalse(context?.useAppServerPermissionDefault ?? true);
-        } else {
-          assert.isUndefined(request.permissions);
-          assert.isUndefined(request.approvalPolicy);
-          assert.isUndefined(request.approvalsReviewer);
-          assert.isUndefined(request.runtimeWorkspaceRoots);
-          assert.isTrue(context?.usePermissionSelection ?? false);
-          assert.isTrue(context?.useAppServerPermissionDefault ?? false);
-        }
-      } finally {
-        yield* Scope.close(harness.scope, Exit.void);
-      }
-    }),
-  );
-}
-
 const reconnectMessage = {
   id: "reconnect-message",
   cwd: "/repo",
@@ -2818,7 +2614,6 @@ it.effect("does not adopt an old native turn response into the recovered manager
     assert.strictEqual(harness.requests(), 1);
     assert.isFalse(harness.events.includes("accept"));
     assert.isFalse(harness.events.includes("authority:bind"));
-    assert.isFalse(harness.events.includes("automation:accept"));
     assert.isFalse(harness.events.includes("reject"));
     yield* Scope.close(harness.scope, Exit.void);
   }),
@@ -2920,7 +2715,7 @@ it.effect(
         .inspectPreparedNativeStart(
           {
             ...forwarded,
-            context: { ...forwarded.context, useAppServerPermissionDefault: true },
+            context: { ...forwarded.context, writingBlockContextPrepared: true },
           },
           "renderer-owner",
         )

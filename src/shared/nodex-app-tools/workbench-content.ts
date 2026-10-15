@@ -1,6 +1,6 @@
 import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import { z } from "zod";
-import { ContentAccessContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
+import { ContentRoutingContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
 
 const identity = z.string().min(1).max(512);
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -42,7 +42,7 @@ export const WorkbenchPreparedPageContentSchema = z
     pageId: identity,
     documentId: identity,
     libraryId: identity,
-    accessContext: ContentAccessContextSchema,
+    routingContext: ContentRoutingContextSchema,
     storeEpoch: identity,
     generation: revision.min(1),
     expectedHeadSeq: revision,

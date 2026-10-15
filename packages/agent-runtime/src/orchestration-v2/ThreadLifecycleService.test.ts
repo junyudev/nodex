@@ -31,11 +31,6 @@ it.effect("maps application lifecycle operations to V2-native commands", () => {
     yield* service.archive({ commandId: CommandId.make("archive"), threadId });
     yield* service.unarchive({ commandId: CommandId.make("unarchive"), threadId });
     yield* service.updateMetadata({ commandId: CommandId.make("metadata"), threadId, title: "T" });
-    yield* service.setRuntimeMode({
-      commandId: CommandId.make("runtime"),
-      threadId,
-      runtimeMode: "approval-required",
-    });
     yield* service.setInteractionMode({
       commandId: CommandId.make("interaction"),
       threadId,
@@ -51,7 +46,6 @@ it.effect("maps application lifecycle operations to V2-native commands", () => {
       "thread.archive",
       "thread.unarchive",
       "thread.metadata.update",
-      "thread.runtime-mode.set",
       "thread.interaction-mode.set",
       "thread.model-selection.set",
       "thread.delete",

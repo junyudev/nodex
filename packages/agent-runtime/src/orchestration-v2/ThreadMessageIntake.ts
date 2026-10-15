@@ -2,7 +2,9 @@ import { remapComposerContextAttachments } from "@t3tools/shared/composerContext
 import { appendUserInputAttachmentPaths } from "../provider/userInputAttachments.ts";
 import type { ChatAttachment, OrchestrationV2Command } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import { resolveAttachmentPath } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -10,6 +12,43 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as AttachmentClaims from "./AttachmentClaims.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
+
+interface IntakeLockEntry {
+  readonly semaphore: Semaphore.Semaphore;
+  users: number;
+}
+// Entries live only while an intake holds or waits for them. This lock is
+// separate from the canonical Thread writer lock, which dispatch acquires.
+const AttachmentIntakeLocks = Context.Reference<Map<string, IntakeLockEntry>>(
+  "t3/orchestration-v2/ThreadMessageIntake/AttachmentIntakeLocks",
+  { defaultValue: () => new Map() },
+);
+const withAttachmentIntake = <A, E, R>(
+  threadId: string,
+  pending: boolean,
+  effect: Effect.Effect<A, E, R>,
+) => {
+  if (!pending) return effect;
+  return Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    const locks = yield* AttachmentIntakeLocks;
+    const key = JSON.stringify([config.attachmentsDir, threadId]);
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() => {
+        const entry = locks.get(key) ?? { semaphore: Semaphore.makeUnsafe(1), users: 0 };
+        entry.users += 1;
+        locks.set(key, entry);
+        return entry;
+      }),
+      (entry) => entry.semaphore.withPermit(effect),
+      (entry) =>
+        Effect.sync(() => {
+          entry.users -= 1;
+          if (entry.users === 0) locks.delete(key);
+        }),
+    );
+  });
+};
 
 // These dispatcher failures occur in receipt validation or planning, before
 // commitCommand. Generic dispatch errors can follow a commit and remain uncertain.
@@ -25,7 +64,6 @@ function dispatchWasNotAccepted(
     case "OrchestratorCommandPreviouslyRejectedError":
     case "OrchestratorCommandIdConflictError":
     case "OrchestratorSubagentThreadReadOnlyError":
-    case "OrchestratorThreadAboveModeLimitError":
     case "ThreadManagementProviderInstanceDisabledError":
       return true;
     default:
@@ -54,7 +92,7 @@ const releaseUnusedClaims = Effect.fn("ThreadMessageIntake.releaseUnusedClaims")
   );
 });
 
-export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(function* (
+const dispatchCommandEffect = Effect.fn("ThreadMessageIntake.dispatchCommand")(function* (
   command: OrchestrationV2Command,
 ) {
   const threads = yield* ThreadManagement.ThreadManagementService;
@@ -168,7 +206,7 @@ export const dispatchCommand = Effect.fn("ThreadMessageIntake.dispatchCommand")(
     );
 });
 
-export const sendToThread = Effect.fn("ThreadMessageIntake.sendToThread")(function* (
+const sendToThreadEffect = Effect.fn("ThreadMessageIntake.sendToThread")(function* (
   input: ThreadManagement.ThreadManagementSendInput,
 ) {
   const threads = yield* ThreadManagement.ThreadManagementService;
@@ -183,7 +221,7 @@ export const sendToThread = Effect.fn("ThreadMessageIntake.sendToThread")(functi
   );
 });
 
-export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(function* (
+const launchThreadEffect = Effect.fn("ThreadMessageIntake.launchThread")(function* (
   input: ThreadLaunch.ThreadLaunchInput,
 ) {
   const launches = yield* ThreadLaunch.ThreadLaunchService;
@@ -248,3 +286,35 @@ export const launchThread = Effect.fn("ThreadMessageIntake.launchThread")(functi
       }),
     );
 });
+
+export const dispatchCommand = (command: OrchestrationV2Command) =>
+  Effect.suspend(() =>
+    withAttachmentIntake(
+      "threadId" in command ? command.threadId : "",
+      command.type === "runtime-request.respond"
+        ? Object.values(command.attachmentsByQuestionId ?? {})
+            .flat()
+            .some(AttachmentClaims.attachmentIsPendingUpload)
+        : (command.type === "message.dispatch" || command.type === "queued-run.edit") &&
+            (command.attachments ?? []).some(AttachmentClaims.attachmentIsPendingUpload),
+      dispatchCommandEffect(command),
+    ),
+  );
+
+export const sendToThread = (input: ThreadManagement.ThreadManagementSendInput) =>
+  Effect.suspend(() =>
+    withAttachmentIntake(
+      input.threadId,
+      input.attachments.some(AttachmentClaims.attachmentIsPendingUpload),
+      sendToThreadEffect(input),
+    ),
+  );
+
+export const launchThread = (input: ThreadLaunch.ThreadLaunchInput) =>
+  Effect.suspend(() =>
+    withAttachmentIntake(
+      input.threadId ?? "",
+      (input.initialMessage?.attachments ?? []).some(AttachmentClaims.attachmentIsPendingUpload),
+      launchThreadEffect(input),
+    ),
+  );

@@ -167,8 +167,7 @@ fn complete(
             now,
         ));
     }
-    let target = match resolve_target(connection, library_id, requesting_project_id, page_id, true)?
-    {
+    let target = match resolve_target(connection, library_id, page_id)? {
         Ok(target) => target,
         Err((code, message)) => {
             return Ok(rejected(
@@ -252,7 +251,7 @@ fn skip(
     connection: &Connection,
     _commit_context: &CommitContext,
     library_id: &str,
-    requesting_project_id: &str,
+    _requesting_project_id: &str,
     operation_id: &str,
     page_id: &str,
     occurrence_start_ms: i64,
@@ -268,13 +267,7 @@ fn skip(
             now,
         ));
     }
-    let target = match resolve_target(
-        connection,
-        library_id,
-        requesting_project_id,
-        page_id,
-        false,
-    )? {
+    let target = match resolve_target(connection, library_id, page_id)? {
         Ok(target) => target,
         Err((code, message)) => {
             return Ok(rejected(
@@ -342,13 +335,7 @@ fn update(
             now,
         ));
     }
-    let target = match resolve_target(
-        connection,
-        library_id,
-        requesting_project_id,
-        page_id,
-        false,
-    )? {
+    let target = match resolve_target(connection, library_id, page_id)? {
         Ok(target) => target,
         Err((code, message)) => {
             return Ok(rejected(
@@ -361,23 +348,6 @@ fn update(
             ));
         }
     };
-    if target.page.recurrence.is_some()
-        && scope != PageOccurrenceUpdateScope::All
-        && let Err(message) =
-            require_sibling_creation(connection, library_id, requesting_project_id, page_id)
-    {
-        if message.code == StoreErrorCode::Unauthorized {
-            return Ok(rejected(
-                "update_page_occurrence",
-                operation_id,
-                page_id,
-                PageOccurrenceMutationCode::AuthorizationDenied,
-                &message.message,
-                now,
-            ));
-        }
-        return Err(message);
-    }
     let drag_shift = shifted_drag_recurrence(&target.page, occurrence_start_ms, updates)?;
 
     if scope == PageOccurrenceUpdateScope::All {
@@ -601,9 +571,7 @@ fn update(
 fn resolve_target(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
     page_id: &str,
-    requires_sibling_creation: bool,
 ) -> Result<Result<Target, (PageOccurrenceMutationCode, String)>, StoreError> {
     let authority = connection
         .query_row(
@@ -634,28 +602,14 @@ fn resolve_target(
             "Page not found".to_owned(),
         )));
     };
-    if let Err(error) =
-        require_page_write_access(connection, library_id, requesting_project_id, page_id)
-    {
+    if let Err(error) = require_page_write_access(connection, library_id, page_id) {
         if matches!(
             error.code,
             StoreErrorCode::NotFound | StoreErrorCode::Unauthorized
         ) {
             return Ok(Err((
-                PageOccurrenceMutationCode::AuthorizationDenied,
-                "Page occurrence mutation denied".to_owned(),
-            )));
-        }
-        return Err(error);
-    }
-    if requires_sibling_creation
-        && let Err(error) =
-            require_sibling_creation(connection, library_id, requesting_project_id, page_id)
-    {
-        if error.code == StoreErrorCode::Unauthorized {
-            return Ok(Err((
-                PageOccurrenceMutationCode::AuthorizationDenied,
-                error.message,
+                PageOccurrenceMutationCode::PageNotFound,
+                "Page is unavailable for an occurrence mutation".to_owned(),
             )));
         }
         return Err(error);
@@ -689,64 +643,6 @@ fn resolve_target(
         data_source_id,
         membership_id,
     }))
-}
-
-fn require_sibling_creation(
-    connection: &Connection,
-    library_id: &str,
-    requesting_project_id: &str,
-    page_id: &str,
-) -> Result<(), StoreError> {
-    let row = connection
-        .query_row(
-            "SELECT page.parent_kind, page.parent_id, \
-               source.home_database_block_id \
-             FROM pages page JOIN blocks block ON block.id = page.block_id \
-             LEFT JOIN data_sources source ON source.id = page.parent_id AND source.library_id = ?1 \
-             WHERE page.block_id = ?2 AND page.library_id = ?1",
-            params![library_id, page_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| unauthorized("Scheduled Page is unavailable"))?;
-    if row.0 != "data_source" || row.2.is_none() {
-        return Err(unauthorized("Scheduled Page has no Data Source parent"));
-    }
-    let database_id = row.2.expect("validated Database");
-    let primary = connection
-        .query_row(
-            "SELECT database_block_id FROM projects WHERE id = ?1 AND library_id = ?2 \
-               AND lifecycle = 'active'",
-            params![requesting_project_id, library_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?
-        .flatten();
-    if primary.as_deref() == Some(database_id.as_str()) {
-        return Ok(());
-    }
-    let granted = connection
-        .query_row(
-            "SELECT 1 FROM project_resource_grants WHERE project_id = ?1 \
-             AND root_kind = 'database' AND root_id = ?2 AND access = 'read_write' \
-             AND lifecycle = 'active'",
-            params![requesting_project_id, database_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some();
-    if granted {
-        return Ok(());
-    }
-    Err(unauthorized(
-        "Page occurrence mutation requires Data Source create-child authority",
-    ))
 }
 
 fn advance_after_occurrence(

@@ -1,13 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type {
-  CodexThreadGoalDraftInput,
-  CodexThreadStartForSessionInput,
-  PageRunInTarget,
-} from "../../shared/types";
-import { createUuidV7 } from "../../shared/uuid-v7";
+import type { CodexThreadGoalDraftInput, PageRunInTarget } from "../../shared/types";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
-import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
@@ -21,7 +15,6 @@ export interface CodexThreadLaunchOutcome {
   readonly startedAt: number;
   readonly goalObjective: string;
   readonly rawGoalDraft: CodexThreadGoalDraftInput | null;
-  readonly heartbeatAutomation: CodexThreadStartForSessionInput["heartbeatAutomation"];
 }
 
 export class CodexThreadLaunchCompletion extends Context.Service<
@@ -43,12 +36,11 @@ export class CodexThreadLaunchCompletion extends Context.Service<
 export const make: Effect.Effect<
   CodexThreadLaunchCompletion["Service"],
   never,
-  CodexApplicationEventHub | CodexAttachments | CodexThreadGoalRuntime | CoreModules
+  CodexApplicationEventHub | CodexAttachments | CodexThreadGoalRuntime
 > = Effect.gen(function* () {
   const events = yield* CodexApplicationEventHub;
   const attachments = yield* CodexAttachments;
   const goals = yield* CodexThreadGoalRuntime;
-  const core = yield* CoreModules;
 
   const progress = (
     outcome: Pick<
@@ -96,67 +88,9 @@ export const make: Effect.Effect<
       );
   };
 
-  const createHeartbeat = (outcome: CodexThreadLaunchOutcome) => {
-    const seed = outcome.heartbeatAutomation;
-    if (outcome.runInTarget !== "newWorktree" || !outcome.projectId || !seed) return Effect.void;
-    const automationId = createUuidV7();
-    return core.automation
-      .apply({
-        operationId: `electron:thread-launch-heartbeat:${outcome.threadId}:${automationId}`,
-        intent: {
-          kind: "create_definition",
-          automation_id: automationId,
-          definition: {
-            kind: "heartbeat",
-            name: seed.name,
-            prompt: seed.prompt,
-            rrule: seed.rrule,
-            target_session_id: outcome.sessionId,
-            model: null,
-            reasoning_effort: null,
-          },
-        },
-      })
-      .pipe(
-        Effect.tap(() =>
-          Effect.sync(() =>
-            events.publish({
-              kind: "codex",
-              value: {
-                type: "scheduledAutomationChanged",
-                event: {
-                  automationId,
-                  targetThreadId: outcome.threadId,
-                  reason: "upsert",
-                },
-              },
-            }),
-          ),
-        ),
-        Effect.catch((cause) =>
-          Effect.logWarning("Started worktree Thread but could not create its heartbeat").pipe(
-            Effect.annotateLogs({ threadId: outcome.threadId, cause: String(cause) }),
-            Effect.andThen(
-              Effect.sync(() =>
-                progress(outcome, {
-                  phase: "startingThread",
-                  message: "Started task, but could not create the heartbeat",
-                  stream: "stderr",
-                  outputDelta: "[stderr] Started task, but could not create the heartbeat\n",
-                }),
-              ),
-            ),
-          ),
-        ),
-      );
-  };
-
   return CodexThreadLaunchCompletion.of({
     accepted: (outcome) =>
-      Effect.all([applyGoal(outcome), createHeartbeat(outcome)], {
-        concurrency: 2,
-        discard: true,
-      }).pipe(
+      applyGoal(outcome).pipe(
         Effect.andThen(
           Effect.sync(() =>
             progress(outcome, {

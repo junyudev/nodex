@@ -3,6 +3,9 @@ import type {
   OrchestrationV2ContextHandoff,
   OrchestrationV2ThreadProjection,
   OrchestrationV2TurnItem,
+  OrchestrationV2Subagent,
+  OrchestrationV2StoredEvent,
+  OrchestrationV2Run,
 } from "@t3tools/contracts";
 import {
   compactDynamicToolOutput,
@@ -14,6 +17,7 @@ import {
 const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
 const MAX_ON_DEMAND_BYTES = 256 * 1024;
+const MAX_TIMELINE_TEXT_BYTES = 128 * 1024;
 
 function truncateDetail(
   value: string | undefined,
@@ -75,6 +79,12 @@ function summarizeDynamicValue(value: unknown): unknown {
 
 export function projectTurnItemForWire(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
+    case "user_message":
+    case "assistant_message":
+    case "reasoning":
+      return { ...item, text: truncateDetail(item.text, MAX_TIMELINE_TEXT_BYTES) ?? "" };
+    case "proposed_plan":
+      return { ...item, markdown: truncateDetail(item.markdown, MAX_TIMELINE_TEXT_BYTES) ?? "" };
     case "handoff": {
       const { summary: _summary, ...projected } = item;
       return projected;
@@ -90,6 +100,7 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
           toolOutputIndicatesFailure(output.slice(0, MAX_DETAIL_STRING_BYTES)));
       return {
         ...projected,
+        input: truncateDetail(item.input) ?? "",
         ...(failed ? { outputIndicatesFailure: true } : {}),
         ...(output?.trim() ? { outputOmitted: true } : {}),
       };
@@ -103,13 +114,10 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
         ? { ...projected, diffStr: truncateDetail(diffStr) }
         : projected;
     }
-    case "subagent":
-      return {
-        ...item,
-        prompt: truncateDetail(item.prompt) ?? "",
-        progress: truncateDetail(item.progress),
-        result: item.result === null ? null : (truncateDetail(item.result) ?? null),
-      };
+    case "subagent": {
+      const { progress: _progress, ...metadata } = item;
+      return { ...metadata, prompt: "", result: null };
+    }
     case "dynamic_tool": {
       const { output: rawOutput, ...projected } = item;
       const output = compactDynamicToolOutput(rawOutput);
@@ -172,6 +180,12 @@ function boundToolOutput(output: unknown): unknown {
  */
 export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
+    case "user_message":
+    case "assistant_message":
+    case "reasoning":
+      return { ...item, text: truncateDetail(item.text, MAX_ON_DEMAND_BYTES) ?? "" };
+    case "proposed_plan":
+      return { ...item, markdown: truncateDetail(item.markdown, MAX_ON_DEMAND_BYTES) ?? "" };
     case "command_execution":
       return {
         ...item,
@@ -207,6 +221,40 @@ export function projectContextHandoffForWire(
   return { ...projected, summaryText: "" };
 }
 
+/** Task bodies and delivery state belong to execution and explicit detail reads. */
+export function projectSubagentForWire(task: OrchestrationV2Subagent): OrchestrationV2Subagent {
+  const {
+    progress: _progress,
+    workflow: _workflow,
+    completionDelivery: _delivery,
+    ...metadata
+  } = task;
+  return {
+    ...metadata,
+    prompt: "",
+    result: null,
+    title: truncateDetail(task.title ?? undefined, 512) ?? null,
+    model: truncateDetail(task.model ?? undefined, 256) ?? null,
+    ...(task.modelSelection === undefined
+      ? {}
+      : {
+          modelSelection: {
+            instanceId: task.modelSelection.instanceId,
+            model: task.modelSelection.model,
+          },
+        }),
+  };
+}
+
+function projectRunForWire(run: OrchestrationV2Run): OrchestrationV2Run {
+  const {
+    delegatedCompletion: _completion,
+    restartCancelledBackgroundWork: _work,
+    ...metadata
+  } = run;
+  return metadata;
+}
+
 export function projectThreadProjectionForWire(
   projection: OrchestrationV2ThreadProjection,
 ): OrchestrationV2ThreadProjection {
@@ -221,6 +269,17 @@ export function projectThreadProjectionForWire(
   };
   return {
     ...projection,
+    runs: projection.runs.map(projectRunForWire),
+    messages: projection.messages.map((message) => ({
+      ...message,
+      text: truncateDetail(message.text, MAX_TIMELINE_TEXT_BYTES) ?? "",
+    })),
+    plans: projection.plans.map((plan) =>
+      plan.kind === "proposed_plan"
+        ? { ...plan, markdown: truncateDetail(plan.markdown, MAX_TIMELINE_TEXT_BYTES) ?? "" }
+        : { ...plan, explanation: truncateDetail(plan.explanation) },
+    ),
+    subagents: projection.subagents.map(projectSubagentForWire),
     contextHandoffs: projection.contextHandoffs.map(projectContextHandoffForWire),
     turnItems: projection.turnItems.map(project),
     visibleTurnItems: projection.visibleTurnItems.map((row) => ({
@@ -235,7 +294,33 @@ export function projectDomainEventForWire(
 ): OrchestrationV2DomainEvent {
   return event.type === "turn-item.updated"
     ? { ...event, payload: projectTurnItemForWire(event.payload) }
-    : event.type === "context-handoff.updated"
-      ? { ...event, payload: projectContextHandoffForWire(event.payload) }
-      : event;
+    : event.type === "message.updated"
+      ? {
+          ...event,
+          payload: {
+            ...event.payload,
+            text: truncateDetail(event.payload.text, MAX_TIMELINE_TEXT_BYTES) ?? "",
+          },
+        }
+      : event.type === "run.created" || event.type === "run.updated"
+        ? { ...event, payload: projectRunForWire(event.payload) }
+        : event.type === "subagent.updated"
+          ? { ...event, payload: projectSubagentForWire(event.payload) }
+          : event.type === "context-handoff.updated"
+            ? { ...event, payload: projectContextHandoffForWire(event.payload) }
+            : event;
+}
+
+/** Projection precedes codec traversal, so discarded bodies never enter a frame. */
+export function projectStoredEventForWire(
+  event: OrchestrationV2StoredEvent,
+): OrchestrationV2StoredEvent {
+  const projected = { ...event, event: projectDomainEventForWire(event.event) };
+  return assertPublicWirePayloadBudget(projected);
+}
+
+export function assertPublicWirePayloadBudget<A>(value: A): A {
+  if (Buffer.byteLength(JSON.stringify(value), "utf8") > 1_048_576)
+    throw new Error("The payload exceeds the public stream transport budget.");
+  return value;
 }

@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import {
   MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS,
   type LibraryStructuralHistoryState,
@@ -10,7 +10,7 @@ import { resolveRendererTransport } from "../../../lib/renderer-transport";
 export interface NfmHistoryReconciliationScope {
   readonly libraryId: string;
   readonly storeEpoch: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
 }
 
 export interface NfmHistoryReconciliationSnapshot {
@@ -31,7 +31,7 @@ export const coreHistoryReconciliation: NfmHistoryReconciliation = {
   async read(scope, tokens) {
     if (tokens.length > MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS)
       throw new Error("History reconciliation exceeds its token bound.");
-    const result = await readLibraryModule(scope.accessContext, {
+    const result = await readLibraryModule(scope.routingContext, {
       read: { mode: "structural_history_states", tokens },
     });
     if (!result.ok) throw new Error(result.error.message);
@@ -47,7 +47,7 @@ export const coreHistoryReconciliation: NfmHistoryReconciliation = {
   subscribe(scope, invalidate) {
     return resolveRendererTransport().subscribeProjectionStream(
       {
-        ...scope.accessContext,
+        ...scope.routingContext,
         libraryId: scope.libraryId,
       },
       (message) => {
@@ -55,7 +55,7 @@ export const coreHistoryReconciliation: NfmHistoryReconciliation = {
           message.kind === "effect" &&
           message.delivery.effect.scope.scope.kind !== "structural_history" &&
           !(
-            scope.accessContext.kind === "library" &&
+            scope.routingContext.kind === "library" &&
             message.delivery.effect.scope.scope.kind === "library"
           )
         )

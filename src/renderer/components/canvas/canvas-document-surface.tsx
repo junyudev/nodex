@@ -40,9 +40,9 @@ import { CanvasSceneBinding } from "@/lib/canvas-scene-binding";
 import { CanvasSceneProvider } from "@/lib/canvas-scene-provider";
 import { canvasDocumentSessionRegistry } from "@/lib/canvas-document-session";
 import type {
-  ContentAccessContext,
+  ContentRoutingContext,
   ContentPageNavigationTarget,
-} from "../../../shared/content-access-context";
+} from "../../../shared/content-routing-context";
 import { canvasSceneSurfaceRegistry } from "@/lib/canvas-scene-surface-runtime";
 import type { ReadyRegisteredOwnedBlockDocumentDescriptor } from "@/lib/owned-block-document";
 import { LayoutGrid } from "@/components/shared/icons/generic-icons";
@@ -85,7 +85,7 @@ export interface CanvasPagePaletteCapability {
 export type CanvasOpenPageInput = ContentPageNavigationTarget;
 
 export interface CanvasDocumentSurfaceProps {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;
   readonly surfaceKey: string;
   readonly viewportPreferenceScope: string;
@@ -98,7 +98,7 @@ export interface CanvasDocumentSurfaceProps {
 }
 
 export function CanvasDocumentSurface({
-  accessContext,
+  routingContext,
   canvasBlockId,
   surfaceKey,
   viewportPreferenceScope,
@@ -112,7 +112,7 @@ export function CanvasDocumentSurface({
   if (!active) return null;
   return (
     <RegisteredOwnedBlockDocumentBoundary
-      accessContext={accessContext}
+      routingContext={routingContext}
       ownerBlockId={canvasBlockId}
     >
       {(model, controls) => {
@@ -163,7 +163,7 @@ export function CanvasDocumentSurface({
 
 interface CanvasEditorProps extends Omit<
   CanvasDocumentSurfaceProps,
-  "active" | "accessContext" | "canvasBlockId"
+  "active" | "routingContext" | "canvasBlockId"
 > {
   readonly descriptor: ReadyRegisteredOwnedBlockDocumentDescriptor & {
     readonly sync: { readonly kind: "canvas_scene" };
@@ -282,7 +282,7 @@ function CanvasEditor({
       {
         libraryId: descriptor.libraryId,
         storeEpoch: descriptor.storeEpoch,
-        contentAccessContext: descriptor.accessContext,
+        contentRoutingContext: descriptor.routingContext,
       },
       (file) => ({ kind: "canvas", canvas_id: descriptor.ownerBlockId, scene_file_id: file.id }),
     );
@@ -291,7 +291,7 @@ function CanvasEditor({
     let presence: CanvasPresenceController | null = null;
     const documentSession = canvasDocumentSessionRegistry.acquire({
       libraryId: descriptor.libraryId,
-      accessContext: descriptor.accessContext,
+      routingContext: descriptor.routingContext,
       ownerBlockId: descriptor.ownerBlockId,
       documentId: descriptor.documentId,
       storeEpoch: descriptor.storeEpoch,
@@ -299,14 +299,14 @@ function CanvasEditor({
       createProvider: ({ onScene, onPresence }) =>
         new CanvasSceneProvider({
           libraryId: descriptor.libraryId,
-          accessContext: descriptor.accessContext,
+          routingContext: descriptor.routingContext,
           documentId: descriptor.documentId,
           clientSessionId: documentClientSessionIdRef.current,
           expectedStoreEpoch: descriptor.storeEpoch,
           expectedGeneration: descriptor.generation,
           adapter: createCanvasSceneSyncAdapter({
             libraryId: descriptor.libraryId,
-            accessContext: descriptor.accessContext,
+            routingContext: descriptor.routingContext,
           }),
           outbox: createDefaultCanvasSceneOutbox(descriptor.libraryId),
           onScene,
@@ -377,7 +377,7 @@ function CanvasEditor({
       {
         libraryId: descriptor.libraryId,
         storeEpoch: descriptor.storeEpoch,
-        contentAccessContext: descriptor.accessContext,
+        contentRoutingContext: descriptor.routingContext,
       },
       { canvasId: descriptor.ownerBlockId, documentId: descriptor.documentId },
       () => {
@@ -414,7 +414,7 @@ function CanvasEditor({
       releaseDocumentSession: documentSession.release,
       maintainIfIdle: async () => {
         const request = {
-          accessContext: descriptor.accessContext,
+          routingContext: descriptor.routingContext,
           documentId: descriptor.documentId,
           clientSessionId: documentClientSessionIdRef.current,
         };
@@ -587,12 +587,12 @@ function CanvasEditor({
       }
 
       onOpenPage?.({
-        accessContext: descriptor.accessContext,
+        routingContext: descriptor.routingContext,
         pageId,
         titleSnapshot: getPageTitleHintFromElement(element),
       });
     },
-    [activePageId, descriptor.accessContext, onCloseActivePage, onOpenPage],
+    [activePageId, descriptor.routingContext, onCloseActivePage, onOpenPage],
   );
 
   // Place an existing card on the canvas
@@ -723,7 +723,7 @@ function CanvasEditor({
     >
       <div className="flex justify-end py-1">
         <RecoveryEntry
-          scope={{ libraryId: descriptor.libraryId, accessContext: descriptor.accessContext }}
+          scope={{ libraryId: descriptor.libraryId, routingContext: descriptor.routingContext }}
           documentId={descriptor.documentId}
           refreshKey={sceneError ?? undefined}
           exportLocal={async () => {

@@ -207,7 +207,7 @@ describe("Data Source Property value operations", () => {
     ).toThrow(/incompatible/u);
   });
 
-  test("clears every visible and restricted Relation edge behind a revision fence", () => {
+  test("clears every visible and unavailable Relation edge behind a revision fence", () => {
     const definition = property("p_0123abcd", "relation");
     expect(
       buildDataSourcePropertyValueOperations({
@@ -222,7 +222,7 @@ describe("Data Source Property value operations", () => {
               value_revision: 7,
               total_count: 4,
               targets: [],
-              restricted_count: 4,
+              unavailable_count: 4,
               has_more: true,
             },
           },

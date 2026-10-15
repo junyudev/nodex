@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { EffectiveDatabaseView } from "../../../../shared/database-kernel";
 import type { DatabaseListWindowSnapshot } from "../../../../shared/database-views";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
+import { databasePromotionReadIdentity } from "@/lib/database-promotion-read-evidence";
 import {
   DatabaseViewMutationError,
   type DatabaseViewMutationReceipt,
@@ -27,7 +28,6 @@ const snapshot = (input: {
   viewId: "view-1",
   storeEpoch: input.storeEpoch ?? "epoch-1",
   commitSeq: input.commitSeq ?? 4,
-  authorization: {} as DatabaseListWindowSnapshot["authorization"],
   projection: {
     scopeKey: "scope-1",
     schemaVersion: 1,
@@ -86,17 +86,28 @@ const effective: EffectiveDatabaseView = {
   },
 };
 
-const model = (commitSeq: number, storeEpoch = "epoch-1"): DatabaseViewRenderModel =>
-  ({
+const model = (commitSeq: number, storeEpoch = "epoch-1"): DatabaseViewRenderModel => {
+  const canonical = {
     libraryId: "library-1",
-    accessContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "project", projectId: "project-1" },
     databaseViewId: "view-1",
     databaseId: "database-1",
     dataSourceId: "source-1",
     storeEpoch,
     commitSeq,
-    authorization: {},
-  }) as unknown as DatabaseViewRenderModel;
+  } as unknown as DatabaseViewRenderModel;
+  return {
+    ...canonical,
+    boundedRead: {
+      identity: databasePromotionReadIdentity(canonical, effective),
+      windowKey: "first:50",
+      storeEpoch,
+      commitSeq,
+      scopeKey: "scope-1",
+      pageIds: [],
+    },
+  };
+};
 
 const waitForStore = async (): Promise<void> => {
   await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));

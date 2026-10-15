@@ -56,16 +56,24 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
   ): Effect.Effect<string, TextGenerationError> =>
     stream.pipe(
       Stream.decodeText(),
-      Stream.runFold(
+      Stream.runFoldEffect(
         () => "",
-        (acc, chunk) => acc + chunk,
+        (acc, chunk) =>
+          Buffer.byteLength(acc) + Buffer.byteLength(chunk) > 1024 * 1024
+            ? Effect.fail(
+                new TextGenerationError({
+                  operation,
+                  detail: "Utility output exceeded its transport budget.",
+                }),
+              )
+            : Effect.succeed(acc + chunk),
       ),
       Effect.mapError((cause) =>
         normalizeCliError("codex", operation, cause, "Failed to collect process output"),
       ),
     );
 
-  const removeTempFileDir = (filePath: string): Effect.Effect<void, never> =>
+  const removeTempFileDir = (filePath: string): Effect.Effect<void> =>
     fileSystem
       .remove(path.dirname(filePath), { recursive: true })
       .pipe(Effect.catch(() => Effect.void));
@@ -151,6 +159,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     modelSelection,
     attachments,
     investigate,
+    jsonSchema,
+    maxOutputBytes,
+    timeoutMs,
   }: TextGenerationOperations.Request<S>): Effect.fn.Return<
     S["Type"],
     TextGenerationError,
@@ -159,7 +170,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     const imagePaths = yield* materializeImageAttachments(attachments);
     const schemaJson = yield* encodeJsonForOperation(
       operation,
-      toJsonSchemaObject(outputSchemaJson),
+      jsonSchema ?? toJsonSchemaObject(outputSchemaJson),
     );
     const schemaPath = yield* writeTempFile(operation, "codex-schema", schemaJson);
     const outputPath = yield* writeTempFile(operation, "codex-output", "").pipe(
@@ -196,8 +207,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           ...codexExecLaunchArgs(launchArgs),
           "--ephemeral",
           "--skip-git-repo-check",
-          "-s",
-          "read-only",
+          "--dangerously-bypass-approvals-and-sandbox",
           "--model",
           model,
           "--config",
@@ -273,8 +283,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     return yield* Effect.gen(function* () {
       yield* runCodexCommand().pipe(
         Effect.scoped,
-        // The read-only sandbox already holds an investigation to reading; it only needs longer.
-        Effect.timeoutOption(investigate?.timeoutMs ?? CODEX_TIMEOUT_MS),
+        Effect.timeoutOption(timeoutMs ?? investigate?.timeoutMs ?? CODEX_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
             onNone: () =>
@@ -286,6 +295,18 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         ),
       );
 
+      const outputInfo = yield* fileSystem
+        .stat(outputPath)
+        .pipe(
+          Effect.mapError((cause) =>
+            normalizeCliError("codex", operation, cause, "Cannot inspect utility output"),
+          ),
+        );
+      if (outputInfo.size > BigInt(maxOutputBytes ?? 1024 * 1024))
+        return yield* new TextGenerationError({
+          operation,
+          detail: "Structured output exceeded its byte budget.",
+        });
       const decodeOutput = Schema.decodeEffect(Schema.fromJsonString(outputSchemaJson));
 
       return yield* fileSystem.readFileString(outputPath).pipe(

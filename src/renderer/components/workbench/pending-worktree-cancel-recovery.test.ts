@@ -40,8 +40,7 @@ function makeEntry(): StartConversationEntry {
       cwd: "/repo/nodex",
       fileAttachments: [],
       addedFiles: [],
-      agentMode: "auto",
-      shouldSendPermissionOverrides: true,
+
       model: null,
       serviceTier: null,
       reasoningEffort: null,

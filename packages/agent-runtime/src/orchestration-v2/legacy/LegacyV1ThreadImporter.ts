@@ -161,15 +161,6 @@ function branchPullRequestFor(row: LegacyThreadRow) {
   return Option.getOrNull(decodeLinkedPullRequest(parseJson(row.branch_pull_request_json)));
 }
 
-function runtimeModeFor(value: string): OrchestrationV2AppThread["runtimeMode"] {
-  return value === "approval-required" ||
-    value === "auto-accept-edits" ||
-    value === "auto" ||
-    value === "full-access"
-    ? value
-    : "full-access";
-}
-
 function interactionModeFor(value: string): OrchestrationV2AppThread["interactionMode"] {
   return value === "plan" ? "plan" : "default";
 }
@@ -210,7 +201,7 @@ function importedThread(row: LegacyThreadRow): OrchestrationV2AppThread {
     title: row.title.trim() === "" ? "Untitled thread" : row.title,
     providerInstanceId: modelSelection.instanceId,
     modelSelection,
-    runtimeMode: runtimeModeFor(row.runtime_mode),
+    runtimeMode: "full-access",
     interactionMode: interactionModeFor(row.interaction_mode),
     branch,
     worktreePath,

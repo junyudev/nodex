@@ -15,6 +15,7 @@ import {
 import {
   getConnectedThreadStagePropsByThreadId,
   getLastThreadStageActions,
+  waitForLastThreadStageActions,
   getMountedSessionIds,
   getMountedSessionRoot,
   getSidebarProjectGroup,
@@ -132,7 +133,7 @@ describe("workbench session shell / sidebar-core", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(screen.getByText("Projectless only chat") !== null).toBe(true);
+    expect(screen.getAllByText("Projectless only chat").length).toBeGreaterThan(0);
     expect(screen.queryByText("No projects found.")).toBe(null);
     expect(invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === null)).toBe(
       true,
@@ -237,7 +238,7 @@ describe("workbench session shell / sidebar-core", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),
@@ -598,77 +599,65 @@ describe("workbench session shell / sidebar-core", () => {
     expect(updatedButton?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 24 24");
   });
 
-  test("does not keep a session fork action pending on destination snapshot hydration", async () => {
-    const sourceSession = makeAttachedSession({
-      id: "session:alpha:fork-source",
+  test("settles a Session fork before destination control hydration completes", async () => {
+    const source = makeAttachedSession({
+      id: "session:fork-source",
       threadId: "thread-fork-source",
       title: "Fork source",
       tabs: [],
     });
-    const targetSession = makeAttachedSession({
-      id: "session:alpha:fork-target",
-      threadId: "thread-fork-target",
-      title: "Fork target",
-      tabs: [],
-    });
     renderWorkbench({
-      sessionsByProject: { alpha: [sourceSession] },
-      initialSelectedSessionId: sourceSession.id,
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: source.id,
     });
     await settleAsyncRender();
-    await settleAsyncRender();
-
-    const renderInvoke = mockInvokeImpl;
-    if (!renderInvoke) throw new Error("Expected the workbench invoke mock");
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Runtime transport fixture");
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let hydrationStarted = false;
     setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "project-sessions:fork") {
-        return {
-          session: targetSession,
-          threadId: "thread-fork-target",
-          composerIntent: {
-            prompt: "",
-            focusNonce: 1,
-          },
-        };
+      if (
+        channel === "agent-runtime:session:control" &&
+        (args[0] as { sessionId: string }).sessionId !== source.id
+      ) {
+        hydrationStarted = true;
+        await gate;
       }
-      return await renderInvoke(channel, ...args);
+      return base(channel, ...args);
     });
-
-    let releaseSnapshot: () => void = () => undefined;
-    setRequestThreadStreamSnapshotImpl(async () => {
-      await new Promise<void>((resolve) => {
-        releaseSnapshot = resolve;
-      });
-    });
-
-    const actions = getLastThreadStageActions();
-    const forkFromTurn = actions.onForkFromTurn as
-      | ((input: { threadId: string; turnId: string; message: string }) => Promise<void>)
-      | undefined;
-    expect(typeof forkFromTurn).toBe("function");
-
-    let forkActionResolved = false;
-    const forkAction =
-      forkFromTurn?.({
-        threadId: "thread-fork-source",
-        turnId: "turn-fork-source",
-        message: "Fork from here",
-      }).then(() => {
-        forkActionResolved = true;
-      }) ?? Promise.resolve();
-
+    const actions = await waitForLastThreadStageActions();
+    let settled = false;
+    let fork: Promise<void> = Promise.resolve();
     try {
-      await waitFor(() => {
-        expect(requestThreadStreamSnapshotCalls.includes("thread-fork-target")).toBe(true);
-      });
       await act(async () => {
+        fork = Promise.resolve(
+          (
+            actions.onForkFromTurn as NonNullable<
+              import("@/features/local-conversation/thread-stage-types").ThreadStageActions["onForkFromTurn"]
+            >
+          )({
+            threadId: "thread-fork-source",
+            turnId: "turn-fork-source",
+            message: "Fork from here",
+          }),
+        ).then(() => {
+          settled = true;
+        });
         await Promise.resolve();
       });
-      expect(forkActionResolved).toBe(true);
+      await waitFor(() => expect(hydrationStarted).toBe(true));
+      await waitFor(() => expect(settled).toBe(true));
+      expect(
+        invokeCalls.filter(([channel]) => channel === "agent-runtime:session:fork"),
+      ).toHaveLength(1);
     } finally {
-      releaseSnapshot();
-      await forkAction;
-      setRequestThreadStreamSnapshotImpl(null);
+      await act(async () => {
+        release();
+        await fork;
+      });
     }
   });
 

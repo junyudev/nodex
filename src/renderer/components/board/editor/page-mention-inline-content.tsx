@@ -10,7 +10,7 @@ import { readPageDetailWorkflowStatus } from "@/lib/page-stage-properties";
 import { StatusIcon } from "@/lib/status-presentation";
 import type { PageTargetReadModel } from "../../../../shared/page-targets";
 import { buildPageDeepLink } from "../../../../shared/nodex-deeplink";
-import { libraryContentAccess } from "../../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { pageMentionInlineContentConfig } from "../../../../shared/block-documents/blocknote-schema-config";
 import { useBlockReferenceHostRuntime } from "../../block-documents/block-reference-runtime-context";
 
@@ -131,14 +131,14 @@ export function PageMentionInlineContentView({
 }) {
   const host = useBlockReferenceHostRuntime();
   const props = normalizePageMentionProps(inlineContent.props);
-  const accessContext = host?.contentAccessContext ?? libraryContentAccess;
-  const target = usePageTargetReadModel(accessContext, host ? props.targetPageId : "");
+  const routingContext = host?.contentRoutingContext ?? libraryContentRoute;
+  const target = usePageTargetReadModel(routingContext, host ? props.targetPageId : "");
   const model = target.data;
   const availablePage = model?.status === "available" ? model.page : null;
   const available = availablePage !== null;
   const detail = useContentPageDetail(
     availablePage?.libraryId ?? null,
-    accessContext,
+    routingContext,
     availablePage?.pageId ?? null,
   );
   const workflowStatus = readPageDetailWorkflowStatus(detail.detail);
@@ -168,7 +168,7 @@ export function PageMentionInlineContentView({
         event.stopPropagation();
         if (!availablePage) return;
         void host?.openPage?.({
-          accessContext,
+          routingContext,
           pageId: availablePage.pageId,
           titleSnapshot: availablePage.title,
         });

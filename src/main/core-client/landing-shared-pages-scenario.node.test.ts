@@ -15,7 +15,6 @@ test("Shared Pages starts with ready content and a linked Chat without fabricate
       const scoped = client.forProject(manifest.projectId);
       const activity = await scoped.workspaceRead({
         kind: "page_chat_activity_summaries",
-        page_access_project_id: manifest.projectId,
         page_ids: [pageId],
       });
       expect(activity.value).toMatchObject({
@@ -32,7 +31,6 @@ test("Shared Pages starts with ready content and a linked Chat without fabricate
       });
       const detail = await scoped.workspaceRead({
         kind: "page_chat_window",
-        page_access_project_id: manifest.projectId,
         page_id: pageId,
         include_archived: false,
         window: { after: null, first: 50 },

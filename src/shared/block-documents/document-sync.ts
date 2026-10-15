@@ -15,7 +15,8 @@ export type DocumentSyncErrorCode =
   | "request_cancelled"
   | "request_timeout"
   | "service_busy"
-  | "unauthorized"
+  | "authentication_failed"
+  | "invalid_session"
   | "store_not_initialized"
   | "store_epoch_mismatch"
   | "document_not_found"
@@ -202,31 +203,6 @@ export interface ProjectScopedDocumentAwarenessPublishRequest extends DocumentAw
   readonly projectId: string;
 }
 
-export type DocumentAccessKind = "read" | "write";
-
-export interface DocumentAccessRequest {
-  readonly projectId: string;
-  readonly documentId: DocumentId;
-  readonly access: DocumentAccessKind;
-}
-
-export interface DocumentAccessAck {
-  readonly projectId: string;
-  readonly documentId: DocumentId;
-  readonly access: DocumentAccessKind;
-  readonly authorized: true;
-}
-
-/** Trusted local-user Library authorization without a caller-selected ID. */
-export interface LibraryDocumentAccessRequest {
-  readonly documentId: DocumentId;
-  readonly access: DocumentAccessKind;
-}
-
-export interface LibraryDocumentAccessAck extends LibraryDocumentAccessRequest {
-  readonly authorized: true;
-}
-
 export interface DocumentSyncSubscriptionAck {
   readonly subscribed: true;
 }
@@ -300,8 +276,7 @@ export type DocumentSyncRealtimeEvent =
         | "history-compacted"
         | "transport-reconnected"
         | "resource-integrity-failure"
-        | "identity-boundary-changed"
-        | "access-revoked";
+        | "identity-boundary-changed";
     };
 
 /**

@@ -1,10 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
-import type { FileReadAuthority } from "./library-file-resources";
 import type { AuthorizedDeliveryPacket } from "../../shared/local-commit-delivery";
 import {
-  fileReadRevocationInvalidations,
   isFileSourceReferenceChangeForDocument,
   pageFileReferenceInvalidationsForDocument,
   pageFileReadInvalidationsFromChange,
@@ -23,64 +20,7 @@ const atom = (event: DeliveryAtom["payload"]): DeliveryAtom => ({
   payload: event,
 });
 
-describe("File read authority", () => {
-  test("separates direct File grants from Page and captured Document authority", () => {
-    const page: FileReadAuthority = {
-      libraryId: "library",
-      storeEpoch: "epoch",
-      contentAccessContext: { kind: "project", projectId: "project" },
-      readSource: { kind: "page", page_id: "page" },
-    };
-    const direct: FileReadAuthority = { ...page, readSource: { kind: "direct" } };
-    const historical: FileReadAuthority = {
-      ...page,
-      readSource: { kind: "document_revision", document_id: "doc", revision_id: "old" },
-    };
-    const revoke = (kind: "file" | "page" | "document", id: string): ResourceRevocationMessage => ({
-      version: 1,
-      kind: "revocation",
-      scope: { kind: "project", libraryId: "library", projectId: "project" },
-      stream: { storeEpoch: "epoch", commitSeq: 10 },
-      delivery: {
-        storeEpoch: "epoch",
-        commitSeq: 10,
-        manifestHash: "a".repeat(64),
-        operationId: "revoke",
-        committedAt: "now",
-        revocation: {
-          authorization_scope: { kind: "project", library_id: "library", project_id: "project" },
-          resource_kind: kind,
-          resource_id: id,
-          reason: "access_revoked",
-        },
-      },
-    });
-    expect(fileReadRevocationInvalidations(direct, null, revoke("file", "f"))).toEqual([
-      { mode: "revoke", fileIds: ["f"], metadata: true, content: true },
-    ]);
-    expect(fileReadRevocationInvalidations(page, "doc", revoke("file", "f"))).toEqual([]);
-    expect(fileReadRevocationInvalidations(direct, null, revoke("page", "page"))).toEqual([]);
-    expect(fileReadRevocationInvalidations(page, "doc", revoke("page", "other"))).toEqual([]);
-    const cleared = [{ mode: "revoke", fileIds: null, metadata: true, content: true }];
-    expect(fileReadRevocationInvalidations(page, "doc", revoke("page", "page"))).toEqual(cleared);
-    expect(fileReadRevocationInvalidations(historical, "doc", revoke("document", "doc"))).toEqual(
-      cleared,
-    );
-    expect(fileReadRevocationInvalidations(historical, "doc", revoke("page", "page"))).toEqual(
-      cleared,
-    );
-    expect(fileReadRevocationInvalidations(historical, "doc", revoke("file", "f"))).toEqual([]);
-    expect(
-      fileReadRevocationInvalidations(direct, null, {
-        version: 1,
-        kind: "reset",
-        scope: { kind: "project", libraryId: "library", projectId: "project" },
-        stream: { storeEpoch: "next", commitSeq: 11 },
-        reason: "store_epoch_changed",
-      }),
-    ).toEqual(cleared);
-  });
-
+describe("File read invalidation", () => {
   test("matches only the exact Document reference-change event", () => {
     const referenceChange = atom({
       module: "owned_document",

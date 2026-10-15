@@ -189,7 +189,6 @@ test("native presentation tools preserve Session ownership and reveal exact file
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(page, workspace, "Presentation fixture");
         callerSessionId = draft.projectSessionId;
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         await invokeIpc(page, "project-sessions:create", {
           operationId: createBoundedOperationId("e2e.presentation.target"),
           payload: {

@@ -1,6 +1,5 @@
 import type {
   CodexBackgroundProcessRecord,
-  CodexPermissionMode,
   CodexThreadActiveFlag,
   CodexThreadStatusType,
   CodexThreadSummary,
@@ -242,10 +241,6 @@ export interface DesktopProjectWorkspaceThreadMoveInput {
     readonly pending: DesktopProjectWorkspaceThreadWorkspace | null;
   };
   readonly runtimeWorkspaceRoots?: readonly string[];
-  readonly projectAccessGrant?: {
-    readonly expectedTargetBindingRevision: number;
-    readonly missingProjectSources: readonly string[];
-  };
   readonly metadata?: Pick<
     DesktopProjectWorkspaceThreadPatch,
     | "cwd"
@@ -349,9 +344,8 @@ export interface DesktopProjectWorkspaceSidebar {
 export interface DesktopProjectWorkspaceExecutionContext {
   readonly threadId: string;
   readonly projectId: string | null;
-  readonly permissionMode: CodexPermissionMode | null;
   readonly dynamicToolCatalogs: readonly DynamicToolCatalogSelection[];
-  readonly writableRoots: readonly string[];
+  readonly workspaceRoots: readonly string[];
   readonly workspaceState: DesktopProjectWorkspaceThreadWorkspaceState | null;
 }
 

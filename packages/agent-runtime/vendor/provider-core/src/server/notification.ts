@@ -173,12 +173,13 @@ function delegatedTaskReport(
 function delegatedCompletionNotification(
   completion: NonNullable<OrchestrationV2ConversationMessage["delegatedCompletion"]>,
   tasks: ReadonlyArray<OrchestrationV2Subagent>,
+  delegatedTaskCount?: number,
 ): OrchestrationV2Notification {
   const taskIds = completion.taskIds;
   const reports = taskIds.map((taskId) =>
     delegatedTaskReport(tasks.find((task) => task.id === taskId)),
   );
-  const delegatedByRun = tasks.filter(
+  const delegatedByRun = delegatedTaskCount ?? tasks.filter(
     (task) => task.origin === "app_owned" && task.runId === completion.parentRunId,
   ).length;
   const outcome = combinedOutcome(reports.map((report) => report.outcome));
@@ -213,12 +214,13 @@ export function notificationTurnItem(
   item: OrchestrationV2TurnItem,
   message: Pick<OrchestrationV2ConversationMessage, "notification" | "delegatedCompletion">,
   tasks: ReadonlyArray<OrchestrationV2Subagent>,
+  delegatedTaskCount?: number,
 ): OrchestrationV2TurnItem {
   if (item.type !== "user_message") return item;
   const notification =
     message.delegatedCompletion === undefined
       ? message.notification
-      : delegatedCompletionNotification(message.delegatedCompletion, tasks);
+      : delegatedCompletionNotification(message.delegatedCompletion, tasks, delegatedTaskCount);
   if (notification === undefined) return item;
   const {
     type: _type,

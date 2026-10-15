@@ -39,7 +39,7 @@ const observation: WorkbenchRendererObservation = {
         id: "page-tab",
         kind: "page_stage",
         titleSnapshot: "Original Page",
-        config: { pageId: "page-A", accessContext: { kind: "library" } },
+        config: { pageId: "page-A", routingContext: { kind: "library" } },
       },
       auxiliary: null,
     },

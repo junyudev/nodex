@@ -7,7 +7,6 @@ import type {
 } from "../../shared/types";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import {
-  buildCodexApprovalNotificationId,
   buildCodexAsyncQuestionNotificationId,
   buildCodexQuestionNotificationId,
   buildCodexRequestNotificationOccurrenceId,
@@ -15,23 +14,12 @@ import {
   buildCodexTurnNotificationOccurrenceId,
   decideCodexRequestNotification,
   decideCodexTurnNotification,
-  resolveCodexApprovalNotificationCopy,
   resolveCodexQuestionNotificationBody,
   resolveCodexQuestionNotificationTitle,
   resolveCodexTurnNotificationBody,
   resolveCodexTurnNotificationTitle,
   type CodexThreadNotificationEvent,
 } from "../../shared/codex-thread-notification";
-
-const APPROVAL_ACTIONS = [
-  { id: "approve", title: "Approve", actionType: "approve" },
-  {
-    id: "approve-session",
-    title: "Approve for session",
-    actionType: "approve-for-session",
-  },
-  { id: "decline", title: "Decline", actionType: "decline" },
-] as const;
 
 export interface CodexThreadNotificationHandlerOptions {
   getSettings: () => ThreadNotificationSettings;
@@ -102,9 +90,7 @@ function showNotification(
     conversationId,
     navigationPath: navigation.navigationPath,
     activateTabId: navigation.activateTabId,
-    ...(event.type === "approval-requested" || event.type === "user-input-requested"
-      ? { requestId: event.requestId }
-      : {}),
+    ...(event.type === "user-input-requested" ? { requestId: event.requestId } : {}),
   };
 
   options.showNotification(notification, targetClientId, (action) => {
@@ -120,10 +106,7 @@ function showNotification(
       conversationId,
       navigationPath: navigation.navigationPath,
       activateTabId: navigation.activateTabId,
-      requestId:
-        event.type === "approval-requested" || event.type === "user-input-requested"
-          ? event.requestId
-          : null,
+      requestId: event.type === "user-input-requested" ? event.requestId : null,
     });
     if (!dispatched) {
       options.dismissNotification(
@@ -153,14 +136,6 @@ export const makeCodexThreadNotificationHandler =
       return;
     }
     if (event.type === "request-resolved") {
-      options.dismissNotification({
-        occurrenceId: buildCodexRequestNotificationOccurrenceId(
-          "approval",
-          event.hostId,
-          event.conversationId,
-          event.requestId,
-        ),
-      });
       options.dismissNotification({
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
           "question",
@@ -202,10 +177,8 @@ export const makeCodexThreadNotificationHandler =
       return;
     }
 
-    const enabled =
-      event.type === "approval-requested" ? settings.permissionsEnabled : settings.questionsEnabled;
     const decision = decideCodexRequestNotification(event.conversation, {
-      enabled,
+      enabled: settings.questionsEnabled,
       isConversationPresentedInForeground: options.isConversationPresentedInForeground(
         event.conversation.conversationId,
       ),
@@ -232,24 +205,6 @@ export const makeCodexThreadNotificationHandler =
         kind: "question",
         title: resolveCodexQuestionNotificationTitle(event.conversation.title),
         body: "Nodex has a question",
-      });
-      return;
-    }
-
-    if (event.type === "approval-requested") {
-      const copy = resolveCodexApprovalNotificationCopy(event);
-      showNotification(options, event, {
-        id: buildCodexApprovalNotificationId(event.hostId, event.requestId),
-        occurrenceId: buildCodexRequestNotificationOccurrenceId(
-          "approval",
-          event.hostId,
-          event.conversation.conversationId,
-          event.requestId,
-        ),
-        kind: "permission",
-        title: copy.title,
-        body: copy.body,
-        ...(copy.hasActions ? { actions: [...APPROVAL_ACTIONS] } : {}),
       });
       return;
     }

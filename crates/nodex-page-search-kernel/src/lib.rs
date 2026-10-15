@@ -50,7 +50,7 @@ pub struct MetadataDocument {
     pub location_label: String,
     pub updated_at: String,
     pub properties: Vec<MetadataProperty>,
-    pub authorized_project_ids: Vec<String>,
+    pub project_ids: Vec<String>,
     pub data_source_ids: Vec<String>,
 }
 
@@ -763,7 +763,7 @@ impl MetadataSearchIndex {
                 }
                 let project_id = projects
                     .iter()
-                    .find(|project| document.authorized_project_ids.contains(project))
+                    .find(|project| document.project_ids.contains(project))
                     .cloned()?;
                 Some((
                     document,
@@ -1171,7 +1171,7 @@ mod tests {
             location_label: "Pages".into(),
             updated_at: "2026-01-01".into(),
             properties: Vec::new(),
-            authorized_project_ids: vec!["p".into()],
+            project_ids: vec!["p".into()],
             data_source_ids: Vec::new(),
         }
     }

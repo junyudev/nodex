@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { BlockIdSchema } from "../../shared/nodex-agent-tools/base-schemas";
 import type { NativeNodexAgentCore } from "./native-nodex-agent-core";
 import {
@@ -12,17 +12,15 @@ import { FakeCoreClient } from "./testing/fake-core-client";
 const pageId = "01980000-0000-7000-8000-000000000001";
 const documentId = "01980000-0000-7000-8000-000000000002";
 const etag = `nxe1.${"a".repeat(43)}`;
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread:actor",
   turnId: "turn:actor",
   rootThreadId: "thread:actor",
   actorProjectId: "project:actor",
   libraryId: "library:current",
   storeEpoch: "epoch:current",
-  scope: "project",
-  source: "project_turn",
-  frozenAtMs: 1,
-  readOnly: true,
+
+  admittedAtMs: 1,
 };
 const request: NativeNodexAgentFetchRequest = {
   tool: "fetch",
@@ -43,7 +41,6 @@ const fixture = (snapshotEpoch = authority.storeEpoch) => {
     contract_version: 52,
     store_epoch: authority.storeEpoch,
     commit_head: 8,
-    authorization: null,
     value: {
       kind: "agent_block_target",
       value: {
@@ -68,7 +65,6 @@ const fixture = (snapshotEpoch = authority.storeEpoch) => {
     contract_version: 14,
     store_epoch: snapshotEpoch,
     commit_head: 12,
-    authorization: null,
     value: {
       kind: "agent_semantic_snapshot",
       snapshot: {
@@ -130,7 +126,6 @@ describe("canonical Page observations", () => {
       target_block_id: pageId,
       prepare_title: true,
       prepare_body: true,
-      authorization: { call_id: "call:exact" },
     });
     expect(client.documentReadOptions[0]?.signal).toBe(controller.signal);
   });
@@ -154,10 +149,9 @@ describe("canonical Page observations", () => {
 
 it("reads projectless content through the unbound client with exact Library provenance", async () => {
   const { runtime, client, projects } = fixture();
-  const projectless: FrozenNodexAgentTurnAuthority = {
+  const projectless: NodexAgentTurnContext = {
     ...authority,
-    scope: "library",
-    source: "builtin_full_access",
+
     actorProjectId: null,
   };
   const observed = await readNativeFetchObservation(
@@ -166,7 +160,5 @@ it("reads projectless content through the unbound client with exact Library prov
   );
   expect(observed.ok).toBe(true);
   expect(projects).toEqual([]);
-  expect(client.documentReads[0]?.read).toMatchObject({
-    authorization: { provenance: { authority: { actor_project_id: null, scope: "library" } } },
-  });
+  expect(client.documentReads[0]?.read).toMatchObject({});
 });

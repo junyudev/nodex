@@ -2,7 +2,6 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
-import { NativeConversationExtension } from "../app-tools/NativeConversationExtension";
 import { CodexThreadExecution } from "../codex-application/CodexThreadExecution";
 import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import {
@@ -80,31 +79,10 @@ const harness = (backendBinding: AgentBackendBinding) =>
       commit: () => record("codex:commit"),
       followUp: () => record("codex:follow-up"),
     });
-    const native = NativeConversationExtension.of({
-      setExecutionRecoveryRequired: (threadId, required) =>
-        Effect.sync(() => {
-          safety.push({ provider: "claude", threadId, required });
-        }),
-      read: () => Effect.succeed(null),
-      submit: (input) =>
-        Effect.sync(() => {
-          prompts.push(input);
-          calls.push("claude:follow-up");
-          return { turnId: "turn" };
-        }),
-      wait: () => Effect.die("unused"),
-      cancel: () => Effect.die("unused"),
-      stopExecution: () => record("claude:stop"),
-      withExecutionHandoff: (_threadId, use) => record("claude:handoff").pipe(Effect.andThen(use)),
-      withExecutionLocation: (_threadId, _location, use) =>
-        record("claude:switch").pipe(Effect.andThen(use)),
-      createAutomationSession: () => Effect.die("unused"),
-      validateAutomation: () => Effect.die("unused"),
-    });
     const workspace = {
       getThread: () => Effect.succeed(authority),
       readThreadExecutionContext: () =>
-        Effect.succeed({ projectId: authority.projectId, writableRoots: source.workspaceRoots }),
+        Effect.succeed({ projectId: authority.projectId, workspaceRoots: source.workspaceRoots }),
       setThreadExecutionLocation: (threadId: string, location: unknown) =>
         Effect.sync(() => {
           commits.push({ threadId, location });
@@ -114,7 +92,6 @@ const harness = (backendBinding: AgentBackendBinding) =>
     const execution = yield* make.pipe(
       Effect.provideService(ProjectWorkspace, workspace),
       Effect.provideService(CodexThreadExecution, codex),
-      Effect.provideService(NativeConversationExtension, native),
     );
     return {
       execution,
@@ -128,7 +105,7 @@ const harness = (backendBinding: AgentBackendBinding) =>
     };
   });
 
-it.effect("selects execution from the current durable backend for every operation", () =>
+it.effect("preserves native Codex handoff routing and execution location", () =>
   Effect.gen(function* () {
     const f = yield* harness({ kind: "codex" });
     assert.deepEqual(yield* f.execution.read("thread", "remote"), source);
@@ -151,68 +128,24 @@ it.effect("selects execution from the current durable backend for every operatio
       "codex:commit",
       "codex:follow-up",
     ]);
-    f.calls.length = 0;
-    f.change({ backendBinding: { kind: "claude", instanceConfigId: "work" } });
-    assert.deepEqual(yield* f.execution.read("thread", "local"), source);
-    assert.strictEqual(
-      yield* f.execution.withHandoff("thread", Effect.succeed("native")),
-      "native",
-    );
-    yield* f.execution.stop("thread");
-    yield* f.execution.withRuntimeLocation("thread", destination, null, Effect.void);
-    yield* f.execution.commit("thread", destination);
-    yield* f.execution.followUp("thread", "continue natively");
-    assert.deepEqual(f.calls, [
-      "claude:handoff",
-      "claude:stop",
-      "claude:switch",
-      "claude:follow-up",
-    ]);
-    assert.deepEqual(f.commits, [
-      {
-        threadId: "thread",
-        location: {
-          executionHostId: "local",
-          cwd: destination.cwd,
-          managedWorktreePath: destination.managedWorktreePath,
-          runtimeWorkspaceRoots: destination.workspaceRoots,
-          projectlessOutputDirectory: null,
-          projectlessWorkspaceBrowserRoot: null,
-        },
-      },
-    ]);
-    assert.strictEqual(f.prompts[0]?.threadId, "thread");
-    assert.strictEqual(f.prompts[0]?.prompt, "continue natively");
-    assert.isNotEmpty(f.prompts[0]?.operationId);
   }),
 );
 
-it.effect("rejects native host and Project changes before runtime or durable mutation", () =>
+it.effect("only the bound native Codex owner admits legacy handoff operations", () =>
   Effect.gen(function* () {
     const f = yield* harness({ kind: "claude", instanceConfigId: "work" });
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(f.execution.read("thread", "remote"))));
-    for (const invalid of [
-      { ...destination, hostId: "remote" },
-      { ...destination, projectId: "other" },
-      { ...destination, cwd: "relative" },
+    for (const operation of [
+      f.execution.read("thread", "local"),
+      f.execution.stop("thread"),
+      f.execution.withHandoff("thread", Effect.void),
+      f.execution.withRuntimeLocation("thread", destination, null, Effect.void),
+      f.execution.commit("thread", destination),
+      f.execution.followUp("thread", "continue"),
     ])
-      assert.isTrue(Exit.isFailure(yield* Effect.exit(f.execution.commit("thread", invalid))));
-    assert.isTrue(
-      Exit.isFailure(
-        yield* Effect.exit(
-          f.execution.withRuntimeLocation(
-            "thread",
-            { ...destination, hostId: "remote" },
-            null,
-            Effect.void,
-          ),
-        ),
-      ),
-    );
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(operation)));
     assert.deepEqual(f.calls, []);
     assert.deepEqual(f.commits, []);
-    f.change({ executionHostId: "remote" });
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(f.execution.read("thread"))));
+    assert.deepEqual(f.prompts, []);
   }),
 );
 
@@ -249,9 +182,7 @@ it.effect("recovery seals admission without asking Core to route or starting exe
     yield* f.execution.setRecoveryRequired("thread", false);
     assert.deepEqual(f.safety, [
       { provider: "codex", threadId: "thread", required: true },
-      { provider: "claude", threadId: "thread", required: true },
       { provider: "codex", threadId: "thread", required: false },
-      { provider: "claude", threadId: "thread", required: false },
     ]);
     assert.deepEqual(f.calls, []);
     assert.deepEqual(f.commits, []);

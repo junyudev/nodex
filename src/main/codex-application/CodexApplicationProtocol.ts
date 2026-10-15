@@ -44,7 +44,6 @@ import {
 } from "../codex-runtime/CodexApplicationRequestInbox";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAppProtocolTools } from "./CodexAppProtocolTools";
-import { CodexAutomationInbox } from "./CodexAutomationInbox";
 import { compactCodexApplicationProtocolOccurrences } from "./CodexConversationEventProjection";
 import { CodexNotificationAdmission } from "./CodexNotificationAdmission";
 import {
@@ -344,7 +343,6 @@ export const make: Effect.Effect<
   | CodexApplicationEventHub
   | CodexAppProtocolTools
   | CodexApplicationRequestInbox
-  | CodexAutomationInbox
   | CodexNotificationAdmission
   | CodexOneShotServerRequests
   | CodexPendingServerRequestRuntime
@@ -360,7 +358,6 @@ export const make: Effect.Effect<
   const applicationEvents = yield* CodexApplicationEventHub;
   const codexAppTools = yield* CodexAppProtocolTools;
   const inbox = yield* CodexApplicationRequestInbox;
-  const automationInbox = yield* CodexAutomationInbox;
   const notificationAdmission = yield* CodexNotificationAdmission;
   const oneShot = yield* CodexOneShotServerRequests;
   const pending = yield* CodexPendingServerRequestRuntime;
@@ -416,35 +413,18 @@ export const make: Effect.Effect<
     threadId: string,
     requestId: RequestId,
     turnId: string,
-    input:
-      | {
-          readonly kind: "approval";
-          readonly approvalKind: "commandExecution" | "fileChange" | "permissionRequest";
-          readonly reason: string | null;
-        }
-      | { readonly kind: "user-input"; readonly questionCount: number },
+    input: { readonly questionCount: number },
   ): void => {
     applicationEvents.publish({
       kind: "threadNotification",
-      value:
-        input.kind === "approval"
-          ? {
-              type: "approval-requested",
-              hostId,
-              conversation: conversationFacts(conversations, threadId),
-              requestId,
-              turnId,
-              approvalKind: input.approvalKind,
-              reason: input.reason,
-            }
-          : {
-              type: "user-input-requested",
-              hostId,
-              conversation: conversationFacts(conversations, threadId),
-              requestId,
-              turnId,
-              questionCount: input.questionCount,
-            },
+      value: {
+        type: "user-input-requested",
+        hostId,
+        conversation: conversationFacts(conversations, threadId),
+        requestId,
+        turnId,
+        questionCount: input.questionCount,
+      },
     });
   };
 
@@ -470,11 +450,6 @@ export const make: Effect.Effect<
             kind: "codex",
             value: { type: "approvalRequested", request: payload },
           });
-          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
-            kind: "approval",
-            approvalKind: payload.kind === "command" ? "commandExecution" : "fileChange",
-            reason: payload.reason ?? null,
-          });
           break;
         }
         case "item/permissions/requestApproval": {
@@ -485,11 +460,6 @@ export const make: Effect.Effect<
             kind: "permission",
             request: payload,
             occurrenceToken: request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN],
-          });
-          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
-            kind: "approval",
-            approvalKind: "permissionRequest",
-            reason: payload.reason,
           });
           break;
         }
@@ -512,10 +482,16 @@ export const make: Effect.Effect<
             kind: "codex",
             value: { type: "userInputRequested", request: payload },
           });
-          publishRequestNotification(hostId, payload.threadId, payload.requestId, payload.turnId, {
-            kind: "user-input",
-            questionCount: payload.questions.length,
-          });
+          if (payload.turnId !== null)
+            publishRequestNotification(
+              hostId,
+              payload.threadId,
+              payload.requestId,
+              payload.turnId,
+              {
+                questionCount: payload.questions.length,
+              },
+            );
           break;
         }
         case "mcpServer/elicitation/request": {
@@ -597,20 +573,37 @@ export const make: Effect.Effect<
     }
     if (request.method === "currentTime/read") return ProtocolRequestPending;
     if (isCodexOneShotServerRequest(request)) return yield* oneShot.handle(request);
-    if (request.method === "inbox-items-create") {
-      const occurrenceId = request[CODEX_SERVER_REQUEST_OCCURRENCE_ID];
-      const occurrenceToken = request[CODEX_SERVER_REQUEST_OCCURRENCE_TOKEN];
-      if (occurrenceId === undefined || occurrenceToken === undefined) {
-        return yield* Effect.die(
-          new Error("Automation inbox request is missing its Effect occurrence identity"),
-        );
-      }
-      return yield* automationInbox.create(request.params, { occurrenceId, occurrenceToken });
-    }
+    if (request.method === "inbox-items-create") return { items: [] };
     const threadId = threadIdForRequest(request);
     const observedAtMs = yield* Clock.currentTimeMillis;
     if (!threadId) return CodexAppServerNoResponse;
     const manager = managers.current(hostId);
+    if (
+      request.method === "item/commandExecution/requestApproval" ||
+      request.method === "item/fileChange/requestApproval"
+    )
+      return manager?.generation === generation &&
+        manager.stream.getRole(threadId)?.role === "follower"
+        ? CodexAppServerNoResponse
+        : { decision: "accept" as const };
+    if (request.method === "item/permissions/requestApproval") {
+      if (
+        manager?.generation === generation &&
+        manager.stream.getRole(threadId)?.role === "follower"
+      )
+        return CodexAppServerNoResponse;
+      return {
+        permissions: {
+          ...(request.params.permissions.network
+            ? { network: request.params.permissions.network }
+            : {}),
+          ...(request.params.permissions.fileSystem
+            ? { fileSystem: request.params.permissions.fileSystem }
+            : {}),
+        },
+        scope: "session" as const,
+      };
+    }
     if (request.method === "mcpServer/elicitation/request") {
       if (request.params.mode === "openai/userVerification") {
         return { action: "decline" as const, content: null, _meta: null };
@@ -647,7 +640,9 @@ export const make: Effect.Effect<
         manager?.generation === generation &&
         manager.stream.shouldHandleDynamicToolCall(threadId)
       ) {
-        return yield* codexAppTools.execute(request.params);
+        return yield* codexAppTools.execute(request.params, {
+          nativeSource: { hostId, generation },
+        });
       }
       pending.register({
         hostId,
@@ -1150,7 +1145,6 @@ export const live: Layer.Layer<
   | CodexApplicationEventHub
   | CodexAppProtocolTools
   | CodexApplicationRequestInbox
-  | CodexAutomationInbox
   | CodexNotificationAdmission
   | CodexOneShotServerRequests
   | CodexPendingServerRequestRuntime

@@ -133,7 +133,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
     expect(bottom.availableActionKinds).toEqual(["terminal", "browser", "files", "side_chat"]);
   });
 
-  it("keeps Codex-derived Review and side chats out of ACP Sessions", () => {
+  it("offers an independent side chat from ACP history while native Review remains unavailable", () => {
     const result = resolveWorkbenchPanelCapabilities({
       panelId: "right",
       owner: {
@@ -147,11 +147,12 @@ describe("resolveWorkbenchPanelCapabilities", () => {
     });
 
     expect(result.actions.review.reason).toBe("backend_not_supported");
-    expect(result.actions.side_chat.reason).toBe("backend_not_supported");
+    expect(result.actions.side_chat.available).toBe(true);
     expect(result.availableActionKinds).toEqual([
       "terminal",
       "browser",
       "files",
+      "side_chat",
       "db_view",
       "page_stage",
       "canvas_stage",

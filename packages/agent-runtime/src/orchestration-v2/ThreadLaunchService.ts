@@ -28,6 +28,8 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
+import * as Fiber from "effect/Fiber";
 import {
   buildTemporaryWorktreeBranchName,
   flattenTemporaryWorktreeBranchName,
@@ -43,6 +45,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
+import * as EventStore from "./EventStore.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import type * as Orchestrator from "./Orchestrator.ts";
 import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
@@ -212,6 +215,7 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const textGeneration = yield* TextGeneration.TextGeneration;
   const receipts = yield* CommandReceiptStore.CommandReceiptStoreV2;
+  const eventStore = yield* EventStore.EventStoreV2;
   const ids = yield* IdAllocator.IdAllocatorV2;
   const threads = yield* ThreadManagement.ThreadManagementService;
   const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
@@ -317,6 +321,7 @@ const make = Effect.gen(function* () {
     let createdWorktreePath: string | null = null;
     let setupTerminalId: string | null = null;
     let workspaceRecorded = false;
+    let branchRenameFiber: Fiber.Fiber<void> | undefined;
     if (input.workspaceStrategy.type === "worktree") {
       yield* setupTracker.begin({
         threadId,
@@ -505,7 +510,7 @@ const make = Effect.gen(function* () {
       ) {
         const oldBranch = branch;
         const worktreeCwd = worktreePath;
-        yield* generateBranchNameFor(worktreeCwd, initialMessage).pipe(
+        branchRenameFiber = yield* generateBranchNameFor(worktreeCwd, initialMessage).pipe(
           Effect.flatMap(({ branch: newBranch, exactName }) =>
             git.renameBranch({
               cwd: worktreeCwd,
@@ -531,6 +536,7 @@ const make = Effect.gen(function* () {
               cause,
             }),
           ),
+          Effect.asVoid,
           Effect.forkIn(preparationScope),
         );
       }
@@ -632,6 +638,10 @@ const make = Effect.gen(function* () {
       Effect.onError((cause) =>
         Effect.gen(function* () {
           const cancelled = Cause.hasInterruptsOnly(cause);
+          // Stop late metadata writes before deleting an abandoned workspace.
+          if (branchRenameFiber && (cancelled || !workspaceRecorded))
+            yield* Fiber.interrupt(branchRenameFiber);
+
           yield* setupTracker.finish(
             threadId,
             cancelled ? "cancelled" : "failed",
@@ -818,6 +828,17 @@ const make = Effect.gen(function* () {
 
         // A Scratch thread launched at the project root runs in a folder of its
         // own. Only the first attempt claims one; a retry replays its create.
+        // Current workspace metadata can change after preparation. Replay the
+        // accepted create's workspace, rather than hydrating today's Thread.
+        const acceptedCreate = Option.isSome(launchReceipt)
+          ? yield* eventStore.readByCommandId({ commandId: input.commandId }).pipe(
+              Stream.filter((stored) => stored.event.type === "thread.created"),
+              Stream.take(1),
+              Stream.runCollect,
+              Effect.map((events) => events[0]?.event),
+              Effect.mapError(mapError(input, "read-receipt", candidateThreadId)),
+            )
+          : undefined;
         const workspaceStrategy: ThreadLaunchWorkspaceStrategy =
           input.workspaceStrategy.type === "root" && Option.isNone(launchReceipt)
             ? Option.match(
@@ -833,7 +854,17 @@ const make = Effect.gen(function* () {
                   onSome: (worktreePath) => ({ type: "existing_worktree", worktreePath }),
                 },
               )
-            : input.workspaceStrategy;
+            : input.workspaceStrategy.type === "root" &&
+                acceptedCreate?.type === "thread.created" &&
+                acceptedCreate.payload.worktreePath !== null
+              ? {
+                  type: "existing_worktree",
+                  worktreePath: acceptedCreate.payload.worktreePath,
+                  ...(input.workspaceStrategy.branch === undefined
+                    ? {}
+                    : { branch: input.workspaceStrategy.branch }),
+                }
+              : input.workspaceStrategy;
         const initialBranch = workspaceStrategy.branch ?? null;
         const initialWorktreePath =
           workspaceStrategy.type === "existing_worktree" ? workspaceStrategy.worktreePath : null;

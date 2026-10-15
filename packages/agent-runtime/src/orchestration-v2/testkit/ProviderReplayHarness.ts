@@ -205,8 +205,7 @@ export function runOrchestratorV2ProviderReplayScenario<
   | Error
   | MigrationError
   | PlatformError.PlatformError
-  | SqlError,
-  never
+  | SqlError
 > {
   const replayGate = makeProviderReplayGate(
     scenario.steps?.flatMap((step) =>
@@ -244,6 +243,7 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
   | EffectWorker.OrchestrationEffectWorkerV2
+  | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
@@ -279,6 +279,7 @@ export function layerWithRegistry<Error>(
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
   | EffectWorker.OrchestrationEffectWorkerV2
+  | EffectOutbox.EffectOutboxV2
   | EventSink.EventSinkV2
   | ProviderSessionManager.ProviderSessionManagerV2,
   Error | MigrationError | PlatformError.PlatformError | SqlError
@@ -502,6 +503,7 @@ export function layerWithRegistry<Error>(
     layerProviderSessionManagerProvided,
     layerEffectWorkerProvided,
     layerEventSinkProvided,
+    EffectOutbox.layer.pipe(Layer.provide(layerDatabase)),
     layerContinuationWorkerProvided,
   ).pipe(Layer.provide(ProviderTurnStartServiceTestkit.layer), Layer.provide(NodeServices.layer));
 

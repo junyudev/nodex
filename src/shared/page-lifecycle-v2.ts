@@ -199,7 +199,7 @@ export type PageLifecycleOperationV2 =
 
 export interface PageLifecycleMutationRequestV2 {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly clientSessionId?: string;
   readonly actor: Readonly<Record<string, BlockPropertyJsonValue>>;
@@ -209,7 +209,7 @@ export interface PageLifecycleMutationRequestV2 {
 export interface PageLifecycleMutationReceiptV2 {
   readonly operationKind: PageLifecycleOperationV2["kind"];
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly pageId: string;
   readonly duplicate: boolean;
@@ -237,7 +237,6 @@ export type PageLifecycleMutationErrorCodeV2 =
   | "operation_id_collision"
   | "operation_receipt_corrupt"
   | "project_not_found"
-  | "authorization_denied"
   | "page_identity_collision"
   | "page_not_found"
   | "page_type_mismatch"
@@ -891,12 +890,15 @@ export const parsePageLifecycleMutationRequestV2 = (
   const clientSessionId = readOptionalId(request, "clientSessionId", "pageLifecycleV2");
   const parsed: PageLifecycleMutationRequestV2 = {
     operationId: readId(request, "operationId", "pageLifecycleV2"),
-    projectId: readId(request, "projectId", "pageLifecycleV2"),
+    projectId: readNullableId(request, "projectId", "pageLifecycleV2"),
     storeEpoch: readId(request, "storeEpoch", "pageLifecycleV2"),
     ...(clientSessionId === undefined ? {} : { clientSessionId }),
     actor: readActor(request.actor),
     operation,
   };
+  if (parsed.operation.kind === "create_page" && parsed.projectId === null) {
+    throw new PageLifecycleV2ContractError("Page creation requires a default Project destination");
+  }
   const canonical = canonicalizeParsedRequest(parsed);
   if (canonical.length <= MAX_CANONICAL_REQUEST_LENGTH) return parsed;
   throw new PageLifecycleV2ContractError(
@@ -1035,7 +1037,7 @@ export const parsePageLifecycleMutationReceiptV2 = (
   }
   return {
     operationId: readId(receipt, "operationId", label),
-    projectId: readId(receipt, "projectId", label),
+    projectId: readNullableId(receipt, "projectId", label),
     storeEpoch: readId(receipt, "storeEpoch", label),
     operationKind: receipt.operationKind as PageLifecycleOperationV2["kind"],
     pageId: readId(receipt, "pageId", label),
@@ -1065,7 +1067,6 @@ const PAGE_LIFECYCLE_V2_ERROR_CODES = new Set<PageLifecycleMutationErrorCodeV2>(
   "operation_id_collision",
   "operation_receipt_corrupt",
   "project_not_found",
-  "authorization_denied",
   "page_identity_collision",
   "page_not_found",
   "page_type_mismatch",

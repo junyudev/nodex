@@ -31,7 +31,6 @@ import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { act, waitFor } from "@testing-library/react";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
-import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import type {
   CodexConnectionState,
   CodexConversationChildMembership,
@@ -117,11 +116,8 @@ let queuedMessageFixtureId = 0;
 let queuedStorageWrite = Promise.resolve();
 let hostMessageListener: ((message: CodexHostMessage) => void) | null = null;
 const codexEventListeners = new Set<(event: CodexEvent) => void>();
-let rendererClientRequestListener: ((message: unknown) => void) | null = null;
 let threadListByProject: Record<string, CodexThreadSummary[]> = {};
 let snapshotByThread: Record<string, CodexConversationSnapshot | null> = {};
-let startThreadForSessionResult: unknown = null;
-let freshThreadAdoptionResult: CodexConversationSnapshot | null = null;
 let sideChatStartResult: CodexSideChatStartResult | null = null;
 let resumeThreadResult: CodexConversationSnapshot | Promise<CodexConversationSnapshot> | null =
   null;
@@ -424,12 +420,6 @@ vi.mock("./local-conversation-deps", () => ({
                       developer_instructions: null,
                     },
                   },
-            agentMode: opts?.permissionMode,
-            permissionSelection: opts?.permissionSelection,
-            permissionProfileId: opts?.permissionProfileId,
-            usePermissionSelection: opts?.usePermissionSelection,
-            shouldSendPermissionOverrides:
-              opts?.shouldSendPermissionOverrides ?? opts?.permissionMode !== undefined,
           },
         };
       }
@@ -444,12 +434,6 @@ vi.mock("./local-conversation-deps", () => ({
         return nativeSteerFixture;
       }
       if (channel === "codex:turn:native-steer:inspect") return nativeSteerFixture;
-      if (channel === "codex:turn:native-fresh:prepare") {
-        const started = startThreadForSessionResult as {
-          freshLaunch: { canonicalParams: CodexCanonicalLiveTurnParams };
-        };
-        return { request: { ...started.freshLaunch.canonicalParams, threadId }, context: {} };
-      }
       if (channel === "codex:turn:native:prepare") {
         const input = args[0] as { originalRequest: unknown; passiveContextIntent?: "ordinary" };
         return {
@@ -669,20 +653,6 @@ vi.mock("./local-conversation-deps", () => ({
         return null;
       }
 
-      if (channel === "codex:thread:fresh-owner:adopt") {
-        const conversation = ensureCanonicalResumeFixture(freshThreadAdoptionResult);
-        if (!conversation) {
-          throw new Error("Fresh thread adoption fixture is unavailable");
-        }
-
-        setTestFollowers(conversation.threadId, ["test-follower"], "local");
-        return {
-          hostId: "local",
-          generation: resumeThreadGeneration,
-          response: buildNativeThreadStartFixture(conversation),
-        };
-      }
-
       if (
         channel === "codex:app-server:request" &&
         (args[0] as { request?: { method?: string } }).request?.method === "model/list"
@@ -739,13 +709,6 @@ vi.mock("./local-conversation-deps", () => ({
         };
       }
 
-      if (channel === "codex:thread:native-session:prepare")
-        return {
-          receiptId: "native-session-fixture",
-          hostId: "local",
-          generation: resumeThreadGeneration,
-          request: { cwd: "/workspace/project" },
-        };
       if (channel === "codex:thread:native-fork:prepare") {
         return {
           receiptId: "native-fork-fixture",
@@ -766,31 +729,6 @@ vi.mock("./local-conversation-deps", () => ({
           composerIntent: { prompt: "Continue from older turn" },
         };
       }
-      if (channel === "codex:thread:native-session:execute") {
-        const started = (await Promise.resolve(startThreadForSessionResult)) as {
-          kind: string;
-          detail?: CodexConversationSnapshot;
-        };
-        if (started.kind !== "started" || !started.detail)
-          throw new Error("Native session start fixture unavailable");
-        return buildNativeThreadStartFixture(
-          snapshotByThread[started.detail.threadId] ??
-            (Array.isArray(started.detail.turns)
-              ? started.detail
-              : {
-                  ...buildConversation(
-                    started.detail.threadId,
-                    started.detail.projectId ?? "project-1",
-                  ),
-                  ...started.detail,
-                }),
-        );
-      }
-      if (channel === "codex:thread:native-session:accept") return startThreadForSessionResult;
-      if (channel === "codex:thread:start-for-session") {
-        return startThreadForSessionResult;
-      }
-
       if (channel === "codex:thread:side-chat:start") {
         if (!sideChatStartResult) throw new Error("Side chat start fixture is unavailable");
         return sideChatStartResult;
@@ -828,12 +766,11 @@ vi.mock("./local-conversation-deps", () => ({
       if (
         channel === "codex:thread-owner:app-server-request" ||
         channel === "codex:turn:native:execute" ||
-        channel === "codex:turn:native-fresh:execute" ||
         channel === "codex:turn:native-steer:execute" ||
         channel === "codex:app-server:request"
       ) {
         const input = (
-          channel === "codex:turn:native:execute" || channel === "codex:turn:native-fresh:execute"
+          channel === "codex:turn:native:execute"
             ? {
                 request: {
                   method: "turn/start",
@@ -1068,10 +1005,6 @@ vi.mock("./local-conversation-deps", () => ({
         return followerActionResult;
       }
 
-      if (channel === "codex:renderer-client:response") {
-        return true;
-      }
-
       if (channel === "codex:thread:title:generate") {
         if (generatedThreadTitleError) {
           throw generatedThreadTitleError;
@@ -1096,10 +1029,8 @@ vi.mock("./local-conversation-deps", () => ({
       }
 
       if (
-        channel === "codex:approval:respond" ||
         channel === "codex:user-input:respond" ||
         channel === "codex:mcp-elicitation:respond" ||
-        channel === "codex:permission-request:respond" ||
         channel === "codex:option-picker:respond" ||
         channel === "codex:setup-context-picker:respond" ||
         channel === "codex:setup-codex-step:respond"
@@ -1117,8 +1048,6 @@ vi.mock("./local-conversation-deps", () => ({
       channel !== "codex:turn:native:execute" &&
       channel !== "codex:turn:native:inject" &&
       channel !== "codex:turn:native-steer:execute" &&
-      channel !== "codex:turn:native-fresh:execute" &&
-      channel !== "codex:thread:native-session:execute" &&
       channel !== "codex:thread:native-fork:execute"
     )
       return execute();
@@ -1146,14 +1075,6 @@ vi.mock("./local-conversation-deps", () => ({
     codexEventListeners.add(listener);
     return () => {
       codexEventListeners.delete(listener);
-    };
-  },
-  subscribeCodexRendererClientRequests: (listener: (message: unknown) => void) => {
-    rendererClientRequestListener = listener;
-    return () => {
-      if (rendererClientRequestListener === listener) {
-        rendererClientRequestListener = null;
-      }
     };
   },
 }));
@@ -1444,7 +1365,7 @@ function buildFreshLaunchCanonicalParams(input: {
     runtimeWorkspaceRoots: permissions.runtimeWorkspaceRoots
       ? [...permissions.runtimeWorkspaceRoots]
       : null,
-    useAppServerPermissionDefault: false,
+
     model: canonical.latestModel,
     serviceTier: null,
     effort: canonical.latestReasoningEffort,
@@ -2704,7 +2625,7 @@ describe("local-conversation-store", () => {
       current: null,
     };
     function Probe() {
-      controlRef.current = useCodexAppServerControl("project-1", "remote-thread", "remote-host");
+      controlRef.current = useCodexAppServerControl("remote-thread", "remote-host");
       return null;
     }
 
@@ -2779,7 +2700,7 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("captured control keeps the source host and an explicit projectless destination", async () => {
+  test("captured control keeps its source host across overlapping native Thread IDs", async () => {
     const {
       __resetLocalConversationStoreForTests,
       LocalConversationProvider,
@@ -2789,11 +2710,7 @@ describe("local-conversation-store", () => {
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     let control: ReturnType<typeof useCodexAppServerControl> | null = null;
     function Probe() {
-      const current = useCodexAppServerControl(
-        "unrelated-active-project",
-        "shared-thread",
-        "remote-host",
-      );
+      const current = useCodexAppServerControl("shared-thread", "remote-host");
       useLayoutEffect(() => {
         control = current;
         return () => {
@@ -2843,7 +2760,6 @@ describe("local-conversation-store", () => {
       .mockImplementation(async (_id, _prompt, prepareInput) => {
         await prepareInput();
       });
-    const permission = vi.spyOn(remote, "loadPermissionState");
     try {
       await act(async () => {
         if (!control) throw new Error("Control fixture unavailable");
@@ -2853,11 +2769,9 @@ describe("local-conversation-store", () => {
       });
       expect(remoteSend).toHaveBeenCalledTimes(1);
       expect(localSend).not.toHaveBeenCalled();
-      expect(permission).toHaveBeenLastCalledWith(null);
     } finally {
       remoteSend.mockRestore();
       localSend.mockRestore();
-      permission.mockRestore();
       view.unmount();
       resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
     }
@@ -3111,557 +3025,6 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("leaves session-start auto-title generation to main", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    startThreadForSessionResult = {
-      kind: "started",
-      detail: {
-        ...buildConversation("thread-auto", "project-1"),
-        threadName: null,
-        threadPreview: "Fallback preview",
-        cwd: "/tmp/project-1",
-      },
-    };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    await manager.startThreadForSession({
-      firstSubmission: createCodexFirstSubmissionIdentity(),
-      projectId: "project-1",
-      sessionId: "session-1",
-      prompt: "ignored raw prompt",
-      promptInput: {
-        text: "Context\n## My request for Codex:\nBuild title parity",
-        textAttachments: [{ text: "Pasted requirements" }],
-      },
-    });
-    await settleAsyncRender();
-
-    const startCall = invokeRecords.find(
-      (record) => record.channel === "codex:thread:native-session:prepare",
-    );
-    const startInput = startCall?.args[0] as
-      | {
-          promptInput?: {
-            text?: string;
-            textAttachments?: Array<{
-              text?: string;
-            }>;
-          };
-        }
-      | undefined;
-
-    expect(startInput?.promptInput?.text).toBe(
-      "Context\n## My request for Codex:\nBuild title parity",
-    );
-    expect(startInput?.promptInput?.textAttachments?.[0]?.text).toBe("Pasted requirements");
-    expect(invokeRecords.some((record) => record.channel === "codex:thread:title:generate")).toBe(
-      false,
-    );
-    expect(
-      invokeRecords.some((record) => record.channel === "codex:thread:name:set-generated"),
-    ).toBe(false);
-  });
-
-  test("forwards skipAutoTitleGeneration without renderer-side generation", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    startThreadForSessionResult = {
-      kind: "started",
-      detail: {
-        ...buildConversation("thread-skip", "project-1"),
-        threadName: null,
-        threadPreview: "",
-      },
-    };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    await manager.startThreadForSession({
-      firstSubmission: createCodexFirstSubmissionIdentity(),
-      projectId: "project-1",
-      sessionId: "session-1",
-      prompt: "Build title parity",
-      skipAutoTitleGeneration: true,
-    });
-    await settleAsyncRender();
-
-    const startCall = invokeRecords.find(
-      (record) => record.channel === "codex:thread:native-session:prepare",
-    );
-    const startInput = startCall?.args[0] as
-      | {
-          skipAutoTitleGeneration?: boolean;
-        }
-      | undefined;
-    expect(startInput?.skipAutoTitleGeneration).toBe(true);
-    expect(invokeRecords.some((record) => record.channel === "codex:thread:title:generate")).toBe(
-      false,
-    );
-  });
-
-  test("installs the native session start response before accepting its durable summary", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    snapshotByThread = {
-      "thread-snapshot": {
-        ...buildConversation("thread-snapshot", "project-1"),
-        threadName: "Snapshot applied",
-      },
-    };
-    startThreadForSessionResult = {
-      kind: "started",
-      detail: {
-        ...buildThreadSummary("thread-snapshot", "project-1"),
-        threadName: "Start detail",
-      },
-    };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await manager.startThreadForSession({
-        firstSubmission: createCodexFirstSubmissionIdentity(),
-        projectId: "project-1",
-        sessionId: "session-1",
-        prompt: "Build direct handoff",
-        runInTarget: "localProject",
-      });
-      await settleAsyncRender();
-
-      const startCallIndex = invokeRecords.findIndex(
-        (record) => record.channel === "codex:thread:native-session:prepare",
-      );
-      const snapshotCallIndex = invokeRecords.findIndex(
-        (record) => record.channel === "codex:thread:native-session:execute",
-      );
-      const startInput = invokeRecords[startCallIndex]?.args[0] as
-        | {
-            permissionMode?: string;
-          }
-        | undefined;
-
-      expect(startCallIndex >= 0).toBe(true);
-      expect(snapshotCallIndex > startCallIndex).toBe(true);
-      expect(startInput?.permissionMode).toBe("custom");
-      expect(manager.readConversation("thread-snapshot")?.threadName).toBe("Snapshot applied");
-    } finally {
-      snapshotByThread = {};
-      manager.destroy();
-    }
-  });
-
-  test("loads and updates the projectless permission scope through the same manager path", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await manager.loadPermissionState(null);
-      expect(invokeRecords).toContainEqual({
-        channel: "codex:permission:state:get",
-        args: [null],
-      });
-
-      await manager.setPermissionMode(null, "full-access");
-      expect(invokeRecords).toContainEqual({
-        channel: "codex:permission:mode:set",
-        args: [null, "full-access"],
-      });
-    } finally {
-      manager.destroy();
-    }
-  });
-
-  test("adopts a fresh thread as owner and commits its first optimistic turn before transport settles", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const threadId = "thread-fresh-owner";
-    const launchId = "01991e60-b800-7000-8000-000000000011";
-    const clientUserMessageId = "01991e60-b800-7000-8000-000000000012";
-    const adoptedConversation = withCanonicalState(buildConversation(threadId, "project-1"));
-    const canonicalParams = buildFreshLaunchCanonicalParams({
-      conversation: adoptedConversation,
-      threadId,
-      clientUserMessageId,
-      prompt: "Start without a blank transcript",
-    });
-    startThreadForSessionResult = {
-      kind: "started",
-      detail: adoptedConversation,
-      freshLaunch: {
-        launchId,
-        threadId,
-        clientUserMessageId,
-        canonicalParams,
-      },
-    };
-    freshThreadAdoptionResult = adoptedConversation;
-    let acceptedReplica = canonicalFixture(adoptedConversation);
-    let acceptedRevision: number | undefined;
-    let acceptedPublicationCount = 0;
-    let publicationError: unknown = null;
-    ownerStreamPublishHandler = (input) => {
-      try {
-        const { change } = input as {
-          change:
-            | { type: "snapshot"; revision: number; conversationState: typeof acceptedReplica }
-            | {
-                type: "patches";
-                revision: number;
-                baseRevision: number;
-                patches: CodexConversationStateUpdate[];
-              };
-        };
-        if (change.type === "snapshot") acceptedReplica = change.conversationState;
-        else {
-          if (acceptedRevision !== undefined) expect(change.baseRevision).toBe(acceptedRevision);
-          expect(change.revision).toBe(change.baseRevision + 1);
-          acceptedReplica = applyPatches(acceptedReplica, change.patches);
-        }
-        acceptedRevision = change.revision;
-        acceptedPublicationCount += 1;
-      } catch (error) {
-        publicationError = error;
-      }
-    };
-    let releaseTurnStart = () => {};
-    const turnStartGate = new Promise<void>((resolve) => {
-      releaseTurnStart = resolve;
-    });
-    let transportStarted = false;
-    let renderedTurnCount = 0;
-    let renderedTurnCountAtTransportStart = -1;
-    ownerTurnStartHandler = () => {
-      transportStarted = true;
-      renderedTurnCountAtTransportStart = renderedTurnCount;
-    };
-    ownerTurnStartGate = () => turnStartGate;
-
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    function OptimisticTurnProbe() {
-      const visibleThreadId = useSyncExternalStore(
-        (listener) => manager.subscribeControl(listener),
-        () => {
-          const progress = manager.readThreadStartProgress("project-1", "session-1");
-          if (progress?.phase !== "ready") return null;
-          return progress.threadId ?? null;
-        },
-      );
-      renderedTurnCount = useSyncExternalStore(
-        (listener) =>
-          visibleThreadId
-            ? manager.addConversationCallback(visibleThreadId, () => {
-                listener();
-              })
-            : () => {},
-        () =>
-          visibleThreadId ? (manager.readConversation(visibleThreadId)?.turns.length ?? 0) : 0,
-      );
-      return createElement("div", null, String(renderedTurnCount));
-    }
-    const probe = render(createElement(OptimisticTurnProbe));
-    await settleAsyncRender();
-    try {
-      let startPromise: ReturnType<typeof manager.startThreadForSession> | null = null;
-      await act(async () => {
-        startPromise = manager.startThreadForSession({
-          firstSubmission: { launchId, clientUserMessageId },
-          projectId: "project-1",
-          sessionId: "session-1",
-          prompt: "Start without a blank transcript",
-          runInTarget: "localProject",
-        });
-        for (let index = 0; index < 20; index += 1) {
-          if (transportStarted) break;
-          await settleAsyncRender();
-        }
-      });
-
-      const optimistic = manager.readConversation(threadId);
-      expect(transportStarted).toBe(true);
-      expect(renderedTurnCountAtTransportStart).toBe(1);
-      expect(manager.readConversationStreamRole(threadId)).toBe("owner");
-      expect(residentConversationTurns(optimistic?.canonicalState)).toHaveLength(1);
-      expect(optimistic?.canonicalState?.threadRuntimeStatus).toEqual({
-        type: "active",
-        activeFlags: [],
-      });
-      expect(optimistic?.updatedAt).toBe(optimistic?.canonicalState?.updatedAt);
-      expect(optimistic?.canonicalState?.recencyAt).toBe(optimistic?.canonicalState?.updatedAt);
-      expect(optimistic?.canonicalState?.updatedAt).toBe(
-        residentConversationTurns(optimistic?.canonicalState)[0]?.turnStartedAtMs,
-      );
-      expect(
-        residentConversationTurns(optimistic?.canonicalState)[0]?.params.clientUserMessageId,
-      ).toBe(clientUserMessageId);
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:resume:prepare")).toBe(
-        false,
-      );
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:snapshot:request"),
-      ).toBe(false);
-      expect(
-        invokeRecords.some(
-          (record) =>
-            record.channel === "codex:turn:native-fresh:execute" &&
-            (record.args[0] as { threadId: string; launchId: string }).threadId === threadId &&
-            (record.args[0] as { launchId: string }).launchId === launchId,
-        ),
-      ).toBe(true);
-
-      expect(
-        residentConversationTurns(manager.readConversation(threadId)?.canonicalState)[0]?.turnId,
-      ).toBe(null);
-
-      setTestFollowers(threadId, ["fresh-observer"]);
-      await act(async () => {
-        releaseTurnStart();
-        if (!startPromise) {
-          throw new Error("Expected fresh-thread start promise");
-        }
-        await expect(startPromise).resolves.toMatchObject({
-          kind: "started",
-        });
-        for (let index = 0; index < 20; index += 1) {
-          await settleAsyncRender();
-          if (
-            residentConversationTurns(manager.readConversation(threadId)?.canonicalState)[0]
-              ?.turnId === "turn-owner-start"
-          ) {
-            break;
-          }
-        }
-      });
-      expect(
-        residentConversationTurns(manager.readConversation(threadId)?.canonicalState)[0]?.turnId,
-      ).toBe("turn-owner-start");
-      await flushAsyncWork(3);
-      expect(publicationError).toBeNull();
-      expect(acceptedPublicationCount).toBeGreaterThanOrEqual(2);
-      expect(residentConversationTurns(acceptedReplica)[0]?.turnId).toBe("turn-owner-start");
-    } finally {
-      probe.unmount();
-      releaseTurnStart();
-      freshThreadAdoptionResult = null;
-      ownerTurnStartHandler = null;
-      ownerTurnStartGate = null;
-      ownerStreamPublishHandler = null;
-      manager.destroy();
-    }
-  });
-
-  test("keeps fresh first-turn failure observable by the submission caller", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const threadId = "thread-fresh-owner-failure";
-    const adoptedConversation = withCanonicalState(buildConversation(threadId, "project-1"));
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { sessionFirstSubmissionOwner } =
-      await import("../conversation-launch/session-first-submission-owner");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    sessionFirstSubmissionOwner.dispose();
-    const submission = sessionFirstSubmissionOwner.begin({
-      backend: "codex",
-      originProjectId: "project-1",
-      originSessionId: "session-1",
-      prompt: "Keep a failed first submission recoverable",
-    });
-    const canonicalParams = buildFreshLaunchCanonicalParams({
-      conversation: adoptedConversation,
-      threadId,
-      clientUserMessageId: submission.clientUserMessageId,
-      prompt: "Keep a failed first submission recoverable",
-    });
-    startThreadForSessionResult = {
-      kind: "started",
-      detail: adoptedConversation,
-      freshLaunch: {
-        launchId: submission.launchId,
-        threadId,
-        clientUserMessageId: submission.clientUserMessageId,
-        canonicalParams,
-      },
-    };
-    freshThreadAdoptionResult = adoptedConversation;
-    ownerTurnStartError = new Error("first turn was rejected");
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await expect(
-        manager.startThreadForSession({
-          firstSubmission: submission,
-          projectId: "project-1",
-          sessionId: "session-1",
-          prompt: "Keep a failed first submission recoverable",
-          runInTarget: "localProject",
-        }),
-      ).rejects.toThrow("first turn was rejected");
-      await flushAsyncWork(3);
-
-      expect(
-        sessionFirstSubmissionOwner
-          .getSnapshot()
-          .submissions.find((candidate) => candidate.launchId === submission.launchId),
-      ).toMatchObject({
-        threadId,
-        phase: "failed",
-        failure: {
-          stage: "startingTurn",
-          message: "first turn was rejected",
-        },
-      });
-      expect(manager.readThreadStartProgress("project-1", "session-1")).toMatchObject({
-        launchId: submission.launchId,
-        threadId,
-        phase: "failed",
-      });
-      expect(manager.readConversation(threadId)?.turns).toEqual([]);
-    } finally {
-      freshThreadAdoptionResult = null;
-      ownerTurnStartError = null;
-      sessionFirstSubmissionOwner.dispose();
-      manager.destroy();
-    }
-  });
-
-  test("returns pending worktree identity without requesting a thread snapshot or seeding direct progress", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    startThreadForSessionResult = {
-      kind: "pending",
-      pendingWorktreeId: "local:pending-session-start",
-      clientThreadId: "client-new-thread:pending-session-start",
-    };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      const result = await manager.startThreadForSession({
-        firstSubmission: createCodexFirstSubmissionIdentity(),
-        projectId: "project-1",
-        sessionId: "session-1",
-        prompt: "Build in a retained worktree",
-        runInTarget: "newWorktree",
-      });
-
-      expect(result.kind).toBe("pending");
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:thread:snapshot:request"),
-      ).toBe(false);
-      expect(manager.readThreadStartProgress("project-1", "session-1")).toBe(null);
-    } finally {
-      manager.destroy();
-    }
-  });
-
-  test("routes a new worktree launch through the owning manager host", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    startThreadForSessionResult = {
-      kind: "pending",
-      pendingWorktreeId: "ssh:builder:pending-session-start",
-      clientThreadId: "client-new-thread:pending-session-start",
-    };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("ssh:builder"));
-    try {
-      await manager.startThreadForSession({
-        firstSubmission: createCodexFirstSubmissionIdentity(),
-        projectId: "project-1",
-        sessionId: "session-1",
-        prompt: "Build on the selected host",
-        runInTarget: "newWorktree",
-      });
-
-      const startCall = invokeRecords.find(
-        (record) => record.channel === "codex:thread:start-for-session",
-      );
-      expect(startCall?.args[0]).toMatchObject({ executionHostId: "ssh:builder" });
-    } finally {
-      manager.destroy();
-    }
-  });
-
-  test("seeds session thread start progress before invoking main", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    let resolveStart: (value: {
-      kind: "started";
-      detail: CodexConversationSnapshot;
-    }) => void = () => {
-      throw new Error("Expected pending start resolver");
-    };
-    startThreadForSessionResult = new Promise<{
-      kind: "started";
-      detail: CodexConversationSnapshot;
-    }>((resolve) => {
-      resolveStart = resolve;
-    });
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    const startPromise = manager.startThreadForSession({
-      firstSubmission: createCodexFirstSubmissionIdentity(),
-      projectId: "project-1",
-      sessionId: "session-1",
-      prompt: "Start immediately",
-      runInTarget: "localProject",
-    });
-
-    const seeded = manager.readThreadStartProgress("project-1", "session-1");
-    expect(Boolean(seeded)).toBe(true);
-    expect(seeded?.phase).toBe("startingThread");
-    expect(seeded?.runInTarget).toBe("localProject");
-    expect(seeded?.message).toBe("Sending message…");
-
-    resolveStart({
-      kind: "started",
-      detail: buildConversation("thread-start", "project-1"),
-    });
-    await startPromise;
-  });
-
   test("shared thread start progress updates keep target metadata across selectors", async () => {
     invokeCalls = [];
     hostMessageListener = null;
@@ -3798,7 +3161,52 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("hydrates account and connection through the external store bootstrap", async () => {
+  test("observing Runtime Sessions leaves the legacy native account and model endpoint cold", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+    invokeRecords = [];
+    try {
+      manager.start();
+      await flushAsyncWork();
+      expect(manager.readAccount()).toBeNull();
+      expect(manager.readAvailableModels()).toEqual([]);
+      expect(invokeRecords.some((record) => record.channel === "codex:account:read")).toBe(false);
+      expect(
+        recordedNativeRequests().some(
+          (record) =>
+            (record.args[0] as { request?: { method?: string } } | undefined)?.request?.method ===
+            "model/list",
+        ),
+      ).toBe(false);
+      const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+      dispatchCodexAppServerMessage("shared-object-updated", {
+        hostId: "local",
+        object: {
+          objectType: "account",
+          objectId: "account",
+          value: {
+            account: { type: "chatgpt", email: "later@example.com", planType: "plus" },
+            requiresOpenAiAuth: false,
+            pendingLogin: null,
+            rateLimits: null,
+          },
+        },
+      });
+      expect(manager.readAccount()?.account).toMatchObject({ email: "later@example.com" });
+      const [account, models] = await Promise.all([
+        manager.loadAccount(),
+        manager.loadAvailableModels(),
+      ]);
+      expect(account.account).toMatchObject({ email: "dev@example.com" });
+      expect(models[0]?.id).toBe("gpt-5.3-codex");
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  test("hydrates native account and catalog only after explicit demand", async () => {
     invokeCalls = [];
     hostMessageListener = null;
     threadListByProject = {};
@@ -3812,6 +3220,10 @@ describe("local-conversation-store", () => {
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
     function Probe() {
+      const manager = useDefaultCodexAppServerManager();
+      useLayoutEffect(() => {
+        void Promise.all([manager.loadAccount(), manager.loadAvailableModels()]);
+      }, [manager]);
       const account = useLocalConversationAccount();
       const connection = useLocalConversationConnection();
       const models = useCodexAvailableModels();
@@ -4327,7 +3739,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { ok: true };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -4580,7 +3991,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     snapshotByThread = {};
     resumeThreadResult = null;
@@ -5662,7 +5072,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadError = null;
     resumeThreadRole = "owner";
@@ -5801,7 +5210,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     resumeThreadError = null;
@@ -5846,7 +5254,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     resumeThreadError = new Error("renderer attachment failed");
@@ -5893,7 +5300,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadError = null;
     resumeThreadRole = "owner";
@@ -5966,7 +5372,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadError = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -6009,7 +5414,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadError = null;
     resumeThreadRole = "owner";
@@ -6058,72 +5462,6 @@ describe("local-conversation-store", () => {
       selectedSubagentHydrateHandler = null;
       resumeThreadResult = null;
       resumeThreadRevision = 0;
-      manager.destroy();
-    }
-  });
-
-  test("owner publication strips renderer-private authorization overlays from the shared document", async () => {
-    invokeRecords = [];
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    const localView: CodexConversationSnapshot = {
-      ...buildConversation("thread-private-overlay", "project-1"),
-      requests: [
-        {
-          type: "nodexAgentAuthorization",
-          requestId: "nodex-auth-private",
-          projectId: "project-1",
-          threadId: "thread-private-overlay",
-          turnId: "turn-1",
-          itemId: "tool-1",
-          tool: "update_page",
-          effect: "write",
-          preview: {
-            title: "Update Page",
-            summary: "Append one block.",
-            details: [],
-          },
-          createdAt: 1,
-        },
-      ],
-    };
-
-    try {
-      resumeThreadResult = { ...localView, requests: [] };
-      await manager.requestThreadStreamResume(localView.threadId);
-      const request = localView.requests[0];
-      if (request?.type !== "nodexAgentAuthorization")
-        throw new Error("Missing authorization fixture");
-      const response = manager.requestNodexAgentAuthorization(request);
-      invokeRecords = [];
-      setTestFollowers(localView.threadId, ["new-viewer"]);
-      await flushAsyncWork();
-      const publish = invokeRecords.find(
-        (record) => record.channel === "peer:threadStreamStateChanged",
-      )?.args[0] as
-        | {
-            change?: {
-              type?: string;
-              conversationState?: import("../../../shared/types").CodexCanonicalConversationState;
-            };
-          }
-        | undefined;
-      expect(
-        manager.readConversation(localView.threadId)?.requests.map((request) => request.requestId),
-      ).toEqual(["nodex-auth-private"]);
-      expect(publish?.change?.type).toBe("snapshot");
-      expect(publish?.change?.conversationState?.requests).toEqual([]);
-      await manager.respondNodexAgentAuthorization(
-        request.requestId,
-        { decision: "deny" },
-        localView.threadId,
-      );
-      expect(await response).toEqual({ decision: "deny" });
-    } finally {
-      resumeThreadResult = null;
       manager.destroy();
     }
   });
@@ -8772,85 +8110,41 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner server requests publish request-plane patches from bundle 51920-52380", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    resumeThreadResult = null;
+  test("owner native questions publish exact request state and commit their answer", async () => {
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
     try {
-      const commandItem = buildCommandExecutionItem("thread-1", "turn-1", "cmd-1");
-      const duplicateAttachedCommand: CodexConversationItem = {
-        ...buildCommandExecutionItem("thread-1", "turn-1", "cmd-2"),
-        approvalRequestId: "approval-1",
-      };
-      const baseConversation: CodexConversationSnapshot = {
+      const conversation = {
         ...buildConversation("thread-1", "project-1"),
+        createdAt: 100,
+        updatedAt: 200,
         turns: [
           {
             threadId: "thread-1",
             turnId: "turn-1",
-            status: "inProgress",
-            itemIds: ["cmd-1", "cmd-2"],
-            items: [commandItem, duplicateAttachedCommand],
+            status: "inProgress" as const,
+            itemIds: [],
+            items: [],
           },
         ],
       };
-      resumeThreadResult = baseConversation;
-
+      resumeThreadResult = conversation;
       dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
         hostId: "local",
         conversationId: "thread-1",
         version: 1,
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: baseConversation,
-        },
         sourceClientId: null,
+        change: { type: "snapshot", revision: 1, conversationState: conversation },
       });
       await resumeAfterFixtureOwnerDisconnect(manager, "thread-1");
-      invokeRecords = [];
-
       dispatchCodexAppServerMessage("native-request", {
         type: "nativeRequest",
         generation: resumeThreadGeneration,
-        occurrenceId: "native-52:1",
+        occurrenceId: "question:1",
         occurrenceToken: 1,
-        hostId: "local",
-        request: {
-          id: "approval-1",
-          method: "item/commandExecution/requestApproval",
-          params: {
-            kind: "command",
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "cmd-1",
-            startedAtMs: 10,
-            approvalId: null,
-            environmentId: null,
-            reason: "Need command access",
-            command: "bun test",
-            cwd: "/repo",
-            commandActions: null,
-            additionalPermissions: null,
-            proposedExecpolicyAmendment: null,
-            proposedNetworkPolicyAmendments: null,
-            availableDecisions: null,
-          },
-        },
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-53:2",
-        occurrenceToken: 2,
         hostId: "local",
         request: {
           id: "input-1",
@@ -8858,7 +8152,7 @@ describe("local-conversation-store", () => {
           params: {
             threadId: "thread-1",
             turnId: "turn-1",
-            itemId: "input-call-1",
+            itemId: "input-call",
             isBlocking: true,
             autoResolutionMs: null,
             questions: [
@@ -8874,135 +8168,31 @@ describe("local-conversation-store", () => {
           },
         },
       });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-54:3",
-        occurrenceToken: 3,
-        hostId: "local",
-        request: {
-          id: "permission-1",
-          method: "item/permissions/requestApproval",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "permission-call-1",
-            environmentId: "env-1",
-            startedAtMs: 12,
-            cwd: "/repo",
-            reason: "Need network access",
-            permissions: {
-              network: {
-                enabled: true,
-              },
-              fileSystem: null,
-            },
-          },
-        },
-      });
       await flushAsyncWork();
-
-      const conversation = manager.readConversation("thread-1");
-      const command = conversation?.turns[0]?.items.find((item) => item.itemId === "cmd-1");
-      const userInputItem = conversation?.turns[0]?.items.find(
+      const pending = manager.readConversation("thread-1");
+      expect(pending?.canonicalRequests?.map((request) => request.id)).toEqual(["input-1"]);
+      expect(pending?.requests.map((request) => request.type)).toEqual(["userInput"]);
+      const item = pending?.turns[0]?.items.find(
         (item) => item.itemId === "user-input-response-input-1",
       );
-      const permissionItem = conversation?.turns[0]?.items.find(
-        (item) => item.itemId === "permission-request-permission-1",
+      expect(item?.status).toBe("inProgress");
+      expect(await manager.respondUserInput("input-1", { q1: ["A"] }, "thread-1")).toBe(true);
+      await flushAsyncWork();
+      const answered = manager.readConversation("thread-1");
+      expect(answered?.canonicalRequests).toEqual([]);
+      expect(answered?.requests).toEqual([]);
+      const result = answered?.turns[0]?.items.find(
+        (item) => item.itemId === "user-input-response-input-1",
       );
-      const publishRecords = invokeRecords.filter(
-        (record) => record.channel === "peer:threadStreamStateChanged",
-      );
-
-      expect(String(conversation?.requests.length ?? -1)).toBe("3");
+      expect(result?.status).toBe("completed");
+      expect(result?.userInputAnswers).toEqual({ q1: ["A"] });
+      expect(result?.createdAt).toBe(item?.createdAt);
+      expect(result?.updatedAt).toBe(item?.updatedAt);
+      expect(answered?.createdAt).toBe(100);
+      expect(answered?.updatedAt).toBe(200);
       expect(
-        JSON.stringify(conversation?.canonicalRequests?.map((request) => request.id) ?? []),
-      ).toBe(JSON.stringify(["approval-1", "input-1", "permission-1"]));
-      expect(JSON.stringify(conversation?.canonicalState?.requests ?? [])).toBe(
-        JSON.stringify(conversation?.canonicalRequests ?? []),
-      );
-      expect(conversation?.hasUnreadTurn).toBe(true);
-      expect(conversation?.requests[0]?.type).toBe("approval");
-      expect(conversation?.requests[1]?.type).toBe("userInput");
-      expect(conversation?.requests[2]?.type).toBe("permissionRequest");
-      expect(command?.approvalRequestId).toBe("approval-1");
-      expect(userInputItem?.kind).toBe("userInputResponse");
-      expect(userInputItem?.status).toBe("inProgress");
-      expect(String(userInputItem?.userInputQuestions?.length ?? -1)).toBe("1");
-      expect(JSON.stringify(userInputItem?.rawItem)).toBe(
-        JSON.stringify({
-          id: "user-input-response-input-1",
-          type: "userInputResponse",
-          requestId: "input-1",
-          turnId: "turn-1",
-          questions: [
-            {
-              id: "q1",
-              header: "Question",
-              question: "Pick one",
-              options: [{ description: "Option A", label: "A" }],
-            },
-          ],
-          answers: {},
-          completed: false,
-        }),
-      );
-      expect(permissionItem?.semanticKind).toBe("permissionRequest");
-      expect(permissionItem?.status).toBe("inProgress");
-      expect(permissionItem?.markdownText).toBe("Need network access");
-      expect(publishRecords).toHaveLength(3);
-
-      await manager.respondUserInput("input-1", { q1: ["A"] });
-      await manager.respondApproval("approval-1", { kind: "command", decision: "decline" });
-      await manager.respondPermissionRequest("permission-1", { permissions: {}, scope: "turn" });
-      await flushAsyncWork();
-
-      const resolvedConversation = manager.readConversation("thread-1");
-      const resolvedCommand = resolvedConversation?.turns[0]?.items.find(
-        (item) => item.itemId === "cmd-1",
-      );
-      const duplicateResolvedCommand = resolvedConversation?.turns[0]?.items.find(
-        (item) => item.itemId === "cmd-2",
-      );
-      const resolvedUserInputItem = resolvedConversation?.turns[0]?.items.find(
-        (item) => item.itemId === "user-input-response-input-1",
-      );
-      const resolvedPermissionItem = resolvedConversation?.turns[0]?.items.find(
-        (item) => item.itemId === "permission-request-permission-1",
-      );
-      const resolvedPublishRecords = invokeRecords.filter(
-        (record) => record.channel === "peer:threadStreamStateChanged",
-      );
-      expect(String(resolvedConversation?.requests.length ?? -1)).toBe("0");
-      expect(String(resolvedConversation?.canonicalRequests?.length ?? -1)).toBe("0");
-      expect(String(resolvedConversation?.canonicalState?.requests.length ?? -1)).toBe("0");
-      expect(resolvedConversation?.hasUnreadTurn).toBe(true);
-      expect(resolvedCommand?.approvalRequestId ?? null).toBe(null);
-      expect(duplicateResolvedCommand?.approvalRequestId ?? null).toBe(null);
-      expect(resolvedUserInputItem?.status).toBe("completed");
-      expect(resolvedUserInputItem?.userInputAnswers?.q1?.[0]).toBe("A");
-      expect(resolvedPermissionItem?.status).toBe("completed");
-      expect(JSON.stringify(resolvedPermissionItem?.rawItem)).toBe(
-        JSON.stringify({
-          id: "permission-request-permission-1",
-          type: "permissionRequest",
-          requestId: "permission-1",
-          turnId: "turn-1",
-          reason: "Need network access",
-          permissions: {
-            network: {
-              enabled: true,
-            },
-            fileSystem: null,
-          },
-          completed: true,
-          response: {
-            permissions: {},
-            scope: "turn",
-          },
-        }),
-      );
-      expect(resolvedPublishRecords).toHaveLength(6);
+        invokeRecords.some((record) => record.channel === "peer:threadStreamStateChanged"),
+      ).toBe(true);
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -9138,136 +8328,6 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner request ingress replies and resolved notifications preserve transcript timestamps", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    resumeThreadResult = null;
-    ownerRequestResponseHandler = null;
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      const commandItem: CodexConversationItem = {
-        ...buildCommandExecutionItem("thread-1", "turn-1", "cmd-1"),
-        createdAt: 300,
-        updatedAt: 400,
-      };
-      const baseConversation: CodexConversationSnapshot = {
-        ...buildConversation("thread-1", "project-1"),
-        createdAt: 100,
-        updatedAt: 200,
-        turns: [
-          {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            status: "inProgress",
-            itemIds: ["cmd-1"],
-            items: [commandItem],
-          },
-        ],
-      };
-      resumeThreadResult = baseConversation;
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: "thread-1",
-        version: 1,
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: baseConversation,
-        },
-        sourceClientId: null,
-      });
-      await resumeAfterFixtureOwnerDisconnect(manager, "thread-1");
-
-      const baseline = manager.readConversation("thread-1");
-      const baselineCreatedAt = baseline?.createdAt;
-      const baselineUpdatedAt = baseline?.updatedAt;
-      const baselineItemCreatedAt = baseline?.turns[0]?.items[0]?.createdAt;
-      const baselineItemUpdatedAt = baseline?.turns[0]?.items[0]?.updatedAt;
-      const assertTimestampsUnchanged = () => {
-        const conversation = manager.readConversation("thread-1");
-        const item = conversation?.turns[0]?.items[0];
-        expect(conversation?.createdAt).toBe(baselineCreatedAt);
-        expect(conversation?.updatedAt).toBe(baselineUpdatedAt);
-        expect(item?.createdAt).toBe(baselineItemCreatedAt);
-        expect(item?.updatedAt).toBe(baselineItemUpdatedAt);
-      };
-      const dispatchApproval = (requestId: string, sequence: number) => {
-        dispatchCodexAppServerMessage("native-request", {
-          type: "nativeRequest",
-          generation: resumeThreadGeneration,
-          occurrenceId: `native-58:${sequence}`,
-          occurrenceToken: sequence,
-          hostId: "local",
-          request: {
-            id: requestId,
-            method: "item/commandExecution/requestApproval",
-            params: {
-              kind: "command",
-              threadId: "thread-1",
-              turnId: "turn-1",
-              itemId: "cmd-1",
-              startedAtMs: 10,
-              approvalId: null,
-              environmentId: null,
-              reason: "Need command access",
-              command: "bun test",
-              cwd: "/repo",
-              commandActions: null,
-              additionalPermissions: null,
-              proposedExecpolicyAmendment: null,
-              proposedNetworkPolicyAmendments: null,
-              availableDecisions: null,
-            },
-          },
-        });
-      };
-
-      dispatchApproval("approval-local", 1);
-      await flushAsyncWork();
-      assertTimestampsUnchanged();
-
-      expect(
-        await manager.respondApproval(
-          "approval-local",
-          { kind: "command", decision: "decline" },
-          "thread-1",
-        ),
-      ).toBe(true);
-      await flushAsyncWork();
-      assertTimestampsUnchanged();
-
-      dispatchApproval("approval-resolved", 2);
-      await flushAsyncWork();
-      dispatchCodexAppServerMessage("native-notification", {
-        type: "nativeNotification",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-59:3",
-        occurrenceToken: 3,
-        hostId: "local",
-        notification: {
-          method: "serverRequest/resolved",
-          params: {
-            threadId: "thread-1",
-            requestId: "approval-resolved",
-          },
-        },
-      });
-      await flushAsyncWork();
-      assertTimestampsUnchanged();
-    } finally {
-      ownerRequestResponseHandler = null;
-      resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
   test("owner local interactive replies win when resolved arrives before IPC settles", async () => {
     invokeCalls = [];
     invokeRecords = [];
@@ -9342,30 +8402,6 @@ describe("local-conversation-store", () => {
       dispatchCodexAppServerMessage("native-request", {
         type: "nativeRequest",
         generation: resumeThreadGeneration,
-        occurrenceId: "native-61:2",
-        occurrenceToken: 2,
-        hostId: "local",
-        request: {
-          id: "permission-race",
-          method: "item/permissions/requestApproval",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "permission-call-1",
-            environmentId: "env-1",
-            startedAtMs: 12,
-            cwd: "/repo",
-            reason: "Need network",
-            permissions: {
-              network: { enabled: true },
-              fileSystem: null,
-            },
-          },
-        },
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
         occurrenceId: "native-62:3",
         occurrenceToken: 3,
         hostId: "local",
@@ -9413,16 +8449,6 @@ describe("local-conversation-store", () => {
 
       expect(await manager.respondUserInput("user-race", { q1: ["A"] }, "thread-1")).toBe(true);
       expect(
-        await manager.respondPermissionRequest(
-          "permission-race",
-          {
-            permissions: {},
-            scope: "turn",
-          },
-          "thread-1",
-        ),
-      ).toBe(true);
-      expect(
         await manager.respondMcpElicitation(
           "mcp-race",
           {
@@ -9438,24 +8464,10 @@ describe("local-conversation-store", () => {
       const conversation = manager.readConversation("thread-1");
       const items = conversation?.turns[0]?.items ?? [];
       const userItem = items.find((item) => item.itemId === "user-input-response-user-race");
-      const permissionItem = items.find(
-        (item) => item.itemId === "permission-request-permission-race",
-      );
       const mcpItem = items.find((item) => item.itemId === "mcp-server-elicitation-mcp-race");
       expect(String(conversation?.canonicalRequests?.length ?? -1)).toBe("0");
       expect(String(conversation?.requests.length ?? -1)).toBe("0");
       expect(userItem?.userInputAnswers?.q1?.[0]).toBe("A");
-      expect(
-        JSON.stringify(
-          (
-            permissionItem?.rawItem as
-              | {
-                  response?: unknown;
-                }
-              | undefined
-          )?.response,
-        ),
-      ).toBe(JSON.stringify({ permissions: {}, scope: "turn" }));
       expect(
         (
           mcpItem?.rawItem as
@@ -9467,7 +8479,7 @@ describe("local-conversation-store", () => {
       ).toBe("accept");
       expect(conversation?.createdAt).toBe(100);
       expect(conversation?.updatedAt).toBe(200);
-      for (const item of [userItem, permissionItem, mcpItem]) {
+      for (const item of [userItem, mcpItem]) {
         expect(`${item?.createdAt}:${item?.updatedAt}`).toBe(pendingTimestamps[item?.itemId ?? ""]);
       }
     } finally {
@@ -9481,7 +8493,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -9517,23 +8528,23 @@ describe("local-conversation-store", () => {
           hostId: "local",
           request: {
             id: requestId,
-            method: "item/commandExecution/requestApproval",
+            method: "item/tool/requestUserInput",
             params: {
-              kind: "command",
               threadId,
               turnId,
-              itemId: `command-${turnId}`,
-              startedAtMs: 1,
-              approvalId: null,
-              environmentId: null,
-              reason: "Conversation-scoped reply",
-              command: "bun test",
-              cwd: "/repo",
-              commandActions: null,
-              additionalPermissions: null,
-              proposedExecpolicyAmendment: null,
-              proposedNetworkPolicyAmendments: null,
-              availableDecisions: null,
+              itemId: `question-${turnId}`,
+              isBlocking: true,
+              autoResolutionMs: null,
+              questions: [
+                {
+                  id: "q1",
+                  header: "Question",
+                  question: "Choose",
+                  isOther: false,
+                  isSecret: false,
+                  options: null,
+                },
+              ],
             },
           },
         });
@@ -9542,9 +8553,9 @@ describe("local-conversation-store", () => {
       invokeRecords = [];
 
       expect(
-        await manager.respondApproval(
+        await manager.respondUserInput(
           requestId,
-          { kind: "command", decision: "decline" },
+          { q1: ["Only the selected conversation"] },
           "thread-owner-scope-second",
         ),
       ).toBe(true);
@@ -9569,286 +8580,10 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("follower request replies use method-specific owner IPC without waiting for stream revision", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    rendererClientRequestListener = null;
-    threadListByProject = {};
-    followerActionResult = { ok: true };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    let resolved = false;
-    let accepted = false;
-    const commandItem: CodexConversationItem = {
-      ...buildCommandExecutionItem("thread-1", "turn-1", "cmd-follower-approval"),
-      approvalRequestId: "approval-follower",
-    };
-    const pendingConversation: CodexConversationSnapshot = {
-      ...buildConversation("thread-1", "project-1"),
-      turns: [
-        {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          status: "inProgress",
-          itemIds: ["cmd-follower-approval"],
-          items: [commandItem],
-        },
-      ],
-      requests: [
-        {
-          type: "approval",
-          requestId: "approval-follower",
-          kind: "command",
-          projectId: "project-1",
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "cmd-follower-approval",
-          createdAt: 1,
-        },
-      ],
-      canonicalRequests: [
-        {
-          id: "approval-follower",
-          method: "item/commandExecution/requestApproval",
-          params: {
-            kind: "command",
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "cmd-follower-approval",
-            startedAtMs: 1,
-            environmentId: null,
-          },
-        },
-      ],
-    };
-
-    try {
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: "thread-1",
-        version: 1,
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: pendingConversation,
-        },
-        sourceClientId: "owner-a",
-      });
-
-      const responsePromise = manager
-        .respondApproval("approval-follower", { kind: "command", decision: "decline" }, "thread-1")
-        .then((result) => {
-          resolved = true;
-          accepted = result;
-        });
-      await flushAsyncWork();
-      expect(resolved).toBe(true);
-      expect(accepted).toBe(true);
-      expect(manager.readConversation("thread-1")?.requests.length).toBe(1);
-
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: "thread-1",
-        version: 2,
-        change: {
-          type: "snapshot",
-          revision: 2,
-          conversationState: {
-            ...pendingConversation,
-            turns: [
-              {
-                ...pendingConversation.turns[0]!,
-                items: [{ ...commandItem, approvalRequestId: null }],
-              },
-            ],
-            requests: [],
-            canonicalRequests: [],
-          },
-        },
-        sourceClientId: "owner-a",
-      });
-      await responsePromise;
-
-      const action = invokeRecords.find((record) => record.channel === "peer:requestThreadFollower")
-        ?.args[0] as
-        | {
-            request?: {
-              method?: string;
-              params?: {
-                conversationId?: string;
-                requestId?: string | number;
-                decision?: string;
-              };
-            };
-          }
-        | undefined;
-      expect(resolved).toBe(true);
-      expect(accepted).toBe(true);
-      expect(action?.request?.method).toBe("thread-follower-command-approval-decision");
-      expect(action?.request?.params?.conversationId).toBe("thread-1");
-      expect(action?.request?.params?.requestId).toBe("approval-follower");
-      expect(action?.request?.params?.decision).toBe("decline");
-      expect(manager.readConversation("thread-1")?.requests.length).toBe(0);
-    } finally {
-      followerActionResult = null;
-      manager.destroy();
-    }
-  });
-
-  test("owner approval reducer blocks both routes behind an opposite first same-id envelope", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    rendererClientRequestListener = null;
-    threadListByProject = {};
-    resumeThreadResult = null;
-    ownerRequestResponseHandler = async () => false;
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    const runCollision = async (input: {
-      threadId: string;
-      requestId: string;
-      firstKind: "command" | "file";
-    }) => {
-      const turnId = `turn-${input.requestId}`;
-      const baseConversation: CodexConversationSnapshot = {
-        ...buildConversation(input.threadId, "project-1"),
-        turns: [
-          {
-            threadId: input.threadId,
-            turnId,
-            status: "inProgress",
-            itemIds: [],
-            items: [],
-          },
-        ],
-      };
-      resumeThreadResult = baseConversation;
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: input.threadId,
-        version: 1,
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: baseConversation,
-        },
-        sourceClientId: "test-owner",
-      });
-      await resumeAfterFixtureOwnerDisconnect(manager, input.threadId);
-
-      const commandRequest = {
-        id: input.requestId,
-        method: "item/commandExecution/requestApproval" as const,
-        params: {
-          kind: "command" as const,
-          threadId: input.threadId,
-          turnId,
-          itemId: `command-${input.requestId}`,
-          startedAtMs: 1,
-          approvalId: null,
-          environmentId: null,
-          reason: "Command route",
-          command: "bun test",
-          cwd: "/repo",
-          commandActions: null,
-          additionalPermissions: null,
-          proposedExecpolicyAmendment: null,
-          proposedNetworkPolicyAmendments: null,
-          availableDecisions: null,
-        },
-      };
-      const fileRequest = {
-        id: input.requestId,
-        method: "item/fileChange/requestApproval" as const,
-        params: {
-          threadId: input.threadId,
-          turnId,
-          itemId: `file-${input.requestId}`,
-          startedAtMs: 1,
-          reason: "File route",
-          grantRoot: "/repo",
-        },
-      };
-      const firstRequest = input.firstKind === "command" ? commandRequest : fileRequest;
-      const secondRequest = input.firstKind === "command" ? fileRequest : commandRequest;
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-65:1",
-        occurrenceToken: 1,
-        hostId: "local",
-        request: firstRequest,
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-66:2",
-        occurrenceToken: 2,
-        hostId: "local",
-        request: secondRequest,
-      });
-      await flushAsyncWork();
-      invokeRecords = [];
-
-      const wrongKind = input.firstKind === "command" ? "file" : "command";
-      expect(
-        await manager.respondApproval(
-          input.requestId,
-          { kind: wrongKind, decision: "decline" },
-          input.threadId,
-        ),
-      ).toBe(false);
-
-      expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(
-        false,
-      );
-      expect(
-        JSON.stringify(
-          manager
-            .readConversation(input.threadId)
-            ?.canonicalRequests?.map((request) => request.method) ?? [],
-        ),
-      ).toBe(JSON.stringify([firstRequest.method, secondRequest.method]));
-      expect(manager.readConversation(input.threadId)?.requests.length).toBe(2);
-      expect(manager.readConversation(input.threadId)?.resumeState).toBe("resumed");
-      expect(
-        invokeRecords.some((record) => record.channel === "peer:threadStreamStateChanged"),
-      ).toBe(false);
-    };
-
-    try {
-      await runCollision({
-        threadId: "thread-owner-file-first-route",
-        requestId: "owner-file-first-route",
-        firstKind: "file",
-      });
-      await runCollision({
-        threadId: "thread-owner-command-first-route",
-        requestId: "owner-command-first-route",
-        firstKind: "command",
-      });
-    } finally {
-      ownerRequestResponseHandler = null;
-      resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
   test("owner response actions no-op after the request has already resolved", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -9876,173 +8611,24 @@ describe("local-conversation-store", () => {
       invokeRecords = [];
 
       const result = await manager.handleThreadFollowerRequest({
-        method: "thread-follower-command-approval-decision",
-        params: { conversationId: threadId, requestId: "already-resolved", decision: "decline" },
+        method: "thread-follower-submit-user-input",
+        params: {
+          conversationId: threadId,
+          requestId: "already-resolved",
+          response: { answers: {} },
+        },
       });
 
       expect(result).toEqual({
-        method: "thread-follower-command-approval-decision",
+        method: "thread-follower-submit-user-input",
         result: { ok: true },
       });
       expect(manager.readConversation(threadId)?.resumeState).toBe("resumed");
-      expect(invokeRecords.some((record) => record.channel === "codex:approval:respond")).toBe(
+      expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(
         false,
       );
     } finally {
       resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
-  test("follower approval actions preserve the requested route kind for both opposite-first collisions", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    rendererClientRequestListener = null;
-    threadListByProject = {};
-    followerActionResult = { ok: true };
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    const runCollision = async (input: {
-      threadId: string;
-      requestId: string;
-      firstKind: "command" | "file";
-    }) => {
-      const turnId = `turn-${input.requestId}`;
-      const commandRequest = {
-        id: input.requestId,
-        method: "item/commandExecution/requestApproval" as const,
-        params: {
-          kind: "command" as const,
-          threadId: input.threadId,
-          turnId,
-          itemId: `command-${input.requestId}`,
-          startedAtMs: 1,
-          approvalId: null,
-          environmentId: null,
-          reason: "Command route",
-          command: "bun test",
-          cwd: "/repo",
-          commandActions: null,
-          additionalPermissions: null,
-          proposedExecpolicyAmendment: null,
-          proposedNetworkPolicyAmendments: null,
-          availableDecisions: null,
-        },
-      };
-      const fileRequest = {
-        id: input.requestId,
-        method: "item/fileChange/requestApproval" as const,
-        params: {
-          threadId: input.threadId,
-          turnId,
-          itemId: `file-${input.requestId}`,
-          startedAtMs: 1,
-          reason: "File route",
-          grantRoot: "/repo",
-        },
-      };
-      const firstRequest = input.firstKind === "command" ? commandRequest : fileRequest;
-      const secondRequest = input.firstKind === "command" ? fileRequest : commandRequest;
-      const secondKind = input.firstKind === "command" ? "file" : "command";
-      const pendingConversation: CodexConversationSnapshot = {
-        ...buildConversation(input.threadId, "project-1"),
-        turns: [
-          {
-            threadId: input.threadId,
-            turnId,
-            status: "inProgress",
-            itemIds: [],
-            items: [],
-          },
-        ],
-        canonicalRequests: [firstRequest, secondRequest],
-        requests: [
-          {
-            type: "approval",
-            requestId: input.requestId,
-            kind: input.firstKind,
-            projectId: "project-1",
-            threadId: input.threadId,
-            turnId,
-            itemId: firstRequest.params.itemId,
-            createdAt: 1,
-          },
-          {
-            type: "approval",
-            requestId: input.requestId,
-            kind: secondKind,
-            projectId: "project-1",
-            threadId: input.threadId,
-            turnId,
-            itemId: secondRequest.params.itemId,
-            createdAt: 2,
-          },
-        ],
-      };
-      dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-        hostId: "local",
-        conversationId: input.threadId,
-        version: 1,
-        change: {
-          type: "snapshot",
-          revision: 1,
-          conversationState: pendingConversation,
-        },
-        sourceClientId: "owner-a",
-      });
-      invokeRecords = [];
-
-      const wrongKind = input.firstKind === "command" ? "file" : "command";
-      expect(
-        await manager.respondApproval(
-          input.requestId,
-          { kind: wrongKind, decision: "decline" },
-          input.threadId,
-        ),
-      ).toBe(true);
-
-      const routed = invokeRecords.find((record) => record.channel === "peer:requestThreadFollower")
-        ?.args[0] as
-        | {
-            request?: {
-              method?: string;
-              params?: {
-                decision?: string;
-              };
-            };
-          }
-        | undefined;
-      expect(routed?.request?.method).toBe(
-        wrongKind === "command"
-          ? "thread-follower-command-approval-decision"
-          : "thread-follower-file-approval-decision",
-      );
-      expect(routed?.request?.params?.decision).toBe("decline");
-      expect(manager.readConversation(input.threadId)?.canonicalRequests?.length).toBe(2);
-      expect(manager.readConversation(input.threadId)?.requests.length).toBe(2);
-      expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(
-        false,
-      );
-    };
-
-    try {
-      await runCollision({
-        threadId: "thread-follower-file-first-route",
-        requestId: "follower-file-first-route",
-        firstKind: "file",
-      });
-      await runCollision({
-        threadId: "thread-follower-command-first-route",
-        requestId: "follower-command-first-route",
-        firstKind: "command",
-      });
-    } finally {
-      followerActionResult = null;
       manager.destroy();
     }
   });
@@ -10228,7 +8814,6 @@ describe("local-conversation-store", () => {
         "thread-dynamic",
         "dynamic-1",
         {
-          permissionMode: "custom",
           serviceTierSelector: { type: "standard" },
           nativeOccurrence: {
             type: "nativeRequest",
@@ -10252,7 +8837,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerRequestResponseHandler = null;
@@ -10461,7 +9045,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { ok: true };
     followerActionError = null;
@@ -10662,7 +9245,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -10771,7 +9353,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerStreamPublishHandler = null;
@@ -14941,7 +13522,6 @@ describe("local-conversation-store", () => {
       invokeCalls = [];
       invokeRecords = [];
       hostMessageListener = null;
-      rendererClientRequestListener = null;
       threadListByProject = {};
       followerActionResult = {
         interruptedTurnId: "turn-1",
@@ -15019,7 +13599,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionError = new Error("thread-follower-interrupt-turn-timeout");
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -15085,7 +13664,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -15129,14 +13707,7 @@ describe("local-conversation-store", () => {
 
       followerActionResult = { result: { turnId: "turn-new" } };
       const presentationTicket = { ticketId: "01991e60-b800-7000-8000-000000000011" };
-      const startResult = await manager.startTurn(
-        "thread-1",
-        "Continue",
-        {
-          permissionMode: "auto",
-        },
-        presentationTicket,
-      );
+      const startResult = await manager.startTurn("thread-1", "Continue", {}, presentationTicket);
       let routed = latestFollowerAction();
       expect(
         (
@@ -15223,7 +13794,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -15331,7 +13901,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -15515,7 +14084,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     ownerStreamPublishHandler = null;
     resumeThreadResult = {
@@ -15641,7 +14209,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     const sourceNullConversation = withCanonicalState({
       ...buildConversation("thread-1", "project-1"),
@@ -15656,7 +14223,7 @@ describe("local-conversation-store", () => {
     try {
       invokeRecords = [];
 
-      await manager.startTurn("thread-1", "Continue", { permissionMode: "auto" });
+      await manager.startTurn("thread-1", "Continue", {});
 
       const channels = invokeRecords.map((record) => record.channel);
       const resumeIndex = channels.indexOf("codex:thread:resume:prepare");
@@ -15690,7 +14257,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     const sourceNullConversation = withCanonicalState({
       ...buildConversation("thread-1", "project-1"),
@@ -15749,7 +14315,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = withCanonicalState({
       ...buildConversation("thread-1", "project-1"),
@@ -15775,8 +14340,8 @@ describe("local-conversation-store", () => {
       invokeRecords = [];
 
       await Promise.all([
-        manager.resumeInterruptedTurn("thread-1", { permissionMode: "auto" }),
-        manager.resumeInterruptedTurn("thread-1", { permissionMode: "auto" }),
+        manager.resumeInterruptedTurn("thread-1", {}),
+        manager.resumeInterruptedTurn("thread-1", {}),
       ]);
 
       const resumeRequests = recordedNativeRequests().filter(
@@ -15822,7 +14387,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = withCanonicalState({
       ...buildConversation("thread-1", "project-1"),
@@ -15847,11 +14411,9 @@ describe("local-conversation-store", () => {
     try {
       await manager.requestThreadStreamResume("thread-1");
 
-      await expect(
-        manager.resumeInterruptedTurn("thread-1", {
-          permissionMode: "auto",
-        }),
-      ).rejects.toThrow("Resume transport failed");
+      await expect(manager.resumeInterruptedTurn("thread-1", {})).rejects.toThrow(
+        "Resume transport failed",
+      );
 
       const conversation = manager.readConversation("thread-1");
       expect(conversation?.statusType).toBe("idle");
@@ -15869,7 +14431,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -15902,9 +14463,7 @@ describe("local-conversation-store", () => {
         });
       };
 
-      const startPromise = manager.startTurn("thread-1", "Visible immediately", {
-        permissionMode: "auto",
-      });
+      const startPromise = manager.startTurn("thread-1", "Visible immediately", {});
       await flushAsyncWork(3);
 
       const optimistic = manager.readConversation("thread-1")?.turns[0];
@@ -15965,7 +14524,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16006,9 +14564,7 @@ describe("local-conversation-store", () => {
     try {
       await manager.requestThreadStreamResume("thread-1");
       await settleAsyncRender();
-      const startPromise = manager.startTurn("thread-1", "Follow up immediately", {
-        permissionMode: "auto",
-      });
+      const startPromise = manager.startTurn("thread-1", "Follow up immediately", {});
 
       await act(async () => {
         for (let index = 0; index < 20; index += 1) {
@@ -16175,7 +14731,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16190,7 +14745,6 @@ describe("local-conversation-store", () => {
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
       await manager.startTurn("thread-1", "Implement", {
-        permissionMode: "auto",
         collaborationMode: "default",
         model: "gpt-5.6-sol",
         reasoningEffort: "xhigh",
@@ -16245,7 +14799,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16264,9 +14817,7 @@ describe("local-conversation-store", () => {
       if (!beforeStart) throw new Error("Expected owner conversation before start");
       invokeRecords = [];
 
-      const result = (await manager.startTurn("thread-1", "Continue", {
-        permissionMode: "auto",
-      })) as {
+      const result = (await manager.startTurn("thread-1", "Continue", {})) as {
         turnId?: string;
         streamRevision?: number;
       } | null;
@@ -16326,7 +14877,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16341,7 +14891,7 @@ describe("local-conversation-store", () => {
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
     try {
       await manager.requestThreadStreamResume("thread-1");
-      await manager.startTurn("thread-1", "Edited prompt", { permissionMode: "auto" });
+      await manager.startTurn("thread-1", "Edited prompt", {});
 
       const optimisticUser = manager.readConversation("thread-1")?.turns[0]?.items[0];
       const rawOptimisticUser =
@@ -16457,7 +15007,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16549,7 +15098,7 @@ describe("local-conversation-store", () => {
         });
       };
 
-      await manager.startTurn("thread-1", "Racing prompt", { permissionMode: "auto" });
+      await manager.startTurn("thread-1", "Racing prompt", {});
       await flushAsyncWork(3);
 
       const conversation = manager.readConversation("thread-1");
@@ -16575,7 +15124,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16597,7 +15145,7 @@ describe("local-conversation-store", () => {
 
       let caught: unknown = null;
       try {
-        await manager.startTurn("thread-1", "Continue", { permissionMode: "auto" });
+        await manager.startTurn("thread-1", "Continue", {});
       } catch (error) {
         caught = error;
       }
@@ -16636,7 +15184,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -16658,9 +15205,7 @@ describe("local-conversation-store", () => {
     try {
       manager.retainActiveConversation("thread-1");
       await manager.requestThreadStreamResume("thread-1");
-      const startPromise = manager.startTurn("thread-1", "Continue", {
-        permissionMode: "auto",
-      });
+      const startPromise = manager.startTurn("thread-1", "Continue", {});
       const retired = expect(startPromise).rejects.toThrow("App server request lifetime retired");
       await flushAsyncWork(3);
       expect(manager.readConversation("thread-1")?.turns[0]?.status).toBe("inProgress");
@@ -16707,7 +15252,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -17027,12 +15571,12 @@ describe("local-conversation-store", () => {
     const manager = trackNativeTestManager(new CodexAppServerManager("local"));
     try {
       await manager.requestThreadStreamResume("thread-1");
-      await manager.enqueueQueuedFollowUp("thread-1", "send this now");
+      const runtimeWorkspaceRoots = ["/captured-workspace"];
+      await manager.enqueueQueuedFollowUp("thread-1", "send this now", {
+        workspaceRoots: runtimeWorkspaceRoots,
+      });
       const row = manager.readConversation("thread-1")?.queuedFollowUps.entries[0];
       if (!row) throw new Error("Expected captured queued message");
-      const runtimeWorkspaceRoots =
-        manager.readConversation("thread-1")?.canonicalState?.currentPermissions
-          ?.runtimeWorkspaceRoots;
       invokeRecords = [];
       await manager.sendQueuedFollowUpNow("thread-1", row.followUpId);
       await flushAsyncWork();
@@ -17041,7 +15585,6 @@ describe("local-conversation-store", () => {
           ?.args[3],
       ).toEqual({
         runtimeWorkspaceRoots,
-        usePermissionSelection: false,
       });
       const native = invokeRecords.find(
         (record) => record.channel === "codex:turn:native-steer:execute",
@@ -18049,7 +16592,7 @@ describe("local-conversation-store", () => {
         },
       ]);
 
-      await manager.resumeInterruptedTurn("thread-1", { permissionMode: "auto" });
+      await manager.resumeInterruptedTurn("thread-1", {});
 
       expect(manager.readConversation("thread-1")?.turns.at(-1)?.status).toBe("inProgress");
       expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toMatchObject([
@@ -18351,83 +16894,6 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("queued execution uses the static permission-selection default", async () => {
-    invokeRecords = [];
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    resumeThreadResult = {
-      ...buildConversation("thread-1", "project-1"),
-      turns: [
-        {
-          threadId: "thread-1",
-          turnId: "turn-active",
-          status: "inProgress",
-          itemIds: [],
-          items: [],
-        },
-      ],
-    };
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await manager.requestThreadStreamResume("thread-1");
-      await manager.enqueueQueuedFollowUp("thread-1", "use static execution config");
-      const message = queuedMessageFixtureState["thread-1"]?.[0];
-      if (!message) throw new Error("Expected queued message");
-      invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", message.id);
-      expect(
-        invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
-          ?.args[3],
-      ).toMatchObject({ usePermissionSelection: false });
-    } finally {
-      resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
-  test("captured permission selection is preserved for queued execution", async () => {
-    invokeRecords = [];
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    resumeThreadResult = {
-      ...buildConversation("thread-1", "project-1"),
-      turns: [
-        {
-          threadId: "thread-1",
-          turnId: "turn-active",
-          status: "inProgress",
-          itemIds: [],
-          items: [],
-        },
-      ],
-    };
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await manager.requestThreadStreamResume("thread-1");
-      await manager.enqueueQueuedFollowUp("thread-1", "captured execution config", {
-        usePermissionSelection: false,
-      });
-      const message = queuedMessageFixtureState["thread-1"]?.[0];
-      if (!message) throw new Error("Expected queued message");
-      invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", message.id);
-      expect(
-        invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
-          ?.args[3],
-      ).toEqual({
-        runtimeWorkspaceRoots:
-          manager.readConversation("thread-1")?.canonicalState?.currentPermissions
-            ?.runtimeWorkspaceRoots,
-        usePermissionSelection: false,
-      });
-    } finally {
-      resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
   test("queued messages remain executable without a remote feature refresh", async () => {
     invokeRecords = [];
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -18459,109 +16925,8 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
           ?.args[3],
-      ).toMatchObject({ usePermissionSelection: false });
+      ).toMatchObject({});
       expect(queuedMessageFixtureState["thread-1"] ?? []).toEqual([]);
-    } finally {
-      resumeThreadResult = null;
-      manager.destroy();
-    }
-  });
-
-  test("native reconnects preserve the static queued permission default", async () => {
-    invokeRecords = [];
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-    resumeThreadGeneration = 1;
-    resumeThreadResult = {
-      ...buildConversation("thread-1", "project-1"),
-      turns: [
-        {
-          threadId: "thread-1",
-          turnId: "turn-active",
-          status: "inProgress",
-          itemIds: [],
-          items: [],
-        },
-      ],
-    };
-    const manager = trackNativeTestManager(new CodexAppServerManager("local"));
-    try {
-      await manager.requestThreadStreamResume("thread-1");
-      await act(async () => {
-        dispatchCodexAppServerMessage("shared-object-updated", {
-          hostId: "local",
-          object: {
-            objectType: "connection",
-            objectId: "connection",
-            value: {
-              status: "connected",
-              retries: 0,
-              native: {
-                generation: 1,
-                sourceEpoch: "test-native",
-                transportKind: "websocket",
-              },
-            },
-          },
-        });
-        await flushAsyncWork();
-      });
-
-      resumeThreadGeneration = 2;
-      await act(async () => {
-        dispatchCodexAppServerMessage("shared-object-updated", {
-          hostId: "local",
-          object: {
-            objectType: "connection",
-            objectId: "connection",
-            value: {
-              status: "connected",
-              retries: 1,
-              native: {
-                generation: 2,
-                sourceEpoch: "test-native",
-                transportKind: "websocket",
-              },
-            },
-          },
-        });
-      });
-      resumeThreadGeneration = 3;
-      await act(async () => {
-        dispatchCodexAppServerMessage("shared-object-updated", {
-          hostId: "local",
-          object: {
-            objectType: "connection",
-            objectId: "connection",
-            value: {
-              status: "connected",
-              retries: 2,
-              native: {
-                generation: 3,
-                sourceEpoch: "test-native",
-                transportKind: "websocket",
-              },
-            },
-          },
-        });
-        await flushAsyncWork();
-      });
-      await waitForCondition(
-        () => manager.readConversation("thread-1")?.resumeState === "resumed",
-        500,
-      );
-
-      await manager.enqueueQueuedFollowUp("thread-1", "use the static default");
-      const message = queuedMessageFixtureState["thread-1"]?.[0];
-      if (!message) throw new Error("Expected queued message");
-      invokeRecords = [];
-      await manager.sendQueuedFollowUpNow("thread-1", message.id);
-      expect(
-        invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
-          ?.args[3],
-      ).toMatchObject({ usePermissionSelection: false });
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -18601,7 +16966,7 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.find((record) => record.channel === "codex:queued-messages:prepare-native")
           ?.args[3],
-      ).toEqual({ runtimeWorkspaceRoots: [], usePermissionSelection: false });
+      ).toEqual({ runtimeWorkspaceRoots: [] });
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -18678,7 +17043,6 @@ describe("local-conversation-store", () => {
         serviceTier: "fast",
         workspaceRoots: ["/captured-root"],
         collaborationMode,
-        useAppServerPermissionDefault: false,
       });
       const resumePreparationOptions = invokeRecords
         .filter((record) => record.channel === "codex:thread:resume:prepare")
@@ -18686,7 +17050,7 @@ describe("local-conversation-store", () => {
       expect(resumePreparationOptions).toContainEqual(
         expect.objectContaining({
           serviceTier: "fast",
-          useAppServerPermissionDefault: false,
+
           workspaceRoots: ["/captured-root"],
           collaborationMode,
         }),
@@ -18712,7 +17076,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -18908,7 +17271,6 @@ describe("local-conversation-store", () => {
       invokeCalls = [];
       invokeRecords = [];
       hostMessageListener = null;
-      rendererClientRequestListener = null;
       threadListByProject = {};
       resumeThreadResult = withCanonicalState({
         ...buildConversation("thread-1", "project-1"),
@@ -19188,7 +17550,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = withCanonicalState({
       ...buildConversation("thread-1", "project-1"),
@@ -19281,7 +17642,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { ok: true };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -19377,20 +17737,8 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      const approvalAccepted = await manager.respondApproval("approval-1", {
-        kind: "command",
-        decision: "decline",
-      });
-      const fileApprovalAccepted = await manager.respondApproval("file-approval-1", {
-        kind: "file",
-        decision: "decline",
-      });
       const inputAccepted = await manager.respondUserInput("input-1", { q1: ["A"] });
       const mcpAccepted = await manager.respondMcpElicitation("mcp-1", "decline");
-      const permissionAccepted = await manager.respondPermissionRequest("permission-1", {
-        permissions: {},
-        scope: "turn",
-      });
 
       const followerActions = invokeRecords
         .filter((record) => record.channel === "peer:requestThreadFollower")
@@ -19412,44 +17760,39 @@ describe("local-conversation-store", () => {
               };
             },
         );
-      expect(approvalAccepted).toBe(true);
-      expect(fileApprovalAccepted).toBe(true);
       expect(inputAccepted).toBe(true);
       expect(mcpAccepted).toBe(true);
-      expect(permissionAccepted).toBe(true);
-      expect(String(followerActions.length)).toBe("5");
-      expect(followerActions[0]?.request?.method).toBe("thread-follower-command-approval-decision");
-      expect(followerActions[0]?.request?.params?.conversationId).toBe("thread-1");
-      expect(followerActions[0]?.request?.params?.requestId).toBe("approval-1");
-      expect(followerActions[0]?.request?.params?.decision).toBe("decline");
-      expect(followerActions[1]?.request?.method).toBe("thread-follower-file-approval-decision");
-      expect(followerActions[1]?.request?.params?.requestId).toBe("file-approval-1");
-      expect(followerActions[1]?.request?.params?.decision).toBe("decline");
-      expect(followerActions[2]?.request?.method).toBe("thread-follower-submit-user-input");
-      expect(followerActions[2]?.request?.params?.requestId).toBe("input-1");
-      expect(followerActions[2]?.request?.params?.response?.answers?.q1?.answers?.[0]).toBe("A");
-      expect(followerActions[3]?.request?.method).toBe(
-        "thread-follower-submit-mcp-server-elicitation-response",
-      );
-      expect(followerActions[3]?.request?.params?.requestId).toBe("mcp-1");
-      expect(followerActions[3]?.request?.params?.response?.action).toBe("decline");
-      expect(followerActions[4]?.request?.method).toBe(
-        "thread-follower-permissions-request-approval-response",
-      );
-      expect(followerActions[4]?.request?.params?.requestId).toBe("permission-1");
-      expect(followerActions[4]?.request?.params?.response?.scope).toBe("turn");
-      expect(invokeRecords.some((record) => record.channel === "codex:approval:respond")).toBe(
-        false,
-      );
+      expect(followerActions).toMatchObject([
+        {
+          request: {
+            method: "thread-follower-submit-user-input",
+            params: {
+              conversationId: "thread-1",
+              requestId: "input-1",
+              response: { answers: { q1: { answers: ["A"] } } },
+            },
+          },
+        },
+        {
+          request: {
+            method: "thread-follower-submit-mcp-server-elicitation-response",
+            params: {
+              conversationId: "thread-1",
+              requestId: "mcp-1",
+              response: { action: "decline", content: null, _meta: null },
+            },
+          },
+        },
+      ]);
       expect(invokeRecords.some((record) => record.channel === "codex:user-input:respond")).toBe(
         false,
       );
       expect(
         invokeRecords.some((record) => record.channel === "codex:mcp-elicitation:respond"),
       ).toBe(false);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:permission-request:respond"),
-      ).toBe(false);
+      expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(
+        false,
+      );
       expect(String(manager.readConversation("thread-1")?.requests.length ?? -1)).toBe("5");
     } finally {
       followerActionResult = null;
@@ -19461,7 +17804,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { ok: true };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -19486,25 +17828,12 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      const approvalAccepted = await manager.respondApproval(
-        "approval-missed",
-        { kind: "command", decision: "decline" },
-        "thread-1",
-      );
       const inputAccepted = await manager.respondUserInput(
         "input-missed",
         { q1: ["A"] },
         "thread-1",
       );
       const mcpAccepted = await manager.respondMcpElicitation("mcp-missed", "decline", "thread-1");
-      const permissionAccepted = await manager.respondPermissionRequest(
-        "permission-missed",
-        {
-          permissions: {},
-          scope: "turn",
-        },
-        "thread-1",
-      );
 
       const followerActions = invokeRecords
         .filter((record) => record.channel === "peer:requestThreadFollower")
@@ -19528,44 +17857,39 @@ describe("local-conversation-store", () => {
             },
         );
 
-      expect(approvalAccepted).toBe(true);
       expect(inputAccepted).toBe(true);
       expect(mcpAccepted).toBe(true);
-      expect(permissionAccepted).toBe(true);
-      expect(String(followerActions.length)).toBe("4");
-      expect(readFollowerConversationId(followerActions[0])).toBe("thread-1");
-      expect(followerActions[0]?.request?.method).toBe("thread-follower-command-approval-decision");
-      expect(followerActions[0]?.request?.params?.conversationId).toBe("thread-1");
-      expect(followerActions[0]?.request?.params?.requestId).toBe("approval-missed");
-      expect(followerActions[0]?.request?.params?.decision).toBe("decline");
-      expect(followerActions[1]?.request?.method).toBe("thread-follower-submit-user-input");
-      expect(followerActions[1]?.request?.params?.conversationId).toBe("thread-1");
-      expect(followerActions[1]?.request?.params?.requestId).toBe("input-missed");
-      expect(followerActions[1]?.request?.params?.response?.answers?.q1?.answers?.[0]).toBe("A");
-      expect(followerActions[2]?.request?.method).toBe(
-        "thread-follower-submit-mcp-server-elicitation-response",
-      );
-      expect(followerActions[2]?.request?.params?.conversationId).toBe("thread-1");
-      expect(followerActions[2]?.request?.params?.requestId).toBe("mcp-missed");
-      expect(followerActions[2]?.request?.params?.response?.action).toBe("decline");
-      expect(followerActions[3]?.request?.method).toBe(
-        "thread-follower-permissions-request-approval-response",
-      );
-      expect(followerActions[3]?.request?.params?.conversationId).toBe("thread-1");
-      expect(followerActions[3]?.request?.params?.requestId).toBe("permission-missed");
-      expect(followerActions[3]?.request?.params?.response?.scope).toBe("turn");
-      expect(invokeRecords.some((record) => record.channel === "codex:approval:respond")).toBe(
-        false,
-      );
+      expect(followerActions).toMatchObject([
+        {
+          request: {
+            method: "thread-follower-submit-user-input",
+            params: {
+              conversationId: "thread-1",
+              requestId: "input-missed",
+              response: { answers: { q1: { answers: ["A"] } } },
+            },
+          },
+        },
+        {
+          request: {
+            method: "thread-follower-submit-mcp-server-elicitation-response",
+            params: {
+              conversationId: "thread-1",
+              requestId: "mcp-missed",
+              response: { action: "decline", content: null, _meta: null },
+            },
+          },
+        },
+      ]);
       expect(invokeRecords.some((record) => record.channel === "codex:user-input:respond")).toBe(
         false,
       );
       expect(
         invokeRecords.some((record) => record.channel === "codex:mcp-elicitation:respond"),
       ).toBe(false);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:permission-request:respond"),
-      ).toBe(false);
+      expect(invokeRecords.some((record) => record.channel === "codex:app-server:respond")).toBe(
+        false,
+      );
     } finally {
       followerActionResult = null;
       manager.destroy();
@@ -19576,7 +17900,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     followerActionError = new Error("no-client-found: thread stream owner disconnected");
@@ -19664,42 +17987,15 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      const approvalAccepted = await manager.respondApproval(
-        "approval-1",
-        { kind: "command", decision: "decline" },
-        "thread-1",
-      );
       const inputAccepted = await manager.respondUserInput("input-1", { q1: ["A"] }, "thread-1");
       const mcpAccepted = await manager.respondMcpElicitation("mcp-1", "decline", "thread-1");
-      const permissionAccepted = await manager.respondPermissionRequest(
-        "permission-1",
-        {
-          permissions: {},
-          scope: "turn",
-        },
-        "thread-1",
-      );
 
-      expect(approvalAccepted).toBe(false);
       expect(inputAccepted).toBe(false);
       expect(mcpAccepted).toBe(false);
-      expect(permissionAccepted).toBe(false);
       expect(invokeRecords.some((record) => record.channel === "peer:requestThreadFollower")).toBe(
         true,
       );
-      expect(invokeRecords.some((record) => record.channel === "codex:approval:respond")).toBe(
-        false,
-      );
       expect(invokeRecords.some((record) => record.channel === "codex:user-input:respond")).toBe(
-        false,
-      );
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:mcp-elicitation:respond"),
-      ).toBe(false);
-      expect(
-        invokeRecords.some((record) => record.channel === "codex:permission-request:respond"),
-      ).toBe(false);
-      expect(invokeRecords.some((record) => record.channel === "codex:thread:resume:prepare")).toBe(
         false,
       );
       expect(manager.readConversation("thread-1")?.resumeState).toBe("resumed");
@@ -19907,7 +18203,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -20240,7 +18535,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = true;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -20325,7 +18619,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -20422,7 +18715,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -20546,7 +18838,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     followerActionError = null;
@@ -20591,7 +18882,7 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      await manager.startTurn("thread-1", "Continue", { permissionMode: "auto" });
+      await manager.startTurn("thread-1", "Continue", {});
 
       const channels = invokeRecords.map((record) => record.channel).join(",");
       expect(channels.includes("peer:requestThreadFollower")).toBe(true);
@@ -20646,9 +18937,10 @@ describe("local-conversation-store", () => {
               resumeState: "resumed",
               requests: [
                 {
-                  type: "approval",
-                  kind: "command",
-                  requestId: `approval-${threadId}`,
+                  type: "userInput",
+                  questions: [],
+                  isBlocking: true,
+                  requestId: `question-${threadId}`,
                   projectId: "project-1",
                   threadId,
                   turnId: "turn",
@@ -20664,9 +18956,9 @@ describe("local-conversation-store", () => {
         await act(async () => {
           snapshot("thread-1", "owner-a");
           snapshot("thread-2", "owner-a");
-          const pending = manager.respondApproval(
-            "approval-thread-1",
-            { kind: "command", decision: "decline" },
+          const pending = manager.respondUserInput(
+            "question-thread-1",
+            { q: ["Answer"] },
             "thread-1",
           );
           await flushAsyncWork();
@@ -20698,7 +18990,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
       await import("./local-conversation-store");
@@ -20780,7 +19071,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadError = null;
     resumeThreadRole = "owner";
@@ -20833,11 +19123,10 @@ describe("local-conversation-store", () => {
     }
   });
 
-  test("owner user-stop declines supported request families without waiting for their replies", async () => {
+  test("owner user-stop dismisses genuine questions without waiting for their replies", async () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerRequestResponseHandler = null;
@@ -20878,77 +19167,6 @@ describe("local-conversation-store", () => {
       });
       await resumeAfterFixtureOwnerDisconnect(manager, "thread-1");
 
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-152:1",
-        occurrenceToken: 1,
-        hostId: "local",
-        request: {
-          id: "command-1",
-          method: "item/commandExecution/requestApproval",
-          params: {
-            kind: "command",
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "cmd-1",
-            startedAtMs: 1,
-            approvalId: null,
-            environmentId: null,
-            reason: "Need command access",
-            command: "bun test",
-            cwd: "/repo",
-            commandActions: null,
-            additionalPermissions: null,
-            proposedExecpolicyAmendment: null,
-            proposedNetworkPolicyAmendments: null,
-            availableDecisions: null,
-          },
-        },
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-153:2",
-        occurrenceToken: 2,
-        hostId: "local",
-        request: {
-          id: "file-1",
-          method: "item/fileChange/requestApproval",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "file-change-1",
-            startedAtMs: 2,
-            reason: "Need write access",
-            grantRoot: "/repo",
-          },
-        },
-      });
-      dispatchCodexAppServerMessage("native-request", {
-        type: "nativeRequest",
-        generation: resumeThreadGeneration,
-        occurrenceId: "native-154:3",
-        occurrenceToken: 3,
-        hostId: "local",
-        request: {
-          id: "permission-1",
-          method: "item/permissions/requestApproval",
-          params: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "permission-call-1",
-            environmentId: "env-1",
-            startedAtMs: 3,
-            cwd: "/repo",
-            reason: "Need network",
-            permissions: {
-              network: { enabled: true },
-              fileSystem: null,
-            },
-          },
-        },
-      });
       dispatchCodexAppServerMessage("native-request", {
         type: "nativeRequest",
         generation: resumeThreadGeneration,
@@ -21034,7 +19252,7 @@ describe("local-conversation-store", () => {
       });
       await flushAsyncWork(4);
       expect(String(manager.readConversation("thread-1")?.canonicalRequests?.length ?? -1)).toBe(
-        "6",
+        "3",
       );
       invokeRecords = [];
 
@@ -21059,15 +19277,7 @@ describe("local-conversation-store", () => {
       });
       expect(interrupted).toBe(true);
       expect(responseOrder.toSorted()).toEqual(
-        [
-          "command-1",
-          "file-1",
-          "permission-1",
-          "user-1",
-          "option-1",
-          "mcp-1",
-          "turn/interrupt",
-        ].toSorted(),
+        ["user-1", "option-1", "mcp-1", "turn/interrupt"].toSorted(),
       );
       expect(
         manager.readConversation("thread-1")?.canonicalRequests?.map((request) => request.id),
@@ -21086,7 +19296,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -21147,7 +19356,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -21233,7 +19441,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -21315,7 +19522,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     subagentOverviewResult = {
       rootThreadId: "thread-1",
@@ -21398,7 +19604,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -21460,240 +19665,6 @@ describe("local-conversation-store", () => {
     expect(await view.getThreadRole({ hostId: "local", conversationId: "unloaded-thread" })).toBe(
       "follower",
     );
-    resumeThreadResult = null;
-  });
-
-  test("renderer-local Nodex authorization survives main-owned snapshots until the viewer responds", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    rendererClientRequestListener = null;
-    threadListByProject = {};
-    const mainOwnedConversation: CodexConversationSnapshot = {
-      ...buildConversation("thread-1", "project-1"),
-      turns: [
-        {
-          threadId: "thread-1",
-          turnId: "turn-1",
-          status: "inProgress",
-          itemIds: [],
-          items: [],
-        },
-      ],
-    };
-    resumeThreadResult = mainOwnedConversation;
-    const {
-      LocalConversationProvider,
-      useDefaultCodexAppServerManager,
-      __resetLocalConversationStoreForTests,
-    } = await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    let manager: {
-      readConversation: (threadId: string) => CodexConversationSnapshot | null;
-      respondNodexAgentAuthorization: (
-        requestId: string,
-        response: {
-          decision: "allow_project";
-        },
-        conversationId: string,
-      ) => Promise<boolean>;
-    } | null = null;
-    function Probe() {
-      manager = useDefaultCodexAppServerManager();
-      return createElement("div");
-    }
-
-    render(
-      createElement(
-        LocalConversationProvider,
-        null,
-        createElement(NativeFixtureRegistration),
-        createElement(Probe),
-      ),
-    );
-    await settleAsyncRender();
-    if (!manager) throw new Error("Expected manager");
-    const activeManager = manager as {
-      readConversation: (threadId: string) => CodexConversationSnapshot | null;
-      respondNodexAgentAuthorization: (
-        requestId: string,
-        response: {
-          decision: "allow_project";
-        },
-        conversationId: string,
-      ) => Promise<boolean>;
-    };
-    dispatchCodexAppServerMessage("shared-object-updated", {
-      hostId: "local",
-      object: { objectType: "threadSummary", objectId: "thread-1", value: mainOwnedConversation },
-    });
-    dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-      hostId: "local",
-      conversationId: "thread-1",
-      version: 1,
-      change: {
-        type: "snapshot",
-        revision: 1,
-        conversationState: mainOwnedConversation,
-      },
-      sourceClientId: "test-owner",
-    });
-    await flushAsyncWork();
-    invokeRecords = [];
-
-    await act(async () => {
-      rendererClientRequestListener?.({
-        requestId: "renderer-auth-1",
-        method: "nodex-agent-authorization",
-        params: {
-          type: "nodexAgentAuthorization",
-          requestId: "nodex-auth-1",
-          projectId: "project-1",
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "call-1",
-          tool: "edit_document",
-          effect: "write",
-          preview: {
-            title: "Append rollout plan",
-            summary: "Append four Blocks.",
-            details: [],
-            markdownPreview: "## Rollout\n\n- Alpha cohort",
-          },
-          createdAt: 1,
-        },
-      });
-      await flushAsyncWork();
-    });
-
-    await waitForCondition(
-      () =>
-        activeManager
-          .readConversation("thread-1")
-          ?.requests.some((request) => request.requestId === "nodex-auth-1") === true,
-      1000,
-    );
-
-    expect(
-      invokeRecords.filter((record) => record.channel === "codex:renderer-client:response"),
-    ).toEqual([]);
-    expect(
-      activeManager
-        .readConversation("thread-1")
-        ?.requests.some((request) => request.requestId === "nodex-auth-1"),
-    ).toBe(true);
-    dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-      hostId: "local",
-      conversationId: "thread-1",
-      version: 2,
-      change: {
-        type: "snapshot",
-        revision: 2,
-        conversationState: {
-          ...mainOwnedConversation,
-          threadName: "Main-owned update",
-        },
-      },
-      sourceClientId: "test-owner",
-    });
-    await flushAsyncWork();
-    expect(
-      activeManager
-        .readConversation("thread-1")
-        ?.requests.some((request) => request.requestId === "nodex-auth-1"),
-    ).toBe(true);
-    expect(
-      invokeRecords.some((record) => record.channel === "codex:renderer-client:response"),
-    ).toBe(false);
-
-    await act(async () => {
-      await activeManager.respondNodexAgentAuthorization(
-        "nodex-auth-1",
-        { decision: "allow_project" },
-        "thread-1",
-      );
-      await flushAsyncWork();
-    });
-
-    const responseRecord = invokeRecords.find(
-      (record) => record.channel === "codex:renderer-client:response",
-    );
-    expect(responseRecord?.args[0]).toEqual({
-      type: "success",
-      requestId: "renderer-auth-1",
-      result: { decision: "allow_project" },
-    });
-    expect(
-      activeManager
-        .readConversation("thread-1")
-        ?.requests.some((request) => request.requestId === "nodex-auth-1"),
-    ).toBe(false);
-
-    invokeRecords = [];
-    await act(async () => {
-      rendererClientRequestListener?.({
-        requestId: "renderer-auth-2",
-        method: "nodex-agent-authorization",
-        params: {
-          type: "nodexAgentAuthorization",
-          requestId: "nodex-auth-2",
-          projectId: "project-1",
-          threadId: "thread-1",
-          turnId: "turn-1",
-          itemId: "call-2",
-          tool: "create",
-          effect: "write",
-          preview: {
-            title: "Create Card",
-            summary: "Create one Card.",
-            details: [],
-          },
-          createdAt: 2,
-        },
-      });
-      await flushAsyncWork();
-    });
-    await waitForCondition(
-      () =>
-        activeManager
-          .readConversation("thread-1")
-          ?.requests.some((request) => request.requestId === "nodex-auth-2") === true,
-      1000,
-    );
-
-    dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
-      hostId: "local",
-      conversationId: "thread-1",
-      version: 3,
-      change: {
-        type: "snapshot",
-        revision: 3,
-        conversationState: {
-          ...mainOwnedConversation,
-          turns: [
-            {
-              ...mainOwnedConversation.turns[0]!,
-              status: "interrupted",
-            },
-          ],
-        },
-      },
-      sourceClientId: "test-owner",
-    });
-    await waitForCondition(
-      () => invokeRecords.some((record) => record.channel === "codex:renderer-client:response"),
-      1000,
-    );
-    const canceledResponse = invokeRecords.find(
-      (record) => record.channel === "codex:renderer-client:response",
-    );
-    expect(canceledResponse?.args[0]).toEqual({
-      type: "success",
-      requestId: "renderer-auth-2",
-      result: { decision: "deny" },
-    });
     resumeThreadResult = null;
   });
 
@@ -22106,7 +20077,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { streamRevision: 1 };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -22176,7 +20146,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -22278,7 +20247,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = { revision: 2 };
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -22338,7 +20306,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -22403,7 +20370,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = {
       threadId: "thread-1",
@@ -22452,7 +20418,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     resumeThreadResult = buildConversation("thread-standalone", "project-1");
@@ -22510,7 +20475,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     resumeThreadResult = buildConversation("thread-1", "project-1");
@@ -22575,7 +20539,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     resumeThreadResult = buildConversation("thread-1", "project-1");
@@ -22635,7 +20598,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     resumeThreadResult = buildConversation("thread-1", "project-1");
@@ -22713,7 +20675,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = {
       threadId: "thread-1",
@@ -22771,7 +20732,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = {
       threadId: "thread-1",
@@ -22829,7 +20789,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const goal: ThreadGoal = {
@@ -22908,7 +20867,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const goal: ThreadGoal = {
@@ -22966,7 +20924,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -23012,7 +20969,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -23061,7 +21017,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     followerActionResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -23108,7 +21063,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = {
       ...buildConversation("thread-1", "project-1"),
@@ -23185,7 +21139,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerEditRevertResult = null;
@@ -23353,7 +21306,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerEditRevertResult = null;
@@ -23438,7 +21390,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerEditRevertResult = null;
@@ -23570,7 +21521,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerEditRevertResult = null;
@@ -23651,7 +21601,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     ownerEditRevertResult = null;
@@ -23738,7 +21687,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -23908,7 +21856,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -23989,7 +21936,6 @@ describe("local-conversation-store", () => {
     invokeCalls = [];
     invokeRecords = [];
     hostMessageListener = null;
-    rendererClientRequestListener = null;
     threadListByProject = {};
     resumeThreadResult = null;
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
@@ -24375,115 +22321,6 @@ describe("local-conversation-store", () => {
     } finally {
       manager.destroy();
     }
-  });
-
-  test("control-plane selectors update without a separate reducer store", async () => {
-    invokeCalls = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const {
-      __resetLocalConversationStoreForTests,
-      LocalConversationProvider,
-      useCodexPermissionMode,
-      useCodexThreadStartProgress,
-    } = await import("./local-conversation-store");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
-
-    function Probe() {
-      const permissionMode = useCodexPermissionMode("project-1");
-      const progress = useCodexThreadStartProgress("project-1", "session-1");
-      return createElement(
-        "div",
-        null,
-        progress
-          ? `${permissionMode}:${progress.phase}:${progress.outputText.length}:${progress.outputTruncated}`
-          : `${permissionMode}:none:empty`,
-      );
-    }
-
-    const { container } = render(
-      createElement(
-        LocalConversationProvider,
-        null,
-        createElement(NativeFixtureRegistration),
-        createElement(Probe),
-      ),
-    );
-    await settleAsyncRender();
-    expect(textContent(container)).toBe("custom:none:empty");
-
-    await act(async () => {
-      hostMessageListener?.({
-        type: "sharedObjectUpdated",
-        hostId: "local",
-        object: {
-          objectType: "threadStartProgress",
-          objectId: "project-1:session-1",
-          value: {
-            launchId: "01991e60-b800-7000-8000-000000000101",
-            projectId: "project-1",
-            sessionId: "session-1",
-            runInTarget: "newWorktree",
-            threadId: "thread-1",
-            phase: "runningSetup",
-            message: "Running setup",
-            outputDelta: "hello",
-            updatedAt: 10,
-          },
-        },
-      });
-    });
-    await settleAsyncRender();
-
-    expect(textContent(container)).toBe("custom:runningSetup:5:false");
-
-    await act(async () => {
-      hostMessageListener?.({
-        type: "sharedObjectUpdated",
-        hostId: "local",
-        object: {
-          objectType: "threadStartProgress",
-          objectId: "project-1:session-1",
-          value: {
-            launchId: "01991e60-b800-7000-8000-000000000101",
-            projectId: "project-1",
-            sessionId: "session-1",
-            runInTarget: "newWorktree",
-            threadId: "thread-1",
-            phase: "runningSetup",
-            message: "Running setup",
-            outputDelta: "x".repeat(10 * 1024 * 1024),
-            updatedAt: 11,
-          },
-        },
-      });
-    });
-    await settleAsyncRender();
-    expect(textContent(container)).toBe("custom:runningSetup:32000:true");
-
-    await act(async () => {
-      hostMessageListener?.({
-        type: "sharedObjectUpdated",
-        hostId: "local",
-        object: {
-          objectType: "threadStartProgress",
-          objectId: "project-1:session-1",
-          value: {
-            launchId: "01991e60-b800-7000-8000-000000000101",
-            projectId: "project-1",
-            sessionId: "session-1",
-            runInTarget: "newWorktree",
-            threadId: "thread-1",
-            phase: "startingThread",
-            message: "Starting thread",
-            clearOutput: true,
-            updatedAt: 12,
-          },
-        },
-      });
-    });
-    await settleAsyncRender();
-    expect(textContent(container)).toBe("custom:startingThread:0:false");
   });
 
   test("project thread summary subscriptions lazily hydrate once per project", async () => {

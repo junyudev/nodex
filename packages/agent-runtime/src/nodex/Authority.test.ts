@@ -8,6 +8,7 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   RunId,
+  MessageId,
   RunAttemptId,
   NodeId,
   type OrchestrationV2ThreadShell,
@@ -77,24 +78,28 @@ it.effect(
           getHostToolAuthorityContext: (target, selectedRun) =>
             Effect.gen(function* () {
               expect(target).toBe(threadId);
-              expect(selectedRun).toBe(runId);
               const metadata = yield* Ref.get(shell);
               return {
                 thread: { ...metadata, deletedAt: null },
-                runs: [
-                  {
-                    id: runId,
-                    ordinal: 1,
-                    activeAttemptId: attemptId,
-                    providerThreadId,
-                    providerInstanceId,
-                    rootNodeId: NodeId.make("node:authority"),
-                    status: "starting",
-                  },
-                ],
+                runs:
+                  selectedRun !== runId
+                    ? []
+                    : [
+                        {
+                          id: runId,
+                          userMessageId: MessageId.make("message:authority"),
+                          ordinal: 1,
+                          activeAttemptId: attemptId,
+                          providerThreadId,
+                          providerInstanceId,
+                          rootNodeId: NodeId.make("node:authority"),
+                          status: "starting",
+                        },
+                      ],
                 providerThreads: [
                   {
                     id: providerThreadId,
+                    hasPendingBackgroundWork: false,
                     driver,
                     providerInstanceId,
                     providerSessionId,
@@ -154,6 +159,7 @@ it.effect(
         Layer.mock(HostBridge)({
           runtimeId: EnvironmentId.make("runtime:authority"),
           runtimeGeneration: "generation:authority",
+          preparedRun: () => Effect.succeed(undefined),
         }),
       );
       yield* Effect.gen(function* () {

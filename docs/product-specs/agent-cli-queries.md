@@ -2,16 +2,15 @@
 
 ## Scope and discovery
 
-SQL is the primary Agent interface for discovering and reading authorized Nodex
-content. `pages` always contains the selected Project's authorized active Pages,
-including standalone Pages. A Page ID never changes the access Project. Named
-Source bindings add Property columns without changing the meaning of `pages`.
+SQL is the primary Agent interface for discovering and reading Nodex content.
+`pages` contains all active Pages in the current Profile Library, including
+standalone Pages. Named Source bindings add Property columns without changing
+that collection. Project filters are explicit query selections.
 
-Native application MCP also exposes these relations through `describe_content_schema` and
-`query_content`. It binds the calling Project and verifies exact Turn provenance inside Core's
-read snapshot. This entrypoint uses durable Project grants; temporary call/task grants and
-Library-wide execution scope do not expand its resource universe. The CLI retains its own
-explicit Profile and Project admission.
+Native application MCP exposes these relations through `describe_content_schema`
+and `query_content`. Core verifies the authenticated Profile connection and
+exact captured execution identity in the same read snapshot. Plan mode and
+parent relationships add no content access restrictions.
 
 ```text
 nodex sql schema [RELATION] [--bind ALIAS=SOURCE_ID ...]
@@ -22,6 +21,8 @@ nodex sql query --file FILE|- [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ..
 Resource IDs need no prefix. CLI semantic resource selectors also accept their
 supported unique names, Page keys or title paths. SQL uses the public columns
 and supplied parameter values directly; a Page key is queried as `page_key`.
+SQL query and schema discovery use the current Profile Library without requiring a Project or a working directory inside one. An explicit `--project` selects presentation and default coordinates; explicit Source bindings and resource IDs remain available across the Profile.
+
 `--database` is only a schema discovery hint. It does not filter `pages` or
 implicitly bind a Source. Bind Sources explicitly using stable IDs; aliases
 cannot collide with built-in relations.
@@ -42,18 +43,18 @@ and invalid schema selectors fail explicitly.
 
 | Relation                                                               | One row represents                                | Important columns or meaning                                                                                                                                           |
 | ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pages`                                                                | One authorized active Page                        | `page_id`, `page_key`, `title`, nullable `data_source_id`, timestamps, `title_etag`, `file_manifest_revision`, lazy `intrinsic_properties` JSON; no implicit body read |
+| `pages`                                                                | One active Page                                   | `page_id`, `page_key`, `title`, nullable `data_source_id`, timestamps, `title_etag`, `file_manifest_revision`, lazy `intrinsic_properties` JSON; no implicit body read |
 | `page_documents`                                                       | One current Page body                             | `page_id`, `nested_markdown`, `body_etag`; one-to-one with Pages                                                                                                       |
 | Bound Source, e.g. `tasks`                                             | One active member Page                            | `page_id`, `title`, `data_source_id`, `membership_revision`, `value_revisions`, Property columns                                                                       |
 | `view_rows(VIEW_ID)`                                                   | One Page occurrence in a saved View               | `occurrence_id`, `page_id`, `group_key`, `subgroup_key`, `parent_occurrence_id`, `ordinal`; a Page can occur repeatedly                                                |
-| `search_hits(QUERY, K)`                                                | One of the top K authorized Page search hits      | `page_id`, `title`, `snippet`, `ordinal`; Page identities are deduplicated                                                                                             |
+| `search_hits(QUERY, K)`                                                | One of the top K Page search hits                 | `page_id`, `title`, `snippet`, `ordinal`; Page identities are deduplicated                                                                                             |
 | `databases`, `data_sources`, `properties`, `property_options`, `views` | One public resource                               | Identity, name, ownership and applicable configuration revisions; `schema_json` and `config_json` preserve domain configuration                                        |
 | `property_values`                                                      | One active member Page/Property pair              | `value_json`, `value_revision`, `membership_revision`; unset values keep domain defaults and initial revisions                                                         |
-| `page_relations`                                                       | One visible Source Page/Property/target Page edge | Restricted target identities are omitted; visible edge count is not a total relationship count                                                                         |
+| `page_relations`                                                       | One visible Source Page/Property/target Page edge | Missing or deleted target metadata remains unavailable; edge identity remains source-owned                                                                             |
 | `library_children`                                                     | One canonical navigation parent/child edge        | Typed parent/child IDs, title, `ordinal`; distinct from View hierarchy                                                                                                 |
 | `page_files`                                                           | One deduplicated current Page/File use            | Nullable `path`, name, MIME, size, version, manifest/body-use revisions                                                                                                |
-| `files`                                                                | One independently authorized File                 | Includes lifecycle, metadata revision and current head version                                                                                                         |
-| `file_versions`, `file_usages`                                         | One retained version or authorized visible use    | Independent File access applies; inaccessible usage targets remain undisclosed                                                                                         |
+| `files`                                                                | One Library File                                  | Includes lifecycle, metadata revision and current head version                                                                                                         |
+| `file_versions`, `file_usages`                                         | One retained version or current/recoverable use   | Library lifecycle and exact retained-source validation apply                                                                                                           |
 | `page_history`                                                         | One retained Page history event                   | Stable event identity, time and public `event_json`; no promise of unretained history                                                                                  |
 
 All SQL row ordering is explicit: use `ORDER BY`; natural scan order is not a
@@ -63,33 +64,32 @@ contract. View and search use their public `ordinal`, not physical rank.
 Source Property columns use unique display names where possible; collisions use
 the stable spelling published by schema discovery. Quote discovered names.
 Select cells contain option IDs, multi-select cells contain JSON arrays of
-option IDs, and Relation cells retain the domain's restricted-target JSON
+option IDs, and Relation cells retain the domain's unavailable-target JSON
 representation. Use `page_relations` for visible relationship joins. Text,
 numbers, booleans and null retain fixed SQLite type mappings. JSON-valued columns,
 including `value_revisions`, are JSON text suitable for SQLite JSON functions.
 
-Page access authorizes current Page File metadata/bytes, not independent File
-history or shared writes. Observe `pages.file_manifest_revision` for attachment
+Observe `pages.file_manifest_revision` for attachment
 writes even when the Page has no current File uses; an empty `page_files` result
 cannot determine a manifest version.
 
 ## Query results and lifecycle
 
-The Core Query Module combines domain-owned reads under one authorization
-snapshot. User SQL executes against public virtual relations, never the private
-Store connection. Domains retain their own content, authorization and ordering
+The Core Query Module combines domain-owned reads under one canonical
+read snapshot. User SQL executes against public virtual relations, never the private
+Store connection. Domains retain their own content, lifecycle and ordering
 rules. The CLI transports a query rather than assembling per-Page reads.
 
 Live Workbench View observations use a separate exact-target Query operation.
 The renderer supplies the displayed View identity, committed personal preferences,
-search and revision coordinates; Core verifies these coordinates and the frozen
-Turn, including applicable call or task access, before projecting canonical rows.
+search and revision coordinates; Core verifies these coordinates and the captured
+execution identity, before projecting canonical rows.
 This operation leaves the public SQL resource universe unchanged. Display reads
 validate captured occurrence and row conditions and retain explicit viewport,
 loaded or selection coverage. Effective queries include matching occurrences beyond
 loaded windows and collapsed groups, preserve List hierarchy and duplicate group
 occurrences, and distinguish a complete result from an explicit limit. Relation
-previews and search text use only authorized target titles. The result is a new
+previews and search text use current target titles. The result is a new
 Core observation with a rules fingerprint, separate from the display capture;
 pending preferences or search require another observation. See
 [Agent interfaces](agent-interface-behavior.md) for the application tools.
@@ -171,7 +171,7 @@ personal overrides.
 Configuration requires complete conditions. Empty groups, incomplete values,
 invalid operators or incompatible value types reject the whole script rather
 than storing inactive filter drafts. The existing Core expression limits,
-Property capabilities, authorization and revision checks apply. Creation and
+Property capabilities, lifecycle and revision checks apply. Creation and
 filtering commit together, and a failure leaves neither a partial View nor
 earlier script changes. `view_rows(VIEW_ID)` reads actual saved View results for
 verification; a transient SQL WHERE clause does not create a saved filter.

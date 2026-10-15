@@ -31,21 +31,22 @@ Workspace owns a normalized Page–Project Session relation.
 - SQLite stores only the two identities and `linkedAt`. Project, Library, Thread, title, status,
   unread, cause, and role remain derived from their existing authorities.
 - Creating a Page-backed ordinary Session accepts bounded initial Page IDs and commits the Session
-  plus all relationships in one Core transaction. Authorization failure rolls back the entire create.
+  plus all relationships in one Core transaction. Profile identity or resource-lifecycle
+  failure rolls back the entire create.
 - Explicit `LinkPage` and `UnlinkPage` Session intents are idempotent. Open in new chat, Send to
   chat, and Page Run Section use those operations; ordinary Page navigation, Scenes, mentions,
   references, links, and transcript text do not infer a relationship.
-- Every Page-anchored mutation and read binds a Project that currently has Page read access. The edge
-  does not grant the target Session's Project or Agent any Page authority and does not expand an
-  ownership closure.
+- Every Page-anchored mutation and read validates current Profile/Library identity and
+  Page and Session lifecycle. Project may route presentation but is not required
+  for content access. The edge changes neither content access nor ownership closure.
 - Session archive retains the relationship but excludes it from ordinary activity and detail reads.
   Restore makes it visible again. Session deletion and physical Page deletion cascade the edge.
   Page movement and Thread attach, detach, replacement, or deletion leave it intact.
 - Workspace exposes a bounded activity summary for at most 200 unique Page IDs and a revision-fenced
   bounded Linked chats window for one Page. These are derived reads over the relation, Sessions,
   optional Threads, and Projects; no live execution status is persisted on a Page or Database row.
-- Activity keeps execution and unread orthogonal. Working, waiting for approval, waiting for user
-  input, system error, and unread counts may coexist. A threadless Session remains related without
+- Activity keeps execution and unread orthogonal. Working, waiting for user input,
+  system error and unread counts may coexist. A threadless Session remains related without
   contributing an execution state.
 - Main deepens the existing Effect `ProjectWorkspace` Module and uses the canonical Core application
   projection plus `project-sessions-changed` invalidation. It does not add another runtime, event bus,
@@ -60,7 +61,7 @@ The product can explain and recover Page-related Chats across windows, layout ch
 Thread lifecycle changes. A Page may relate to several Chats and a Chat may relate to several Pages
 without introducing a primary Chat or duplicating execution authority.
 
-The Core Workspace contract and Store format advance together. Relation mutation, Page access,
+The Core Workspace contract and Store format advance together. Relation mutation, Page lifecycle,
 Session lifecycle, LocalCommit evidence, and activity aggregation remain behind one deep Module.
 Database reads remain stable when only Chat activity changes; mounted renderer surfaces refresh their
 bounded activity queries from the existing Workspace invalidation stream.
@@ -96,7 +97,7 @@ windows to churn with Thread state, and couple row reads to conversation lifecyc
 
 ### Introduce a generic resource relationship service
 
-The current behavior needs one typed edge with specific access, lifecycle, and aggregation rules. A
+The current behavior needs one typed edge with specific identity, lifecycle and aggregation rules. A
 generic graph would expose more mechanism while hiding less policy and would have no additional
 current consumer.
 

@@ -5,7 +5,7 @@ import {
   type BlockDocumentSurfaceProps,
   type BlockDocumentSurfaceValue,
 } from "./block-document-surface";
-import { createDocumentSyncAdapterForContentAccess } from "@/lib/api";
+import { createDocumentSyncAdapterForContentRouting } from "@/lib/api";
 import {
   BlockDocumentSurfaceRuntime,
   type BlockDocumentSurfaceRuntimeOptions,
@@ -70,7 +70,7 @@ export function PageEditorSessionSurface({
   const onReloadRef = useRef(onReload);
   onReloadRef.current = onReload;
   const identity = makeDocumentSessionIdentity(descriptor);
-  const adapterFactory = dependencies?.createAdapter ?? createDocumentSyncAdapterForContentAccess;
+  const adapterFactory = dependencies?.createAdapter ?? createDocumentSyncAdapterForContentRouting;
   const runtimeFactory = dependencies?.createRuntime ?? createRuntime;
 
   useLayoutEffect(() => {
@@ -87,7 +87,7 @@ export function PageEditorSessionSurface({
         createRuntime: () =>
           runtimeFactory({
             descriptor: currentDescriptor,
-            adapter: adapterFactory(currentDescriptor.accessContext),
+            adapter: adapterFactory(currentDescriptor.routingContext),
           }),
       });
       viewGeneration = session.claimView();

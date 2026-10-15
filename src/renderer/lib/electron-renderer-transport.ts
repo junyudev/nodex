@@ -2,7 +2,6 @@ import type {
   AppUpdateStatus,
   CodexEvent,
   CodexHostMessage,
-  CodexRendererClientRequestMessage,
   DesktopNotificationActionInvocation,
 } from "./types";
 import type { RendererTransport } from "./renderer-transport";
@@ -18,9 +17,7 @@ import type {
 } from "../../shared/ipc-api";
 import type { DatabaseChangeEvent } from "../../shared/database-events";
 import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
-import type { ContentAccessIdentity } from "../../shared/content-access-context";
-import type { AgentBackendSessionChangedEvent } from "../../shared/agent-backend-api";
+import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 import {
   RECIPIENT_DELIVERY_VERSION,
   deliveryAddressKey,
@@ -114,7 +111,7 @@ export const subscribeElectronRendererLocalCommitAtoms = (
   initializeElectronRendererLocalCommitIngress(bridge);
   const address = projectionScopeDeliveryAddress(scope);
   const releaseAtoms = rendererLocalCommitIngress.subscribeAtoms((packet, atom) => {
-    if (sameRecipientIdentity(packet.authorization_scope, address)) onAtom(packet, atom);
+    if (sameRecipientIdentity(packet.delivery_address, address)) onAtom(packet, atom);
   });
   const releaseReset = rendererLocalCommitIngress.subscribeProjection(scope, (message) => {
     if (message.kind === "reset") onReset();
@@ -141,17 +138,13 @@ export const initializeElectronRendererLocalCommitIngress = (
           !envelope ||
           envelope.version !== RECIPIENT_DELIVERY_VERSION ||
           !/^[a-f0-9]{64}$/u.test(envelope.deliveryId) ||
-          !/^[a-f0-9]{64}$/u.test(envelope.recipientLeaseId) ||
-          !sameRecipientIdentity(envelope.deliveryAddress, envelope.authorizationScope)
+          !/^[a-f0-9]{64}$/u.test(envelope.recipientLeaseId)
         ) {
           throw new TypeError("Recipient delivery envelope is invalid");
         }
         if (envelope.payload.kind === "packet") {
           const packet = envelope.payload.packet;
-          if (
-            !sameRecipientIdentity(packet.delivery_address, envelope.deliveryAddress) ||
-            !sameRecipientIdentity(packet.authorization_scope, envelope.authorizationScope)
-          )
+          if (!sameRecipientIdentity(packet.delivery_address, envelope.deliveryAddress))
             throw new TypeError("Recipient packet identity is invalid");
           await rendererLocalCommitIngress.admitPacket(packet);
         } else {
@@ -159,8 +152,7 @@ export const initializeElectronRendererLocalCommitIngress = (
           if (
             reset.reset_id !== envelope.deliveryId ||
             reset.recipient_lease_id !== envelope.recipientLeaseId ||
-            !sameRecipientIdentity(reset.delivery_address, envelope.deliveryAddress) ||
-            !sameRecipientIdentity(reset.authorization_scope, envelope.authorizationScope)
+            !sameRecipientIdentity(reset.delivery_address, envelope.deliveryAddress)
           )
             throw new TypeError("Recipient reset identity is invalid");
           rendererLocalCommitIngress.admitAddressReset(reset);
@@ -202,14 +194,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     ) {
       return bridge.onGitWorkerMessage?.(callback) ?? (() => {});
     },
-    readPageLifecyclePreflight(projectId: string, pageId: string) {
+    readPageLifecyclePreflight(projectId: string | null, pageId: string) {
       return bridge.invoke(
         "pages:lifecycle:preflight",
         projectId,
         pageId,
       ) as Promise<PageLifecyclePreflightResultV2>;
     },
-    mutatePageLifecycle(projectId: string, request: PageLifecycleMutationRequestV2) {
+    mutatePageLifecycle(projectId: string | null, request: PageLifecycleMutationRequestV2) {
       return bridge.invoke(
         "pages:lifecycle:apply",
         projectId,
@@ -232,7 +224,7 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     createLibraryDocumentSyncAdapter() {
       return createElectronLibraryDocumentSyncAdapter(bridge);
     },
-    createCanvasSceneSyncAdapter(identity: ContentAccessIdentity) {
+    createCanvasSceneSyncAdapter(identity: ContentRoutingIdentity) {
       return createElectronCanvasSceneSyncAdapter(bridge, identity);
     },
     mutateDocument(projectId: string, documentId: string, request: DocumentMutationRequest) {
@@ -253,14 +245,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         request,
       ) as Promise<AdditionalDocumentCommandResult>;
     },
-    transferBlocks(projectId: string, intent: PublicBlockTransferIntent) {
+    transferBlocks(projectId: string | null, intent: PublicBlockTransferIntent) {
       return bridge.invoke(
         "blocks:transfer",
         projectId,
         intent,
       ) as Promise<BlockTransferCommandResult>;
     },
-    undoBlockTransfer(projectId: string, intent: PublicBlockTransferUndoIntent) {
+    undoBlockTransfer(projectId: string | null, intent: PublicBlockTransferUndoIntent) {
       return bridge.invoke(
         "blocks:transfer:undo",
         projectId,
@@ -302,20 +294,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     ) {
       let active = true;
       const removeLocalListener = rendererLocalCommitIngress.subscribeProjection(scope, callback);
-      const releaseAudience = acquireAudience(bridge, scope);
-      return () => {
-        if (!active) return;
-        active = false;
-        removeLocalListener();
-        releaseAudience();
-      };
-    },
-    subscribeResourceRevocations(
-      scope: ProjectionScope,
-      callback: (message: ResourceRevocationMessage) => void,
-    ) {
-      let active = true;
-      const removeLocalListener = rendererLocalCommitIngress.subscribeRevocation(scope, callback);
       const releaseAudience = acquireAudience(bridge, scope);
       return () => {
         if (!active) return;
@@ -385,13 +363,12 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     subscribeClaudeAgentSettingsChanges(callback) {
       return bridge.on("claude-agent-settings-changed", callback);
     },
-    subscribeAgentBackendSessionChanges(
-      callback: (event: AgentBackendSessionChangedEvent) => void,
-    ) {
-      return bridge.on("agent-backend:session-changed", (...args: unknown[]) => {
-        const payload = args[0] as AgentBackendSessionChangedEvent | undefined;
-        if (!payload) return;
-        callback(payload);
+    subscribeAgentRuntimeSessionEvents(callback) {
+      return bridge.on("agent-runtime:session-event", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/agent-runtime-api").AgentRuntimeSessionEvent
+          | undefined;
+        if (payload) callback(payload);
       });
     },
     subscribeCodexHostMessages(callback: (message: CodexHostMessage) => void) {
@@ -409,16 +386,6 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
-    subscribeCodexRendererClientRequests(
-      callback: (message: CodexRendererClientRequestMessage) => void,
-    ) {
-      return bridge.on("codex:renderer-client:request", (...args: unknown[]) => {
-        const payload = args[0] as CodexRendererClientRequestMessage | undefined;
-        if (!payload || typeof payload.requestId !== "string" || typeof payload.method !== "string")
-          return;
-        callback(payload);
-      });
-    },
     subscribeDesktopNotificationActions(
       callback: (message: DesktopNotificationActionInvocation) => void,
     ) {
@@ -426,14 +393,7 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
       return bridge.on("desktop-notification:action", (...args: unknown[]) => {
         const payload = args[0] as Partial<DesktopNotificationActionInvocation> | undefined;
         if (!payload || typeof payload.notificationId !== "string") return;
-        if (
-          payload.actionType !== "open" &&
-          payload.actionType !== "reply" &&
-          payload.actionType !== "approve" &&
-          payload.actionType !== "approve-for-session" &&
-          payload.actionType !== "decline"
-        )
-          return;
+        if (payload.actionType !== "open" && payload.actionType !== "reply") return;
         if (payload.actionId !== null && typeof payload.actionId !== "string") return;
         if (typeof payload.hostId !== "string" || payload.hostId.trim().length === 0) return;
         if (payload.conversationId !== null && typeof payload.conversationId !== "string") return;

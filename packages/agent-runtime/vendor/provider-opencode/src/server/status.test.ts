@@ -560,12 +560,6 @@ it.layer(layerTest)("checkOpenCodeProviderStatus", (it) => {
 
       NodeAssert.equal(snapshot.status, "ready");
       NodeAssert.equal(snapshot.version, "2.0.18");
-      NodeAssert.deepEqual(snapshot.supportedRuntimeModes, [
-        "approval-required",
-        "auto-accept-edits",
-        "auto",
-        "full-access",
-      ]);
       // Plan mode runs as OpenCode's plan agent, and every session can compact.
       NodeAssert.equal(snapshot.showInteractionModeToggle, true);
       NodeAssert.deepEqual(
@@ -690,12 +684,6 @@ it.layer(layerTest)("checkOpenCodeProviderStatus with configured server URL", (i
 
       NodeAssert.equal(snapshot.status, "warning");
       NodeAssert.equal(snapshot.version, "2.0.18");
-      NodeAssert.deepEqual(snapshot.supportedRuntimeModes, [
-        "approval-required",
-        "auto-accept-edits",
-        "auto",
-        "full-access",
-      ]);
       NodeAssert.equal(runtimeMock.state.sdkClientInputs.length, 0);
     }),
   );

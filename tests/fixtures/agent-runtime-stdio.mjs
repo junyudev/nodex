@@ -29,6 +29,28 @@ for await (const line of createInterface({ input: process.stdin })) {
     break;
   }
   if (request.method === "project.read") {
+    if (request.input.projectId === "host-native-session" || request.input.projectId === "invalid-native-prepare") {
+      pendingHosts.set(request.id, request.id);
+      send({type: "host.request", id: request.id,
+        operation: request.input.projectId === "invalid-native-prepare" ? "turn.prepare" : "tool.call",
+        tool: "get_session_context", input: {}, identity: {runtimeId: identity.runtimeId,
+          runtimeGeneration: identity.runtimeGeneration, threadId: "thread", source: "native-session",
+          runId: null, attemptId: null, incarnationId: "incarnation", providerSessionId: "acp-session", nativeGeneration: 1}});
+      continue;
+    }
+    if (request.input.projectId === "native-session-closed") {
+      send({type: "execution.native-session.closed", runtimeId: identity.runtimeId,
+        runtimeGeneration: identity.runtimeGeneration, providerSessionId: "acp-session", nativeGeneration: 1, incarnationId: "incarnation"});
+      success(request.id, null);
+      continue;
+    }
+    if (request.input.projectId === "host-auth") {
+      pendingHosts.set(request.id, request.id);
+      send({ type: "host.request", id: request.id, operation: "provider.auth",
+        identity: { runtimeId: identity.runtimeId, runtimeGeneration: identity.runtimeGeneration, providerInstanceId: "codex" },
+        refresh: true, previousAccountId: "account" });
+      continue;
+    }
     if (request.input.projectId === "exit") process.exit(9);
     if (request.input.projectId === "reject") {
       send({ id: request.id, success: false, error: { message: "Execution is busy" } });

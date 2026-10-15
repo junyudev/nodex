@@ -47,7 +47,6 @@ const descriptor = (): DatabaseContainerDescriptorV2 => ({
     name: "Tasks",
     lifecycle: "active",
     defaultViewId,
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -105,7 +104,6 @@ const databaseRead = (): DatabaseModuleReadResultV2 => ({
     libraryId,
     storeEpoch,
     commitSeq: 7,
-    authorization: null,
     value: { kind: "database", value: descriptor() },
   },
 });

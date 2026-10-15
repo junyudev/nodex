@@ -1,7 +1,7 @@
 import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import { z } from "zod";
 import { parseDatabaseViewPreferencesOverride } from "../database-kernel";
-import { ContentAccessContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
+import { ContentRoutingContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
 
 const identity = z.string().min(1).max(512);
 const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -57,7 +57,7 @@ export const WorkbenchViewSnapshotSchema = z.strictObject({
   capturedAt: z.string().datetime(),
   layout: z.enum(["board", "list"]),
   libraryId: identity,
-  accessContext: ContentAccessContextSchema,
+  routingContext: ContentRoutingContextSchema,
   databaseId: identity,
   dataSourceId: identity,
   databaseViewId: identity,

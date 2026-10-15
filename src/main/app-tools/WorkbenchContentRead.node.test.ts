@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type {
   WorkbenchAgentRequestBody,
   WorkbenchWindowReference,
@@ -22,37 +22,26 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { make, type WorkbenchContentReadInput } from "./WorkbenchContentRead";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread:actor",
   turnId: "turn:actor",
   rootThreadId: "thread:actor",
   actorProjectId: "project:actor",
   libraryId: "library:current",
   storeEpoch: "epoch:current",
-  frozenAtMs: 1,
-  readOnly: true,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const input: WorkbenchContentReadInput = {
   authority,
   callId: "call:exact",
-  taskAccess: {
-    kind: "consent",
-    scope: "task",
-    rootThreadId: authority.rootThreadId,
-    actorProjectId: authority.actorProjectId,
-    libraryId: authority.libraryId,
-    storeEpoch: authority.storeEpoch,
-    grants: [{ root: { kind: "page", pageId: "page:target" }, access: "read" }],
-  },
+
   description: {
-    status: "authorized",
+    status: "available",
     kind: "page",
     pageId: "page:target",
     title: "Described title",
     libraryId: authority.libraryId,
-    displayedAccessContext: { kind: "library" },
+    displayedRoutingContext: { kind: "library" },
   },
   live: {
     reference: {
@@ -72,7 +61,7 @@ const prepared: WorkbenchPreparedPageContent = {
   pageId: "page:target",
   documentId: "document:target",
   libraryId: authority.libraryId,
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   storeEpoch: authority.storeEpoch,
   generation: 2,
   expectedHeadSeq: 10,
@@ -179,7 +168,7 @@ it.effect(
         projectId: authority.actorProjectId,
         authority,
         callId: input.callId,
-        resourceAccess: input.taskAccess,
+
         input: {
           id: BlockIdSchema.parse(prepared.pageId),
           format: "markdown",
@@ -209,9 +198,9 @@ it.effect(
       assert.deepEqual(
         yield* service.read({
           ...input,
-          description: { status: "restricted", reason: "access_denied" },
+          description: { status: "unavailable" },
         }),
-        { status: "access_denied" },
+        { status: "unavailable" },
       );
       assert.equal(reads.length, 1);
     }),
@@ -226,7 +215,7 @@ it.effect(
         { ...prepared, pageId: "page:other" },
         {
           ...prepared,
-          accessContext: { kind: "project" as const, projectId: authority.actorProjectId },
+          routingContext: { kind: "project" as const, projectId: "project:actor" },
         },
         { ...prepared, storeEpoch: "epoch:old" },
       ]) {

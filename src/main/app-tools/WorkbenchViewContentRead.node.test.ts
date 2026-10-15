@@ -21,27 +21,16 @@ const input: WorkbenchContentReadInput = {
     actorProjectId: "project:actor",
     libraryId: "library:current",
     storeEpoch: "epoch:current",
-    scope: "project",
-    source: "project_turn",
-    frozenAtMs: 1,
-    readOnly: true,
+    admittedAtMs: 1,
   },
   callId: "call:exact",
-  taskAccess: {
-    kind: "consent",
-    scope: "task",
-    rootThreadId: "thread:actor",
-    actorProjectId: "project:actor",
-    libraryId: "library:current",
-    storeEpoch: "epoch:current",
-    grants: [{ root: { kind: "database", databaseId: "database:target" }, access: "read" }],
-  },
+
   description: {
-    status: "authorized",
+    status: "available",
     kind: "database_view",
     title: "Authorized View",
     libraryId: "library:current",
-    displayedAccessContext: { kind: "library" },
+    displayedRoutingContext: { kind: "library" },
     databaseId: "database:target",
     dataSourceId: "source:target",
     viewId: "view:target",
@@ -63,7 +52,7 @@ const capture: WorkbenchViewSnapshot = {
   capturedAt: "2026-09-08T00:00:00.000Z",
   layout: "list",
   libraryId: "library:current",
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   databaseId: "database:target",
   dataSourceId: "source:target",
   databaseViewId: "view:target",
@@ -204,7 +193,6 @@ it.effect("reprojects displayed occurrence conditions through exact Agent author
     if (request.kind !== "agent_displayed_view_query") return;
     assert.equal(request.authorization.call_id, "call:exact");
     assert.equal(request.authorization.provenance.authority.actor_project_id, "project:actor");
-    assert.equal(request.authorization.resource_access?.scope, "task");
     assert.deepEqual(request.coordinate, {
       database_id: "database:target",
       data_source_id: "source:target",
@@ -280,7 +268,7 @@ it.effect("rejects another surface and unsettled presentation without a Core que
   Effect.gen(function* () {
     for (const changed of [
       { ...capture, databaseViewId: "view:other" },
-      { ...capture, accessContext: { kind: "project" as const, projectId: "project:actor" } },
+      { ...capture, routingContext: { kind: "project" as const, projectId: "project:actor" } },
       { ...capture, search: { ...capture.search, current: "new search" } },
       ...Object.keys(capture.pending).map((key) => ({
         ...capture,

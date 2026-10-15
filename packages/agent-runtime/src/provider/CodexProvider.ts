@@ -15,6 +15,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexSchema from "effect-codex-app-server/schema";
 import * as CodexErrors from "effect-codex-app-server/errors";
+import { authenticateCodexClient } from "./CodexHostAuthentication.ts";
 
 import type {
   CodexSettings,
@@ -448,6 +449,12 @@ export const withCodexAppServerClient = Effect.fn("withCodexAppServerClient")(fu
   readonly launchArgs?: string | undefined;
   readonly cwd: string;
   readonly environment?: NodeJS.ProcessEnv | undefined;
+  readonly authentication?:
+    | Effect.Effect<
+        import("@t3tools/provider-core/server/ExecutionHost").ProviderAuthentication,
+        import("@t3tools/provider-core/server/ExecutionHost").ExecutionHostError
+      >
+    | undefined;
 }) {
   // `~` is not shell-expanded when env vars are set via `child_process.spawn`,
   // so `CODEX_HOME=~/.codex_work` would reach codex verbatim and trip
@@ -491,6 +498,7 @@ export const withCodexAppServerClient = Effect.fn("withCodexAppServerClient")(fu
   );
   const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
+  if (input.authentication) yield* authenticateCodexClient(client, input.authentication);
   return { client, initialize };
 });
 
@@ -502,6 +510,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   readonly customModels?: ReadonlyArray<CustomModelSetting>;
   readonly environment?: NodeJS.ProcessEnv;
   readonly skipNativeUsage?: boolean;
+  readonly authentication?: Parameters<typeof withCodexAppServerClient>[0]["authentication"];
 }) {
   const spawnedAtMs = DateTime.toEpochMillis(yield* DateTime.now);
   const { client, initialize } = yield* withCodexAppServerClient(input);
@@ -665,6 +674,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     readonly customModels: ReadonlyArray<CustomModelSetting>;
     readonly environment?: NodeJS.ProcessEnv;
     readonly skipNativeUsage?: boolean;
+    readonly authentication?: Parameters<typeof withCodexAppServerClient>[0]["authentication"];
   }) => Effect.Effect<
     CodexAppServerProviderSnapshot,
     CodexErrors.CodexAppServerError,
@@ -672,6 +682,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
   > = probeCodexAppServerProvider,
   environment?: NodeJS.ProcessEnv,
   managedAuth?: ServerProvider["auth"],
+  authentication?: Parameters<typeof withCodexAppServerClient>[0]["authentication"],
 ): Effect.fn.Return<
   ServerProviderDraft,
   ServerSettingsError,
@@ -706,6 +717,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
     customModels: codexSettings.customModels,
     environment: resolvedEnvironment,
     ...(managedAuth ? { skipNativeUsage: true } : {}),
+    ...(authentication ? { authentication } : {}),
   }).pipe(
     Effect.scoped,
     Effect.timeoutOption(Duration.millis(AUTH_PROBE_TIMEOUT_MS)),

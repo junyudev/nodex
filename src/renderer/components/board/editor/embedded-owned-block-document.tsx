@@ -7,7 +7,7 @@ import type { BlockReferenceHostRuntime } from "@/components/block-documents/blo
 import { NodexButton } from "@/components/ui/button";
 import { embeddedEditorSelectionContextAttributes } from "@/lib/editor-selection-presentation";
 import { resolveOwnedDocumentInlineMode } from "@/lib/owned-document-inline-mode";
-import { libraryContentAccess } from "../../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 import { NfmEditor } from "./nfm-editor";
 
 export interface EmbeddedOwnedBlockDocumentProps {
@@ -29,10 +29,10 @@ export function EmbeddedOwnedBlockDocument({
   isActive,
   hostRuntime,
 }: EmbeddedOwnedBlockDocumentProps) {
-  const contentAccessContext = hostRuntime?.contentAccessContext ?? libraryContentAccess;
+  const contentRoutingContext = hostRuntime?.contentRoutingContext ?? libraryContentRoute;
   return (
     <RegisteredOwnedBlockDocumentBoundary
-      accessContext={contentAccessContext}
+      routingContext={contentRoutingContext}
       ownerBlockId={ownerBlockId}
     >
       {(model, controls) => {
@@ -114,7 +114,7 @@ export function EmbeddedOwnedBlockDocument({
                     />
                   </div>
                   <NfmEditor
-                    contentAccessContext={contentAccessContext}
+                    contentRoutingContext={contentRoutingContext}
                     projectName={hostRuntime?.projectName}
                     projectWorkspacePath={hostRuntime?.projectWorkspacePath ?? undefined}
                     documentOwnerBlockId={ownerBlockId}

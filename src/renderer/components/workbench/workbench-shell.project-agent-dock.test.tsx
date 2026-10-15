@@ -12,7 +12,7 @@ import {
   openPanelMenu,
   renderWorkbench,
   rendererCommandPayload,
-  startThreadForSessionCalls,
+  agentRuntimeLaunchCalls,
 } from "./workbench-testkit/workbench-shell-harness";
 import type { ProjectAgentDockPendingWorktreeEntry } from "@/lib/project-agent-dock-model";
 import type { ProjectCreateInput } from "@/lib/types";
@@ -151,7 +151,7 @@ describe("workbench session shell / Project Agent Dock", () => {
       expect(
         invokeCalls.filter((call) => call[0] === "project-sessions:ensure-default-draft"),
       ).toHaveLength(1);
-      expect(startThreadForSessionCalls).toHaveLength(1);
+      expect(agentRuntimeLaunchCalls).toHaveLength(1);
     });
     const defaultDraftId = rendererCommandPayload(
       invokeCalls.find(
@@ -161,25 +161,12 @@ describe("workbench session shell / Project Agent Dock", () => {
       ),
     )?.candidateSessionId;
     expect(defaultDraftId).toEqual(expect.any(String));
-    expect(startThreadForSessionCalls[0]).toMatchObject({
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
       projectId: "alpha",
       sessionId: defaultDraftId,
-      prompt: "Start from Project Agent Dock",
-      browserUsePresentationOrigin: {
-        browserConversationId: defaultDraftId,
-        browserViewScopeId: "window-session:test",
-      },
+      message: { text: "Start from Project Agent Dock" },
     });
-    expect(invokeCalls).toContainEqual([
-      "browser-sidebar-command",
-      {
-        type: "capture-browser-use-route",
-        browserConversationId: defaultDraftId,
-        browserViewScopeId: "window-session:test",
-        codexSessionId: defaultDraftId,
-        projectId: "alpha",
-      },
-    ]);
+    await settleAsyncRender();
     expect(screen.queryByTestId("project-database-surface") !== null).toBe(true);
     expect(screen.queryByTestId("session-thread-page")).toBe(null);
   });
@@ -251,7 +238,7 @@ describe("workbench session shell / Project Agent Dock", () => {
       expect(submitted).toEqual([expect.objectContaining({ name: "Lab", sources: [] })]);
       expect(screen.queryByRole("dialog", { name: "Create project" })).toBeNull();
     });
-    expect(startThreadForSessionCalls).toHaveLength(0);
+    expect(agentRuntimeLaunchCalls).toHaveLength(0);
   });
 
   test("recovers an exact pending worktree from canonical state and blocks another start", async () => {

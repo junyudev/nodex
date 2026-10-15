@@ -142,7 +142,6 @@ class RecordingSeedPort implements ScenarioSeedPort {
                   name: "Board Dense",
                   lifecycle: "active",
                   defaultViewId: BOARD_VIEW_ID,
-                  accessRevision: 1,
                   metadataRevision: 1,
                   createdAt: CREATED_AT,
                   updatedAt: CREATED_AT,
@@ -178,7 +177,6 @@ class RecordingSeedPort implements ScenarioSeedPort {
         libraryId: "library:test",
         storeEpoch: "epoch:test",
         commitSeq: this.#commitSeq,
-        authorization: null,
         value,
       },
     };
@@ -282,10 +280,6 @@ class RecordingSeedPort implements ScenarioSeedPort {
 
   async readPageChats(): Promise<never> {
     throw new Error("Page Chat inspection is not part of this scenario");
-  }
-
-  async setResourceProjectAccess(): Promise<never> {
-    throw new Error("Resource access changes are not part of this scenario");
   }
 
   async createSidebarSection(): Promise<never> {

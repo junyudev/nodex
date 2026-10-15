@@ -30,7 +30,6 @@ import type {
   CodexCanonicalSetupCodexStepResponse,
   CodexCanonicalConversationState,
 } from "./codex-conversation-state";
-import type { CodexApprovalRequestMethod } from "../codex-approval";
 import {
   CODEX_APP_TOOL_NAMESPACE,
   hasCodexDynamicToolIdentity,
@@ -1430,41 +1429,6 @@ function findFirstOrdinaryReplyRequest(
   );
 }
 
-export function reduceCodexServerRequestApprovalResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-  expectedMethod: CodexApprovalRequestMethod,
-): CodexServerRequestRawLifecycleResult {
-  const request = findFirstOrdinaryReplyRequest(state.requests, requestId);
-  if (request?.method !== expectedMethod) {
-    return emptyRawResult(state, "ignored");
-  }
-  return selectedRawReplyResult(state, [request]);
-}
-
-export function reduceCodexServerRequestPermissionResponseRawState(
-  state: CodexServerRequestRawState,
-  requestId: RequestId,
-  response: PermissionsRequestApprovalResponse,
-  context: CodexServerRequestLifecycleContext,
-): CodexServerRequestRawLifecycleResult {
-  const request = findFirstOrdinaryReplyRequest(state.requests, requestId);
-  if (request?.method !== "item/permissions/requestApproval") {
-    return emptyRawResult(state, "ignored");
-  }
-  const upserted = upsertRawRequestSynthetic(
-    state,
-    request.params.turnId,
-    buildPermissionSynthetic(request.id, request.params, true, response),
-    context,
-  );
-  return selectedRawReplyResult(
-    upserted.state,
-    [request],
-    upserted.mutation ? [upserted.mutation] : [],
-  );
-}
-
 function normalizeUserInputAnswers(
   answers: Readonly<Record<string, readonly string[] | undefined>>,
 ): CodexCanonicalUserInputAnswers {
@@ -1740,52 +1704,6 @@ export function reduceCodexConversationServerRequestResolved(
   let operation!: RequestMutation;
   const next = produce(state, (draft) => {
     operation = mutateCodexConversationServerRequestResolved(draft, notification, context);
-  });
-  return { ...operation, state: next, stateChanged: next !== state };
-}
-
-export function mutateCodexConversationApprovalResponse(
-  state: Draft<CodexCanonicalConversationState>,
-  requestId: RequestId,
-  expectedMethod: CodexApprovalRequestMethod,
-): RequestMutation {
-  return mutateCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestApprovalResponseRawState(raw, requestId, expectedMethod),
-  );
-}
-
-export function reduceCodexConversationApprovalResponse(
-  state: CodexCanonicalConversationState,
-  requestId: RequestId,
-  expectedMethod: CodexApprovalRequestMethod,
-): CodexServerRequestLifecycleResult {
-  let operation!: RequestMutation;
-  const next = produce(state, (draft) => {
-    operation = mutateCodexConversationApprovalResponse(draft, requestId, expectedMethod);
-  });
-  return { ...operation, state: next, stateChanged: next !== state };
-}
-
-export function mutateCodexConversationPermissionResponse(
-  state: Draft<CodexCanonicalConversationState>,
-  requestId: RequestId,
-  response: PermissionsRequestApprovalResponse,
-  context: CodexServerRequestLifecycleContext,
-): RequestMutation {
-  return mutateCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestPermissionResponseRawState(raw, requestId, response, context),
-  );
-}
-
-export function reduceCodexConversationPermissionResponse(
-  state: CodexCanonicalConversationState,
-  requestId: RequestId,
-  response: PermissionsRequestApprovalResponse,
-  context: CodexServerRequestLifecycleContext,
-): CodexServerRequestLifecycleResult {
-  let operation!: RequestMutation;
-  const next = produce(state, (draft) => {
-    operation = mutateCodexConversationPermissionResponse(draft, requestId, response, context);
   });
   return { ...operation, state: next, stateChanged: next !== state };
 }

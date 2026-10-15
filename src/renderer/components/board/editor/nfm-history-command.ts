@@ -1,5 +1,5 @@
 import type { SurfaceHistorySelectionPair } from "@blocknote/core/yjs";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
@@ -63,7 +63,7 @@ export interface NfmStructuralTransferIntent {
 /** Data Source Pages are ownership transfers, not selections in a source Document. */
 export interface NfmReceivingPageTransferIntent {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly mode: "move" | "copy";
   readonly rootBlockIds: readonly string[];
@@ -166,7 +166,7 @@ export interface NfmHistoryPresentation {
 /** Only typed requests cross the durable submission seam; callbacks never enter exact attempts. */
 export interface NfmLibraryHistoryRequest {
   readonly kind: "library";
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly request: LibraryModuleApplyRequest;
   readonly presentation: NfmHistoryPresentation;
   readonly replay: boolean;

@@ -51,6 +51,7 @@ interface LocalConversationThreadBodyProps {
   onForkFromTurnIntoWorktree?: LocalConversationForkIntoWorktreeHandler;
   planSidePanelState?: ThreadPlanSidePanelState | null;
   resolveHistoryImage?: import("../thread-stage-types").ConversationProviderPresentation["resolveHistoryImage"];
+  resolveRuntimeAttachment?: import("../thread-stage-types").ConversationProviderPresentation["resolveRuntimeAttachment"];
   readToolOutput?: import("../thread-stage-types").ConversationProviderPresentation["readToolOutput"];
   onErrorMessage: (message: string | null) => void;
   contentShiftX?: number;
@@ -232,6 +233,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
         onOpenThread={props.actions.onOpenThread}
         onStartNewChatWithPrompt={props.actions.onStartNewChatWithPrompt}
         imageComposerTarget={composerTarget}
+        skills={model.skills}
       >
         <HookFeedbackSettingsNavigationProvider
           hostId={model.hostId}
@@ -242,6 +244,7 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
             hostId={model.hostId}
             conversationId={model.threadId}
             resolveHistoryImage={props.resolveHistoryImage}
+            resolveRuntimeAttachment={props.resolveRuntimeAttachment}
           >
             <ConversationToolOutputProvider
               readToolOutput={props.readToolOutput}
@@ -289,6 +292,7 @@ export const LocalConversationThreadBody = memo(
     left.isWorktreeThread === right.isWorktreeThread &&
     left.onForkFromTurnIntoWorktree === right.onForkFromTurnIntoWorktree &&
     left.resolveHistoryImage === right.resolveHistoryImage &&
+    left.resolveRuntimeAttachment === right.resolveRuntimeAttachment &&
     left.readToolOutput === right.readToolOutput &&
     left.planSidePanelState === right.planSidePanelState &&
     left.onErrorMessage === right.onErrorMessage &&

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as FileSystem from "effect/FileSystem";
 import {
   ChatAttachmentId,
@@ -6,12 +7,14 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 import {
   parseThreadSegmentFromAttachmentId,
   PENDING_ATTACHMENT_THREAD_SEGMENT,
   planAttachmentClaim,
   resolveAttachmentPath,
+  resolveAttachmentPathById,
 } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
 
@@ -82,66 +85,111 @@ export const claimPendingAttachments = Effect.fn("AttachmentClaims.claimPendingA
     const attachments = yield* Effect.forEach(
       input.attachments,
       (attachment) =>
-        Effect.gen(function* () {
-          if (!attachmentIsPendingUpload(attachment)) {
-            return attachment;
-          }
-          const claim = planAttachmentClaim({
-            attachmentsDir: serverConfig.attachmentsDir,
-            threadId: input.threadId,
-            attachmentId: attachment.id,
-          });
-          if (!claim.ok) {
-            return yield* new AttachmentClaimError({
-              message: `Attachment '${attachment.name}' cannot be sent: ${claim.reason}.`,
+        Effect.scoped(
+          Effect.gen(function* () {
+            if (!attachmentIsPendingUpload(attachment)) {
+              return attachment;
+            }
+            const currentPath = resolveAttachmentPathById({
+              attachmentsDir: serverConfig.attachmentsDir,
+              attachmentId: attachment.id,
             });
-          }
-          const info = yield* fileSystem.stat(claim.currentPath).pipe(
-            Effect.mapError(
-              (cause) =>
-                new AttachmentClaimError({
-                  message: `Attachment '${attachment.name}' cannot be sent: attachment not found.`,
-                  cause,
-                }),
+            if (currentPath === null) {
+              return yield* new AttachmentClaimError({
+                message: `Attachment '${attachment.name}' cannot be sent: attachment not found.`,
+              });
+            }
+            const info = yield* fileSystem.stat(currentPath).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new AttachmentClaimError({
+                    message: `Attachment '${attachment.name}' cannot be sent: attachment not found.`,
+                    cause,
+                  }),
+              ),
+            );
+            if (Number(info.size) !== attachment.sizeBytes) {
+              return yield* new AttachmentClaimError({
+                message: `Attachment '${attachment.name}' cannot be sent: stored size does not match.`,
+              });
+            }
+            // Snapshot the pending bytes before deriving their identity. A copy,
+            // rather than a hard link, keeps native edits out of the retry source.
+            const temporaryPath = yield* fileSystem.makeTempFileScoped({
+              directory: serverConfig.attachmentsDir,
+              prefix: "claim-",
+              suffix: ".part",
+            });
+            // An interrupted copy still finishes before Scope removes its temp file.
+            yield* fileSystem.copyFile(currentPath, temporaryPath).pipe(Effect.uninterruptible);
+            if (Number((yield* fileSystem.stat(temporaryPath)).size) !== attachment.sizeBytes) {
+              return yield* new AttachmentClaimError({
+                message: `Attachment '${attachment.name}' changed while it was being claimed.`,
+              });
+            }
+            // Hash incrementally so an upload retry keeps its accepted identity,
+            // while changed bytes cannot borrow that receipt. No file body is cached.
+            const digest = yield* fileSystem.stream(temporaryPath).pipe(
+              Stream.runFold(
+                () => createHash("sha256"),
+                (hash, bytes) => hash.update(bytes),
+              ),
+              Effect.map((hash) => hash.digest("hex")),
+              Effect.mapError(
+                (cause) =>
+                  new AttachmentClaimError({
+                    message: `Failed to read attachment '${attachment.name}'.`,
+                    cause,
+                  }),
+              ),
+            );
+            const claim = planAttachmentClaim({
+              attachmentsDir: serverConfig.attachmentsDir,
+              threadId: input.threadId,
+              attachmentId: attachment.id,
+              contentDigest: digest,
+            });
+            if (!claim.ok)
+              return yield* new AttachmentClaimError({
+                message: `Attachment '${attachment.name}' cannot be sent: ${claim.reason}.`,
+              });
+            const normalized: ChatAttachment = {
+              ...attachment,
+              id: ChatAttachmentId.make(claim.finalId),
+              mimeType: attachment.mimeType.toLowerCase(),
+            };
+            const expectedPath = resolveAttachmentPath({
+              attachmentsDir: serverConfig.attachmentsDir,
+              attachment: normalized,
+            });
+            if (expectedPath !== claim.finalPath) {
+              return yield* new AttachmentClaimError({
+                message: `Attachment '${attachment.name}' cannot be sent: attachment type does not match the upload.`,
+              });
+            }
+            // The intake lock covers claiming through dispatch/rollback. A prior
+            // accepted copy belongs to its message and must never be overwritten
+            // or registered for this attempt's cleanup.
+            if (yield* fileSystem.exists(claim.finalPath)) return normalized;
+            // Publish the immutable snapshot and register rollback atomically.
+            yield* fileSystem
+              .rename(temporaryPath, claim.finalPath)
+              .pipe(
+                Effect.andThen(Effect.sync(() => claimedPaths.push(claim.finalPath))),
+                Effect.uninterruptible,
+              );
+            return normalized;
+          }).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof AttachmentClaimError
+                ? cause
+                : new AttachmentClaimError({
+                    message: `Failed to claim attachment '${attachment.name}' for this thread.`,
+                    cause,
+                  }),
             ),
-          );
-          if (Number(info.size) !== attachment.sizeBytes) {
-            return yield* new AttachmentClaimError({
-              message: `Attachment '${attachment.name}' cannot be sent: stored size does not match.`,
-            });
-          }
-          const normalized: ChatAttachment = {
-            ...attachment,
-            id: ChatAttachmentId.make(claim.finalId),
-            mimeType: attachment.mimeType.toLowerCase(),
-          };
-          const expectedPath = resolveAttachmentPath({
-            attachmentsDir: serverConfig.attachmentsDir,
-            attachment: normalized,
-          });
-          if (expectedPath !== claim.finalPath) {
-            return yield* new AttachmentClaimError({
-              message: `Attachment '${attachment.name}' cannot be sent: attachment type does not match the upload.`,
-            });
-          }
-          // A copy, not a hard link: an agent editing the delivered file in
-          // place must not mutate the retry source. fs.copyFile cannot be
-          // cancelled, so the copy and its rollback registration stay in one
-          // uninterruptible region: an interrupt landing mid-copy still waits
-          // for the write to settle and records the path before cleanup runs.
-          yield* fileSystem.copyFile(claim.currentPath, claim.finalPath).pipe(
-            Effect.mapError(
-              (cause) =>
-                new AttachmentClaimError({
-                  message: `Failed to claim attachment '${attachment.name}' for this thread.`,
-                  cause,
-                }),
-            ),
-            Effect.andThen(Effect.sync(() => claimedPaths.push(claim.finalPath))),
-            Effect.uninterruptible,
-          );
-          return normalized;
-        }),
+          ),
+        ),
       { concurrency: 1 },
     ).pipe(Effect.onError(() => releaseClaimedAttachments(claimedPaths)));
     return { attachments, claimedPaths } satisfies ClaimedAttachments;

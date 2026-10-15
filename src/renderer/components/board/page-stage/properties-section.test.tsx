@@ -77,7 +77,6 @@ const manifestResponse = (manifest: LibraryPageFileInventory) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 1,
-    authorization: null,
     value: {
       kind: "page_file_inventory",
       value: manifest,
@@ -143,7 +142,7 @@ const emptyPropertyControls: PageStagePropertyControls = {
 const buildController = (overrides: Partial<PageStageController> = {}): PageStageController =>
   ({
     page,
-    contentAccessContext: { kind: "project", projectId: "project-1" },
+    contentRoutingContext: { kind: "project", projectId: "project-1" },
     storeEpoch: "store-1",
     hasDatabaseProperties: false,
     hasRelatedChatsRow: false,
@@ -181,7 +180,7 @@ describe("PageStagePropertiesSection", () => {
     });
     expect(modal.openModal).toHaveBeenCalledOnce();
     expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       pageId: "nested-page",
     });
   });

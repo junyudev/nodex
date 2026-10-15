@@ -7,6 +7,11 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import {
+  useConversationRuntimeOverride,
+  type ConversationContentSource,
+  type ConversationRuntime,
+} from "../conversation-runtime";
 import type { CodexComposerSkill, CodexConnectionState } from "../../../../shared/types";
 import type { ThreadStageActions } from "../thread-stage-types";
 import type { ImageEditComposerTarget } from "@/features/user-attachment-image-editor";
@@ -28,6 +33,7 @@ export interface ConversationMarkdownSource {
   /** Actual resident owner identity. Resource caches may qualify it with a WeakMap. */
   readonly authority: object | null;
   readonly nativeConnection: CodexConnectionState["native"];
+  readonly executionSource?: ConversationContentSource;
   readonly sourceRoot: { readonly hostId: string; readonly threadId: string };
   readonly isCurrent: () => boolean;
   /** Shared reads follow the resident source, independently of one mounted consumer. */
@@ -85,19 +91,7 @@ function createSourceLease() {
   };
 }
 
-/** A mounted source delegates to existing Files and Thread owners without registering a new session. */
-export function ConversationMarkdownSourceProvider({
-  projectId = null,
-  hostId,
-  threadId,
-  cwd,
-  workspaceRoot,
-  onOpenThread,
-  onStartNewChatWithPrompt,
-  imageComposerTarget,
-  skills,
-  children,
-}: {
+type SourceProviderProps = {
   readonly projectId?: string | null;
   readonly hostId: string;
   readonly threadId: string | null;
@@ -108,7 +102,114 @@ export function ConversationMarkdownSourceProvider({
   readonly imageComposerTarget?: ImageEditComposerTarget;
   readonly skills?: readonly CodexComposerSkill[];
   readonly children: ReactNode;
-}) {
+};
+
+/** Every presenter reads the owning execution source rather than creating a native writer. */
+export function ConversationMarkdownSourceProvider(props: SourceProviderProps) {
+  const runtime = useConversationRuntimeOverride();
+  return runtime?.contentSource ? (
+    <RuntimeMarkdownSourceProvider {...props} runtime={runtime} />
+  ) : (
+    <NativeMarkdownSourceProvider {...props} />
+  );
+}
+
+function createRuntimeSourceLease() {
+  let current: ConversationMarkdownSource | null = null;
+  return {
+    activate(source: ConversationMarkdownSource | null) {
+      current = source;
+      return () => {
+        if (current === source) current = null;
+      };
+    },
+    matches: (source: ConversationMarkdownSource) => current === source && source.isCurrent(),
+  };
+}
+
+function RuntimeMarkdownSourceProvider({
+  runtime,
+  children,
+  projectId = null,
+  hostId,
+  threadId,
+  cwd,
+  workspaceRoot,
+  onOpenThread,
+  onStartNewChatWithPrompt,
+  imageComposerTarget,
+  skills,
+}: SourceProviderProps & { readonly runtime: ConversationRuntime }) {
+  const owner = useContext(CodexTranscriptReadOwnerContext);
+  const executionSource = useSyncExternalStore(
+    (listener) => runtime.subscribe(threadId, listener),
+    () => runtime.contentSource?.(threadId) ?? null,
+  );
+  const value = useMemo<ConversationMarkdownSource | null>(() => {
+    if (!threadId || !owner || !executionSource) return null;
+    const isResourceCurrent = () =>
+      executionSource.isCurrent() &&
+      runtime.transcriptReadOwner?.(threadId) === owner &&
+      owner.key.hostId === hostId &&
+      owner.key.threadId === threadId;
+    return {
+      projectId,
+      hostId,
+      threadId,
+      cwd,
+      workspaceRoot,
+      onOpenThread,
+      onStartNewChatWithPrompt,
+      imageComposerTarget,
+      skills,
+      sourceIdentity: executionSource.identity,
+      authority: owner,
+      nativeConnection: undefined,
+      executionSource,
+      sourceRoot: { hostId, threadId },
+      isCurrent: isResourceCurrent,
+      isResourceCurrent,
+    };
+  }, [
+    projectId,
+    hostId,
+    threadId,
+    cwd,
+    workspaceRoot,
+    onOpenThread,
+    onStartNewChatWithPrompt,
+    imageComposerTarget,
+    skills,
+    owner,
+    executionSource,
+    runtime,
+  ]);
+  const [lease] = useState(createRuntimeSourceLease);
+  useLayoutEffect(() => lease.activate(value), [lease, value]);
+  const mounted = useMemo(
+    () => (value ? { ...value, isCurrent: () => lease.matches(value) } : null),
+    [value, lease],
+  );
+  return (
+    <ConversationMarkdownSourceContext value={mounted}>
+      {children}
+    </ConversationMarkdownSourceContext>
+  );
+}
+
+/** Native observation sources retain their registry and connection generation. */
+function NativeMarkdownSourceProvider({
+  projectId = null,
+  hostId,
+  threadId,
+  cwd,
+  workspaceRoot,
+  onOpenThread,
+  onStartNewChatWithPrompt,
+  imageComposerTarget,
+  skills,
+  children,
+}: SourceProviderProps) {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const registry = useCodexAppServerRegistry();
   const preparedManager = useMemo(() => registry.getForHostId(hostId), [registry, hostId]);
@@ -199,7 +300,7 @@ export function ConversationMarkdownSourceProvider({
   );
 }
 
-/** The native item address, rather than a layout position, fences resource and action consumers. */
+/** The resident item address, rather than a layout position, fences resource and action consumers. */
 export function ConversationMarkdownItemSourceProvider({
   source,
   children,

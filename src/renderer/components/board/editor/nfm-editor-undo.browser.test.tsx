@@ -325,7 +325,7 @@ describe("collaborative NFM undo in Chromium", () => {
       editor,
       apply,
       runtime: {
-        accessContext: { kind: "project", projectId: "project:test" },
+        routingContext: { kind: "project", projectId: "project:test" },
         libraryId: "library:test",
         source: {
           documentId: document.guid,
@@ -619,12 +619,11 @@ describe("collaborative NFM undo in Chromium", () => {
       key: "session-browser\u0000tab-relative-cursor",
       descriptor: {
         libraryId: "library-browser",
-        accessContext: { kind: "project", projectId: "project-browser" },
+        routingContext: { kind: "project", projectId: "project-browser" },
         ownerBlockId: "page-relative-cursor",
         ownerType: "page",
         ownerLifecycle: "active",
         documentId: document.guid,
-        authorization: null,
         storeEpoch: "epoch-relative-cursor",
         generation: 1,
         headSeq: 1,

@@ -4,7 +4,7 @@ import type {
   OrchestrationV2Run,
   OrchestrationV2Subagent,
 } from "@t3tools/contracts";
-import type { AgentHostTurnIdentity } from "./Interface.ts";
+import type { AgentHostExecutionIdentity } from "./Interface.ts";
 
 export interface HostToolAuthorityView {
   readonly thread: Pick<
@@ -20,11 +20,7 @@ export interface HostToolAuthorityView {
   readonly providerThreads: ReadonlyArray<
     Pick<
       OrchestrationV2ProviderThread,
-      | "id"
-      | "providerSessionId"
-      | "providerInstanceId"
-      | "nativeThreadRef"
-      | "pendingBackgroundTasks"
+      "id" | "providerSessionId" | "providerInstanceId" | "nativeThreadRef"
     >
   >;
   readonly subagents: ReadonlyArray<
@@ -32,41 +28,26 @@ export interface HostToolAuthorityView {
   >;
 }
 
-/** Session credentials identify a thread; only the exact admitted foreground Run may act. */
+/** Validate the captured execution route and cancellation lifetime, without resource access policy. */
 export function hostToolAuthorityRefusal(
   state: HostToolAuthorityView,
-  prepared: AgentHostTurnIdentity,
+  prepared: AgentHostExecutionIdentity,
   nativeGeneration: number | undefined,
 ): string | undefined {
-  if (
-    state.thread.deletedAt !== null ||
-    state.thread.id !== prepared.threadId ||
-    state.thread.projectId !== prepared.projectId
-  ) {
+  if (state.thread.deletedAt !== null || state.thread.id !== prepared.threadId) {
     return "Thread authority is no longer valid.";
   }
   if (nativeGeneration !== prepared.nativeGeneration) return "Native session generation changed.";
-  const activeRun = state.runs.reduce<HostToolAuthorityView["runs"][number] | undefined>(
-    (active, run) =>
-      run.status === "running" && (active === undefined || run.ordinal > active.ordinal)
-        ? run
-        : active,
-    undefined,
-  );
+  const run = state.runs.find((candidate) => candidate.id === prepared.runId);
   if (
-    activeRun?.id !== prepared.runId ||
-    state.thread.activeProviderThreadId !== prepared.providerThreadId
+    prepared.runId !== null &&
+    (run === undefined ||
+      ["cancelled", "interrupted", "rolled_back"].includes(run.status) ||
+      run.activeAttemptId !== prepared.attemptId ||
+      run.providerThreadId !== prepared.providerThreadId ||
+      run.providerInstanceId !== prepared.providerInstanceId)
   ) {
-    return "The admitted foreground Run is no longer active.";
-  }
-  const run = activeRun;
-  if (
-    run?.status !== "running" ||
-    run.activeAttemptId !== prepared.attemptId ||
-    run.providerThreadId !== prepared.providerThreadId ||
-    run.providerInstanceId !== prepared.providerInstanceId
-  ) {
-    return "The admitted foreground attempt is no longer active.";
+    return "The captured execution was cancelled or replaced.";
   }
   const nativeThread = state.providerThreads.find(
     (candidate) => candidate.id === prepared.providerThreadId,
@@ -79,19 +60,6 @@ export function hostToolAuthorityRefusal(
     nativeThread.nativeThreadRef?.driver !== prepared.nativeThreadRef?.driver
   ) {
     return "Native thread identity changed.";
-  }
-  if ((nativeThread.pendingBackgroundTasks?.length ?? 0) > 0) {
-    return "Native background work makes this tool caller ambiguous.";
-  }
-  if (
-    state.subagents.some(
-      (agent) =>
-        agent.origin === "provider_native" &&
-        agent.providerThreadId === prepared.providerThreadId &&
-        ["pending", "running", "waiting"].includes(agent.status),
-    )
-  ) {
-    return "A native child makes this tool caller ambiguous.";
   }
   return undefined;
 }

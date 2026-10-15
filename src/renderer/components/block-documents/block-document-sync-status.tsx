@@ -33,7 +33,7 @@ const toneClassName = (model: BlockDocumentSyncIndicatorModel): string => {
 export function BlockDocumentSyncStatus({ runtime, status }: BlockDocumentSyncStatusProps) {
   const surface = useSyncExternalStore(runtime.subscribe, runtime.getStatus);
   const recovery = useDocumentRecovery(
-    { libraryId: surface.descriptor.libraryId, accessContext: surface.descriptor.accessContext },
+    { libraryId: surface.descriptor.libraryId, routingContext: surface.descriptor.routingContext },
     surface.descriptor.documentId,
   );
   useEffect(() => {

@@ -301,6 +301,21 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 178,
         apply: migrate_v177_to_v178,
     },
+    MigrationStep {
+        from_revision: 178,
+        to_revision: 179,
+        apply: migrate_v178_to_v179,
+    },
+    MigrationStep {
+        from_revision: 179,
+        to_revision: 180,
+        apply: migrate_v179_to_v180,
+    },
+    MigrationStep {
+        from_revision: 180,
+        to_revision: 181,
+        apply: migrate_v180_to_v181,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2312,6 +2327,59 @@ fn migrate_v176_to_v177(
     Ok(())
 }
 
+fn migrate_v180_to_v181(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v180_to_v181.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"native_session_execution_identity":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v179_to_v180(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v179_to_v180.sql"))?;
+    let next_epoch = format!(
+        "epoch:{}",
+        random_uuid_v7().map_err(|_| internal("Store epoch entropy is unavailable"))?
+    );
+    connection.execute(
+        "UPDATE block_store_metadata SET store_epoch=?1,updated_at=?2 WHERE id=1",
+        params![
+            next_epoch,
+            chrono::DateTime::from_timestamp_millis(context.completed_at_unix_ms)
+                .ok_or_else(|| internal("Migration timestamp is invalid"))?
+                .to_rfc3339_opts(SecondsFormat::Millis, true)
+        ],
+    )?;
+    connection.execute("INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![context.source_revision,context.target_revision,context.source_schema_fingerprint,context.target_schema_fingerprint,context.backup_name,context.completed_at_unix_ms,r#"{"profile_access":true,"delivery_epoch_replaced":true}"#])?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v178_to_v179(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v178_to_v179.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"automation_session_runs":true,"stable_dispatches":true,"execution_cleanup":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v175_to_v176(
     connection: &Connection,
     context: &MigrationContext,
@@ -2667,9 +2735,9 @@ fn with_schema_rebuild_transaction<T>(
     }
     let result = with_immediate_transaction(connection, |transaction| {
         let owns_maintenance_context =
-            super::visibility_delta_journal::enter_migration_maintenance_context(transaction)?;
+            super::legacy_visibility_migration::enter_migration_maintenance_context(transaction)?;
         let value = operation(transaction)?;
-        super::visibility_delta_journal::leave_migration_maintenance_context(
+        super::legacy_visibility_migration::leave_migration_maintenance_context(
             transaction,
             owns_maintenance_context,
         )?;
@@ -2762,7 +2830,7 @@ pub(crate) fn prepare_test_current_store(
     with_immediate_transaction(connection, |transaction| {
         initialize_fresh_profile(transaction, unix_time_millis()?)
     })?;
-    crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(connection)
+    crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(connection)
 }
 
 #[cfg(test)]
@@ -3064,7 +3132,7 @@ mod tests {
     fn v147_migration_repairs_durable_and_personal_filter_json() {
         let mut connection = Connection::open_in_memory().expect("Store");
         install_current_schema(&mut connection).expect("current schema");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("maintenance writes");
@@ -3279,7 +3347,7 @@ mod tests {
             Ok(())
         })
         .expect("install v141 schema");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("maintenance writes");
@@ -3730,7 +3798,7 @@ mod tests {
             Ok(())
         })
         .expect("install v140 schema");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("maintenance writes");
@@ -4511,7 +4579,7 @@ mod tests {
             .unwrap();
         }
         validate_schema_identity(&connection, 170).expect("exact predecessor");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .unwrap();
@@ -4566,6 +4634,155 @@ mod tests {
     }
 
     #[test]
+    fn automation_session_migration_preserves_review_history_and_existing_lease_identity() {
+        let mut connection = Connection::open_in_memory().expect("fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .unwrap();
+        for step in MIGRATION_STEPS
+            .iter()
+            .filter(|step| step.from_revision >= 164 && step.to_revision <= 178)
+        {
+            with_schema_rebuild_transaction(&mut connection, |transaction| {
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        source_schema_fingerprint: published_format(step.from_revision)?
+                            .schema_fingerprint,
+                        target_schema_fingerprint: published_format(step.to_revision)?
+                            .schema_fingerprint,
+                        backup_name: "fixture".to_owned(),
+                        completed_at_unix_ms: 1,
+                    },
+                )
+            })
+            .unwrap();
+        }
+        validate_schema_identity(&connection, 178).expect("exact predecessor");
+        connection.execute_batch("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,prompt,rrule,created_at,updated_at)
+            VALUES ('report','cron','ACTIVE','Report','Prompt','FREQ=DAILY',1,1);
+          INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at) VALUES ('native:legacy',1,1,'today');
+          INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at)
+            VALUES ('session:legacy','Report',0,'today','today');
+          INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES ('session:legacy','native:legacy','today');
+          INSERT INTO codex_automation_runs(thread_id,automation_id,status,thread_title,archived_assistant_message,created_at,updated_at,run_revision)
+            VALUES ('native:legacy','report','ARCHIVED','Retained report','Full captured review body',1,2,7),
+              ('pending:legacy','report','IN_PROGRESS','Preparing',NULL,1,1,1);
+          INSERT INTO core_automation_leases(lease_id,automation_id,scheduled_for_ms,attempt,status,claimed_at_ms,expires_at_ms)
+            VALUES ('lease:legacy','report',0,1,'claimed',0,100);").unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v178_to_v179(
+                transaction,
+                &MigrationContext {
+                    source_revision: 178,
+                    target_revision: 179,
+                    source_schema_fingerprint: published_format(178)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(179)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 2,
+                },
+            )
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 179).expect("fresh and migrated schemas converge");
+        let retained = connection.query_row("SELECT run_id,session_id,status,session_title,archived_assistant_message,run_revision
+            FROM core_automation_runs WHERE run_id='native:legacy'", [], |row| Ok((row.get::<_,String>(0)?,
+                row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,String>(3)?,row.get::<_,String>(4)?,row.get::<_,i64>(5)?))).unwrap();
+        assert_eq!(
+            retained,
+            (
+                "native:legacy".to_owned(),
+                "session:legacy".to_owned(),
+                "ARCHIVED".to_owned(),
+                "Retained report".to_owned(),
+                "Full captured review body".to_owned(),
+                7
+            )
+        );
+        let pending = connection
+            .query_row(
+                "SELECT session_id IS NULL FROM core_automation_runs WHERE run_id='pending:legacy'",
+                [],
+                |row| row.get::<_, bool>(0),
+            )
+            .unwrap();
+        assert!(pending);
+        let lease = connection.query_row("SELECT dispatch_id,definition_revision,attempt FROM core_automation_leases WHERE lease_id='lease:legacy'", [],
+            |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?))).unwrap();
+        assert_eq!(lease, ("lease:legacy".to_owned(), 1, 1));
+        assert!(connection.execute("UPDATE core_automation_runs SET session_id='another-session' WHERE run_id='native:legacy'", []).is_err());
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        connection.execute_batch("INSERT INTO profiles(id,created_at,updated_at) VALUES ('profile:retained','today','today');
+          INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library:retained','profile:retained','today','today');
+          INSERT INTO block_store_metadata(id,store_epoch,created_at,updated_at) VALUES (1,'epoch:old','today','today');
+          INSERT INTO project_sessions(id,no_thread_fallback_title,\"order\",created_at,updated_at) VALUES ('session:runtime','Runtime',0,'today','today');
+          INSERT INTO project_session_execution_bindings(session_id,runtime_id,runtime_thread_id,launch_request_id,launch_request_hash,bound_at)
+            VALUES ('session:runtime','engine:stable','thread:stable','launch:stable','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','today');
+          INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id,library_id,session_id,runtime_id,runtime_thread_id,created_at,acknowledged_at)
+            VALUES ('cleanup:stable','library:retained','session:deleted','engine:stable','thread:deleted','today','today');
+          INSERT INTO change_log(store_epoch,kind,payload_json,committed_at,projection_impact_json) VALUES ('epoch:old','owned_document.document_invalidated','{\"module\":\"owned_document\",\"kind\":\"document_invalidated\",\"reason\":\"access_changed\",\"documentId\":\"retained\",\"generation\":1,\"headSeq\":1}','today','{\"kind\":\"none\"}');").unwrap();
+        let context = MigrationContext {
+            source_revision: 179,
+            target_revision: 180,
+            source_schema_fingerprint: published_format(179).unwrap().schema_fingerprint,
+            target_schema_fingerprint: published_format(180).unwrap().schema_fingerprint,
+            backup_name: "fixture".into(),
+            completed_at_unix_ms: 3,
+        };
+        let failed = with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v179_to_v180(transaction, &context)?;
+            Err::<(), _>(internal("Injected publication failure"))
+        })
+        .unwrap_err();
+        assert_eq!(failed.message, "Injected publication failure");
+        validate_schema_identity(&connection, 179).expect("failed upgrade rolled back every table");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "epoch:old"
+        );
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v179_to_v180(transaction, &context)
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 180).expect("Profile schema converges");
+        assert_ne!(
+            connection
+                .query_row(
+                    "SELECT store_epoch FROM block_store_metadata WHERE id=1",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "epoch:old"
+        );
+        assert_eq!(connection.query_row("SELECT runtime_id,runtime_thread_id,launch_request_id FROM project_session_execution_bindings WHERE session_id='session:runtime'",[],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?))).unwrap(),("engine:stable".into(),"thread:stable".into(),"launch:stable".into()));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT dispatch_id FROM core_automation_leases WHERE lease_id='lease:legacy'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )
+                .unwrap(),
+            "lease:legacy"
+        );
+        assert_eq!(connection.query_row("SELECT archived_assistant_message FROM core_automation_runs WHERE run_id='native:legacy'",[],|r|r.get::<_,String>(0)).unwrap(),"Full captured review body");
+        assert_eq!(connection.query_row("SELECT acknowledged_at FROM nodex_agent_runtime_execution_cleanups WHERE cleanup_id='cleanup:stable'",[],|r|r.get::<_,String>(0)).unwrap(),"today");
+        assert_eq!(connection.query_row("SELECT json_extract(payload_json,'$.reason') FROM change_log WHERE kind='owned_document.document_invalidated'",[],|r|r.get::<_,String>(0)).unwrap(),"owner_deleted");
+    }
+
+    #[test]
     fn recovery_bundle_migration_preserves_exact_legacy_bytes_and_resource_roots() {
         let mut connection = Connection::open_in_memory().expect("fixture");
         connection
@@ -4576,7 +4793,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .unwrap();
@@ -4642,7 +4859,7 @@ mod tests {
         connection
             .execute_batch(include_str!("../../schema/published/v164.sql"))
             .expect("published schema");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("historical maintenance");
@@ -4733,7 +4950,7 @@ mod tests {
         connection
             .execute_batch(include_str!("../../schema/published/v164.sql"))
             .expect("published fixture schema");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("historical fixture maintenance");
@@ -5005,7 +5222,7 @@ mod tests {
     }
 
     #[test]
-    fn v151_page_owned_file_migrates_to_library_identity_bytes_entry_and_grant() {
+    fn v151_page_owned_file_migrates_to_library_identity_bytes_and_entry() {
         let directory = tempdir().expect("Profile");
         install_v151_fixture(directory.path());
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
@@ -5099,7 +5316,7 @@ mod tests {
         )
         .expect("queued manifest bytes");
 
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("fixture maintenance writes");
@@ -5161,7 +5378,7 @@ mod tests {
             crate::document::persist_yjs_genesis(
                 transaction,
                 crate::document::PersistYjsGenesis {
-                    file_access_context: None,
+
                     authority: &authority,
                     actor_project_id: Some("project:file-migration"),
                     materialization: &genesis.materialization,
@@ -5515,29 +5732,6 @@ mod tests {
                 .expect("migrated Page path"),
             "reports/report.txt"
         );
-        assert_eq!(
-            connection
-                .query_row(
-                    "SELECT access FROM project_resource_grants \
-                     WHERE project_id = 'project:file-migration' \
-                       AND root_kind = 'file' AND root_id = 'file:migrated'",
-                    [],
-                    |row| row.get::<_, String>(0),
-                )
-                .expect("materialized File grant"),
-            "read_write"
-        );
-        assert_eq!(
-            connection
-                .query_row(
-                    "SELECT count(*) FROM project_resource_grants \
-                     WHERE project_id = 'project:file-outsider' AND root_kind = 'file'",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )
-                .expect("outsider File grant count"),
-            0
-        );
         for (hash, expected) in [
             (&alpha_hash, alpha.as_slice()),
             (&beta_hash, beta.as_slice()),
@@ -5680,7 +5874,6 @@ mod tests {
                    (SELECT count(*) FROM library_files), \
                    (SELECT count(*) FROM file_versions), \
                    (SELECT count(*) FROM page_file_entries), \
-                   (SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file'), \
                    (SELECT count(*) FROM core_store_migration_history)",
                 [],
                 |row| {
@@ -5689,7 +5882,6 @@ mod tests {
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
                         row.get::<_, i64>(3)?,
-                        row.get::<_, i64>(4)?,
                     ))
                 },
             )
@@ -5708,8 +5900,7 @@ mod tests {
                        (SELECT count(*) FROM library_files), \
                        (SELECT count(*) FROM file_versions), \
                        (SELECT count(*) FROM page_file_entries), \
-                       (SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file'), \
-                       (SELECT count(*) FROM core_store_migration_history)",
+                           (SELECT count(*) FROM core_store_migration_history)",
                     [],
                     |row| {
                         Ok((
@@ -5717,7 +5908,6 @@ mod tests {
                             row.get::<_, i64>(1)?,
                             row.get::<_, i64>(2)?,
                             row.get::<_, i64>(3)?,
-                            row.get::<_, i64>(4)?,
                         ))
                     },
                 )
@@ -5736,7 +5926,7 @@ mod tests {
         connection
             .pragma_update(None, "foreign_keys", false)
             .unwrap();
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .unwrap();
@@ -6066,7 +6256,7 @@ mod tests {
         let directory = tempdir().expect("Profile");
         install_baseline_fixture(directory.path());
         let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
-        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+        crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context(
             &connection,
         )
         .expect("maintenance context");
@@ -6530,7 +6720,7 @@ mod tests {
             0
         );
         assert!(connection.execute(
-            "INSERT INTO project_session_execution_bindings(session_id,runtime_id,runtime_thread_id,launch_request_id,launch_request_hash,bound_at) VALUES ('session:retained','engine','thread','launch',?1,'today')", ["a".repeat(64)]
+            "INSERT INTO project_session_execution_bindings(session_id,runtime_id,runtime_thread_id,launch_request_id,bound_at) VALUES ('session:retained','engine','thread','launch','today')", []
         ).is_err());
         drop(connection);
         let mut reopened = open_writer(&path).expect("reopen");

@@ -3,22 +3,16 @@ import { createCodexCanonicalHydratedConversationState } from "../../../shared/c
 import { buildAgentActivityV2CorpusThread } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import type { CodexQueuedMessage } from "../../../shared/codex-queued-message";
 import { canEnqueueNativeCodexQueue } from "./codex-native-queue-policy";
-const policy = {
-  type: "workspaceWrite" as const,
-  writableRoots: ["/workspace", "/extra"],
-  networkAccess: false,
-  excludeTmpdirEnvVar: false,
-  excludeSlashTmp: false,
-};
+const nativeSandbox = { type: "dangerFullAccess" as const };
 const conversation = {
   ...createCodexCanonicalHydratedConversationState(buildAgentActivityV2CorpusThread([]), {
     hostId: "durable",
     model: "model",
     reasoningEffort: null,
     cwd: "/workspace",
-    approvalPolicy: "on-request",
+    approvalPolicy: "never",
     approvalsReviewer: "user",
-    sandboxPolicy: policy,
+    sandboxPolicy: nativeSandbox,
     activePermissionProfile: null,
     runtimeWorkspaceRoots: ["/workspace"],
   }),
@@ -30,10 +24,9 @@ const conversation = {
       mode: "default" as const,
       settings: { model: "model", reasoning_effort: null, developer_instructions: null },
     },
-    permissions: "profile",
-    approvalPolicy: "on-request" as const,
+    approvalPolicy: "never" as const,
     approvalsReviewer: "user" as const,
-    sandboxPolicy: policy,
+    sandboxPolicy: nativeSandbox,
     serviceTier: null,
   },
 };
@@ -49,23 +42,23 @@ const message: CodexQueuedMessage = {
   },
   submissionOptions: {
     executionHostId: "durable",
-    permissionProfileId: "profile",
+
     serviceTier: null,
   },
 };
 const admitted = (message: CodexQueuedMessage, hostId = "durable", settingsPending = false) =>
   canEnqueueNativeCodexQueue({ hostId, conversation, message, settingsPending });
 describe("native queue host admission", () => {
-  test("ordinary local and SSH do not acquire durable-only captured settings restrictions", () => {
+  test("ordinary hosts prepare intelligence overrides directly while durable queues capture accepted settings", () => {
     const overridden = {
       ...message,
-      submissionOptions: { ...message.submissionOptions, shouldSendPermissionOverrides: true },
+      submissionOptions: { ...message.submissionOptions, serviceTier: "fast" },
     };
     expect(admitted(overridden, "local", true)).toBe(true);
     expect(admitted(overridden, "ssh:work", true)).toBe(true);
     expect(admitted(overridden)).toBe(false);
   });
-  test("durable queue uses proven profile/settings and rejects work requiring local execution", () => {
+  test("durable queues require settled settings, the exact host and no deferred local preparation", () => {
     expect(admitted(message)).toBe(true);
     expect(admitted(message, "durable", true)).toBe(false);
     expect(
@@ -85,41 +78,6 @@ describe("native queue host admission", () => {
     ).toBe(false);
     expect(
       admitted({ ...message, context: { ...message.context, requiresLocalPreparation: true } }),
-    ).toBe(false);
-    const workPermissions = {
-      mode: "auto",
-      resolvedPermissions: {
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        activePermissionProfile: { id: "profile" },
-        runtimeWorkspaceRoots: ["/workspace"],
-        sandboxPolicy: policy,
-      },
-    };
-    expect(admitted({ ...message, context: { ...message.context, workPermissions } })).toBe(true);
-    expect(
-      admitted({
-        ...message,
-        context: {
-          ...message.context,
-          workPermissions: { ...workPermissions, mode: "custom", overridden: true },
-        },
-      }),
-    ).toBe(false);
-    expect(
-      admitted({
-        ...message,
-        context: {
-          ...message.context,
-          workPermissions: {
-            ...workPermissions,
-            resolvedPermissions: {
-              ...workPermissions.resolvedPermissions,
-              runtimeWorkspaceRoots: ["/different"],
-            },
-          },
-        },
-      }),
     ).toBe(false);
   });
 });

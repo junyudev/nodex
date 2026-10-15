@@ -1,4 +1,4 @@
-//! One authorized observation across public content relations. Domain readers
+//! One coherent observation across public content relations. Domain readers
 //! own data semantics; this Module owns SQL execution, snapshots and budgets.
 mod engine;
 mod provider;
@@ -10,8 +10,8 @@ use crate::infrastructure::writer::{StoreReadSnapshot, StoreReaders};
 use crate::library::query::PageSearchIndexRegistry;
 use nodex_core_contracts::query::{DatabaseDisplayedViewQueryResult, QueryRead, QueryReadValue};
 use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, CoreError, ModuleReadRequest, ModuleReadSnapshot,
-    QUERY_CONTRACT_VERSION, StoreEpoch,
+    BoundModuleContext, CoreError, ModuleReadRequest, ModuleReadSnapshot, QUERY_CONTRACT_VERSION,
+    StoreEpoch,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use std::sync::{Arc, Mutex};
@@ -69,25 +69,10 @@ impl QueryModule {
             }
             _ => None,
         };
-        let adapter_allowed = match provenance {
-            Some(_) => matches!(
-                context.adapter,
-                AdapterKind::Agent | AdapterKind::ElectronHost | AdapterKind::Test
-            ),
-            None => matches!(
-                context.adapter,
-                AdapterKind::NativeCli | AdapterKind::ElectronHost | AdapterKind::Test
-            ),
-        };
-        if context.profile_id.0 != self.profile_id
-            || context.library_id.0 != self.library_id
-            || (context.project_id.is_none()
-                && !matches!(&request.read, QueryRead::AgentDisplayedViewQuery { .. }))
-            || !adapter_allowed
-        {
+        if context.profile_id.0 != self.profile_id || context.library_id.0 != self.library_id {
             return Err(StoreError::new(
                 StoreErrorCode::Unauthorized,
-                "Public queries require a bound Project in this Profile",
+                "Public queries require their bound Profile and Library",
                 false,
             ));
         }
@@ -97,13 +82,10 @@ impl QueryModule {
         let store = self.readers.snapshot()?;
         let (store_epoch, commit_head) = store.read(|connection| {
             if let Some(provenance) = provenance {
-                if provenance.profile_id != context.profile_id.0
-                    || context.project_id.as_ref().map(|id| id.0.as_str())
-                        != provenance.authority.actor_project_id.as_deref()
-                {
+                if provenance.profile_id != context.profile_id.0 {
                     return Err(StoreError::new(
                         StoreErrorCode::Unauthorized,
-                        "Agent query Project does not match its Turn",
+                        "Agent query Profile does not match its execution",
                         false,
                     ));
                 }
@@ -127,13 +109,6 @@ impl QueryModule {
                     "Bound Library is unavailable",
                     false,
                 ));
-            }
-            if let Some(project_id) = &context.project_id {
-                crate::database::authorization::project_primary_database(
-                    connection,
-                    &self.library_id,
-                    &project_id.0,
-                )?;
             }
             Ok((
                 crate::document::read_store_epoch(connection)?,
@@ -210,7 +185,6 @@ impl QueryModule {
             contract_version: QUERY_CONTRACT_VERSION,
             store_epoch: StoreEpoch(store_epoch),
             commit_head,
-            authorization: None,
             value,
         })
     }

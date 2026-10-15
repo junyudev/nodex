@@ -55,7 +55,6 @@ export async function readNativeDatabaseQuery(
       runtime.identity.profileId,
       authority,
       request.callId ?? `nodex-agent:${request.tool}`,
-      request.resourceAccess,
     );
     const commonQuery = {
       authorization,
@@ -199,12 +198,11 @@ export async function readNativeDatabaseQuery(
       ok: true,
       value: {
         ...(actorProjectId === null
-          ? { accessContext: { kind: "library" } }
+          ? { routingContext: { kind: "library" } }
           : { projectId: actorProjectId }),
         libraryId: authority.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,
-        authorization: snapshot.authorization,
         value: projectedValue,
       },
     });

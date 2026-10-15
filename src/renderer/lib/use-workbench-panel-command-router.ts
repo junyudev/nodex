@@ -116,8 +116,8 @@ function findDbViewTabForProject(
     session.tabs.find(
       (tab) =>
         tab.kind === "db_view" &&
-        tab.config.accessContext.kind === "project" &&
-        tab.config.accessContext.projectId === projectId,
+        tab.config.routingContext.kind === "project" &&
+        tab.config.routingContext.projectId === projectId,
     ) ?? null
   );
 }
@@ -131,8 +131,8 @@ function findDbViewTabForDatabaseView(
     session.tabs.find(
       (tab) =>
         tab.kind === "db_view" &&
-        tab.config.accessContext.kind === "project" &&
-        tab.config.accessContext.projectId === projectId &&
+        tab.config.routingContext.kind === "project" &&
+        tab.config.routingContext.projectId === projectId &&
         tab.config.target.kind === "database-view" &&
         tab.config.target.databaseViewId === databaseViewId,
     ) ?? null
@@ -335,7 +335,7 @@ export function useWorkbenchPanelCommandRouter({
         kind: "db_view",
         title: "DB View",
         config: {
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           target: { kind: "database-view", databaseViewId },
         },
       });
@@ -361,8 +361,8 @@ export function useWorkbenchPanelCommandRouter({
           tab.panelId === panelId &&
           "pageId" in tab.config &&
           tab.config.pageId === destination.pageId &&
-          tab.config.accessContext.kind === "project" &&
-          tab.config.accessContext.projectId === destination.projectId,
+          tab.config.routingContext.kind === "project" &&
+          tab.config.routingContext.projectId === destination.projectId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(activeSession, panelId, existing.id);
@@ -381,8 +381,8 @@ export function useWorkbenchPanelCommandRouter({
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
         matchingPreviewTab.config.pageId === destination.pageId &&
-        matchingPreviewTab.config.accessContext.kind === "project" &&
-        matchingPreviewTab.config.accessContext.projectId === destination.projectId
+        matchingPreviewTab.config.routingContext.kind === "project" &&
+        matchingPreviewTab.config.routingContext.projectId === destination.projectId
       ) {
         await pinPreviewTab(panelId, matchingPreviewTab.id, leafId);
         return;
@@ -395,7 +395,7 @@ export function useWorkbenchPanelCommandRouter({
         kind: "page_stage",
         title: destination.titleSnapshot || destination.pageId,
         config: {
-          accessContext: { kind: "project", projectId: destination.projectId },
+          routingContext: { kind: "project", projectId: destination.projectId },
           pageId: destination.pageId,
           titleSnapshot: destination.titleSnapshot || destination.pageId,
         },
@@ -445,7 +445,7 @@ export function useWorkbenchPanelCommandRouter({
               kind: "session",
               backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
               projectId: activeSession.projectId,
-              hasAttachedThread: Boolean(activeSession.thread),
+              hasAttachedThread: Boolean(activeSession.executionRef || activeSession.thread),
               cwd: activeSession.thread?.cwd,
               projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
             }
@@ -479,7 +479,7 @@ export function useWorkbenchPanelCommandRouter({
         kind: "db_view",
         title: "DB View",
         config: {
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           target: { kind: "database-view", databaseViewId },
         },
       });

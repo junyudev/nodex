@@ -616,7 +616,6 @@ fn submit_apply_state(
     let response = client
         .document_apply(
             Some(&loaded.layout.manifest.project_id),
-            false,
             document_apply_request(&loaded.layout.manifest, &state),
         )
         .map_err(map_client_error)?;

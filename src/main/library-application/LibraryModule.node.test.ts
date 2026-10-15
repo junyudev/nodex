@@ -85,7 +85,6 @@ it.effect("routes Library reads through the exact durable access boundary", () =
         libraryId: identity.libraryId,
         storeEpoch: identity.storeEpoch,
         commitSeq: 1,
-        authorization: null,
         value: { kind: "metadata" },
       },
     });

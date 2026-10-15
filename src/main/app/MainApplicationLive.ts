@@ -34,6 +34,13 @@ import { BrowserUseRuntimeError } from "../host-runtime/BrowserUseRuntime";
 import { ReminderSchedulerRuntime } from "../host-runtime/ReminderSchedulerRuntime";
 import { ScheduledAutomationRuntime } from "../host-runtime/ScheduledAutomationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../host-runtime/StoreAdministrationSchedulerRuntime";
+import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
+import { layer as storeAdministrationLayer } from "../core-runtime/StoreAdministration";
+import { live as inboxApplicationLive } from "../inbox-application/InboxApplication";
+import { live as inboxDispatcherLive } from "../inbox-application/InboxDispatcher";
+import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDispatchRuntime";
+import type { StoreAdministrationIntent } from "../core-client/types";
+import type { AgentRuntimeProfileSnapshotSource } from "../agent-runtime/AgentRuntimeProfileSnapshot";
 import { DeepLinkRuntime } from "../host-runtime/DeepLinkRuntime";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
 import * as AppProtocolRuntime from "../host-runtime/AppProtocolRuntime";
@@ -62,6 +69,8 @@ import * as CoreApplicationLive from "./CoreApplicationLive";
 import * as HostApplicationLive from "./HostApplicationLive";
 import * as ApplicationStateLive from "./ApplicationStateLive";
 import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
+import * as AgentRuntimeApplicationLive from "./AgentRuntimeApplicationLive";
+import { AgentRuntimeProfileSnapshot } from "../agent-runtime/AgentRuntimeProfileSnapshot";
 import * as RendererIngressLive from "./RendererIngressLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -89,26 +98,71 @@ const shellEnvironment = Layer.unwrap(
   }),
 );
 
-const applicationGraph = RendererIngressLive.live.pipe(
+const conversationGraph = ConversationApplicationLive.live.pipe(
   Layer.provideMerge(
-    ApplicationOperationsLive.live.pipe(
+    WindowApplicationLive.live.pipe(
       Layer.provideMerge(
-        ConversationApplicationLive.live.pipe(
+        HostApplicationLive.live.pipe(
           Layer.provideMerge(
-            WindowApplicationLive.live.pipe(
-              Layer.provideMerge(
-                HostApplicationLive.live.pipe(
-                  Layer.provideMerge(
-                    CodexApplicationLive.live.pipe(Layer.provideMerge(CoreApplicationLive.live)),
-                  ),
-                ),
-              ),
-            ),
+            CodexApplicationLive.live.pipe(Layer.provideMerge(CoreApplicationLive.live)),
           ),
         ),
       ),
     ),
   ),
+);
+const executionGraph = AgentRuntimeApplicationLive.runtime.pipe(
+  Layer.provideMerge(conversationGraph),
+);
+const interactionsGraph = ConversationApplicationLive.interactions.pipe(
+  Layer.provideMerge(executionGraph),
+);
+const protocolGraph = ConversationApplicationLive.protocol.pipe(
+  Layer.provideMerge(interactionsGraph),
+);
+const operationsGraph = ApplicationOperationsLive.live.pipe(Layer.provideMerge(protocolGraph));
+const snapshotSource = (
+  source: AgentRuntimeProfileSnapshotSource,
+): NonNullable<
+  Extract<StoreAdministrationIntent, { readonly kind: "create_backup" }>["profile_snapshot"]
+> => ({
+  runtime_id: source.runtimeId,
+  runtime_generation: source.runtimeGeneration,
+  sequence: source.sequence,
+  database_path: source.databasePath,
+  environment_id_path: source.environmentIdPath,
+  attachments_path: source.attachmentsPath,
+  native_histories: source.nativeHistories.map((history) => ({
+    provider_instance_id: history.providerInstanceId,
+    driver: history.driver,
+    home_path: history.homePath,
+  })),
+});
+const administration = Layer.unwrap(
+  Effect.gen(function* () {
+    const snapshots = yield* AgentRuntimeProfileSnapshot;
+    return storeAdministrationLayer({
+      snapshots: {
+        capture: (use) =>
+          snapshots.withOptionalSnapshot((source) =>
+            use(source ? snapshotSource(source) : undefined),
+          ),
+        restore: (use) => snapshots.withRestore((source) => use(snapshotSource(source))),
+      },
+    });
+  }),
+);
+const administrationGraph = administration.pipe(Layer.provideMerge(operationsGraph));
+// Inbox erasure shares the snapshot-aware administration owner, after execution is composed.
+const inboxGraph = inboxApplicationLive.pipe(Layer.provideMerge(administrationGraph));
+const schedulesGraph = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(inboxGraph));
+const hostGraph = AgentRuntimeApplicationLive.hostTools.pipe(Layer.provideMerge(schedulesGraph));
+// Recovered Inbox work can call app tools as soon as its first provider starts.
+const inboxWorkersGraph = Layer.merge(inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
+  Layer.provideMerge(hostGraph),
+);
+const applicationGraph = RendererIngressLive.live.pipe(
+  Layer.provideMerge(inboxWorkersGraph),
   Layer.provide(CodexConversationPeerRuntime.live),
   Layer.provideMerge(shellEnvironment),
   Layer.provideMerge(
@@ -180,9 +234,12 @@ export const live: Layer.Layer<
         if (config.platform !== "win32") {
           const endpoints = yield* CodexEndpointMap;
           const local = yield* endpoints.endpoint(endpoints.localHostId);
-          yield* serveProfileSnapshotControl(config.nodexHome, local.withProfileSnapshot).pipe(
-            Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)),
-          );
+          const execution = yield* AgentRuntimeProfileSnapshot;
+          yield* serveProfileSnapshotControl(
+            config.nodexHome,
+            local.withProfileSnapshot,
+            execution.withOptionalSnapshot,
+          ).pipe(Effect.mapError((cause) => runtimeError("profile-snapshot-control", cause)));
         }
         const terminalEvents = yield* terminals.subscribe;
         yield* terminalEvents.pipe(

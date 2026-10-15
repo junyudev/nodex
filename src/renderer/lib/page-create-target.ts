@@ -25,8 +25,8 @@ export function materializePageCreateTarget({
   clientSessionId,
 }: MaterializePageCreateTargetInput): PageCreateTarget | null {
   if (!databaseView || !board) return null;
-  if (databaseView.accessContext.kind !== "project") return null;
-  if (databaseView.accessContext.projectId !== project.id) return null;
+  if (databaseView.routingContext.kind !== "project") return null;
+  if (databaseView.routingContext.projectId !== project.id) return null;
 
   return {
     surfaceId,
@@ -38,9 +38,8 @@ export function materializePageCreateTarget({
     },
     databaseViewId: databaseView.databaseViewId,
     clientSessionId,
-    accessContext: databaseView.accessContext,
+    routingContext: databaseView.routingContext,
     properties: databaseView.query.properties,
     columns: board.columns,
-    readOnlyReason: databaseView.readOnlyReason,
   };
 }

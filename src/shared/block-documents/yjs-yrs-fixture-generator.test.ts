@@ -86,7 +86,6 @@ const schemaMatrixContent = [
           model: "gpt-5",
           reasoning: "high",
           speed: "fast",
-          permission: "auto",
           unknownAttributes: "",
           rawAttributes: "mode=agent",
         },

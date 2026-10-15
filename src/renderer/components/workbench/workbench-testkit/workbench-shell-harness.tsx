@@ -33,8 +33,6 @@ import type {
   CodexScheduledAutomationUpdateInput,
   CodexSidebarSyncResult,
   CodexSidebarThreadItem,
-  CodexThreadDetail,
-  CodexThreadStartForSessionResult,
   GitReviewSource,
   PageChatItem,
   Project,
@@ -44,6 +42,7 @@ import type {
   WorktreeEnvironmentOption,
 } from "@/lib/types";
 import type { PageSearchMetadataSnapshot, PageSearchSnapshot } from "../../../../shared/types";
+import type { AgentRuntimeLaunch } from "../../../../shared/agent-runtime-api";
 import type { LibraryNavigationNode } from "../../../../shared/library-module";
 import type { WorkbenchLayoutSnapshot } from "../../../../shared/workbench-layout";
 import {
@@ -70,7 +69,6 @@ import { resetDatabaseViewPersonalPreferencesForTests } from "@/lib/database-vie
 import { resetDatabaseListWindowStoresForTests } from "../database-list/use-database-list-window";
 import { useRetainedScrollPosition } from "@/lib/retained-scroll-position";
 import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
-import { authorizedReadStampFixture } from "../../../../shared/testing/authorized-read-stamp-fixture";
 import { terminalSessionStore } from "@/lib/terminal-session-store";
 import type {
   SidebarDisclosureSectionId,
@@ -210,14 +208,9 @@ const invokeRendererHarness = async (channel: string, ...args: unknown[]): Promi
   invokeCalls.push([channel, ...args]);
   return (await mockInvokeImpl?.(channel, ...args)) ?? null;
 };
-export let startThreadForSessionCalls: unknown[] = [];
+export let agentRuntimeLaunchCalls: AgentRuntimeLaunch[] = [];
 export let startTurnCalls: unknown[][] = [];
 export let pageChatItems: PageChatItem[] = [];
-export let startThreadForSessionResult: CodexThreadStartForSessionResult = {
-  kind: "started",
-  hostId: "local",
-  detail: { threadId: "thread-started" } as CodexThreadDetail,
-};
 export let requestThreadStreamSnapshotCalls: string[] = [];
 export let requestThreadStreamSnapshotImpl: ((threadId: string) => Promise<unknown>) | null = null;
 export let readSubagentOverviewCalls: CodexSubagentOverviewReadInput[] = [];
@@ -275,17 +268,13 @@ export const mockCodexControl = {
   availableModels: DEFAULT_TEST_CODEX_MODELS,
   threadSettings: { model: "gpt-5.5", reasoningEffort: "medium" },
   reasoningEffortOptions: [{ reasoningEffort: "medium", description: "Balanced" }],
-  permissionMode: "auto",
+
   loadModels: async () => undefined,
   loadThreads: async () => undefined,
   listCollaborationModes: async () => [{ name: "Plan", mode: "plan", model: null }],
   setThreadModel: () => undefined,
   setThreadReasoningEffort: () => undefined,
-  setPermissionMode: async () => undefined,
-  startThreadForSession: async (input: unknown) => {
-    startThreadForSessionCalls.push(input);
-    return startThreadForSessionResult;
-  },
+
   startSideChat: async (input: unknown) => {
     startSideChatCalls.push(input);
     if (startSideChatError) throw startSideChatError;
@@ -348,7 +337,6 @@ export const mockCodexControl = {
   },
   steerTurn: async () => undefined,
   interruptTurn: async () => undefined,
-  respondApproval: async () => undefined,
   respondUserInput: async () => undefined,
   respondMcpElicitation: async () => undefined,
   enqueueQueuedFollowUp: async () => undefined,
@@ -723,7 +711,6 @@ vi.mock("@/lib/api", () => {
         viewId: viewWindow.viewId,
         storeEpoch: viewWindow.storeEpoch,
         commitSeq: viewWindow.commitSeq,
-        authorization: viewWindow.authorization,
         projection: viewWindow.projection,
         nextCursor: null,
         rows: [],
@@ -751,16 +738,6 @@ vi.mock("@/lib/api", () => {
           viewId,
           storeEpoch: "epoch:test",
           commitSeq: 1,
-          authorization: authorizedReadStampFixture({
-            deliveryAddress: {
-              kind: "project",
-              library_id: "library:test",
-              project_id: projectId,
-            },
-            subject: { kind: "view", view_id: viewId },
-            storeEpoch: "epoch:test",
-            commitSeq: 1,
-          }),
           projection: {
             scopeKey: `scope:${viewId}`,
             schemaVersion: 1,
@@ -823,7 +800,7 @@ vi.mock("@/lib/api", () => {
       );
     },
     resolvePageTarget: async (input: {
-      accessContext: { kind: "library" } | { kind: "project"; projectId: string };
+      routingContext: { kind: "library" } | { kind: "project"; projectId: string };
       targetPageId: string;
     }) => {
       invokeCalls.push(["page-target:resolve", input]);
@@ -835,7 +812,7 @@ vi.mock("@/lib/api", () => {
       );
     },
     resolvePageOwnershipPath: async (input: {
-      accessContext: { kind: "library" } | { kind: "project"; projectId: string };
+      routingContext: { kind: "library" } | { kind: "project"; projectId: string };
       targetPageId: string;
     }) => {
       invokeCalls.push(["page-ownership-path:resolve", input]);
@@ -850,9 +827,10 @@ vi.mock("@/lib/api", () => {
     subscribeBoardChanges: () => () => undefined,
     subscribeDatabaseChanges: () => () => undefined,
     subscribeLibraryChanges: () => () => undefined,
-    readLibraryModule: async (accessContext: unknown, request: unknown) => {
-      invokeCalls.push(["library-module:read", accessContext, request]);
-      const configured = await mockInvokeImpl?.("library-module:read", accessContext, request);
+    subscribeInboxChanges: () => () => undefined,
+    readLibraryModule: async (routingContext: unknown, request: unknown) => {
+      invokeCalls.push(["library-module:read", routingContext, request]);
+      const configured = await mockInvokeImpl?.("library-module:read", routingContext, request);
       if (configured !== undefined && configured !== null) return configured;
       const mode = (request as { readonly read?: { readonly mode?: string } }).read?.mode;
       const value =
@@ -882,12 +860,6 @@ vi.mock("@/lib/api", () => {
           libraryId: "library:test",
           storeEpoch: "epoch:test",
           commitSeq: 0,
-          authorization: authorizedReadStampFixture({
-            deliveryAddress: { kind: "library", library_id: "library:test" },
-            subject: { kind: "library", library_id: "library:test" },
-            storeEpoch: "epoch:test",
-            commitSeq: 0,
-          }),
           value,
         },
       };
@@ -909,6 +881,7 @@ vi.mock("@/lib/api", () => {
     subscribeCommandKeymapChanges: () => () => undefined,
     subscribeProjectChanges: () => () => undefined,
     subscribeProjectSessionChanges: () => () => undefined,
+    subscribeAgentRuntimeSessionEvents: () => () => undefined,
     subscribeCodexEvents: (listener: (event: CodexEvent) => void) => {
       codexEventListeners.add(listener);
       return () => codexEventListeners.delete(listener);
@@ -964,7 +937,6 @@ vi.mock("@/lib/api", () => {
             libraryId: "library:test",
             storeEpoch: "store-test",
             commitSeq: 1,
-            authorization: null,
             value: {
               kind: "view_personal_preferences",
               value: {
@@ -984,7 +956,6 @@ vi.mock("@/lib/api", () => {
             libraryId: "library:test",
             storeEpoch: "store-test",
             commitSeq: 1,
-            authorization: null,
             value: {
               kind: "view_collapsed_occurrences",
               value: { targets: [] },
@@ -999,7 +970,6 @@ vi.mock("@/lib/api", () => {
           name: "Tasks",
           lifecycle: "active",
           defaultViewId: viewId,
-          accessRevision: 1,
           metadataRevision: 1,
           createdAt: "2026-06-07T00:00:00.000Z",
           updatedAt: "2026-06-07T00:00:00.000Z",
@@ -1060,7 +1030,6 @@ vi.mock("@/lib/api", () => {
           libraryId: "library:test",
           storeEpoch: "workbench-test-store",
           commitSeq: 1,
-          authorization: null,
           value: {
             kind:
               request.read?.mode === "catalog"
@@ -1120,14 +1089,14 @@ vi.mock("@/lib/api", () => {
 vi.mock("../database-view-surface", () => ({
   DatabaseViewSurface: (props: Record<string, unknown>) => {
     const model = props.model as {
-      accessContext?: { kind?: string; projectId?: string };
+      routingContext?: { kind?: string; projectId?: string };
       databaseViewId?: string;
       columns?: ReadonlyArray<{
         rows?: ReadonlyArray<{ pageId?: string; title?: string }>;
       }>;
     };
     const projectId =
-      model.accessContext?.kind === "project" ? String(model.accessContext.projectId) : "library";
+      model.routingContext?.kind === "project" ? String(model.routingContext.projectId) : "library";
     const effectivePresentation = props.effectivePresentation as
       | { readonly layout?: unknown }
       | undefined;
@@ -1249,16 +1218,16 @@ vi.mock("../workbench-db-view-panel", async (importOriginal) => {
 });
 
 export const MockOwnedBlockDocumentBoundary = ({
-  accessContext,
+  routingContext,
   ownerBlockId,
   dependencies,
   children,
 }: {
-  accessContext: { kind: "library" } | { kind: "project"; projectId: string };
+  routingContext: { kind: "library" } | { kind: "project"; projectId: string };
   ownerBlockId: string;
   dependencies?: {
     fetchDescriptor?: (
-      accessContext: { kind: "library" } | { kind: "project"; projectId: string },
+      routingContext: { kind: "library" } | { kind: "project"; projectId: string },
       ownerBlockId: string,
     ) => Promise<Record<string, unknown>>;
   };
@@ -1270,20 +1239,19 @@ export const MockOwnedBlockDocumentBoundary = ({
   const fetchDescriptor = dependencies?.fetchDescriptor;
   const [model, setModel] = useState<Record<string, unknown>>(() => {
     if (fetchDescriptor) {
-      return { status: "loading", accessContext, ownerBlockId };
+      return { status: "loading", routingContext, ownerBlockId };
     }
     return {
       status: "ready",
-      accessContext,
+      routingContext,
       ownerBlockId,
       descriptor: {
         libraryId: "library-test",
-        accessContext,
+        routingContext,
         ownerBlockId,
         ownerType: "page",
         ownerLifecycle: "active",
         documentId: `document:${ownerBlockId}`,
-        authorization: null,
         storeEpoch: "workbench-test-store",
         generation: 1,
         headSeq: 1,
@@ -1296,14 +1264,14 @@ export const MockOwnedBlockDocumentBoundary = ({
   });
   const reload = useCallback(async (): Promise<void> => {
     if (!fetchDescriptor) return;
-    const descriptor = await fetchDescriptor(accessContext, ownerBlockId);
+    const descriptor = await fetchDescriptor(routingContext, ownerBlockId);
     setModel({
       descriptor,
       status: "ready",
-      accessContext,
+      routingContext,
       ownerBlockId,
     });
-  }, [accessContext, fetchDescriptor, ownerBlockId]);
+  }, [routingContext, fetchDescriptor, ownerBlockId]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -1698,7 +1666,9 @@ vi.mock("@/features/local-conversation", () => ({
     return createElement(
       Fragment,
       null,
-      props.backgroundAgentDetail === true || props.sideChatContext
+      props.presentation === "panel" ||
+        props.backgroundAgentDetail === true ||
+        props.sideChatContext
         ? null
         : createElement(AppShellHeaderContentRegistrar, { content: headerContent }),
       createElement(
@@ -1723,7 +1693,7 @@ vi.mock("@/features/local-conversation", () => ({
                   void actions?.onStartThreadForSession?.({
                     projectId: target.projectId,
                     sessionId: target.sessionId,
-                    prompt: "Start from session",
+                    prompt: mockPrompt || "Start from session",
                     runInTarget: target.runInTarget,
                     runInEnvironmentPath: target.runInEnvironmentPath,
                     worktreeStartingState: target.worktreeStartingState,
@@ -1849,7 +1819,6 @@ vi.mock("@/features/local-conversation", () => ({
     getForHostId: () => ({
       readConversation: () => null,
       startTurn: async () => undefined,
-      respondApproval: async () => false,
     }),
   }),
   useConversation: (threadId: string | null) =>
@@ -1923,7 +1892,7 @@ vi.mock("@/lib/use-board", () => ({
       rankKey: String(index + 1),
     }));
     const databaseView = {
-      accessContext: { kind: "project", projectId },
+      routingContext: { kind: "project", projectId },
       libraryId: "library-test",
       databaseViewId,
       databaseId: `database-${projectId}`,
@@ -1933,8 +1902,6 @@ vi.mock("@/lib/use-board", () => ({
       viewName,
       storeEpoch: "store-test",
       commitSeq: 1,
-      authorization: null,
-      readOnlyReason: null,
       columns: [
         {
           id: "build",
@@ -1951,7 +1918,6 @@ vi.mock("@/lib/use-board", () => ({
           name: "Tasks",
           lifecycle: "active",
           defaultViewId: databaseViewId,
-          accessRevision: 1,
           metadataRevision: 1,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -2640,6 +2606,190 @@ export function renderWorkbench({
     generatedAt: 1,
   });
   mockInvokeImpl = async (channel, ...args) => {
+    if (channel === "inbox:summary")
+      return {
+        databaseId: null,
+        viewId: null,
+        entryCount: 0,
+        inboxCount: 0,
+        needsDecisionCount: 0,
+        pendingSuggestionCount: 0,
+        dispatchingCount: 0,
+      };
+    if (channel === "agent-runtime:providers:read")
+      return [
+        {
+          instanceId: "codex",
+          driver: "codex",
+          displayName: "Codex",
+          enabled: true,
+          installed: true,
+          status: "ready",
+          supportsConversationRollback: true,
+          skills: [],
+          slashCommands: [],
+          models: DEFAULT_TEST_CODEX_MODELS.map((model) => ({
+            slug: model.model,
+            name: model.displayName,
+            isDefault: model.isDefault,
+            isCustom: false,
+            capabilities: {
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Effort",
+                  type: "select",
+                  options: model.supportedReasoningEfforts.map((effort) => ({
+                    id: effort.reasoningEffort,
+                    label: effort.reasoningEffort,
+                  })),
+                },
+              ],
+            },
+          })),
+        },
+      ];
+    if (channel === "agent-runtime:session:launch") {
+      const input = args[0] as AgentRuntimeLaunch;
+      agentRuntimeLaunchCalls.push(input);
+      const key = input.projectId ?? projectlessSessionStateKey;
+      const threadId = `engine:${input.sessionId}`;
+      workspaceCommitSeq += 1;
+      sessionState = {
+        ...sessionState,
+        [key]: (sessionState[key] ?? []).map((session) =>
+          session.id === input.sessionId
+            ? {
+                ...session,
+                thread: null,
+                executionRef: { runtimeId: "runtime:test", threadId },
+                displayTitle: input.title,
+                noThreadFallbackTitle: input.title,
+              }
+            : session,
+        ),
+      };
+      defaultDraftSessionIds.delete(key);
+      return { sessionId: input.sessionId, projectId: input.projectId, threadId };
+    }
+    if (channel === "agent-runtime:session:control" || channel === "agent-runtime:session:read") {
+      const input = args[0] as { sessionId: string; threadId: string };
+      const session = Object.values(sessionState)
+        .flat()
+        .find((session) => session.id === input.sessionId);
+      return {
+        sessionId: input.sessionId,
+        projectId: session?.projectId ?? null,
+        threadId: input.threadId,
+        snapshot: {
+          kind: "snapshot",
+          snapshotSequence: 1,
+          historyCursor: null,
+          hasMoreHistory: false,
+          projection: {
+            thread: {
+              id: input.threadId,
+              projectId: session?.projectId ?? "projectless",
+              title: session?.displayTitle ?? "Chat",
+              modelSelection: { instanceId: "codex", model: DEFAULT_TEST_CODEX_MODELS[0]!.model },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              worktreePath: null,
+              archivedAt: null,
+              deletedAt: null,
+              forkedFrom: null,
+              createdAt: "2026-10-14T00:00:00Z",
+              updatedAt: "2026-10-14T00:00:00Z",
+              lineage: {
+                rootThreadId: session?.executionRef?.threadId ?? input.threadId,
+                parentThreadId:
+                  input.threadId === session?.executionRef?.threadId
+                    ? null
+                    : (session?.executionRef?.threadId ?? null),
+              },
+            },
+            visibleTurnItems: [],
+            turnItems: [],
+            runs: [],
+            runtimeRequests: [],
+            nodes: [],
+            messages: [],
+            subagents: [],
+            attempts: [],
+            plans: [],
+            checkpoints: [],
+            checkpointScopes: [],
+            contextHandoffs: [],
+            contextTransfers: [],
+          },
+        },
+      };
+    }
+    if (channel === "agent-runtime:session:inspect") {
+      const input = args[0] as { sessionId: string; threadId?: string };
+      const session = Object.values(sessionState)
+        .flat()
+        .find((session) => session.id === input.sessionId);
+      if (!session?.executionRef) throw new Error("Conversation identity changed");
+      const threadId = input.threadId ?? session.executionRef.threadId;
+      let ancestor: string | null = threadId;
+      const visited = new Set<string>();
+      while (ancestor !== session.executionRef.threadId) {
+        if (!ancestor || visited.has(ancestor))
+          throw new Error("Thread does not belong to this Session");
+        visited.add(ancestor);
+        const child: Record<string, unknown> | undefined = sideChatConversations[ancestor];
+        ancestor =
+          (child?.source as { parentThreadId?: string } | undefined)?.parentThreadId ?? null;
+      }
+
+      return {
+        sessionId: input.sessionId,
+        projectId: session?.projectId ?? null,
+        runtimeId: "runtime:test",
+        rootThreadId: session?.executionRef?.threadId,
+        threadId,
+        thread: {
+          id: threadId,
+          title:
+            typeof sideChatConversations[threadId]?.threadName === "string"
+              ? sideChatConversations[threadId].threadName
+              : session.displayTitle,
+          modelSelection: { instanceId: "codex", model: DEFAULT_TEST_CODEX_MODELS[0]!.model },
+          archivedAt: null,
+        },
+      };
+    }
+    if (channel === "agent-runtime:session:fork") {
+      const input = args[0] as import("../../../../shared/agent-runtime-api").AgentRuntimeForkInput;
+      const source = Object.values(sessionState)
+        .flat()
+        .find((session) => session.id === input.source.sessionId);
+      if (!source?.executionRef) throw new Error("Source conversation is unavailable");
+      const sessionId = input.sessionId;
+      const threadId = `fork-thread:${input.requestId}`;
+      const session = createMockSession({
+        sessionId,
+        projectId: source.projectId,
+        noThreadFallbackTitle: `${source.displayTitle} fork`,
+      });
+      session.executionRef = { runtimeId: "runtime:test", threadId };
+      return { sessionId, projectId: source.projectId, threadId };
+    }
+    if (channel === "agent-runtime:session:overview")
+      return {
+        active: { items: [], nextCursor: null, hasMore: false },
+        terminal: { items: [], nextCursor: null, hasMore: false },
+      };
+    if (channel === "agent-runtime:session:observe") return { observed: true };
+    if (channel === "agent-runtime:session:unobserve") return { unobserved: true };
+    if (channel === "agent-runtime:session:rollback") return { rolledBack: true };
+    if (
+      channel === "agent-runtime:session:message" ||
+      channel === "agent-runtime:session:queue" ||
+      channel === "agent-runtime:session:queue-message"
+    )
+      return { sequence: 2 };
     if (channel === "document-recovery:read") {
       return {
         ok: true,
@@ -2707,12 +2857,6 @@ export function renderWorkbench({
           libraryId: "library:test",
           storeEpoch: "epoch:test",
           commitSeq: 1,
-          authorization: authorizedReadStampFixture({
-            deliveryAddress: { kind: "library", library_id: "library:test" },
-            subject: { kind: "library", library_id: "library:test" },
-            storeEpoch: "epoch:test",
-            commitSeq: 1,
-          }),
           value,
         },
       };
@@ -2929,19 +3073,13 @@ export function renderWorkbench({
           locationLabel: `${document.projectId} / Build`,
           updatedAt: "2026-08-14T00:00:00.000Z",
           properties: [],
-          authorizedProjectIds: [document.projectId],
+          projectIds: [document.projectId],
           dataSourceIds: [`data-source:${document.projectId}`],
         }));
       const snapshot: PageSearchMetadataSnapshot = {
         libraryId: "library:test",
         storeEpoch: "epoch:test",
         commitSeq: 1,
-        authorization: {
-          libraryId: "library:test",
-          storeEpoch: "epoch:test",
-          coveredCommitSeq: 1,
-          projectIds,
-        },
         documents,
       };
       return snapshot;
@@ -3011,6 +3149,7 @@ export function renderWorkbench({
           archived: session.archived,
           archivedAt: session.archivedAt,
           unread: session.unread,
+          executionRef: session.executionRef ?? null,
           thread: session.thread,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
@@ -3111,11 +3250,16 @@ export function renderWorkbench({
           automationIds: [...new Set(unreadItems.map((item) => item.automationId))],
           unreadRuns: unreadItems.map((item) => ({
             automationId: item.automationId,
-            threadId: item.threadId,
+            runId: item.runId,
           })),
         },
       } satisfies CodexAutomationRunsInboxResponse;
     }
+    if (
+      channel === "codex:app-server:request" &&
+      (args[0] as { request?: { method?: string } }).request?.method === "collaborationMode/list"
+    )
+      return { type: "result", result: { data: [] } };
     if (
       channel === "codex:app-server:request" &&
       (args[0] as { request?: { method?: string } }).request?.method === "model/list"
@@ -3129,10 +3273,10 @@ export function renderWorkbench({
       };
     }
     if (channel === "codex:automation-runs:archive") {
-      const threadId = String((args[0] as { threadId?: string } | undefined)?.threadId ?? "");
+      const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
       let success = false;
       automationInboxItems = automationInboxItems.map((item) => {
-        if (item.threadId !== threadId) return item;
+        if (item.runId !== runId) return item;
         success = true;
         return {
           ...item,
@@ -3144,10 +3288,10 @@ export function renderWorkbench({
       return { success };
     }
     if (channel === "codex:automation-runs:unarchive") {
-      const threadId = String((args[0] as { threadId?: string } | undefined)?.threadId ?? "");
+      const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
       let success = false;
       automationInboxItems = automationInboxItems.map((item) => {
-        if (item.threadId !== threadId || item.status !== "ARCHIVED") return item;
+        if (item.runId !== runId || item.status !== "ARCHIVED") return item;
         success = true;
         return {
           ...item,
@@ -3159,16 +3303,16 @@ export function renderWorkbench({
       return { success };
     }
     if (channel === "codex:automation-runs:delete") {
-      const threadId = String((args[0] as { threadId?: string } | undefined)?.threadId ?? "");
+      const runId = String((args[0] as { runId?: string } | undefined)?.runId ?? "");
       const previousLength = automationInboxItems.length;
-      automationInboxItems = automationInboxItems.filter((item) => item.threadId !== threadId);
+      automationInboxItems = automationInboxItems.filter((item) => item.runId !== runId);
       return { success: automationInboxItems.length !== previousLength };
     }
     if (channel === "codex:automation-runs:set-read-state") {
-      const input = args[0] as { threadId?: string; readAt?: number | null };
+      const input = args[0] as { runId?: string; readAt?: number | null };
       let updated: CodexAutomationInboxItem | null = null;
       automationInboxItems = automationInboxItems.map((item) => {
-        if (item.threadId !== input.threadId) return item;
+        if (item.runId !== input.runId) return item;
         updated = {
           ...item,
           readAt: input.readAt ?? null,
@@ -3187,11 +3331,10 @@ export function renderWorkbench({
         id: `automation-${scheduledAutomations.length + 1}`,
         definitionRevision: 1,
         projectId: input.projectId ?? null,
-        targetSessionId: null,
         notificationPolicy: null,
         kind: input.kind,
         status: "ACTIVE",
-        targetThreadId: input.targetThreadId ?? null,
+        targetSessionId: input.targetSessionId ?? null,
         name: input.name,
         prompt: input.prompt ?? "",
         rrule: input.rrule ?? null,
@@ -3217,11 +3360,10 @@ export function renderWorkbench({
         id: input.id,
         definitionRevision: (existing?.definitionRevision ?? 0) + 1,
         projectId: input.projectId === undefined ? (existing?.projectId ?? null) : input.projectId,
-        targetSessionId: null,
         notificationPolicy: null,
         kind: input.kind,
         status: input.status,
-        targetThreadId: input.targetThreadId ?? null,
+        targetSessionId: input.targetSessionId ?? null,
         name: input.name,
         prompt: input.prompt ?? "",
         rrule: input.rrule ?? null,
@@ -3395,7 +3537,6 @@ export function renderWorkbench({
         name: "Tasks",
         lifecycle: "active",
         defaultViewId: viewId,
-        accessRevision: 1,
         metadataRevision: 1,
         createdAt: "2026-06-07T00:00:00.000Z",
         updatedAt: "2026-06-07T00:00:00.000Z",
@@ -3434,20 +3575,6 @@ export function renderWorkbench({
         viewId,
         storeEpoch: "epoch:test",
         commitSeq: 1,
-        authorization: authorizedReadStampFixture({
-          deliveryAddress: {
-            kind: "project",
-            library_id: "library:test",
-            project_id: projectId,
-          },
-          subject: { kind: "view", view_id: viewId },
-          storeEpoch: "epoch:test",
-          commitSeq: 1,
-          authorizationDependencies: [
-            ...cards.map((page) => ({ kind: "page" as const, page_id: page.id })),
-            { kind: "view" as const, view_id: viewId },
-          ],
-        }),
         projection: {
           scopeKey: `scope:${viewId}`,
           schemaVersion: 1,
@@ -4418,14 +4545,9 @@ beforeEach(() => {
   document.body.removeAttribute("style");
   installRendererApiMock();
   invokeCalls = [];
-  startThreadForSessionCalls = [];
+  agentRuntimeLaunchCalls = [];
   startTurnCalls = [];
   pageChatItems = [];
-  startThreadForSessionResult = {
-    kind: "started",
-    hostId: "local",
-    detail: { threadId: "thread-started" } as CodexThreadDetail,
-  };
   requestThreadStreamSnapshotCalls = [];
   requestThreadStreamSnapshotImpl = null;
   readSubagentOverviewCalls = [];
@@ -4819,14 +4941,6 @@ export function setPageChatItems(value: PageChatItem[]): void {
 
 export function setMockInvokeImpl(value: typeof mockInvokeImpl): void {
   mockInvokeImpl = value;
-}
-
-export function setStartThreadForSessionCalls(value: typeof startThreadForSessionCalls): void {
-  startThreadForSessionCalls = value;
-}
-
-export function setStartThreadForSessionResult(value: typeof startThreadForSessionResult): void {
-  startThreadForSessionResult = value;
 }
 
 export function setRequestThreadStreamSnapshotCalls(

@@ -15,8 +15,21 @@ import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadLifecycleService from "./ThreadLifecycleService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
-import { layerEventInfrastructure, layerCommandReceiptStoreProvided, layerEventSinkProvided, layerProjectService, layerOrchestratorProvided, layerThreadManagementProvided, layer } from "./executionLayer.ts";
-export { layerEventInfrastructure, layerEventSink, layerProjectService, layer } from "./executionLayer.ts";
+import {
+  layerEventInfrastructure,
+  layerCommandReceiptStoreProvided,
+  layerEventSinkProvided,
+  layerProjectService,
+  layerOrchestratorProvided,
+  layerThreadManagementProvided,
+  layer,
+} from "./executionLayer.ts";
+export {
+  layerEventInfrastructure,
+  layerEventSink,
+  layerProjectService,
+  layer,
+} from "./executionLayer.ts";
 
 const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
   Layer.provide(

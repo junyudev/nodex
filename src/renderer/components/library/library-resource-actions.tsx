@@ -10,7 +10,6 @@ import {
   ArchiveIcon,
   MoveToIcon,
   OpenInIcon,
-  ProjectAccessIcon,
   RefreshIcon,
   ProjectActionsIcon,
 } from "@/components/shared/icons";
@@ -33,10 +32,7 @@ import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
-import {
-  LibraryOpenInProjectModal,
-  LibraryResourceAccessModal,
-} from "./library-resource-action-modals";
+import { LibraryOpenInProjectModal } from "./library-resource-action-modals";
 import { DatabaseMoveDestinationPicker } from "./database-move-destination-picker";
 import { PageMoveDestinationPicker } from "./page-move-destination-picker";
 import type {
@@ -47,7 +43,7 @@ import type {
 
 export type { LibraryProjectOption, LibraryResourceTarget } from "./library-resource-action-types";
 
-type PendingDialog = "manage_access" | "open_project" | "archive" | null;
+type PendingDialog = "open_project" | "archive" | null;
 
 const EMPTY_LIBRARY_PROJECTS: readonly LibraryProjectOption[] = [];
 
@@ -151,10 +147,6 @@ export function LibraryResourceActions({
           if (!pendingDialog) return true;
           pendingDialogRef.current = null;
 
-          if (pendingDialog === "manage_access") {
-            openModal(appHandle, LibraryResourceAccessModal, { target, title });
-            return false;
-          }
           if (pendingDialog === "open_project" && onOpenInProject) {
             openModal(appHandle, LibraryOpenInProjectModal, {
               target,
@@ -201,14 +193,6 @@ export function LibraryResourceActions({
             />
           )}
         </NodexDropdownFlyoutSubmenuItem>
-        <NodexDropdownItem
-          leftSlot={<ProjectAccessIcon />}
-          onSelect={() => {
-            pendingDialogRef.current = "manage_access";
-          }}
-        >
-          Manage access
-        </NodexDropdownItem>
         {onOpenInProject ? (
           <NodexDropdownItem
             leftSlot={<OpenInIcon />}

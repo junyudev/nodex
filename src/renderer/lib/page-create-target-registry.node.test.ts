@@ -6,11 +6,7 @@ import type {
 } from "./page-create-target-registry";
 import { resolvePageCreateTarget } from "./page-create-target-registry";
 
-const target = (
-  surfaceId: string,
-  projectId: string,
-  readOnlyReason: string | null = null,
-): PageCreateTarget => ({
+const target = (surfaceId: string, projectId: string): PageCreateTarget => ({
   surfaceId,
   panelTabId: `tab:${surfaceId}`,
   project: {
@@ -20,13 +16,12 @@ const target = (
   },
   databaseViewId: `view:${surfaceId}`,
   clientSessionId: "session-test",
-  accessContext: { kind: "project", projectId },
+  routingContext: { kind: "project", projectId },
   properties: [],
   columns: [
     { id: "triage", name: "Triage" },
     { id: "plan", name: "Plan" },
   ],
-  readOnlyReason,
 });
 
 const ready = (value: PageCreateTarget): PageCreateTargetCapability => ({
@@ -78,9 +73,9 @@ describe("Page create target resolution", () => {
     });
   });
 
-  test("does not silently fall back when the exact active Board is read-only", () => {
+  test("does not silently fall back when the exact active Board has no workflow columns", () => {
     const resolution = resolvePageCreateTarget(
-      state([target("readonly", "project:alpha", "This View is grouped by Tags")], "readonly", {
+      state([{ ...target("empty", "project:alpha"), columns: [] }], "empty", {
         "project:alpha": ready(target("ambient", "project:alpha")),
       }),
       "project:alpha",
@@ -88,7 +83,7 @@ describe("Page create target resolution", () => {
 
     expect(resolution).toEqual({
       status: "unavailable",
-      reason: "This View is grouped by Tags",
+      reason: "This Database View has no workflow columns.",
     });
   });
 

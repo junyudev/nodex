@@ -19,7 +19,7 @@ Typed `@` boundaries and the shared suggestion-session lifecycle are owned by
 | Page Link            | create a link or paste over selected text           | ordinary link with `nodex://pages/<page-id>`            | No                   |
 | Owning Page Shell    | `/Subpage…` or typed Move to                        | Core-created `page` shell whose Block ID is the Page ID | Yes                  |
 
-The first three never change parentage, Database membership, grants, or copy closure.
+The first three never change parentage, Database membership, content access, or copy closure.
 
 ## Page Mention
 
@@ -31,15 +31,15 @@ Canonical NFM is:
 
 The parser accepts only the exact self-closing tag with one canonical URL attribute.
 Invalid tags remain literal text.
-The editor stores only `targetPageId`; current title and availability are resolved under the nearest host content-access context.
+The editor stores only `targetPageId`; current title and availability resolve in the current Library through the host presentation route.
 
 The visual is an inline semantic icon and underlined title, not a pill or card.
-Database Pages with an authorized workflow Status use that Status icon; Pages without one use the generic Page icon.
+Database Pages with a current workflow Status use that Status icon; Pages without one use the generic Page icon.
 It is one keyboard-selectable atom: when the caret is directly beside it, `ArrowLeft` or `ArrowRight` selects the complete non-editable token, and plain `Enter` opens the available Page through the same host navigator as a click.
 The editor keeps that atom range without exposing native text-selection painting; hover and keyboard focus use the same compact highlight overlay on the chip, with a small visual overflow beyond its content box.
 When an available Page mention has keyboard focus, the editor also shows a compact anchored `Open page` affordance with the `↵` Enter hint below the token; this is an action hint, not an additional editable text range.
 It remains readable when navigation is unavailable.
-Hovering the mention shows a compact tooltip resolved under the same content-access context: current title, archived state when applicable, and a bounded Page preview. Missing, deleted, invalid, or unreadable targets show only a safe state explanation; the tooltip never exposes raw IDs, deeplinks, transport errors, or target content outside that authorized read model.
+Hovering the mention shows a compact tooltip resolved in the same Library: current title, archived state when applicable, and a bounded Page preview. Missing, deleted, invalid or cross-Library targets show only a state explanation; the tooltip never exposes raw IDs, deeplinks or transport errors for unavailable targets.
 Clicking or pressing `Enter` on an available mention opens the Page through the host navigator; it never delegates the internal deeplink to the browser.
 Mention serialization never injects the target body into search, title, clipboard, or Agent prompt text.
 Choosing `/Mention a page` replaces the slash command with a visible `@`, leaves the caret after it, and enters the normal `@` suggestion flow so the user can continue typing a query.
@@ -143,11 +143,11 @@ Owning Page shells do not derive backlinks.
 The normalized edge records the syntactic occurrence independently of the
 target's current Page capability. If the same target Block is temporarily
 ordinary, the occurrence remains normalized but resolves as unavailable and
-cannot grant access or expose a preview. Restoring the Page capability makes
+cannot expose a preview. Restoring the Page capability makes
 the existing occurrence resolve again without rewriting the source Document.
-Backlink rows and counts include only source Pages readable in the caller's content-access context.
+Backlink rows and counts include available source Pages in the current Library.
 
-The Page Stage shows a collapsed `Referenced by` section below the body only when at least one authorized source Page is known.
+The Page Stage shows a collapsed `Referenced by` section below the body only when at least one available source Page is known.
 An authorized zero-result does not render the section.
 Its count is the number of unique authorized source Pages; rows are grouped by source Page and source Block, retain presentation kinds and occurrence count, and use bounded keyset pagination.
 Opening a row navigates to the source Page and focuses the exact source Block after its editor is ready.

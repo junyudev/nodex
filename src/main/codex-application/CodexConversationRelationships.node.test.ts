@@ -192,7 +192,7 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
   );
 });
 
-it.effect("publishes canonical-only child approvals on their parent's execution host", () =>
+it.effect("publishes canonical-only child questions on their parent's execution host", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const entities = makeConversationEntityStateRegistry();
@@ -204,19 +204,27 @@ it.effect("publishes canonical-only child approvals on their parent's execution 
       parentThreadId: "parent",
       title: "Canonical child",
       agentNickname: "Scout",
-      threadRuntimeStatus: { type: "active", activeFlags: ["waitingOnApproval"] },
+      threadRuntimeStatus: { type: "active", activeFlags: ["waitingOnUserInput"] },
       requests: [
         {
           id: 17,
-          method: "item/commandExecution/requestApproval",
+          method: "item/tool/requestUserInput",
           params: {
-            kind: "command",
             threadId: "child",
             turnId: "child-turn",
             itemId: "command",
-            environmentId: null,
-            startedAtMs: 3,
-            command: "pwd",
+            isBlocking: true,
+            autoResolutionMs: null,
+            questions: [
+              {
+                id: "choice",
+                header: "Choice",
+                question: "Continue?",
+                isOther: false,
+                isSecret: false,
+                options: null,
+              },
+            ],
           },
         },
       ],
@@ -590,7 +598,7 @@ it.effect("bounds a 10k-child relationship scan before it can retain every child
 );
 
 it.effect(
-  "publishes and clears a nested canonical approval without opening any child transcript",
+  "publishes and clears a nested canonical question without opening any child transcript",
   () =>
     Effect.gen(function* () {
       const scope = yield* Scope.make();
@@ -605,15 +613,23 @@ it.effect(
         requests: [
           {
             id: 29,
-            method: "item/commandExecution/requestApproval",
+            method: "item/tool/requestUserInput",
             params: {
-              kind: "command",
               threadId: "grandchild",
               turnId: "nested-turn",
               itemId: "command",
-              environmentId: null,
-              startedAtMs: 3,
-              command: "pwd",
+              isBlocking: true,
+              autoResolutionMs: null,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Continue?",
+                  isOther: false,
+                  isSecret: false,
+                  options: null,
+                },
+              ],
             },
           },
         ],
@@ -747,15 +763,23 @@ it.effect(
         requests: [
           {
             id: 31,
-            method: "item/commandExecution/requestApproval",
+            method: "item/tool/requestUserInput",
             params: {
-              kind: "command",
               threadId: "leaf",
               turnId: "deep-turn",
               itemId: "command",
-              environmentId: null,
-              startedAtMs: 3,
-              command: "pwd",
+              isBlocking: true,
+              autoResolutionMs: null,
+              questions: [
+                {
+                  id: "choice",
+                  header: "Choice",
+                  question: "Continue?",
+                  isOther: false,
+                  isSecret: false,
+                  options: null,
+                },
+              ],
             },
           },
         ],

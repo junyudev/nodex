@@ -1,6 +1,13 @@
 # ADR 0019: Project Agent consent is resource-scoped
 
-- Status: Accepted
+Current contract: the authenticated current Profile has full Library content
+access. Project routes execution and presentation; grants, consent overlays and
+permission inheritance are removed. The owning current contracts are
+[Agent Interface Behavior](../product-specs/agent-interface-behavior.md) and
+[Security](../SECURITY.md). Ownership and immutable-history decisions below
+remain applicable; resource permission rules do not.
+
+- Status: Superseded
 - Date: 2026-07-17
 - Owners: Nodex maintainers
 - Extends: ADR 0017 and ADR 0018

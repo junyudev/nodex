@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
 use nodex_core_contracts::library::{
-    LibraryContentAssetReference, LibraryContentReference, LibraryPageAccessContext,
-    LibraryPageContent, LibraryPageReferencePresentation, LibraryReadValue, LibrarySearchHit,
-    LibrarySearchSourceKind,
+    LibraryContentAssetReference, LibraryContentReference, LibraryPageContent,
+    LibraryPageReferencePresentation, LibraryReadValue, LibrarySearchHit, LibrarySearchSourceKind,
 };
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter, types::Value as SqlValue};
 use serde_json::Value;
@@ -147,7 +146,6 @@ pub(super) fn page_content(
         preview,
         references,
         asset_refs,
-        access_context: LibraryPageAccessContext::Library,
     })
 }
 

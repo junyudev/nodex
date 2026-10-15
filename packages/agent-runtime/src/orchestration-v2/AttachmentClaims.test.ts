@@ -138,6 +138,36 @@ describe("AttachmentClaims", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
+  it.effect(
+    "replays the same upload without overwriting a delivered copy and gives changed bytes a new identity",
+    () =>
+      Effect.gen(function* () {
+        const pending = yield* stagePendingUpload({
+          name: "retry.png",
+          bytes: new Uint8Array([1, 2, 3]),
+          mimeType: "image/png",
+        });
+        const config = yield* ServerConfig.ServerConfig;
+        const request = { threadId: "thread-claims-retry", attachments: [pending] };
+        const first = yield* claimPendingAttachments(request);
+        NodeFS.writeFileSync(first.claimedPaths[0]!, new Uint8Array([9, 9, 9]));
+        const retry = yield* claimPendingAttachments(request);
+        expect(retry.attachments).toEqual(first.attachments);
+        expect(retry.claimedPaths).toEqual([]);
+        expect(NodeFS.readFileSync(first.claimedPaths[0]!)).toEqual(Buffer.from([9, 9, 9]));
+        const pendingPath = NodePath.join(config.attachmentsDir, `${pending.id}.png`);
+        expect(NodeFS.readFileSync(pendingPath)).toEqual(Buffer.from([1, 2, 3]));
+        NodeFS.writeFileSync(pendingPath, new Uint8Array([4, 5, 6]));
+        const changed = yield* claimPendingAttachments(request);
+        expect(changed.attachments[0]!.id).not.toEqual(first.attachments[0]!.id);
+        yield* releaseClaimedAttachments(changed.claimedPaths);
+        expect(NodeFS.readFileSync(first.claimedPaths[0]!)).toEqual(Buffer.from([9, 9, 9]));
+        expect(
+          NodeFS.readdirSync(config.attachmentsDir).some((name) => name.startsWith("claim-")),
+        ).toBe(false);
+      }).pipe(Effect.provide(layerTest)),
+  );
+
   it.effect("rejects a pending ref whose staged file is missing", () =>
     Effect.gen(function* () {
       const missing: ChatAttachment = {

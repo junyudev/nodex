@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryFile,
   LibraryFilePresentation,
@@ -26,7 +26,7 @@ import {
 } from "./api";
 
 export interface LibraryFileAuthority {
-  readonly contentAccessContext: ContentAccessContext;
+  readonly contentRoutingContext: ContentRoutingContext;
   readonly storeEpoch: string;
   readonly libraryId: string;
 }
@@ -69,7 +69,7 @@ export function validateBrowserFileBatch(files: readonly File[]): void {
 
 /** Publish sequentially to bound renderer memory; each selected file gets its own receipt slot. */
 export async function prepareBrowserFiles(
-  access: ContentAccessContext,
+  access: ContentRoutingContext,
   operationId: string,
   files: readonly File[],
 ): Promise<readonly PreparedFileBlob[]> {
@@ -93,7 +93,7 @@ export async function prepareBrowserFiles(
 }
 
 export async function readPageFileInventoryPage(
-  access: ContentAccessContext,
+  access: ContentRoutingContext,
   pageId: string,
   input: { readonly cursor?: string; readonly query?: string; readonly limit?: number } = {},
 ): Promise<LibraryPageFileInventory> {
@@ -121,13 +121,13 @@ export async function importLibraryFile(
   const operationId = createUuidV7();
   const prepared =
     source.kind === "browser_file"
-      ? (await prepareBrowserFiles(authority.contentAccessContext, operationId, [source.file]))[0]!
-      : await prepareFileBlob(authority.contentAccessContext, {
+      ? (await prepareBrowserFiles(authority.contentRoutingContext, operationId, [source.file]))[0]!
+      : await prepareFileBlob(authority.contentRoutingContext, {
           operationId,
           source: { kind: "local_path", path: source.path },
         });
   const fileId = createUuidV7();
-  const result = await applyLibraryModule(authority.contentAccessContext, {
+  const result = await applyLibraryModule(authority.contentRoutingContext, {
     operationId,
     storeEpoch: authority.storeEpoch,
     operation: {
@@ -157,7 +157,7 @@ export function readAuthorizedFile(
   authority: FileReadAuthority,
   source: string,
 ): Promise<FileBytes> {
-  return readFileBytes(authority.contentAccessContext, {
+  return readFileBytes(authority.contentRoutingContext, {
     fileId: fileIdFromSource(source),
     source: authority.readSource,
     ...(authority.version !== undefined ? { version: authority.version } : {}),
@@ -168,7 +168,7 @@ export async function readFilePresentation(
   authority: FileReadAuthority,
   source: string,
 ): Promise<LibraryFilePresentation> {
-  const result = await readLibraryModule(authority.contentAccessContext, {
+  const result = await readLibraryModule(authority.contentRoutingContext, {
     read: {
       mode: "file_presentation",
       file_id: fileIdFromSource(source),
@@ -187,7 +187,7 @@ export async function saveAuthorizedFile(
   source: string,
   defaultName: string,
 ): Promise<void> {
-  await saveFile(authority.contentAccessContext, {
+  await saveFile(authority.contentRoutingContext, {
     fileId: fileIdFromSource(source),
     source: authority.readSource,
     defaultName,
@@ -201,7 +201,7 @@ export async function materializeAuthorizedFile(
   source: string,
 ): Promise<string> {
   const presentation = await readFilePresentation(authority, source);
-  return materializeFile(authority.contentAccessContext, {
+  return materializeFile(authority.contentRoutingContext, {
     fileId: presentation.file_id,
     source: authority.readSource,
     version: presentation.version,

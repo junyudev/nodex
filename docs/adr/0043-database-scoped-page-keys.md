@@ -8,7 +8,7 @@
 ## Context
 
 Page and Block UUIDs are appropriate canonical identities for ownership,
-Documents, authorization, history, View positions, and future synchronization.
+Documents, execution identity, history, View positions, and future synchronization.
 They are poor coordinates for a person or Agent referring to one work item in
 conversation. A short key such as `LAB-13` should make a Page easy to scan,
 copy, search, and resolve without becoming a second primary key.
@@ -98,12 +98,13 @@ draft for presentation and index Core-authored current keys for bounded local
 search, but it does not decide prefix availability, suggest a final prefix, or
 format mutation authority. Lookup expands every canonical
 candidate against the Library prefix registry and assignments, deduplicates by
-Page, then each caller applies its existing Project/Library/Database
-authorization and lifecycle rules. Only then may a unique selector return
+Page, then Core validates current Library identity and resource lifecycle.
+An explicit Database selector may filter candidates; Project placement cannot
+limit lookup. Only then may a unique selector return
 `resolved`, `ambiguous`, or `not_found`; an ambiguous outcome carries no Page
-metadata. Search surfaces may show every authorized candidate. Page keys are
-guessable and never grant access. External not-found and unauthorized results
-share the existing non-enumerating boundary.
+metadata. Search surfaces may show every available candidate in the current Library.
+Page keys are locators, not execution credentials; a missing or deleted Page
+returns no metadata.
 
 Current Page keys are projected into Database rows, contextual Page Detail,
 search results, CLI output, and Agent results. Internal mutations, React keys,
@@ -175,7 +176,7 @@ free distributed sequence.
   range, and unused future combinations under the old prefix do not resolve.
 - List display is default-on and Board display is default-off; both are
   configurable through effective View presentation without affecting search,
-  copy, CLI, Agent results, or authorization.
-- Page-key lookup never returns Page metadata before current access is proven,
-  compact ambiguity is reported only after that proof, and every write still
+  copy, CLI, Agent results, or content access.
+- Page-key lookup validates current Library identity and Page lifecycle before
+  returning metadata or reporting compact ambiguity, and every write still
   executes against canonical Page identity.

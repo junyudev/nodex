@@ -72,8 +72,8 @@ function NfmPageLinkPicker({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const projectIds =
-    hostRuntime?.contentAccessContext.kind === "project"
-      ? [hostRuntime.contentAccessContext.projectId]
+    hostRuntime?.contentRoutingContext.kind === "project"
+      ? [hostRuntime.contentRoutingContext.projectId]
       : configuredPageSearchProjectIds();
   const search = useInteractivePageSearch({
     projectIds,
@@ -83,7 +83,7 @@ function NfmPageLinkPicker({
   });
   const request = hostRuntime
     ? {
-        accessContext: hostRuntime.contentAccessContext,
+        routingContext: hostRuntime.contentRoutingContext,
         hostPageId: hostRuntime.hostPageId,
         ancestorPageIds: hostRuntime.ancestorPageIds,
         intent: "link" as const,
@@ -585,7 +585,7 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
             ? {
                 openPage: (pageId) =>
                   hostRuntime.openPage?.({
-                    accessContext: hostRuntime.contentAccessContext,
+                    routingContext: hostRuntime.contentRoutingContext,
                     pageId,
                   }),
               }

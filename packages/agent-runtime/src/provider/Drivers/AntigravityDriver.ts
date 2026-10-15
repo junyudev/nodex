@@ -317,7 +317,7 @@ export const AntigravityDriver: ProviderDriver<
       const publishCatalog = (
         started: AcpSessionRuntime.AcpSessionRuntimeStartResult,
         runtime: Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "getEvents" | "drainEvents">,
-      ): Effect.Effect<void> =>
+      ): Effect.Effect<void, ProviderSetupError> =>
         Effect.gen(function* () {
           yield* provider.onSessionStarted(started);
           yield* Stream.runForEach(runtime.getEvents(), (event) => {
@@ -332,7 +332,18 @@ export const AntigravityDriver: ProviderDriver<
               : Effect.void;
           }).pipe(Effect.forkScoped);
           yield* runtime.drainEvents;
-        }).pipe(Effect.scoped);
+        }).pipe(
+          Effect.scoped,
+          Effect.mapError(
+            (cause) =>
+              new ProviderSetupError({
+                instanceId,
+                operation: "refresh",
+                detail: "Native catalogue intake failed.",
+                cause,
+              }),
+          ),
+        );
 
       const authFlow: AntigravityAuth = yield* makeAntigravityAuth({
         instanceId,

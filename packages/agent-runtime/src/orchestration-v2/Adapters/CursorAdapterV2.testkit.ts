@@ -29,7 +29,6 @@ import {
   makeCursorAgentOptions,
 } from "@t3tools/provider-cursor/testing";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import type { RuntimePolicyV2Override } from "../RuntimePolicy.ts";
 
 const CursorAgentSdkReplayTranscript = Schema.Struct({
   provider: Schema.Literal(CursorAgentSdk.CURSOR_PROVIDER),
@@ -624,17 +623,11 @@ function serializeCursorRecordingError(cause: unknown): unknown {
 function recordingRuntimePolicy(input: {
   readonly cwd: string;
   readonly interactionMode: "default" | "plan";
-  readonly override?: Pick<RuntimePolicyV2Override, "approvalPolicy" | "sandboxPolicy">;
 }): ProviderAdapter.ProviderAdapterV2RuntimePolicy {
   return {
     runtimeMode: "full-access",
     interactionMode: input.interactionMode,
     cwd: input.cwd,
-    approvalPolicy: input.override?.approvalPolicy ?? "never",
-    sandboxPolicy: input.override?.sandboxPolicy ?? {
-      type: "dangerFullAccess",
-      networkAccess: true,
-    },
   };
 }
 
@@ -660,11 +653,6 @@ interface CursorReplayRecordingInput {
   /** Stable fixture cwd used to sanitize runtime-only workspace paths in recorded updates. */
   readonly transcriptCwd?: string;
   readonly interactionMode?: "default" | "plan";
-  /** The replay fixture's policy override, so the recorded agent.open frame matches replay. */
-  readonly runtimePolicyOverride?: Pick<
-    RuntimePolicyV2Override,
-    "approvalPolicy" | "sandboxPolicy"
-  >;
   readonly apiKey?: string;
   readonly interruptAfterToolStart?: boolean;
   readonly interruptAfterRunStartPromptIndex?: number;
@@ -714,9 +702,6 @@ export const recordCursorAgentSdkReplayTranscript = Effect.fn(
     runtimePolicy: recordingRuntimePolicy({
       cwd: input.cwd,
       interactionMode,
-      ...(input.runtimePolicyOverride === undefined
-        ? {}
-        : { override: input.runtimePolicyOverride }),
     }),
     threadId,
     mcpSession: undefined,

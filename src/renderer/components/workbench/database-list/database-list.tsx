@@ -417,10 +417,7 @@ export function DatabaseList({
   onRemovePageChatRelation,
 }: DatabaseListProps) {
   const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
-  const structuralProjectId =
-    model.accessContext.kind === "project" ? model.accessContext.projectId : "";
   const hiddenStructuralPageIds = useHiddenDatabasePageIds({
-    projectId: structuralProjectId,
     storeEpoch: model.storeEpoch,
     dataSourceId: model.dataSourceId,
   });
@@ -445,7 +442,7 @@ export function DatabaseList({
     rules: model.query.view.config.rules,
     presentation,
   };
-  const usesCoreAuthority = model.authorization !== null;
+  const usesWindow = model.boundedRead != null;
   const coreWindow = useDatabaseListWindow({ model, effective });
   const grouped = presentation.group !== null;
   const subgrouped = presentation.subgroup !== null;
@@ -469,7 +466,7 @@ export function DatabaseList({
     });
   }, [coreWindow.rows, model.query.properties, model.query.rows, sessionListFields]);
   const propertyOptionRegistries = usePropertyOptionRegistries({
-    accessContext: model.accessContext,
+    routingContext: model.routingContext,
     properties: model.query.properties,
     requiredOptionIds,
   });
@@ -612,13 +609,13 @@ export function DatabaseList({
   // occurrence projection. Falling back to the Board query while that window
   // loads makes rows visibly reorder once or several times during handoff.
   const authoritativeProjection = resolveDatabaseListAuthority({
-    coreAuthorized: usesCoreAuthority,
+    coreAuthorized: usesWindow,
     coreRows: coreProjection.rows,
     clientRows: clientProjection,
   });
   const proofProjection = useMemo(
     () =>
-      usesCoreAuthority
+      usesWindow
         ? projectCoreDatabaseListRows({
             rows: coreWindow.rows,
             properties: model.query.properties,
@@ -629,7 +626,7 @@ export function DatabaseList({
           }).rows
         : clientProjection,
     [
-      usesCoreAuthority,
+      usesWindow,
       coreWindow.rows,
       model,
       presentation.conditionalColors,
@@ -681,15 +678,14 @@ export function DatabaseList({
   );
   useLayoutEffect(() => {
     const evidence = coreWindow.boundedRead;
-    if (!evidence || model.accessContext.kind !== "project") return;
+    if (!evidence) return;
     localStructuralTransactionPresentation.observeDatabaseProjection({
-      projectId: model.accessContext.projectId,
       storeEpoch: evidence.storeEpoch,
       dataSourceId: model.dataSourceId,
       commitSeq: evidence.commitSeq,
       pageIds: new Set(evidence.pageIds),
     });
-  }, [coreWindow.boundedRead, model.accessContext, model.dataSourceId]);
+  }, [coreWindow.boundedRead, model.routingContext, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model,
     effective,
@@ -849,7 +845,7 @@ export function DatabaseList({
         workbenchViewOccurrence({
           row: authority,
           displayKey: entry.key,
-          occurrenceKey: usesCoreAuthority ? entry.key : null,
+          occurrenceKey: usesWindow ? entry.key : null,
           groupPath: presentation.group
             ? presentation.subgroup
               ? [entry.groupKey, entry.subgroupKey]
@@ -863,7 +859,7 @@ export function DatabaseList({
       ];
     });
     const searched = compiledSearchQuery.normalizedQuery.length > 0;
-    const allRowsLoaded = usesCoreAuthority
+    const allRowsLoaded = usesWindow
       ? coreWindow.isComplete && !coreWindow.loading && coreWindow.error === null
       : groupPagination === undefined ||
         [...groupPagination.values()].every(
@@ -887,7 +883,7 @@ export function DatabaseList({
           blockDropPreview !== null ||
           promotions.slots.length > 0,
         loading:
-          usesCoreAuthority &&
+          usesWindow &&
           (!coreWindow.active ||
             coreWindow.loading ||
             coreWindow.loadingMore ||
@@ -909,7 +905,7 @@ export function DatabaseList({
         ? allRowsLoaded && collapsedOccurrenceKeys.size === 0
           ? occurrences.length
           : null
-        : usesCoreAuthority
+        : usesWindow
           ? coreWindow.totalOccurrenceCount
           : allRowsLoaded
             ? occurrences.length
@@ -933,7 +929,6 @@ export function DatabaseList({
     [projection],
   );
   const pageDragDisabled =
-    model.readOnlyReason !== null ||
     !coreWindow.active ||
     coreWindow.presentationOwner.getActivity().unknown > 0 ||
     coreWindow.presentationOwner.hasPendingPlacement() ||
@@ -946,7 +941,7 @@ export function DatabaseList({
     () => databaseListNestingContinuations(projection),
     [projection],
   );
-  const logicalExtraRows = usesCoreAuthority
+  const logicalExtraRows = usesWindow
     ? coreWindow.active && compiledSearchQuery.normalizedQuery.length === 0
       ? Math.max(0, coreWindow.totalProjectionRowCount - coreWindow.rows.length)
       : 0
@@ -955,7 +950,7 @@ export function DatabaseList({
           total + Math.max(0, (state.totalRows ?? state.loadedRows) - state.loadedRows),
         0,
       );
-  const paginationError = usesCoreAuthority
+  const paginationError = usesWindow
     ? null
     : ([...(groupPagination?.values() ?? [])].find((state) => state.error !== null)?.error ?? null);
   const visibleError = mutationError ?? coreWindow.error ?? continuationError ?? paginationError;
@@ -1118,7 +1113,7 @@ export function DatabaseList({
     if (viewportHeight <= 0) return;
     const nearEnd = scrollTop + viewportHeight >= virtualWindow.totalHeight - 640;
     if (!nearEnd) return;
-    if (usesCoreAuthority) {
+    if (usesWindow) {
       coreWindow.loadMore();
       return;
     }
@@ -1139,7 +1134,7 @@ export function DatabaseList({
     scrollTop,
     viewportHeight,
     virtualWindow.totalHeight,
-    usesCoreAuthority,
+    usesWindow,
   ]);
 
   const commit = async (
@@ -1201,7 +1196,7 @@ export function DatabaseList({
   };
 
   const isGroupComplete = (pageIds: readonly string[]): boolean => {
-    if (usesCoreAuthority) {
+    if (usesWindow) {
       return coreWindow.active && !coreWindow.loading && coreWindow.isComplete;
     }
     const column = columns.find((candidate) =>
@@ -1388,7 +1383,6 @@ export function DatabaseList({
   };
 
   const propertyRuntime: DatabaseListPropertyRuntime = {
-    disabled: model.readOnlyReason !== null,
     isPending: (pageId, propertyId) =>
       pendingMutationKeys.has(propertyValueMutationKey(pageId, propertyId)) ||
       pendingMutationKeys.has(propertyDefinitionMutationKey(propertyId)),
@@ -1414,21 +1408,21 @@ export function DatabaseList({
     onRequestMoreOptions: propertyOptionRegistries.requestMoreOptions,
     onLoadRelationTargets: async (pageId, property, after) =>
       await readDataSourceRelationTargets({
-        accessContext: model.accessContext,
+        routingContext: model.routingContext,
         pageId,
         property,
         after,
       }),
     onSearchRelationCandidates: async (property, query, after) =>
       await searchDataSourceRelationCandidates({
-        accessContext: model.accessContext,
+        routingContext: model.routingContext,
         property,
         query,
         after,
       }),
     onLoadRelationTargetDescriptor: async (property) =>
       await readDataSourceRelationTargetDescriptor({
-        accessContext: model.accessContext,
+        routingContext: model.routingContext,
         property,
       }),
     onOpenRelationPage: (pageId, title) => {
@@ -1520,13 +1514,11 @@ export function DatabaseList({
     ]);
 
   const mutationHistoryProjectId =
-    model.accessContext.kind === "project" ? model.accessContext.projectId : null;
+    model.routingContext.kind === "project" ? model.routingContext.projectId : null;
 
   const blockDropRejection = (): string | null =>
     resolveDatabaseListBlockDropRejection({
       pageDragActive: dndActive,
-      readOnly: model.readOnlyReason !== null,
-      projectScoped: mutationHistoryProjectId !== null,
       searchActive: compiledSearchQuery.normalizedQuery.length > 0,
       projectionReady:
         coreWindow.active &&
@@ -1812,14 +1804,12 @@ export function DatabaseList({
         priorityOptions={priorityOptions}
         onSetStatus={(optionId) => setProperty(item.pageId, "status", optionId)}
         onSetPriority={(optionId) => setProperty(item.pageId, "priority", optionId)}
-        statusMutationDisabled={
-          model.readOnlyReason !== null ||
-          pendingMutationKeys.has(propertyValueMutationKey(item.pageId, "status"))
-        }
-        priorityMutationDisabled={
-          model.readOnlyReason !== null ||
-          pendingMutationKeys.has(propertyValueMutationKey(item.pageId, "priority"))
-        }
+        statusMutationDisabled={pendingMutationKeys.has(
+          propertyValueMutationKey(item.pageId, "status"),
+        )}
+        priorityMutationDisabled={pendingMutationKeys.has(
+          propertyValueMutationKey(item.pageId, "priority"),
+        )}
         showPriority={coreColumnVisibility.priority}
         showStatus={coreColumnVisibility.status}
         identity={pageIdentityByOccurrenceKey.get(item.key) ?? EMPTY_DATABASE_LIST_PAGE_IDENTITY}
@@ -1842,7 +1832,7 @@ export function DatabaseList({
               })
         }
         pageAccessProjectId={
-          model.accessContext.kind === "project" ? model.accessContext.projectId : null
+          model.routingContext.kind === "project" ? model.routingContext.projectId : null
         }
         pageChatActivity={pageChatActivityByPageId.get(item.pageId)}
         onOpenRelatedChat={pageActionPort?.openRelatedChat}
@@ -1864,7 +1854,7 @@ export function DatabaseList({
     const propertySource: DataSourcePagePropertyMenuSource = {
       descriptors: model.query.properties.map((property) => ({
         property,
-        disabled: propertyRuntime.disabled,
+        disabled: property.lifecycle !== "active",
         pending: propertyRuntime.isPending(item.pageId, property.propertyId),
       })),
       resolveBinding(propertyId) {
@@ -1878,8 +1868,8 @@ export function DatabaseList({
     return {
       page: {
         libraryId: model.libraryId,
-        accessContext: model.accessContext,
-        projectId: model.accessContext.kind === "project" ? model.accessContext.projectId : null,
+        routingContext: model.routingContext,
+        projectId: model.routingContext.kind === "project" ? model.routingContext.projectId : null,
         pageId: item.pageId,
         pageKey: item.row.pageKey,
         titleSnapshot: item.row.title,
@@ -1902,7 +1892,6 @@ export function DatabaseList({
         }),
       propertySource,
       actionPort: pageActionPort,
-      deleteDisabled: model.readOnlyReason !== null,
       onReorder: (direction) => movePages([item.pageId], direction),
     };
   };
@@ -1910,7 +1899,7 @@ export function DatabaseList({
   const selectedIds = [...selectedPageIds];
   const canMoveSelection = (direction: "up" | "down"): boolean => {
     if (coreWindow.presentationOwner.hasPendingPlacement()) return false;
-    if (selection.allMatching && usesCoreAuthority && !coreWindow.isComplete) return false;
+    if (selection.allMatching && usesWindow && !coreWindow.isComplete) return false;
     try {
       return (
         buildDatabaseViewMovePageRunOperations({
@@ -2044,7 +2033,7 @@ export function DatabaseList({
             ) : null}
             {displayProjection.length === 0 ? (
               <div className="flex min-h-40 items-center justify-center text-sm text-token-description-foreground">
-                {usesCoreAuthority && coreWindow.loading
+                {usesWindow && coreWindow.loading
                   ? "Loading Pages…"
                   : compiledSearchQuery.normalizedQuery.length > 0
                     ? "No matching Pages"
@@ -2131,7 +2120,6 @@ export function DatabaseList({
                     item.groupKey,
                   );
                   const groupCreateAction =
-                    model.readOnlyReason === null &&
                     presentation.group?.propertyId === "status" &&
                     isWorkflowStatus(item.groupKey) &&
                     onRequestCreatePage
@@ -2227,7 +2215,7 @@ export function DatabaseList({
               </div>
             )}
             {coreWindow.loadingMore ||
-            (!usesCoreAuthority &&
+            (!usesWindow &&
               [...(groupPagination?.values() ?? [])].some((state) => state.loadingMore)) ? (
               <div
                 role="status"

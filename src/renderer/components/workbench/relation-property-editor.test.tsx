@@ -24,13 +24,13 @@ const relationValue = {
         membership_state: "active_in_target_source",
       },
     ],
-    restricted_count: 1,
+    unavailable_count: 1,
     has_more: true,
   },
 };
 
 describe("RelationPropertyEditor", () => {
-  test("projects bounded visible and restricted targets without inventing identities", () => {
+  test("projects bounded visible and unavailable targets without inventing identities", () => {
     expect(readRelationValuePreview(relationValue)).toEqual({
       valueRevision: 4,
       totalCount: 2,
@@ -44,13 +44,13 @@ describe("RelationPropertyEditor", () => {
           membershipState: "active_in_target_source",
         },
       ],
-      restrictedCount: 1,
+      unavailableCount: 1,
       hasMore: true,
     });
     expect(
       readRelationValuePreview({
         kind: "relation",
-        value: { ...relationValue.value, targets: [{ kind: "restricted", page_id: "leak" }] },
+        value: { ...relationValue.value, targets: [{ kind: "unavailable", page_id: "leak" }] },
       }),
     ).toBeNull();
   });
@@ -90,7 +90,7 @@ describe("RelationPropertyEditor", () => {
       addPageIds: ["page-candidate"],
       removeEdgeIds: [],
     });
-    expect(view.getByText("1 restricted")).toBeTruthy();
+    expect(view.getByText("1 unavailable")).toBeTruthy();
   });
 
   test("replaces a cardinality-one Parent and excludes the source Page", async () => {
@@ -127,7 +127,7 @@ describe("RelationPropertyEditor", () => {
     expect(view.queryByRole("option", { name: "Parent task" })).toBeNull();
   });
 
-  test("removes a restricted target by its source-owned edge handle", async () => {
+  test("removes a unavailable target by its source-owned edge handle", async () => {
     const onPatch = vi.fn();
     const hiddenEdgeId = "b".repeat(64);
     const onLoadMore = vi.fn(async () => ({
@@ -135,7 +135,7 @@ describe("RelationPropertyEditor", () => {
       totalCount: 2,
       targets: [
         {
-          kind: "restricted" as const,
+          kind: "unavailable" as const,
           edgeId: hiddenEdgeId,
         },
       ],
@@ -163,11 +163,11 @@ describe("RelationPropertyEditor", () => {
       fireEvent.click(view.getByRole("button", { name: "Load more selected" }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(view.getByText("Restricted page")).toBeTruthy());
+    await waitFor(() => expect(view.getByText("Unavailable page")).toBeTruthy());
     expect(view.queryByText("page-hidden")).toBeNull();
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Remove restricted page 1" }));
+      fireEvent.click(view.getByRole("button", { name: "Remove unavailable page 1" }));
       await Promise.resolve();
     });
 
@@ -177,7 +177,7 @@ describe("RelationPropertyEditor", () => {
     });
   });
 
-  test("requires explicit confirmation before clearing restricted targets", async () => {
+  test("requires explicit confirmation before clearing unavailable targets", async () => {
     const onClear = vi.fn();
     const confirm = vi.spyOn(window, "confirm");
     const view = render(
@@ -202,7 +202,7 @@ describe("RelationPropertyEditor", () => {
     });
 
     expect(
-      view.getByText("Clear all 2 relations, including restricted or unloaded pages?"),
+      view.getByText("Clear all 2 relations, including unavailable or unloaded pages?"),
     ).toBeTruthy();
     expect(onClear).not.toHaveBeenCalled();
     await act(async () => {
@@ -282,7 +282,7 @@ describe("RelationPropertyEditor", () => {
             value_revision: 5,
             total_count: 1,
             targets: [],
-            restricted_count: 0,
+            unavailable_count: 0,
             has_more: true,
           },
         }}

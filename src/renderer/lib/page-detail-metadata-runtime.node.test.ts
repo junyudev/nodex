@@ -25,7 +25,6 @@ import {
   type LibraryModuleApplyResult,
 } from "../../shared/library-module";
 import type { LibraryPageDetail, PageDetail } from "../../shared/page-detail";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
 import { noOpLocalCommit } from "../../shared/testing/local-commit";
 import {
@@ -90,15 +89,6 @@ const detail = (member = true): PageDetail => {
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 4,
-    authorization: authorizedReadStampFixture({
-      deliveryAddress: {
-        kind: "project",
-        library_id: "library-1",
-        project_id: "project-1",
-      },
-      subject: { kind: "page", page_id: "page-1" },
-      commitSeq: 4,
-    }),
     page: {
       pageId: "page-1",
       libraryId: "library-1",
@@ -147,7 +137,6 @@ const detail = (member = true): PageDetail => {
             name: "Database",
             lifecycle: "active",
             defaultViewId: viewId,
-            accessRevision: 1,
             metadataRevision: 1,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -202,7 +191,7 @@ const detail = (member = true): PageDetail => {
 const libraryDetail = (member = true): LibraryPageDetail => {
   const { projectId: _privateProjectId, ...value } = detail(member);
   void _privateProjectId;
-  return { ...value, accessContext: { kind: "library" } };
+  return value;
 };
 
 const mutationSuccess = (
@@ -317,7 +306,7 @@ const libraryDependencies = (input: {
       localCommit: noOpLocalCommit(request.storeEpoch),
       value: {
         mutationId: request.mutationId,
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         storeEpoch: request.storeEpoch,
         duplicate: false,
         fields: [],
@@ -334,7 +323,7 @@ const libraryDependencies = (input: {
       localCommit: noOpLocalCommit(request.storeEpoch),
       value: {
         operationId: request.operationId,
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library-1",
         storeEpoch: request.storeEpoch,
         duplicate: false,

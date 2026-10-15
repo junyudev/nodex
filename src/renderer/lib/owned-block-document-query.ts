@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { prepareOwnedBlockDocumentForContentAccess } from "./api";
+import { prepareOwnedBlockDocumentForContentRouting } from "./api";
 import {
   fetchOwnedBlockDocumentDescriptor,
   fetchRegisteredOwnedBlockDocumentDescriptor,
@@ -12,29 +12,13 @@ import {
   type RegisteredOwnedBlockDocumentModel,
 } from "./owned-block-document";
 import { queryKeys } from "./query-keys";
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
-
-const resolveOwnedDocumentAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const authorization = (
-    data as {
-      readonly authorization?: AuthorizedReadStamp | null;
-    } | null
-  )?.authorization;
-  return authorization ? { authorizations: [authorization] } : null;
-};
-
-const ownedDocumentAuthorityMeta = resourceAuthorityQueryMeta(resolveOwnedDocumentAuthority);
 
 export interface OwnedBlockDocumentQueryDependencies {
   readonly fetchDescriptor?: OwnedDocumentDescriptorFetcher;
 }
 
-const defaultFetcher: OwnedDocumentDescriptorFetcher = (accessContext, ownerBlockId, signal) =>
-  prepareOwnedBlockDocumentForContentAccess(accessContext, ownerBlockId).then((result) => {
+const defaultFetcher: OwnedDocumentDescriptorFetcher = (routingContext, ownerBlockId, signal) =>
+  prepareOwnedBlockDocumentForContentRouting(routingContext, ownerBlockId).then((result) => {
     if (signal?.aborted) throw signal.reason;
     return unwrapOwnedBlockDocumentPreparationResult(result);
   });
@@ -47,21 +31,15 @@ const ownedDocumentRetryDelay = (attemptIndex: number): number => (attemptIndex 
 const makeOwnedBlockDocumentQueryFn =
   (request: OwnedBlockDocumentRequest, fetcher: OwnedDocumentDescriptorFetcher) =>
   async ({ signal }: { readonly signal: AbortSignal }) =>
-    admitResourceAuthorityQuery(
-      await fetchOwnedBlockDocumentDescriptor(request, (accessContext, ownerBlockId) =>
-        fetcher(accessContext, ownerBlockId, signal),
-      ),
-      resolveOwnedDocumentAuthority,
+    await fetchOwnedBlockDocumentDescriptor(request, (routingContext, ownerBlockId) =>
+      fetcher(routingContext, ownerBlockId, signal),
     );
 
 const makeRegisteredOwnedBlockDocumentQueryFn =
   (request: OwnedBlockDocumentRequest, fetcher: OwnedDocumentDescriptorFetcher) =>
   async ({ signal }: { readonly signal: AbortSignal }) =>
-    admitResourceAuthorityQuery(
-      await fetchRegisteredOwnedBlockDocumentDescriptor(request, (accessContext, ownerBlockId) =>
-        fetcher(accessContext, ownerBlockId, signal),
-      ),
-      resolveOwnedDocumentAuthority,
+    await fetchRegisteredOwnedBlockDocumentDescriptor(request, (routingContext, ownerBlockId) =>
+      fetcher(routingContext, ownerBlockId, signal),
     );
 
 export const ownedBlockDocumentQueryOptions = (
@@ -70,11 +48,10 @@ export const ownedBlockDocumentQueryOptions = (
 ) => {
   const fetcher = dependencies.fetchDescriptor ?? defaultFetcher;
   return queryOptions({
-    queryKey: queryKeys.blockDocuments.owned(request.accessContext, request.ownerBlockId),
+    queryKey: queryKeys.blockDocuments.owned(request.routingContext, request.ownerBlockId),
     queryFn: makeOwnedBlockDocumentQueryFn(request, fetcher),
     retry: retryOwnedDocumentRead,
     retryDelay: ownedDocumentRetryDelay,
-    meta: ownedDocumentAuthorityMeta,
   });
 };
 
@@ -84,11 +61,10 @@ export const registeredOwnedBlockDocumentQueryOptions = (
 ) => {
   const fetcher = dependencies.fetchDescriptor ?? defaultFetcher;
   return queryOptions({
-    queryKey: queryKeys.blockDocuments.owned(request.accessContext, request.ownerBlockId),
+    queryKey: queryKeys.blockDocuments.owned(request.routingContext, request.ownerBlockId),
     queryFn: makeRegisteredOwnedBlockDocumentQueryFn(request, fetcher),
     retry: retryOwnedDocumentRead,
     retryDelay: ownedDocumentRetryDelay,
-    meta: ownedDocumentAuthorityMeta,
   });
 };
 

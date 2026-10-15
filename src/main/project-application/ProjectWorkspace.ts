@@ -24,7 +24,6 @@ import {
 } from "../../shared/schemas/project-sessions";
 import type {
   CodexBackgroundProcessRecord,
-  CodexPermissionMode,
   Project,
   ProjectActivitySummaryResult,
   PageChatActivitySummaryInput,
@@ -197,17 +196,6 @@ export interface ProjectWorkspaceService {
     input: PageChatLinkInput,
   ) => ProjectWorkspaceEffect<void>;
   readonly getProject: (projectId: string) => ProjectWorkspaceEffect<Project | null>;
-  readonly readProjectPermissionMode: (
-    projectId: string,
-  ) => ProjectWorkspaceEffect<CodexPermissionMode | null>;
-  readonly readProjectlessPermissionMode: ProjectWorkspaceEffect<CodexPermissionMode | null>;
-  readonly setProjectPermissionMode: (
-    projectId: string,
-    mode: CodexPermissionMode,
-  ) => ProjectWorkspaceEffect<CodexPermissionMode>;
-  readonly setProjectlessPermissionMode: (
-    mode: CodexPermissionMode,
-  ) => ProjectWorkspaceEffect<CodexPermissionMode>;
   readonly createInitialProject: (
     input: DesktopInitialProjectCreateInput,
   ) => ProjectWorkspaceEffect<DesktopInitialProjectCreateResult>;
@@ -589,12 +577,11 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           return {
             threadId: context.thread.thread_id,
             projectId: context.thread.project_id ?? null,
-            permissionMode: context.permission_mode ?? null,
             dynamicToolCatalogs: context.thread.dynamic_tool_catalogs.map((catalog) => ({
               namespace: catalog.namespace,
               toolsetRevision: catalog.toolset_revision,
             })),
-            writableRoots: [...context.thread.writable_roots],
+            workspaceRoots: [...context.thread.writable_roots],
             workspaceState: context.workspace_state
               ? {
                   revision: context.workspace_state.revision,
@@ -1103,7 +1090,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       );
       const snapshot = yield* read("page-chat.activity.read", {
         kind: "page_chat_activity_summaries",
-        page_access_project_id: parsed.pageAccessProjectId,
         page_ids: parsed.pageIds,
       });
       return yield* evaluate("page-chat.activity.read", () => {
@@ -1123,7 +1109,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       );
       const snapshot = yield* read("page-chat.window.read", {
         kind: "page_chat_window",
-        page_access_project_id: parsed.pageAccessProjectId,
         page_id: parsed.pageId,
         include_archived: parsed.includeArchived ?? false,
         window: {
@@ -1141,35 +1126,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         } satisfies PageChatWindow;
       });
     });
-
-    const readProjectPermissionMode = Effect.fn("ProjectWorkspace.readProjectPermissionMode")(
-      function* (projectId: string) {
-        const snapshot = yield* read("project.permission.read", {
-          kind: "project_permission_mode",
-          project_id: projectId,
-        }).pipe(
-          Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
-        );
-        if (snapshot === null) return null;
-        return yield* evaluate(
-          "project.permission.read",
-          () => expectVariant(snapshot, "project_permission_mode").mode ?? null,
-        );
-      },
-    );
-
-    const readProjectlessPermissionMode: ProjectWorkspaceEffect<CodexPermissionMode | null> = read(
-      "projectless.permission.read",
-      { kind: "projectless_permission_mode" },
-    ).pipe(
-      Effect.flatMap((snapshot) =>
-        evaluate(
-          "projectless.permission.read",
-          () => expectVariant(snapshot, "projectless_permission_mode").mode ?? null,
-        ),
-      ),
-      Effect.catch((error) => (isNotFound(error) ? Effect.succeed(null) : Effect.fail(error))),
-    );
 
     const listBackgroundProcesses = Effect.fn("ProjectWorkspace.listBackgroundProcesses")(
       function* (threadId?: string | null) {
@@ -1516,37 +1472,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       readPageChatActivitySummaries,
       listPageChatWindow,
       getProject,
-      readProjectPermissionMode,
-      readProjectlessPermissionMode,
-      setProjectPermissionMode: Effect.fn("ProjectWorkspace.setProjectPermissionMode")(
-        function* (projectId, mode) {
-          yield* apply("project.permission.set", {
-            kind: "set_project_permission_mode",
-            project_id: projectId,
-            mode,
-          });
-          const selected = yield* readProjectPermissionMode(projectId);
-          if (selected) return selected;
-          return yield* projectWorkspaceError(
-            "project.permission.set",
-            new Error(`Updated Project permission mode not found: ${projectId}`),
-          );
-        },
-      ),
-      setProjectlessPermissionMode: Effect.fn("ProjectWorkspace.setProjectlessPermissionMode")(
-        function* (mode) {
-          yield* apply("projectless.permission.set", {
-            kind: "set_projectless_permission_mode",
-            mode,
-          });
-          const selected = yield* readProjectlessPermissionMode;
-          if (selected) return selected;
-          return yield* projectWorkspaceError(
-            "projectless.permission.set",
-            new Error("Updated projectless permission mode not found"),
-          );
-        },
-      ),
       createInitialProject: Effect.fn("ProjectWorkspace.createInitialProject")(function* (input) {
         yield* applyWithId("project.initial.create", input.operationId, {
           kind: "create_initial_project",
@@ -1619,7 +1544,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             intent: {
               kind: "link_page",
               page_id: parsed.pageId,
-              page_access_project_id: parsed.pageAccessProjectId,
             },
           });
         },
@@ -1636,7 +1560,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             intent: {
               kind: "unlink_page",
               page_id: parsed.pageId,
-              page_access_project_id: parsed.pageAccessProjectId,
             },
           });
         },
@@ -1929,15 +1852,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
           ...(input.runtimeWorkspaceRoots === undefined
             ? {}
             : { runtime_workspace_roots: [...input.runtimeWorkspaceRoots] }),
-          ...(input.projectAccessGrant === undefined
-            ? {}
-            : {
-                project_access_grant: {
-                  expected_target_binding_revision:
-                    input.projectAccessGrant.expectedTargetBindingRevision,
-                  missing_source_roots: [...input.projectAccessGrant.missingProjectSources],
-                },
-              }),
         }));
         const applied = yield* applyWithId("thread.move", operationId, intent);
         const thread = yield* getThread(input.threadId);
@@ -2063,7 +1977,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             roots: [...roots],
           });
           const context = yield* readThreadExecutionContext(threadId);
-          if (context) return context.writableRoots;
+          if (context) return context.workspaceRoots;
           return yield* projectWorkspaceError(
             "thread.writable-roots.merge",
             new Error(`Updated Core Thread not found: ${threadId}`),
@@ -2078,7 +1992,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
             roots: [...roots],
           });
           const context = yield* readThreadExecutionContext(threadId);
-          if (context) return context.writableRoots;
+          if (context) return context.workspaceRoots;
           return yield* projectWorkspaceError(
             "thread.writable-roots.replace",
             new Error(`Updated Core Thread not found: ${threadId}`),

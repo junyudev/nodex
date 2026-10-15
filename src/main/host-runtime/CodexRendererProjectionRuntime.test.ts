@@ -10,7 +10,6 @@ import {
   CodexApplicationEventHub,
   type CodexApplicationEvent,
 } from "../codex-application/CodexApplicationEventHub";
-import { CodexFreshThreadLaunchRuntime } from "../codex-application/CodexFreshThreadLaunchRuntime";
 import {
   CodexRendererPresentationRegistry,
   make as makePresentationRegistry,
@@ -30,7 +29,6 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const reevaluated: string[] = [];
-      const released: string[] = [];
       const autoResolutionChanges = yield* PubSub.unbounded<CodexUserInputAutoResolutionChange>();
       const applicationEvents = yield* PubSub.unbounded<CodexApplicationEvent>();
       const projectedChanges: Array<readonly [string, unknown]> = [];
@@ -69,9 +67,6 @@ it.effect(
                 publish: (event: CodexApplicationEvent) => {
                   PubSub.publishUnsafe(applicationEvents, event);
                 },
-              } as never),
-              Layer.succeed(CodexFreshThreadLaunchRuntime, {
-                releaseRenderer: (clientId: string) => released.push(clientId),
               } as never),
               Layer.succeed(CodexRendererPresentationRegistry, presentation),
               Layer.succeed(RendererClientRuntime, rendererClients),
@@ -120,7 +115,6 @@ it.effect(
       });
       yield* Effect.yieldNow;
       assert.deepEqual(reevaluated, ["thread-1"]);
-      assert.deepEqual(released, [clientId]);
       assert.isFalse(presentation.isClientPresenting("thread-1", clientId));
       assert.isFalse(
         presentation.setPresented("thread-1", clientId, "stale-surface", true).accepted,
@@ -142,7 +136,6 @@ it.effect(
       yield* rendererClients.disposeClient(clientId);
       yield* Effect.yieldNow;
       assert.deepEqual(reevaluated, ["thread-1", "thread-1"]);
-      assert.deepEqual(released, [clientId, clientId]);
       assert.isFalse(presentation.isPresentedInForeground("thread-1"));
       yield* PubSub.publish(autoResolutionChanges, {
         type: "timedOut",
@@ -187,7 +180,6 @@ it.effect(
       yield* Effect.yieldNow;
       assert.strictEqual(projectedChanges.length, 2);
       assert.deepEqual(reevaluated, ["thread-1", "thread-1"]);
-      assert.deepEqual(released, [clientId, clientId]);
       assert.isFalse(presentation.hasForegroundClient());
     }),
 );

@@ -117,7 +117,6 @@ export async function readNativeSearch(
       runtime.identity.profileId,
       request.authority,
       request.callId ?? `nodex-agent:${request.tool}`,
-      request.resourceAccess,
     );
     const read = {
       kind: "agent_search" as const,

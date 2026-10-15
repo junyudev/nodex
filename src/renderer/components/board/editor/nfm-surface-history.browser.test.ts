@@ -174,7 +174,7 @@ test("two surfaces sharing one Y.Doc preserve independent text history after str
       apply,
       historyReconciliation: availableHistoryReconciliation,
       runtime: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library:history",
         source: { documentId: doc.guid, storeEpoch: "epoch:history", generation: 1 },
         participant: {
@@ -302,7 +302,7 @@ test("a surface created before mount undoes later text before structure through 
     editor,
     apply,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:history",
       source: { documentId: doc.guid, storeEpoch: "epoch:history", generation: 1 },
       participant: {
@@ -420,7 +420,7 @@ test("portable fallback fills the reserved paste gesture even when Undo was queu
     editor,
     historyReconciliation: availableHistoryReconciliation,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:history",
       source: { documentId: doc.guid, storeEpoch: "epoch:history", generation: 1 },
       participant: {

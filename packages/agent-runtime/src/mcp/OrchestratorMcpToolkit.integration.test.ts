@@ -58,6 +58,7 @@ import * as CommandReceiptStore from "../orchestration-v2/CommandReceiptStore.ts
 import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import * as ServerSettings from "../serverSettings.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
@@ -600,15 +601,7 @@ describe("orchestrator MCP toolkit", () => {
           const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
             {
               name: "orchestrator-mcp-toolkit",
-              runtimePolicyOverride: {
-                cwd,
-                approvalPolicy: "never",
-                sandboxPolicy: {
-                  type: "readOnly",
-                  access: { type: "fullAccess" },
-                  networkAccess: false,
-                },
-              },
+              runtimePolicyOverride: { cwd },
             },
             layerRegistry,
           ).pipe(Layer.provide(layerContinuationProbe));
@@ -768,12 +761,31 @@ describe("orchestrator MCP toolkit", () => {
               name: string,
               args: Record<string, unknown>,
             ) =>
-              server
-                .callTool({ name, arguments: args })
-                .pipe(
-                  Effect.provideService(McpInvocationContext.McpInvocationContext, callScope),
-                  Effect.provideService(McpSchema.McpServerClient, client),
-                );
+              server.callTool({ name, arguments: args }).pipe(
+                Effect.provideService(ExecutionHost.McpTurnAdmission, {
+                  actor:
+                    callScope.thread?.threadId !== parentThreadId
+                      ? undefined
+                      : {
+                          runtimeId: "runtime-mcp-parent",
+                          runtimeGeneration: "generation-mcp-parent",
+                          projectId,
+                          threadId: parentThreadId,
+                          runId: parentRun!.id,
+                          attemptId: parentRun!.activeAttemptId!,
+                          providerInstanceId: codexInstanceId,
+                          providerSessionId: parent.providerThreads[0]!.providerSessionId!,
+                          providerThreadId: parent.providerThreads[0]!.id,
+                          nativeGeneration: 1,
+                          nativeThreadRef: parent.providerThreads[0]!.nativeThreadRef,
+                          cwd,
+                        },
+                  requestId: undefined,
+                  assertCurrent: () => Effect.void,
+                }),
+                Effect.provideService(McpInvocationContext.McpInvocationContext, callScope),
+                Effect.provideService(McpSchema.McpServerClient, client),
+              );
             const invoke = (name: string, args: Record<string, unknown>) =>
               invokeAs(invocation, name, args);
 
@@ -1666,9 +1678,10 @@ describe("orchestrator MCP toolkit", () => {
             const retried = yield* invoke("request_secret", {
               label: "GitHub webhook secret",
               reason: "Signs release webhooks. Enter the same value in GitHub's webhook settings.",
+              placeholder: "Paste the webhook secret",
               clientRequestId: "release-webhook-secret",
             });
-            expect(retried.structuredContent).toEqual(secretResult);
+            expect(retried).toMatchObject({ isError: false, structuredContent: secretResult });
             expect(
               (yield* orchestrator.getThreadProjection(parentThreadId)).turnItems.filter(
                 (item) => item.type === "secret_request",
@@ -1952,13 +1965,22 @@ describe("orchestrator MCP toolkit", () => {
             yield* invoke("task_status", { taskId: activeChildFollowup.taskId });
             yield* Ref.set(continuationOffers, []);
 
+            expect(
+              (yield* invoke("delegate_task", {
+                task: delegatedPrompt,
+                target: { providerInstanceId: claudeInstanceId, model: claudeModel },
+                mode: "async",
+                clientRequestId: "delegate-claude-1",
+              })).isError,
+            ).toBe(false);
             const repeatedDelegatedCall = yield* invoke("delegate_task", {
               task: delegatedPrompt,
               target: {
                 providerInstanceId: claudeInstanceId,
                 model: claudeModel,
               },
-              mode: "async",
+              mode: "wait",
+              timeoutMs: 10_000,
               clientRequestId: "delegate-claude-1",
             });
             const repeatedDelegated = yield* decodeDelegateTaskResult(
@@ -2671,6 +2693,60 @@ describe("orchestrator MCP toolkit", () => {
             expect(
               listed.threads.some((thread) => thread.relationshipToParent === "subagent"),
             ).toBe(false);
+
+            const hostedInvoke = (name: string, args: Record<string, unknown>) =>
+              invoke(name, args).pipe(
+                Effect.provideService(ExecutionHost.ExecutionHost, {
+                  threadCreationOwner: "host",
+                  prepareTurn: () => Effect.succeed({}),
+                }),
+              );
+            expect(
+              (yield* hostedInvoke("orchestrator_capabilities", {})).structuredContent,
+            ).toMatchObject({
+              features: { batchThreadCreation: false, maxBatchThreads: 0 },
+            });
+            expect(
+              (yield* hostedInvoke("create_threads", {
+                threads: [{ title: "Unadopted Session" }],
+                clientRequestId: "host-create-denied",
+              })).isError,
+            ).toBe(true);
+            for (const targetThreadId of [foreignThreadId, emptyThread.threadId]) {
+              expect(
+                (yield* hostedInvoke("t3_thread_read", { threadId: targetThreadId })).isError,
+              ).toBe(false);
+              expect(
+                (yield* hostedInvoke("t3_thread_update", {
+                  threadId: targetThreadId,
+                  action: "rename",
+                  title: "Renamed from another project",
+                })).isError,
+              ).toBe(false);
+            }
+            expect(
+              (yield* hostedInvoke("t3_thread_read", { threadId: parentThreadId })).isError,
+            ).toBe(false);
+            expect(
+              (yield* hostedInvoke("t3_thread_list", { projectId: "project:mcp-foreign" })).isError,
+            ).toBe(false);
+            const hostedListCall = yield* hostedInvoke("t3_thread_list", {
+              includeSubagents: false,
+              limit: 100,
+            });
+            expect(hostedListCall).toMatchObject({
+              isError: false,
+              structuredContent: { projectId },
+            });
+            const hostedList = yield* decodeThreadListResult(hostedListCall.structuredContent).pipe(
+              Effect.orDie,
+            );
+            expect(hostedList.threads.map((thread) => thread.threadId)).toEqual(
+              expect.arrayContaining([parentThreadId, emptyThread.threadId]),
+            );
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.title).toBe(
+              "Renamed from another project",
+            );
 
             // A wait-mode delegation whose blocking wait times out no longer
             // owns delivery, so delegate_task upgrades the task to "always".
@@ -3799,6 +3875,310 @@ describe("orchestrator MCP toolkit", () => {
                 thirdFanoutDelivery.messageId,
               ]),
             );
+            // A live native child keeps its original Run after the foreground changes.
+            const lateThreadId = ThreadId.make("thread:mcp-late-native-source");
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:late-source:create"),
+              threadId: lateThreadId,
+              projectId,
+              title: "Native source lifetime",
+              modelSelection: codexSelection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: cwd,
+            });
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:late-source:A"),
+              threadId: lateThreadId,
+              messageId: MessageId.make("message:late-source:A"),
+              text: "Finish foreground A.",
+              attachments: [],
+              modelSelection: codexSelection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            const settledA = yield* waitForProjection(
+              orchestrator,
+              lateThreadId,
+              (projection) => projection.runs[0]?.status === "completed",
+            );
+            const runA = settledA.runs[0]!;
+            const nativeThread = settledA.providerThreads[0]!;
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              createdBy: "user",
+              creationSource: "web",
+              commandId: CommandId.make("command:late-source:B"),
+              threadId: lateThreadId,
+              messageId: MessageId.make("message:late-source:B"),
+              text: cancellationPrompt,
+              attachments: [],
+              modelSelection: codexSelection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            const activeB = yield* waitForProjection(orchestrator, lateThreadId, (projection) =>
+              projection.runs.some((run) => run.ordinal === 2 && run.status === "running"),
+            );
+            const runB = activeB.runs.find((run) => run.ordinal === 2)!;
+            const lateScope = {
+              ...invocation,
+              requestNamespace: "late-native-source",
+              thread: {
+                ...invocation.thread!,
+                threadId: lateThreadId,
+                providerSessionId: nativeThread.providerSessionId!,
+              },
+            };
+            const nativeAlive = yield* Ref.make(true);
+            const assertNativeCurrent = Ref.get(nativeAlive).pipe(
+              Effect.flatMap((alive) =>
+                alive
+                  ? Effect.void
+                  : Effect.fail(
+                      new ExecutionHost.ExecutionHostError({
+                        operation: "native-lifetime",
+                        message: "Native incarnation retired.",
+                      }),
+                    ),
+              ),
+            );
+            const sourceA = {
+              runtimeId: "runtime:late-source",
+              runtimeGeneration: "generation:late-source",
+              projectId,
+              threadId: lateThreadId,
+              runId: runA.id,
+              attemptId: runA.activeAttemptId!,
+              providerInstanceId: codexInstanceId,
+              providerSessionId: nativeThread.providerSessionId!,
+              providerThreadId: nativeThread.id,
+              nativeGeneration: 1,
+              nativeThreadRef: nativeThread.nativeThreadRef,
+              cwd,
+            };
+            const callFrom = (
+              name: string,
+              args: Record<string, unknown>,
+              actor: ExecutionHost.HostExecutionIdentity & {
+                runtimeId: string;
+                runtimeGeneration: string;
+                nativeCallKey?: string;
+              },
+              requestId: string,
+            ) =>
+              server.callTool({ name, arguments: args }).pipe(
+                Effect.provideService(McpInvocationContext.McpInvocationContext, lateScope),
+                Effect.provideService(McpSchema.McpServerClient, client),
+                Effect.provideService(ExecutionHost.McpTurnAdmission, {
+                  actor,
+                  requestId,
+                  assertCurrent: () => assertNativeCurrent,
+                }),
+              );
+            const childRequest = {
+              task: "Delegate from the native child of A.",
+              target: { providerInstanceId: claudeInstanceId, model: claudeModel },
+              mode: "async",
+            };
+            const nativeCall = { ...sourceA, nativeCallKey: "native-tuple:A:child-message:call-1" };
+            const firstLateCall = yield* callFrom(
+              "delegate_task",
+              childRequest,
+              nativeCall,
+              "rpc-subcall-1",
+            );
+            expect(firstLateCall.isError).toBe(false);
+            const lateNativeTask = yield* decodeDelegateTaskResult(
+              firstLateCall.structuredContent,
+            ).pipe(Effect.orDie);
+            const retryLateCall = yield* callFrom(
+              "delegate_task",
+              childRequest,
+              nativeCall,
+              "rpc-subcall-1",
+            );
+            const lateRetry = yield* decodeDelegateTaskResult(retryLateCall.structuredContent).pipe(
+              Effect.orDie,
+            );
+            expect(lateRetry.taskId).toBe(lateNativeTask.taskId);
+            const nestedCall = yield* callFrom(
+              "delegate_task",
+              childRequest,
+              nativeCall,
+              "rpc-subcall-2",
+            );
+            const nestedTask = yield* decodeDelegateTaskResult(nestedCall.structuredContent).pipe(
+              Effect.orDie,
+            );
+            expect(nestedTask.taskId).not.toBe(lateNativeTask.taskId);
+            const nestedRetry = yield* callFrom(
+              "delegate_task",
+              childRequest,
+              nativeCall,
+              "rpc-subcall-2",
+            );
+            expect(
+              (yield* decodeDelegateTaskResult(nestedRetry.structuredContent).pipe(Effect.orDie))
+                .taskId,
+            ).toBe(nestedTask.taskId);
+            yield* waitForProjection(orchestrator, lateThreadId, (projection) =>
+              projection.subagents.some(
+                (task) => task.id === lateNativeTask.taskId && task.result !== null,
+              ),
+            );
+            const followupRequest = {
+              threadId: lateNativeTask.childThreadId,
+              message: "Follow up from captured A.",
+              mode: "queue",
+              clientRequestId: "late-source-followup",
+            };
+            const followupCall = yield* callFrom(
+              "t3_thread_send",
+              followupRequest,
+              nativeCall,
+              "late-followup",
+            );
+            expect(followupCall.isError).toBe(false);
+            const followup = yield* decodeThreadSendResult(followupCall.structuredContent).pipe(
+              Effect.orDie,
+            );
+            const followupRetry = yield* callFrom(
+              "t3_thread_send",
+              followupRequest,
+              nativeCall,
+              "late-followup-retry",
+            );
+            expect(
+              (yield* decodeThreadSendResult(followupRetry.structuredContent).pipe(Effect.orDie))
+                .runId,
+            ).toBe(followup.runId);
+            expect(
+              (yield* orchestrator.getThreadProjection(lateThreadId)).subagents.find(
+                (task) => task.id === followup.taskId,
+              )?.runId,
+            ).toBe(runA.id);
+            const lateProjection = yield* orchestrator.getThreadProjection(lateThreadId);
+            expect(
+              lateProjection.subagents.filter((task) => task.id === lateNativeTask.taskId),
+            ).toHaveLength(1);
+            expect(
+              lateProjection.subagents.find((task) => task.id === lateNativeTask.taskId)?.runId,
+            ).toBe(runA.id);
+            expect(lateProjection.runs.find((run) => run.id === runB.id)?.status).toBe("running");
+
+            const sessionSource: ExecutionHost.HostNativeSessionIdentity & {
+              runtimeId: string;
+              runtimeGeneration: string;
+            } = {
+              ...sourceA,
+              source: "native-session",
+              runId: null,
+              attemptId: null,
+              incarnationId: "physical-native-session",
+            };
+            const unknownDelegate = yield* callFrom(
+              "delegate_task",
+              childRequest,
+              sessionSource,
+              "unknown-parent",
+            );
+            expect(unknownDelegate.isError).toBe(true);
+            expect(declaredFailure(unknownDelegate).code).toBe("invalid_request");
+            const selectedDelegate = yield* callFrom(
+              "delegate_task",
+              { ...childRequest, parentRunId: runA.id },
+              sessionSource,
+              "explicit-parent",
+            );
+            expect(selectedDelegate.isError).toBe(false);
+            const selectedTask = yield* decodeDelegateTaskResult(
+              selectedDelegate.structuredContent,
+            ).pipe(Effect.orDie);
+            expect(
+              (yield* orchestrator.getThreadProjection(lateThreadId)).subagents.find(
+                (task) => task.id === selectedTask.taskId,
+              )?.runId,
+            ).toBe(runA.id);
+
+            const backgroundQuestion = yield* callFrom(
+              "request_secret",
+              {
+                label: "Background credential",
+                reason: "Native child needs an API token.",
+                clientRequestId: "late-question-A",
+              },
+              sourceA,
+              "question-A",
+            ).pipe(Effect.forkScoped);
+            const questionProjection = yield* waitForProjection(
+              orchestrator,
+              lateThreadId,
+              (projection) =>
+                projection.turnItems.some(
+                  (item) =>
+                    item.type === "secret_request" && item.label === "Background credential",
+                ),
+            );
+            const questionA = questionProjection.turnItems.find(
+              (item) => item.type === "secret_request" && item.label === "Background credential",
+            )!;
+            expect(questionA.runId).toBe(runA.id);
+            yield* secretRequests.answer({
+              threadId: lateThreadId,
+              turnItemId: questionA.id,
+              answer: { type: "decline" },
+            });
+            expect((yield* Fiber.join(backgroundQuestion)).structuredContent).toMatchObject({
+              status: "declined",
+            });
+
+            const sessionQuestion = yield* callFrom(
+              "request_secret",
+              {
+                label: "Session credential",
+                reason: "Session-native background work needs a token.",
+                clientRequestId: "session-question",
+              },
+              sessionSource,
+              "question-session",
+            ).pipe(Effect.forkScoped);
+            const sessionQuestionProjection = yield* waitForProjection(
+              orchestrator,
+              lateThreadId,
+              (projection) =>
+                projection.turnItems.some(
+                  (item) => item.type === "secret_request" && item.label === "Session credential",
+                ),
+            );
+            const sessionCard = sessionQuestionProjection.turnItems.find(
+              (item) => item.type === "secret_request" && item.label === "Session credential",
+            )!;
+            expect(sessionCard.runId).toBeNull();
+            expect(sessionCard.nodeId).toBeNull();
+            expect(
+              (yield* orchestrator.getThreadShell(lateThreadId))?.pendingRuntimeRequest,
+            ).toMatchObject({ id: sessionCard.id, kind: "user_input" });
+            expect(
+              threadShellFromProjection(sessionQuestionProjection).pendingRuntimeRequest,
+            ).toMatchObject({ id: sessionCard.id, kind: "user_input" });
+            yield* Ref.set(nativeAlive, false);
+            expect((yield* Fiber.join(sessionQuestion)).isError).toBe(true);
+            expect(
+              (yield* orchestrator.getThreadProjection(lateThreadId)).turnItems.find(
+                (item) => item.id === sessionCard.id,
+              ),
+            ).toMatchObject({ secretStatus: "cancelled" });
+            expect(
+              (yield* orchestrator.getThreadProjection(lateThreadId)).runs.find(
+                (run) => run.id === runB.id,
+              )?.status,
+            ).toBe("running");
           }).pipe(Effect.provide(layerTest));
         }),
       ),
@@ -3931,6 +4311,7 @@ describe("orchestrator MCP toolkit", () => {
           const delegationStartSequence =
             yield* orchestrator.getThreadEventSequence(parentThreadId);
           const delegatedCall = yield* invoke("delegate_task", {
+            parentRunId: (yield* orchestrator.getThreadShell(parentThreadId))!.activeRunId!,
             task: delegatedPrompt,
             target: {
               providerInstanceId: codexInstanceId,

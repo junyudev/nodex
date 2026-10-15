@@ -1,26 +1,23 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { WorkbenchCommandEnvelope } from "../../shared/nodex-app-tools/workbench-commands";
 import { workbenchControlSchemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
-import { WorkbenchContentAccess } from "./WorkbenchContentAccess";
+import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { WorkbenchObservation, type WorkbenchObservationRecord } from "./WorkbenchObservation";
 import { workbenchObservationHandle } from "./workbench-observation-page";
 import { make } from "./WorkbenchControl";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread",
   turnId: "turn",
   rootThreadId: "thread",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const observationId = "00000000-0000-4000-8000-000000000001";
 const record: WorkbenchObservationRecord = {
@@ -65,7 +62,7 @@ const record: WorkbenchObservationRecord = {
           id: "raw-page-id",
           titleSnapshot: "Page",
           kind: "page_stage",
-          config: { pageId: "page", accessContext: { kind: "library" } },
+          config: { pageId: "page", routingContext: { kind: "library" } },
         },
       },
     ],
@@ -122,15 +119,15 @@ const setup = (requests: WorkbenchCommandEnvelope[], snapshot = record) =>
           };
         }),
     } as never),
-    Effect.provideService(WorkbenchContentAccess, {
+    Effect.provideService(WorkbenchContentRouting, {
       describe: () =>
         Effect.succeed({
-          status: "authorized",
+          status: "available",
           kind: "page",
           pageId: "page",
           title: "Page",
           libraryId: "library",
-          displayedAccessContext: { kind: "library" },
+          displayedRoutingContext: { kind: "library" },
         }),
     } as never),
     Effect.provideService(ProjectWorkspace, {} as never),
@@ -171,8 +168,6 @@ it.effect(
         },
       });
       assert.strictEqual(invalid.isError, true);
-      const readOnly = yield* execute({ ...context, authority: { ...authority, readOnly: true } });
-      assert.deepStrictEqual(readOnly.structuredContent, { error: { code: "read_only_turn" } });
       const withdrawn = yield* execute({ ...context, isCurrent: Effect.succeed(false) });
       assert.deepStrictEqual(withdrawn.structuredContent, {
         error: { code: "authority_unavailable" },
@@ -182,10 +177,8 @@ it.effect(
         ...record,
         reference: { ...record.reference, sceneOwner: { kind: "project", projectId: "other" } },
       });
-      assert.deepStrictEqual((yield* otherProject(context)).structuredContent, {
-        error: { code: "access_denied" },
-      });
-      assert.strictEqual(requests.length, 0);
+      assert.isFalse((yield* otherProject(context)).isError ?? false);
+      assert.equal(requests.length, 1);
     }),
 );
 

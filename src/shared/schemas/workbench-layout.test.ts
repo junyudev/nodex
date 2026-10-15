@@ -197,7 +197,7 @@ describe("WorkbenchLayoutSnapshotV4Schema", () => {
         target: {
           kind: "view",
           viewId: "view:alpha",
-          accessProjectId: "alpha",
+          projectId: "alpha",
         },
         returnTo: {
           kind: "empty",
@@ -401,7 +401,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     expect(migrated.scenesByOwnerKey["project:alpha"]?.primary).toMatchObject({
       kind: "db_view",
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         target: { kind: "project-default" },
       },
     });
@@ -422,7 +422,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
       kind: "db_view" as const,
       titleSnapshot: "Library Database",
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         target: { kind: "database-default" as const, databaseId: root.databaseId },
         view: "board" as const,
       },
@@ -440,7 +440,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
           kind: "page_stage" as const,
           titleSnapshot: "Project Page",
           config: {
-            accessContext: { kind: "project" as const, projectId: "legacy" },
+            routingContext: { kind: "project" as const, projectId: "legacy" },
             pageId: "page:project",
           },
           stateKey: 0,
@@ -491,7 +491,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     expect(Object.values(second.scenesByOwnerKey.pages!.panelSurfacesById)[0]).toMatchObject({
       kind: "db_view",
       config: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         target: {
           kind: "database-default",
           databaseId: "database:alpha",
@@ -541,7 +541,7 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
     expect(surface).toMatchObject({
       kind: "page_stage",
       config: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         pageId: root.pageId,
       },
     });

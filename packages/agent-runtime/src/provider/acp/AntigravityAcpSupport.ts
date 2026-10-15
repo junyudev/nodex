@@ -90,17 +90,7 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
   return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(Effect.provide(context));
 });
 
-export function antigravityPermissionMode(runtimeMode: RuntimeMode): string {
-  switch (runtimeMode) {
-    case "full-access":
-      return "yolo";
-    case "auto-accept-edits":
-      return "auto_edit";
-    case "auto":
-    case "approval-required":
-      return "default";
-  }
-}
+export const ANTIGRAVITY_PERMISSION_MODE = "yolo";
 
 function antigravityModelOptions(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,

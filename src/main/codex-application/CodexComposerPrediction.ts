@@ -8,6 +8,9 @@ import * as Fiber from "effect/Fiber";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import { runtimeThread } from "./CodexRuntimeNative";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import type { ServerNotificationParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type {
@@ -122,6 +125,7 @@ export const make = (
     const creations = yield* ThreadCreationRuntime;
     const internalThreads = yield* CodexInternalThreadRegistry;
     const ownerScope = yield* Effect.scope;
+    const application = yield* Effect.serviceOption(AgentRuntimeApplication);
     const entries = new Map<string, Entry>();
     const admissions = new Set<{
       readonly key: string;
@@ -517,6 +521,32 @@ export const make = (
     const request = Effect.fn("CodexComposerPrediction.request")(function* (
       input: CodexComposerPredictionInput,
     ) {
+      if (input.hostId === gateway.localHostId) {
+        const found = yield* runtimeThread(input.threadId, application).pipe(
+          Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
+        );
+        if (found) {
+          const configuration = yield* options.configurationForHost(input.hostId);
+          if (
+            !configuration?.is_enabled ||
+            !configuration.prompt.trim() ||
+            input.latestTurnId === null
+          )
+            return null;
+          return yield* found.connection
+            .request("native.prediction.request", {
+              threadId: input.threadId,
+              latestRunId: input.latestTurnId,
+              generationTrigger: input.generationTrigger,
+              configuration,
+            })
+            .pipe(
+              Effect.map((result) => result as CodexComposerPredictionResult | null),
+              Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
+            );
+        }
+      }
+
       const key = JSON.stringify([input.hostId, input.threadId, input.latestTurnId]);
       const admission = {
         key,
@@ -623,7 +653,18 @@ export const make = (
         scope: hostId,
       };
     });
-    return CodexComposerPrediction.of({ request, clear, availability });
+    return CodexComposerPrediction.of({
+      request,
+      clear: (input) =>
+        clear(input).pipe(
+          Effect.andThen(
+            Option.isSome(application) && (!input || input.hostId === gateway.localHostId)
+              ? application.value.clearPredictions(input?.threadId).pipe(Effect.ignore)
+              : Effect.void,
+          ),
+        ),
+      availability,
+    });
   });
 
 export const NODEX_COMPOSER_PREDICTION_CONFIG_ENV = "NODEX_COMPOSER_PREDICTION_CONFIG";

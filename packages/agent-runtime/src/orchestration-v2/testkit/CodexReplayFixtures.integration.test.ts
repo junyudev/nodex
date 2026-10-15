@@ -112,26 +112,12 @@ const scenarioExpectations = {
     turnCompletedCount: 1,
     approvalRequestCount: 0,
   },
-  tool_call_read_only_on_request: {
-    outgoing: ["initialize", "initialized", "thread/start", "turn/start"],
-    incoming: ["item/commandExecution/requestApproval", "serverRequest/resolved", "turn/completed"],
-    turnStartCount: 1,
-    turnCompletedCount: 1,
-    approvalRequestCount: 1,
-  },
   tool_call_workspace_never: {
     outgoing: ["initialize", "initialized", "thread/start", "turn/start"],
     incoming: ["turn/completed"],
     turnStartCount: 1,
     turnCompletedCount: 1,
     approvalRequestCount: 0,
-  },
-  tool_call_restricted_granular: {
-    outgoing: ["initialize", "initialized", "thread/start", "turn/start"],
-    incoming: ["item/fileChange/requestApproval", "serverRequest/resolved", "turn/completed"],
-    turnStartCount: 1,
-    turnCompletedCount: 1,
-    approvalRequestCount: 1,
   },
   subagent: {
     outgoing: ["initialize", "initialized", "thread/start", "turn/start"],

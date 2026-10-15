@@ -62,6 +62,7 @@ const clientFsProbeLogPath = process.env.T3_ACP_CLIENT_FS_PROBE_LOG_PATH;
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const hangAfterPermission = process.env.T3_ACP_HANG_AFTER_PERMISSION === "1";
 const hangFirstPromptForever = process.env.T3_ACP_HANG_FIRST_PROMPT_FOREVER === "1";
+const hangSecondPromptForever = process.env.T3_ACP_HANG_SECOND_PROMPT_FOREVER === "1";
 const emitLateUpdateAfterCancel = process.env.T3_ACP_EMIT_LATE_UPDATE_AFTER_CANCEL === "1";
 const emitTaskBackgroundedAfterCancel =
   process.env.T3_ACP_EMIT_TASK_BACKGROUNDED_AFTER_CANCEL === "1";
@@ -1340,6 +1341,7 @@ const program = Effect.gen(function* () {
       if (
         hangPromptForever ||
         (hangFirstPromptForever && promptCount === 1) ||
+        (hangSecondPromptForever && promptCount === 2) ||
         (emitEmptySuccessfulBashThenHang && promptCount === 2)
       ) {
         return yield* Effect.never;
@@ -2326,6 +2328,20 @@ const program = Effect.gen(function* () {
   );
 
   yield* agent.handleUnknownExtRequest((method, params) => {
+    if (method === "_test/ask-elicitation") {
+      return agent.client
+        .elicit({
+          sessionId,
+          message: "Which destination should the background task use?",
+          mode: "form",
+          requestedSchema: {
+            type: "object",
+            properties: { destination: { type: "string", title: "Destination" } },
+            required: ["destination"],
+          },
+        })
+        .pipe(Effect.forkDetach, Effect.as({}));
+    }
     if (method === "_test/environment") {
       return Effect.succeed({
         inherited: process.env.T3_ACP_RUNTIME_AMBIENT === "sentinel",

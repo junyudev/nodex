@@ -1,118 +1,71 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
-import { projectCodexMarkdownLabel } from "../../shared/codex-markdown-text";
 import type { ProjectArchiveBlocker, ProjectSessionSummary } from "../../shared/types";
 import {
-  CodexBackgroundProcesses,
-  type CodexBackgroundProcessesError,
-} from "../codex-application/CodexBackgroundProcesses";
-import { CodexConversations } from "../codex-application/CodexConversations";
+  AgentRuntimeApplication,
+  type AgentRuntimeApplicationError,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 
 export interface ProjectArchiveOwnership {
+  readonly project: { readonly id: string };
   readonly sessions: readonly ProjectSessionSummary[];
 }
 
 export class ProjectArchiveBlockers extends Context.Service<
   ProjectArchiveBlockers,
   {
-    /** Reads every live activity owner that makes a Project archive unsafe. */
+    /** Reads the Project's execution metadata, including child Runs and native background work. */
     readonly list: (
       ownership: ProjectArchiveOwnership,
-    ) => Effect.Effect<readonly ProjectArchiveBlocker[], CodexBackgroundProcessesError>;
+    ) => Effect.Effect<readonly ProjectArchiveBlocker[], AgentRuntimeApplicationError>;
   }
 >()("nodex/main/project-application/ProjectArchiveBlockers") {}
-
-const deduplicate = (blockers: readonly ProjectArchiveBlocker[]): ProjectArchiveBlocker[] => {
-  const seen = new Set<string>();
-  return blockers.filter((blocker) => {
-    const key =
-      blocker.kind === "terminal"
-        ? `${blocker.kind}:${blocker.terminalSessionId}`
-        : blocker.kind === "background-process"
-          ? `${blocker.kind}:${blocker.threadId}:${blocker.processId ?? blocker.label ?? "unknown"}`
-          : `${blocker.kind}:${blocker.threadId}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-};
 
 export const live: Layer.Layer<
   ProjectArchiveBlockers,
   never,
-  CodexBackgroundProcesses | CodexConversations | TerminalSessions
+  AgentRuntimeApplication | TerminalSessions
 > = Layer.effect(
   ProjectArchiveBlockers,
   Effect.gen(function* () {
-    const backgroundProcesses = yield* CodexBackgroundProcesses;
-    const conversations = yield* CodexConversations;
+    const execution = yield* AgentRuntimeApplication;
     const terminals = yield* TerminalSessions;
-
     const list = Effect.fn("ProjectArchiveBlockers.list")(function* (
       ownership: ProjectArchiveOwnership,
     ) {
-      const sessionIds = new Set(ownership.sessions.map((session) => session.id));
-      const threadSummaries = ownership.sessions.flatMap((session) =>
-        session.thread ? [session.thread] : [],
-      );
-      const threadIds = [...new Set(threadSummaries.map((thread) => thread.threadId))];
-      const codexThreadIds = [
-        ...new Set(
-          threadSummaries.flatMap((thread) =>
-            isCodexAgentBackendBinding(thread.backendBinding) ? [thread.threadId] : [],
+      const activity = yield* execution.projectActivity(ownership.project.id);
+      const terminalSnapshots = yield* terminals.listLiveSessionsForOwners({
+        conversationIds: new Set(
+          ownership.sessions.flatMap((session) =>
+            session.executionRef ? [session.executionRef.threadId] : [],
           ),
         ),
-      ];
-      const durableThreadById = new Map(
-        threadSummaries.map((thread) => [thread.threadId, thread] as const),
-      );
-      const agentBlockers = threadIds.flatMap<ProjectArchiveBlocker>((threadId) => {
-        const durable = durableThreadById.get(threadId);
-        const current =
-          durable && isCodexAgentBackendBinding(durable.backendBinding)
-            ? conversations.activity(threadId)
-            : { active: false, pending: false, label: null };
-        const label = current.label || projectCodexMarkdownLabel(durable?.threadName);
-        const active = current.active || durable?.statusType === "active";
-        const pending = current.pending || (durable?.statusActiveFlags.length ?? 0) > 0;
-        return [
-          ...(active ? [{ kind: "active-turn", threadId, label } as const] : []),
-          ...(pending ? [{ kind: "pending-request", threadId, label } as const] : []),
-        ];
+        projectSessionIds: new Set(ownership.sessions.map((session) => session.id)),
       });
-      const terminalSnapshots = yield* terminals.listLiveSessionsForOwners({
-        conversationIds: new Set(threadIds),
-        projectSessionIds: sessionIds,
-      });
-      const terminalBlockers = terminalSnapshots.map<ProjectArchiveBlocker>((session) => ({
+      const blockers: ProjectArchiveBlocker[] = terminalSnapshots.map((session) => ({
         kind: "terminal",
         terminalSessionId: session.sessionId,
         projectSessionId: session.projectSessionId,
       }));
-      const processRows = yield* Effect.all(
-        codexThreadIds.map((threadId) => backgroundProcesses.list({ threadId })),
-        { concurrency: "unbounded" },
-      );
-      const processBlockers = processRows.flatMap((rows) =>
-        rows.flatMap<ProjectArchiveBlocker>((row) =>
-          row.status === "running"
-            ? [
-                {
-                  kind: "background-process",
-                  threadId: row.threadId,
-                  processId: row.processId,
-                  label: row.command.trim() || row.threadTitle?.trim() || null,
-                },
-              ]
-            : [],
-        ),
-      );
-      return deduplicate([...agentBlockers, ...terminalBlockers, ...processBlockers]);
+      if (activity.run)
+        blockers.push({ kind: "active-turn", threadId: activity.run.threadId, label: null });
+      if (activity.runtimeRequest)
+        blockers.push({
+          kind: "pending-request",
+          threadId: activity.runtimeRequest.threadId,
+          label: null,
+        });
+      if (activity.nativeBackground)
+        blockers.push({
+          kind: "background-process",
+          threadId: activity.nativeBackground.threadId,
+          processId: activity.nativeBackground.taskId,
+          label: null,
+        });
+      return blockers;
     });
-
     return ProjectArchiveBlockers.of({ list });
   }),
 );

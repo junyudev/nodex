@@ -15,40 +15,29 @@ import {
   makeScheduledAutomation,
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
-  cleanBackgroundTerminalsCalls,
-  editLastUserTurnCalls,
   getHeaderShellSlot,
   getLastThreadStageActions,
   installTerminalEventApiMock,
   invokeCalls,
   mockInvokeImpl,
   pendingWorktreeWarningListener,
-  removePlanImplementationRequestCalls,
-  removeQueuedFollowUpCalls,
   renderWorkbench,
   rendererCommandPayload,
-  reorderQueuedFollowUpsCalls,
   requestThreadStreamSnapshotCalls,
-  sendQueuedFollowUpNowCalls,
   setComposerIntentCalls,
   setWindowInnerWidthForTest,
-  startThreadForSessionCalls,
+  agentRuntimeLaunchCalls,
   setMockInvokeImpl,
-  setStartThreadForSessionResult,
 } from "./workbench-testkit/workbench-shell-harness";
 import { isUuidV7 } from "../../../shared/uuid-v7";
 
 function expectFirstSubmissionIdentity(input: unknown): void {
-  const firstSubmission = (
-    input as {
-      readonly firstSubmission?: {
-        readonly launchId?: string;
-        readonly clientUserMessageId?: string;
-      };
-    }
-  ).firstSubmission;
-  expect(isUuidV7(firstSubmission?.launchId ?? "")).toBe(true);
-  expect(isUuidV7(firstSubmission?.clientUserMessageId ?? "")).toBe(true);
+  const launch = input as {
+    readonly launchId?: string;
+    readonly message?: { readonly messageId: string };
+  };
+  expect(isUuidV7(launch.launchId ?? "")).toBe(true);
+  expect(isUuidV7(launch.message?.messageId ?? "")).toBe(true);
 }
 
 async function selectScheduledModel(screen: ReturnType<typeof renderWorkbench>, name: string) {
@@ -320,7 +309,7 @@ describe("workbench session shell / automations-conversation", () => {
       id: "automation-autosave",
       kind: "cron",
       projectId: "alpha",
-      targetThreadId: null,
+      targetSessionId: null,
       name: "Autosave report",
       prompt: "Summarize the project.",
       rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
@@ -400,7 +389,7 @@ describe("workbench session shell / automations-conversation", () => {
       id: "automation-model-flush",
       kind: "cron",
       projectId: "alpha",
-      targetThreadId: null,
+      targetSessionId: null,
       name: "Model flush report",
       prompt: "Summarize the project model choice.",
       rrule: "DTSTART;TZID=Asia/Shanghai:20260710T090000\nRRULE:FREQ=DAILY",
@@ -458,7 +447,7 @@ describe("workbench session shell / automations-conversation", () => {
       id: "automation-history-open",
       kind: "cron",
       projectId: "alpha",
-      targetThreadId: null,
+      targetSessionId: null,
       name: "History open task",
       prompt: "Summarize the run before opening.",
       rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
@@ -470,13 +459,21 @@ describe("workbench session shell / automations-conversation", () => {
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
       sessionsByProject: {
-        alpha: [makeAttachedSession({ id: "session:alpha:automation-history-open" })],
+        alpha: [
+          makeAttachedSession({ id: "session:alpha:automation-history-open" }),
+          makeAttachedSession({
+            id: "session:thread-run-open",
+            threadId: "thread-run-open",
+            executionRef: { runtimeId: "engine", threadId: "thread-run-open" },
+          }),
+        ],
       },
       scheduledAutomations: [automation],
       automationInboxItems: [
         makeAutomationInboxItem({
           id: "thread-run-open",
-          threadId: "thread-run-open",
+          runId: "thread-run-open",
+          sessionId: "session:thread-run-open",
           automationId: "automation-history-open",
           automationName: "History open task",
           title: "Openable history run",
@@ -523,7 +520,15 @@ describe("workbench session shell / automations-conversation", () => {
       expect(saved?.model).toBe("gpt-5.5-high");
       expect(saved?.reasoningEffort).toBe("high");
       expect(screen.container.querySelector('[data-testid="automations-route-shell"]')).toBe(null);
-      expect(textContent(screen.container).includes("Thread:thread-run-open")).toBe(true);
+      const opened = screen.container.querySelector<HTMLElement>(
+        '[data-workbench-scene-owner="session:session:thread-run-open"]',
+      );
+      expect(opened).not.toBeNull();
+      expect(
+        opened
+          ?.querySelector('[data-testid="session-thread-page"]')
+          ?.getAttribute("data-session-thread-page-hidden"),
+      ).toBe("false");
     });
 
     await act(async () => {
@@ -595,7 +600,6 @@ describe("workbench session shell / automations-conversation", () => {
           rendererCommandPayload(call)?.projectId === "alpha",
       ),
     ).toBe(true);
-    expect(startThreadForSessionCalls.length).toBe(0);
   });
 
   test("automations route confirms before discarding a changed create draft", async () => {
@@ -723,15 +727,15 @@ describe("workbench session shell / automations-conversation", () => {
     await settleAsyncRender();
 
     await waitFor(() => {
-      expect(startThreadForSessionCalls.length).toBe(1);
+      expect(agentRuntimeLaunchCalls.length).toBe(1);
     });
-    const startInput = startThreadForSessionCalls[0] as
+    const startInput = agentRuntimeLaunchCalls[0] as
       | {
           projectId?: string;
           sessionId?: string;
-          prompt?: string;
+          message?: { text: string };
           runInTarget?: string;
-          collaborationMode?: string;
+          interactionMode?: string;
         }
       | undefined;
     const createSessionPayload = rendererCommandPayload(
@@ -746,12 +750,10 @@ describe("workbench session shell / automations-conversation", () => {
     expect(startInput?.projectId).toBe("alpha");
     expect(startInput?.sessionId).toBe(createSessionId);
     expect(startInput?.runInTarget).toBe("localProject");
-    expect(startInput?.collaborationMode).toBe("default");
-    expect(startInput?.prompt?.includes('mode: "suggested_create"')).toBe(true);
-    expect(startInput?.prompt?.includes('Template: "Daily bug scan"')).toBe(true);
-    expect(JSON.stringify(requestThreadStreamSnapshotCalls)).toBe(
-      JSON.stringify(["thread-started"]),
-    );
+    expect(startInput?.interactionMode).toBe("default");
+    expect(startInput?.message?.text.includes('mode: "suggested_create"')).toBe(true);
+    expect(startInput?.message?.text.includes('Template: "Daily bug scan"')).toBe(true);
+    expect(JSON.stringify(requestThreadStreamSnapshotCalls)).toBe(JSON.stringify([]));
     expect(screen.container.querySelector('[data-testid="automations-route-shell"]')).toBe(null);
   });
 
@@ -853,20 +855,20 @@ describe("workbench session shell / automations-conversation", () => {
       id: "automation-running",
       name: "Running report",
       prompt: "Summarize the current report.",
-      targetThreadId: "thread-running",
+      targetSessionId: "thread-running",
     });
     const active = makeScheduledAutomation({
       id: "automation-active",
       name: "Runnable task",
       prompt: "Run this on demand.",
-      targetThreadId: "thread-active",
+      targetSessionId: "thread-active",
     });
     const paused = makeScheduledAutomation({
       id: "automation-paused",
       name: "Paused task",
       prompt: "Resume this later.",
       status: "PAUSED",
-      targetThreadId: "thread-paused",
+      targetSessionId: "thread-paused",
       nextRunAt: null,
     });
     const screen = renderWorkbench({
@@ -881,7 +883,8 @@ describe("workbench session shell / automations-conversation", () => {
           automationName: "Running report",
           status: "IN_PROGRESS",
           readAt: null,
-          threadId: "thread-run-running",
+          runId: "thread-run-running",
+          sessionId: "session:thread-run-running",
         }),
       ],
     });
@@ -993,7 +996,7 @@ describe("workbench session shell / automations-conversation", () => {
       id: "automation-optimistic",
       name: "Optimistic task",
       prompt: "Pause this optimistically.",
-      targetThreadId: "thread-optimistic",
+      targetSessionId: "thread-optimistic",
     });
     const screen = renderWorkbench({
       sessionsByProject: {
@@ -1117,7 +1120,6 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => {
       expect(promptInput.value).toBe(firstSuggestion.prompt);
     });
-    expect(startThreadForSessionCalls.length).toBe(0);
   });
 
   test("automations route reports run-now host failures with the scheduled task toast title", async () => {
@@ -1245,7 +1247,7 @@ describe("workbench session shell / automations-conversation", () => {
       projectId: "alpha",
       name: "History task",
       prompt: "Summarize the previous run history.",
-      targetThreadId: null,
+      targetSessionId: null,
       model: "gpt-5",
       reasoningEffort: "low",
       cwds: ["/tmp/project-alpha"],
@@ -1258,7 +1260,8 @@ describe("workbench session shell / automations-conversation", () => {
       automationInboxItems: [
         makeAutomationInboxItem({
           id: "thread-run-latest",
-          threadId: "thread-run-latest",
+          runId: "thread-run-latest",
+          sessionId: "session:thread-run-latest",
           automationId: "automation-history",
           automationName: "History task",
           title: "Latest history run",
@@ -1270,7 +1273,8 @@ describe("workbench session shell / automations-conversation", () => {
         }),
         makeAutomationInboxItem({
           id: "thread-run-archived",
-          threadId: "thread-run-archived",
+          runId: "thread-run-archived",
+          sessionId: "session:thread-run-archived",
           automationId: "automation-history",
           automationName: "History task",
           title: "Archived history run",
@@ -1282,7 +1286,8 @@ describe("workbench session shell / automations-conversation", () => {
         }),
         makeAutomationInboxItem({
           id: "thread-run-other",
-          threadId: "thread-run-other",
+          runId: "thread-run-other",
+          sessionId: "session:thread-run-other",
           automationId: "automation-other",
           automationName: "Other task",
           title: "Other task run",
@@ -1326,7 +1331,7 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => {
       const latest = screen
         .getAutomationInboxItems()
-        .find((item) => item.threadId === "thread-run-latest");
+        .find((item) => item.runId === "thread-run-latest");
       expect(latest?.readAt !== null).toBe(true);
     });
 
@@ -1352,7 +1357,7 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => {
       const latest = screen
         .getAutomationInboxItems()
-        .find((item) => item.threadId === "thread-run-latest");
+        .find((item) => item.runId === "thread-run-latest");
       expect(latest?.status).toBe("ARCHIVED");
     });
 
@@ -1372,7 +1377,7 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => {
       const archived = screen
         .getAutomationInboxItems()
-        .find((item) => item.threadId === "thread-run-archived");
+        .find((item) => item.runId === "thread-run-archived");
       expect(archived?.status).toBe("ACCEPTED");
     });
 
@@ -1398,7 +1403,7 @@ describe("workbench session shell / automations-conversation", () => {
     await waitFor(() => {
       const archived = screen
         .getAutomationInboxItems()
-        .find((item) => item.threadId === "thread-run-archived");
+        .find((item) => item.runId === "thread-run-archived");
       expect(archived?.status).toBe("ARCHIVED");
       expect(
         __getNodexToastSnapshotForTests().some(
@@ -1424,28 +1429,31 @@ describe("workbench session shell / automations-conversation", () => {
     });
     await settleAsyncRender();
 
-    expect(startThreadForSessionCalls.length).toBe(1);
-    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
-    expect(startThreadForSessionCalls[0]).toMatchObject({
+    expect(agentRuntimeLaunchCalls.length).toBe(1);
+    expectFirstSubmissionIdentity(agentRuntimeLaunchCalls[0]);
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
       projectId: "alpha",
       sessionId: "session:alpha:blank",
-      prompt: "Start from session",
+      message: { text: "Start from session" },
       runInTarget: "localProject",
       runInEnvironmentPath: null,
-      collaborationMode: "default",
-      browserUsePresentationOrigin: {
-        browserConversationId: "session:alpha:blank",
-        browserViewScopeId: "window-session:test",
-      },
+      interactionMode: "default",
     });
     expect(
       invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "alpha"),
     ).toBe(true);
   });
 
-  test("inline message edit calls rollback edit without refreshing source-null snapshot or seeding composer intent", async () => {
+  test("inline message edit settles Session rollback before dispatching the replacement prompt", async () => {
     renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession()] },
+      sessionsByProject: {
+        alpha: [
+          makeAttachedSession({
+            thread: null,
+            executionRef: { runtimeId: "runtime:test", threadId: "thread-alpha" },
+          }),
+        ],
+      },
     });
     await settleAsyncRender();
     await settleAsyncRender();
@@ -1465,105 +1473,69 @@ describe("workbench session shell / automations-conversation", () => {
     });
     await settleAsyncRender();
 
-    expect(JSON.stringify(editLastUserTurnCalls)).toBe(
-      JSON.stringify([["thread-alpha", "turn-latest", "Rewrite the latest prompt"]]),
-    );
+    const rollback = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:rollback");
+    const message = invokeCalls.findIndex((call) => call[0] === "agent-runtime:session:message");
+    expect(rollback).toBeGreaterThanOrEqual(0);
+    expect(message).toBeGreaterThan(rollback);
+    expect(invokeCalls[rollback]?.[1]).toMatchObject({
+      sessionId: "session:alpha:database-view",
+      threadId: "thread-alpha",
+      runId: "turn-latest",
+    });
+    expect(invokeCalls[message]?.[1]).toMatchObject({
+      sessionId: "session:alpha:database-view",
+      threadId: "thread-alpha",
+      message: { text: "Rewrite the latest prompt" },
+    });
     expect(JSON.stringify(requestThreadStreamSnapshotCalls)).toBe(JSON.stringify([]));
     expect(setComposerIntentCalls.length).toBe(0);
   });
 
-  test("session thread actions wire queued follow-up, plan, and background terminal commands", async () => {
+  test("session queue actions control canonical Runs without a native Thread writer", async () => {
     renderWorkbench({
-      sessionsByProject: { alpha: [makeAttachedSession()] },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const actions = getLastThreadStageActions();
-    for (const actionName of [
-      "onRemoveQueuedFollowUp",
-      "onReorderQueuedFollowUps",
-      "onSendQueuedFollowUpNow",
-      "onEditQueuedFollowUp",
-      "onResolvePlanImplementationRequest",
-      "onCleanBackgroundTerminals",
-    ]) {
-      expect(typeof actions[actionName]).toBe("function");
-    }
-
-    await act(async () => {
-      await (
-        actions.onRemoveQueuedFollowUp as (threadId: string, followUpId: string) => Promise<void>
-      )("thread-alpha", "follow-1");
-      await (
-        actions.onReorderQueuedFollowUps as (
-          threadId: string,
-          orderedFollowUpIds: string[],
-        ) => Promise<void>
-      )("thread-alpha", ["follow-2", "follow-1"]);
-      await (
-        actions.onSendQueuedFollowUpNow as (threadId: string, followUpId: string) => Promise<void>
-      )("thread-alpha", "follow-2");
-      await (
-        actions.onEditQueuedFollowUp as (input: {
-          threadId: string;
-          followUpId: string;
-          prompt: string;
-          promptInput?: unknown;
-          ledgerRevision?: number;
-        }) => Promise<void>
-      )({
-        threadId: "thread-alpha",
-        followUpId: "follow-3",
-        prompt: "Edit queued message",
-        ledgerRevision: 7,
-        promptInput: {
-          text: "Edit queued message",
-          mentions: [{ name: "README.md", path: "/repo/README.md" }],
-        },
-      });
-      await (
-        actions.onResolvePlanImplementationRequest as (
-          threadId: string,
-          turnId: string,
-        ) => Promise<void>
-      )("thread-alpha", "turn-plan");
-      await (actions.onCleanBackgroundTerminals as (threadId: string) => Promise<void>)(
-        "thread-alpha",
-      );
-    });
-    await settleAsyncRender();
-
-    expect(JSON.stringify(removeQueuedFollowUpCalls)).toBe(
-      JSON.stringify([["thread-alpha", "follow-1"]]),
-    );
-    expect(JSON.stringify(reorderQueuedFollowUpsCalls)).toBe(
-      JSON.stringify([["thread-alpha", ["follow-2", "follow-1"]]]),
-    );
-    expect(JSON.stringify(sendQueuedFollowUpNowCalls)).toBe(
-      JSON.stringify([["thread-alpha", "follow-2"]]),
-    );
-    expect(JSON.stringify(setComposerIntentCalls)).toBe(
-      JSON.stringify([
-        [
-          "thread-alpha",
-          {
-            prompt: "Edit queued message",
-            promptInput: {
-              text: "Edit queued message",
-              mentions: [{ name: "README.md", path: "/repo/README.md" }],
-            },
-            queuedFollowUpEdit: { followUpId: "follow-3", ledgerRevision: 7 },
-            focusNonce: (setComposerIntentCalls[0]?.[1] as { focusNonce?: number } | undefined)
-              ?.focusNonce,
-          },
+      sessionsByProject: {
+        alpha: [
+          makeAttachedSession({
+            thread: null,
+            executionRef: { runtimeId: "runtime:test", threadId: "thread-alpha" },
+          }),
         ],
-      ]),
-    );
-    expect(JSON.stringify(removePlanImplementationRequestCalls)).toBe(
-      JSON.stringify([["thread-alpha", "turn-plan"]]),
-    );
-    expect(JSON.stringify(cleanBackgroundTerminalsCalls)).toBe(JSON.stringify(["thread-alpha"]));
+      },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    const actions = getLastThreadStageActions() as unknown as {
+      onRemoveQueuedFollowUp: (threadId: string, runId: string) => Promise<void>;
+      onReorderQueuedFollowUps: (threadId: string, ids: string[]) => Promise<void>;
+      onSendQueuedFollowUpNow: (threadId: string, runId: string) => Promise<void>;
+    };
+    await act(async () => {
+      await actions.onRemoveQueuedFollowUp("thread-alpha", "queued:one");
+      await actions.onReorderQueuedFollowUps("thread-alpha", ["queued:two", "queued:one"]);
+      await actions.onSendQueuedFollowUpNow("thread-alpha", "queued:two");
+    });
+    const commands = invokeCalls
+      .filter((call) => call[0] === "agent-runtime:session:queue")
+      .map((call) => call[1]);
+    expect(commands).toEqual([
+      expect.objectContaining({
+        sessionId: "session:alpha:database-view",
+        threadId: "thread-alpha",
+        action: "cancel",
+        runId: "queued:one",
+      }),
+      expect.objectContaining({
+        sessionId: "session:alpha:database-view",
+        threadId: "thread-alpha",
+        action: "reorder",
+        orderedRunIds: ["queued:two", "queued:one"],
+      }),
+      expect.objectContaining({
+        sessionId: "session:alpha:database-view",
+        threadId: "thread-alpha",
+        action: "resume",
+      }),
+    ]);
   });
 
   test("session composer submit creates an owning session when the new-chat project changes", async () => {
@@ -1615,7 +1587,7 @@ describe("workbench session shell / automations-conversation", () => {
           rendererCommandPayload(call)?.projectId === "beta",
       ),
     ).toBe(true);
-    expect(startThreadForSessionCalls.length).toBe(1);
+    expect(agentRuntimeLaunchCalls.length).toBe(1);
     const betaSessionId = rendererCommandPayload(
       invokeCalls.find(
         (call) =>
@@ -1623,18 +1595,14 @@ describe("workbench session shell / automations-conversation", () => {
           rendererCommandPayload(call)?.projectId === "beta",
       ),
     )?.candidateSessionId;
-    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
-    expect(startThreadForSessionCalls[0]).toMatchObject({
+    expectFirstSubmissionIdentity(agentRuntimeLaunchCalls[0]);
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
       projectId: "beta",
       sessionId: betaSessionId,
-      prompt: "Start from session",
+      message: { text: "Start from session" },
       runInTarget: "localProject",
       runInEnvironmentPath: null,
-      collaborationMode: "default",
-      browserUsePresentationOrigin: {
-        browserConversationId: betaSessionId,
-        browserViewScopeId: "window-session:test",
-      },
+      interactionMode: "default",
     });
     expect(
       invokeCalls.some((call) => call[0] === "workspace:tasks:list" && call[1] === "beta"),
@@ -1642,12 +1610,6 @@ describe("workbench session shell / automations-conversation", () => {
   });
 
   test("session composer submit passes the selected new-worktree target", async () => {
-    setStartThreadForSessionResult({
-      kind: "pending",
-      hostId: "local",
-      pendingWorktreeId: "local:pending-session-composer",
-      clientThreadId: "client-new-thread:pending-session-composer",
-    });
     const screen = renderWorkbench({
       projects: [makeProject("alpha", "Alpha", "/tmp/project")],
       sessionsByProject: { alpha: [makeBlankSession()] },
@@ -1684,21 +1646,17 @@ describe("workbench session shell / automations-conversation", () => {
     });
     await settleAsyncRender();
 
-    expect(startThreadForSessionCalls.length).toBe(1);
-    expectFirstSubmissionIdentity(startThreadForSessionCalls[0]);
-    expect(startThreadForSessionCalls[0]).toMatchObject({
+    expect(agentRuntimeLaunchCalls.length).toBe(1);
+    expectFirstSubmissionIdentity(agentRuntimeLaunchCalls[0]);
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
       projectId: "alpha",
       sessionId: "session:alpha:blank",
-      prompt: "Start from session",
+      message: { text: "Start from session" },
       runInTarget: "newWorktree",
       runInEnvironmentPath: null,
-      collaborationMode: "default",
-      browserUsePresentationOrigin: {
-        browserConversationId: "session:alpha:blank",
-        browserViewScopeId: "window-session:test",
-      },
+      interactionMode: "default",
     });
-    expect(screen.getByTestId("pending-worktree-route-shell") !== null).toBe(true);
+    expect(screen.queryByTestId("pending-worktree-route-shell")).toBeNull();
     expect(
       invokeCalls.filter((call) => call[0] === "project-sessions:list" && call[1] === "alpha")
         .length,

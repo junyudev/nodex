@@ -32,7 +32,6 @@ export const DEFAULT_WINDOW_RESTORE_SETTINGS: WindowRestoreSettings = { policy: 
 
 export const DEFAULT_THREAD_NOTIFICATION_SETTINGS: ThreadNotificationSettings = {
   turnMode: "unfocused",
-  permissionsEnabled: true,
   questionsEnabled: true,
 };
 
@@ -54,15 +53,11 @@ export function normalizeThreadNotificationSettings(value: unknown): ThreadNotif
   ) {
     return DEFAULT_THREAD_NOTIFICATION_SETTINGS;
   }
-  if (
-    typeof candidate.permissionsEnabled !== "boolean" ||
-    typeof candidate.questionsEnabled !== "boolean"
-  ) {
+  if (typeof candidate.questionsEnabled !== "boolean") {
     return DEFAULT_THREAD_NOTIFICATION_SETTINGS;
   }
   return {
     turnMode: candidate.turnMode,
-    permissionsEnabled: candidate.permissionsEnabled,
     questionsEnabled: candidate.questionsEnabled,
   };
 }
@@ -75,10 +70,7 @@ const equalWindowRestoreSettings = (
 const equalThreadNotificationSettings = (
   left: ThreadNotificationSettings,
   right: ThreadNotificationSettings,
-): boolean =>
-  left.turnMode === right.turnMode &&
-  left.permissionsEnabled === right.permissionsEnabled &&
-  left.questionsEnabled === right.questionsEnabled;
+): boolean => left.turnMode === right.turnMode && left.questionsEnabled === right.questionsEnabled;
 
 let windowRestoreOwners = new WeakMap<
   QueryClient,

@@ -5,17 +5,13 @@ import {
   ProjectId,
   ProviderInstanceId,
   type RuntimeMode,
-  type ServerProvider,
   ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as Stream from "effect/Stream";
 
-import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
-import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 
@@ -61,31 +57,7 @@ function makeThread(input: {
   };
 }
 
-// Grok's instance offers no Auto-accept edits; the Codex instance advertises no
-// restriction.
-const grokInstanceId = ProviderInstanceId.make("grok");
-const supportedRuntimeModesByInstance = new Map<ProviderInstanceId, ReadonlyArray<RuntimeMode>>([
-  [grokInstanceId, ["approval-required", "auto", "full-access"]],
-]);
-const providerInstanceFor = (instanceId: ProviderInstanceId) =>
-  ({
-    snapshot: {
-      getSnapshot: Effect.succeed({
-        supportedRuntimeModes: supportedRuntimeModesByInstance.get(instanceId),
-      } as ServerProvider),
-    },
-  }) as ProviderInstance;
-
 const layerTest = RuntimePolicy.layerFromProjectStore.pipe(
-  Layer.provide(
-    Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
-      getInstance: (instanceId) => Effect.succeed(providerInstanceFor(instanceId)),
-      listInstances: Effect.succeed([]),
-      listUnavailable: Effect.succeed([]),
-      streamChanges: Stream.empty,
-      subscribeChanges: Effect.never,
-    }),
-  ),
   Layer.provide(
     Layer.mock(ProjectStore.ProjectStoreV2)({
       get: () =>
@@ -134,23 +106,17 @@ it.layer(layerTest)("RuntimePolicyV2", (it) => {
     }),
   );
 
-  it.effect("runs a mode the provider does not offer in Supervised", () =>
+  it.effect("uses full access while preserving planning and working-directory context", () =>
     Effect.gen(function* () {
       const policy = yield* RuntimePolicy.RuntimePolicyV2;
       const now = yield* DateTime.now;
-      const modeFor = (instanceId: ProviderInstanceId, runtimeMode: RuntimeMode) =>
-        policy
-          .resolve({
-            thread: makeThread({ now, worktreePath: null, runtimeMode }),
-            modelSelection: { instanceId, model: "test-model" },
-          })
-          .pipe(Effect.map((resolved) => resolved.runtimeMode));
-
-      assert.equal(yield* modeFor(grokInstanceId, "auto-accept-edits"), "approval-required");
-      assert.equal(yield* modeFor(grokInstanceId, "auto"), "auto");
-      assert.equal(yield* modeFor(grokInstanceId, "full-access"), "full-access");
-      // A provider that advertises no restriction runs every mode as stored.
-      assert.equal(yield* modeFor(providerInstanceId, "auto-accept-edits"), "auto-accept-edits");
+      const resolved = yield* policy.resolve({
+        thread: { ...makeThread({ now, worktreePath: null }), interactionMode: "plan" },
+        modelSelection,
+      });
+      assert.equal(resolved.runtimeMode, "full-access");
+      assert.equal(resolved.interactionMode, "plan");
+      assert.equal(resolved.cwd, "/project-root");
     }),
   );
 });

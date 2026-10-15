@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { ChevronRightIcon, PageIcon } from "@/components/shared/icons";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
   LibraryPageBacklink,
   LibraryPageReferencePresentation,
@@ -117,26 +117,26 @@ export function ReferencedBySection({
 }
 
 export function PageStageReferencedBy({
-  accessContext,
+  routingContext,
   pageId,
   onOpenPage,
 }: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly onOpenPage?: (input: {
-    readonly accessContext: ContentAccessContext;
+    readonly routingContext: ContentRoutingContext;
     readonly pageId: string;
     readonly titleSnapshot?: string;
     readonly sourceBlockId?: string;
   }) => void | Promise<void>;
 }) {
-  const backlinks = usePageBacklinks(accessContext, pageId);
+  const backlinks = usePageBacklinks(routingContext, pageId);
   return (
     <ReferencedBySection
       {...backlinks}
       onOpen={(item) => {
         void onOpenPage?.({
-          accessContext,
+          routingContext,
           pageId: item.sourcePageId,
           titleSnapshot: item.sourceTitle,
           sourceBlockId: item.sourceBlockId,

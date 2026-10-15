@@ -27,6 +27,7 @@ describe("application test ownership", () => {
     ["src/renderer/behavior.browser.test.tsx", "browser", "default"],
     ["packages/landing/src/download-cta.jsdom.test.ts", "renderer", "default"],
     ["packages/effect-codex-app-server/src/client.test.ts", "effect-codex", "default"],
+    ["packages/agent-runtime/src/nodex/Authority.test.ts", "agent-runtime", "default"],
     [YJS_YRS_TEST, "core-client", "default"],
   ])("assigns %s to one runtime and tier", (file, suite, tier) => {
     expect(ownersOfTest(file)).toEqual([{ suite, tier }]);

@@ -255,3 +255,18 @@ test("Codex background rows retain the host overview query without native observ
   ).toBe(0);
   view.unmount();
 });
+
+test("app-owned Codex children use runtime observations without opening the legacy overview", async () => {
+  mocks.readOverview.mockClear();
+  mocks.subscribeEvents.mockClear();
+  const source = fixture("codex");
+  const view = mount({ ...source.runtime, sessionId: "root-session" });
+  await waitFor(() => expect(view.getByLabelText("Task reply").textContent).toBe("Review started"));
+  expect(mocks.readOverview).not.toHaveBeenCalled();
+  expect(mocks.subscribeEvents).not.toHaveBeenCalled();
+  await act(async () => source.updateChild("Review complete", false));
+  await waitFor(() => expect(view.getByLabelText("Task status").textContent).toBe("done"));
+  view.unmount();
+  expect(source.listeners.get("parent")?.size).toBe(0);
+  expect(source.listeners.get(source.childId)?.size).toBe(0);
+});

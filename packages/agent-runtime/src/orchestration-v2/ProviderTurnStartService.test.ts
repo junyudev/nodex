@@ -80,6 +80,7 @@ it("does not commit running state when inherited background routing cannot be re
     checkpointScopes: [{ id: checkpointScopeId }],
     contextHandoffs: [],
     contextTransfers: [],
+    providerTurns: [],
     turnItems: [],
   } as unknown as OrchestrationV2ThreadProjection;
   let projectionReadCount = 0;
@@ -92,7 +93,7 @@ it("does not commit running state when inherited background routing cannot be re
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
-        Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({}),
+        Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({ historyBudget: 16000 }),
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
         IdAllocator.layer,
         Layer.succeed(FileSystem.FileSystem, { exists: () => Effect.succeed(false) } as never),
@@ -108,6 +109,7 @@ it("does not commit running state when inherited background routing cannot be re
             projectionReadCount += 1;
             return Effect.succeed({
               ...projection,
+              ...ProjectionStore.turnStartFactsFromProjection(projection, runId),
               hasConversation: projection.messages.some(
                 (m) =>
                   m.role === "user" &&
@@ -487,6 +489,7 @@ function makeLocalCommandHarness(input: {
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ContextHandoffService.ContextHandoffServiceV2)({
+          historyBudget: 16000,
           prepareProviderHandoff: () => Effect.die("history read must fail first"),
         }),
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
@@ -498,6 +501,7 @@ function makeLocalCommandHarness(input: {
           getTurnStartContext: () =>
             Effect.succeed({
               ...projection,
+              ...ProjectionStore.turnStartFactsFromProjection(projection, runId),
               hasConversation: projection.messages.some(
                 (m) =>
                   m.role === "user" &&
@@ -507,19 +511,31 @@ function makeLocalCommandHarness(input: {
           getRuntimeRecoveryProjection: () =>
             Effect.as(failReadIfRunning, {
               ...projection,
+              ...ProjectionStore.turnStartFactsFromProjection(projection, runId),
               hasConversation: projection.messages.some(
                 (m) =>
                   m.role === "user" &&
                   (m.text.trim().toLowerCase() !== "/compact" || m.attachments.length > 0),
               ),
             }),
-          getTurnStartHistory: () =>
-            Effect.fail(
-              new ProjectionStore.ProjectionStoreReadError({
-                threadId,
-                cause: input.historyReadFailureAfterFallback,
-              }),
-            ),
+          hasNativeTurns: () => Effect.succeed(false),
+          getHandoffHistory: () =>
+            input.historyReadFailureAfterFallback === undefined
+              ? Effect.succeed({
+                  sourceItemCount: 0,
+                  sourceRunCount: 0,
+                  sourceSelections: [],
+                  history: { messages: [], coverage: "", omittedItems: 0 },
+                  context: "",
+                  coveredRunOrdinals: { from: 1, to: 1 },
+                  fromProviderThreadIds: [],
+                })
+              : Effect.fail(
+                  new ProjectionStore.ProjectionStoreReadError({
+                    threadId,
+                    cause: input.historyReadFailureAfterFallback,
+                  }),
+                ),
         }),
         Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({ open }),
         Layer.mock(ProviderAuthService.ProviderAuthService)({ tryHandlePromptCommand }),

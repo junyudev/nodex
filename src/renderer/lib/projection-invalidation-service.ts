@@ -14,8 +14,6 @@ export const getRendererProjectionInvalidationRegistry = () => {
     effectRepairBurst: INTERACTIVE_PROJECTION_REPAIR_BURST,
     subscribeProjection: (scope, listener) =>
       resolveRendererTransport().subscribeProjectionStream(scope, listener),
-    subscribeRevocations: (scope, listener) =>
-      resolveRendererTransport().subscribeResourceRevocations(scope, listener),
   });
   return rendererRegistry;
 };

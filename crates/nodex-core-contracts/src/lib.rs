@@ -13,7 +13,7 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-pub const CORE_EVENT_VERSION: u32 = 10;
+pub const CORE_EVENT_VERSION: u32 = 11;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(transparent)]
@@ -162,7 +162,6 @@ pub struct ModuleReadSnapshot<T> {
     pub contract_version: u32,
     pub store_epoch: StoreEpoch,
     pub commit_head: i64,
-    pub authorization: Option<events::AuthorizedReadStamp>,
     pub value: T,
 }
 
@@ -228,15 +227,13 @@ pub use document::OWNED_DOCUMENT_CONTRACT_VERSION;
 pub use events::{
     AddressReset, AddressResetReason, ApplyResponse, AuthorizedDeliveryAtom,
     AuthorizedDeliveryPacket, AuthorizedDocumentEffect, AuthorizedOwnedDocumentEvent,
-    AuthorizedReadStamp, AuthorizedRecipientLease, CommitIdentity, CommitManifest,
-    CommitManifestHeader, CommittedCoreModuleEvent, ConservativeResetReason,
-    CoreModuleEventPayload, DeliveryAddress, DeliveryAtomDescriptor, DeliveryAtomKind,
-    DeliveryAtomPayload, DeliveryAuthorizationScope, DeliveryCoverage, DocumentEffectRef,
+    AuthorizedRecipientLease, CommitIdentity, CommitManifest, CommitManifestHeader,
+    CommittedCoreModuleEvent, CoreModuleEventPayload, DeliveryAddress, DeliveryAtomDescriptor,
+    DeliveryAtomKind, DeliveryAtomPayload, DeliveryCoverage, DocumentEffectRef,
     DocumentEffectResourceKind, LocalCommitReceiptRef, LocalProjectionPatch, LocalProjectionScope,
     PageDocumentHeadImpact, PhysicalEvidenceDigest, ProjectionEffect, ProjectionImpact,
-    ProjectionScopeKey, ProjectionSnapshotAuthority, ResourceKey, ResourceRevocation,
-    ResourceRevocationReason, RevokedResourceKind, RoutingClaim, StoreObservation,
-    StreamCheckpoint, VisibilityDelta, VisibilityDeltaKind,
+    ProjectionScopeKey, ProjectionSnapshotAuthority, ResourceKey, RoutingClaim, StoreObservation,
+    StreamCheckpoint,
 };
 pub use library::LIBRARY_CONTRACT_VERSION;
 pub use query::QUERY_CONTRACT_VERSION;

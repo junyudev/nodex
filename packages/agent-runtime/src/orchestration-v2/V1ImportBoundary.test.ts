@@ -84,7 +84,7 @@ it("keeps the legacy importer out of reach of new code", () => {
   // thread and project services hydrate a V1 transcript before they act on it.
   assert.deepEqual(importers, [
     "orchestration-v2/ThreadManagementService.ts",
-    "orchestration-v2/runtimeLayer.ts",
+    "orchestration-v2/executionLayer.ts",
     "project/ProjectService.ts",
     "serverRuntimeStartup.ts",
   ]);

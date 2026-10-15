@@ -115,7 +115,11 @@ function resolveActionCapability(
     return unavailable("project_required");
   }
 
-  if (kind === "side_chat" || kind === "review") {
+  if (kind === "side_chat") {
+    if (owner.kind !== "session") return unavailable("session_required");
+    if (!owner.hasAttachedThread) return unavailable("no_thread");
+  }
+  if (kind === "review") {
     if (owner.kind !== "session") return unavailable("session_required");
     if (!owner.hasAttachedThread) return unavailable("no_thread");
     if (owner.backendKind !== "codex") return unavailable("backend_not_supported");

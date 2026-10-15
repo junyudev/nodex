@@ -343,8 +343,7 @@ export default defineConfig({
     },
     tasks: {
       check: {
-        command:
-          "vp fmt --check && tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
+        command: "vp fmt --check && tsc-rs --build --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -379,8 +378,7 @@ export default defineConfig({
         },
       },
       lint: {
-        command:
-          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -398,8 +396,7 @@ export default defineConfig({
         },
       },
       "check:semantic": {
-        command:
-          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [
@@ -417,8 +414,7 @@ export default defineConfig({
         },
       },
       typecheck: {
-        command:
-          "tsc-rs --build --noEmit && tsc-rs --project packages/agent-runtime/tsconfig.json --noEmit && vp lint",
+        command: "tsc-rs --build --noEmit && vp lint",
         cache: {
           env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
           input: [

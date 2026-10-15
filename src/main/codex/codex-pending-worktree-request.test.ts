@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { buildCodexDynamicPendingPermissionSelection } from "./codex-dynamic-create-permissions";
+
 import {
   allocateCodexPendingWorktreeRequest,
   appendCodexPendingPastedTextAttachments,
@@ -12,7 +12,6 @@ import {
   projectCodexPendingWorktreeLaunchLocation,
   rebaseCodexPendingWorkspacePath,
   rebaseCodexPendingWorkspaceRoots,
-  shouldSendCodexPendingPermissionOverrides,
 } from "./codex-pending-worktree-request";
 
 describe("pending worktree request allocation", () => {
@@ -86,8 +85,7 @@ describe("pending worktree frozen start payload", () => {
       ],
       fileAttachments: [],
       addedFiles: [],
-      agentMode: "auto",
-      shouldSendPermissionOverrides: true,
+
       model: null,
       serviceTier: null,
       reasoningEffort: null,
@@ -329,87 +327,6 @@ describe("pending worktree frozen start payload", () => {
     );
   });
 
-  test("uses app-server permission defaults only for unnamed custom permission state", () => {
-    expect(
-      shouldSendCodexPendingPermissionOverrides({
-        effectivePreset: "custom",
-      }),
-    ).toBe(false);
-    expect(
-      shouldSendCodexPendingPermissionOverrides({
-        effectivePreset: "custom",
-        permissionProfileId: "team-profile",
-      }),
-    ).toBe(true);
-    expect(
-      shouldSendCodexPendingPermissionOverrides({
-        effectivePreset: "auto",
-      }),
-    ).toBe(true);
-  });
-
-  test("forwards exact optional fields while keeping the full config available for permissions", () => {
-    const frozen = buildCodexPendingStartConversationParams({
-      input: [{ type: "text", text: "Ship the change", text_elements: [] }],
-      commentAttachments: [],
-      sourceWorkspaceRoot: "/source/repo",
-      fileAttachments: [],
-      addedFiles: [],
-      agentMode: "custom",
-      permissionProfileId: "team-profile",
-      shouldSendPermissionOverrides: true,
-      model: null,
-      serviceTier: "fast",
-      reasoningEffort: "high",
-      collaborationMode: null,
-      config: {
-        approval_policy: "on-request",
-        sandbox_mode: "workspace-write",
-        sandbox_workspace_write: null,
-        expanded_only_marker: "permission-input",
-      },
-      configOverrides: { model_reasoning_effort: "high" },
-      memoryPreferences: { generateMemories: true, useMemories: false },
-      mode: "work",
-      threadStartKind: "composer",
-      baseInstructions: "Base instructions",
-      additionalDeveloperInstructions: "Additional instructions",
-      threadSource: "user",
-      workspaceKind: "project",
-      projectAssignment: {
-        projectKind: "local",
-        projectId: "project-1",
-        path: "/source/repo",
-        pendingCoreUpdate: false,
-      },
-      serviceName: "responses",
-    });
-
-    expect(frozen.cwd).toBe("/source/repo");
-    expect(JSON.stringify(frozen.workspaceRoots)).toBe(JSON.stringify(["/source/repo"]));
-    expect(frozen.permissionProfileId).toBe("team-profile");
-    expect(frozen.reasoningEffort).toBe("high");
-    expect(frozen.memoryPreferences?.generateMemories ?? false).toBe(true);
-    expect(frozen.memoryPreferences?.useMemories ?? true).toBe(false);
-    expect(frozen.mode).toBe("work");
-    expect(frozen.threadStartKind).toBe("composer");
-    expect(frozen.baseInstructions).toBe("Base instructions");
-    expect(frozen.additionalDeveloperInstructions).toBe("Additional instructions");
-
-    const selection = buildCodexDynamicPendingPermissionSelection({
-      mode: frozen.agentMode,
-      workspaceRoot: "/worktree/repo",
-      config: frozen.config,
-      ...(frozen.permissionProfileId === undefined
-        ? {}
-        : { permissionProfileId: frozen.permissionProfileId }),
-    });
-    expect(selection.context.activePermissionProfile?.id ?? null).toBe("team-profile");
-    expect(JSON.stringify(selection.context.runtimeWorkspaceRoots)).toBe(
-      JSON.stringify(["/worktree/repo"]),
-    );
-  });
-
   test("projects only platform config, memory preferences, and frozen overrides into thread/start", () => {
     const frozen = buildCodexPendingStartConversationParams({
       input: [{ type: "text", text: "Ship the change", text_elements: [] }],
@@ -417,8 +334,7 @@ describe("pending worktree frozen start payload", () => {
       sourceWorkspaceRoot: "/source/repo",
       fileAttachments: [],
       addedFiles: [],
-      agentMode: "auto",
-      shouldSendPermissionOverrides: true,
+
       model: null,
       serviceTier: null,
       reasoningEffort: null,

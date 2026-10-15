@@ -6,16 +6,16 @@ import type { CanvasSceneProvider } from "./canvas-scene-provider";
 import { CanvasSceneStagedFileCatalog } from "./canvas-scene-binding";
 import { observeCanvasContentIssues } from "./canvas-content-issues";
 import {
-  contentAccessIdentityKey,
-  type ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  contentRoutingIdentityKey,
+  type ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 
 export interface CanvasDocumentSessionCallbacks {
   readonly onScene: (scene: PortableCanvasScene) => void;
   readonly onPresence: (event: CanvasPresenceRealtimeEvent) => void;
 }
 
-export interface CanvasDocumentSessionAcquireInput extends ContentAccessIdentity {
+export interface CanvasDocumentSessionAcquireInput extends ContentRoutingIdentity {
   readonly ownerBlockId: string;
   readonly documentId: string;
   readonly storeEpoch: string;
@@ -34,11 +34,11 @@ export interface CanvasDocumentSessionLease {
 
 export interface CanvasDocumentSessionRegistry {
   acquire(input: CanvasDocumentSessionAcquireInput): CanvasDocumentSessionLease;
-  retireOwner(identity: ContentAccessIdentity, ownerBlockId: string): Promise<void>;
+  retireOwner(identity: ContentRoutingIdentity, ownerBlockId: string): Promise<void>;
 }
 
-const sessionKey = (identity: ContentAccessIdentity, documentId: string): string =>
-  JSON.stringify([contentAccessIdentityKey(identity), documentId]);
+const sessionKey = (identity: ContentRoutingIdentity, documentId: string): string =>
+  JSON.stringify([contentRoutingIdentityKey(identity), documentId]);
 
 class DefaultCanvasDocumentSession {
   private readonly releaseIssues: () => void;
@@ -56,7 +56,7 @@ class DefaultCanvasDocumentSession {
 
   constructor(
     readonly key: string,
-    readonly accessIdentityKey: string,
+    readonly routingIdentityKey: string,
     readonly ownerBlockId: string,
     readonly storeEpoch: string,
     readonly generation: number,
@@ -221,7 +221,7 @@ export const createCanvasDocumentSessionRegistry = (): CanvasDocumentSessionRegi
         : (closingByKey.get(key)?.catch(() => undefined) ?? Promise.resolve());
       const session = new DefaultCanvasDocumentSession(
         key,
-        contentAccessIdentityKey(input),
+        contentRoutingIdentityKey(input),
         input.ownerBlockId,
         input.storeEpoch,
         input.generation,
@@ -235,10 +235,10 @@ export const createCanvasDocumentSessionRegistry = (): CanvasDocumentSessionRegi
       return session.acquire();
     },
     async retireOwner(identity, ownerBlockId) {
-      const accessKey = contentAccessIdentityKey(identity);
+      const routingKey = contentRoutingIdentityKey(identity);
       const sessions = [...retainedSessions].filter(
         (session) =>
-          session.accessIdentityKey === accessKey && session.ownerBlockId === ownerBlockId,
+          session.routingIdentityKey === routingKey && session.ownerBlockId === ownerBlockId,
       );
       await Promise.all(sessions.map(retireSession));
     },

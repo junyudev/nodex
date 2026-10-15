@@ -274,19 +274,6 @@ test("runs Claude in the selected worktree environment and restores its native c
       animations: "disabled",
       path: test.info().outputPath("claude-shared-controls.png"),
     });
-    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
-    const fullAccess = page.getByRole("menuitem", { name: /^Full access/u });
-    await expect(fullAccess).toBeEnabled();
-    await fullAccess.click();
-    const fullAccessDialog = page.getByRole("dialog", {
-      name: "Turn on Full Access?",
-      exact: true,
-    });
-    await expect(fullAccessDialog).toBeVisible();
-    await fullAccessDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Change permissions", exact: true })).toHaveText(
-      "Full access",
-    );
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
       .poll(
@@ -410,34 +397,6 @@ test("runs Claude in the selected worktree environment and restores its native c
         ({ type, permissionMode }) => type === "launch" && permissionMode === "bypassPermissions",
       ),
     ).toMatchObject({ allowsBypass: true });
-    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^Ask for approval/u }).click();
-    await expect
-      .poll(() =>
-        observations()
-          .filter(({ type }) => type === "permission")
-          .at(-1),
-      )
-      .toMatchObject({ permissionMode: "default" });
-    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
-    await fullAccess.click();
-    await fullAccessDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-    await expect
-      .poll(() =>
-        observations()
-          .filter(({ type }) => type === "permission")
-          .at(-1),
-      )
-      .toMatchObject({ permissionMode: "bypassPermissions" });
-    await page.getByRole("button", { name: "Change permissions", exact: true }).click();
-    await page.getByRole("menuitem", { name: /^Ask for approval/u }).click();
-    await expect
-      .poll(() =>
-        observations()
-          .filter(({ type }) => type === "permission")
-          .at(-1),
-      )
-      .toMatchObject({ permissionMode: "default" });
     await openComposerOptionControl(page, "Effort");
     await page.getByRole("menuitem", { name: "Off", exact: true }).click();
     await expect(page.getByRole("button", { name: "Effort Off", exact: true })).toBeVisible();
@@ -460,7 +419,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     ).toMatchObject({
       model: "claude-opus-5",
       effort: "high",
-      permissionMode: "default",
+      permissionMode: "bypassPermissions",
       thinking: false,
       fast: false,
     });
@@ -480,7 +439,7 @@ test("runs Claude in the selected worktree environment and restores its native c
       model: "claude-opus-5",
       effort: "medium",
       thinking: true,
-      permissionMode: "default",
+      permissionMode: "bypassPermissions",
     });
     await openComposerModelPicker(page);
     await sonnet.click();

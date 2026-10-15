@@ -1,4 +1,4 @@
-import { contentAccessContextKey } from "../content-access-context";
+import { contentRoutingContextKey } from "../content-routing-context";
 import {
   canonicalWorkbenchFilesConfig,
   WorkbenchAbsoluteFilePathSchema,
@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { WorkbenchSurfaceDescriptor } from "../workbench-scene";
 import {
   WorkbenchSceneOwnerSchema,
-  ContentAccessContextSchema,
+  ContentRoutingContextSchema,
   WorkbenchDbViewSurfaceConfigSchema,
 } from "../schemas/workbench-scene";
 import {
@@ -75,12 +75,15 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...referenceBase,
     kind: z.literal("page_stage"),
-    config: z.strictObject({ accessContext: ContentAccessContextSchema, pageId: identity }),
+    config: z.strictObject({ routingContext: ContentRoutingContextSchema, pageId: identity }),
   }),
   z.strictObject({
     ...referenceBase,
     kind: z.literal("canvas_stage"),
-    config: z.strictObject({ accessContext: ContentAccessContextSchema, canvasBlockId: identity }),
+    config: z.strictObject({
+      routingContext: ContentRoutingContextSchema,
+      canvasBlockId: identity,
+    }),
   }),
   z.strictObject({
     ...referenceBase,
@@ -398,14 +401,14 @@ export function projectWorkbenchSurfaceReference(
     return {
       ...base,
       kind: surface.kind,
-      config: { accessContext: surface.config.accessContext, pageId: surface.config.pageId },
+      config: { routingContext: surface.config.routingContext, pageId: surface.config.pageId },
     };
   if (surface.kind === "canvas_stage")
     return {
       ...base,
       kind: surface.kind,
       config: {
-        accessContext: surface.config.accessContext,
+        routingContext: surface.config.routingContext,
         canvasBlockId: surface.config.canvasBlockId,
       },
     };
@@ -417,7 +420,7 @@ export function projectWorkbenchSurfaceReference(
   return reference;
 }
 
-/** Identity and authorization scope, independent of property order or mutable display settings. */
+/** Observed target identity and presentation routing, independent of property order or mutable display settings. */
 function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   const { kind, config } = surface;
   if (kind === "conversation") return JSON.stringify([kind, config.sessionId]);
@@ -434,7 +437,7 @@ function observedTargetKey(surface: WorkbenchSurfaceReference): string {
     ]);
   if (kind === "image_editor")
     return JSON.stringify([kind, config.projectId, config.threadId, config.initialImageId]);
-  const access = contentAccessContextKey(config.accessContext);
+  const access = contentRoutingContextKey(config.routingContext);
   if (kind === "page_stage") return JSON.stringify([kind, access, config.pageId]);
   if (kind === "canvas_stage") return JSON.stringify([kind, access, config.canvasBlockId]);
   return JSON.stringify([

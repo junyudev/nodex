@@ -38,7 +38,7 @@ export class AcpAgent extends Context.Service<
       /**
        * Stream of inbound ACP notifications observed on the connection.
        */
-      readonly notifications: Stream.Stream<AcpProtocol.AcpIncomingNotification>;
+      readonly notifications: Stream.Stream<AcpProtocol.AcpIncomingNotification, AcpError.AcpError>;
       /**
        * Sends a generic ACP extension request.
        * @see https://agentclientprotocol.com/protocol/extensibility

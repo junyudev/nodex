@@ -35,7 +35,7 @@ import { CodexServerRequestResponses } from "./CodexServerRequestResponses";
 import type { ConversationFollowerRequest } from "../../shared/codex-client-coordination";
 import { install } from "./CodexMainConversationActions";
 
-it.effect("decodes source follower decisions through the authorized response owner", () =>
+it.effect("decodes follower question answers and validates queue controls", () =>
   Effect.gen(function* () {
     let handler:
       | ((
@@ -88,7 +88,7 @@ it.effect("decodes source follower decisions through the authorized response own
         {} as CodexManualCompactionRuntime["Service"],
       ),
       Effect.provideService(CodexServerRequestResponses, {
-        approval: (input: Parameters<CodexServerRequestResponses["Service"]["approval"]>[0]) =>
+        userInput: (input: Parameters<CodexServerRequestResponses["Service"]["userInput"]>[0]) =>
           Effect.sync(() => {
             decisions.push(input);
             return true;
@@ -97,20 +97,28 @@ it.effect("decodes source follower decisions through the authorized response own
     );
     if (!handler) throw new Error("Peer actions missing");
     const accepted = yield* handler("local", {
-      method: "thread-follower-command-approval-decision",
-      params: { conversationId: "thread", requestId: 0, decision: "acceptForSession" },
+      method: "thread-follower-submit-user-input",
+      params: {
+        conversationId: "thread",
+        requestId: 0,
+        response: { answers: { choice: { answers: ["Continue"] } } },
+      },
     });
     assert.deepEqual(accepted, { ok: true });
     assert.deepEqual(decisions, [
       {
         threadId: "thread",
         requestId: 0,
-        response: { kind: "command", decision: "acceptForSession" },
+        answers: { choice: ["Continue"] },
       },
     ]);
     const rejected = yield* handler("local", {
-      method: "thread-follower-command-approval-decision",
-      params: { conversationId: "thread", requestId: 0, decision: "invented-decision" },
+      method: "thread-follower-submit-user-input",
+      params: {
+        conversationId: "thread",
+        requestId: 0,
+        response: { answers: { choice: { answers: "invalid" } } },
+      },
     }).pipe(Effect.result);
     assert.strictEqual(rejected._tag, "Failure");
     assert.strictEqual(decisions.length, 1);

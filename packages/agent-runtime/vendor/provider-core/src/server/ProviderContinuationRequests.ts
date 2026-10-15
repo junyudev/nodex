@@ -11,6 +11,16 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
+import { encodedBytes } from "@t3tools/shared/BoundedQueue";
+
+export const MAX_PENDING_CONTINUATIONS = 512;
+export const MAX_PENDING_CONTINUATION_BYTES = 8 * 1024 * 1024;
+
+export class ProviderContinuationQueueFull extends Schema.TaggedError<ProviderContinuationQueueFull>()(
+  "ProviderContinuationQueueFull",
+  { maxItems: Schema.Number, maxBytes: Schema.Number },
+) {}
 
 export interface ProviderContinuationRequest {
   readonly threadId: ThreadId;
@@ -63,7 +73,7 @@ export interface ProviderContinuationRequest {
  * drains it.
  */
 export class ProviderContinuationRequests extends Context.Reference<{
-  readonly offer: (request: ProviderContinuationRequest) => Effect.Effect<void>;
+  readonly offer: (request: ProviderContinuationRequest) => Effect.Effect<void, ProviderContinuationQueueFull>;
   readonly take: Effect.Effect<ProviderContinuationRequest>;
 }>("@t3tools/provider-core/server/ProviderContinuationRequests", {
   defaultValue: () => ({ offer: () => Effect.void, take: Effect.never }),
@@ -72,11 +82,27 @@ export class ProviderContinuationRequests extends Context.Reference<{
 export const layer = Layer.effect(
   ProviderContinuationRequests,
   Effect.gen(function* () {
-    const queue = yield* Queue.unbounded<ProviderContinuationRequest>();
+    const queue = yield* Queue.bounded<{ readonly request: ProviderContinuationRequest; readonly bytes: number }>(MAX_PENDING_CONTINUATIONS);
+    let items = 0;
+    let bytes = 0;
     return {
-      offer: (request: ProviderContinuationRequest) =>
-        Queue.offer(queue, request).pipe(Effect.asVoid),
-      take: Queue.take(queue),
+      // Never park a producer holding a native wake body. Rejection belongs to
+      // its origin; other providers can keep using this shared control lane.
+      offer: (request: ProviderContinuationRequest) => Effect.suspend(() => {
+        const weight = encodedBytes(request);
+        if (items >= MAX_PENDING_CONTINUATIONS || bytes + weight > MAX_PENDING_CONTINUATION_BYTES)
+          return Effect.fail(new ProviderContinuationQueueFull({ maxItems: MAX_PENDING_CONTINUATIONS, maxBytes: MAX_PENDING_CONTINUATION_BYTES }));
+        if (!Queue.offerUnsafe(queue, { request, bytes: weight }))
+          return Effect.fail(new ProviderContinuationQueueFull({ maxItems: MAX_PENDING_CONTINUATIONS, maxBytes: MAX_PENDING_CONTINUATION_BYTES }));
+        items++;
+        bytes += weight;
+        return Effect.void;
+      }),
+      take: Queue.take(queue).pipe(Effect.map((entry) => {
+        items = Math.max(0, items - 1);
+        bytes = Math.max(0, bytes - entry.bytes);
+        return entry.request;
+      })),
     };
   }),
 );

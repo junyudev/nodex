@@ -36,6 +36,7 @@ function createSession(overrides: Partial<ProjectSession> = {}): ProjectSession 
     archivedAt: overrides.archivedAt ?? null,
     unread: overrides.unread ?? false,
     thread: overrides.thread ?? null,
+    executionRef: overrides.executionRef ?? null,
     createdAt: overrides.createdAt ?? "2026-01-01T00:00:00.000Z",
     updatedAt: overrides.updatedAt ?? "2026-01-01T00:00:00.000Z",
   };
@@ -52,6 +53,23 @@ describe("project session query cache", () => {
     expect(JSON.stringify(queryKeys.projectSessions.detail("session-1"))).toBe(
       JSON.stringify(["projectSessions", "detail", "session-1"]),
     );
+  });
+
+  test("keeps a Runtime binding through detail-to-summary publication without a native Thread", () => {
+    const queryClient = createQueryClient();
+    const binding = { runtimeId: "runtime:test", threadId: "engine-thread" };
+    const session = createSession({ executionRef: binding });
+    const summary = projectSessionToSummary(session);
+    expect(summary.thread).toBeNull();
+    expect(summary.executionRef).toEqual(binding);
+    setProjectSessionSummaries(queryClient, session.projectId, [summary]);
+    seedProjectSessionDetail(queryClient, session);
+    const window = queryClient.getQueryData<ProjectSessionSummaryWindow>(
+      queryKeys.projectSessions.summaries(session.projectId),
+    );
+    expect(window?.items[0]?.executionRef).toEqual(binding);
+    expect(getCachedProjectSessionDetail(queryClient, session.id)?.executionRef).toEqual(binding);
+    queryClient.clear();
   });
 
   test("seeds and reads session detail", () => {

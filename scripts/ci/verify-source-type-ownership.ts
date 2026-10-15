@@ -78,6 +78,16 @@ export function verifySourceTypeOwnership(
   throw new Error(`TypeScript source files lack a compiler project owner:\n${missing.join("\n")}`);
 }
 
+/** Traverse owned fixture sources without descending into dependency links. */
+function fixtureSourceFiles(directory: string, prefix = ""): readonly string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isSymbolicLink() || entry.name === "node_modules") return [];
+    const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) return fixtureSourceFiles(join(directory, entry.name), name);
+    return entry.isFile() ? [name] : [];
+  });
+}
+
 /** Compiler discovery rejects unowned files, shadowed extensions, and runnable fixture omissions. */
 export function verifySourceTypeOwnershipFixtures(): void {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "nodex-source-type-ownership-")));
@@ -107,15 +117,6 @@ export function verifySourceTypeOwnershipFixtures(): void {
         "export const invalid: number = 'wrong';\n",
       );
     }
-    // Prune linked dependencies before descent; recursive readdir follows the
-    // node_modules junction and otherwise scans the dependency tree on every pass.
-    const fixtureSourceFiles = (path: string): string[] =>
-      readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
-        if (entry.isSymbolicLink()) return [];
-        const filename = join(path, entry.name);
-        if (entry.isDirectory()) return fixtureSourceFiles(filename);
-        return [relative(directory, filename).replaceAll("\\", "/")];
-      });
     const verify = () => verifySourceTypeOwnership(directory, fixtureSourceFiles(directory));
     const expectUnowned = (filename: string) => {
       try {

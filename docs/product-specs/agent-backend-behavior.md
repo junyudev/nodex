@@ -1,432 +1,160 @@
 # Agent Backend Behavior
 
-## Scope
+## Execution ownership
 
-Every Agent Thread has one explicit backend binding. Codex is the default native backend. An
-enabled Profile-local Claude Code, OpenCode or ACP Agent instance can be selected when starting a new task in a local
-Project. A Thread never changes backend implicitly and never falls back to another backend when its
-configured runtime is unavailable.
+New local Sessions execute through Agent Runtime with an explicit configured Provider.
+Codex is the default. Enabled Profile-local Claude Code, OpenCode and ACP instances
+retain their own account, native history, models and configuration. A Session never
+silently falls back to another Provider when its selected instance is unavailable.
+Core binds the product Session to its runtime root before execution starts. Native
+history imports keep their durable native descriptor and do not open another execution
+owner. Real native Codex and remote-host history remain available through their own
+Gateway. See [Agent Runtime behavior](agent-runtime-behavior.md).
 
-## Shared conversation surface
+Observing Sessions does not start the separate native Codex account/catalog endpoint.
+Account actions, native catalogs, history searches and explicit remote operations acquire
+it on demand. Native account state follows the ready connection; ordinary Session
+creation and messaging always use the Session's Runtime binding.
 
-Every backend uses the same conversation page, rich prompt editor, Markdown timeline, activity
-expansion, model menu and request cards. The model menu searches exact model IDs and names across enabled runtime instances. Selecting a model
-atomically chooses its instance, model and supported options while preserving the draft. An attached task retains its backend. Model and
-Code/Plan selections are applied before the first prompt, and subsequent changes use the same menu.
-Refresh rereads configured Agent instances and their model inventory. Unavailable selected instances
-retain the draft choice and block sending until the instance is enabled or another model is selected.
+The shared conversation surface provides rich prompts, streamed text and tool activity,
+model selection, planning, Tasks, queues, cancellation and genuine information questions.
+Selecting a model retains its exact Provider instance identity, even when instances
+advertise the same model ID. Unsupported capabilities fail explicitly. Plan conveys
+planning intent while retaining full execution and Profile content access. Provider
+permission requests are approved automatically.
 
-Text, pasted text, file references and review/browser context reach native and ACP prompts. Claude
-also accepts attached PNG, JPEG, GIF and WebP images, including browser evidence and app snapshots,
-and invokes selected skills through native command syntax. The last selected skill is the leading
-invocation; other selected skills remain inline references and the complete prompt/context becomes
-its arguments, matching Claude's one-invocation-per-message contract. Unsupported attachments or inline Agent
-configuration fail before submission and leave the draft available for correction. Individual capabilities such
-as steering, queued follow-ups, fork, native review and desktop tools remain backend-specific;
-unavailable actions never route a native session ID into Codex. Stop remains available while a
-native turn runs, including when another draft is being composed.
+## Configuration and discovery
 
-Pending tool decisions use the shared approval form and expose only supported decisions. Questions
-use the shared questionnaire, including multiple selections and free text. Authentication methods
-appear as sign-in actions in that same composer. Generic tools keep inspectable inputs/results;
-native subtasks retain their own activity and can be opened from the shared Tasks menu.
+Instances are configured per Profile. Executables, native profile directories and
+external endpoint credentials remain explicit inputs. Sensitive environment rows use
+system secure storage and do not appear as plaintext in ordinary settings reads.
+Changing configuration affects new connections; a live native connection retains its
+captured identity and environment. An instance can be disabled without redirecting
+its Sessions to another Provider.
 
-## Starting and reopening tasks
+A Project supplies a default execution folder. Projectless Sessions retain their
+captured folder. Managed worktrees and their setup environments remain physical
+execution locations; they do not limit content access. Explicit Provider account
+variables take precedence over workspace environment changes.
 
-- The model menu lists models advertised by Codex and enabled Claude Code and OpenCode instances.
-  Each model retains its instance identity, including when two instances advertise the same model.
-  Enabled ACP instances can start a conversation before negotiated models become available. Codex
-  remains selected by default.
-- Interactive Claude Code, OpenCode and ACP tasks require an active local Project with a primary workspace.
-  Scheduled Claude tasks can also create a disposable projectless workspace. Remote-host execution
-  is unavailable and is not silently redirected to Codex.
-- Starting a Claude Code, OpenCode or ACP task creates the durable Thread with its explicit backend binding before the first
-  prompt. Main derives the workspace and permission mode from that durable authority; renderer does
-  not submit either value.
-- After the Agent opens and its protocol session identity is bound, starting returns the durable
-  Thread and initial conversation snapshot immediately. Main runs the first prompt in the
-  application lifecycle and streams its progress through the normal observation path; navigation
-  is not blocked on the Agent finishing the turn.
-- Main stores the ACP protocol session identity separately from the Agent instance binding. Reopening
-  the Thread uses negotiated `session/load` when supported and never replays an old prompt.
-- If an ACP Agent no longer has the stored session, Nodex clears the stale protocol identity and reports
-  that a new task is required. It does not create a replacement conversation with ambiguous history.
-- Rename, pin, unread, archive, restore, and delete use the durable Session authority. Codex-owned
-  refinements are invoked only for Codex Threads. Archiving or deleting a Claude Code, OpenCode or ACP task closes its live
-  Agent process; archiving a Project is blocked by an active Agent turn and otherwise closes every
-  Project-owned Agent process after the durable archive commit.
+Discovery reads configured model metadata in the selected folder without creating a
+chat or submitting a prompt. Attached native descriptors supply their saved instance
+and execution directory. Renderer inputs cannot substitute either coordinate. Closing
+the consumer cancels its query. Configuration, Project lifecycle or execution-location
+changes discard stale discovery results. Cached inventories are bounded and Refresh
+bypasses the cache.
 
-## Native OpenCode
+Claude discovery uses an SDK metadata query with persistence, hooks, MCP and IDE
+integration disabled, and releases its process after initialization. At most two
+such queries run concurrently. Its cache includes account configuration and execution
+folder and retains at most 64 entries. Native commands and filesystem skills remain
+separate catalogs. Nodex does not add Codex instruction files to Claude configuration.
+The native executable resolves from explicit configuration or Desktop/login-shell PATH;
+credentials are not imported from a login shell. Explicit PATH and profile overrides
+remain authoritative.
 
-OpenCode uses its installed executable and native HTTP/SSE protocol through the pinned SDK. Agent
-settings can add, name, enable and remove independent instances. Each local instance has an
-executable, an optional profile directory and explicit environment rows. An empty profile directory
-uses the Profile-owned `agents/opencode/<instance-id>` directory. Native configuration, provider
-credentials, transcripts, state and cache remain isolated together under that directory. Profile
-paths accept absolute paths or `~/`. Environment rows cannot override managed native path variables;
-API keys and server passwords use the same encrypted storage and redacted settings contract as
-Claude environment values. Repository configuration and plugins retain their native precedence.
+OpenCode discovery uses its native HTTP metadata connection and pinned SDK. It offers
+models from connected providers and preserves exact provider/model identifiers,
+including model IDs containing slashes. Native model variants and primary agents
+supply the available controls. Discovery retains at most 32 shared connections with
+bounded idle retention and sends no prompt. Local profiles isolate configuration,
+authentication, history and cache. An external server uses only explicitly configured
+server credentials and retains its own process lifecycle.
 
-Discovery reads providers, exact model identifiers, native agents and commands in the draft's
-Project folder or attached chat's saved execution directory. It creates no chat and sends no prompt.
-Connected provider metadata indicates configuration, rather than guaranteeing access to every model.
-Only models from connected providers are offered. Model identifiers preserve provider/model pairs,
-including model IDs containing additional slashes. Variant controls use that model's advertised
-native variants; models without variants expose no invented presets. The native agent
-selector uses actual primary agents, including custom agents. Model changes drop unsupported variant
-values. Closing a consumer cancels its request; settings, Project and execution changes fence stale
-responses. Discovery helpers and unused local chat servers belong to bounded Main scopes.
+ACP instances use trusted local packages and executables. Compatibility checks verify
+configured package identity, supported version, entrypoint containment, Node version
+and executable-reported version. These checks do not attest package bytes. Credential
+profile and proxy inheritance remain separate explicit configuration choices. Runtime
+catalog discovery and execution share the same configured Provider.
 
-The model and its current native options apply before the first prompt. Core saves model, options and
-mode independently of native transcript history. Reopening validates the same configured native
-owner and exact session ID, loads a bounded native transcript and sends no prompt. Changing the
-profile directory or external endpoint, or losing the native session, requires restoring that owner
-or starting a new chat. Nodex never substitutes a fresh conversation. Close releases the server
-without deleting native history. Fork creates a separate native session and Nodex chat, preserving
-source model/options and execution location.
+## Imported native history
 
-History replies belong to the user message identified by their native parent ID
-within the same session. Equal timestamps and unordered responses cannot hide a
-reply or attach it to another prompt. A page resolves every missing parent through
-that exact session without changing the native pagination cursor. Overlapping pages
-merge response parts by native identity; an unavailable or foreign parent never
-causes its reply to be assigned to a nearby turn.
-The bounded window retains complete prompt and response identities together;
-evicted turns cannot reappear as anonymous responses when history exceeds the
-turn or byte budget.
+Connecting an existing native conversation binds its exact native Session and history
+Profile to a Nodex Session. Reading an imported Claude or OpenCode conversation is a
+passive, paged observation. It does not acquire a product execution owner, submit a
+prompt, create a native conversation, or subscribe to an obsolete execution stack.
 
-Creating a native session and changing its permission policy verify the effective rules retained
-by OpenCode. A successful HTTP response that leaves the requested policy unapplied is a protocol
-error; Nodex reports the native version and an upgrade hint before using that policy.
+Native pages use their real cursor. Claude pages may extend to the owning user prompt
+so that continuations remain attached to that prompt. OpenCode pages resolve missing
+assistant parents through the exact native Session, with bounded concurrency. Foreign
+Session records, changed native descriptors and stale Profile or execution-folder
+results are rejected. Native parent identity determines reply placement; timestamps
+and proximity cannot reassign a response.
 
-The shared timeline displays native text, reasoning, tool activity and usage. Approvals offer only
-supported one-use decisions, and native questions accept choices and free text. Requests are scoped
-to this chat or its native descendants; unrelated sessions on a shared endpoint cannot solicit
-approvals here. Stop aborts the exact native turn. Images are accepted only for models advertising
-image input. Native compaction and earlier-history controls remain capability-driven.
+Native history queries request at most 50 messages. Claude reads physical records incrementally in 64 KiB chunks and stops at the requested
+prompt boundary, with at most 32 MiB of raw records and 2,048 entries per page, then lets the native SDK project those original
+records. Its cursor binds the physical file and exact byte boundary. Replacing or
+truncating that file invalidates the cursor; appending preserves earlier windows.
+History replies stay within 1 MiB and text previews within 8 KiB. Images remain descriptors and are materialized on
+explicit reads from the exact Session and message. Larger tool output is read on
+request with its own byte budget and a truncation marker. A page that cannot fit the
+record or reply budget fails explicitly. Closing the last history reader releases
+resident bodies; native transcripts remain owned by the Provider. Inspection reports
+the saved Provider binding, native Session, native home and execution folder without
+inventing live process diagnostics.
 
-An instance may specify an external HTTP(S) server. Authentication uses only its explicit
-`OPENCODE_SERVER_PASSWORD` and optional `OPENCODE_SERVER_USERNAME` environment values; Nodex neither inherits an ambient server password nor
-owns the external process. External connections do not publish chat-scoped Nodex application tools
-because shared directory-wide MCP configuration cannot isolate those claims. Locally owned servers
-receive a separate application-tool connection for the exact admitted chat and turn. OpenCode does
-not gain Codex desktop, review or computer-control authority.
+An imported native Session without a Runtime execution reference opens the shared
+transcript as a passive history scene. It has no Composer or execution controls.
+Readers of the same Session share one cold page; older pages preserve resident Turn
+identities. The renderer retains at most 200 Turns, 500 items and 1 MiB of transcript
+bodies, and stops paging when another page would exceed that window. Closing the last
+reader clears the window. Starting another conversation uses an explicit new Session
+and ordinary Runtime admission.
 
-## Native Claude Code
+## Native intake
 
-Claude Code uses the installed executable and official Agent SDK. The default instance resolves `claude`
-from the Desktop PATH, then the login-shell PATH and native `~/.local/bin` installation when needed.
-Discovery recovers only PATH; shell credentials and account variables are not imported. Explicit
-executable paths and instance or worktree PATH overrides remain authoritative and fail explicitly
-when no matching executable exists. Agent settings can add, name, enable or remove independent
-profiles, each with its own executable, config directory, environment and custom models. An account path must
-be absolute or start with `~/`, which Nodex resolves against the host home before saving it.
-Authentication stays in Claude Code: use `claude auth login` in a terminal
-for the selected account, then reconnect the task. Reconnection reads the latest profile without
-replaying a previously submitted prompt. Existing Claude login credentials remain native.
+Raw native message intake retains at most 512 messages with an 8 MiB byte budget for
+ordinary ACP/native events, or 32 MiB for Codex, SDK and SSE envelopes that can echo a multi-image
+prompt.
+Canonical event subscribers allow 1,024 events within the same byte budget because
+one native frame can produce several canonical updates. Outbound prompt intake and
+SDK user/replay envelopes allow 32 MiB to preserve the supported 20 MiB image attachment
+budget after base64 encoding.
+Owned NDJSON transports bound unfinished frames before JSON decoding; deferred wake
+and replay buffers use their corresponding message limits. Producers never accumulate
+waiting offers behind a slow consumer. Overflow fails outstanding work, discards the incomplete buffered stream and
+retires that native connection. Stop and connection teardown use independent control
+paths; a later prompt resumes through a fresh native incarnation. A normal connection
+end preserves its already admitted event prefix. Persisted conversation history is
+unaffected by these in-memory limits.
 
-Agent settings also edit the instance's environment as name/value rows. Pasting literal `KEY=value`
-or `export KEY="value"` lines imports the rows; shell expansion and commands are rejected. Duplicate
-names are invalid. A named empty value overrides an inherited value with the empty string; removing
-the row resumes inheritance. Instance values override the Desktop environment for new connections,
-including native history recovery, while a live connection retains its original environment. A saved
-change does not interrupt a running turn or require restarting Nodex. Claude's own settings retain
-native precedence. Config directory remains the only setting for account location; HOME and the
-launcher's nesting markers cannot be overridden through environment rows.
+## Application tools and lifecycle
 
-Variables default to sensitive, except recognized URL, model and numeric tuning names. Users may
-change that designation. Sensitive values are encrypted with the operating system's secure storage
-and stored outside ordinary Profile settings; settings reads return only a saved-secret marker.
-Leaving that marker unchanged preserves the value. Editing replaces it, including with an explicit
-empty string, and removing the row removes its stored ciphertext. Secure storage must be available
-to save or launch with secrets. Plain values remain in Profile settings. These are explicit user
-inputs; Nodex never imports existing Claude credentials into this store.
+Application tools operate across Projects, Sessions, Pages and Library resources in
+the authenticated Profile. Parent, child and background Agents use the same access
+model. Every call verifies its captured Session, native incarnation, Profile, Store
+and live connection. Codex, Claude and OpenCode calls retain the original Run when
+native transport proves it. Standard ACP calls carry their real Session with an
+unknown Run left null. Model-authored metadata and later foreground work cannot
+supply a missing source identity.
 
-User, project, and local settings, `CLAUDE.md`, skills, subagents, hooks, and configured MCP servers
-are loaded by Claude Code. The composer exposes SDK-advertised commands and a filesystem skill
-picker covering native user and repository skill directories. Nested execution directories inherit
-repository skills up to the repository or worktree boundary. Claude's advertised commands decide
-which picker entries can run.
+Ordinary Turn settlement preserves live background tools. Cancellation, native
+connection retirement, replacement and Session deletion invalidate old callbacks.
+Source-less native execution retires its connection and credential before the next
+prompt. Stable command identities and durable receipts prevent normal retries from
+creating another Session or starting the same task twice. Actual information questions
+remain interactive and retain their exact response capability.
 
-Claude configuration and instruction loading remain native: Nodex does not append Codex's
-instruction files or discover skills from Codex or shared `.agents` directories. A repository's
-`CLAUDE.md` may import or link to `AGENTS.md`, and the installed Claude Code version may load
-`AGENTS.md` directly according to its native settings. An empty personal skills directory does not
-exclude repository, plugin or bundled Claude skills; native commands and filesystem skill entries
-remain distinct catalogs. Nodex appends only its Session application-tool guidance when connecting
-the scoped `nodex_app` server.
+## Model preferences and task details
 
-Before the first prompt, Nodex discovers models from the selected instance's executable in the
-draft's selected Project. Attached chats discover from their saved Claude instance and execution
-directory, including connected native directories and managed worktrees. Main resolves those
-coordinates from the Thread; renderer requests cannot supply an execution directory. Discovery
-uses the same configuration directory, environment and native settings sources
-used for execution. Discovery sends no prompt, saves no Claude session, suppresses hooks, MCP and IDE
-integration, and releases its process after initialization. Its bounded cache includes the resolved
-profile configuration and execution directory. Profile, configuration and scope changes refresh it
-automatically. Expired cache entries are revalidated on the next read. The shared model menu's Refresh
-action bypasses the discovery cache; in a draft it also rereads enabled instances. Changing scope or closing
-the consumer cancels its request and releases its process. Execution moves refresh the attached
-catalog, and results from a changed or unavailable Thread are discarded. At most two discovery processes run
-concurrently. An executable/version check does not claim authentication succeeded.
+Claude Effort, Off, Speed and Context retain the user's requested preferences across
+model changes in drafts and live conversations. The selected model receives supported
+native values; an unavailable preference uses the nearest supported effort, thinking
+left on, Standard speed or default Context while keeping the original request. Only
+an explicit user choice changes that request. Native defaults and policy determine
+the effective values. Off appears only when the model can disable thinking; selecting
+a regular effort reenables thinking. Context is shown only for distinct supported
+choices. Requested values do not pretend to be applied native state.
 
-`Force reload skills` refreshes the selected conversation provider's advertised
-skills and commands. For Claude it bypasses the native discovery cache and
-updates the same scoped composer catalog; it never reloads another provider.
-Providers without a refresh capability do not expose that command.
+Read-only task details retain the opening view and parent Thread context when their
+trigger unmounts or the selected task changes. They remain observations and do not
+acquire a product Session attachment or execution controls.
 
-The shared model menu displays versioned names and concrete IDs returned by Claude, including
-gateway-specific IDs. SDK aliases resolve to those IDs before selection; context suffixes and
-plan-routing aliases retain their meaning. Older executables that do not report a resolved ID
-retain their advertised name and value without an invented version. Native configuration selects
-the initial model; discovery identifies its concrete value before the first prompt. Failed discovery
-reports the failure without inventing model choices. Project or instance changes cannot reuse another
-scope's catalog. Live metadata distinguishes requested preferences from applied native settings.
-The menu shows the resolved model, effort and Speed state without inherited-default choices; an
-unobserved value remains unresolved. Attached native model changes appear with their committed
-capabilities; queued selection intent remains available to the next prompt after its change completes.
-Profile custom models specify a concrete ID and explicit effort,
-Fast, adaptive thinking, thinking-disable and context traits. Nodex does not guess gateway capabilities
-from a model name.
+## Scheduled work
 
-New Claude chats use the shared execution-location selector. Work locally runs in the selected
-Project's primary folder; New worktree creates an owned managed worktree from the selected branch,
-ref or working-tree state. The selected local Environment runs its setup in that worktree before
-Claude starts. Setup environment changes are retained with the worktree and reloaded when the chat
-reopens; explicit Claude Profile values take precedence, and setup cannot change the native account
-or history directory. The chat retains its exact execution folder and allowed Project sources.
-Attached local chats can move between that folder and a managed worktree through
-the shared [handoff transaction](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
-The same Nodex Chat and exact native session UUID retain their history. Native
-history lookup remains scoped to that session's account and history directory,
-independently of its current working directory.
-
-Core admission precedes Agent launch and worktree ownership publication. Failed preparation or an
-explicitly rejected admission removes the unowned allocation. A committed link survives cancellation
-and readback failure. An uncertain Core reply retains the allocation and its cleanup protection while
-Nodex checks the original Session and exact execution location; uncertainty never causes deletion of
-a potentially attached worktree.
-
-Effort offers only the levels supported by the selected model: Low, Medium, High, Extra High, and Max.
-Off belongs to Effort and appears only when that model can completely disable thinking. Adaptive
-thinking support alone does not imply this capability. Selecting a regular effort reenables thinking,
-including when that effort was already selected. Models that can disable thinking but have no effort
-levels offer Off and On. A model's limits may lower the backing effort when disabling thinking.
-Speed offers Standard and Fast when the selected model supports native Fast mode; those choices
-disable or enable that native preference. Context appears only when multiple distinct supported values
-are available.
-Context applies to the concrete model resolved by the active native Query,
-including a model inherited from Claude's configuration. Nodex verifies the
-reported context before saving it; an unresolved model or refused context fails
-explicitly. Default clears the override, reopening the same idle native session
-without a model flag when necessary to restore inheritance. Draft choices remain
-unsent preferences, while live Context reflects applied native state.
-Effort, Off, Speed and Context are preferences that survive model changes in drafts and live
-conversations. A model that does not support a preference receives the nearest supported value:
-the next lower advertised effort (or its lowest), thinking left on, Standard speed, or its default
-Context. The preference itself is kept, so switching back to a model that supports it restores
-it. Only an explicit choice changes a preference. Native defaults and policy limits determine the
-effective values. Requested preferences
-and Code/Plan mode are saved with the task without changing Claude's global settings. Changes that
-require rebuilding a Query wait for no foreground turn, pending decision, queued steering or live
-background work.
-
-The conversation shows streamed text, thinking, tool calls and results, subtask progress, compaction,
-and reported usage. Final assistant records replace their matching streamed blocks. Context usage
-comes from the latest main-agent request, while cost is the SDK's cumulative estimate for the live
-query. Independent message blocks and child actors retain native identity; streamed inputs and
-structured command, file, search and MCP results use the shared tool cards. Plans, task progress,
-rate limits and compaction remain visible. Tool approval offers one use and, only when Claude supplies
-safe permission suggestions, a session choice. Native decline defaults and restrictions on persistent
-approval are respected. Questions accept single or multiple choices and free text. Resume dialogs
-and MCP elicitation use their native response contracts. Incomplete,
-foreign, and stale responses are rejected. Stop denies pending requests and interrupts the turn;
-if Claude does not settle within five seconds, Nodex closes the process and requires reconnecting.
-Stop interrupts the foreground turn. Live background and ambient tasks remain visible, protect their
-Query from idle eviction, and have explicit task stop controls. Background requests are not discarded
-when the foreground finishes. SDK result correlation decides which accepted user inputs settled;
-queued steering can become a subsequent native turn and retains its own admission receipt.
-
-Core retains the native session UUID and canonical history directory independently of the instance
-binding. Reopening reads a bounded recent transcript and resumes that exact UUID without submitting
-a prompt. Forked chats inherit their source's native history directory. Claude Code
-retains the complete history. Earlier turns can be loaded into the bounded presentation window.
-The live window retains up to 64 recent turns; loading history can expand it to 512 turns within
-a 2 MiB transcript budget. Each older page admits at most 512 KiB of content, or one bounded turn,
-and continues from the oldest message actually admitted. A full window disables further loading
-instead of evicting current turns or running-task observations. Updates above the 1 MiB delta budget
-invalidate the local replica and re-read the exact snapshot; subsequent streaming remains active.
-History images are read on demand from the exact profile/session/message identity into temporary
-owned media; base64 content is excluded from transcript snapshots. Core stores requested preferences,
-whether the UUID was saved, and a bounded set of UUID-matched terminal facts, timestamps, observed
-usage, compaction summaries and generated-file outcomes. Native history without a known terminal
-fact retains an unknown outcome. Truncated tool text can be read on demand from the exact native
-message and tool identity; the larger read budget still reports any remaining truncation. Effective
-startup values, subagent records and synthetic errors do not replace requested preferences. Without
-a saved override, native inheritance remains selected. An unavailable native session requires a new
-task; Nodex never substitutes a fresh conversation under the old identity. Closing a task does not delete its Claude
-Code history. A legal native reset or rollback changes the saved native identity through an expected-ID
-guard. Fork creates a separate native conversation and Nodex task in the source execution location,
-retaining its managed worktree and allowed workspace roots; native UUID remapping preserves
-matching terminal facts. Editing the last user turn rolls it back before submitting its replacement;
-editing the only turn starts a fresh unsaved native identity. Steering and compaction use native
-controls. Every accepted steering message remains visible, including images, whether Claude folds
-it into the running Turn or consumes it in a later Turn. Native echoes reconcile the same user
-record. Turn settlement always revokes its admitted application authority independently of the
-native result's consumed-message echoes. Read-only task details retain the opening view and parent
-Thread context when their trigger unmounts or the selected task changes. They remain observations
-rather than durable Codex Threads and do not acquire Session attachment or execution controls.
-
-Diagnostics expose native health, account, agents and MCP status. An explicit title action uses a
-bounded auxiliary Query with tools, hooks, MCP and persistence disabled; ordinary sends do not run a
-hidden paid helper. Existing CLI conversations can be connected through the shared
-[native conversation chooser](native-conversation-connection-behavior.md), retaining their native UUID
-and history directory. Audio, remote-host execution and Codex
-desktop/review controls remain outside the native backend's current capability contract.
-
-## Native application tools
-
-Local Claude and locally owned OpenCode tasks use a scoped `nodex_app` connection for authorized Page and Data Source
-operations, Project SQL queries, Project and Session metadata, native conversation history,
-Session messaging, scheduling, terminal observation and workspace dependencies. Discovery and
-auxiliary title queries receive no Nodex tool connection. The capability response lists the
-connection's real catalog; live Workbench controls and pull-request attachment are unavailable
-for these native connections.
-
-Main grants the bridge authority only after accepting the exact foreground Turn and freezing
-its current Core policy. Plan mode remains read-only. Tool arguments cannot select the calling
-Thread, Turn or Profile generation. Each call verifies the current native identity, Profile and
-execution location and rechecks the frozen authority, including receipt replay. Failed admission,
-settlement, process closure and stale binding revoke access. An accepted input identity cannot be
-reused for another prompt; operation retries retain their original admission.
-
-The shared native transport does not reliably identify the calling actor. Claude application
-calls pause while its native background tasks or ambient watchers are live. OpenCode calls pause
-for pending or running native task tools, verified descendant sessions from creation until idle
-or deletion, busy or retrying descendants, and parent execution that Nodex did not admit.
-OpenCode also checks native session status when opening a runtime and before each new admission.
-These pauses prevent native work from inheriting a later foreground Turn's authority. After the
-observed work ends, a still-running foreground Turn can issue fresh calls; revoked claims never
-become valid again. Native background application tools are an explicit unavailable capability.
-
-## Claude automations
-
-Scheduled Claude tasks retain an explicit configured Profile binding. The existing Scheduled
-editor selects that Profile, concrete model and supported effort through the shared Agent menu;
-Inherited preferences display their resolved native values. Profile environment values apply to launches.
-Project worktree runs can use a local Environment configuration; local checkout and projectless runs
-cannot. Codex service tiers do not apply to Claude.
-
-Cron execution uses the ordinary durable definition, due lease, run inbox and Session owners.
-Project runs use the selected local folder or an owned managed worktree; projectless runs use a
-fresh work/output workspace. The workspace is linked to Core before launching Claude. Unowned
-failed worktrees are removed, while a successfully linked workspace survives later owner-metadata
-repair failures. No runtime or backend fallback is selected.
-
-Heartbeats target the existing stable Session and require its current attached Thread to retain
-the same Claude Profile. The shared native conversation owner publishes eligibility only while
-the conversation has no pending prompt, approval, question or background work. Execution rereads
-that state and the definition revision. Scheduled turns are unattended: interactive decisions fail
-instead of waiting for a renderer response. Execution is bounded within its due lease and cancels
-the exact accepted Turn on failure, timeout or interruption. Failed runs remain reviewable.
-
-## ACP conversation behavior
-
-ACP conversations render from a bounded canonical projection. The UI can show user and Agent
-messages, thinking/context summaries, tool calls, plans, usage, compaction, session information, and
-turn stop reasons without depending on raw ACP payloads. Unknown extension metadata is ignored.
-
-Mode, configuration, authentication, load/resume/fork labels, and content support appear only when
-negotiated. Codex-only Browser, review, history, side-task, and native subagent controls are not
-presented as ACP capabilities. The Claude Agent can use Nodex-owned client filesystem and terminal
-callbacks. Those callbacks are limited to the Thread's canonical Project workspace, reuse the
-supervised Terminal runtime, retain bounded output, and terminate with the ACP session.
-
-Native Browser, Chrome, Computer Use, and Picture-in-Picture control surfaces are available only to
-an admitted local Codex execution generation. ACP tool names or unknown extension metadata never
-activate those surfaces. An ACP backend may gain a control surface only through a future explicitly
-negotiated capability with its own host, identity, lifecycle, and trust contract; Nodex does not infer
-one from superficially similar tools.
-
-When session opening requires one unambiguous Agent-owned authentication method, Main authenticates
-and retries the open request once. When several Agent-owned methods are advertised, the initialized
-process stays alive and the conversation surface asks the user to choose one; only then does Main
-open and durably bind the protocol session. Terminal authentication is not advertised by the current
-client and fails explicitly rather than leaving an unusable task. While interactive authentication is
-pending, Main keeps the not-yet-submitted first prompt inside that live session. Successful
-authentication first binds the protocol session and then consumes that prompt exactly once. The
-prompt is not persisted, cannot survive a Main restart, and is never replayed during recovery.
-
-One prompt runs at a time. Long-running prompts have no product wall-clock timeout. Stop sends ACP
-cancellation and keeps accepting already-admitted updates until the Agent reports a cancelled turn.
-Ordinary request rejection and request cancellation return the session to ready state with a
-recoverable conversation error. An authentication-required response returns to the authentication
-surface. Process loss, protocol corruption, bounded-queue pressure, timeout, resource loss, or an
-invalid lifecycle response closes the live session.
-
-## Permissions and trust
-
-ACP permission decisions are made in Electron Main from the Project permission mode. “Ask for
-approval”, custom, and missing modes fail closed until an interactive approval surface owns the
-request. “Approve for me” and full-access modes may select only an Agent-offered allow-once option.
-Renderer cannot approve by altering an IPC payload.
-
-The ACP Claude Agent integration is an explicit user-managed local-code authorization. Package
-and executable probes establish compatibility, not byte provenance. See [Configuration](../CONFIGURATION.md)
-and [Security](../SECURITY.md) for the trust boundary.
-
-Claude tasks offer Ask for approval, Approve for me and Full access. These choices read and save
-the Core Project or projectless permission preference independently of Codex configuration and
-requirements. Ask uses Claude's default permission mode and asks for requests that reach Nodex.
-The permission control waits for the Core preference or current native policy to be known. A choice
-made before the first prompt saves that preference for the task's initial launch.
-Approve for me keeps that native mode and automatically allows eligible tool requests; it does
-not run a separate risk reviewer. Questions and requests marked default-to-no still require a
-decision. Full access selects Claude's `bypassPermissions` mode. Plan keeps native Plan mode
-and read-only application authority under every permission choice. Custom Codex configuration
-is not a Claude permission option; an existing custom or missing preference falls back to Ask.
-
-Claude Code owns native tool execution and policy enforcement. Nodex re-reads the current
-permission preference for native callbacks and subsequent inputs, and a live selection waits
-for the SDK to accept its mode before saving the preference. SDK rejection or cancellation before
-persistence preserves the old selection. Once persistence starts, a bounded handoff finishes the
-Core commit and native policy synchronization before honoring cancellation. A failed or uncertain
-commit closes the session rather than claiming that the previous preference was restored; reopening
-reads Core's actual preference. Live metadata distinguishes the selected permission preference from the
-effective native mode. A Nodex approval does not grant Codex desktop capabilities. Application
-tools retain their separately frozen Core Project or Library authority for the exact accepted
-turn, with Plan requests read-only.
-
-## Reliability and bounds
-
-- Each live Agent process belongs to the Main application Scope and is terminated on Thread close,
-  fatal transport failure, or application shutdown.
-- Live Claude Code, OpenCode and ACP processes have a fixed pressure bound. Once reached, a new session fails explicitly until
-  another session closes or completes idle eviction; Nodex does not silently evict an observed task.
-- Conversation projections bound turns, updates per turn, and projected bytes. Claude Code
-  bounds pending decisions and history-worker memory; the SDK owns its wire transport. ACP also
-  bounds NDJSON records, callback concurrency, ingress, and stderr diagnostics.
-- Closing or failing a session invalidates stale in-memory handles. Independent Threads do not share
-  a lifecycle lock, and per-Thread serialization lanes are released when no operation uses them.
-- Prompt admission and durable active-state projection form one interruption-safe lifecycle. Rejected
-  busy requests cannot settle another turn, failed admission revokes its application-tool claims, and
-  stale profile/workspace handles fail closed. A
-  request interruption or application shutdown clears the active projection instead of leaving a
-  ghost-running Thread.
-- Renderer observations are reference-counted across windows and split views. The first observer
-  keeps the live Agent session resident; losing the last observer starts a bounded idle-retention
-  grace. Returning during the grace cancels eviction. An in-progress turn is never evicted and is
-  rechecked after the grace; an idle unobserved session is closed, while Core retains the durable
-  Thread and protocol-session identity needed for an explicit reopen.
-- Renderer registers one Thread-directed observation before opening a session. Observation owners,
-  unique observed Threads, and duplicate leases are bounded. Open/read returns the initial snapshot;
-  subsequent updates are exact, bounded revision deltas. Stale deltas are ignored and a revision
-  gap triggers a fresh snapshot read, preventing open/read/live-update races without broadcasting
-  resident transcripts to unrelated windows.
-
-## Related decisions
-
-- [ADR 0055: ACP sessions are isolated scoped backend resources](../adr/0055-acp-session-runtime-boundary.md)
-- [ADR 0056: Codex stays native while external agents negotiate capabilities](../adr/0056-native-codex-and-capability-negotiated-agent-backends.md)
-
-- [ADR 0065: Native Claude Code backend](../adr/0065-native-claude-code-backend.md)
+Scheduled work uses ordinary Agent Runtime Session admission, due leases, durable
+inboxes and controls. Workspaces are bound before launch. Failed preparation cleans up
+unowned allocations; committed execution locations remain attached through uncertain
+readback. No automation or imported-history path can create a second local execution
+owner. See [Scheduled route behavior](scheduled-route-behavior.md),
+[Configuration](../CONFIGURATION.md) and [Security](../SECURITY.md).

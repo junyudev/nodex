@@ -24,7 +24,6 @@ const definition = (
   kind: "heartbeat",
   status: "ACTIVE",
   target_session_id: "session:source",
-  target_thread_id: "thread:source",
   name: "Daily Report",
   prompt: "Summarize the workspace.",
   rrule: "FREQ=DAILY;BYHOUR=9",
@@ -43,12 +42,13 @@ const definition = (
 });
 
 const run = (overrides: Partial<CoreAutomationRun> = {}): CoreAutomationRun => ({
-  thread_id: "thread:run",
+  run_id: "run:one",
+  session_id: "session:run",
   automation_id: "daily-report",
   run_revision: 1,
   status: "IN_PROGRESS",
   read_at_ms: null,
-  thread_title: "Daily Report run",
+  session_title: "Daily Report run",
   source_cwd: "/workspace",
   inbox_title: null,
   inbox_summary: null,
@@ -158,26 +158,26 @@ const routingIndex = () => {
   return AutomationRoutingIndex.of({
     commit: (input) => {
       for (const automationId of input.definitions?.removeIds ?? []) {
-        for (const [threadId, currentAutomationId] of activeHeartbeats) {
-          if (currentAutomationId === automationId) activeHeartbeats.delete(threadId);
+        for (const [runId, currentAutomationId] of activeHeartbeats) {
+          if (currentAutomationId === automationId) activeHeartbeats.delete(runId);
         }
       }
       for (const item of input.definitions?.upsert ?? []) {
-        for (const [threadId, automationId] of activeHeartbeats) {
-          if (automationId === item.automation_id) activeHeartbeats.delete(threadId);
+        for (const [runId, automationId] of activeHeartbeats) {
+          if (automationId === item.automation_id) activeHeartbeats.delete(runId);
         }
         if (item.kind === "heartbeat" && item.status === "ACTIVE" && item.target_session_id) {
           activeHeartbeats.set(item.target_session_id, item.automation_id);
         }
       }
-      for (const threadId of input.runs?.removeThreadIds ?? []) runs.delete(threadId);
+      for (const runId of input.runs?.removeRunIds ?? []) runs.delete(runId);
       for (const item of input.runs?.upsert ?? []) {
-        runs.set(item.thread_id, item.automation_id);
+        runs.set(item.run_id, item.automation_id);
       }
     },
     synchronize: Effect.void,
-    activeHeartbeatAutomationId: (threadId) => activeHeartbeats.get(threadId) ?? null,
-    runAutomationId: (threadId) => runs.get(threadId) ?? null,
+    activeHeartbeatAutomationId: (runId) => activeHeartbeats.get(runId) ?? null,
+    runAutomationId: (runId) => runs.get(runId) ?? null,
   });
 };
 
@@ -202,8 +202,6 @@ const agentProvenance = {
     actor_project_id: "project:actor",
     library_id: "library:a",
     store_epoch: "epoch:a",
-    scope: "project",
-    source: "project_turn",
   },
 } as const;
 
@@ -411,7 +409,7 @@ it.effect("replays Definition deletion with its observed revision and committed 
             return Effect.succeed(
               committed({
                 definitions: [definition({ status: "DELETED", definition_revision: 8 })],
-                deleted_run_ids: ["thread:run"],
+                deleted_run_ids: ["run:one"],
               }),
             );
           },
@@ -503,7 +501,6 @@ it.effect("requires canonical Sessions for stable Heartbeat create and update co
     const input = {
       kind: "heartbeat" as const,
       name: "Daily Report",
-      targetThreadId: "thread:source",
     };
     const createError = yield* Effect.flip(
       application.definitions.create(input, { operationId: "create:heartbeat" }),
@@ -545,7 +542,6 @@ it.effect("commits Definition and Run routing before mutations return", () =>
       name: "Daily Report",
       prompt: "Summarize the workspace.",
       targetSessionId: "session:source",
-      targetThreadId: "thread:source",
       cwds: ["/workspace"],
     });
     assert.strictEqual(created.id, "daily-report");
@@ -553,11 +549,11 @@ it.effect("commits Definition and Run routing before mutations return", () =>
 
     assert.isTrue(
       yield* application.runs.begin({
-        threadId: "thread:run",
+        runId: "run:one",
         automationId: "daily-report",
       }),
     );
-    assert.strictEqual(routing.runAutomationId("thread:run"), "daily-report");
+    assert.strictEqual(routing.runAutomationId("run:one"), "daily-report");
   }),
 );
 
@@ -752,7 +748,8 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
                     archived_user_message: null,
                     archived_reason: null,
                     source_cwd: "/workspace",
-                    thread_id: "thread:run",
+                    run_id: "run:one",
+                    session_id: "session:run",
                     read_at_ms: null,
                     created_at_ms: 120,
                     status: "PENDING_REVIEW",
@@ -798,7 +795,7 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
     assert.deepEqual(inbox.unreadRunCounts, {
       total: 1,
       automationIds: ["daily-report"],
-      unreadRuns: [{ automationId: "daily-report", threadId: "thread:run" }],
+      unreadRuns: [{ automationId: "daily-report", runId: "run:one" }],
     });
 
     const reminders = yield* application.reminders.claimDue("reminders:due", 12, 120_000);
@@ -846,7 +843,6 @@ it.effect("preserves an omitted notification preference and clears an explicit n
       kind: "heartbeat" as const,
       status: "ACTIVE" as const,
       targetSessionId: "session:source",
-      targetThreadId: "thread:source",
     };
     assert.strictEqual(
       (yield* application.definitions.update(update))?.notificationPolicy,
@@ -860,55 +856,12 @@ it.effect("preserves an omitted notification preference and clears an explicit n
   }),
 );
 
-it.effect(
-  "resolves a selected backend Thread to its canonical heartbeat Session before saving",
-  () =>
-    Effect.gen(function* () {
-      let resolvedThread: string | null = null;
-      const application = yield* make.pipe(
-        Effect.provideService(
-          CoreModules,
-          coreModules(
-            {
-              read: () => Effect.succeed(readSnapshot({ kind: "definition", item: null })),
-              apply: ({ intent }) => {
-                if (intent.kind !== "create_definition") return Effect.die("unexpected mutation");
-                assert.strictEqual(intent.definition.target_session_id, "session:source");
-                return Effect.succeed(committed({ definitions: [definition()] }));
-              },
-            },
-            {
-              read: (query) => {
-                if (query.kind !== "thread") return Effect.die("unexpected read");
-                resolvedThread = query.thread_id;
-                return Effect.succeed({
-                  value: { kind: "thread", thread: { session_id: "session:source" } },
-                } as never);
-              },
-              apply: () => Effect.die("lookup must not mutate Workspace"),
-            },
-          ),
-        ),
-        Effect.provideService(AutomationRoutingIndex, routingIndex()),
-      );
-      const saved = yield* application.definitions.create({
-        kind: "heartbeat",
-        name: "Daily Report",
-        targetThreadId: "thread:source",
-      });
-      assert.strictEqual(resolvedThread, "thread:source");
-      assert.strictEqual(saved.targetSessionId, "session:source");
-      assert.strictEqual(saved.targetThreadId, "thread:source");
-    }),
-);
-
 it.effect("preserves Cron Project identity and uses the execution validation read", () =>
   Effect.gen(function* () {
     let saved = definition({
       kind: "cron",
       project_id: "project:chosen",
       target_session_id: null,
-      target_thread_id: null,
     });
     let lastRead = "";
     const application = yield* make.pipe(

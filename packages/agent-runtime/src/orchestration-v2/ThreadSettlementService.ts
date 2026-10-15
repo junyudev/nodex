@@ -38,7 +38,6 @@ export interface SettlementPullRequest {
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000;
 
-
 function latestMillis(values: ReadonlyArray<number | null>): number | null {
   let latest: number | null = null;
   for (const value of values) {

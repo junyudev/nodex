@@ -50,7 +50,7 @@ function defineNodexAgentToolContract<
 export const NODEX_AGENT_TOOL_CONTRACTS = {
   get_context: defineNodexAgentToolContract({
     description:
-      "Read the current Nodex Project binding, access state, Database/View catalog, and a compact NFM authoring guide. This is the only Nodex content tool available without a bound Project.",
+      "Read the current Profile identity, optional Project routing, Database/View catalog, and a compact NFM authoring guide.",
     inputSchema: GetContextInputSchema,
     outputSchema: GetContextOutputSchema,
     deferLoading: false,
@@ -66,7 +66,7 @@ export const NODEX_AGENT_TOOL_CONTRACTS = {
   }),
   search: defineNodexAgentToolContract({
     description:
-      "Discover Pages or exact document Blocks reachable through the current Project grants. Page search is typo-tolerant for titles and property display values; body and Block search use exact/prefix matching and return stable identities.",
+      "Discover Pages or exact document Blocks in the current Profile's Library. Page search is typo-tolerant for titles and property display values; body and Block search use exact/prefix matching and return stable identities.",
     inputSchema: SearchInputSchema,
     outputSchema: SearchOutputSchema,
     deferLoading: false,

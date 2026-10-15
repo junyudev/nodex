@@ -1,5 +1,5 @@
 import type { components } from "@nodex/core-protocol";
-import type { ContentAccessContext } from "../content-access-context";
+import type { ContentRoutingContext } from "../content-routing-context";
 import type { LocalCommitCommandSuccess } from "../local-commit-delivery";
 
 export type RecoveryDraftCapture = components["schemas"]["RecoveryDraftCapture"];
@@ -16,7 +16,7 @@ export type RecoveryChoice = components["schemas"]["RecoveryChoice"]["kind"];
 
 export interface DocumentRecoveryScope {
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
 }
 export interface DocumentRecoveryReadRequest extends DocumentRecoveryScope {
   readonly read: RecoveryRead;

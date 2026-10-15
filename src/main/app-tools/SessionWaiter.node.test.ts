@@ -5,7 +5,6 @@ import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import {
@@ -13,7 +12,7 @@ import {
   SessionObservationError,
   type SessionInspection,
 } from "./SessionObservation";
-import { make } from "./SessionWaiter";
+import { make, makeWithSources } from "./SessionWaiter";
 
 const provenance = { profile_id: "profile:a" } as never;
 const snapshot = (
@@ -40,7 +39,6 @@ const setup = (
       projectSessionInvalidations: events,
     } as never),
     Effect.provideService(CodexApplicationEventHub, { events: Stream.never } as never),
-    Effect.provideService(AgentBackendApplication, { changes: Stream.never } as never),
   );
 const emptyHistory = Effect.succeed({ history: { availability: "empty", turns: [] } } as never);
 
@@ -207,4 +205,49 @@ it.effect("rechecks access before returning a timeout even without an invalidati
       { kind: "error", sessionId: "session:a", reason: "authorization" },
     ]);
   }),
+);
+
+it.effect(
+  "awaits asynchronous source preparation before the baseline and releases its subscription",
+  () =>
+    Effect.gen(function* () {
+      const prepared = yield* Deferred.make<void>();
+      const events = yield* PubSub.unbounded<void>();
+      let inspected = false;
+      let completed = false;
+      const waiter = yield* makeWithSources([], {
+        prepareSources: Effect.gen(function* () {
+          yield* Deferred.await(prepared);
+          const queue = yield* PubSub.subscribe(events);
+          return [Stream.fromSubscription(queue)];
+        }),
+      }).pipe(
+        Effect.provideService(SessionObservation, {
+          inspect: (sessionId: string) =>
+            Effect.gen(function* () {
+              inspected = true;
+              const result = snapshot(
+                sessionId,
+                completed ? "complete" : "running",
+                completed ? "done" : "running",
+              );
+              if (!completed) {
+                completed = true;
+                yield* PubSub.publish(events, undefined);
+              }
+              return result;
+            }),
+          read: () => emptyHistory,
+        } as never),
+      );
+      const waiting = yield* waiter
+        .wait({ targets: [{ sessionId: "session:a" }], timeoutMs: 120000 }, provenance)
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      assert.isFalse(inspected);
+      yield* Deferred.succeed(prepared, undefined);
+      const result = yield* Fiber.join(waiting);
+      assert.equal(result.reason, "ready");
+      assert.equal(result.targets[0]?.cursor, "done");
+    }),
 );

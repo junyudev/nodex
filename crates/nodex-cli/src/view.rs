@@ -12,7 +12,7 @@ pub(crate) fn resolve_view_selector(
 ) -> Result<String, CliError> {
     if let Some(id) = crate::data_source::read_identity(
         client,
-        &project.id,
+        Some(&project.id),
         selector,
         DatabaseRead::View {
             view_id: crate::data_source::stable_id(selector)?,

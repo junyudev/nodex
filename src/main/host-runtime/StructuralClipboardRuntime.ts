@@ -4,7 +4,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import { FileExportRuntime } from "../library-application/FileExportRuntime";
-import { parseContentAccessContext } from "../../shared/content-access-context";
+import { parseContentRoutingContext } from "../../shared/content-routing-context";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -277,7 +277,9 @@ export const live: Layer.Layer<
       entry.envelope = input.envelope;
       if (input.fileExportAccess) {
         const enhancement = Effect.gen(function* () {
-          const access = yield* Effect.try(() => parseContentAccessContext(input.fileExportAccess));
+          const access = yield* Effect.try(() =>
+            parseContentRoutingContext(input.fileExportAccess),
+          );
           const text = yield* fileExports.clipboardText(access, input.envelope, input.text);
           if (closed || entries.get(entry.writeClaim) !== entry || text === input.text) return;
           yield* clipboard.replaceClaimedPresentation({ writeClaim: input.writeClaim, text });

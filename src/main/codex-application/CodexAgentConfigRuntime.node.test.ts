@@ -2,8 +2,8 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type { CodexExecutionProfile } from "../../shared/codex-execution-profile";
-import type { CodexModelOption, CodexPermissionState } from "../../shared/types";
-import { CodexPermissions } from "./CodexPermissions";
+import type { CodexModelOption } from "../../shared/types";
+
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
 import { ComposerCatalog } from "./ComposerCatalog";
 import { make } from "./CodexAgentConfigRuntime";
@@ -48,22 +48,9 @@ const BASE: CodexExecutionProfile = {
   serviceTier: null,
 };
 
-const permissionState = (mode: CodexPermissionState["mode"]): CodexPermissionState => ({
-  mode,
-  effectivePreset: mode,
-  availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
-  approvalPolicy: mode === "full-access" ? "never" : "on-request",
-  approvalsReviewer: mode === "guardian-approvals" ? "auto_review" : "user",
-  sandboxMode: mode === "full-access" ? "danger-full-access" : "workspace-write",
-  sandbox: mode === "full-access" ? { type: "dangerFullAccess" } : null,
-  autoReviewAvailable: true,
-  configTarget: { source: "project", filePath: null },
-});
-
 const harness = (
   input: {
     readonly current?: CodexExecutionProfile | null;
-    readonly permissionVerified?: boolean;
     readonly updates?: CodexExecutionProfile[];
   } = {},
 ) => {
@@ -74,16 +61,6 @@ const harness = (
       ComposerCatalog.of({
         listModels: Effect.succeed(MODELS),
       } as unknown as ComposerCatalog["Service"]),
-    ),
-    Effect.provideService(
-      CodexPermissions,
-      CodexPermissions.of({
-        resolve: ({ requestedMode }: Parameters<CodexPermissions["Service"]["resolve"]>[0]) =>
-          Effect.succeed({
-            state: permissionState(requestedMode ?? "auto"),
-            verifiedBuiltinFullAccess: input.permissionVerified ?? false,
-          }),
-      } as unknown as CodexPermissions["Service"]),
     ),
     Effect.provideService(
       CodexThreadSettingsRuntime,
@@ -104,16 +81,14 @@ it.effect("resolves the complete new-task tuple with fieldwise last-wins semanti
     const prepared = yield* runtime.prepare({
       target: { kind: "new-thread", fallbackExecutionProfile: BASE },
       configs: [
-        { mode: "default", reasoning: "medium", permission: "custom" },
+        { mode: "default", reasoning: "medium" },
         {
           mode: "plan",
           provider: "openai",
           model: "model-b",
           reasoning: "low",
-          permission: "auto",
         },
       ],
-      permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
     });
 
     assert.deepStrictEqual(prepared.executionProfile, {
@@ -122,7 +97,6 @@ it.effect("resolves the complete new-task tuple with fieldwise last-wins semanti
       serviceTier: null,
     });
     assert.strictEqual(prepared.collaborationMode, "plan");
-    assert.strictEqual(prepared.permissionMode, "auto");
   }),
 );
 
@@ -133,7 +107,6 @@ it.effect("patches an existing task through one compound settings transaction", 
     const prepared = yield* runtime.prepare({
       target: { kind: "existing-thread", threadId: "thread-a" },
       configs: [{ model: "model-b", reasoning: "low" }],
-      permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
     });
 
     assert.deepStrictEqual(prepared.executionProfile, {
@@ -151,7 +124,6 @@ it.effect("maps the Composer Fast choice onto the native service tier", () =>
     const prepared = yield* runtime.prepare({
       target: { kind: "new-thread", fallbackExecutionProfile: BASE },
       configs: [{ speed: "fast" }],
-      permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
     });
     assert.strictEqual(prepared.executionProfile?.serviceTier, "fast");
   }),
@@ -164,21 +136,18 @@ it.effect("fails closed for unsupported providers, catalog values, and attribute
       runtime.prepare({
         target: { kind: "new-thread", fallbackExecutionProfile: BASE },
         configs: [{ provider: "anthropic" }],
-        permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
       }),
     );
     const unsupportedReasoning = yield* Effect.exit(
       runtime.prepare({
         target: { kind: "new-thread", fallbackExecutionProfile: BASE },
         configs: [{ model: "model-b", reasoning: "ultra" }],
-        permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
       }),
     );
     const unknown = yield* Effect.exit(
       runtime.prepare({
         target: { kind: "new-thread", fallbackExecutionProfile: BASE },
         configs: [{ unknownAttributes: ["harness"] }],
-        permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
       }),
     );
 
@@ -188,35 +157,12 @@ it.effect("fails closed for unsupported providers, catalog values, and attribute
   }),
 );
 
-it.effect("does not treat a Full access tag as user consent", () =>
-  Effect.gen(function* () {
-    const runtime = yield* harness({ permissionVerified: false });
-    const denied = yield* Effect.exit(
-      runtime.prepare({
-        target: { kind: "new-thread", fallbackExecutionProfile: BASE },
-        configs: [{ permission: "full-access" }],
-        permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
-      }),
-    );
-    assert.isTrue(Exit.isFailure(denied));
-
-    const verifiedRuntime = yield* harness({ permissionVerified: true });
-    const prepared = yield* verifiedRuntime.prepare({
-      target: { kind: "new-thread", fallbackExecutionProfile: BASE },
-      configs: [{ permission: "full-access" }],
-      permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
-    });
-    assert.strictEqual(prepared.permissionMode, "full-access");
-  }),
-);
-
 it.effect("treats an empty Agent config as a real but fully inherited atom", () =>
   Effect.gen(function* () {
     const runtime = yield* harness();
     const prepared = yield* runtime.prepare({
       target: { kind: "new-thread", fallbackExecutionProfile: BASE },
       configs: [{}],
-      permissionContext: { projectId: "project-a", workspaceRoots: ["/repo"] },
     });
     assert.deepStrictEqual(prepared, { hasConfig: true });
   }),

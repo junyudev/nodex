@@ -4,6 +4,7 @@ import type { VitestTestTier } from "./vitest-test-tier.ts";
 export const APP_TEST_SUITES = [
   "unit",
   "effect-codex",
+  "agent-runtime",
   "core-client",
   "main",
   "renderer",
@@ -91,6 +92,14 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     config: "vitest.effect-codex.config.ts",
     runtime: "host-node",
     include: ["packages/effect-codex-app-server/src/**/*.test.ts"],
+    exclude: [],
+    stress: [],
+    native: [],
+  },
+  "agent-runtime": {
+    config: "packages/agent-runtime/vite.config.ts",
+    runtime: "host-node",
+    include: ["packages/agent-runtime/src/**/*.test.ts"],
     exclude: [],
     stress: [],
     native: [],

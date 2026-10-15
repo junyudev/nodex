@@ -1,3 +1,4 @@
+import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import type * as AcpCompat from "./compat.ts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -118,7 +119,7 @@ export interface AcpPatchedProtocolOptions {
 export interface AcpPatchedProtocol {
   readonly clientProtocol: RpcClient.Protocol["Service"];
   readonly serverProtocol: RpcServer.Protocol["Service"];
-  readonly incoming: Stream.Stream<AcpIncomingNotification>;
+  readonly incoming: Stream.Stream<AcpIncomingNotification, AcpError.AcpError>;
   readonly request: (method: string, payload: unknown) => Effect.Effect<unknown, AcpError.AcpError>;
   readonly notify: (method: string, payload: unknown) => Effect.Effect<void, AcpError.AcpError>;
 }
@@ -154,9 +155,21 @@ const makeStrictNdJsonRpcParser = () => {
   let buffer = "";
   return {
     decode: (bytes: Uint8Array | string): ReadonlyArray<unknown> => {
-      buffer += typeof bytes === "string" ? bytes : decoder.decode(bytes, { stream: true });
+      const chunk = typeof bytes === "string" ? bytes : decoder.decode(bytes, { stream: true });
+      BoundedQueue.assertFrameSize(BoundedQueue.encodedBytes(chunk), "ACP wire chunk");
+      BoundedQueue.assertFrameSize(
+        BoundedQueue.encodedBytes(buffer) + BoundedQueue.encodedBytes(chunk),
+        "ACP wire frame",
+      );
+      buffer += chunk;
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
+      if (lines.length > BoundedQueue.DEFAULT_MAX_ITEMS)
+        throw new BoundedQueue.BufferOverflow({
+          label: "ACP wire batch",
+          maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+          maxBytes: BoundedQueue.MAX_FRAME_BYTES,
+        });
       return lines.flatMap((line) => codec.decode(line));
     },
     encode: (response: Parameters<typeof codec.encode>[0]) => {
@@ -165,7 +178,6 @@ const makeStrictNdJsonRpcParser = () => {
     },
   };
 };
-const MAX_BUFFERED_RAW_NOTIFICATIONS = 32;
 // Outbound JSON-RPC notification: no `id`, so peers never treat it as a request.
 const encodeJsonRpcNotification = Schema.encodeUnknownExit(
   Schema.fromJsonString(
@@ -211,13 +223,27 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   options: AcpPatchedProtocolOptions,
 ): Effect.fn.Return<AcpPatchedProtocol, never, Scope.Scope> {
   const parser = makeStrictNdJsonRpcParser();
-  const serverQueue = yield* Queue.unbounded<RpcMessage.FromClientEncoded>();
-  const clientQueue = yield* Queue.unbounded<RpcMessage.FromServerEncoded>();
-  const notificationQueue = yield* Queue.sliding<AcpIncomingNotification>(
-    MAX_BUFFERED_RAW_NOTIFICATIONS,
-  );
-  const disconnects = yield* Queue.unbounded<number>();
-  const outgoing = yield* Queue.unbounded<AcpOutgoingWrite, AcpError.AcpError | Cause.Done<void>>();
+  const overflowError = (cause: BoundedQueue.BufferOverflow): AcpError.AcpError =>
+    new AcpError.AcpTransportError({ detail: cause.message, cause });
+  const serverQueue = yield* BoundedQueue.make<RpcMessage.FromClientEncoded, AcpError.AcpError>({
+    label: "ACP server intake",
+    mapOverflow: overflowError,
+  });
+  const clientQueue = yield* BoundedQueue.make<RpcMessage.FromServerEncoded, AcpError.AcpError>({
+    label: "ACP client intake",
+    mapOverflow: overflowError,
+  });
+  const notificationQueue = yield* BoundedQueue.broadcast<
+    AcpIncomingNotification,
+    AcpError.AcpError
+  >({ label: "ACP notifications", mapOverflow: overflowError });
+  const disconnects = yield* Queue.bounded<number>(1);
+  const outgoing = yield* BoundedQueue.make<AcpOutgoingWrite, AcpError.AcpError>({
+    label: "ACP outgoing",
+    maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+    sizeOf: (write) => BoundedQueue.encodedBytes(write.payload),
+    mapOverflow: overflowError,
+  });
   const outgoingWriterState = yield* Ref.make<AcpOutgoingWriterState>({
     intentionalEnd: false,
     outstandingAcknowledgements: new Set(),
@@ -226,6 +252,8 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const terminationHandled = yield* Ref.make(false);
   const terminationFailure = yield* Deferred.make<never, AcpError.AcpError>();
   const extPending = yield* Ref.make(new Map<string, AcpPendingRequest>());
+  const nativeRequestBytes = new Map<string, number>();
+  let activeNativeBytes = 0;
 
   const ensureActive = Ref.get(terminationHandled).pipe(
     Effect.flatMap((terminated) => (terminated ? Deferred.await(terminationFailure) : Effect.void)),
@@ -244,104 +272,113 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     );
   };
 
-  const offerOutgoing = Effect.fn("offerOutgoing")(function* (
-    message: RpcMessage.FromClientEncoded | RpcMessage.FromServerEncoded,
-  ) {
-    // RpcClient emits `@effect/rpc/Interrupt` when a pending request's fiber is interrupted.
-    // ACP has no such method; agents log it as an error and cannot act on it, so drop it.
-    if (message._tag === "Interrupt") {
-      return;
-    }
-    yield* ensureActive;
-    yield* logProtocol({
-      direction: "outgoing",
-      stage: "decoded",
-      payload: message,
-    });
-
-    const method = message._tag === "Request" ? message.tag : undefined;
-    const encodedRequestId =
-      message._tag === "Request"
-        ? message.id
-        : "requestId" in message
-          ? message.requestId
-          : undefined;
-    const requestId = encodedRequestId === "" ? undefined : encodedRequestId;
-    const encoded = yield* Effect.try({
-      try: () => parser.encode(message),
-      catch: (cause) => AcpError.AcpProtocolParseError.fromEncodingError(method, requestId, cause),
-    });
-
-    if (encoded) {
+  const offerOutgoing = Effect.fn("offerOutgoing")(
+    function* (message: RpcMessage.FromClientEncoded | RpcMessage.FromServerEncoded) {
+      // RpcClient emits `@effect/rpc/Interrupt` when a pending request's fiber is interrupted.
+      // ACP has no such method; agents log it as an error and cannot act on it, so drop it.
+      if (message._tag === "Interrupt") {
+        return;
+      }
+      yield* ensureActive;
       yield* logProtocol({
         direction: "outgoing",
-        stage: "raw",
-        payload: typeof encoded === "string" ? encoded : new TextDecoder().decode(encoded),
+        stage: "decoded",
+        payload: message,
       });
 
-      yield* ensureActive;
-      const acknowledgement =
-        message._tag === "Exit" ? yield* Deferred.make<void, AcpError.AcpError>() : undefined;
-      const admissionError = yield* Ref.modify(outgoingWriterState, (state) => {
-        if (state.terminalError !== undefined) {
-          return [state.terminalError, state] as const;
-        }
-        if (acknowledgement === undefined) {
-          return [undefined, state] as const;
-        }
-        return [
-          undefined,
-          {
-            ...state,
-            outstandingAcknowledgements: new Set(state.outstandingAcknowledgements).add(
-              acknowledgement,
-            ),
-          },
-        ] as const;
+      const method = message._tag === "Request" ? message.tag : undefined;
+      const encodedRequestId =
+        message._tag === "Request"
+          ? message.id
+          : "requestId" in message
+            ? message.requestId
+            : undefined;
+      const requestId = encodedRequestId === "" ? undefined : encodedRequestId;
+      const encoded = yield* Effect.try({
+        try: () => parser.encode(message),
+        catch: (cause) =>
+          AcpError.AcpProtocolParseError.fromEncodingError(method, requestId, cause),
       });
-      if (admissionError !== undefined) {
-        return yield* admissionError;
+
+      if (encoded) {
+        yield* logProtocol({
+          direction: "outgoing",
+          stage: "raw",
+          payload: typeof encoded === "string" ? encoded : new TextDecoder().decode(encoded),
+        });
+
+        yield* ensureActive;
+        const acknowledgement =
+          message._tag === "Exit" ? yield* Deferred.make<void, AcpError.AcpError>() : undefined;
+        const admissionError = yield* Ref.modify(outgoingWriterState, (state) => {
+          if (state.terminalError !== undefined) {
+            return [state.terminalError, state] as const;
+          }
+          if (acknowledgement === undefined) {
+            return [undefined, state] as const;
+          }
+          return [
+            undefined,
+            {
+              ...state,
+              outstandingAcknowledgements: new Set(state.outstandingAcknowledgements).add(
+                acknowledgement,
+              ),
+            },
+          ] as const;
+        });
+        if (admissionError !== undefined) {
+          return yield* admissionError;
+        }
+        if (options.testHooks?.onOutgoingWriteAdmitted !== undefined) {
+          yield* options.testHooks.onOutgoingWriteAdmitted();
+        }
+        yield* BoundedQueue.offer(outgoing, {
+          payload: encoded,
+          ...(acknowledgement === undefined ? {} : { acknowledgement }),
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new AcpError.AcpTransportError({
+                detail: "Failed to queue an outgoing ACP message",
+                cause,
+              }),
+          ),
+          Effect.filterOrFail(
+            (accepted) => accepted,
+            () =>
+              new AcpError.AcpTransportError({
+                detail: "The ACP output queue was closed before accepting a message",
+                cause: "Output queue closed",
+              }),
+          ),
+          Effect.tapError((error) =>
+            acknowledgement === undefined
+              ? Effect.void
+              : Ref.update(outgoingWriterState, (state) => {
+                  const updated = new Set(state.outstandingAcknowledgements);
+                  updated.delete(acknowledgement);
+                  return { ...state, outstandingAcknowledgements: updated };
+                }).pipe(Effect.andThen(Deferred.fail(acknowledgement, error)), Effect.asVoid),
+          ),
+        );
+        if (acknowledgement !== undefined) {
+          yield* Deferred.await(acknowledgement);
+        }
+        if (message._tag === "Exit") {
+          const key = acpRequestIdentity(message.requestId);
+          activeNativeBytes -= nativeRequestBytes.get(key) ?? 0;
+          nativeRequestBytes.delete(key);
+          if (options.onOutgoingResponse !== undefined) yield* options.onOutgoingResponse(key);
+        }
       }
-      if (options.testHooks?.onOutgoingWriteAdmitted !== undefined) {
-        yield* options.testHooks.onOutgoingWriteAdmitted();
-      }
-      yield* Queue.offer(outgoing, {
-        payload: encoded,
-        ...(acknowledgement === undefined ? {} : { acknowledgement }),
-      }).pipe(
-        Effect.mapError(
-          (cause) =>
-            new AcpError.AcpTransportError({
-              detail: "Failed to queue an outgoing ACP message",
-              cause,
-            }),
-        ),
-        Effect.filterOrFail(
-          (accepted) => accepted,
-          () =>
-            new AcpError.AcpTransportError({
-              detail: "The ACP output queue was closed before accepting a message",
-              cause: "Output queue closed",
-            }),
-        ),
-        Effect.tapError((error) =>
-          acknowledgement === undefined
-            ? Effect.void
-            : Ref.update(outgoingWriterState, (state) => {
-                const updated = new Set(state.outstandingAcknowledgements);
-                updated.delete(acknowledgement);
-                return { ...state, outstandingAcknowledgements: updated };
-              }).pipe(Effect.andThen(Deferred.fail(acknowledgement, error)), Effect.asVoid),
-        ),
-      );
-      if (acknowledgement !== undefined) {
-        yield* Deferred.await(acknowledgement);
-      }
-      if (message._tag === "Exit" && options.onOutgoingResponse !== undefined) {
-        yield* options.onOutgoingResponse(acpRequestIdentity(message.requestId));
-      }
-    }
-  });
+    },
+    Effect.tapError((error) =>
+      error._tag === "AcpTransportError"
+        ? handleTermination(() => Effect.succeed(error))
+        : Effect.void,
+    ),
+  );
 
   const resolveExtPending = (
     requestId: AcpError.AcpRequestId,
@@ -385,7 +422,20 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     );
 
   const dispatchNotification = (notification: AcpIncomingNotification) =>
-    Queue.offer(notificationQueue, notification).pipe(
+    notificationQueue.offer(notification).pipe(
+      Effect.flatMap((accepted) =>
+        accepted
+          ? Effect.void
+          : Effect.fail(
+              overflowError(
+                new BoundedQueue.BufferOverflow({
+                  label: "ACP notification observer",
+                  maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+                  maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+                }),
+              ),
+            ),
+      ),
       Effect.andThen(
         // A failing or dying handler must not stop the reader, or every later
         // message on the connection goes unanswered.
@@ -396,16 +446,15 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       Effect.asVoid,
     );
 
-  const emitClientProtocolError = (error: AcpError.AcpError) =>
-    Queue.offer(clientQueue, {
-      _tag: "ClientProtocolError",
-      error: new RpcClientError.RpcClientError({
-        reason: new RpcClientError.RpcClientDefect({
-          message: "ACP protocol terminated.",
-          cause: error,
-        }),
+  const clientProtocolError = (error: AcpError.AcpError): RpcMessage.FromServerEncoded => ({
+    _tag: "ClientProtocolError",
+    error: new RpcClientError.RpcClientError({
+      reason: new RpcClientError.RpcClientDefect({
+        message: "ACP protocol terminated.",
+        cause: error,
       }),
-    }).pipe(Effect.asVoid);
+    }),
+  });
 
   const handleTermination = (classify: () => Effect.Effect<AcpError.AcpError>) =>
     Ref.modify(terminationHandled, (handled) => {
@@ -414,14 +463,33 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       }
       return [
         Effect.gen(function* () {
-          yield* Queue.offer(disconnects, 0);
+          yield* Effect.sync(() => Queue.offerUnsafe(disconnects, 0));
           const error = yield* classify();
           yield* Deferred.fail(terminationFailure, error);
           yield* failAllExtPending(error);
-          yield* emitClientProtocolError(error);
+          nativeRequestBytes.clear();
+          activeNativeBytes = 0;
           if (options.onTermination) {
             yield* options.onTermination(error);
           }
+          // Clean EOF preserves already accepted responses; overflow discards
+          // them because the connection can no longer deliver a complete stream.
+          if (error._tag === "AcpInputStreamEndedError" || error._tag === "AcpProcessExitedError")
+            yield* BoundedQueue.end(clientQueue);
+          else yield* BoundedQueue.fail(clientQueue, error);
+          yield* BoundedQueue.fail(serverQueue, error);
+          yield* BoundedQueue.fail(outgoing, error);
+          yield* notificationQueue.fail(error);
+          const pendingWrites = yield* Ref.getAndUpdate(outgoingWriterState, (state) => ({
+            ...state,
+            terminalError: error,
+            outstandingAcknowledgements: new Set<Deferred.Deferred<void, AcpError.AcpError>>(),
+          }));
+          yield* Effect.forEach(
+            pendingWrites.outstandingAcknowledgements,
+            (ack) => Deferred.fail(ack, error),
+            { discard: true },
+          );
         }),
         true,
       ] as const;
@@ -552,6 +620,32 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       });
     }
 
+    const key = acpRequestIdentity(message.id);
+    const bytes = BoundedQueue.encodedBytes(message);
+    if (nativeRequestBytes.has(key))
+      return Effect.fail(
+        new AcpError.AcpProtocolParseError({
+          operation: "decode-wire-message",
+          cause: "Native request identity reused while pending",
+        }),
+      );
+    if (
+      nativeRequestBytes.size >= BoundedQueue.DEFAULT_MAX_ITEMS ||
+      activeNativeBytes + bytes > BoundedQueue.DEFAULT_MAX_BYTES
+    ) {
+      return Effect.fail(
+        overflowError(
+          new BoundedQueue.BufferOverflow({
+            label: "ACP active native requests",
+            maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+            maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+          }),
+        ),
+      );
+    }
+    activeNativeBytes -= nativeRequestBytes.get(key) ?? 0;
+    nativeRequestBytes.set(key, bytes);
+    activeNativeBytes += bytes;
     const observeIncoming =
       options.onIncomingRequest?.(acpRequestIdentity(message.id), message.tag, message.payload) ??
       Effect.void;
@@ -583,14 +677,41 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       );
     }
 
-    return observeIncoming.pipe(Effect.andThen(Queue.offer(serverQueue, message)), Effect.asVoid);
+    return observeIncoming.pipe(
+      Effect.andThen(
+        BoundedQueue.offer(serverQueue, message).pipe(
+          Effect.flatMap((accepted) =>
+            accepted
+              ? Effect.void
+              : BoundedQueue.failure(serverQueue).pipe(
+                  Effect.flatMap((failure) =>
+                    Option.isSome(failure) ? Effect.fail(failure.value) : ensureActive,
+                  ),
+                ),
+          ),
+        ),
+      ),
+      Effect.asVoid,
+    );
   };
 
   const forwardToRpcClient = (
     message: RpcMessage.ResponseChunkEncoded | RpcMessage.ResponseExitEncoded,
   ) =>
     isEffectRpcRequestId(message.requestId)
-      ? Queue.offer(clientQueue, message).pipe(Effect.asVoid)
+      ? BoundedQueue.offer(clientQueue, message)
+          .pipe(
+            Effect.flatMap((accepted) =>
+              accepted
+                ? Effect.void
+                : BoundedQueue.failure(clientQueue).pipe(
+                    Effect.flatMap((failure) =>
+                      Option.isSome(failure) ? Effect.fail(failure.value) : ensureActive,
+                    ),
+                  ),
+            ),
+          )
+          .pipe(Effect.asVoid)
       : Effect.void;
 
   const handleExitEncoded = (message: RpcMessage.ResponseExitEncoded) =>
@@ -651,12 +772,36 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       case "Defect":
       case "ClientProtocolError":
       case "Pong":
-        return Queue.offer(clientQueue, message).pipe(Effect.asVoid);
+        return BoundedQueue.offer(clientQueue, message)
+          .pipe(
+            Effect.flatMap((accepted) =>
+              accepted
+                ? Effect.void
+                : BoundedQueue.failure(clientQueue).pipe(
+                    Effect.flatMap((failure) =>
+                      Option.isSome(failure) ? Effect.fail(failure.value) : ensureActive,
+                    ),
+                  ),
+            ),
+          )
+          .pipe(Effect.asVoid);
       case "Ack":
       case "Interrupt":
       case "Ping":
       case "Eof":
-        return Queue.offer(serverQueue, message).pipe(Effect.asVoid);
+        return BoundedQueue.offer(serverQueue, message)
+          .pipe(
+            Effect.flatMap((accepted) =>
+              accepted
+                ? Effect.void
+                : BoundedQueue.failure(serverQueue).pipe(
+                    Effect.flatMap((failure) =>
+                      Option.isSome(failure) ? Effect.fail(failure.value) : ensureActive,
+                    ),
+                  ),
+            ),
+          )
+          .pipe(Effect.asVoid);
     }
   };
 
@@ -759,7 +904,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
           { concurrency: "unbounded", discard: true },
         ),
       ),
-      Effect.andThen(Queue.fail(outgoing, error)),
+      Effect.andThen(BoundedQueue.fail(outgoing, error)),
       Effect.asVoid,
     );
   const completeOutgoingWrites = () =>
@@ -787,7 +932,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       updated.delete(acknowledgement);
       return { ...state, outstandingAcknowledgements: updated };
     }).pipe(Effect.andThen(Deferred.succeed(acknowledgement, undefined)), Effect.asVoid);
-  yield* Stream.fromQueue(outgoing).pipe(
+  yield* BoundedQueue.stream(outgoing).pipe(
     Stream.flatMap((write) => {
       const acknowledgement = write.acknowledgement;
       const completion =
@@ -849,9 +994,16 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
 
   const clientProtocol = RpcClient.Protocol.of({
     run: (_clientId, f) =>
-      Stream.fromQueue(clientQueue).pipe(
-        Stream.runForEach((message) => f(message)),
-        Effect.forever,
+      BoundedQueue.stream(clientQueue).pipe(
+        Stream.runForEach(f),
+        Effect.matchEffect({
+          onFailure: (error) => f(clientProtocolError(error)),
+          onSuccess: () =>
+            Deferred.await(terminationFailure).pipe(
+              Effect.catch((error) => f(clientProtocolError(error))),
+            ),
+        }),
+        Effect.andThen(Effect.never),
       ),
     send: (_clientId, request) =>
       offerOutgoing(request).pipe(
@@ -872,9 +1024,10 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
 
   const serverProtocol = RpcServer.Protocol.of({
     run: (f) =>
-      Stream.fromQueue(serverQueue).pipe(
+      BoundedQueue.stream(serverQueue).pipe(
         Stream.runForEach((message) => f(0, message)),
-        Effect.forever,
+        Effect.catch((error) => handleTermination(() => Effect.succeed(error))),
+        Effect.andThen(Effect.never),
       ),
     disconnects,
     send: (_clientId, response) =>
@@ -888,7 +1041,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       ),
     end: (_clientId) =>
       Ref.update(outgoingWriterState, (state) => ({ ...state, intentionalEnd: true })).pipe(
-        Effect.andThen(Queue.end(outgoing)),
+        Effect.andThen(BoundedQueue.end(outgoing)),
       ),
     clientIds: Effect.succeed(new Set([0])),
     initialMessage: Effect.succeedNone,
@@ -902,47 +1055,51 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   // JSON-RPC notifications carry no `id`. Encoding a Request without `isNotification`
   // emits an `id`, which real agents (Grok CLI) parse as a malformed request and silently drop.
   // That made `session/cancel` a no-op against Grok while the lenient mock agent accepted it.
-  const sendNotification = Effect.fn("sendNotification")(function* (
-    method: string,
-    payload: unknown,
-  ) {
-    yield* ensureActive;
-    yield* logProtocol({
-      direction: "outgoing",
-      stage: "decoded",
-      payload: { _tag: "Notification", tag: method, payload },
-    });
-    const exit = encodeJsonRpcNotification({ jsonrpc: "2.0", method, params: payload });
-    if (Exit.isFailure(exit)) {
-      return yield* AcpError.AcpProtocolParseError.fromEncodingError(
-        method,
-        undefined,
-        Cause.squash(exit.cause),
+  const sendNotification = Effect.fn("sendNotification")(
+    function* (method: string, payload: unknown) {
+      yield* ensureActive;
+      yield* logProtocol({
+        direction: "outgoing",
+        stage: "decoded",
+        payload: { _tag: "Notification", tag: method, payload },
+      });
+      const exit = encodeJsonRpcNotification({ jsonrpc: "2.0", method, params: payload });
+      if (Exit.isFailure(exit)) {
+        return yield* AcpError.AcpProtocolParseError.fromEncodingError(
+          method,
+          undefined,
+          Cause.squash(exit.cause),
+        );
+      }
+      const encoded = `${exit.value}\n`;
+      yield* logProtocol({ direction: "outgoing", stage: "raw", payload: encoded });
+      yield* ensureActive;
+      // FIFO queue admission preserves wire ordering against later requests
+      // (a session/prompt sent after session/cancel cannot overtake it).
+      yield* BoundedQueue.offer(outgoing, { payload: encoded }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new AcpError.AcpTransportError({
+              detail: "Failed to queue an outgoing ACP notification",
+              cause,
+            }),
+        ),
+        Effect.filterOrFail(
+          (accepted) => accepted,
+          () =>
+            new AcpError.AcpTransportError({
+              detail: "The ACP output queue was closed before accepting a notification",
+              cause: "Output queue closed",
+            }),
+        ),
       );
-    }
-    const encoded = `${exit.value}\n`;
-    yield* logProtocol({ direction: "outgoing", stage: "raw", payload: encoded });
-    yield* ensureActive;
-    // FIFO queue admission preserves wire ordering against later requests
-    // (a session/prompt sent after session/cancel cannot overtake it).
-    yield* Queue.offer(outgoing, { payload: encoded }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new AcpError.AcpTransportError({
-            detail: "Failed to queue an outgoing ACP notification",
-            cause,
-          }),
-      ),
-      Effect.filterOrFail(
-        (accepted) => accepted,
-        () =>
-          new AcpError.AcpTransportError({
-            detail: "The ACP output queue was closed before accepting a notification",
-            cause: "Output queue closed",
-          }),
-      ),
-    );
-  });
+    },
+    Effect.tapError((error) =>
+      error._tag === "AcpTransportError"
+        ? handleTermination(() => Effect.succeed(error))
+        : Effect.void,
+    ),
+  );
 
   const sendRequest = Effect.fn("sendRequest")(function* (method: string, payload: unknown) {
     yield* ensureActive;
@@ -950,6 +1107,17 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       nextRequestId,
       (current) => [current, current + 1] as const,
     );
+    if ((yield* Ref.get(extPending)).size >= BoundedQueue.DEFAULT_MAX_ITEMS) {
+      const error = overflowError(
+        new BoundedQueue.BufferOverflow({
+          label: "ACP pending requests",
+          maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+          maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+        }),
+      );
+      yield* handleTermination(() => Effect.succeed(error));
+      return yield* error;
+    }
     const deferred = yield* Deferred.make<unknown, AcpError.AcpError>();
     yield* Ref.update(extPending, (pending) =>
       new Map(pending).set(acpRequestIdentity(requestId), { deferred, method }),
@@ -970,7 +1138,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     clientProtocol,
     serverProtocol,
     get incoming() {
-      return Stream.fromQueue(notificationQueue);
+      return notificationQueue.stream;
     },
     request: sendRequest,
     notify: sendNotification,

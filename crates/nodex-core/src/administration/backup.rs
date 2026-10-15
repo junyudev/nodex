@@ -592,6 +592,7 @@ pub(super) fn request_backup_job_cancel(
     Ok(true)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn create_safety_backup(
     connection: &Connection,
     profile_home: &Path,

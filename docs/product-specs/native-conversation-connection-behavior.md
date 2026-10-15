@@ -18,8 +18,9 @@ connections return the existing chat. Claude profiles that share a canonical nat
 directory also share the same conversation identity. Connecting an existing chat to another
 Project is rejected; moving an existing chat remains a separate explicit operation.
 The chat retains its native working directory as its execution workspace. Connecting it to a
-Project authorizes that workspace for this chat while preserving the Project's content permissions;
-it does not add a Project source or grant access to other Projects.
+Project records content ownership and the chat's workspace relationship; it does not add or
+change a Project workspace source. Every Agent can access the current Profile's content independently
+of Project ownership or workspace location.
 
 Codex retains its native Thread ID. Claude retains its native session UUID separately from the
 Nodex Thread ID and binds it to the canonical native history directory. Changing a profile's

@@ -10,13 +10,11 @@ import type {
   SearchOutput,
 } from "./read-schemas";
 
-export type NodexAgentAccess = GetContextOutput["data"]["access"];
-
 export type NodexAgentReadRequest =
   | {
       readonly tool: "get_context";
       readonly projectId: string | null;
-      readonly access: NodexAgentAccess;
+
       readonly input: GetContextInput;
     }
   | {

@@ -4,11 +4,10 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { McpSchema, McpServer } from "effect/ai";
-import { ProviderSessionId, ThreadId } from "@t3tools/contracts";
+import { ThreadId } from "@t3tools/contracts";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import * as Invocation from "../mcp/McpInvocationContext.ts";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
-import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
 import { HostBridge } from "./HostBridge.ts";
 import { hostToolAuthorityRefusal } from "./HostToolAuthority.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
@@ -21,7 +20,7 @@ const refusal = (message: string) =>
     content: [{ type: "text", text: message }],
   });
 
-/** Host-owned tools run only after Core admits the exact foreground actor. */
+/** Host tools preserve authenticated execution identity and cancellation lifetime. */
 export const layer = (configuration: AgentRuntimeConfiguration) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -29,7 +28,6 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
       const server = yield* McpServer.McpServer;
       const bridge = yield* HostBridge;
       const projections = yield* Projections.ProjectionStoreV2;
-      const sessions = yield* Sessions.ProviderSessionManagerV2;
       for (const descriptor of configuration.host.tools) {
         const tool = yield* decodeTool(descriptor);
         if (server.tools.some((existing) => existing.tool.name === tool.name)) {
@@ -55,32 +53,20 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
                   prepared === undefined ||
                   prepared.providerInstanceId !== invocation.value.thread.providerInstanceId
                 )
-                  return refusal("No foreground Turn was admitted for this caller.");
+                  return refusal("No execution identity was captured for this caller.");
                 yield* admission!.assertCurrent();
                 const state = yield* projections.getHostToolAuthorityContext(
-                  invocation.value.thread.threadId,
+                  ThreadId.make(prepared.threadId),
+                  prepared.runId,
+                  prepared.providerThreadId,
                 );
-                const runtime = yield* sessions.get(
-                  ProviderSessionId.make(prepared.providerSessionId),
-                );
-                const denied = hostToolAuthorityRefusal(
-                  state,
-                  prepared,
-                  Option.isNone(runtime) ? undefined : runtime.value.nativeGeneration,
-                );
+                if (!(yield* bridge.nativeSessionLive(prepared)))
+                  return refusal("Native execution has ended.");
+                const denied = hostToolAuthorityRefusal(state, prepared, prepared.nativeGeneration);
                 if (denied !== undefined) return refusal(denied);
-                const nativeThread = state.providerThreads.find(
-                  (thread) => thread.id === prepared.providerThreadId,
-                )!;
-                const background = Option.isSome(runtime)
-                  ? (runtime.value.hasPendingBackgroundWorkForThread?.(nativeThread) ??
-                    runtime.value.hasPendingBackgroundWork)
-                  : undefined;
-                if (background !== undefined && (yield* background))
-                  return refusal("Native background work makes this tool caller ambiguous.");
                 const request = yield* McpSchema.McpRequestContext;
                 const nativeTurn = state.providerTurns.findLast(
-                  (turn) => turn.runAttemptId === prepared.attemptId && turn.status === "running",
+                  (turn) => turn.runAttemptId === prepared.attemptId,
                 );
                 const result = yield* bridge.callTool(
                   {
@@ -97,20 +83,22 @@ export const layer = (configuration: AgentRuntimeConfiguration) =>
                       : { requestMetadata: request.requestMetadata }),
                   },
                   descriptor.name,
-                  input,
+                  Object.fromEntries(
+                    Object.entries(input ?? {}).filter(
+                      ([key]) => key !== "__nodexExecutionCall" && key !== "__nodexNativeExecution",
+                    ),
+                  ),
                 );
                 // Recheck after the host returns so a stale completion cannot be presented as a new Run's success.
+                yield* admission!.assertCurrent();
                 const latest = yield* projections.getHostToolAuthorityContext(
                   ThreadId.make(prepared.threadId),
+                  prepared.runId,
+                  prepared.providerThreadId,
                 );
-                const latestRuntime = yield* sessions.get(
-                  ProviderSessionId.make(prepared.providerSessionId),
-                );
-                const stale = hostToolAuthorityRefusal(
-                  latest,
-                  prepared,
-                  Option.isNone(latestRuntime) ? undefined : latestRuntime.value.nativeGeneration,
-                );
+                if (!(yield* bridge.nativeSessionLive(prepared)))
+                  return refusal("Native execution has ended.");
+                const stale = hostToolAuthorityRefusal(latest, prepared, prepared.nativeGeneration);
                 if (stale !== undefined) return refusal(stale);
                 return yield* decodeResult(result);
               }).pipe(Effect.catchCause((cause) => Effect.succeed(refusal(String(cause))))),

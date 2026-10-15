@@ -219,3 +219,50 @@ it.effect("keeps invalidated auth signed out when an older refresh completes", (
     yield* Scope.close(scope, Exit.void);
   }),
 );
+
+it.effect(
+  "observes cold native account state and refreshes only after explicit endpoint acquisition",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const connection = yield* SubscriptionRef.make<
+          import("../codex-runtime/CodexEventHub").CodexEndpointConnection
+        >({ kind: "stopped", hostId: "local" });
+        const requests: string[] = [];
+        const gateway = {
+          localHostId: "local",
+          events: Stream.empty,
+          connectionChanges: () => SubscriptionRef.changes(connection),
+          awaitReady: () => Effect.void,
+          requestLocal: (method: string) =>
+            Effect.sync(() => {
+              requests.push(method);
+              if (method !== "account/read") throw new Error(`Unexpected request: ${method}`);
+              return { account: { type: "apiKey" }, requiresOpenaiAuth: false };
+            }),
+        } as unknown as CodexGateway["Service"];
+        const context = yield* Layer.buildWithScope(
+          accountLive({ pollInterval: "1 hour" }).pipe(
+            Layer.provide(
+              Layer.merge(Layer.succeed(CodexGateway, gateway), executionHostAuthStateLive),
+            ),
+          ),
+          yield* Scope.Scope,
+        );
+        const account = Context.get(context, CodexAccount);
+        yield* Effect.yieldNow;
+        assert.deepEqual(requests, []);
+        assert.isNull((yield* SubscriptionRef.get(account.snapshot)).account);
+        yield* SubscriptionRef.set(connection, { kind: "ready", hostId: "local", generation: 1 });
+        for (let attempt = 0; attempt < 20 && requests.length === 0; attempt++)
+          yield* Effect.yieldNow;
+        assert.deepEqual(requests, ["account/read"]);
+        assert.deepEqual((yield* SubscriptionRef.get(account.snapshot)).account, {
+          type: "apiKey",
+        });
+        yield* SubscriptionRef.set(connection, { kind: "stopped", hostId: "local" });
+        yield* Effect.yieldNow;
+        assert.deepEqual(requests, ["account/read"]);
+      }),
+    ),
+);

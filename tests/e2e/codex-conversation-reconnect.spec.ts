@@ -339,22 +339,9 @@ test("two live windows recover their resident conversation after the isolated na
     expect(mainSnapshot?.canonicalState?.cwd).toBe(selectedCwd);
     expect(durable.context.cwd).toBe(selectedCwd);
     expect(durable.summary.cwd).toBe(selectedCwd);
-    const selectedPermissions: NonNullable<ConversationResumePreparationOptions["permissions"]> = {
-      activePermissionProfile: { id: "selected-profile", extends: null },
-      runtimeWorkspaceRoots: [selectedCwd],
-      approvalPolicy: "never",
-      approvalsReviewer: "user",
-      sandboxPolicy: { type: "readOnly", networkAccess: false },
-    };
     const resumeOptions: ConversationResumePreparationOptions[] = [
       { serviceTier: null },
       { serviceTier: "priority" },
-      { serviceTier: "priority", permissions: selectedPermissions },
-      {
-        serviceTier: "priority",
-        permissions: selectedPermissions,
-        useAppServerPermissionDefault: true,
-      },
     ];
     const optionPreparations = [];
     for (const options of resumeOptions) {
@@ -398,25 +385,11 @@ test("two live windows recover their resident conversation after the isolated na
       );
       expect(prepared.params.serviceTier).toBe(options.serviceTier);
       expect(Object.hasOwn(prepared.params, "serviceTier")).toBe(true);
-      if (options.permissions && !options.useAppServerPermissionDefault) {
-        expect(prepared.params).toMatchObject({
-          permissions: "selected-profile",
-          approvalPolicy: "never",
-          approvalsReviewer: "user",
-          runtimeWorkspaceRoots: [selectedCwd],
-        });
-        expect(prepared.params).not.toHaveProperty("sandbox");
-      }
-      if (options.useAppServerPermissionDefault) {
-        for (const key of [
-          "permissions",
-          "approvalPolicy",
-          "approvalsReviewer",
-          "runtimeWorkspaceRoots",
-          "sandbox",
-        ])
-          expect(prepared.params).not.toHaveProperty(key);
-      }
+      expect(prepared.params).toMatchObject({
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        permissions: ":danger-full-access",
+      });
       expect(prepared.requestId).not.toBe(prepared.originalId);
       expect(prepared.acceptedThreadId).toBe(threadId);
       optionPreparations.push(prepared);
@@ -452,7 +425,7 @@ test("two live windows recover their resident conversation after the isolated na
         permissions: state.currentPermissions,
       };
     };
-    const permissionCases: Array<{
+    const submissionCases: Array<{
       name: string;
       fields: Partial<TurnStartParams>;
       context: ConversationFollowerTurnStart["context"];
@@ -465,11 +438,11 @@ test("two live windows recover their resident conversation after the isolated na
         name: "server-default",
         settings: { personality: null, summary: null, effort: null },
         fields: { approvalPolicy: "never", permissions: "ignored-profile", serviceTier: null },
-        context: { useAppServerPermissionDefault: true },
+        context: {},
         expected: {
-          approvalPolicy: null,
-          approvalsReviewer: null,
-          permissions: null,
+          approvalPolicy: "never",
+          approvalsReviewer: "user",
+          permissions: ":danger-full-access",
           sandboxPolicy: null,
           serviceTier: null,
         },
@@ -478,9 +451,9 @@ test("two live windows recover their resident conversation after the isolated na
         name: "named-profile",
         settings: { personality: "pragmatic", summary: "auto" },
         fields: { permissions: "peer-selected-profile", serviceTier: "priority" },
-        context: { useAppServerPermissionDefault: false },
+        context: {},
         expected: {
-          permissions: "peer-selected-profile",
+          permissions: ":danger-full-access",
           sandboxPolicy: null,
           serviceTier: "priority",
         },
@@ -489,17 +462,17 @@ test("two live windows recover their resident conversation after the isolated na
         name: "explicit-sandbox",
         settings: { personality: "none", summary: "none" },
         fields: { sandboxPolicy: { type: "readOnly", networkAccess: false }, serviceTier: null },
-        context: { useAppServerPermissionDefault: false },
+        context: {},
         expected: {
-          permissions: null,
-          sandboxPolicy: { type: "readOnly", networkAccess: false },
+          permissions: ":danger-full-access",
+          sandboxPolicy: null,
           serviceTier: null,
         },
       },
       {
         name: "full-collaboration",
         fields: { permissions: null, serviceTier: null },
-        context: { useAppServerPermissionDefault: false },
+        context: {},
         settings: {
           personality: null,
           summary: null,
@@ -513,15 +486,15 @@ test("two live windows recover their resident conversation after the isolated na
             },
           },
         },
-        expected: { permissions: null, serviceTier: null, model: null },
+        expected: { permissions: ":danger-full-access", serviceTier: null, model: null },
       },
     ];
     try {
       await peer.waitUntilInitialized({ timeoutMs: 10_000 });
-      for (const entry of permissionCases) {
+      for (const entry of submissionCases) {
         const ownerStateBefore = await readOwnerExecutionState();
-        const prompt = `Retain ${entry.name} permission intent through the recovered peer owner`;
-        const clientUserMessageId = `peer-permission-${entry.name}`;
+        const prompt = `Retain ${entry.name} execution options through the recovered peer owner`;
+        const clientUserMessageId = `peer-options-${entry.name}`;
         const preparedPrompt = await prepareCodexPrompt(
           prompt,
           { text: prompt },
@@ -581,7 +554,6 @@ test("two live windows recover their resident conversation after the isolated na
             )?.params;
           };
           await expect.poll(readRetained).toMatchObject({
-            useAppServerPermissionDefault: entry.context?.useAppServerPermissionDefault,
             serviceTier: entry.fields.serviceTier,
             permissions: entry.expected.permissions,
             ...entry.settings,

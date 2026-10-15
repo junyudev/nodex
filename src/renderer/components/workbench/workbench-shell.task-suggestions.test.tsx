@@ -14,7 +14,6 @@ import {
   renderWorkbench,
   rendererCommandPayload,
   setMockInvokeImpl,
-  startThreadForSessionCalls,
   waitForLastThreadStageActions,
   sideChatConversations,
   getConnectedThreadStagePropsByThreadId,
@@ -25,6 +24,12 @@ function executionCalls() {
     const method = (input as { request?: { method?: string } } | undefined)?.request?.method;
     return (
       /(?:turn:start|turn:steer|queue.*enqueue|thread:start)/.test(String(channel)) ||
+      [
+        "agent-runtime:session:launch",
+        "agent-runtime:session:message",
+        "agent-runtime:session:queue-message",
+        "agent-runtime:session:queue",
+      ].includes(String(channel)) ||
       (typeof method === "string" &&
         /(?:turn\/start|turn\/steer|queue.*enqueue|thread\/start)/.test(method))
     );
@@ -50,7 +55,6 @@ describe("task suggestions use the owning Workbench draft", () => {
     expect(
       invokeCalls.filter(([channel]) => channel === "project-sessions:ensure-default-draft"),
     ).toEqual([]);
-    expect(startThreadForSessionCalls).toEqual([]);
   });
   test.each(["alpha", null])(
     "prefills captured project %s despite another active project",
@@ -94,7 +98,6 @@ describe("task suggestions use the owning Workbench draft", () => {
         );
         expect(ensure).toHaveLength(1);
         expect(rendererCommandPayload(ensure[0])?.projectId).toBe(projectId);
-        expect(startThreadForSessionCalls).toEqual([]);
         expect(executionCalls()).toEqual([]);
       } finally {
         body.unmount();
@@ -156,7 +159,6 @@ describe("task suggestions use the owning Workbench draft", () => {
       await settleAsyncRender();
       expect(view.navigationStateChanges).toHaveLength(before);
       expect(view.queryByLabelText("Prompt")).toBeNull();
-      expect(startThreadForSessionCalls).toEqual([]);
       expect(executionCalls()).toEqual([]);
     } finally {
       body.unmount();
@@ -186,13 +188,16 @@ describe("task suggestions use the owning Workbench draft", () => {
     await waitFor(() =>
       expect((view.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe(""),
     );
-    expect(startThreadForSessionCalls).toEqual([]);
     expect(executionCalls()).toEqual([]);
   });
 
-  test("a read-only selected child's suggestion reaches the same project draft owner", async () => {
+  test("an observed child's suggestion reaches the same project draft owner", async () => {
     const root = makeAttachedSession({ id: "root", projectId: "alpha", threadId: "root-thread" });
-    const remoteRoot = { ...root, thread: { ...root.thread!, executionHostId: "remote" } };
+    const remoteRoot = {
+      ...root,
+      executionRef: null,
+      thread: { ...root.thread!, executionHostId: "remote" },
+    };
     sideChatConversations["child"] = {
       threadId: "child",
       projectId: "alpha",
@@ -247,14 +252,14 @@ describe("task suggestions use the owning Workbench draft", () => {
         message.connect();
         await Promise.resolve();
       });
+      const suggestion = await body.findByRole("button", { name: "Use suggestion" });
       await act(async () => {
-        fireEvent.click(await body.findByRole("button", { name: "Use suggestion" }));
+        fireEvent.click(suggestion);
         await Promise.resolve();
       });
       await waitFor(() =>
         expect((view.getByLabelText("Prompt") as HTMLTextAreaElement).value).toBe("Child prompt"),
       );
-      expect(startThreadForSessionCalls).toEqual([]);
       expect(executionCalls()).toEqual([]);
     } finally {
       body.unmount();

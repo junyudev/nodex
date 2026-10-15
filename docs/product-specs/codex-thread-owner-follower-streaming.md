@@ -144,11 +144,11 @@ while acceptance is pending cannot leave the completed local resume silently fol
 Native notifications arriving during acceptance stay in the resume buffer until this transition.
 
 Main and window preparation share native resume request construction. An idle native Thread may
-reuse its configuration and instructions only when there is no explicit permission or service-tier
-override, no named permission profile being sent, and no nondefault configuration. Empty profiles
-and null configuration entries do not force configuration reload; other configuration, including
-MCP visibility, does. The resume request still carries the selected Thread identity, rollout path,
-settings and history-page contract.
+reuse its configuration and instructions when there is no service-tier override or nondefault
+configuration. Null configuration entries do not force reload; other configuration, including
+MCP visibility, does. Resume retains the selected Thread identity, rollout path, nonpermission
+settings and history-page contract. The native gateway always supplies full access and automatic
+approval, independently of historical native policy observations.
 
 A native resume starts with a 120-second response deadline. Default timeouts allow two
 retries, each after 750 ms, with 240- and 480-second deadlines. An explicit deadline,
@@ -207,7 +207,7 @@ owner rules; native routing does not run a second owner election. Prepared mutat
 validate their admitted executing peer and immutable request capability.
 
 Renderer controls resolve the manager for the target conversation or explicit execution host
-before reading permissions or issuing actions. Archive, queue, goal, read-state, history,
+before reading native execution metadata or issuing actions. Archive, queue, goal, read-state, history,
 Subagent, Turn, and background-process actions therefore cannot fall through to an unrelated
 default host when multiple host managers are active in the same window.
 
@@ -274,7 +274,7 @@ distinguishing union variants by a retained field requires a value-type check.
 Owner action dispatch uses typed native method payloads. Followers forward the original
 request fields and context; they do not convert them to composer text and ask Main to rebuild
 an unrelated command. Settings, interrupt, start, steer, edit, compaction, complete history and
-approval or user-input responses execute in the current owner. Every peer action requires the
+genuine user-input and MCP elicitation responses execute in the current owner. Every peer action requires the
 addressed conversation's current owner and a supported method. There is no generic action fallback.
 
 Option-picker and setup-tool replies use the receiving manager's native request occurrence
@@ -285,27 +285,14 @@ Native start preflight captures the original request and context in an immutable
 Owner-time materialization resolves current defaults after owner selection. The executing
 peer must match the current owner, and execution accepts only the finalized admitted request.
 An account, generation or owner change invalidates the receipt. Attachments, comments,
-permission-context flags and client user-message identity travel with the admitted operation.
+workspace metadata and client user-message identity travel with the admitted operation.
 
-Turn preparation resolves native permission overrides, retained Turn parameters and current
-permission provenance together. Permission-selection context takes precedence over an explicit
-server-default flag. Otherwise an explicit flag, including false, takes precedence over an
-inherited flag from the latest assigned Turn. An optimistic Turn cannot supply that inherited
-decision, and disabling settings inheritance also disables inherited default intent. A defined
-null permission profile is an explicit choice; workspace roots alone are not a permission choice.
-Custom Project permissions do not imply server-default intent.
-
-Server-default preparation leaves policy, reviewer and profile selection to the native runtime
-while retaining the effective policy and sandbox in the local Turn. A named profile never travels
-with a non-null native sandbox override. An explicit sandbox clears inherited profile selection;
-named profiles retain matching provenance from next-Turn settings or current permissions.
-Permission selection requires complete next-Turn permission settings or current permission
-context. Missing settings fail preparation with a specific error before native submission.
-
-Live permission context distinguishes an unobserved profile or root list from an observed null
-profile or empty list. History reconstruction can project concrete defaults for a historical Turn,
-but must preserve the live context used by subsequent preparation. Workspace relocation preserves
-the canonical workspace kind and browser root as well as its effective cwd.
+Turn preparation retains model, reasoning effort, collaboration intent, service tier and the
+actual execution directory. Native execution always uses full access and automatic approval.
+Native policy, reviewer, profile and sandbox observations remain history diagnostics and cannot
+supply settings controls or override execution policy. Workspace relocation preserves the
+canonical workspace kind and browser root as well as its effective cwd; configured directories
+describe the execution workspace without limiting Profile content access.
 
 Queued starts and steers retain their captured service tier, including an explicit null reset.
 Turn preparation preserves native tier strings and checks current configuration requirements
@@ -321,7 +308,7 @@ carry the same execution settings and the explicit-request multi-Agent mode.
 
 Both Main and window owners await their pending settings updates before materializing a Turn.
 Optimistic admission updates the retained execution model, reasoning effort, collaboration
-selection and current permission context. It does not create or overwrite next-Turn settings
+selection and factual native execution context. It does not create or overwrite next-Turn settings
 or rewrite the hydration snapshot. Active execution readers use the canonical live fields.
 The model-change notice compares the previous model with the collaboration model present at
 admission, before applying the prepared execution selection.
@@ -330,7 +317,7 @@ A rejected ordinary start removes its matching empty optimistic Turn, including 
 only a model-change notice. Observed partial output stays visible in a failed Turn with the actual
 error message. Rollback targets only an unassigned, in-progress Turn with the admitted client
 message identity. A native-assigned or completed Turn, later settings updates and a newer native
-runtime status survive rejection. Previous permission presence and value are restored separately
+runtime status survive rejection. Historical native observations are retained independently
 from Turn matching. Optimistic activity belongs to the canonical document; native notifications
 project durable status, and accepting a response never forces a newer idle state back to active.
 
@@ -431,11 +418,9 @@ notification that replaces the settings object during that request takes precede
 If that method is unsupported, the manager remembers the result for its own lifetime and
 applies later updates locally. Other failures propagate. Partial settings remain partial;
 missing effort retains the previous value, while explicit null clears it. Collaboration mode
-can supply model and effort. Sandbox/profile overrides clear stale named permission state.
-Hydration context is not rewritten by a partial settings patch.
-
-An explicit active-turn reviewer update follows the thread update only when the native
-capability supports it. Capability state belongs to the physical host generation.
+can supply model and effort. Both the native request and the local patch select only supported
+nonpermission controls; historical policy fields are not mutable settings. Hydration context
+is not rewritten by a partial settings patch.
 
 ## Interrupt
 
@@ -449,8 +434,8 @@ with critical priority and a 500 ms deadline, then interrupts even if the pause 
 reports the pause error with the interrupted turn ID. Descendant cleanup pauses the goal
 after interruption and treats a pause failure as a warning.
 
-Unconditional interruption launches dismissal of pending command/file approvals, permission
-requests, user input, option pickers and MCP elicitations without waiting for those replies.
+Unconditional interruption launches dismissal of pending user input, option pickers and MCP
+elicitations without waiting for those replies. Native permission requests are approved automatically.
 Descendant interruption runs from the outer operation's cleanup; user stop schedules it in
 the background. An expected-turn mismatch does not trigger descendant cleanup.
 

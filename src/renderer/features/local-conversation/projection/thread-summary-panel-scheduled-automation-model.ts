@@ -7,30 +7,30 @@ import type { ThreadSummaryPanelScheduledAutomationRow } from "../thread-stage-t
 
 interface BuildThreadSummaryPanelScheduledAutomationRowInput {
   automations: readonly CodexScheduledAutomation[];
-  conversationId: string | null;
+  sessionId: string | null;
   now?: Date;
 }
 
-function isActiveHeartbeatAutomationForThread(
+function isActiveHeartbeatAutomationForSession(
   automation: CodexScheduledAutomation,
-  conversationId: string,
+  sessionId: string,
 ): boolean {
   return (
     automation.kind === "heartbeat" &&
     automation.status === "ACTIVE" &&
-    automation.targetThreadId === conversationId
+    automation.targetSessionId === sessionId
   );
 }
 
 export function buildThreadSummaryPanelScheduledAutomationRow({
   automations,
-  conversationId,
+  sessionId,
   now = new Date(),
 }: BuildThreadSummaryPanelScheduledAutomationRowInput): ThreadSummaryPanelScheduledAutomationRow | null {
-  if (!conversationId) return null;
+  if (!sessionId) return null;
 
   const automation = automations.find((candidate) =>
-    isActiveHeartbeatAutomationForThread(candidate, conversationId),
+    isActiveHeartbeatAutomationForSession(candidate, sessionId),
   );
   if (!automation) return null;
 

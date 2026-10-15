@@ -12,6 +12,7 @@ import * as Ref from "effect/Ref";
 import * as Queue from "effect/Queue";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
@@ -41,6 +42,7 @@ import {
 export interface CodexEndpointConfig {
   readonly hostId: string;
   readonly hostKind?: string;
+  readonly startup?: "eager" | "on-demand";
   readonly transportKind?: "stdio" | "websocket";
   /** Claims transport-owned server requests before application ingress. */
   readonly internalServerRequestHandler?: CodexEndpointInternalServerRequestHandler;
@@ -166,9 +168,9 @@ export const live = (
       const requestInbox = yield* CodexApplicationRequestInbox;
       const requestScheduler = yield* CodexRequestScheduler;
       const state = yield* SubscriptionRef.make<CodexEndpointConnection>({
-        kind: "connecting",
+        kind: config.startup === "on-demand" ? "stopped" : "connecting",
         hostId,
-        generation: 1,
+        generation: config.startup === "on-demand" ? 0 : 1,
         source: connectionSource,
       });
       const generation = yield* Ref.make(0);
@@ -180,6 +182,7 @@ export const live = (
       const snapshotAdmission = yield* makeCodexSnapshotAdmission();
       const supervisorStopped = yield* Deferred.make<void>();
       const endpointScope = yield* Effect.scope;
+      const transportContext = yield* Effect.context<CodexSessionTransport>();
 
       const publishConnection = Effect.fn("CodexEndpoint.publishConnection")(function* (
         connection: CodexEndpointConnection,
@@ -612,9 +615,19 @@ export const live = (
           Effect.andThen(publishConnection({ kind: "stopped", hostId })),
         ),
       );
-      yield* Effect.forkScoped(
-        supervisor.pipe(Effect.ensuring(Deferred.succeed(supervisorStopped, undefined))),
-      );
+      const startupLock = yield* Semaphore.make(1);
+      let started = false;
+      const acquireSupervisor = Effect.gen(function* () {
+        if (started || endpointScope.state._tag === "Closed") return;
+        started = true;
+        yield* supervisor.pipe(
+          Effect.provide(transportContext),
+          Effect.ensuring(Deferred.succeed(supervisorStopped, undefined)),
+          Effect.forkIn(endpointScope, { startImmediately: true }),
+        );
+      }).pipe(startupLock.withPermits(1), snapshotAdmission.request);
+      const start = Effect.suspend(() => (started ? Effect.void : acquireSupervisor));
+      if (config.startup !== "on-demand") yield* start;
 
       const admissionSignal = SubscriptionRef.changes(admissionState).pipe(
         Stream.filter((value): value is number => value !== null),
@@ -633,14 +646,25 @@ export const live = (
               ),
         ),
       );
-      const admission = Effect.raceFirst(
+      const admissionSignalOrSession = Effect.raceFirst(
         admissionSignal,
         currentSession.pipe(Effect.map((current) => current.generation)),
       );
-      const restart = Queue.offer(restartWake, undefined).pipe(Effect.asVoid);
+      const admission = start.pipe(Effect.andThen(admissionSignalOrSession));
+      const restart = Effect.suspend(() =>
+        started ? Queue.offer(restartWake, undefined).pipe(Effect.asVoid) : start,
+      );
       const withProfileSnapshot = <A, E, R>(capture: Effect.Effect<A, E, R>) =>
         Effect.scoped(
           Effect.gen(function* () {
+            if (endpointScope.state._tag === "Closed")
+              return yield* codexRuntimeError({
+                operation: "endpoint.snapshot",
+                reason: "closing",
+                retryable: false,
+                hostId,
+              });
+            if (!started) return yield* capture;
             const session = yield* currentSession;
             if (!session.closeForSnapshot) {
               return yield* codexRuntimeError({
@@ -757,14 +781,16 @@ export const live = (
             }),
           );
         }
-        return Ref.set(configRef, { ...next, hostId }).pipe(Effect.andThen(restart));
+        return Ref.set(configRef, { ...next, hostId }).pipe(
+          Effect.andThen(Effect.suspend(() => (started ? restart : Effect.void))),
+        );
       };
       return CodexEndpoint.of({
         hostId,
         metrics: hostMetrics,
         sourceEpoch,
         state,
-        session: currentSession,
+        session: start.pipe(Effect.andThen(currentSession)),
         admission,
         withRequest: snapshotAdmission.request,
         withProfileSnapshot,

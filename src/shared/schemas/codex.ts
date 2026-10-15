@@ -9,7 +9,6 @@ import { z } from "zod";
 import type { ThreadGoal, ThreadGoalStatus } from "@nodex/codex-app-server-protocol/v2";
 import type {
   CodexCollaborationModeKind,
-  CodexPermissionMode,
   CodexReasoningEffort,
   CodexThreadTokenUsage,
   CodexThreadActiveFlag,
@@ -45,13 +44,6 @@ export const CodexThreadDetailLevelSchema = z.enum([
 
 export const CodexCollaborationModeKindSchema =
   createGeneratedCodexSchema<CodexCollaborationModeKind>(modeKindJsonSchema);
-
-export const CodexPermissionModeSchema = z.enum([
-  "auto",
-  "guardian-approvals",
-  "full-access",
-  "custom",
-]) satisfies z.ZodType<CodexPermissionMode>;
 
 export const CodexThreadStatusTypeSchema =
   createGeneratedCodexStringDiscriminatorSchema<CodexThreadStatusType>(
@@ -110,17 +102,6 @@ export const CodexThreadSettingsSchema = z.record(z.string(), z.unknown()).trans
 
   return next;
 }) satisfies z.ZodType<CodexThreadSettings>;
-
-export const CodexPermissionModesByProjectSchema = z
-  .record(z.string(), z.unknown())
-  .transform((value) =>
-    Object.entries(value).reduce<Record<string, CodexPermissionMode>>((acc, [projectId, mode]) => {
-      const parsedMode = CodexPermissionModeSchema.safeParse(mode);
-      if (!parsedMode.success) return acc;
-      acc[projectId] = parsedMode.data;
-      return acc;
-    }, {}),
-  );
 
 const CollaborationModeMapSchema = z.record(z.string(), z.unknown()).transform((value) =>
   Object.entries(value).reduce<Record<string, CodexCollaborationModeKind>>(

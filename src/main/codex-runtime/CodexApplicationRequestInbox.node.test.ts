@@ -1,3 +1,4 @@
+import type { ItemStartedNotification } from "@nodex/codex-app-server-protocol/v2/ItemStartedNotification";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Cause from "effect/Cause";
@@ -571,4 +572,163 @@ it.effect("resolves renderer response identities only while the exact occurrence
     assert.isTrue(yield* inbox.settle(occurrence, { kind: "result", value: {} }));
     assert.isNull(yield* inbox.resolveOccurrence(occurrence));
   }).pipe(Effect.scoped),
+);
+
+const nativeCall = (turnId: string, callId = "call") =>
+  ({
+    threadId: "thread",
+    turnId,
+    startedAtMs: 1,
+    item: {
+      type: "mcpToolCall",
+      id: callId,
+      server: "nodex_app",
+      tool: "read_page",
+      status: "inProgress",
+      arguments: { pageId: "page" },
+      appContext: null,
+      mcpAppUi: null,
+      pluginId: null,
+      readOnlyHint: true,
+      result: null,
+      error: null,
+      durationMs: null,
+    },
+  }) satisfies ItemStartedNotification;
+const nativeRequest = (turnId: string, callId = "call") => ({
+  name: "read_page",
+  arguments: { pageId: "page" },
+  metadata: { callId, "x-codex-turn-metadata": { thread_id: "thread", turn_id: turnId } },
+});
+const nativeTurn = (id: string, status: "inProgress" | "completed") => ({
+  id,
+  rootTurnId: null,
+  items: [],
+  itemsView: "full" as const,
+  status,
+  error: null,
+  startedAt: null,
+  completedAt: null,
+  durationMs: null,
+});
+
+it.effect(
+  "retains original native background calls through completion and the next Turn, with exact cancellation",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inbox = yield* make;
+        const generationScope = yield* Scope.make();
+        yield* inbox
+          .openGeneration("remote", 1)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const source = { hostId: "remote", generation: 1 };
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/started",
+          params: nativeCall("a"),
+        });
+        const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
+        yield* inbox.observeAppCallNotification(source, {
+          method: "turn/completed",
+          params: {
+            threadId: "thread",
+            turn: nativeTurn("a", "completed"),
+          },
+        });
+        yield* inbox.observeAppCallNotification(source, {
+          method: "turn/started",
+          params: {
+            threadId: "thread",
+            turn: nativeTurn("b", "inProgress"),
+          },
+        });
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/started",
+          params: nativeCall("b"),
+        });
+        const next = yield* inbox.captureNativeTurnSource(source, "thread", "b");
+        assert.isTrue(original?.isActive());
+        const started = yield* Deferred.make<void>();
+        const call = yield* inbox
+          .runAppCall(source, nativeRequest("a"), (claim) => {
+            assert.strictEqual(claim.turnId, "a");
+            return Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never));
+          })
+          .pipe(Effect.flip, Effect.forkChild);
+        yield* Deferred.await(started);
+        yield* inbox.cancelAppCalls(source, "thread", "a");
+        assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
+        assert.isFalse(original?.isActive());
+        assert.isTrue(next?.isActive());
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/started",
+          params: nativeCall("a", "late"),
+        });
+        assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
+        assert.strictEqual(
+          yield* inbox.runAppCall(source, nativeRequest("b"), (claim) =>
+            Effect.succeed(claim.turnId),
+          ),
+          "b",
+        );
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/completed",
+          params: {
+            threadId: "thread",
+            turnId: "b",
+            completedAtMs: 2,
+            item: nativeCall("b").item,
+          },
+        });
+        yield* Scope.close(generationScope, Exit.void);
+        assert.isFalse(next?.isActive());
+      }),
+    ),
+);
+
+it.effect(
+  "retires overflowed native call generations immediately without damaging sibling connections",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inbox = yield* make;
+        const failed = yield* inbox.openGeneration("remote:a", 1);
+        yield* inbox.openGeneration("remote:b", 1);
+        const source = { hostId: "remote:a", generation: 1, occurrenceId: "large-native-call" };
+        const original = yield* inbox.captureNativeTurnSource(source, "thread", "a");
+        const sibling = yield* inbox.captureNativeTurnSource(
+          { hostId: "remote:b", generation: 1 },
+          "thread",
+          "a",
+        );
+        const event = nativeCall("a");
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/started",
+          params: {
+            ...event,
+            item: { ...event.item, arguments: { body: "x".repeat(4 * 1024 * 1024) } },
+          },
+        });
+        const failure = yield* failed.termination.pipe(Effect.flip);
+        assert.strictEqual(failure.occurrenceId, "large-native-call");
+        assert.isFalse(original?.isActive());
+        assert.isTrue(sibling?.isActive());
+        assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "a"));
+        const admission = yield* failed
+          .admit({
+            requestId: "late",
+            protocol: "extension",
+            method: "currentTime/read",
+            params: {},
+          })
+          .pipe(Effect.flip);
+        assert.strictEqual(admission.reason, "overflow");
+        assert.strictEqual(
+          (yield* inbox
+            .runAppCall(source, nativeRequest("a"), () => Effect.succeed(1))
+            .pipe(Effect.flip)).reason,
+          "revoked",
+        );
+      }),
+    ),
 );

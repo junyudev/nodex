@@ -34,7 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { searchDataSourceRelationCandidates } from "@/lib/data-source-relation-runtime";
 import { resolveDataSourcePropertyPresentationRole } from "@/lib/data-source-property-presentation-role";
-import type { DatabaseViewAccessContext } from "@/lib/database-view-render-model";
+import type { DatabaseViewRoutingContext } from "@/lib/database-view-render-model";
 import {
   databaseViewAdvancedFilterDepth,
   duplicateDatabaseViewAdvancedFilterNode,
@@ -60,7 +60,7 @@ interface DatabaseViewAdvancedFilterEditorProps {
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries?: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly disabled?: boolean;
   readonly onChange: (config: DatabaseViewConfigV6) => void;
 }
@@ -323,14 +323,14 @@ function DebouncedFilterTextInput({
 function RelationFilterValuePicker({
   host = "popover",
   property,
-  accessContext,
+  routingContext,
   selectedIds,
   disabled,
   onChange,
 }: {
   readonly host?: "popover" | "embedded";
   readonly property: DataSourcePropertyRecordV2;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly selectedIds: readonly string[];
   readonly disabled: boolean;
   readonly onChange: (pageIds: readonly string[]) => void;
@@ -347,12 +347,12 @@ function RelationFilterValuePicker({
   const generation = useRef(0);
 
   useEffect(() => {
-    if (!open || !accessContext) return;
+    if (!open || !routingContext) return;
     const current = ++generation.current;
     const timeout = window.setTimeout(() => {
       setLoading(true);
       setError(null);
-      void searchDataSourceRelationCandidates({ accessContext, property, query })
+      void searchDataSourceRelationCandidates({ routingContext, property, query })
         .then((window) => {
           if (current !== generation.current) return;
           setCandidates(window.candidates);
@@ -370,22 +370,22 @@ function RelationFilterValuePicker({
         });
     }, 180);
     return () => window.clearTimeout(timeout);
-  }, [accessContext, open, property, query]);
+  }, [routingContext, open, property, query]);
 
   const selectedNames = selectedIds.flatMap((pageId) => {
     const candidate = candidates.find((item) => item.pageId === pageId);
     return candidate ? [candidate.title || "Untitled"] : [];
   });
   const loadMore = () => {
-    if (!accessContext || !nextCursor || loading) return;
+    if (!routingContext || !nextCursor || loading) return;
     const current = generation.current;
     setLoading(true);
-    void searchDataSourceRelationCandidates({ accessContext, property, query, after: nextCursor })
+    void searchDataSourceRelationCandidates({ routingContext, property, query, after: nextCursor })
       .then(async (window) => {
         if (current !== generation.current) return;
         if (projectionRevision !== null && window.projectionRevision !== projectionRevision) {
           const refreshed = await searchDataSourceRelationCandidates({
-            accessContext,
+            routingContext,
             property,
             query,
           });
@@ -477,7 +477,7 @@ function RelationFilterValuePicker({
     <NodexPopover
       open={open}
       onOpenChange={(next) => {
-        if (next && (!accessContext || disabled)) return;
+        if (next && (!routingContext || disabled)) return;
         setOpen(next);
         if (next) return;
         generation.current += 1;
@@ -485,7 +485,7 @@ function RelationFilterValuePicker({
         setError(null);
       }}
     >
-      <NodexPopoverTrigger disabled={disabled || !accessContext}>
+      <NodexPopoverTrigger disabled={disabled || !routingContext}>
         <button
           type="button"
           aria-label={`Filter value for ${property.name}`}
@@ -513,7 +513,7 @@ export function DatabaseViewFilterValueField({
   property,
   options,
   onRequestOptions,
-  accessContext,
+  routingContext,
   disabled,
   presentation = "advanced",
   onChange,
@@ -522,7 +522,7 @@ export function DatabaseViewFilterValueField({
   readonly property: DataSourcePropertyRecordV2;
   readonly options: readonly DatabasePropertyOption[];
   readonly onRequestOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly disabled: boolean;
   readonly presentation?: "advanced" | "quick" | "conditional";
   readonly onChange: (value: DatabaseJsonValue) => void;
@@ -791,7 +791,7 @@ export function DatabaseViewFilterValueField({
       <RelationFilterValuePicker
         host={presentation === "quick" ? "embedded" : "popover"}
         property={property}
-        accessContext={accessContext}
+        routingContext={routingContext}
         selectedIds={pageIds}
         disabled={disabled}
         onChange={onChange}
@@ -859,7 +859,7 @@ interface FilterTreeEditorContext extends FilterTreeEditorCommands {
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly disabled: boolean;
 }
 
@@ -1096,7 +1096,7 @@ function FilterClauseCells({
             context.optionRegistries[property.propertyId] ?? readDatabasePropertyOptions(property)
           }
           onRequestOptions={context.onRequestPropertyOptions}
-          accessContext={context.accessContext}
+          routingContext={context.routingContext}
           disabled={context.disabled}
           onChange={(value) => context.onUpdate(path, { ...clause, value })}
         />
@@ -1194,7 +1194,7 @@ export function DatabaseViewAdvancedFilterEditor({
   properties: allProperties,
   optionRegistries = EMPTY_OPTION_REGISTRIES,
   onRequestPropertyOptions,
-  accessContext,
+  routingContext,
   disabled = false,
   onChange,
 }: DatabaseViewAdvancedFilterEditorProps) {
@@ -1241,7 +1241,7 @@ export function DatabaseViewAdvancedFilterEditor({
         properties={properties}
         optionRegistries={optionRegistries}
         onRequestPropertyOptions={onRequestPropertyOptions}
-        accessContext={accessContext}
+        routingContext={routingContext}
         disabled={disabled}
         onUpdate={updateFilter}
         onRemove={removeFilter}

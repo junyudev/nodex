@@ -1,9 +1,12 @@
 # Codex Subagent Behavior
 
 Status: Active
-Last Updated: 2026-09-22
+Last Updated: 2026-10-15
 
 ## Intent and ownership
+
+This document describes provider-native Codex subagents. Application-owned
+delegated Threads follow [Agent Runtime behavior](agent-runtime-behavior.md).
 
 Subagents are child agent Threads attached to a root Chat. They do not become
 independent sidebar Chats. The app-server owns execution, the spawn graph,
@@ -13,7 +16,7 @@ and supplies metadata, selection and control interfaces. Every operation uses
 the root's durable execution host and Project coordinates.
 
 One pure shared row projection derives identity, parent-Turn association,
-visibility, status, objective, timing and messaging permission for the overview,
+visibility, status, objective, timing and execution availability for the overview,
 transcript, summary and composer mentions. Core's observation index does not
 independently decide visible row state. This document owns those rules and root
 lifecycle behavior. [Thread Transcript Behavior](codex-thread-transcript-behavior.md)
@@ -61,7 +64,7 @@ progress, reasoning, answer timing or diffs.
 A close reference hides the child. A system-error runtime also hides it. Hidden
 agent state or a latest failed/interrupted Turn hides the child unless its runtime
 is currently active. A needs-resume or not-loaded resident uses newer summary runtime when available. Otherwise an available runtime determines status: active is
-Active, including waiting-on-approval/input flags, and every other runtime is
+Active, including waiting-for-input flags, and every other runtime is
 Done. With no runtime, completed discovery implies Done. During incomplete
 discovery, child Turn progress wins, then pending-init maps to Waiting, completed
 to Done, and the remaining fallback is Active. Visible rows never expose an
@@ -74,14 +77,12 @@ preserve the preceding tool. Resume preserves it unless the preceding tool was
 close. Thus close followed by send remains hidden, while fresh lifecycle activity
 or explicit resume can reopen the row.
 
-Only a collaborative spawn in immediate-parent history grants messaging. Later
-collaboration preserves the grant. An activity preserves it within the same
-parent Turn and resets it in a later Turn. A message alone creates no membership,
-but messages for an existing child participate in that same grant transition.
-Source-only nested children consult their immediate parent's resident history.
-Missing parent history grants nothing. Status, residency and metadata cannot
-grant messaging. The grant is further constrained by archive state and normal
-execution-writer ownership when presenting a composer.
+Messaging follows the child's actual execution owner and native capability.
+Parent history, spawn visibility and transcript residency do not grant or limit
+access. A message alone creates no discovery membership. Imported history stays
+passive when it has no execution owner; an archived, deleted or retired child
+cannot accept execution commands. Controls preserve the child's exact host,
+Session and native generation rather than borrowing a foreground parent Run.
 
 ## Opening and inherited history
 
@@ -153,7 +154,7 @@ descendant removal; no separate client closure or polling loop gates success.
 ## Validation boundaries
 
 Behavioral tests cover runtime and history precedence, close/reopen transitions,
-nested interaction grants, message-only non-membership, shared overview regrouping,
+execution availability, message-only non-membership, shared overview regrouping,
 metadata-only pending requests, cold read-only loading, writer conflict, and
 independent interactive tabs. Protocol tests cover discovery fallback, repair,
 absence reconciliation and lifecycle failure handling. Seeded Electron tests

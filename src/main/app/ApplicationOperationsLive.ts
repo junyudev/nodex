@@ -1,19 +1,17 @@
 import { nodeLive as openCodeSdkLive } from "../platform/node/OpenCodeSdk";
-import { live as openCodeSessionManagerLive } from "../agent-backend/opencode/OpenCodeSessionManager";
+import { live as openCodeModelCatalogLive } from "../agent-backend/opencode/OpenCodeModelCatalog";
 import { live as claudeSdkLive } from "../platform/node/ClaudeSdk";
-import { live as claudeSessionManagerLive } from "../agent-backend/claude/ClaudeSessionManager";
+import { live as claudeNativeCatalogLive } from "../agent-backend/claude/ClaudeNativeCatalog";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { live as appToolInterpreterLive } from "../app-tools/AppToolInterpreter";
 import { live as sessionWaiterLive } from "../app-tools/SessionWaiter";
-import { live as inboxDispatcherLive } from "../inbox-application/InboxDispatcher";
-import { live as inboxDispatchRuntimeLive } from "../inbox-application/InboxDispatchRuntime";
 import { live as sessionObservationLive } from "../app-tools/SessionObservation";
 import { live as workbenchObservationLive } from "../app-tools/WorkbenchObservation";
 import {
-  WorkbenchContentAccess,
-  make as makeWorkbenchContentAccess,
-} from "../app-tools/WorkbenchContentAccess";
+  WorkbenchContentRouting,
+  make as makeWorkbenchContentRouting,
+} from "../app-tools/WorkbenchContentRouting";
 import { live as automationExecutionLive } from "../automation-application/AutomationExecution";
 import {
   CodexBackgroundProcesses,
@@ -34,22 +32,11 @@ import { live as coreApplicationProjectionLive } from "../core-runtime/CoreAppli
 import { live as projectionDeliveryLive } from "../core-runtime/ProjectionDeliveryRuntime";
 import { live as coreEventHubLive } from "../core-runtime/CoreEventHub";
 import { live as reminderSchedulerLive } from "../host-runtime/ReminderSchedulerRuntime";
-import { live as storeAdministrationSchedulerLive } from "../host-runtime/StoreAdministrationSchedulerRuntime";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { MainConfig } from "./MainConfig";
 import { live as agentBackendApplicationLive } from "../agent-backend/AgentBackendApplication";
 import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendRegistry";
-import { live as acpBackendSessionManagerLive } from "../agent-backend/acp/AcpBackendSessionManager";
-import { live as acpAgentLaunchProbeLive } from "../platform/node/AcpAgentLaunchProbe";
-import { live as acpSessionTransportLive } from "../platform/node/AcpSessionTransport";
 import { live as workspaceDependencyLive } from "../host-runtime/WorkspaceDependencyRuntime";
-import { bindingLayer as nativeConversationBindingLive } from "../app-tools/NativeConversationExtension";
-import { layer as nativeAppToolsLive } from "../app-tools/NativeAppToolSession";
-import { layer as callbackRuntimeLive } from "./ScopedCallbackRuntime";
-import { layer as nativeTurnAuthorityLive } from "../agent-backend/NativeTurnAuthority";
-import { layer as claudeTextGenerationLive } from "../agent-backend/ClaudeTextGeneration";
-import { layer as nativePromptImagesLive } from "../agent-backend/NativePromptImages";
-import { layer as nativeSessionWorkspaceLive } from "../agent-backend/NativeSessionWorkspace";
 
 const workspaceDependencies = Layer.unwrap(
   Effect.gen(function* () {
@@ -80,7 +67,7 @@ const automationExecution = Layer.unwrap(
       runtimeStateHome: codex.runtimeStateHome,
     });
   }),
-).pipe(Layer.provideMerge(nativeConversationBindingLive));
+);
 const backgroundProcesses = Layer.effect(
   CodexBackgroundProcesses,
   makeCodexBackgroundProcesses,
@@ -88,18 +75,14 @@ const backgroundProcesses = Layer.effect(
 const projectArchiveBlockers = projectArchiveBlockersLive.pipe(
   Layer.provideMerge(backgroundProcesses),
 );
-const acpPlatform = Layer.merge(acpAgentLaunchProbeLive, acpSessionTransportLive);
-const agentSessions = Layer.mergeAll(
-  acpBackendSessionManagerLive.pipe(Layer.provideMerge(acpPlatform)),
-  claudeSessionManagerLive.pipe(Layer.provideMerge(claudeSdkLive)),
-  openCodeSessionManagerLive.pipe(Layer.provideMerge(openCodeSdkLive)),
+const nativeMetadata = Layer.mergeAll(
+  claudeNativeCatalogLive.pipe(Layer.provideMerge(claudeSdkLive)),
+  openCodeModelCatalogLive.pipe(Layer.provideMerge(openCodeSdkLive)),
 );
 const projectLifecycle = projectLifecycleCommandsLive.pipe(
-  Layer.provideMerge(Layer.merge(projectArchiveBlockers, agentSessions)),
+  Layer.provideMerge(projectArchiveBlockers),
 );
-const projectSessions = projectSessionCommandsLive.pipe(
-  Layer.provideMerge(Layer.merge(projectLifecycle, agentSessions)),
-);
+const projectSessions = projectSessionCommandsLive.pipe(Layer.provideMerge(projectLifecycle));
 const managedWorktreeCatalog = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -132,19 +115,9 @@ const projectionDelivery = projectionDeliveryLive.pipe(
 );
 const coreEvents = coreEventHubLive({}).pipe(Layer.provideMerge(projectionDelivery));
 const reminders = reminderSchedulerLive({}).pipe(Layer.provideMerge(coreEvents));
-const storeSchedulers = storeAdministrationSchedulerLive({}).pipe(Layer.provideMerge(reminders));
 const agentBackends = agentBackendApplicationLive.pipe(
-  Layer.provideMerge(
-    Layer.mergeAll(
-      nativeAppToolsLive.pipe(Layer.provideMerge(callbackRuntimeLive)),
-      nativeTurnAuthorityLive,
-      claudeTextGenerationLive.pipe(Layer.provideMerge(claudeSdkLive)),
-      nativePromptImagesLive,
-      nativeSessionWorkspaceLive,
-    ),
-  ),
-  Layer.provideMerge(Layer.merge(agentBackendRegistryLive, agentSessions)),
-  Layer.provideMerge(storeSchedulers),
+  Layer.provideMerge(Layer.merge(agentBackendRegistryLive, nativeMetadata)),
+  Layer.provideMerge(reminders),
 );
 
 /** Application operations that depend on the Core, host, and canonical Conversation graphs. */
@@ -153,11 +126,11 @@ export const live = appToolInterpreterLive.pipe(
   Layer.provideMerge(
     Layer.merge(
       workbenchObservationLive,
-      Layer.effect(WorkbenchContentAccess, makeWorkbenchContentAccess),
+      Layer.effect(WorkbenchContentRouting, makeWorkbenchContentRouting),
     ),
   ),
   Layer.provideMerge(
-    Layer.mergeAll(sessionWaiterLive, inboxDispatcherLive, inboxDispatchRuntimeLive).pipe(
+    sessionWaiterLive.pipe(
       Layer.provideMerge(sessionObservationLive.pipe(Layer.provideMerge(agentBackends))),
     ),
   ),

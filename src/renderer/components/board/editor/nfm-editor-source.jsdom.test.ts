@@ -15,7 +15,7 @@ import {
   type NfmEditorCollaborativeDocumentSource,
 } from "./nfm-editor-source";
 import { createPageCreateDescriptionDraft } from "@/lib/page-create-draft";
-import { projectContentAccess } from "../../../../shared/content-access-context";
+import { projectContentRoute } from "../../../../shared/content-routing-context";
 
 function createCollaborativeSource(
   fragment: Y.XmlFragment,
@@ -78,15 +78,15 @@ describe("NfmEditor source boundary", () => {
     const secondDocument = new Y.Doc({ guid: "document-2" });
     const firstSource = createCollaborativeSource(firstDocument.getXmlFragment("body"));
     const sameSourceKey = getNfmEditorInstanceKey({
-      accessContext: projectContentAccess("project-1"),
+      routingContext: projectContentRoute("project-1"),
       source: firstSource,
     });
     const repeatedSourceKey = getNfmEditorInstanceKey({
-      accessContext: projectContentAccess("project-1"),
+      routingContext: projectContentRoute("project-1"),
       source: firstSource,
     });
     const switchedSourceKey = getNfmEditorInstanceKey({
-      accessContext: projectContentAccess("project-1"),
+      routingContext: projectContentRoute("project-1"),
       source: createCollaborativeSource(secondDocument.getXmlFragment("body")),
     });
 

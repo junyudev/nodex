@@ -116,7 +116,17 @@ export type ReviewGuideGenerationResult = Omit<
 >;
 
 /** Commit, change request, branch, and title generation backed by one provider instance. */
+export interface StructuredGenerationInput {
+  readonly cwd: string;
+  readonly prompt: string;
+  readonly modelSelection: ModelSelection;
+  readonly outputSchema: Readonly<Record<string, unknown>>;
+  readonly maxOutputBytes?: number | undefined;
+  readonly timeoutMs?: number | undefined;
+}
+
 export interface ProviderTextGeneration {
+  readonly generateStructured?: (input: StructuredGenerationInput) => Effect.Effect<unknown, TextGenerationError>;
   /**
    * Generate a commit message from staged change context.
    */

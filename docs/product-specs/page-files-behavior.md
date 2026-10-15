@@ -7,9 +7,9 @@ Last Updated: 2026-09-26
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
 and change either relationship explicitly. The Page does not own the File, its
-content versions, global name, lifecycle, or Project grants.
+content versions, global name or lifecycle.
 
-The Library-wide identity, content, permission, history, and deletion rules live
+The Library-wide identity, content, history and deletion rules live
 in [Library Files](library-files-behavior.md). This specification owns Page paths,
 body occurrences, Page inventory, and the Page Stage surface.
 
@@ -23,7 +23,7 @@ A Page can relate to a File in two independent ways:
 
 New local images and attachments are imported as Library Files before insertion.
 Temporary cache locators, browser object URLs, and display transport URLs are not
-durable Document sources. A missing File authority rejects the upload instead
+durable Document sources. A missing or invalid File identity rejects the upload instead
 of creating an attachment that depends on a disposable cache.
 
 A Page/File pair has at most one explicit entry, while the body may contain any
@@ -32,8 +32,7 @@ occurrence does not automatically create an entry. A child Page keeps its own
 relationships; its parent never flattens them into one namespace.
 
 Page Files is the deduplicated union of explicit entries and current body
-occurrences. Each inventory row contains stable File identity, its authorized
-current presentation, an optional Page path, and the body occurrence count. A
+occurrences. Each inventory row contains stable File identity, its current presentation, an optional Page path, and the body occurrence count. A
 File present in both relationships appears once. Removing one relationship does
 not remove the other or delete the Library File.
 
@@ -67,9 +66,9 @@ relationship:
 - remove an entry while leaving body occurrences and the File intact;
 - replace one entry with a newly imported File while leaving body occurrences of
   the previous File intact;
-- preview or save the authorized current File;
+- preview or save the current File;
 - open Library File details for global rename, shared content update, versions,
-  usage, grants, Trash, restore, or permanent deletion.
+  usage, Trash, restore, or permanent deletion.
 
 An entry replacement changes only the selected Page/File relation. Updating the
 shared File is a separate Library action with explicit wording because all
@@ -84,10 +83,10 @@ bounded separately to 2 MiB. Unsupported formats remain downloadable and show a
 truthful no-preview state.
 
 Import first publishes immutable bytes under an operation-bound receipt. The Page
-entry command consumes its selected receipts, creates independent Library Files,
-grants the creating Project direct read/write access, and creates all entries in
-one transaction. If any path or authority check fails, it commits none of those
-Files, grants, or entries. Published but unconsumed bytes remain unreachable and
+entry command consumes its selected receipts, creates independent Library Files
+and all entries in
+one transaction. If any path, identity or lifecycle check fails, it commits none of those
+Files or entries. Published but unconsumed bytes remain unreachable and
 are later collectible.
 
 Core owns path normalization and allocation. Paths reject absolute forms,
@@ -112,19 +111,14 @@ File, then insert its File URI in the body. They do not reserve a Page path. If
 File creation succeeds but editor insertion later fails, the independent File
 remains visible in Library Files and can be reused or cleaned up.
 
-The containing Page authorizes the current presentation metadata and current
-bytes only while its canonical entry or body projection contains the File. This
-access does not expose arbitrary File versions, global usages, other Page paths,
-or File mutation. Core rejects missing, retired, cross-Library, trashed, or
-unauthorized File references before committing a Document change.
+A Page presentation binds its File identity and current or captured version through
+the canonical entry or body projection. Core rejects missing, retired, cross-Library
+or trashed File references before committing a Document change. Historical reads
+require the exact retained source and cannot fall back to the current File head.
 
-Standalone Pages opened from the Sidebar use trusted Library access. They can
-insert live Files from that Library without a Project grant or an explicit Page
-entry. Collaborative edits, structural replacement, and new Page bodies use the
-bound caller's File read authority; an actor Project recorded for provenance is
-not a permission source. Project-scoped writes still require a direct File read
-grant, a currently readable Page relationship, or exact authorized structural
-source evidence. An absent Project alone never establishes Library authority.
+Every authenticated current Profile caller can insert a live File from the
+Library. Core validates the selected File, exact source when historical, Page
+lifecycle and manifest revision. Project context does not filter File choices.
 
 Body labels may carry a local explicit name or caption. When no local value is
 present, they display the File presentation name. Historical and recovery
@@ -179,28 +173,25 @@ entries. Its restore or copy applies one mapping to both sets, preserving their
 agreement. Legacy snapshots without complete File evidence remain explicitly
 unresolved and cannot fall back to a current head.
 
-## Authorization and cache coherence
+## Identity and cache coherence
 
-Page read access permits the Page inventory and current File presentations
-visible through that Page. Page write plus a current proof that the source File
-is readable permits adding an entry or body occurrence. A File ID, hash, URI,
-clipboard payload, or creation provenance is not such proof. Cross-Library
-references are rejected; an authorized import creates a new destination File.
+Every authenticated current Profile caller can read Library Files and their Page
+presentations. Cross-Library references are rejected; an import creates a new
+File in the destination Library. A File ID, hash, URI or clipboard payload does
+not replace the canonical identity, lifecycle and exact-version checks.
 
-Renderer File reads are keyed by Store epoch, access context, read source, File
-identity, and optional exact version. Entry and body-reference changes refresh or
-revoke only affected Files. Removing the last authorized relationship releases
-metadata, bytes, and object URLs before revalidation. Direct File grants, Page or
-Document revocation, Project lifecycle, and Store epoch replacement clear their
-matching scopes. A cache hit never substitutes for a fresh Core authorization.
+Renderer File reads are keyed by Store epoch, routing context, read source, File
+identity and optional exact version. Entry and body-reference changes refresh
+only affected presentations. Removing a presentation releases its metadata,
+bytes and object URLs. File retirement, Page or Document deletion, connection
+closure and Store epoch replacement clear affected cached data. A cache hit
+never substitutes for a fresh source and lifecycle check.
 
 ## Management feedback
 
-Page Files exposes Core-authorized Page write capability. Read-only Pages permit
-preview and save while disabling entry creation and path editing and omitting
-replacement/removal actions. Direct File access is separate: opening a Library
-File by identity may report that direct access is required without invalidating
-the Page's own preview authority.
+Active Pages permit entry creation, path editing, replacement and removal.
+Archived Pages and historical snapshots permit preview and save while disabling
+those mutations. Opening the File directly uses its canonical Library identity.
 
 Replacing an entry selects the new File and explains that existing body
 occurrences remain unchanged. Hand-entered paths use exact collision semantics.
@@ -209,12 +200,12 @@ replays the user's write with a new precondition. Background refresh preserves
 unfinished path edits.
 
 Browsing existing Files replaces the Page manager with a focused picker; the
-picker does not expose shared updates, lifecycle changes, or grant editing.
+picker selects an existing File without exposing shared updates or lifecycle changes.
 
 Page and Library File details share the same preview action bar: icon actions
 with accessible names and tooltips, followed by a right-aligned information
 entry. Page path replacement/removal rules live in that tooltip; the path,
-read-only state and action failures remain visible. Content usage is available
+historical or archived state and action failures remain visible. Content usage is available
 in the information tooltip.
 Browse Library and Add folder use labeled icon controls beside the primary
 Add files action. Path editing keeps its explicit Save action.

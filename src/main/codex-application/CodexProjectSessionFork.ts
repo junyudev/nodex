@@ -1,30 +1,16 @@
-import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
-import { randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
-import type {
-  CodexPendingThreadSource,
-  CodexPendingWorktreeRequest,
-} from "../../shared/codex-pending-worktree";
+import type { CodexPendingThreadSource } from "../../shared/codex-pending-worktree";
 import type { CodexForkBrowserSceneContext } from "../../shared/codex-fork-browser-transfer";
 import { ProjectSessionForkInputSchema } from "../../shared/schemas/project-sessions";
-import type {
-  CodexCollaborationModeState,
-  ProjectSessionForkInput,
-  ProjectSessionForkResult,
-} from "../../shared/types";
+import type { ProjectSessionForkInput, ProjectSessionForkResult } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexConversationFork } from "./CodexConversationFork";
-import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
-import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
-import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
-import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
+import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export interface CodexProjectSessionForkCommand {
   readonly sessionId: string;
@@ -36,7 +22,7 @@ export interface CodexProjectSessionForkCommand {
 }
 
 export class CodexProjectSessionForkError extends Data.TaggedError("CodexProjectSessionForkError")<{
-  readonly operation: "parse" | "admit" | "direct" | "pending" | "settings";
+  readonly operation: "parse" | "admit" | "direct" | "settings";
   readonly sessionId: string;
   readonly cause: unknown;
 }> {}
@@ -52,35 +38,23 @@ export class CodexProjectSessionFork extends Context.Service<
 
 interface AdmittedSource {
   readonly threadId: string;
-  readonly projectId: string | null;
-  readonly directory: CodexThreadDirectoryEntry;
 }
 
-/** Owns the user-visible Project Session fork intent for direct and managed-worktree targets. */
+/** Forks a Session owned by an explicitly retained remote native host. */
 export const make: Effect.Effect<
   CodexProjectSessionFork["Service"],
   never,
   | CodexConversationFork
-  | CodexConversationProjection
-  | CodexForkSidePanelTransfer
-  | CodexForkTitlePolicy
   | CodexGateway
-  | CodexPendingWorktreeRuntime
   | CodexThreadDirectory
   | CodexThreadSettingsRuntime
-  | ConversationEntityMap
   | CoreModules
 > = Effect.gen(function* () {
   const core = yield* CoreModules;
   const gateway = yield* CodexGateway;
   const conversationFork = yield* CodexConversationFork;
-  const projection = yield* CodexConversationProjection;
-  const sidePanelTransfers = yield* CodexForkSidePanelTransfer;
-  const forkTitles = yield* CodexForkTitlePolicy;
-  const pendingWorktrees = yield* CodexPendingWorktreeRuntime;
   const directory = yield* CodexThreadDirectory;
   const threadSettings = yield* CodexThreadSettingsRuntime;
-  const conversations = yield* ConversationEntityMap;
 
   const error = (
     operation: CodexProjectSessionForkError["operation"],
@@ -143,234 +117,25 @@ export const make: Effect.Effect<
         new Error("Project Session is not owned by the native Codex backend"),
       );
     }
+    const hostId = resolved.durable.executionHostId;
+    if (!hostId || hostId.trim() !== hostId || hostId === gateway.localHostId) {
+      return yield* error(
+        "admit",
+        normalizedSessionId,
+        new Error(
+          "Local imported history has no native execution owner; start an Agent Runtime Session",
+        ),
+      );
+    }
     const projectId = sourceSession.project_id ?? null;
     if (resolved.durable.projectId !== projectId) {
       return yield* error(
         "admit",
         normalizedSessionId,
-        new Error("Project Session and Thread disagree on Project ownership"),
+        new Error("Session and native Thread placement changed"),
       );
     }
-    return { threadId, projectId, directory: resolved };
-  });
-
-  const sourceWorkspaceRoots = Effect.fn("CodexProjectSessionFork.sourceWorkspaceRoots")(function* (
-    source: AdmittedSource,
-    sessionId: string,
-  ) {
-    const cwd = source.directory.durable.cwd;
-    if (!cwd) {
-      return yield* error(
-        "pending",
-        sessionId,
-        new Error("A materialized working directory is required to create a worktree"),
-      );
-    }
-    if (!source.projectId) return [cwd] as const;
-    const response = yield* core.workspace
-      .read({ kind: "project", project_id: source.projectId }, undefined, source.projectId)
-      .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
-    if (response.value.kind !== "project" || response.value.project.lifecycle !== "active") {
-      return yield* error(
-        "pending",
-        sessionId,
-        new Error("Managed worktrees require an active Project"),
-      );
-    }
-    return [
-      cwd,
-      ...response.value.project.sources
-        .map((projectSource) => projectSource.root.trim())
-        .filter((root) => root && root !== cwd),
-    ];
-  });
-
-  const collaborationMode = (
-    source: CodexThreadDirectoryEntry,
-    requestedMode: ProjectSessionForkInput["collaborationMode"],
-  ): CodexCollaborationModeState | null => {
-    const current = source.snapshot?.latestCollaborationMode ?? null;
-    if (!requestedMode) return current;
-    return {
-      mode: requestedMode,
-      settings: current?.settings ?? {
-        model: source.durable.executionProfile?.modelId ?? "",
-        reasoning_effort: source.durable.executionProfile?.reasoningEffort ?? null,
-        developer_instructions: null,
-      },
-    };
-  };
-
-  const enqueuePendingPhysical = Effect.fn("CodexProjectSessionFork.enqueuePendingPhysical")(
-    function* (
-      sessionId: string,
-      source: AdmittedSource,
-      full: CodexThreadDirectoryEntry,
-      parsed: ProjectSessionForkInput,
-      threadSource: CodexPendingThreadSource,
-      sourceSceneContext?: CodexForkBrowserSceneContext,
-      destinationSessionId?: string,
-    ): Effect.fn.Return<ProjectSessionForkResult, CodexProjectSessionForkError> {
-      if (source.directory.durable.executionHostId !== gateway.localHostId) {
-        return yield* error(
-          "pending",
-          sessionId,
-          new Error("Managed worktrees can only fork a local Thread"),
-        );
-      }
-      if (!full.canonical) {
-        return yield* error(
-          "pending",
-          sessionId,
-          new Error("Fork source has no canonical conversation"),
-        );
-      }
-      if (parsed.turnId) {
-        const turn = residentConversationTurns(full.canonical).find(
-          (candidate) => candidate.turnId === parsed.turnId,
-        );
-        if (!turn || turn.status === "inProgress") {
-          return yield* error(
-            "pending",
-            sessionId,
-            new Error(`Turn '${parsed.turnId}' is unavailable for an exact fork`),
-          );
-        }
-      }
-      const cwd = full.durable.cwd;
-      if (!cwd) {
-        return yield* error(
-          "pending",
-          sessionId,
-          new Error("Fork source has no working directory"),
-        );
-      }
-      const roots = yield* sourceWorkspaceRoots({ ...source, directory: full }, sessionId);
-      const { childTitle } = yield* forkTitles
-        .derive({
-          threadId: source.threadId,
-          projectId: source.projectId,
-          forkedFromId: full.summary.forkedFromId ?? null,
-          threadName: full.summary.threadName,
-          canonical: full.canonical,
-          pendingForks: pendingWorktrees
-            .list()
-            .filter(
-              (entry) => entry.launchMode === "fork-conversation" && entry.sourceConversationId,
-            )
-            .map((entry) => ({
-              conversationId: entry.id,
-              forkedFromId: entry.sourceConversationId,
-              title: entry.initialThreadTitle ?? entry.label,
-            })),
-        })
-        .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
-      const pendingWorktreeId = randomUUID();
-      const clientThreadId = randomUUID();
-      const request: CodexPendingWorktreeRequest = {
-        id: pendingWorktreeId,
-        clientThreadId,
-        hostId: gateway.localHostId,
-        label: childTitle ?? "New task",
-        ...(childTitle ? { initialThreadTitle: childTitle } : {}),
-        sourceWorkspaceRoot: cwd,
-        sourceWorkspaceRoots: roots,
-        startingState: { type: "working-tree" },
-        localEnvironmentConfigPath: parsed.localEnvironmentConfigPath ?? null,
-        launchMode: "fork-conversation",
-        ...(destinationSessionId ? { projectSessionId: destinationSessionId } : {}),
-        projectAssignment: source.projectId
-          ? {
-              projectKind: "local",
-              projectId: source.projectId,
-              path: cwd,
-              pendingCoreUpdate: false,
-            }
-          : null,
-        prompt: "Continue this task in a new worktree",
-        startConversationParamsInput: null,
-        sourceConversationId: source.threadId,
-        sourceCollaborationMode: collaborationMode(full, parsed.collaborationMode),
-        targetTurnId: parsed.turnId ?? null,
-        threadSource,
-      };
-      yield* sidePanelTransfers
-        .capturePending({
-          pendingWorktreeId,
-          sourceConversationId: source.threadId,
-          sourceWorkspaceRoot: cwd,
-          ...(sourceSceneContext ? { sourceSceneContext } : {}),
-        })
-        .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
-      yield* pendingWorktrees
-        .create(request)
-        .pipe(
-          Effect.onError(() =>
-            sidePanelTransfers.discardPending(pendingWorktreeId).pipe(Effect.ignore),
-          ),
-        );
-      return { pendingWorktreeId, clientThreadId };
-    },
-  );
-
-  const enqueuePending = Effect.fn("CodexProjectSessionFork.enqueuePending")(function* (
-    sessionId: string,
-    source: AdmittedSource,
-    parsed: ProjectSessionForkInput,
-    threadSource: CodexPendingThreadSource,
-    sourceSceneContext?: CodexForkBrowserSceneContext,
-    destinationSessionId?: string,
-  ): Effect.fn.Return<ProjectSessionForkResult, CodexProjectSessionForkError> {
-    yield* projection.read(source.threadId).pipe(
-      Effect.catch(() =>
-        directory
-          .resolve({
-            threadId: source.threadId,
-            fidelity: "tail",
-            hostId: source.directory.durable.executionHostId,
-          })
-          .pipe(
-            Effect.flatMap((entry) =>
-              entry?.canonical
-                ? Effect.void
-                : Effect.fail(
-                    error(
-                      "pending",
-                      sessionId,
-                      new Error("Fork source has no canonical conversation"),
-                    ),
-                  ),
-            ),
-            Effect.mapError((cause) =>
-              cause instanceof CodexProjectSessionForkError
-                ? cause
-                : error("pending", sessionId, cause),
-            ),
-          ),
-      ),
-    );
-    return yield* conversations.runCommand(
-      source.threadId,
-      Effect.gen(function* () {
-        const current = yield* projection
-          .read(source.threadId)
-          .pipe(Effect.mapError((cause) => error("pending", sessionId, cause)));
-        return yield* enqueuePendingPhysical(
-          sessionId,
-          source,
-          {
-            ...source.directory,
-            fidelity: "tail",
-            canonical: current.canonical,
-            snapshot: current.snapshot,
-          },
-          parsed,
-          threadSource,
-          sourceSceneContext,
-          destinationSessionId,
-        );
-      }),
-    );
+    return { threadId };
   });
 
   return CodexProjectSessionFork.of({
@@ -382,14 +147,11 @@ export const make: Effect.Effect<
           catch: (cause) => error("parse", sessionId, cause),
         });
         const source = yield* admit(sessionId, command.sourceSceneContext);
-        if (parsed.target === "newWorktree") {
-          return yield* enqueuePending(
+        if (parsed.target !== "local") {
+          return yield* error(
+            "admit",
             sessionId,
-            source,
-            parsed,
-            command.threadSource ?? "user",
-            command.sourceSceneContext,
-            command.destinationSessionId,
+            new Error("Worktree forks require an Agent Runtime Session"),
           );
         }
         const forked = yield* conversationFork

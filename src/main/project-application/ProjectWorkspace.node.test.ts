@@ -638,7 +638,6 @@ it.effect("maps bounded Page Chat activity and threadless related Chat windows",
       if (input.kind === "page_chat_activity_summaries") {
         assert.deepEqual(input, {
           kind: "page_chat_activity_summaries",
-          page_access_project_id: "project:one",
           page_ids: ["page:one"],
         });
         return Effect.succeed({
@@ -663,7 +662,6 @@ it.effect("maps bounded Page Chat activity and threadless related Chat windows",
       if (input.kind === "page_chat_window") {
         assert.deepEqual(input, {
           kind: "page_chat_window",
-          page_access_project_id: "project:one",
           page_id: "page:one",
           include_archived: false,
           window: { after: null, first: 20 },
@@ -805,7 +803,6 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
           intent: {
             kind: "link_page",
             page_id: "page:two",
-            page_access_project_id: "project:one",
           },
         },
         {
@@ -814,7 +811,6 @@ it.effect("creates and mutates Page Chat relations through typed Core intents", 
           intent: {
             kind: "unlink_page",
             page_id: "page:one",
-            page_access_project_id: "project:one",
           },
         },
       ],

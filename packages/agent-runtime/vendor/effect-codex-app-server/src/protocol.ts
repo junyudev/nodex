@@ -1,9 +1,9 @@
+import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
@@ -50,8 +50,15 @@ export interface CodexAppServerPatchedProtocolOptions {
 }
 
 export interface CodexAppServerPatchedProtocol {
-  readonly incomingNotifications: Stream.Stream<CodexAppServerIncomingNotification>;
-  readonly incomingRequests: Stream.Stream<CodexAppServerIncomingRequest>;
+  readonly termination: Effect.Effect<never, CodexError.CodexAppServerError>;
+  readonly incomingNotifications: Stream.Stream<
+    CodexAppServerIncomingNotification,
+    CodexError.CodexAppServerError
+  >;
+  readonly incomingRequests: Stream.Stream<
+    CodexAppServerIncomingRequest,
+    CodexError.CodexAppServerError
+  >;
   readonly request: (
     method: string,
     payload?: unknown,
@@ -157,18 +164,37 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
   ): Effect.fn.Return<CodexAppServerPatchedProtocol, never, Scope.Scope> {
     const protocolScope = yield* Scope.Scope;
     const requestHandlerScope = yield* Scope.fork(protocolScope, "parallel");
-    const outgoing = yield* Queue.unbounded<string, Cause.Done<void>>();
-    const incomingNotifications =
-      yield* Queue.sliding<CodexAppServerIncomingNotification>(MAX_BUFFERED_RAW_MESSAGES);
-    const incomingRequests =
-      yield* Queue.sliding<CodexAppServerIncomingRequest>(MAX_BUFFERED_RAW_MESSAGES);
+    const overflowError = (cause: BoundedQueue.BufferOverflow): CodexError.CodexAppServerError =>
+      new CodexError.CodexAppServerTransportError({ operation: "read-input-stream", cause });
+    const outgoing = yield* BoundedQueue.make<string, CodexError.CodexAppServerError>({
+      label: "Codex outgoing",
+      maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+      mapOverflow: overflowError,
+    });
+    const incomingNotifications = yield* BoundedQueue.broadcast<
+      CodexAppServerIncomingNotification,
+      CodexError.CodexAppServerError
+    >({
+      label: "Codex notifications",
+      maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+      mapOverflow: overflowError,
+    });
+    const incomingRequests = yield* BoundedQueue.broadcast<
+      CodexAppServerIncomingRequest,
+      CodexError.CodexAppServerError
+    >({
+      label: "Codex requests",
+      maxBytes: BoundedQueue.MAX_PROMPT_BYTES,
+      mapOverflow: overflowError,
+    });
     const pending = yield* Ref.make(new Map<string, CodexAppServerPendingRequest>());
     const nextRequestId = yield* Ref.make(1);
     const remainder: Array<string> = [];
+    let remainderBytes = 0;
     const terminationHandled = yield* Ref.make(false);
     const terminationFailure = yield* Ref.make(Option.none<CodexError.CodexAppServerError>());
     const terminationSignal = yield* Deferred.make<void>();
-    const activeRequestHandlers = yield* Ref.make(0);
+    const activeRequestHandlers = yield* Ref.make({ count: 0, bytes: 0 });
 
     const logProtocol = (event: CodexAppServerProtocolLogEvent) => {
       if (event.direction === "incoming" && !options.logIncoming) {
@@ -203,7 +229,11 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
             const error = yield* classify();
             yield* Ref.set(terminationFailure, Option.some(error));
             yield* failAllPending(error);
-            yield* Queue.end(outgoing);
+            yield* BoundedQueue.fail(outgoing, error);
+            yield* incomingNotifications.fail(error);
+            yield* incomingRequests.fail(error);
+            remainder.length = 0;
+            remainderBytes = 0;
             yield* Deferred.succeed(terminationSignal, undefined);
             yield* Scope.close(requestHandlerScope, Exit.void).pipe(
               Effect.forkIn(protocolScope, { startImmediately: true }),
@@ -233,8 +263,13 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
           stage: "raw",
           payload: encoded,
         });
-        const accepted = yield* Queue.offer(outgoing, encoded);
+        const accepted = yield* BoundedQueue.offer(outgoing, encoded);
         if (!accepted) {
+          const overflow = yield* BoundedQueue.failure(outgoing);
+          if (Option.isSome(overflow)) {
+            yield* handleTermination(() => Effect.succeed(overflow.value));
+            return yield* overflow.value;
+          }
           const closed = yield* Ref.get(terminationFailure);
           return yield* Option.getOrElse(
             closed,
@@ -296,20 +331,37 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
     };
 
     const handleRequest = (request: CodexAppServerIncomingRequest) =>
-      Queue.offer(incomingRequests, request).pipe(
-        Effect.flatMap(() => {
+      incomingRequests.offer(request).pipe(
+        Effect.flatMap((accepted) => {
+          if (!accepted)
+            return Effect.fail(
+              overflowError(
+                new BoundedQueue.BufferOverflow({
+                  label: "Codex request observer",
+                  maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+                  maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+                }),
+              ),
+            );
           const handler = options.onRequest;
           if (!handler) return Effect.void;
 
-          return Ref.modify(activeRequestHandlers, (count) =>
-            count >= MAX_BUFFERED_RAW_MESSAGES ? [false, count] : [true, count + 1],
+          const bytes = BoundedQueue.encodedBytes(request);
+          return Ref.modify(activeRequestHandlers, (state) =>
+            state.count >= MAX_BUFFERED_RAW_MESSAGES ||
+            state.bytes + bytes > BoundedQueue.DEFAULT_MAX_BYTES
+              ? [false, state]
+              : [true, { count: state.count + 1, bytes: state.bytes + bytes }],
           ).pipe(
             Effect.flatMap((accepted) => {
               if (!accepted) {
-                return respondError(
-                  request.id,
-                  CodexError.CodexAppServerRequestError.overloaded(
-                    "Too many Codex requests are already active.",
+                return Effect.fail(
+                  overflowError(
+                    new BoundedQueue.BufferOverflow({
+                      label: "Codex active native requests",
+                      maxItems: MAX_BUFFERED_RAW_MESSAGES,
+                      maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+                    }),
                   ),
                 );
               }
@@ -327,7 +379,10 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
                   onSuccess: (result) => respond(request.id, result),
                 }),
                 Effect.ensuring(
-                  Ref.update(activeRequestHandlers, (count) => Math.max(0, count - 1)),
+                  Ref.update(activeRequestHandlers, (state) => ({
+                    count: Math.max(0, state.count - 1),
+                    bytes: Math.max(0, state.bytes - bytes),
+                  })),
                 ),
                 Effect.catch((error) =>
                   handleTermination(() => Effect.succeed(error)).pipe(
@@ -345,7 +400,20 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       );
 
     const handleNotification = (notification: CodexAppServerIncomingNotification) =>
-      Queue.offer(incomingNotifications, notification).pipe(
+      incomingNotifications.offer(notification).pipe(
+        Effect.flatMap((accepted) =>
+          accepted
+            ? Effect.void
+            : Effect.fail(
+                overflowError(
+                  new BoundedQueue.BufferOverflow({
+                    label: "Codex notification observer",
+                    maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+                    maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+                  }),
+                ),
+              ),
+        ),
         Effect.andThen(options.onNotification ? options.onNotification(notification) : Effect.void),
         Effect.asVoid,
       );
@@ -399,25 +467,58 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       Stream.interruptWhen(Deferred.await(terminationSignal)),
       Stream.decodeText(),
       Stream.runForEach((chunk) =>
-        Effect.sync(() => {
-          const lines: Array<string> = [];
+        Effect.gen(function* () {
+          yield* Effect.try({
+            try: () =>
+              BoundedQueue.assertFrameSize(
+                BoundedQueue.encodedBytes(chunk),
+                "Codex wire chunk",
+                BoundedQueue.MAX_PROMPT_BYTES,
+              ),
+            catch: (cause) => normalizeIncomingError(cause, "read-input-stream"),
+          });
           let start = 0;
           for (
             let newline = chunk.indexOf("\n");
             newline !== -1;
             newline = chunk.indexOf("\n", start)
           ) {
-            remainder.push(chunk.slice(start, newline));
-            lines.push(remainder.join("").replace(/\r$/, ""));
+            const fragment = chunk.slice(start, newline);
+            remainderBytes += BoundedQueue.encodedBytes(fragment);
+            yield* Effect.try({
+              try: () =>
+                BoundedQueue.assertFrameSize(
+                  remainderBytes,
+                  "Codex wire frame",
+                  BoundedQueue.MAX_PROMPT_BYTES,
+                ),
+              catch: (cause) => normalizeIncomingError(cause, "read-input-stream"),
+            });
+            remainder.push(fragment);
+            const line = remainder.join("").replace(/\r$/, "");
             remainder.length = 0;
+            remainderBytes = 0;
             start = newline + 1;
+            yield* handleLine(line);
           }
-          // Keep unfinished lines in fragments so each chunk is scanned only once.
           if (start < chunk.length) {
-            remainder.push(chunk.slice(start));
+            const fragment = chunk.slice(start);
+            remainderBytes += BoundedQueue.encodedBytes(fragment);
+            yield* Effect.try({
+              try: () =>
+                BoundedQueue.assertFrameSize(
+                  remainderBytes,
+                  "Codex unfinished frame",
+                  BoundedQueue.MAX_PROMPT_BYTES,
+                ),
+              catch: (cause) => normalizeIncomingError(cause, "read-input-stream"),
+            });
+            // Coalesce tiny chunks so partial-frame fragments also have a count bound.
+            if (remainder.length === BoundedQueue.DEFAULT_MAX_ITEMS)
+              remainder.splice(0, remainder.length, remainder.join(""));
+            remainder.push(fragment);
           }
-          return lines;
-        }).pipe(Effect.flatMap((lines) => Effect.forEach(lines, handleLine, { discard: true }))),
+        }),
       ),
       Effect.matchEffect({
         onFailure: (error) =>
@@ -445,7 +546,13 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       Effect.forkScoped,
     );
 
-    yield* Stream.fromQueue(outgoing).pipe(Stream.run(options.stdio.stdout()), Effect.forkScoped);
+    yield* BoundedQueue.stream(outgoing).pipe(
+      Stream.run(options.stdio.stdout()),
+      Effect.catch((error) =>
+        handleTermination(() => Effect.succeed(normalizeIncomingError(error, "read-input-stream"))),
+      ),
+      Effect.forkScoped,
+    );
 
     const request = (method: string, payload?: unknown) =>
       Effect.gen(function* () {
@@ -453,6 +560,17 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
           nextRequestId,
           (current) => [current, current + 1] as const,
         );
+        if ((yield* Ref.get(pending)).size >= BoundedQueue.DEFAULT_MAX_ITEMS) {
+          const error = overflowError(
+            new BoundedQueue.BufferOverflow({
+              label: "Codex pending requests",
+              maxItems: BoundedQueue.DEFAULT_MAX_ITEMS,
+              maxBytes: BoundedQueue.DEFAULT_MAX_BYTES,
+            }),
+          );
+          yield* handleTermination(() => Effect.succeed(error));
+          return yield* error;
+        }
         const deferred = yield* Deferred.make<unknown, CodexError.CodexAppServerError>();
         yield* Ref.update(pending, (current) =>
           new Map(current).set(String(requestId), { deferred, method }),
@@ -474,8 +592,16 @@ export const makeCodexAppServerPatchedProtocol = Effect.fn("makeCodexAppServerPa
       });
 
     return {
-      incomingNotifications: Stream.fromQueue(incomingNotifications),
-      incomingRequests: Stream.fromQueue(incomingRequests),
+      termination: Deferred.await(terminationSignal).pipe(
+        Effect.andThen(Ref.get(terminationFailure)),
+        Effect.flatMap((failure) =>
+          Effect.fail(
+            Option.getOrElse(failure, () => new CodexError.CodexAppServerInputStreamEndedError({})),
+          ),
+        ),
+      ),
+      incomingNotifications: incomingNotifications.stream,
+      incomingRequests: incomingRequests.stream,
       request,
       notify,
       respond,

@@ -202,9 +202,9 @@ export function useWorkbenchThreadSummary({
     () =>
       buildThreadSummaryPanelScheduledAutomationRow({
         automations: scheduledAutomations,
-        conversationId: activeSession?.thread?.threadId ?? null,
+        sessionId: activeSession?.id ?? null,
       }),
-    [activeSession?.thread?.threadId, scheduledAutomations],
+    [activeSession?.id, scheduledAutomations],
   );
   const pip = useRemoteHostedPipSummaryControl(activeSession?.thread?.threadId ?? null);
   const onOpenSideChatRow = useCallback<

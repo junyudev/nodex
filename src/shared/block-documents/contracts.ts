@@ -1,21 +1,20 @@
-import type { AuthorizedReadStamp } from "../authorized-read-stamp";
 import type {
-  ContentAccessIdentity,
-  LibraryContentAccessContext,
-  ProjectContentAccessContext,
-} from "../content-access-context";
+  ContentRoutingIdentity,
+  LibraryContentRoutingContext,
+  ProjectContentRoutingContext,
+} from "../content-routing-context";
 
 export type BlockId = string;
 export type DocumentId = string;
 export type DocumentReadiness = "pending_genesis" | "ready" | "failed";
 
 /**
- * Migration-only authority state from the pre-engine-neutral Document model.
- * Runtime surfaces must dispatch through `OwnedDocumentDescriptor.sync` instead.
+ * Lifecycle of a Document's owning Block. Content synchronization uses
+ * `OwnedDocumentDescriptor.sync` independently of the owner's content kind.
  */
 export type BlockLifecycle = "active" | "archived" | "deleted";
 
-export interface OwnedDocumentIdentity extends ContentAccessIdentity {
+export interface OwnedDocumentIdentity extends ContentRoutingIdentity {
   readonly ownerBlockId: BlockId;
   readonly ownerType: string;
   readonly ownerLifecycle: BlockLifecycle;
@@ -47,26 +46,25 @@ export type OwnedDocumentSyncEngine = YjsDocumentSyncEngine | CanvasSceneDocumen
  * not depend on the content-specific synchronization engine.
  */
 export interface OwnedDocumentDescriptor extends OwnedDocumentIdentity, OwnedDocumentHead {
-  readonly authorization: AuthorizedReadStamp | null;
   readonly readiness: DocumentReadiness;
   readonly sync: OwnedDocumentSyncEngine;
 }
 
 export interface ProjectAccessedDocumentDescriptor extends OwnedDocumentDescriptor {
-  readonly accessContext: ProjectContentAccessContext;
+  readonly routingContext: ProjectContentRoutingContext;
 }
 
 export interface LibraryAccessedDocumentDescriptor extends OwnedDocumentDescriptor {
-  readonly accessContext: LibraryContentAccessContext;
+  readonly routingContext: LibraryContentRoutingContext;
 }
 
 export const requireLibraryAccessedDocumentDescriptor = (
   descriptor: OwnedDocumentDescriptor,
 ): LibraryAccessedDocumentDescriptor => {
-  if (descriptor.accessContext.kind === "library") {
-    return { ...descriptor, accessContext: descriptor.accessContext };
+  if (descriptor.routingContext.kind === "library") {
+    return { ...descriptor, routingContext: descriptor.routingContext };
   }
-  throw new TypeError("Owned Document descriptor does not use Library access context");
+  throw new TypeError("Owned Document descriptor does not use Library routing context");
 };
 
 export const requireProjectAccessedDocumentDescriptor = (
@@ -74,13 +72,13 @@ export const requireProjectAccessedDocumentDescriptor = (
   projectId: string,
 ): ProjectAccessedDocumentDescriptor => {
   if (
-    descriptor.accessContext.kind === "project" &&
-    descriptor.accessContext.projectId === projectId
+    descriptor.routingContext.kind === "project" &&
+    descriptor.routingContext.projectId === projectId
   ) {
-    return { ...descriptor, accessContext: descriptor.accessContext };
+    return { ...descriptor, routingContext: descriptor.routingContext };
   }
   throw new TypeError(
-    "Owned Document descriptor does not match the requested Project access context",
+    "Owned Document descriptor does not match the requested Project routing context",
   );
 };
 

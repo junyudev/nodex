@@ -42,7 +42,6 @@ const makeSnapshot = (
     name: "Tasks",
     lifecycle: "active" as const,
     defaultViewId: input.primary === false ? viewId : resolvedViewId,
-    accessRevision: 1,
     metadataRevision: 2,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -172,7 +171,6 @@ const makeSnapshot = (
     libraryId,
     storeEpoch: "epoch-alpha",
     commitSeq: 7,
-    authorization: null,
     value: { kind: "query", value: query },
   };
 };
@@ -189,7 +187,6 @@ describe("Database View render model", () => {
     const model = buildDatabaseViewRenderModel(makeSnapshot());
     expect(model.databaseViewId).toBe(viewId);
     expect(model.dataSourceId).toBe(dataSourceId);
-    expect(model.readOnlyReason).toBe(null);
     expect(model.columns[2]?.rows[0]?.title).toBe("Canonical Page");
     expect(model.columns[2]?.rows[0]?.tags).toEqual(["sync", "page-first"]);
   });
@@ -203,7 +200,6 @@ describe("Database View render model", () => {
       }),
     );
     expect(model.databaseViewId).toBe("view-focused");
-    expect(model.readOnlyReason).toBe(null);
     expect(model.columns[2]?.rows[0]?.title).toBe("Only in focused view");
   });
 
@@ -264,7 +260,6 @@ describe("Database View render model", () => {
         },
       },
     });
-    expect(model.readOnlyReason).toBe(null);
     expect(model.columns[0]?.id).toBe(doingOptionId);
     expect(model.columns[0]?.name).toBe("Doing");
     expect(model.columns[0]?.rows[0]?.pageId).toBe("page-1");

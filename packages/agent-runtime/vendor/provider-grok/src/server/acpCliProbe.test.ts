@@ -77,7 +77,6 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
           grokSettings: { binaryPath: "grok" },
           environment: process.env,
           cwd,
-          runtimeMode: "approval-required",
           clientInfo: { name: "t3-grok-probe", version: "0.0.0" },
         });
         yield* runtime.start();

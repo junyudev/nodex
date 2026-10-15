@@ -6,7 +6,6 @@ import type { BoardSummary, DatabasePage } from "./types";
 const state = vi.hoisted(() => ({
   snapshot: { databaseView: null } as {
     databaseView: null | {
-      readOnlyReason?: string | null;
       query: { properties: DataSourcePropertyRecordV2[] };
     };
   },
@@ -53,7 +52,6 @@ describe("createBoardPage", () => {
   beforeEach(() => {
     state.snapshot = {
       databaseView: {
-        readOnlyReason: null,
         query: { properties: [] },
       },
     };
@@ -181,12 +179,6 @@ describe("createBoardPage", () => {
   test("loads and rechecks the exact View before rejecting a stale target", async () => {
     state.snapshot = { databaseView: null };
     state.fetchBoard.mockImplementation(async () => {
-      state.snapshot = {
-        databaseView: {
-          readOnlyReason: "Grouping is no longer writable",
-          query: { properties: [] },
-        },
-      };
       return true;
     });
 
@@ -199,7 +191,7 @@ describe("createBoardPage", () => {
 
     expect(result).toEqual({
       status: "error",
-      error: "Grouping is no longer writable",
+      error: "The selected Database View is not ready for writes",
     });
     expect(state.fetchBoard).toHaveBeenCalledOnce();
     expect(state.runOptimisticMutation).not.toHaveBeenCalled();

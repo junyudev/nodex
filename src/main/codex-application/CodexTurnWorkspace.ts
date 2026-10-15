@@ -1,6 +1,6 @@
 import type { TurnEnvironmentParams } from "@nodex/codex-app-server-protocol/v2/TurnEnvironmentParams";
 import { resolveCodexCanonicalProjectlessCwd } from "../../shared/codex-conversation-state/codex-conversation-state";
-import type { CodexTurnPermissionWorkspaceTransition } from "../../shared/codex-conversation-state/codex-turn-permissions";
+import type { CodexTurnWorkspaceTransition } from "../codex-runtime/CodexNativeExecutionPolicy";
 import type {
   CodexConversationWorkspace,
   CodexConversationWorkspaceState,
@@ -19,7 +19,7 @@ export interface CodexPreparedTurnWorkspace {
   readonly cwd: string | null;
   readonly pendingWorkspace: CodexConversationWorkspace | null;
   readonly pendingRevision: string | null;
-  readonly permissionTransition?: CodexTurnPermissionWorkspaceTransition;
+  readonly workspaceTransition?: CodexTurnWorkspaceTransition;
 }
 
 export interface CodexPreparedProjectlessWorkspace {
@@ -162,7 +162,7 @@ export function prepareCodexTurnWorkspace(input: {
     input.requestCwd ??
     applied?.cwd ??
     null;
-  const permissionTransition =
+  const workspaceTransition =
     input.state !== null && pendingWorkspace !== null
       ? {
           appliedRoots: appliedWorkspaceRoots(applied, input.conversationCwd),
@@ -173,7 +173,7 @@ export function prepareCodexTurnWorkspace(input: {
     cwd,
     pendingWorkspace,
     pendingRevision,
-    ...(permissionTransition ? { permissionTransition } : {}),
+    ...(workspaceTransition ? { workspaceTransition } : {}),
   };
 }
 

@@ -62,25 +62,25 @@ describe("Codex automation runtime", () => {
 
   test("separates run submission, inbox mutations, and heartbeat bookkeeping", async () => {
     await runCodexScheduledAutomationNow({ id: "automation-1" });
-    await archiveCodexAutomationRun({ threadId: "thread-1", archivedReason: "manual" });
-    await unarchiveCodexAutomationRun({ threadId: "thread-1" });
-    await setCodexAutomationRunReadState({ threadId: "thread-1", readAt: 42 });
+    await archiveCodexAutomationRun({ runId: "thread-1", archivedReason: "manual" });
+    await unarchiveCodexAutomationRun({ runId: "thread-1" });
+    await setCodexAutomationRunReadState({ runId: "thread-1", readAt: 42 });
     await publishCodexHeartbeatEnabled({ enabled: true });
     await publishCodexHeartbeatThreadState({
-      threadId: "thread-1",
+      sessionId: "session-1",
       streamRole: "owner",
       isEligible: true,
     });
 
     expect(invoke.mock.calls).toEqual([
       ["codex:scheduled-automations:run-now", { id: "automation-1" }],
-      ["codex:automation-runs:archive", { threadId: "thread-1", archivedReason: "manual" }],
-      ["codex:automation-runs:unarchive", { threadId: "thread-1" }],
-      ["codex:automation-runs:set-read-state", { threadId: "thread-1", readAt: 42 }],
+      ["codex:automation-runs:archive", { runId: "thread-1", archivedReason: "manual" }],
+      ["codex:automation-runs:unarchive", { runId: "thread-1" }],
+      ["codex:automation-runs:set-read-state", { runId: "thread-1", readAt: 42 }],
       ["codex:scheduled-automations:heartbeat-enabled-changed", { enabled: true }],
       [
         "codex:scheduled-automations:heartbeat-thread-state-changed",
-        { threadId: "thread-1", streamRole: "owner", isEligible: true },
+        { sessionId: "session-1", streamRole: "owner", isEligible: true },
       ],
     ]);
   });

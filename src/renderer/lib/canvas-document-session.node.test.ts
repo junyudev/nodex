@@ -63,7 +63,7 @@ const providerFactory = () => {
 
 const input = (factory: ReturnType<typeof providerFactory>, generation = 1) => ({
   libraryId: "library-1",
-  accessContext: { kind: "project" as const, projectId: "project-1" },
+  routingContext: { kind: "project" as const, projectId: "project-1" },
   ownerBlockId: "canvas-1",
   documentId: "document-1",
   storeEpoch: "epoch-1",
@@ -131,7 +131,7 @@ describe("CanvasDocumentSessionRegistry", () => {
     await registry.retireOwner(
       {
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
       },
       "canvas-1",
     );
@@ -154,7 +154,7 @@ describe("CanvasDocumentSessionRegistry", () => {
     const retire = registry.retireOwner(
       {
         libraryId: "library-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
       },
       "canvas-1",
     );
@@ -187,7 +187,7 @@ test("Canvas owner retirement still reaches a replica whose last close could not
   const lease = registry.acquire(input(factory));
   await expect(lease.release()).rejects.toThrow("Local storage unavailable");
   await registry.retireOwner(
-    { libraryId: "library-1", accessContext: { kind: "project", projectId: "project-1" } },
+    { libraryId: "library-1", routingContext: { kind: "project", projectId: "project-1" } },
     "canvas-1",
   );
   expect(factory.provider.retireOwner).toHaveBeenCalledOnce();

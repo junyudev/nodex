@@ -3,10 +3,10 @@
 pub mod document_module_wire;
 
 use nodex_core_contracts::{
-    AddressReset, AddressResetReason, ApplyResponse, AuthorizedDeliveryPacket, AuthorizedReadStamp,
-    AuthorizedRecipientLease, CORE_EVENT_VERSION, CoreError, DeliveryAddress,
-    DeliveryAuthorizationScope, ModuleApplyRequest, ModuleContractVersion, ModuleName,
-    ModuleReadRequest, ModuleReadSnapshot, StoreEpoch, StreamCheckpoint,
+    AddressReset, AddressResetReason, ApplyResponse, AuthorizedDeliveryPacket,
+    AuthorizedRecipientLease, CORE_EVENT_VERSION, CoreError, DeliveryAddress, ModuleApplyRequest,
+    ModuleContractVersion, ModuleName, ModuleReadRequest, ModuleReadSnapshot, StoreEpoch,
+    StreamCheckpoint,
     administration::{
         StoreAdministrationCommitValue, StoreAdministrationIntent, StoreAdministrationRead,
         StoreAdministrationReadValue, StoreAdministrationReceipt,
@@ -1309,11 +1309,9 @@ mod api {
         StoreAdministrationApplyRequest,
         StoreAdministrationApplyResponse,
         DeliveryAddress,
-        DeliveryAuthorizationScope,
         AuthorizedRecipientLease,
         AddressResetReason,
         AddressReset,
-        AuthorizedReadStamp,
     ))
 )]
 pub struct CoreProtocolApi;

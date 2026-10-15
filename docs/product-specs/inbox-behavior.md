@@ -32,7 +32,8 @@ preferences. The renderer owns route presentation, drafts, and selection only.
 - The Inbox entry records who sent the message. That source is written by Core
   from the connection and never by the caller:
   - **User:** typed in the Inbox composer. Renders as a right-aligned user bubble.
-  - **Agent:** sent by an Agent Turn. Renders left-aligned and labeled
+  - **Agent:** sent by a verified Agent Session, with its Run recorded when the
+    Provider proves it. Renders left-aligned and labeled
     `From <chat>`; the label opens that chat.
   - **Command line:** sent with `nodex inbox send`. Renders left-aligned and
     labeled `From Command line`, with `· <Project>` added when it was sent from
@@ -228,12 +229,16 @@ Grouped suggestions and dispatches accept at most 16 messages.
 
 ## Agent and command-line drop-in
 
-Agents and scripts can only append to the Inbox. They can't read, triage, or
-dispatch it.
+The Agent and command-line Inbox interfaces append messages. Triage and dispatch
+remain explicit Inbox workflows, and a suggestion never confirms itself. Inbox
+messages are ordinary Pages and retain the Profile's full content access, including
+for parent, child and background Agents and planning interactions.
 
-- **Agent tool:** an Agent Turn uses the `send_to_inbox` application tool. Core
-  records the source chat and Project from the frozen Turn authority. Read-only
-  Turns are refused. A Turn can send at most five messages.
+- **Agent tool:** an Agent uses the `send_to_inbox` application tool. Core records
+  its chat and Project from the verified execution source. A proven Run can send
+  at most five messages. When the native protocol cannot prove a Run, Core leaves
+  it null and applies the same five-message budget to that native connection,
+  independently of foreground Runs. Model-authored fields cannot replace the source.
 - **Command line:** `nodex inbox send [TEXT] [--title TITLE]` reads TEXT or
   redirected stdin.
   Inside a Project's source or managed worktree, or with `--project`, the
@@ -242,8 +247,8 @@ dispatch it.
 
 Both paths accept an optional title, which is final. Without one, the message
 gets a provisional title like any other message. Both paths also accept an
-idempotency key. A retry with the same key returns the original receipt and
-never creates a second message.
+idempotency key. A retry with the same key returns the original receipt, never
+creates a second message, and does not count against the Agent budget again.
 
 ## Entry points and settings
 

@@ -23,14 +23,14 @@ const handlers = {
       return yield* service.delegateTask(scope, input);
     }),
   ),
-  task_status: McpToolAccess.actsAsCaller(({ taskId }) =>
+  task_status: McpToolAccess.writes(({ taskId }) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;
       return yield* service.taskStatus(scope, taskId);
     }),
   ),
-  task_cancel: McpToolAccess.actsAsCaller((input) =>
+  task_cancel: McpToolAccess.writes((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const service = yield* OrchestratorMcpService.OrchestratorMcpService;

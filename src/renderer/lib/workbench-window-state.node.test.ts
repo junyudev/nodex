@@ -154,7 +154,7 @@ describe("WorkbenchWindowState", () => {
             kind: "page_stage",
             titleSnapshot: "Page One",
             config: {
-              accessContext: { kind: "library" },
+              routingContext: { kind: "library" },
               pageId: "page:one",
             },
             stateKey: 0,

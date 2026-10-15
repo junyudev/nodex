@@ -48,8 +48,8 @@ export const ProviderAdapterV2RuntimePolicy = Schema.Struct({
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
   cwd: Schema.NullOr(Schema.String),
-  approvalPolicy: Schema.optional(Schema.Unknown),
-  sandboxPolicy: Schema.optional(Schema.Unknown),
+
+
   reasoningEffort: Schema.optional(Schema.String),
 });
 export type ProviderAdapterV2RuntimePolicy = typeof ProviderAdapterV2RuntimePolicy.Type;
@@ -403,6 +403,8 @@ export interface ProviderAdapterV2EnsureThreadInput {
 }
 
 export interface ProviderAdapterV2TurnInput {
+  readonly nativeInput?: import("@t3tools/contracts").OrchestrationV2Run["nativeInput"];
+  readonly hostExecutionIdentity?: import("./ExecutionHost.ts").HostTurnIdentity;
   /** Trusted execution-host context supplied after Turn admission. */
   readonly hostInstructions?: string;
   readonly hostOrchestrationInstructions?: string;
@@ -484,6 +486,14 @@ export interface ProviderAdapterV2RollbackThreadInput {
 export interface ProviderAdapterV2ForkThreadInput {
   readonly sourceProviderThread: OrchestrationV2ProviderThread;
   readonly sourceProviderTurns?: ReadonlyArray<OrchestrationV2ProviderTurn>;
+  /** Exact persisted terminal-turn count beyond the captured source boundary. */
+  readonly sourceRollbackTurnCount?: number;
+  /** Reads only the next retained native turn and any unsafe boundary evidence. */
+  readonly loadSourceFollowingTurns?: (input: {
+    readonly nativeTurnIds: ReadonlyArray<string>;
+    readonly promptPrefix: string;
+    readonly continuationMarker: string;
+  }) => Effect.Effect<ReadonlyArray<OrchestrationV2ProviderTurn>, ProviderAdapterV2Error>;
   readonly providerTurnId?: ProviderTurnId;
   readonly targetThreadId: ThreadId;
   readonly ownerNodeId?: NodeId;
@@ -535,8 +545,11 @@ export interface ProviderAdapterV2McpApps {
 }
 
 export interface ProviderAdapterV2SessionRuntime {
+  readonly codexNative?: import("./nativeInteraction.ts").CodexNativeInteraction;
   /** Manager-observed incarnation of this native session within the daemon. */
   readonly nativeGeneration?: number;
+  /** A native cancellation ended this incarnation; the manager must retire its credentials and scope. */
+  readonly nativeSessionRetired?: Effect.Effect<boolean>;
   readonly instanceId: ProviderInstanceId;
   readonly driver: ProviderDriverKind;
   readonly providerSessionId: ProviderSessionId;
@@ -561,7 +574,7 @@ export interface ProviderAdapterV2SessionRuntime {
    * unrelated root subscription open.
    */
   readonly hasPendingBackgroundWorkForThread?: (
-    providerThread: OrchestrationV2ProviderThread,
+    providerThread: Pick<OrchestrationV2ProviderThread, "id" | "nativeThreadRef">,
   ) => Effect.Effect<boolean>;
   /**
    * Capacity for the requested model/options, independent of native thread usage.

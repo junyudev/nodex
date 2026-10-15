@@ -69,7 +69,7 @@ const row = (pageId: string, status: string, priority: string, rankKey: string) 
 });
 
 const model: DatabaseViewRenderModel = {
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   libraryId: "library-1",
   databaseViewId: viewId,
   databaseId,
@@ -79,8 +79,6 @@ const model: DatabaseViewRenderModel = {
   viewName: "Work",
   storeEpoch: "epoch-1",
   commitSeq: 1,
-  authorization: null,
-  readOnlyReason: null,
   columns: [],
   query: {
     database: {
@@ -89,7 +87,6 @@ const model: DatabaseViewRenderModel = {
       name: "Tasks",
       lifecycle: "active",
       defaultViewId: viewId,
-      accessRevision: 1,
       metadataRevision: 1,
       createdAt: timestamp,
       updatedAt: timestamp,

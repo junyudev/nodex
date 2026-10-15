@@ -41,16 +41,14 @@ import {
 
 function AutomationUpdateToolCall({
   call,
-  currentThreadId,
   onOpenSummaryScheduledAutomation,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
-  currentThreadId: string | null;
   onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"];
   variant?: DynamicToolCallRenderVariant;
 }) {
-  const state = resolveAutomationUpdateRenderState(call, currentThreadId);
+  const state = resolveAutomationUpdateRenderState(call);
   const label = resolveDynamicToolRegistryLabel(call);
   const icon = (
     <ToolActivityIcon
@@ -575,7 +573,6 @@ function renderRegisteredDynamicToolCall({
       return (
         <AutomationUpdateToolCall
           call={call}
-          currentThreadId={currentThreadId ?? null}
           onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
           variant={variant}
         />
@@ -593,9 +590,9 @@ function renderRegisteredDynamicToolCall({
       if (!resolveDynamicToolRegistryLabel(call)) return null;
       return (
         <CodexAppThreadToolCall
-          currentThreadId={currentThreadId ?? null}
           isLeadingSummaryPart={isLeadingSummaryPart}
           call={call}
+          currentThreadId={currentThreadId ?? null}
           onOpenThread={onOpenThread}
           variant={variant}
         />

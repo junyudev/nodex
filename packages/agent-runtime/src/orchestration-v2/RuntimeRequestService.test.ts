@@ -34,7 +34,7 @@ function resolvedRuntimeRequest(
     nodeId: NodeId.make(`node-${requestId}`),
     providerTurnId: null,
     nativeRequestRef: null,
-    kind: "command",
+    kind: "user_input",
     status: "resolved",
     responseCapability: {
       type: "live",
@@ -85,7 +85,7 @@ it.effect("forwards orchestrator-resolved runtime requests to the live adapter",
         nodeId: NodeId.make("node-runtime-request-resolved"),
         providerTurnId: null,
         nativeRequestRef: null,
-        kind: "command",
+        kind: "user_input",
         status: "resolved",
         responseCapability: {
           type: "live",
@@ -116,14 +116,14 @@ it.effect("forwards orchestrator-resolved runtime requests to the live adapter",
       threadId,
       providerSessionId,
       requestId,
-      decision: "accept",
+      answers: { question: "Keep the existing API." },
     });
 
     assert.equal(getSession.mock.calls.length, 1);
     assert.equal(respondToRuntimeRequest.mock.calls.length, 1);
     assert.deepEqual(respondToRuntimeRequest.mock.calls[0]?.[0], {
       requestId,
-      decision: "accept",
+      answers: { question: "Keep the existing API." },
     });
   }).pipe(Effect.provide(layerTest));
 });
@@ -149,7 +149,7 @@ it.effect("rejects expired runtime requests before invoking the live adapter", (
         nodeId: NodeId.make("node-runtime-request-expired"),
         providerTurnId: null,
         nativeRequestRef: null,
-        kind: "command",
+        kind: "user_input",
         status: "expired",
         responseCapability: {
           type: "live",

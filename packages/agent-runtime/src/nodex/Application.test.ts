@@ -5,11 +5,17 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Deferred from "effect/Deferred";
 import { DatabaseSync } from "node:sqlite";
-import type { AgentRuntimeNotification, AgentTurnItem, AgentWire } from "./Interface.ts";
+import type {
+  AgentRuntimeNotification,
+  AgentSnapshot,
+  AgentTurnItem,
+  AgentWire,
+} from "./Interface.ts";
 import type { PersistChatAttachmentsResult } from "@t3tools/contracts";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentShellSnapshot } from "./Interface.ts";
+import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 
 it.live("reopens the same execution identity and persisted project after shutdown", () =>
   Effect.gen(function* () {
@@ -41,6 +47,13 @@ it.live("reopens the same execution identity and persisted project after shutdow
           method: "project.read",
           input: { projectId: "project:test" },
         });
+        expect(
+          yield* runtime.handle({
+            id: "project-activity",
+            method: "project.activity",
+            input: { projectId: "project:test" },
+          }),
+        ).toMatchObject({ run: null, runtimeRequest: null, nativeBackground: null });
         expect(
           yield* runtime.handle({ id: "catalog", method: "providers.read", input: {} }),
         ).toEqual([]);
@@ -215,6 +228,17 @@ it.live(
               sql.close();
             }
           });
+          const control = (yield* runtime.handle({
+            id: "controls",
+            method: "thread.control",
+            input: { threadId: "thread:content" },
+          })) as AgentSnapshot;
+          expect(control.projection.thread.id).toBe("thread:content");
+          expect(control.projection.turnItems).toHaveLength(0);
+          expect(control.projection.visibleTurnItems).toHaveLength(0);
+          expect(control.projection.messages).toHaveLength(0);
+          expect(control.hasMoreHistory).toBe(false);
+          expect(JSON.stringify(control).length).toBeLessThan(4096);
           const target = { threadId: "thread:content", itemId: "item:large-output" };
           const detail = (yield* runtime.handle({
             id: "detail",
@@ -232,6 +256,77 @@ it.live(
             expect(detail.output!.length).toBeLessThan(output.length);
             expect(full.output).toBe(output);
           }
+          yield* Effect.sync(() => {
+            const database = new DatabaseSync(runtime.identity.databasePath);
+            const now = new Date().toISOString();
+            try {
+              const session = {
+                id: "native:idle-content",
+                driver: "codex",
+                providerInstanceId: "codex",
+                status: "ready",
+                cwd: home,
+                model: "gpt-5.4",
+                capabilities: CodexProviderCapabilitiesV2,
+                createdAt: now,
+                updatedAt: now,
+                lastError: null,
+              };
+              database
+                .prepare(`INSERT INTO orchestration_v2_projection_provider_sessions
+                (provider_session_id,thread_id,provider,driver,provider_instance_id,status,model,updated_at,payload_json)
+                VALUES (?,?,'codex','codex','codex','ready',?,?,?)`)
+                .run(session.id, "thread:content", session.model, now, JSON.stringify(session));
+              database
+                .prepare(`INSERT INTO orchestration_v2_projection_provider_session_bindings
+                (provider_session_id,thread_id) VALUES (?,?)`)
+                .run(session.id, "thread:content");
+            } finally {
+              database.close();
+            }
+          });
+          expect(
+            yield* runtime.handle({
+              id: "close-idle-project",
+              method: "project.close",
+              input: { projectId: "project:content" },
+            }),
+          ).toEqual({ closedBindings: 1 });
+          yield* Effect.sync(() => {
+            const database = new DatabaseSync(runtime.identity.databasePath);
+            try {
+              expect(
+                database
+                  .prepare(
+                    "SELECT status FROM orchestration_v2_effect_outbox WHERE effect_type='provider-session.detach'",
+                  )
+                  .all(),
+              ).toEqual([{ status: "succeeded" }]);
+              expect(
+                database
+                  .prepare(
+                    "SELECT COUNT(*) AS count FROM orchestration_v2_projection_provider_session_bindings",
+                  )
+                  .get(),
+              ).toEqual({ count: 0 });
+            } finally {
+              database.close();
+            }
+          });
+          expect(
+            (yield* runtime.handle({
+              id: "full-after-close",
+              method: "thread.item.full",
+              input: target,
+            })) as AgentTurnItem,
+          ).toMatchObject({ id: target.itemId, type: "command_execution", output });
+          expect(
+            yield* runtime.handle({
+              id: "close-idle-project-again",
+              method: "project.close",
+              input: { projectId: "project:content" },
+            }),
+          ).toEqual({ closedBindings: 0 });
           yield* runtime.handle({
             id: "delete",
             method: "command.dispatch",

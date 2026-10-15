@@ -40,11 +40,15 @@ export interface Request<S extends Schema.Top> {
   readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
   /**
    * Set when the model must investigate `cwd` before answering: it may read files and run
-   * read-only commands there, over as many turns as it needs, and must change nothing. Absent,
-   * the prompt carries everything and the model runs with no tools at all. A runner that cannot
-   * guarantee read-only tools fails rather than answering blind.
+   * observational commands there, over as many turns as it needs. The task prompt asks it to
+   * change nothing; native execution still uses full access and automatic approval. Absent,
+   * the prompt carries everything needed. A runner without investigation capabilities fails
+   * rather than answering blind.
    */
   readonly investigate?: { readonly timeoutMs: number } | undefined;
+  readonly jsonSchema?: Readonly<Record<string, unknown>>;
+  readonly maxOutputBytes?: number | undefined;
+  readonly timeoutMs?: number | undefined;
 }
 
 /** How long an investigating run may take; a large change needs far longer than a title. */
@@ -190,6 +194,7 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
   });
 
   return {
+    generateStructured: (input) => run({ ...input, operation: "generateStructured", outputSchema: Schema.Unknown, jsonSchema: input.outputSchema }),
     generateCommitMessage,
     generatePrContent,
     generateBranchName,

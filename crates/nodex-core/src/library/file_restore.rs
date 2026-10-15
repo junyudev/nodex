@@ -21,11 +21,7 @@ pub(crate) struct FileRestorePlan {
     pub(crate) mapping: BTreeMap<String, String>,
 }
 
-impl FileRestorePlan {
-    pub(crate) fn authorized_file_ids(&self) -> Vec<String> {
-        self.mapping.values().cloned().collect()
-    }
-}
+impl FileRestorePlan {}
 
 pub(crate) fn plan(
     connection: &Connection,
@@ -48,8 +44,7 @@ pub(crate) fn plan(
     Ok(FileRestorePlan { actions, mapping })
 }
 
-/// The caller has authorized the source Document. Its current canonical uses
-/// prove current File reads; newly introduced IDs still need direct authority.
+/// Resolves a File within the bound Library and retains its exact current version.
 pub(crate) fn capture_recovery_target(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -61,7 +56,7 @@ pub(crate) fn capture_recovery_target(
         rusqlite::params![context.library_id.0, source_document_id, file_id], |row| row.get(0),
     )?;
     if !current_use {
-        match super::file_access::require_direct(connection, context, file_id, false) {
+        match super::file_access::require_direct(connection, context, file_id) {
             Ok(()) => {}
             Err(error)
                 if matches!(
@@ -86,15 +81,11 @@ pub(crate) fn capture_recovery_target(
 
 #[derive(Default)]
 pub(crate) struct RestoredFiles {
-    pub(super) authorized_file_ids: Vec<String>,
     pub(super) created_revisions: BTreeMap<String, i64>,
 }
 
 impl RestoredFiles {
     pub(crate) fn merge(&mut self, other: Self) {
-        self.authorized_file_ids.extend(other.authorized_file_ids);
-        self.authorized_file_ids.sort();
-        self.authorized_file_ids.dedup();
         self.created_revisions.extend(other.created_revisions);
     }
 
@@ -164,19 +155,10 @@ pub(crate) fn apply(
             &plan.mapping[source_id],
             default_name,
         )?;
-        if let Some(project_id) = &authority.requesting_project_id {
-            mutation::grant_created_file(
-                connection,
-                library_id,
-                &file.file_id,
-                project_id,
-                scope.committed_at(),
-            )?;
-        }
+        if let Some(_project_id) = &authority.requesting_project_id {}
         revisions.insert(file.file_id, file.revision);
     }
     Ok(RestoredFiles {
-        authorized_file_ids: plan.authorized_file_ids(),
         created_revisions: revisions,
     })
 }
@@ -236,7 +218,6 @@ pub(crate) fn publish(
         scope.evidence().operation_id(),
         effects,
         scope.evidence(),
-        &scope.authorization_before()?,
     )?;
     Ok(Some(load_committed_event_by_sequence(
         connection, sequence,

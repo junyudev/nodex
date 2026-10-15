@@ -18,11 +18,11 @@ pending state cannot coordinate that case, and using `text/html` simultaneously
 as portable content, internal routing, and native-slot ownership makes fallback
 and authority ambiguous.
 
-Library File references add a related coherence requirement. A Page occurrence
-may read the current content of a File without receiving direct File authority.
-Structural movement preserves that Library-owned File identity and changes only
-the source and target Page relationships. Page-wide cache invalidation loses the
-affected File identity, reloads unrelated media, and makes authorization changes
+Library File references add a related coherence requirement. Every current
+Profile connection can read Files directly. A Page occurrence selects its name
+and version through that Page presentation. Structural movement preserves the
+Library-owned File identity and changes only source and target Page relationships. Page-wide cache invalidation loses the
+affected File identity, reloads unrelated media, and makes lifecycle changes
 difficult to reason about.
 
 ## Decision
@@ -201,13 +201,13 @@ This cache is a presentation projection. It never grants access, supplies a
 fallback File authority, changes a Page relationship, or turns a File ID into a
 bearer capability.
 
-### Presentation follows the authorized source
+### Presentation follows the captured source
 
 A body occurrence resolves through its containing Page and needs no ownership
 badge. Page Files includes both explicit entries and body occurrences for that
 Page, deduplicated by File ID. Direct, Page, Canvas, history, and recovery reads
 carry distinct sources; metadata, bytes, saves, and native materialization use
-the same source and never fall back to a broader grant.
+the same captured name and version rather than silently selecting the current File head.
 
 ## Consequences
 

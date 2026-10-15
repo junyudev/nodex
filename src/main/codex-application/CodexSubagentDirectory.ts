@@ -7,7 +7,6 @@ import { projectCodexConversationTurn } from "./CodexConversationSnapshotProject
 import type { SubagentConversation } from "../../shared/codex-subagent-row-model";
 import { conversationFollowerRequest } from "../../shared/codex-thread-follower-request";
 import type { CodexCanonicalConversationState } from "../../shared/types";
-import { collectCodexSubagentInteractionReferences } from "../../shared/codex-subagent-interaction";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { createHash, randomUUID } from "node:crypto";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
@@ -27,7 +26,10 @@ import {
   projectCodexSubagentThreadStatus,
   selectCodexSubagentStatusEvidence,
 } from "../../shared/codex-subagent-overview";
-import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
+import {
+  collectCodexSubagentThreadIds,
+  extractCodexThreadSubagentMetadata,
+} from "../../shared/codex-subagent-metadata";
 import type {
   CodexSelectedSubagentHydrateInput,
   CodexSelectedSubagentHydrateResult,
@@ -469,8 +471,8 @@ export const make: Effect.Effect<
   ) => Effect.Effect<void, CodexSubagentDirectoryError> = () => Effect.void;
   let schedulePendingStatusRepair: (context: RootContext) => void = () => undefined;
 
-  const interactionReferences = (parentThreadId: string | null | undefined) =>
-    collectCodexSubagentInteractionReferences(
+  const residentChildReferences = (parentThreadId: string | null | undefined) =>
+    collectCodexSubagentThreadIds(
       conversationTurnsWithOverlay(
         parentThreadId ? conversations.read(parentThreadId)?.canonicalState : null,
       ),
@@ -1487,7 +1489,7 @@ export const make: Effect.Effect<
       ...overview.active.items.map((item) => item.thread.thread_id),
       ...overview.done.items.map((item) => item.thread.thread_id),
     ]) {
-      for (const threadId of interactionReferences(parent).keys()) retained.add(threadId);
+      for (const threadId of residentChildReferences(parent)) retained.add(threadId);
     }
     const visible = (item: CoreSubagentOverview["active"]["items"][number]) =>
       present.has(item.thread.thread_id) ||
@@ -2245,8 +2247,6 @@ export const make: Effect.Effect<
           fidelity,
           checkpoint,
           canInteract:
-            interactionReferences(selected.durable.parentThreadId).get(threadId)?.canInteract ===
-              true &&
             !selected.summary.archived &&
             !overviewItem.item.thread.archived &&
             fidelity !== "metadata",

@@ -68,12 +68,21 @@ export const persistChatAttachments = Effect.fn("AgentRuntime.persistChatAttachm
           const temporaryPath = yield* fs.makeTempFileScoped({
             directory: config.attachmentsDir,
             prefix: "upload-",
+            suffix: ".part",
           });
           yield* fs.writeFile(temporaryPath, bytes);
-          yield* fs.rename(
-            temporaryPath,
-            path.join(config.attachmentsDir, attachmentRelativePath(persisted)!),
-          );
+          // Publish the complete private temp file without replacing an
+          // accepted copy. Scope removes its temporary alias before return.
+          yield* fs
+            .link(
+              temporaryPath,
+              path.join(config.attachmentsDir, attachmentRelativePath(persisted)!),
+            )
+            .pipe(
+              Effect.catch((cause) =>
+                cause.reason._tag === "AlreadyExists" ? Effect.void : Effect.fail(cause),
+              ),
+            );
           return persisted;
         }).pipe(
           Effect.mapError((cause) =>

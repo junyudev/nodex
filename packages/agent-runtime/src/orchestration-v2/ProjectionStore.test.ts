@@ -551,6 +551,172 @@ it.effect("memory shell snapshots scope to one project", () =>
 
 it.layer(layerTest)("ProjectionStoreV2", (it) => {
   it.effect(
+    "budgets portable history before reading old or oversized bodies and reports exact omissions",
+    () =>
+      Effect.gen(function* () {
+        const store = yield* ProjectionStore.ProjectionStoreV2;
+        const sql = yield* SqlClient.SqlClient;
+        const now = DateTime.makeUnsafe("2026-01-01T00:00:00.000Z");
+        const threadId = ThreadId.make("thread:budgeted-handoff");
+        yield* store.apply({
+          id: EventId.make("event:budgeted-handoff:thread"),
+          type: "thread.created",
+          threadId,
+          occurredAt: now,
+          payload: {
+            createdBy: "user",
+            creationSource: "web",
+            id: threadId,
+            projectId: ProjectId.make("project:budgeted-handoff"),
+            title: "Budgeted history",
+            providerInstanceId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: null,
+            activeProviderThreadId: null,
+            lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            lastVisitedAt: null,
+            deletedAt: null,
+          },
+        });
+        const runId = RunId.make("run:budgeted-handoff:1");
+        yield* store.apply({
+          id: EventId.make("event:budgeted-handoff:run"),
+          type: "run.created",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: {
+            id: runId,
+            threadId,
+            ordinal: 1,
+            providerInstanceId,
+            modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make("message:budgeted-handoff"),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "completed",
+            requestedAt: now,
+            startedAt: now,
+            completedAt: now,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        });
+        const base = {
+          messageId: MessageId.make("message:budgeted-shared"),
+          threadId,
+          runId,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          status: "completed" as const,
+          title: null,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+        };
+        yield* store.apply({
+          id: EventId.make("event:budgeted-handoff:first"),
+          type: "turn-item.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: {
+            ...base,
+            id: TurnItemId.make("item:budgeted:first"),
+            ordinal: 1,
+            type: "user_message",
+            createdBy: "user",
+            creationSource: "server",
+            messageId: MessageId.make("message:first"),
+            inputIntent: "turn_start",
+            attachments: [],
+            text: "Keep the original constraint.",
+          },
+        });
+        yield* store.apply({
+          id: EventId.make("event:budgeted-handoff:answer"),
+          type: "turn-item.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: {
+            ...base,
+            id: TurnItemId.make("item:budgeted:answer"),
+            ordinal: 2,
+            type: "assistant_message",
+            streaming: false,
+            text: "The latest answer remains useful.",
+          },
+        });
+        const small = yield* store.getHandoffHistory({ threadId, budget: 4000 });
+        assert.deepEqual(
+          small.history.messages.map((message) => message.itemId),
+          ["item:budgeted:first", "item:budgeted:answer"],
+        );
+        assert.equal(small.history.omittedItems, 0);
+        // Storage shape and scale are the subject: giant old items must never be transported for selection.
+        const oversized = "cold-handoff-body:" + "x".repeat(128_000);
+        yield* sql`WITH RECURSIVE numbers(value) AS (SELECT 1 UNION ALL SELECT value + 1 FROM numbers WHERE value < 1000)
+        INSERT INTO orchestration_v2_projection_turn_items
+          (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id, parent_item_id, ordinal, type, status, updated_at, payload_json)
+        SELECT 'item:budgeted:cold:' || value, ${threadId}, ${runId}, NULL, NULL, NULL, NULL, value + 2,
+          'assistant_message', 'completed', ${DateTime.formatIso(now)},
+          json_object('text', ${oversized}, 'streaming', 0) FROM numbers`;
+        yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+        (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id, parent_item_id, ordinal, type, status, updated_at, payload_json)
+        VALUES ('item:budgeted:last-user', ${threadId}, ${runId}, NULL, NULL, NULL, NULL, 1003, 'user_message', 'completed',
+          ${DateTime.formatIso(now)}, json_object('text', ${oversized}))`;
+        yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+        (turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id, parent_item_id, ordinal, type, status, updated_at, payload_json)
+        VALUES ('item:budgeted:last-answer', ${threadId}, ${runId}, NULL, NULL, NULL, NULL, 1004, 'assistant_message', 'completed',
+          ${DateTime.formatIso(now)}, json_object('text', 'A small partial answer.'))`;
+        const originalParse = JSON.parse;
+        const parsed: string[] = [];
+        const parse = vi.spyOn(JSON, "parse").mockImplementation((value: string, reviver) => {
+          parsed.push(value);
+          return originalParse(value, reviver);
+        });
+        try {
+          const history = yield* store.getHandoffHistory({ threadId, budget: 4000 });
+          assert.deepEqual(history.coveredRunOrdinals, { from: 1, to: 1 });
+          assert.equal(history.sourceItemCount, 1004);
+          assert.equal(history.history.omittedItems, 1002);
+          assert.isUndefined(history.history.omittedItemIds);
+          assert.deepEqual(
+            history.history.messages.map((message) => message.itemId),
+            ["item:budgeted:first", "item:budgeted:last-answer"],
+          );
+          assert.include(
+            history.history.coverage,
+            "item:budgeted:first through item:budgeted:last-answer",
+          );
+          assert.include(history.context, "omitted 1002 items");
+          assert.isFalse(parsed.some((value) => value.includes("cold-handoff-body:")));
+          assert.isAtMost(parsed.length, 259);
+          assert.isAtMost(
+            parsed.reduce((sum, value) => sum + Buffer.byteLength(value), 0),
+            16_000,
+          );
+        } finally {
+          parse.mockRestore();
+        }
+      }),
+  );
+
+  it.effect(
     "SQL recovery selects unfinished runless native subagents",
     () => runlessNativeSubagentNeedsRecovery,
   );
@@ -593,18 +759,6 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       })).runs;
       assert.equal(recovery?.status, "completed");
       assert.deepEqual(recovery?.restartCancelledBackgroundWork, work);
-    }),
-  );
-  it.effect("limits turn-start history to the requested runs, including an empty selection", () =>
-    Effect.gen(function* () {
-      const store = yield* ProjectionStore.ProjectionStoreV2;
-      const threadId = yield* addRolledBackRecoveryCandidate("selected-turn-start-history");
-      const runId = (yield* store.getThreadProjection(threadId)).runs[0]!.id;
-      const history = yield* store.getTurnStartHistory(threadId);
-      assert.isNotEmpty(history);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, [runId]), history);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, []), []);
-      assert.deepEqual(yield* store.getTurnStartHistory(threadId, [RunId.make("run:other")]), []);
     }),
   );
   it.effect("preserves stored provider usage when a terminal update omits it", () =>
@@ -940,11 +1094,13 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           status: "running",
           providerThreadId: nativeId,
           activeAttemptId: attemptId,
-          delegatedTaskId: taskId,
         },
       });
       yield* sql`UPDATE orchestration_v2_projection_threads
-        SET payload_json = json_set(payload_json, '$.activeProviderThreadId', ${nativeId}) WHERE thread_id = ${threadId}`;
+        SET payload_json = json_set(payload_json, '$.activeProviderThreadId', ${nativeId},
+          '$.forkedFrom', json_object('type', 'node', 'nodeId', ${taskId}),
+          '$.lineage', json_object('parentThreadId', ${parentId}, 'relationshipToParent', 'subagent', 'rootThreadId', ${parentId}))
+        WHERE thread_id = ${threadId}`;
       yield* store.apply({
         id: EventId.make("event:host-authority:turn"),
         type: "provider-turn.updated",
@@ -992,6 +1148,18 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         payload: task,
       });
       yield* store.apply({
+        id: EventId.make("event:host-authority:parent-foreground"),
+        type: "run.created",
+        threadId: parentId,
+        occurredAt: now,
+        payload: {
+          ...parentRun,
+          id: RunId.make("run:parent-newer-foreground"),
+          ordinal: parentRun.ordinal + 1,
+          status: "running",
+        },
+      });
+      yield* store.apply({
         id: EventId.make("event:host-authority:native-child"),
         type: "subagent.updated",
         threadId,
@@ -1008,6 +1176,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         },
       });
       yield* sql`UPDATE orchestration_v2_projection_turn_items SET payload_json = json_set(payload_json, '$.output', ${body}) WHERE thread_id = ${threadId}`;
+      // Large canonical workflow metadata stays out of the hot native identity cell.
+      yield* sql`UPDATE orchestration_v2_projection_provider_threads SET payload_json = json_set(payload_json, '$.handoffIds', json(${JSON.stringify(Array.from({ length: 100_000 }, (_, index) => `large-auth-body:${index}`))}), '$.goal.objective', ${body}) WHERE provider_thread_id = ${nativeId}`;
       const authority = yield* Effect.acquireUseRelease(
         Effect.sync(() => vi.spyOn(JSON, "parse")),
         (parse) =>
@@ -1026,12 +1196,12 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         (parse) => Effect.sync(() => parse.mockRestore()),
       );
       assert.strictEqual(authority.runs[0]?.id, childRun.id);
+      assert.strictEqual(authority.runs[0]?.userMessageId, childRun.userMessageId);
       assert.strictEqual(authority.providerThreads[0]?.nativeThreadRef?.nativeId, ref.nativeId);
       assert.strictEqual(
         authority.providerTurns[0]?.nativeTurnRef?.nativeId,
         "native-authority-turn",
       );
-      assert.deepEqual(authority.directParent, { threadId: parentId, runId: parentRun.id });
       assert.deepEqual(authority.subagents, [
         { origin: "provider_native", status: "running", providerThreadId: nativeId },
       ]);
@@ -1041,7 +1211,6 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         RunId.make("unknown:host-authority"),
       );
       assert.isEmpty(retired.runs);
-      assert.isNull(retired.directParent);
     }),
   );
 
@@ -1192,17 +1361,25 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         statements.some((statement) => statement.includes("candidates AS MATERIALIZED")),
       );
       const full = yield* store.getVisibleTurnItem({
-        threadId, sourceThreadId,
+        threadId,
+        sourceThreadId,
         itemId: TurnItemId.make(`fork-pressure:${count}`),
       });
       assert.isTrue(full?.type === "command_execution" && full.output === oversizedOutput);
-      const marker = yield* store.getVisibleTurnItem({ threadId, sourceThreadId,
-        itemId: TurnItemId.make(`turn-item:fork:${threadId}`) });
+      const marker = yield* store.getVisibleTurnItem({
+        threadId,
+        sourceThreadId,
+        itemId: TurnItemId.make(`turn-item:fork:${threadId}`),
+      });
       assert.strictEqual(marker?.type, "fork");
       const outside = yield* addRolledBackRecoveryCandidate("fork-detail-outside");
-      assert.isNull(yield* store.getVisibleTurnItem({ threadId, sourceThreadId: outside,
-        itemId: TurnItemId.make("item:fork-detail-outside:rolled-back") }));
-
+      assert.isNull(
+        yield* store.getVisibleTurnItem({
+          threadId,
+          sourceThreadId: outside,
+          itemId: TurnItemId.make("item:fork-detail-outside:rolled-back"),
+        }),
+      );
     }),
   );
 
@@ -1597,7 +1774,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         const sql = yield* SqlClient.SqlClient;
         const duplicateItemId = TurnItemId.make("item:bounded-node-history:duplicate");
         yield* sql`
-          INSERT INTO orchestration_v2_projection_turn_items
+          INSERT INTO orchestration_v2_projection_turn_items (
+            turn_item_id, thread_id, run_id, node_id, provider_thread_id, provider_turn_id,
+            parent_item_id, ordinal, type, status, updated_at, payload_json
+          )
           SELECT ${duplicateItemId}, thread_id, run_id, node_id, provider_thread_id,
             provider_turn_id, parent_item_id, ordinal + 1, type, status, updated_at,
             json_set(payload_json, '$.id', ${duplicateItemId}, '$.ordinal', ordinal + 1)
@@ -4052,9 +4232,25 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         WHERE checkpoint_id = ${checkpointId}
       `;
         assert.deepEqual(yield* projectionStore.getCheckpointContext(threadId), {
-          runs: [{ id: runId, ordinal: 1, status: "completed" }],
+          runs: [
+            {
+              id: runId,
+              ordinal: 1,
+              status: "completed",
+            },
+          ],
           checkpointScopes: [{ id: scopeId, runId, kind: "root_run", cwd: "/repo/worktree" }],
-          checkpoints: [{ scopeId, runId, appRunOrdinal: 1, status: "ready", ref }],
+          checkpoints: [
+            {
+              id: checkpointId,
+              scopeId,
+              runId,
+              ordinalWithinScope: 1,
+              appRunOrdinal: 1,
+              status: "ready",
+              ref,
+            },
+          ],
         });
         const missing = yield* projectionStore
           .getCheckpointContext(ThreadId.make("thread:checkpoint-context:missing"))
@@ -4063,7 +4259,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       }),
   );
 
-  it.effect("selects the latest waiting secret only from active runs", () =>
+  it.effect("keeps open native questions visible when their foreground Run completes", () =>
     Effect.gen(function* () {
       const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
       const sql = yield* SqlClient.SqlClient;
@@ -4122,11 +4318,10 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         const shell = yield* projectionStore.getShellSnapshot();
         const thread = shell.threads.find((candidate) => candidate.id === threadId);
         assert.isDefined(thread);
-        assert.equal(
-          thread?.pendingRuntimeRequest?.id ?? null,
-          status === "completed" || status === "rolled_back" ? null : "secret:b",
-        );
+        assert.equal(thread?.pendingRuntimeRequest?.id ?? null, "secret:b");
       }
+      yield* sql`UPDATE orchestration_v2_projection_turn_items SET status = 'cancelled', payload_json = json_set(payload_json, '$.status', 'cancelled', '$.secretStatus', 'cancelled') WHERE thread_id = ${threadId} AND type = 'secret_request' AND status = 'waiting'`;
+      assert.isNull((yield* projectionStore.getThreadShell(threadId))?.pendingRuntimeRequest);
     }),
   );
 
@@ -5150,10 +5345,18 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         `;
       }
 
-      assert.isNull(yield* projectionStore.getVisibleTurnItem({ threadId: targetThreadId,
-        sourceThreadId, itemId: TurnItemId.make("turn-item:projection-fork-source-rollback:post-fork:0") }));
-      const captured = yield* projectionStore.getVisibleTurnItem({ threadId: targetThreadId,
-        sourceThreadId, itemId: TurnItemId.make("turn-item:projection-fork-source-rollback:assistant:2") });
+      assert.isNull(
+        yield* projectionStore.getVisibleTurnItem({
+          threadId: targetThreadId,
+          sourceThreadId,
+          itemId: TurnItemId.make("turn-item:projection-fork-source-rollback:post-fork:0"),
+        }),
+      );
+      const captured = yield* projectionStore.getVisibleTurnItem({
+        threadId: targetThreadId,
+        sourceThreadId,
+        itemId: TurnItemId.make("turn-item:projection-fork-source-rollback:assistant:2"),
+      });
       assert.isTrue(captured?.type === "assistant_message" && captured.text === "two");
       const { statements, tracer } = traceSqlStatements();
       const boundedFork = yield* projectionStore
@@ -5977,3 +6180,81 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
     }),
   );
 });
+
+it.effect("bounds native task control reads and counts without decoding unrelated history", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const sql = yield* SqlClient.SqlClient;
+    const threadId = yield* addRolledBackRecoveryCandidate("native-task-control-pressure");
+    const original = (yield* store.getThreadRecords(threadId, ["runs"])).runs[0]!;
+    const rows = yield* sql<{
+      readonly payload_json: string;
+    }>`SELECT payload_json FROM orchestration_v2_projection_runs WHERE run_id = ${original.id}`;
+    const unrelatedRows = 4096;
+    // Historical/corrupt pressure rows make accidental transcript decoding fail.
+    // Canonical Run creation above remains the authoritative behavior path.
+    for (let start = 0; start < unrelatedRows; start += 256) {
+      const batch = Array.from({ length: 256 }, (_, offset) => ({
+        run_id: `run:native-task-control-pressure:${start + offset}`,
+        thread_id: threadId,
+        ordinal: start + offset + 2,
+        provider: providerInstanceId,
+        provider_instance_id: providerInstanceId,
+        provider_thread_id: null,
+        status: "completed",
+        requested_at: DateTime.formatIso(original.requestedAt),
+        completed_at: null,
+        payload_json: '{"unrelatedMetadata":true}',
+      }));
+      yield* sql`INSERT INTO orchestration_v2_projection_runs ${sql.insert(batch)}`;
+    }
+    const selectedId = RunId.make("run:native-task-control-pressure:selected");
+    const selectedTaskId = NodeId.make("task:native-task-control-pressure:selected");
+    yield* sql`
+      INSERT INTO orchestration_v2_projection_runs (run_id,thread_id,ordinal,provider,provider_instance_id,provider_thread_id,status,requested_at,completed_at,payload_json)
+      VALUES (${selectedId}, ${threadId}, ${unrelatedRows + 2}, ${providerInstanceId}, ${providerInstanceId}, NULL, 'completed', ${DateTime.formatIso(original.requestedAt)}, NULL,
+        json_set(${rows[0]!.payload_json}, '$.id', ${selectedId}, '$.ordinal', ${unrelatedRows + 2}, '$.status', 'completed', '$.delegatedTaskId', ${selectedTaskId}))
+    `;
+    assert.deepEqual(
+      (yield* store.getThreadRecords(threadId, ["runs"], { runIds: [original.id] })).runs.map(
+        (run) => run.id,
+      ),
+      [original.id],
+    );
+    assert.deepEqual(
+      (yield* store.getThreadRecords(threadId, ["runs"], {
+        runOrder: "desc",
+        runLimit: 1,
+        runStatuses: ["completed"],
+      })).runs.map((run) => run.id),
+      [selectedId],
+    );
+    assert.deepEqual(
+      (yield* store.getThreadRecords(threadId, ["runs"], {
+        runDelegatedTaskId: selectedTaskId,
+        runOrder: "asc",
+        runLimit: 1,
+      })).runs.map((run) => run.id),
+      [selectedId],
+    );
+    assert.deepEqual(yield* store.getThreadCounts(threadId), {
+      runCount: unrelatedRows + 2,
+      pendingRequestCount: 0,
+    });
+    assert.deepEqual(Object.keys(yield* store.getThreadRecords(threadId, [])), ["thread"]);
+    // A resumed held Run can finish after a higher submitted ordinal.
+    const earlierEnd = "2026-10-14T00:00:00.000Z";
+    const laterEnd = "2026-10-14T00:01:00.000Z";
+    yield* sql`UPDATE orchestration_v2_projection_runs SET completed_at = ${earlierEnd}, payload_json = json_set(payload_json, '$.completedAt', ${earlierEnd}, '$.startedAt', ${earlierEnd}) WHERE run_id = ${selectedId}`;
+    yield* sql`UPDATE orchestration_v2_projection_runs SET status = 'completed', completed_at = ${laterEnd}, payload_json = json_set(payload_json, '$.status', 'completed', '$.completedAt', ${laterEnd}, '$.startedAt', ${earlierEnd}) WHERE run_id = ${original.id}`;
+    assert.deepEqual(
+      (yield* store.getThreadRecords(threadId, ["runs"], {
+        runStatuses: ["completed"],
+        runOrder: "completed-desc",
+        runLimit: 1,
+        resultOriginalRunId: original.id,
+      })).runs.map((run) => run.id),
+      [original.id],
+    );
+  }).pipe(Effect.provide(layerTest)),
+);

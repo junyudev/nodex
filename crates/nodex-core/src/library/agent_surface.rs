@@ -1,26 +1,22 @@
-//! Authorize and describe semantic content inside the Library read transaction.
+//! Validate live execution and describe canonical content in one Library read.
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::agent::{
-    AgentAuthorizationTarget, AgentExecutionAuthorization, AgentResourceAuthorizationReason,
-};
+use nodex_core_contracts::agent::AgentExecutionAuthorization;
 use nodex_core_contracts::database::DatabaseViewLayout;
-use nodex_core_contracts::document::OwnedDocumentAccessContext;
+use nodex_core_contracts::document::ContentRoutingContext;
 use nodex_core_contracts::library::{
-    LibraryAgentAuthorizedSurface as Surface, LibraryAgentSurfaceDescription as Description,
-    LibraryAgentSurfaceMetadata as Metadata, LibraryAgentSurfaceRestriction as Restriction,
-    LibraryAgentSurfaceTarget as Target, LibraryAgentSurfaceViewTarget as ViewTarget,
+    LibraryAgentSurface as Surface, LibraryAgentSurfaceDescription as Description,
+    LibraryAgentSurfaceMetadata as Metadata, LibraryAgentSurfaceTarget as Target,
+    LibraryAgentSurfaceViewTarget as ViewTarget,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
-use super::agent_authorization;
+use super::agent_execution;
 
 struct Reader<'a> {
     connection: &'a Connection,
     library_id: &'a str,
-    context: &'a BoundModuleContext,
-    authorization: &'a AgentExecutionAuthorization,
 }
 
 pub(super) fn describe(
@@ -28,53 +24,31 @@ pub(super) fn describe(
     library_id: &str,
     context: &BoundModuleContext,
     authorization: &AgentExecutionAuthorization,
-    displayed_access_context: OwnedDocumentAccessContext,
+    displayed_routing_context: ContentRoutingContext,
     target: Target,
 ) -> Result<Description, StoreError> {
-    if let Err(error) = agent_authorization::validate_metadata_read_authority(
-        connection,
-        context,
-        library_id,
-        authorization,
-    ) {
-        if matches!(
-            error.code,
-            StoreErrorCode::Unauthorized | StoreErrorCode::NotFound
-        ) {
-            return Ok(restricted(Restriction::AccessDenied));
-        }
-        return Err(error);
-    }
-    if let OwnedDocumentAccessContext::Project { project_id } = &displayed_access_context {
+    agent_execution::validate_execution(connection, context, library_id, authorization)?;
+    if let ContentRoutingContext::Project { project_id } = &displayed_routing_context {
         validate_id(project_id)?;
     }
     let reader = Reader {
         connection,
         library_id,
-        context,
-        authorization,
     };
     match target {
-        Target::Page { page_id } => page(&reader, page_id, displayed_access_context),
-        Target::DatabaseView { target } => view(&reader, target, displayed_access_context),
-        Target::Canvas { canvas_id } => canvas(&reader, canvas_id, displayed_access_context),
+        Target::Page { page_id } => page(&reader, page_id, displayed_routing_context),
+        Target::DatabaseView { target } => view(&reader, target, displayed_routing_context),
+        Target::Canvas { canvas_id } => canvas(&reader, canvas_id, displayed_routing_context),
     }
 }
 
 fn page(
     reader: &Reader<'_>,
     page_id: String,
-    displayed_access_context: OwnedDocumentAccessContext,
+    displayed_routing_context: ContentRoutingContext,
 ) -> Result<Description, StoreError> {
     validate_id(&page_id)?;
-    if let Some(reason) = target_restriction(
-        reader,
-        &AgentAuthorizationTarget::Page {
-            page_id: page_id.clone(),
-        },
-    )? {
-        return Ok(restricted(reason));
-    }
+
     let title = reader.connection.query_row(
         "SELECT materialization.title FROM pages page \
          JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
@@ -83,12 +57,12 @@ fn page(
         params![page_id, reader.library_id], |row| row.get::<_, String>(0),
     ).optional()?;
     let Some(title) = title else {
-        return Ok(restricted(Restriction::Unavailable));
+        return Ok(Description::Unavailable);
     };
-    Ok(Description::Authorized {
+    Ok(Description::Available {
         surface: Surface::Page {
             page_id,
-            metadata: metadata(reader, title, displayed_access_context),
+            metadata: metadata(reader, title, displayed_routing_context),
         },
     })
 }
@@ -96,19 +70,12 @@ fn page(
 fn view(
     reader: &Reader<'_>,
     target: ViewTarget,
-    displayed_access_context: OwnedDocumentAccessContext,
+    displayed_routing_context: ContentRoutingContext,
 ) -> Result<Description, StoreError> {
-    let Some(view_id) = resolve_view(reader, target, &displayed_access_context)? else {
-        return Ok(restricted(Restriction::Unavailable));
+    let Some(view_id) = resolve_view(reader, target, &displayed_routing_context)? else {
+        return Ok(Description::Unavailable);
     };
-    if let Some(reason) = target_restriction(
-        reader,
-        &AgentAuthorizationTarget::View {
-            view_id: view_id.clone(),
-        },
-    )? {
-        return Ok(restricted(reason));
-    }
+
     let row = reader.connection.query_row(
         "SELECT view.database_block_id, view.data_source_id, view.name, view.layout \
          FROM database_views view \
@@ -121,20 +88,20 @@ fn view(
         |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
     ).optional()?;
     let Some((database_id, data_source_id, title, layout)) = row else {
-        return Ok(restricted(Restriction::Unavailable));
+        return Ok(Description::Unavailable);
     };
     let layout = match layout.as_str() {
         "board" => DatabaseViewLayout::Board,
         "list" => DatabaseViewLayout::List,
         _ => return Err(corrupt("Database View layout is invalid")),
     };
-    Ok(Description::Authorized {
+    Ok(Description::Available {
         surface: Surface::DatabaseView {
             database_id,
             data_source_id,
             view_id,
             layout,
-            metadata: metadata(reader, title, displayed_access_context),
+            metadata: metadata(reader, title, displayed_routing_context),
         },
     })
 }
@@ -142,7 +109,7 @@ fn view(
 fn resolve_view(
     reader: &Reader<'_>,
     target: ViewTarget,
-    displayed_access_context: &OwnedDocumentAccessContext,
+    displayed_routing_context: &ContentRoutingContext,
 ) -> Result<Option<String>, StoreError> {
     match target {
         ViewTarget::View { view_id } => {
@@ -163,8 +130,7 @@ fn resolve_view(
                 .flatten())
         }
         ViewTarget::ProjectDefault => {
-            let OwnedDocumentAccessContext::Project { project_id } = displayed_access_context
-            else {
+            let ContentRoutingContext::Project { project_id } = displayed_routing_context else {
                 return Ok(None);
             };
             // The displayed Project resolves the semantic target; it grants no Agent access.
@@ -183,7 +149,7 @@ fn resolve_view(
 fn canvas(
     reader: &Reader<'_>,
     canvas_id: String,
-    displayed_access_context: OwnedDocumentAccessContext,
+    displayed_routing_context: ContentRoutingContext,
 ) -> Result<Description, StoreError> {
     validate_id(&canvas_id)?;
     let owner = reader
@@ -208,24 +174,10 @@ fn canvas(
         )
         .optional()?;
     let Some((page_id, containing_document_id)) = owner else {
-        return Ok(restricted(Restriction::Unavailable));
+        return Ok(Description::Unavailable);
     };
     if containing_document_id.is_some() && page_id.is_none() {
         return Err(corrupt("Document-placed Canvas has no Page owner"));
-    }
-    let restriction = match page_id {
-        Some(page_id) => target_restriction(reader, &AgentAuthorizationTarget::Page { page_id })?,
-        None => (!agent_authorization::standalone_canvas_metadata_read_allowed(
-            reader.connection,
-            reader.context,
-            reader.library_id,
-            reader.authorization,
-            &canvas_id,
-        )?)
-        .then_some(Restriction::AccessDenied),
-    };
-    if let Some(reason) = restriction {
-        return Ok(restricted(reason));
     }
     let title = reader.connection.query_row(
         "SELECT json_extract(property.value_json, '$') FROM canvas_owners canvas \
@@ -234,48 +186,24 @@ fn canvas(
          WHERE canvas.block_id = ?1 AND canvas.library_id = ?2",
         params![canvas_id, reader.library_id], |row| row.get::<_, Option<String>>(0),
     )?.unwrap_or_else(|| "Canvas".to_owned());
-    Ok(Description::Authorized {
+    Ok(Description::Available {
         surface: Surface::Canvas {
             canvas_id,
-            metadata: metadata(reader, title, displayed_access_context),
+            metadata: metadata(reader, title, displayed_routing_context),
         },
-    })
-}
-
-fn target_restriction(
-    reader: &Reader<'_>,
-    target: &AgentAuthorizationTarget,
-) -> Result<Option<Restriction>, StoreError> {
-    let access = agent_authorization::metadata_read_access(
-        reader.connection,
-        reader.context,
-        reader.library_id,
-        reader.authorization,
-        target,
-    )?;
-    Ok(match access {
-        AgentResourceAuthorizationReason::Allowed => None,
-        AgentResourceAuthorizationReason::GrantMissing
-        | AgentResourceAuthorizationReason::GrantReadOnly => Some(Restriction::ConsentRequired),
-        AgentResourceAuthorizationReason::ResourceNotFound => Some(Restriction::Unavailable),
-        _ => Some(Restriction::AccessDenied),
     })
 }
 
 fn metadata(
     reader: &Reader<'_>,
     title: String,
-    displayed_access_context: OwnedDocumentAccessContext,
+    displayed_routing_context: ContentRoutingContext,
 ) -> Metadata {
     Metadata {
         title,
         library_id: reader.library_id.to_owned(),
-        displayed_access_context,
+        displayed_routing_context,
     }
-}
-
-fn restricted(reason: Restriction) -> Description {
-    Description::Restricted { reason }
 }
 
 fn validate_id(id: &str) -> Result<(), StoreError> {

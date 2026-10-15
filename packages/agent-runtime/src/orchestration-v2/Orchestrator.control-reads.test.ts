@@ -1,6 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  CheckpointId,
+  CheckpointScopeId,
   MessageId,
   EventId,
   NodeId,
@@ -25,6 +27,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -49,18 +52,17 @@ const layerTest = Layer.mergeAll(
   ),
 );
 
-it.effect("replays identical submissions once and refuses altered command or message content", () =>
+it.effect("replays stable command identities without creating another message or Run", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const sql = yield* SqlClient.SqlClient;
-    const threadId = ThreadId.make("thread:immutable-submission");
+    const outbox = yield* EffectOutbox.EffectOutboxV2;
+    const threadId = ThreadId.make("thread:stable-submission");
     const create = {
       type: "thread.create" as const,
-      commandId: CommandId.make("create:immutable-submission"),
+      commandId: CommandId.make("create:stable-submission"),
       threadId,
-      projectId: ProjectId.make("project:immutable-submission"),
-      title: "Immutable input",
+      projectId: ProjectId.make("project:stable-submission"),
+      title: "Stable command",
       modelSelection,
       runtimeMode: "full-access" as const,
       interactionMode: "default" as const,
@@ -71,51 +73,47 @@ it.effect("replays identical submissions once and refuses altered command or mes
     };
     const created = yield* orchestrator.dispatch(create);
     assert.deepEqual(yield* orchestrator.dispatch(create), created);
-    const createConflict = yield* orchestrator
-      .dispatch({ ...create, title: "Changed" })
-      .pipe(Effect.result);
-    assert.equal(createConflict._tag, "Failure");
-    if (createConflict._tag === "Failure")
-      assert.equal(createConflict.failure._tag, "OrchestratorCommandPayloadConflictError");
     const message = {
       type: "message.dispatch" as const,
-      commandId: CommandId.make("message-command:immutable-submission"),
+      commandId: CommandId.make("message-command:stable-submission"),
       threadId,
-      messageId: MessageId.make("message:immutable-submission"),
+      messageId: MessageId.make("message:stable-submission"),
       text: "Inspect files",
       attachments: [],
-      dispatchMode: { type: "defer_start" as const },
+      dispatchMode: { type: "start_immediately" as const },
       createdBy: "user" as const,
       creationSource: "web" as const,
     };
-    const dispatched = yield* orchestrator.dispatch(message);
-    assert.deepEqual(yield* orchestrator.dispatch(message), dispatched);
+    const accepted = yield* orchestrator.dispatch(message);
+    const acceptedEffects = yield* outbox.listByCommandId(message.commandId);
+    assert.isNotEmpty(acceptedEffects);
+    for (let retry = 0; retry < 3; retry++)
+      assert.deepEqual(yield* orchestrator.dispatch(message), accepted);
     assert.deepEqual(
       yield* orchestrator.dispatch({
         ...message,
-        commandId: CommandId.make("message-retry:immutable-submission"),
+        text: "A changed retry cannot replace accepted work",
+        messageId: MessageId.make("message:changed-retry"),
       }),
-      dispatched,
+      accepted,
     );
-    for (const commandId of [
-      message.commandId,
-      CommandId.make("message-changed:immutable-submission"),
-    ]) {
-      const changed = yield* orchestrator
-        .dispatch({ ...message, commandId, text: "Replace files" })
-        .pipe(Effect.result);
-      assert.equal(changed._tag, "Failure");
-      if (changed._tag === "Failure")
-        assert.equal(changed.failure._tag, "OrchestratorCommandPayloadConflictError");
-    }
-    const projection = yield* projections.getThreadProjection(threadId);
+    assert.deepEqual(yield* outbox.listByCommandId(message.commandId), acceptedEffects);
+    const projection = yield* orchestrator.getThreadRecords(threadId, ["messages", "runs"]);
     assert.equal(projection.messages.length, 1);
     assert.equal(projection.messages[0]?.text, message.text);
     assert.equal(projection.runs.length, 1);
-    const rows = yield* sql<{
-      count: number;
-    }>`SELECT count(*) AS count FROM orchestration_command_receipts WHERE message_id = ${message.messageId}`;
-    assert.equal(rows[0]?.count, 1);
+    const otherThreadId = ThreadId.make("thread:other");
+    yield* orchestrator.dispatch({
+      ...create,
+      threadId: otherThreadId,
+      commandId: CommandId.make("create:other-thread"),
+    });
+    const unrelated = yield* orchestrator
+      .dispatch({ ...message, threadId: otherThreadId })
+      .pipe(Effect.result);
+    assert.equal(unrelated._tag, "Failure");
+    if (unrelated._tag === "Failure")
+      assert.equal(unrelated.failure._tag, "OrchestratorCommandIdConflictError");
   }).pipe(Effect.provide(layerTest)),
 );
 
@@ -169,12 +167,6 @@ it.effect(
         commandId: CommandId.make("rename-control"),
         threadId,
         title: "After",
-      });
-      yield* orchestrator.dispatch({
-        type: "thread.runtime-mode.set",
-        commandId: CommandId.make("mode-control"),
-        threadId,
-        runtimeMode: "approval-required",
       });
       yield* orchestrator.dispatch({
         type: "thread.model-selection.set",
@@ -269,7 +261,15 @@ it.effect(
             updatedAt: now,
             type: "user_input_request",
             requestId,
-            questions: [],
+            questions: [
+              {
+                id: "workspace",
+                header: "Workspace",
+                question: "Which working directory should the task use?",
+                options: [],
+                allowCustomAnswer: true,
+              },
+            ],
           },
         });
         yield* orchestrator.dispatch(
@@ -279,7 +279,7 @@ it.effect(
                 commandId: CommandId.make(`respond:${mode}`),
                 threadId,
                 requestId,
-                decision: "accept",
+                answers: { workspace: "/repo/target" },
               }
             : {
                 type: "thread.user-input.dismiss",
@@ -305,7 +305,7 @@ it.effect(
       const thread = yield* projections.getThread(threadId);
       assert.equal(thread.title, "After");
       assert.equal(thread.modelSelection.model, "gpt-6");
-      assert.equal(thread.runtimeMode, "approval-required");
+      assert.equal(thread.runtimeMode, "full-access");
       assert.deepEqual(
         (yield* projections.getThreadProviderContext(threadId)).providerSessions,
         [],
@@ -350,58 +350,164 @@ it.effect(
     }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("implements a proposed plan that the command projection leaves out", () =>
-  Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const projections = yield* ProjectionStore.ProjectionStoreV2;
-    const threadId = ThreadId.make("thread:implement-plan");
-    const planId = PlanId.make("plan:implement-plan");
-    const now = yield* DateTime.now;
-    yield* orchestrator.dispatch({
-      type: "thread.create",
-      commandId: CommandId.make("create-implement-plan"),
-      threadId,
-      projectId: ProjectId.make("project:implement-plan"),
-      title: "Plan",
-      modelSelection,
-      runtimeMode: "full-access",
-      interactionMode: "plan",
-      branch: null,
-      worktreePath: null,
-      createdBy: "user",
-      creationSource: "web",
-    });
-    yield* projections.apply({
-      id: EventId.make("plan:implement-plan"),
-      type: "plan.updated",
-      threadId,
-      occurredAt: now,
-      payload: {
-        id: planId,
+it.effect(
+  "implements an active proposed plan from another Project while retaining both content owners",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const threadId = ThreadId.make("thread:implement-plan");
+      const planId = PlanId.make("plan:implement-plan");
+      const now = yield* DateTime.now;
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create-implement-plan"),
         threadId,
-        runId: null,
-        nodeId: NodeId.make("node:implement-plan"),
-        kind: "proposed_plan",
-        status: "active",
-        markdown: "# Plan\n\n1. Do the thing.",
-      },
-    });
+        projectId: ProjectId.make("project:implement-plan"),
+        title: "Plan",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "plan",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* projections.apply({
+        id: EventId.make("plan:implement-plan"),
+        type: "plan.updated",
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: planId,
+          threadId,
+          runId: null,
+          nodeId: NodeId.make("node:implement-plan"),
+          kind: "proposed_plan",
+          status: "active",
+          markdown: "# Plan\n\n1. Do the thing.",
+        },
+      });
 
-    yield* orchestrator.dispatch({
-      type: "message.dispatch",
-      commandId: CommandId.make("implement-plan"),
-      threadId,
-      messageId: MessageId.make("implement-plan-input"),
-      text: "Implement the plan.",
-      attachments: [],
-      sourcePlanRef: { threadId, planId },
-      dispatchMode: { type: "defer_start" },
-      createdBy: "user",
-      creationSource: "web",
-    });
+      const targetThreadId = ThreadId.make("thread:implement-other-project-plan");
+      const targetProjectId = ProjectId.make("project:plan-implementation-target");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:plan-implementation-target"),
+        threadId: targetThreadId,
+        projectId: targetProjectId,
+        title: "Implementation",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("implement-plan"),
+        threadId: targetThreadId,
+        messageId: MessageId.make("implement-plan-input"),
+        text: "Implement the plan.",
+        attachments: [],
+        sourcePlanRef: { threadId, planId },
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
 
-    assert.equal((yield* projections.getPlan(threadId, planId))?.status, "completed");
-  }).pipe(Effect.provide(layerTest)),
+      assert.equal((yield* projections.getPlan(threadId, planId))?.status, "completed");
+      const target = yield* projections.getThreadRecords(targetThreadId, ["runs", "messages"]);
+      assert.equal(target.thread.projectId, targetProjectId);
+      assert.equal(target.runs[0]?.threadId, targetThreadId);
+      assert.deepEqual(target.runs[0]?.sourcePlanRef, { threadId, planId });
+      assert.equal(
+        (yield* projections.getThread(threadId)).projectId,
+        ProjectId.make("project:implement-plan"),
+      );
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "records a created Session in another Project and still rejects a foreign Run identity",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const parentThreadId = ThreadId.make("thread:created-parent-project");
+      const targetThreadId = ThreadId.make("thread:created-other-project");
+      for (const [threadId, projectId] of [
+        [parentThreadId, ProjectId.make("project:created-parent")],
+        [targetThreadId, ProjectId.make("project:created-target")],
+      ] as const) {
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`create:${threadId}`),
+          threadId,
+          projectId,
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`message:${threadId}`),
+          threadId,
+          messageId: MessageId.make(`message:${threadId}`),
+          text: "Begin.",
+          attachments: [],
+          dispatchMode: { type: "defer_start" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+      }
+      const parentRun = (yield* projections.getThreadRecords(parentThreadId, ["runs"])).runs[0]!;
+      const targetRun = (yield* projections.getThreadRecords(targetThreadId, ["runs"])).runs[0]!;
+      yield* orchestrator.dispatch({
+        type: "thread.created.record",
+        commandId: CommandId.make("record:other-project"),
+        parentThreadId,
+        parentRunId: parentRun.id,
+        parentNodeId: parentRun.rootNodeId!,
+        targetThreadId,
+        targetRunId: targetRun.id,
+      });
+      const recorded = (yield* projections.getThreadRecords(parentThreadId, ["turnItems"], {
+        turnItemTypes: ["thread_created"],
+      })).turnItems[0]!;
+      assert.equal(recorded.type, "thread_created");
+      if (recorded.type !== "thread_created") return;
+      assert.equal(recorded.runId, parentRun.id);
+      assert.equal(recorded.targetThreadId, targetThreadId);
+      assert.equal(recorded.targetRunId, targetRun.id);
+      const wrongTarget = yield* Effect.result(
+        orchestrator.dispatch({
+          type: "thread.created.record",
+          commandId: CommandId.make("record:foreign-run"),
+          parentThreadId,
+          parentRunId: parentRun.id,
+          parentNodeId: parentRun.rootNodeId!,
+          targetThreadId,
+          targetRunId: parentRun.id,
+        }),
+      );
+      assert.equal(wrongTarget._tag, "Failure");
+      if (wrongTarget._tag === "Failure")
+        assert.instanceOf(wrongTarget.failure, Orchestrator.OrchestratorDispatchError);
+      assert.lengthOf(
+        (yield* projections.getThreadRecords(parentThreadId, ["turnItems"], {
+          turnItemTypes: ["thread_created"],
+        })).turnItems,
+        1,
+      );
+    }).pipe(Effect.provide(layerTest)),
 );
 
 // Stop's settle follow-up runs after the provider interrupt returns, possibly
@@ -693,4 +799,144 @@ it.effect("keeps delegated child pull-request links independent of the parent", 
     assert.deepEqual(parentAfterChildLink.thread.linkedPullRequest, parentPullRequest);
     assert.deepEqual(parentAfterChildLink.thread.pullRequests, parent.thread.pullRequests);
   }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "idle Project detaches reject a concurrently admitted Run and preserve its session binding",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const sql = yield* SqlClient.SqlClient;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:idle-detach");
+      const projectId = ProjectId.make("project:idle-detach");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:idle-detach"),
+        threadId,
+        projectId,
+        title: "Idle",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const providerSessionId = ProviderSessionId.make("native:idle-detach");
+      yield* store.apply({
+        type: "provider-session.attached",
+        id: EventId.make("attach:idle-detach"),
+        threadId,
+        occurredAt: now,
+        payload: {
+          id: providerSessionId,
+          driver: adapter.driver,
+          providerInstanceId: instanceId,
+          status: "ready",
+          cwd: "/workspace",
+          model: "model",
+          capabilities: CodexProviderCapabilitiesV2,
+          createdAt: now,
+          updatedAt: now,
+          lastError: null,
+        },
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("start:idle-detach"),
+        threadId,
+        messageId: MessageId.make("message:idle-detach"),
+        text: "Work",
+        attachments: [],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const detach = {
+        type: "provider-session.detach" as const,
+        commandId: CommandId.make("close:busy-detach"),
+        threadId,
+        providerSessionId,
+        onlyIfIdle: true,
+        revokeMcpCredential: true,
+      };
+      assert.equal((yield* orchestrator.dispatch(detach).pipe(Effect.result))._tag, "Failure");
+      assert.equal((yield* store.getProjectProviderSessionBindings(projectId)).items.length, 1);
+      const run = (yield* store.getThreadRecords(threadId, ["runs"])).runs[0]!;
+      yield* store.apply({
+        type: "run.updated",
+        id: EventId.make("complete:idle-detach"),
+        threadId,
+        occurredAt: now,
+        payload: { ...run, status: "completed", completedAt: now },
+      });
+      yield* orchestrator.dispatch({ ...detach, commandId: CommandId.make("close:idle-detach") });
+      assert.equal((yield* store.getProjectProviderSessionBindings(projectId)).items.length, 0);
+      assert.equal((yield* store.getThread(threadId)).deletedAt, null);
+      const effects = yield* sql<{
+        payload_json: string;
+      }>`SELECT payload_json FROM orchestration_v2_effect_outbox WHERE effect_type='provider-session.detach'`;
+      assert.equal(effects.length, 1);
+      assert.equal(JSON.parse(effects[0]!.payload_json).revokeMcpCredential, true);
+    }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "fences last-message rewinds against foreign, stale and queued Runs before native work",
+  () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = ThreadId.make("thread:edit-guard");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:edit-guard"),
+        threadId,
+        projectId: ProjectId.make("project:edit-guard"),
+        title: "Edit guard",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      for (const ordinal of [1, 2])
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make(`dispatch:edit-guard:${ordinal}`),
+          threadId,
+          messageId: MessageId.make(`message:edit-guard:${ordinal}`),
+          text: `Queued ${ordinal}`,
+          attachments: [],
+          dispatchMode: { type: "defer_start" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+      const { runs } = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
+      assert.equal(runs.length, 2);
+      for (const runId of [RunId.make("run:foreign"), runs[0]!.id, runs[1]!.id]) {
+        const error = yield* orchestrator
+          .dispatch({
+            type: "checkpoint.rollback",
+            commandId: CommandId.make(`rewind:edit-guard:${runId}`),
+            threadId,
+            beforeRunId: runId,
+            scopeId: CheckpointScopeId.make("scope:edit-guard"),
+            checkpointId: CheckpointId.make("checkpoint:edit-guard"),
+            restoreFiles: false,
+          })
+          .pipe(Effect.flip);
+        assert.equal(error._tag, "OrchestratorDispatchError");
+        if (error._tag === "OrchestratorDispatchError")
+          assert.equal(
+            error.cause,
+            "Only the latest user Run of an idle conversation can be edited.",
+          );
+      }
+      assert.deepEqual((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs, runs);
+    }).pipe(Effect.provide(layerTest)),
 );

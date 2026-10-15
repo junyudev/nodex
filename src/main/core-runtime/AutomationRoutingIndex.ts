@@ -28,7 +28,7 @@ export interface AutomationRoutingCommit {
     readonly upsert?: readonly AutomationRoutingDefinition[];
   };
   readonly runs?: {
-    readonly removeThreadIds?: readonly string[];
+    readonly removeRunIds?: readonly string[];
     readonly upsert?: readonly AutomationRoutingRun[];
   };
 }
@@ -44,7 +44,7 @@ interface AutomationRoutingState {
   readonly completedRefresh: number;
   readonly mutationRevision: number;
   readonly requestedRefresh: number;
-  readonly runAutomationByThreadId: ReadonlyMap<string, string>;
+  readonly runAutomationByRunId: ReadonlyMap<string, string>;
 }
 
 export class AutomationRoutingIndex extends Context.Service<
@@ -55,7 +55,7 @@ export class AutomationRoutingIndex extends Context.Service<
     /** Rebuilds the complete routing projection from canonical Core state. */
     readonly synchronize: Effect.Effect<void, CoreRuntimeError | AutomationRoutingIndexError>;
     readonly activeHeartbeatAutomationId: (sessionId: string) => string | null;
-    readonly runAutomationId: (threadId: string) => string | null;
+    readonly runAutomationId: (runId: string) => string | null;
   }
 >()("nodex/main/core-runtime/AutomationRoutingIndex") {}
 
@@ -65,7 +65,7 @@ const emptyState = (): AutomationRoutingState => ({
   completedRefresh: 0,
   mutationRevision: 0,
   requestedRefresh: 0,
-  runAutomationByThreadId: new Map(),
+  runAutomationByRunId: new Map(),
 });
 
 const definitionIndex = (
@@ -86,7 +86,7 @@ const definitionIndex = (
 };
 
 const runIndex = (items: readonly AutomationRoutingRun[]): ReadonlyMap<string, string> =>
-  new Map(items.map((item) => [item.thread_id, item.automation_id] as const));
+  new Map(items.map((item) => [item.run_id, item.automation_id] as const));
 
 const applyCommit = (
   state: AutomationRoutingState,
@@ -95,7 +95,7 @@ const applyCommit = (
   if (!state.accepting) return state;
 
   const activeHeartbeatBySessionId = new Map(state.activeHeartbeatBySessionId);
-  const runAutomationByThreadId = new Map(state.runAutomationByThreadId);
+  const runAutomationByRunId = new Map(state.runAutomationByRunId);
   const definitionChanges = input.definitions;
   const runChanges = input.runs;
 
@@ -117,18 +117,18 @@ const applyCommit = (
     }
   }
 
-  for (const threadId of runChanges?.removeThreadIds ?? []) {
-    runAutomationByThreadId.delete(threadId);
+  for (const runId of runChanges?.removeRunIds ?? []) {
+    runAutomationByRunId.delete(runId);
   }
   for (const run of runChanges?.upsert ?? []) {
-    runAutomationByThreadId.set(run.thread_id, run.automation_id);
+    runAutomationByRunId.set(run.run_id, run.automation_id);
   }
 
   return {
     ...state,
     activeHeartbeatBySessionId,
     mutationRevision: state.mutationRevision + 1,
-    runAutomationByThreadId,
+    runAutomationByRunId,
   };
 };
 
@@ -236,7 +236,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
                 ...current,
                 activeHeartbeatBySessionId: definitionIndex(definitions),
                 completedRefresh: refreshRevision,
-                runAutomationByThreadId: runIndex(runs),
+                runAutomationByRunId: runIndex(runs),
               };
             });
             if (!committed && MutableRef.get(state).accepting) yield* refreshStable;
@@ -252,7 +252,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
           ...MutableRef.get(state),
           accepting: false,
           activeHeartbeatBySessionId: new Map(),
-          runAutomationByThreadId: new Map(),
+          runAutomationByRunId: new Map(),
         });
       }),
     );
@@ -261,8 +261,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
       activeHeartbeatAutomationId: (sessionId) =>
         MutableRef.get(state).activeHeartbeatBySessionId.get(sessionId) ?? null,
       commit: (input) => MutableRef.update(state, (current) => applyCommit(current, input)),
-      runAutomationId: (threadId) =>
-        MutableRef.get(state).runAutomationByThreadId.get(threadId) ?? null,
+      runAutomationId: (runId) => MutableRef.get(state).runAutomationByRunId.get(runId) ?? null,
       synchronize,
     });
   }),

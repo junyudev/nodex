@@ -1,6 +1,9 @@
 mod agent_command;
+mod agent_runtime_admission_window;
 mod agent_runtime_authority;
 mod agent_runtime_binding;
+mod agent_runtime_cleanup;
+mod agent_runtime_native_session;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;
@@ -34,7 +37,7 @@ mod thread;
 mod thread_assets;
 mod thread_read_state;
 
-pub(crate) use execution::{turn_is_read_only, validate_persisted_turn_authority};
+pub(crate) use execution::validate_persisted_turn_authority;
 pub use thread_assets::ThreadAssetBlob;
 
 use std::path::PathBuf;
@@ -138,7 +141,6 @@ impl ProjectWorkspaceModule {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(store_epoch),
                     commit_head: commit_seq,
-                    authorization: None,
                     value: read::read(
                         &transaction,
                         &context,

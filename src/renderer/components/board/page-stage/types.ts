@@ -8,10 +8,10 @@ import type { PageStagePageModel, PageStageMetadataMutationResult } from "@/lib/
 import type { PageStageBreadcrumbProps } from "./breadcrumb";
 import type { DatabaseId } from "../../../../shared/database-identities";
 import type {
-  ContentAccessContext,
+  ContentRoutingContext,
   ContentCanvasNavigationTarget,
   ContentPageNavigationTarget,
-} from "../../../../shared/content-access-context";
+} from "../../../../shared/content-routing-context";
 import type { PageStagePropertyEdit } from "@/lib/page-stage-properties";
 
 export type { PageStageMetadataMutationResult } from "@/lib/page-stage-page";
@@ -74,7 +74,7 @@ export interface PageStageProps {
   isActivePanelTab?: boolean;
   page: PageStagePageModel | null;
   /** Content authority selected by the mounted Project or Resource surface. */
-  contentAccessContext: ContentAccessContext;
+  contentRoutingContext: ContentRoutingContext;
   projectName?: string | null;
   /** Workspace context for editor-owned local execution surfaces. */
   projectWorkspacePath?: string | null;

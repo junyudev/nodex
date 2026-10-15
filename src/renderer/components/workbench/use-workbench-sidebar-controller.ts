@@ -62,7 +62,6 @@ import {
   type CodexSidebarThreadMoveSuccess,
 } from "../../../shared/codex-sidebar-thread-move";
 import { RenameChatDialog } from "./rename-chat-dialog";
-import { SidebarThreadMoveConfirmationDialog } from "./sidebar-thread-move-confirmation-dialog";
 import { SIDEBAR_SECTIONS_QUERY_KEY } from "./sidebar-custom-sections";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import type { SidebarThreadDropCommit, SidebarThreadDropRequest } from "./sidebar-thread-reorder";
@@ -126,12 +125,12 @@ function listSessionDbViewTargets(
   const targets = new Map<string, { projectId: string; databaseViewId: string }>();
   for (const tab of session.tabs) {
     if (tab.kind !== "db_view") continue;
-    if (tab.config.accessContext.kind !== "project" || tab.config.target.kind !== "database-view")
+    if (tab.config.routingContext.kind !== "project" || tab.config.target.kind !== "database-view")
       continue;
     const databaseViewId = tab.config.target.databaseViewId.trim();
     if (!databaseViewId) continue;
     targets.set(databaseViewId, {
-      projectId: tab.config.accessContext.projectId,
+      projectId: tab.config.routingContext.projectId,
       databaseViewId,
     });
   }
@@ -193,34 +192,12 @@ export function useWorkbenchSidebarController({
       ): Promise<CodexSidebarThreadMoveSuccess | null> => {
         try {
           const result = await moveWorkbenchSidebarThread(moveInput);
-          if (result.status === "confirmation-required") {
-            openModal(appHandle, SidebarThreadMoveConfirmationDialog, {
-              confirmation: result,
-              onContinue: () => {
-                void submitMove({
-                  ...moveInput,
-                  projectAccessGrant: {
-                    targetProjectId: result.targetProjectId,
-                    expectedBindingRevision: result.targetBindingRevision,
-                    missingProjectSources: result.missingProjectSources,
-                  },
-                });
-              },
-            });
-            return null;
-          }
-
           const scopeIds = new Set([result.source.projectId, result.destination.projectId]);
           await Promise.all(
             [...scopeIds].map(async (projectId) => {
               await catalog.refreshThrough(projectId, result.projectionRevision);
             }),
           );
-          if (moveInput.projectAccessGrant) {
-            await queryClient.invalidateQueries({
-              queryKey: queryKeys.projects.all(),
-            });
-          }
           return result;
         } catch {
           toast.danger("Couldn’t move chat");
@@ -230,7 +207,7 @@ export function useWorkbenchSidebarController({
 
       return await submitMove(initialInput);
     },
-    [appHandle, catalog, queryClient],
+    [catalog],
   );
 
   const moveSidebarThreadForSidebar = useCallback(

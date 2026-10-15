@@ -1,5 +1,4 @@
 import type { FileReadAuthority } from "./library-file-resources";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
 import type { AuthorizedDeliveryPacket } from "../../shared/local-commit-delivery";
 import { rendererLocalCommitIngress } from "./local-commit-ingress";
 import { subscribePageFileChanges, type PageFileChange } from "./page-library-changes";
@@ -107,44 +106,7 @@ const revokeAll: FileReadInvalidation = {
   content: true,
 };
 
-/** Direct File grants and owner-bound read sources have independent revocation dependencies. */
-export function fileReadRevocationInvalidations(
-  authority: FileReadAuthority,
-  documentId: string | null,
-  message: ResourceRevocationMessage,
-): readonly FileReadInvalidation[] {
-  if (message.kind === "reset") return [revokeAll];
-  const revoked = message.delivery.revocation;
-  const source = authority.readSource;
-  if (source.kind === "direct") {
-    return revoked.resource_kind === "file"
-      ? [{ ...revokeAll, fileIds: [revoked.resource_id] }]
-      : [];
-  }
-  if (source.kind === "structural_clipboard") return [revokeAll];
-  if (revoked.resource_kind === "file") return [];
-  if (source.kind === "page") {
-    return (revoked.resource_kind === "page" && revoked.resource_id === source.page_id) ||
-      (revoked.resource_kind === "document" && revoked.resource_id === documentId)
-      ? [revokeAll]
-      : [];
-  }
-  if (source.kind === "canvas") {
-    return (revoked.resource_kind === "canvas" && revoked.resource_id === source.canvas_id) ||
-      (revoked.resource_kind === "document" && revoked.resource_id === documentId)
-      ? [revokeAll]
-      : [];
-  }
-  // A captured Document source does not expose its owner identity. Conservatively
-  // clear on an owner revoke; Core reauthorizes the exact captured target on reread.
-  return revoked.resource_kind === "page" ||
-    revoked.resource_kind === "canvas" ||
-    (revoked.resource_kind === "document" && revoked.resource_id === source.document_id)
-    ? [revokeAll]
-    : [];
-}
-
-/** One subscription follows the File read capability, including recipient resets and ACL loss. */
+/** Tracks File metadata, bytes and owner presentation lifecycle without eager reads. */
 export const subscribeFileReadAuthority = (
   authority: FileReadAuthority,
   documentId: string | null,
@@ -154,7 +116,7 @@ export const subscribeFileReadAuthority = (
   const releasePageFiles =
     source.kind === "page"
       ? subscribePageFileChanges(source.page_id, (change) => {
-          // A relation change may remove the read capability; do not retain stale bytes while checking.
+          // Entries and body occurrences determine presentation metadata.
           if (change.manifestRevision !== null) {
             listener({
               ...revokeAll,
@@ -187,20 +149,19 @@ export const subscribeFileReadAuthority = (
       listener(invalidation);
   });
   const scope =
-    authority.contentAccessContext.kind === "project"
+    authority.contentRoutingContext.kind === "project"
       ? {
           kind: "project" as const,
           libraryId: authority.libraryId,
-          projectId: authority.contentAccessContext.projectId,
+          projectId: authority.contentRoutingContext.projectId,
         }
       : { kind: "library" as const, libraryId: authority.libraryId };
-  const releaseRevocations = rendererLocalCommitIngress.subscribeRevocation(scope, (message) => {
-    for (const invalidation of fileReadRevocationInvalidations(authority, documentId, message))
-      listener(invalidation);
+  const releaseResets = rendererLocalCommitIngress.subscribeProjection(scope, (message) => {
+    if (message.kind === "reset") listener(revokeAll);
   });
   return () => {
     releasePageFiles();
     releaseReferences();
-    releaseRevocations();
+    releaseResets();
   };
 };

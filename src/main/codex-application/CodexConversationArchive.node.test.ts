@@ -4,7 +4,6 @@ import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/error
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { CodexTranscriptEntry } from "../../shared/types";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
 import {
   CodexAppServerCapabilities,
   type CodexAppServerCapabilitySnapshot,
@@ -15,7 +14,6 @@ import {
   type RemoteHostedPipCodexLifecycleSettlement,
 } from "../host-runtime/RemoteHostedPipRuntime";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import {
   ProjectWorkspace,
   type DesktopProjectWorkspaceThread,
@@ -33,7 +31,6 @@ import {
   ManagedWorktreeRuntimeError,
   type ManagedWorktreeSetOwnerInput,
 } from "./ManagedWorktreeRuntime";
-import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
 
 const thread = (overrides: Partial<DesktopProjectWorkspaceThread> = {}) =>
   ({
@@ -102,8 +99,6 @@ const makeArchive = (input: {
   readonly currentThread?: ReturnType<typeof thread>;
   readonly widgetClears?: Array<{ readonly hostId: string; readonly threadId: string }>;
   readonly widgetClearFailure?: boolean;
-  readonly automationRun?: { readonly automationId: string } | null;
-  readonly archivedMessages?: unknown[];
   readonly historyPages?: CodexHistoryPageAdapter["Service"];
   readonly localTranscript?: readonly CodexTranscriptEntry[];
   readonly pipSettlements?: RemoteHostedPipCodexLifecycleSettlement[];
@@ -202,28 +197,6 @@ const makeArchive = (input: {
                 return [];
               }),
       }),
-    ),
-    Effect.provideService(
-      AutomationApplication,
-      AutomationApplication.of({
-        runs: {
-          get: () => Effect.succeed(input.automationRun ?? null),
-          delete: () =>
-            Effect.sync(() => {
-              input.events.push("automation:delete");
-              return true;
-            }),
-          archive: (archiveInput: unknown) =>
-            Effect.sync(() => {
-              input.archivedMessages?.push(archiveInput);
-              return true;
-            }),
-        },
-      } as never),
-    ),
-    Effect.provideService(
-      AutomationRoutingIndex,
-      AutomationRoutingIndex.of({ activeHeartbeatAutomationId: () => null } as never),
     ),
     Effect.provideService(
       CodexApplicationEventHub,
@@ -343,12 +316,6 @@ const makeArchive = (input: {
       } as never),
     ),
     Effect.provideService(
-      NodexAgentAuthorizationRuntime,
-      NodexAgentAuthorizationRuntime.of({
-        revokeRoot: () => Effect.sync(() => input.events.push("revoke")),
-      } as never),
-    ),
-    Effect.provideService(
       ProjectWorkspace,
       ProjectWorkspace.of({
         getThread: () => Effect.succeed(current),
@@ -415,12 +382,7 @@ it.effect("writes a shared worktree replacement owner before archiving the Threa
       ],
     });
     assert.isTrue(yield* archive.archive("thread-a"));
-    assert.deepEqual(events, [
-      "owner:thread-b",
-      "gateway:thread/archive",
-      "revoke",
-      "core:archive",
-    ]);
+    assert.deepEqual(events, ["owner:thread-b", "gateway:thread/archive", "core:archive"]);
   }),
 );
 
@@ -476,12 +438,7 @@ it.effect("retires the archived root after native success and durable persistenc
 
     assert.isTrue(yield* archive.archive("thread-a"));
     assert.deepEqual(pipSettlements, [{ action: "archive", threadIds: ["thread-a"] }]);
-    assert.deepEqual(events, [
-      "gateway:thread/archive",
-      "revoke",
-      "core:archive",
-      "pip:archive:thread-a",
-    ]);
+    assert.deepEqual(events, ["gateway:thread/archive", "core:archive", "pip:archive:thread-a"]);
   }),
 );
 
@@ -522,7 +479,7 @@ it.effect("does not retire deferred archive PiP before durable persistence succe
 
     assert.isTrue(exit._tag === "Failure");
     assert.deepEqual(pipSettlements, []);
-    assert.deepEqual(events, ["gateway:thread/archive", "revoke", "core:archive"]);
+    assert.deepEqual(events, ["gateway:thread/archive", "core:archive"]);
   }),
 );
 
@@ -702,13 +659,7 @@ it.effect("does not retire deferred delete PiP before durable deletion succeeds"
 
     assert.isTrue(exit._tag === "Failure");
     assert.deepEqual(pipSettlements, []);
-    assert.deepEqual(events, [
-      "gateway:thread/list",
-      "gateway:thread/delete",
-      "automation:delete",
-      "revoke",
-      "core:delete",
-    ]);
+    assert.deepEqual(events, ["gateway:thread/list", "gateway:thread/delete", "core:delete"]);
   }),
 );
 
@@ -738,132 +689,6 @@ it.effect("retires a confirmed native deletion even when widget storage cannot b
     });
   }),
 );
-
-it.effect("fills a missing local archive side from bounded history without replacing it", () =>
-  Effect.gen(function* () {
-    const events: string[] = [];
-    const archivedMessages: unknown[] = [];
-    const shellInputs: unknown[] = [];
-    const itemInputs: unknown[] = [];
-    const historyPages = CodexHistoryPageAdapter.of({
-      loadTurnPage: (pageInput) =>
-        Effect.sync(() => {
-          shellInputs.push(pageInput);
-          return {
-            turns: [
-              {
-                rootTurnId: null,
-                id: "turn-latest",
-                items: [],
-                itemsView: "notLoaded",
-                status: "completed",
-                error: null,
-                startedAt: null,
-                completedAt: null,
-                durationMs: null,
-              },
-            ],
-            nextCursor: null,
-            backwardsCursor: null,
-            itemsPaginationByTurnId: {},
-            itemSegmentsByTurnId: {},
-            loadedItemCount: 0,
-          };
-        }),
-      loadTurnItemsPage: (pageInput) =>
-        Effect.sync(() => {
-          itemInputs.push(pageInput);
-          return {
-            items: [
-              {
-                type: "userMessage",
-                id: "user-latest",
-                clientId: null,
-                content: [{ type: "text", text: "latest request", text_elements: [] }],
-              },
-              {
-                questions: null,
-                type: "agentMessage",
-                id: "assistant-latest",
-                text: "older history response",
-                phase: null,
-                memoryCitation: null,
-                delivery: null,
-              },
-            ],
-            nextCursor: null,
-            backwardsCursor: null,
-            approximateBytes: 4_096,
-          };
-        }),
-    });
-    const archive = yield* makeArchive({
-      events,
-      lifecycleConsumers: [],
-      currentThread: thread({ managedWorktreePath: null }),
-      automationRun: { automationId: "automation-a" },
-      archivedMessages,
-      historyPages,
-      localTranscript: [
-        {
-          threadId: "thread-a",
-          turnId: "turn-latest",
-          itemId: "assistant-local",
-          type: "assistantMessage",
-          kind: "assistantMessage",
-          source: "live",
-          createdAt: 1,
-          markdownText: "latest local response",
-        } as CodexTranscriptEntry,
-      ],
-    });
-
-    assert.isTrue(yield* archive.archive("thread-a"));
-    assert.deepStrictEqual(archivedMessages, [
-      {
-        threadId: "thread-a",
-        archivedReason: "auto",
-        archivedUserMessage: "latest request",
-        archivedAssistantMessage: "latest local response",
-      },
-    ]);
-    assert.deepStrictEqual(shellInputs, [
-      {
-        capability,
-        threadId: "thread-a",
-        cursor: null,
-        initialItemsCursor: null,
-        limit: 5,
-        itemBudget: 0,
-        byteBudget: 0,
-        purpose: "export",
-      },
-    ]);
-    assert.strictEqual((itemInputs[0] as { readonly limit: number }).limit, 100);
-  }),
-);
-
-for (const message of ["archive denied", "failed to archive session: thread thread-a not found"]) {
-  it.effect(`does not publish archive success after ${message}`, () =>
-    Effect.gen(function* () {
-      const events: string[] = [];
-      const applicationEvents: unknown[] = [];
-      const currentThread = thread({ cwd: "/repo", managedWorktreePath: null });
-      const failure = lifecycleRequestFailure("thread/archive", -32603, message);
-      const archive = yield* makeArchive({
-        events,
-        applicationEvents,
-        currentThread,
-        lifecycleConsumers: [currentThread],
-        archiveTransportFailure: failure,
-      });
-      const result = yield* archive.archive("thread-a").pipe(Effect.flip);
-      assert.strictEqual(result.cause, failure);
-      assert.deepEqual(events, ["gateway:thread/archive"]);
-      assert.deepEqual(applicationEvents, []);
-    }),
-  );
-}
 
 it.effect(
   "uses all native state DB pages to admit deletion despite stale local archived state",
@@ -930,7 +755,7 @@ it.effect("retries the exact target's missing rollout through the native extensi
       method: "thread/delete",
       params: { threadId: "thread-a", missingRolloutRecovery: true },
     });
-    assert.isTrue(events.indexOf("extension:thread/delete") < events.indexOf("automation:delete"));
+    assert.isTrue(events.indexOf("extension:thread/delete") < events.indexOf("core:delete"));
   }),
 );
 
@@ -1005,12 +830,7 @@ it.effect("retires a missing local catalog identity only after native absence co
       ),
     });
     assert.isTrue(yield* archive.archive("thread-a"));
-    assert.deepEqual(events, [
-      "gateway:thread/archive",
-      "gateway:thread/read",
-      "revoke",
-      "core:delete",
-    ]);
+    assert.deepEqual(events, ["gateway:thread/archive", "gateway:thread/read", "core:delete"]);
     assert.deepInclude(applicationEvents, {
       kind: "codex",
       value: { type: "threadDeleted", hostId: "local", threadId: "thread-a" },

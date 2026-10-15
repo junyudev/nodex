@@ -20,14 +20,7 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexConnection } from "../codex-application/CodexConnection";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
-import {
-  CodexRealtimeVoice,
-  live as realtimeVoiceLive,
-} from "../codex-application/CodexRealtimeVoice";
-import {
-  CodexRealtimeVoicePolicy,
-  live as realtimeVoicePolicyLive,
-} from "../codex-application/CodexRealtimeVoicePolicy";
+
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
 import { live as dictationNetworkLive } from "../platform/electron/DictationNetwork";
@@ -95,11 +88,6 @@ import {
 import { getLogger } from "../logging/logger";
 import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import { LibraryModule } from "../library-application/LibraryModule";
-import {
-  NodexAgentAuthorizationRuntime,
-  live as nodexAgentAuthorizationRuntimeLive,
-} from "../codex-application/NodexAgentAuthorizationRuntime";
-import { NodexAgentResourceAccess } from "../nodex-agent-application/NodexAgentResourceAccess";
 import { ElectronApp } from "../platform/electron/ElectronApp";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import {
@@ -133,9 +121,6 @@ const desktopNotifications = desktopNotificationRuntimeLive;
 const rendererClients = rendererClientRuntimeLive();
 const turnPresentation = Layer.effect(CodexTurnPresentation, makeTurnPresentation).pipe(
   Layer.provideMerge(workbenchAgentBridgeLive),
-);
-const nodexAgentAuthorization = nodexAgentAuthorizationRuntimeLive.pipe(
-  Layer.provideMerge(rendererClients),
 );
 const privacy = electronPrivacyLive;
 const databaseNotifier = DatabaseNotifierRuntime.live;
@@ -257,10 +242,6 @@ const codexMedia = codexMediaLive.pipe(
   Layer.provide(dictationNetworkLive),
   Layer.provideMerge(dictation),
 );
-const realtimeVoice = realtimeVoiceLive.pipe(
-  Layer.provideMerge(realtimeVoicePolicyLive.pipe(Layer.provideMerge(codexMedia))),
-  Layer.provideMerge(rendererClients),
-);
 const dictationDictionary = dictationDictionaryLive.pipe(Layer.provideMerge(codexMedia));
 
 const applicationMenu = Layer.unwrap(
@@ -311,8 +292,6 @@ export const live: Layer.Layer<
   | ComposerAppshotRuntime
   | ComputerUseSettingsRuntime
   | CodexMedia
-  | CodexRealtimeVoice
-  | CodexRealtimeVoicePolicy
   | DictationDictionary
   | DatabaseNotifierRuntime.DatabaseNotifierRuntime
   | DesktopNotificationRuntime
@@ -321,7 +300,6 @@ export const live: Layer.Layer<
   | ElectronPrivacy
   | ElectronClipboard
   | McpAppSandboxRuntime
-  | NodexAgentAuthorizationRuntime
   | RemoteHostedPipRuntime
   | RendererClientRuntime
   | WorkbenchAgentBridge
@@ -350,7 +328,6 @@ export const live: Layer.Layer<
   | CodexUserInputAutoResolution
   | CoreAuthority
   | CoreModules
-  | Layer.Services<typeof realtimeVoice>
   | DatabaseModule
   | DesktopDocumentSessionRuntime
   | DesktopToolRuntime
@@ -366,7 +343,6 @@ export const live: Layer.Layer<
   | FileExportRuntime
   | MainCleanup
   | MainConfig
-  | NodexAgentResourceAccess
   | ProjectWorkspace
   | RemoteHostedPipNativePlatform
   | ScopedCallbackRuntime
@@ -377,12 +353,10 @@ export const live: Layer.Layer<
   computerUseSettings,
   remoteHostedPipIntegration,
   codexMedia,
-  realtimeVoice,
   dictationDictionary,
   databaseNotifier,
   deepLinks,
   dictation,
-  nodexAgentAuthorization,
   structuralClipboard,
   editorHistoryRuntimeLive,
   windowSessions,

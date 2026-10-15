@@ -131,9 +131,15 @@ export function CodexUserInputRequestCard({
     conversationId,
     viewRequest,
   );
-  const autoResolution = useUserInputAutoResolution(conversationId, request.requestId);
+  const usesNativeAutoResolution = request.executionOwner !== "agent-runtime";
+  const autoResolution = useUserInputAutoResolution(
+    conversationId,
+    request.requestId,
+    usesNativeAutoResolution,
+  );
 
   useEffect(() => {
+    if (!usesNativeAutoResolution) return;
     const recordActivity = (event: KeyboardEvent | PointerEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest("[data-user-input-auto-resolution]")) {
@@ -147,7 +153,7 @@ export function CodexUserInputRequestCard({
       window.removeEventListener("keydown", recordActivity);
       window.removeEventListener("pointerdown", recordActivity);
     };
-  }, [conversationId]);
+  }, [conversationId, usesNativeAutoResolution]);
 
   return (
     <CodexUserInputRequestCardView
@@ -156,10 +162,15 @@ export function CodexUserInputRequestCard({
       initialDraft={initialDraft}
       onDraftChange={saveDraft}
       onUserInteraction={() => {
+        if (!usesNativeAutoResolution) return;
         void snoozeUserInput(conversationId, request.requestId);
       }}
       onRespond={onRespond}
       onDismiss={async (nextRequest) => {
+        if (!usesNativeAutoResolution) {
+          await onInterrupt?.();
+          return;
+        }
         const claimed = await snoozeUserInput(conversationId, request.requestId);
         const tracked =
           claimed ||

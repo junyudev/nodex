@@ -14,7 +14,6 @@ import {
   type PageDetailResult,
 } from "./page-detail";
 import { testPropertyManagement } from "./testing/database-property-record";
-import { authorizedReadStampFixture } from "./testing/authorized-read-stamp-fixture";
 
 const timestamp = "2026-07-16T00:00:00.000Z";
 const databaseId = parseDatabaseId("019f714b-0000-7000-8000-000000000001");
@@ -29,15 +28,6 @@ const memberResult = (): PageDetailResult => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 2,
-    authorization: authorizedReadStampFixture({
-      deliveryAddress: {
-        kind: "project",
-        library_id: "library-1",
-        project_id: "project-1",
-      },
-      subject: { kind: "page", page_id: "page-1" },
-      commitSeq: 2,
-    }),
     page: {
       pageId: "page-1",
       libraryId: "library-1",
@@ -76,7 +66,6 @@ const memberResult = (): PageDetailResult => ({
         name: "Database",
         lifecycle: "active",
         defaultViewId: viewId,
-        accessRevision: 1,
         metadataRevision: 1,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -173,11 +162,11 @@ describe("Page Detail contract", () => {
     void _projectId;
     const parsed = parseLibraryPageDetailResult({
       ok: true,
-      value: { ...detail, accessContext: { kind: "library" } },
+      value: detail,
     });
     expect(parsed).toMatchObject({
       ok: true,
-      value: { accessContext: { kind: "library" } },
+      value: { libraryId: detail.libraryId },
     });
     if (parsed.ok) expect("projectId" in parsed.value).toBe(false);
   });

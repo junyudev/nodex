@@ -1,17 +1,20 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
-import { agentBackendRuntime } from "@/lib/agent-backend-runtime";
-import { modelCatalog } from "@/lib/agent-model-catalog.test-fixtures";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { settleAsyncRender } from "../../test/dom";
 import { makeAttachedSession, makeProject } from "./workbench-testkit/workbench-shell-fixtures";
-import { mockCodexControl, renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
+import {
+  getConnectedThreadStagePropsByThreadId,
+  renderWorkbench,
+} from "./workbench-testkit/workbench-shell-harness";
 
-test("loads an attached Codex chat catalog once across settled shell updates", async () => {
-  const loadModels = vi.spyOn(mockCodexControl, "loadModels");
-  const modes = vi.spyOn(mockCodexControl, "listCollaborationModes");
+test("keeps settled runtime catalog and controls across Project title updates", async () => {
+  const catalog = vi.spyOn(agentRuntimeRuntime, "catalog");
+  const control = vi.spyOn(agentRuntimeRuntime, "control");
   const project = makeProject("alpha", "Alpha", "/tmp/alpha");
-  const session = makeAttachedSession({ tabs: [] });
+  const attached = makeAttachedSession({ tabs: [] });
+  const session = { ...attached, thread: null };
   const screen = renderWorkbench({
     projects: [project],
     sessionsByProject: { alpha: [session] },
@@ -19,47 +22,38 @@ test("loads an attached Codex chat catalog once across settled shell updates", a
   });
   await settleAsyncRender();
   await screen.findByText("Thread:thread-alpha");
-  expect(loadModels).toHaveBeenCalledOnce();
-  expect(modes).toHaveBeenCalledOnce();
+  expect(catalog).toHaveBeenCalledWith({ refresh: false });
+  const catalogCalls = catalog.mock.calls.length;
+  const controlCalls = control.mock.calls.length;
+  expect(control).toHaveBeenCalledExactlyOnceWith({
+    sessionId: session.id,
+    threadId: session.executionRef!.threadId,
+  });
   await act(async () => {
     screen.replaceProjects([{ ...project, name: "Updated Alpha" }]);
     await Promise.resolve();
   });
   await settleAsyncRender();
   expect(await screen.findByText("Thread:thread-alpha")).not.toBeNull();
-  expect(loadModels).toHaveBeenCalledOnce();
-  expect(modes).toHaveBeenCalledOnce();
+  expect(catalog).toHaveBeenCalledTimes(catalogCalls);
+  expect(control).toHaveBeenCalledTimes(controlCalls);
 });
 
-test("native discovery and permission reads follow the attached chat when switching Projects", async () => {
-  const discovery = vi.spyOn(agentBackendRuntime, "modelCatalog").mockResolvedValue(
-    modelCatalog({
-      binding: { kind: "claude", instanceConfigId: "work" },
-      models: [],
-    }),
-  );
-  const permission = vi.spyOn(agentBackendRuntime, "readPermissionMode").mockResolvedValue("auto");
-  vi.spyOn(agentBackendRuntime, "subscribe").mockResolvedValue(() => {});
-  vi.spyOn(agentBackendRuntime, "open").mockRejectedValue(new Error("Test backend unavailable"));
-  const nativeSession = (projectId: string, title: string) => {
-    const session = makeAttachedSession({
+test("runtime controls follow the attached Session when switching Projects", async () => {
+  const control = vi.spyOn(agentRuntimeRuntime, "control");
+  const catalog = vi.spyOn(agentRuntimeRuntime, "catalog");
+  const runtimeSession = (projectId: string, title: string) => ({
+    ...makeAttachedSession({
       id: `session:${projectId}:native`,
       projectId,
       threadId: `thread-${projectId}`,
       title,
       tabs: [],
-    });
-    if (!session.thread) throw new Error("Expected an attached native Session");
-    return {
-      ...session,
-      thread: {
-        ...session.thread,
-        backendBinding: { kind: "claude" as const, instanceConfigId: "work" },
-      },
-    };
-  };
-  const alpha = nativeSession("alpha", "Alpha native chat");
-  const beta = nativeSession("beta", "Beta native chat");
+    }),
+    thread: null,
+  });
+  const alpha = runtimeSession("alpha", "Alpha native chat");
+  const beta = runtimeSession("beta", "Beta native chat");
   const screen = renderWorkbench({
     projects: [
       makeProject("alpha", "Alpha", "/tmp/alpha"),
@@ -69,13 +63,9 @@ test("native discovery and permission reads follow the attached chat when switch
     initialSelectedSessionId: alpha.id,
     sidebar: { collapsed: false, width: 300 },
   });
-  await waitFor(() => {
-    expect(discovery).toHaveBeenCalledWith(
-      { scope: { kind: "thread", threadId: "thread-alpha" } },
-      expect.any(AbortSignal),
-    );
-    expect(permission).toHaveBeenCalledWith("alpha");
-  });
+  await waitFor(() =>
+    expect(control).toHaveBeenCalledWith({ sessionId: alpha.id, threadId: "thread-alpha" }),
+  );
   const betaRow = screen.container.querySelector('[data-app-action-sidebar-project-id="beta"]');
   if (!(betaRow instanceof HTMLElement)) throw new Error("Expected the Beta Project row");
   await act(async () => {
@@ -87,12 +77,40 @@ test("native discovery and permission reads follow the attached chat when switch
     fireEvent.click(betaChat);
     await Promise.resolve();
   });
-  await settleAsyncRender();
-  await waitFor(() => {
-    expect(discovery).toHaveBeenCalledWith(
-      { scope: { kind: "thread", threadId: "thread-beta" } },
-      expect.any(AbortSignal),
-    );
-    expect(permission).toHaveBeenCalledWith("beta");
+  await waitFor(() =>
+    expect(control).toHaveBeenCalledWith({ sessionId: beta.id, threadId: "thread-beta" }),
+  );
+  await waitFor(() =>
+    expect(getConnectedThreadStagePropsByThreadId("thread-beta")?.projectId).toBe("beta"),
+  );
+  expect(control.mock.calls.map(([input]) => input)).toEqual([
+    { sessionId: alpha.id, threadId: "thread-alpha" },
+    { sessionId: beta.id, threadId: "thread-beta" },
+  ]);
+  expect(catalog).toHaveBeenCalled();
+});
+
+test("a native import without an execution reference opens its passive history scene", async () => {
+  const control = vi.spyOn(agentRuntimeRuntime, "control");
+  const attached = makeAttachedSession({ tabs: [] });
+  const session = {
+    ...attached,
+    executionRef: null,
+    thread: {
+      ...attached.thread!,
+      backendBinding: { kind: "claude" as const, instanceConfigId: "native" },
+    },
+  };
+  const screen = renderWorkbench({
+    projects: [makeProject("alpha", "Alpha", "/tmp/alpha")],
+    sessionsByProject: { alpha: [session] },
+    initialSelectedSessionId: session.id,
   });
+  await screen.findByText("Thread:thread-alpha");
+  const stage = getConnectedThreadStagePropsByThreadId("thread-alpha");
+  expect(stage?.sessionId).toBe(session.id);
+  expect(stage?.executionAvailable).toBe(false);
+  expect(stage?.isNewThreadTab).toBe(false);
+  expect(stage?.activeThreadSummary).toMatchObject({ threadId: session.thread.threadId });
+  expect(control).not.toHaveBeenCalled();
 });

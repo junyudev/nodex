@@ -17,7 +17,7 @@ import { getPanelTabById, renderWorkbench } from "./workbench-testkit/workbench-
 import { settleAsyncRender } from "../../test/dom";
 
 function pageSurface(owner: WorkbenchSceneOwner, id: string): WorkbenchSurfaceDescriptor {
-  const accessContext =
+  const routingContext =
     owner.kind === "project"
       ? { kind: "project" as const, projectId: owner.projectId }
       : { kind: "library" as const };
@@ -28,7 +28,7 @@ function pageSurface(owner: WorkbenchSceneOwner, id: string): WorkbenchSurfaceDe
     stateKey: 0,
     state: null,
     config: {
-      accessContext,
+      routingContext,
       pageId: id,
     },
   };

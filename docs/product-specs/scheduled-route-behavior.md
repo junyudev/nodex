@@ -17,24 +17,23 @@ Scheduled tasks execute with an explicit Codex or configured Claude Code binding
 Creation, editing and execution retain that binding; ACP and remote-host execution
 remain unavailable. An unavailable Profile or runtime never selects another backend.
 
-Core Agent definition access carries exact persisted Turn provenance. A
-Project-scoped Turn can read and manage Cron tasks in that Project and Heartbeats
-whose target Session currently belongs to it. Library-scoped Turns may also
-manage other Projects and projectless targets. Updating a task checks both its
-current target and its proposed target; moving a Heartbeat Session changes access
-immediately. Read-only Turns can read authorized definitions but cannot mutate
-them. Core revalidates authority and target access before replaying a mutation
-receipt. Agent commands cannot claim due work or change run and lease state;
-those transitions remain Host-owned.
+Every Agent can read and manage Cron tasks and Heartbeats across Projects and
+Sessions in the current Profile, including in Plan mode. Core retains exact
+captured execution identity and validates target existence and lifecycle.
+Updating a task checks its current and proposed target; moving a Heartbeat
+Session changes execution routing without changing access. Mutation retries
+revalidate the live execution identity before replaying their receipt. Agent
+commands cannot claim due work or change run and lease state; those transitions
+remain Host-owned.
 
-Agent list/search windows filter task identity, name and prompt within the current
-authorized target scope before applying the result limit. Continuation cursors are
-bound to that scope and query. Definition commands keep a stable operation identity;
+Agent list/search windows filter task identity, name and prompt in the current
+Profile before applying the result limit. An explicit Project filter narrows the
+list only. Continuation cursors are bound to that filter and query. Definition commands keep a stable operation identity;
 the same caller Thread can reconcile unchanged arguments in a later Turn or after
 restart. Updates and deletes retain the observed definition revision. Explicit
 updates replace the complete definition, so omitted optional fields reset to their
-defaults. Every retry revalidates the current Turn before returning its original
-committed result.
+defaults. Every retry revalidates its captured execution identity before returning its
+original committed result.
 
 ## Entry points and route state
 
@@ -101,11 +100,13 @@ in the selected Project; execution revalidates its active state and selected
 folders before starting. Heartbeat tasks require title, prompt, local Chat, and
 schedule.
 
-A Heartbeat targets the Chat’s stable Session. Its displayed Thread and execution
-target follow that Session’s current backend attachment. Detaching a Thread does
-not retarget or delete the definition; a run without an active, attached Session
-waits for an available target. Reattaching a Thread does not require recreating
-the Heartbeat. Only one active Heartbeat may target a given Session.
+A Heartbeat targets the Chat’s stable Session. Execution resolves that Session’s
+current execution reference; a Session without an available execution remains
+unavailable for a Heartbeat. Native Thread identity never retargets the definition.
+Only one active Heartbeat may target a given Session.
+Archiving its Session pauses active Heartbeats and cancels their claimed leases in
+the same Core commit. Restoring the Session leaves those tasks paused until explicitly
+resumed. Deleting the Session retires its Heartbeats and fences outstanding leases.
 
 The Environment field appears only for a Codex cron worktree task with exactly one
 selected Project source. It offers `No environment`, identifies the preferred
@@ -124,8 +125,9 @@ current attachment is unavailable for execution.
 
 Claude cron execution creates and durably links its local, managed worktree or fresh
 projectless workspace before submission. The existing Core due lease and run inbox
-own the entire run. Native Heartbeats consume eligibility from the shared conversation
-owner and recheck the target, cadence, busy state and background tasks before launch.
+own the entire run. Heartbeats observe the Session’s execution metadata without opening
+transcript history or resuming a second native client. They recheck the target, cadence,
+busy state and background tasks before launch.
 Scheduled native turns do not wait for interactive approvals or questions. They are
 bounded within the due lease; failure, timeout and interruption cancel only their exact
 accepted Turn, settle the run and retain its review record.
@@ -150,6 +152,18 @@ Previous runs are available only for a selected cron definition, filtered by
 that definition, and sorted newest first.
 Each row derives unread, running, and archived state plus availability of
 Archive, Unarchive, Delete, and Open.
+
+A scheduled Run retains one identity before workspace creation and native launch.
+After admission it binds the actual Session once; its review, read and archive
+state continues to use that Run identity. A failed preparation remains reviewable
+without inventing a Chat or native Thread. Open becomes available after the Run
+has a Session.
+
+Expired leases and failed retries retain their logical dispatch identity. Reclaiming
+the same firing reuses its Session, launch and message identities; a new manual
+dispatch or changed definition begins a separate firing. Restart may resume an
+interrupted preparation that has no Session. A bound or explicitly archived Run
+never starts a hidden second execution.
 
 Open selects the run's Chat only after that Chat is available. Run actions use
 the scheduled-run boundary and invalidate the canonical run inbox rather than

@@ -3,7 +3,6 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import type { AuthorizedDeliveryPacket } from "../../shared/local-commit-delivery";
 import type { AddressReset } from "../../shared/recipient-delivery";
 import type { ProjectionStreamMessage } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
 import {
   LocalCommitIngressCapacityError,
   RendererLocalCommitIngress,
@@ -147,26 +146,24 @@ const patchlessPageEffect = (pageId = "page-1"): AuthorizedProjectionEffect =>
 
 const packet = (
   input: {
-    readonly authorization?: AuthorizedDeliveryPacket["authorization_scope"];
+    readonly address?: AuthorizedDeliveryPacket["delivery_address"];
     readonly projections?: AuthorizedDeliveryPacket["projection_effects"];
     readonly documents?: AuthorizedDeliveryPacket["document_effects"];
     readonly atoms?: AuthorizedDeliveryPacket["atoms"];
-    readonly visibility?: AuthorizedDeliveryPacket["visibility_deltas"];
     readonly packetHash?: string;
   } = {},
 ): AuthorizedDeliveryPacket => {
   const projections = input.projections ?? [effect(1)];
   const documents = input.documents ?? [];
   const atoms = input.atoms ?? [];
-  const authorization = input.authorization ?? {
+  const address = input.address ?? {
     kind: "project" as const,
     library_id: "library-1",
     project_id: "project-1",
   };
   return {
-    packet_version: 4,
-    delivery_address: authorization,
-    authorization_scope: authorization,
+    packet_version: 5,
+    delivery_address: address,
     manifest: {
       event_version: 8,
       identity: {
@@ -180,7 +177,6 @@ const packet = (
     atoms,
     document_effects: documents,
     projection_effects: projections,
-    visibility_deltas: input.visibility ?? [],
     coverage: {
       atom_ids: atoms.map((atom) => atom.descriptor.atom_id),
       document_effect_orders: documents.map((item) => item.reference.effect_order),
@@ -207,11 +203,6 @@ const addressReset = (overrides: Partial<AddressReset> = {}): AddressReset => ({
     library_id: "library-1",
     project_id: "project-1",
   },
-  authorization_scope: {
-    kind: "project",
-    library_id: "library-1",
-    project_id: "project-1",
-  },
   store_epoch: "epoch-1",
   required_commit_seq: 1,
   reason: "ack_timeout",
@@ -219,75 +210,16 @@ const addressReset = (overrides: Partial<AddressReset> = {}): AddressReset => ({
 });
 
 describe("RendererLocalCommitIngress", () => {
-  test("admits exact revocation before post-state projection callbacks", async () => {
-    const ingress = new RendererLocalCommitIngress();
-    const order: string[] = [];
-    ingress.subscribeRevocation(scope, () => order.push("revoke"));
-    ingress.subscribeProjection(scope, () => order.push("projection"));
-    const delivery = packet({
-      visibility: [
-        {
-          authorization_scope: {
-            kind: "project",
-            library_id: "library-1",
-            project_id: "project-1",
-          },
-          change: { kind: "revoke", reason: "access_revoked" },
-          roots: [{ kind: "page", page_id: "page-1" }],
-          delta_hash: "9".repeat(64),
-        },
-      ],
-    });
-
-    await ingress.admitPacket(delivery);
-
-    expect(order).toEqual(["revoke", "projection"]);
-  });
-
-  test("turns a conservative visibility delta into an address reset", async () => {
-    const ingress = new RendererLocalCommitIngress();
-    const projections: ProjectionStreamMessage[] = [];
-    const revocations: ResourceRevocationMessage[] = [];
-    ingress.subscribeProjection(scope, (message) => projections.push(message));
-    ingress.subscribeRevocation(scope, (message) => revocations.push(message));
-
-    await ingress.admitPacket(
-      packet({
-        visibility: [
-          {
-            authorization_scope: {
-              kind: "project",
-              library_id: "library-1",
-              project_id: "project-1",
-            },
-            change: {
-              kind: "conservative_reset",
-              reason: "authorization_closure_exceeded",
-            },
-            roots: [],
-            delta_hash: "8".repeat(64),
-          },
-        ],
-      }),
-    );
-
-    expect(projections).toEqual([expect.objectContaining({ kind: "reset" })]);
-    expect(revocations).toEqual([expect.objectContaining({ kind: "reset" })]);
-  });
-
   test("deduplicates an address reset retry by its immutable reset identity", () => {
     const ingress = new RendererLocalCommitIngress();
     const projection = vi.fn();
-    const revocation = vi.fn();
     ingress.subscribeProjection(scope, projection);
-    ingress.subscribeRevocation(scope, revocation);
 
     const reset = addressReset();
     ingress.admitAddressReset(reset);
     ingress.admitAddressReset(reset);
 
     expect(projection).toHaveBeenCalledTimes(1);
-    expect(revocation).toHaveBeenCalledTimes(1);
     expect(() =>
       ingress.admitAddressReset(
         addressReset({
@@ -295,36 +227,6 @@ describe("RendererLocalCommitIngress", () => {
         }),
       ),
     ).toThrow("identity collision");
-  });
-
-  test("does not replay a conservative reset packet after it was admitted", async () => {
-    const ingress = new RendererLocalCommitIngress();
-    const projection = vi.fn();
-    ingress.subscribeProjection(scope, projection);
-    const delivery = packet({
-      visibility: [
-        {
-          authorization_scope: {
-            kind: "project",
-            library_id: "library-1",
-            project_id: "project-1",
-          },
-          change: {
-            kind: "conservative_reset",
-            reason: "authorization_closure_exceeded",
-          },
-          roots: [],
-          delta_hash: "8".repeat(64),
-        },
-      ],
-    });
-
-    await ingress.admitPacket(delivery);
-    await expect(ingress.admitPacket(delivery)).resolves.toMatchObject({
-      kind: "duplicate",
-    });
-
-    expect(projection).toHaveBeenCalledTimes(1);
   });
 
   test("keeps another address packet deduplicated after a scoped reset", async () => {
@@ -337,7 +239,7 @@ describe("RendererLocalCommitIngress", () => {
     const projectTwoListener = vi.fn();
     ingress.subscribeProjection(projectTwoScope, projectTwoListener);
     const projectTwoPacket = packet({
-      authorization: {
+      address: {
         kind: "project",
         library_id: "library-1",
         project_id: "project-2",
@@ -390,7 +292,7 @@ describe("RendererLocalCommitIngress", () => {
 
     await ingress.admitPacket(
       packet({
-        authorization: {
+        address: {
           kind: "library",
           library_id: "library-1",
         },
@@ -422,7 +324,7 @@ describe("RendererLocalCommitIngress", () => {
 
     await ingress.admitPacket(
       packet({
-        authorization: {
+        address: {
           kind: "library",
           library_id: "library-1",
         },
@@ -511,7 +413,7 @@ describe("RendererLocalCommitIngress", () => {
     const brokerFirstListener = vi.fn();
     brokerFirst.subscribeProjection(scope, brokerFirstListener);
     const brokerPacket = packet({
-      authorization: { kind: "library", library_id: "library-1" },
+      address: { kind: "library", library_id: "library-1" },
       packetHash: "3".repeat(64),
     });
     await brokerFirst.admitPacket(brokerPacket);
@@ -528,7 +430,7 @@ describe("RendererLocalCommitIngress", () => {
     ingress.subscribeProjection(libraryScope, libraryListener);
     ingress.subscribeProjection(scope, projectListener);
     const brokerPacket = packet({
-      authorization: { kind: "library", library_id: "library-1" },
+      address: { kind: "library", library_id: "library-1" },
       packetHash: "3".repeat(64),
     });
     const projectPacket = packet({ packetHash: "4".repeat(64) });
@@ -579,7 +481,7 @@ describe("RendererLocalCommitIngress", () => {
     ).rejects.toThrow("resource identity collision");
   });
 
-  test("keeps semantic atom admission scoped to its authorization audience", async () => {
+  test("keeps semantic atom admission scoped to its delivery audience", async () => {
     const ingress = new RendererLocalCommitIngress();
     const listener = vi.fn();
     ingress.subscribeAtoms(listener);
@@ -607,7 +509,7 @@ describe("RendererLocalCommitIngress", () => {
     };
     const projectA = packet({ projections: [], atoms: [atom] });
     const projectB = packet({
-      authorization: {
+      address: {
         kind: "project",
         library_id: "library-1",
         project_id: "project-2",

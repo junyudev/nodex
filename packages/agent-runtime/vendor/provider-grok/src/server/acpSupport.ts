@@ -1,10 +1,6 @@
 import type * as EffectAcpSchema from "effect-acp/compat";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import {
-  type ProviderApprovalOption,
-  ProviderDriverKind,
-  type RuntimeMode,
-} from "@t3tools/contracts";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import type { GrokSettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -33,47 +29,20 @@ interface GrokAcpRuntimeInput extends Omit<
 > {
   readonly grokSettings: GrokAcpRuntimeGrokSettings | null | undefined;
   readonly environment?: NodeJS.ProcessEnv;
-  readonly runtimeMode?: RuntimeMode;
 }
 
-/**
- * The runtime modes `grok agent` can launch in: ask, its auto classifier, and
- * always-approve. It has no Auto-accept edits: `acceptEdits` only exists as a
- * settings-file `permissions.defaultMode`, and `grok agent` treats it as ask.
- */
-export const GROK_SUPPORTED_RUNTIME_MODES = [
-  "approval-required",
-  "auto",
-  "full-access",
-] as const satisfies ReadonlyArray<RuntimeMode>;
-
-/**
- * Launch argv for a runtime mode. `--permission-mode` on the argv beats the
- * user's Grok config, so Supervised cannot inherit a configured always-approve.
- * A mode Grok does not offer launches asking.
- */
-export function grokAcpSpawnArgs(runtimeMode?: RuntimeMode): ReadonlyArray<string> {
-  switch (runtimeMode) {
-    case undefined:
-      return ["agent", "stdio"];
-    case "auto":
-      return ["--permission-mode", "auto", "agent", "stdio"];
-    case "full-access":
-      return ["agent", "--always-approve", "stdio"];
-    default:
-      return ["--permission-mode", "default", "agent", "stdio"];
-  }
+export function grokAcpSpawnArgs(): ReadonlyArray<string> {
+  return ["agent", "--always-approve", "stdio"];
 }
 
 export function buildGrokAcpSpawnInput(
   grokSettings: GrokAcpRuntimeGrokSettings | null | undefined,
   cwd: string,
   environment?: NodeJS.ProcessEnv,
-  runtimeMode?: RuntimeMode,
 ): AcpSessionRuntime.AcpSpawnInput {
   return {
     command: grokSettings?.binaryPath || "grok",
-    args: [...grokAcpSpawnArgs(runtimeMode)],
+    args: [...grokAcpSpawnArgs()],
     cwd,
     env: {
       ...environment,
@@ -119,38 +88,6 @@ export const GROK_ACP_CANCEL_META = { cancelTrigger: "ctrl_c" } as const;
  */
 export const GROK_ACP_INITIALIZE_META = { clientType: "extension" } as const;
 
-/**
- * Grok's only session-scoped `allow_always` answer: "Yes, allow all edits
- * during this session" on an edit prompt. Its bash, monitor and MCP
- * `always-allow` rows instead save a grant for the whole project that outlives
- * the session (grok-build `crates/codegen/xai-grok-workspace/src/permission/`
- * `prompter.rs` `ALLOW_EDITS_SESSION_OPTION_ID`, `grants.rs`
- * `record_prompt_outcome`).
- */
-const GROK_ALLOW_EDITS_SESSION_OPTION_ID = "allow-edits-session";
-
-/**
- * The approval choices a Grok permission prompt can honor. The session choice
- * appears only where Grok's answer lasts for the session.
- */
-export function grokApprovalOptions(
-  request: EffectAcpSchema.RequestPermissionRequest,
-): ReadonlyArray<ProviderApprovalOption> {
-  const has = (kind: EffectAcpSchema.PermissionOption["kind"], optionId?: string) =>
-    request.options.some(
-      (option) =>
-        option.kind === kind && (optionId === undefined || option.optionId.trim() === optionId),
-    );
-  return [
-    { decision: "cancel", label: "Cancel" },
-    ...(has("reject_once") ? [{ decision: "decline", label: "Decline" } as const] : []),
-    ...(has("allow_always", GROK_ALLOW_EDITS_SESSION_OPTION_ID)
-      ? [{ decision: "acceptForSession", label: "Allow all edits this session" } as const]
-      : []),
-    ...(has("allow_once") ? [{ decision: "accept", label: "Approve" } as const] : []),
-  ];
-}
-
 export const makeGrokAcpRuntime = (
   input: GrokAcpRuntimeInput,
 ): Effect.Effect<
@@ -169,7 +106,6 @@ export const makeGrokAcpRuntime = (
           input.grokSettings,
           input.cwd,
           input.environment,
-          input.runtimeMode,
         ),
         authMethodId: resolveGrokAuthMethodId(input.environment),
         cancelMeta: { ...input.cancelMeta, ...GROK_ACP_CANCEL_META },

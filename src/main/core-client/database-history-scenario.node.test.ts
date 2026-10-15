@@ -74,7 +74,7 @@ const database = (ctx: CoreScenarioContext, access: "project" | "library" = "pro
     const receipt = await commitDatabaseViewOperations({
       model: {
         ...model,
-        accessContext: access === "library" ? { kind: "library" } : model.accessContext,
+        routingContext: access === "library" ? { kind: "library" } : model.routingContext,
       },
       operations,
       operationId,
@@ -125,7 +125,7 @@ const database = (ctx: CoreScenarioContext, access: "project" | "library" = "pro
 };
 
 test.each(["data", "list"] as const)(
-  "%s history authorizes before comparing a foreign Project's property values",
+  "%s history crosses Projects while preserving post-value guards and exact retry receipts",
   async (kind) => {
     await withCoreScenario(scenario, async (ctx) => {
       const db = database(ctx);
@@ -133,22 +133,20 @@ test.each(["data", "list"] as const)(
       const pageId = ctx.manifest.pageIdsByKey.source!;
       const before = await db.readRow(pageId);
       const foreign = await ctx.seed.createProject({
-        name: "Separate history authority",
+        name: "Separate history context",
         sources: [ctx.profile.initialProjectsDirectory],
       });
       const client = ctx.runtime.clientForProject(foreign.id);
-      await expect(
-        client.databaseRead({ kind: "row_detail", page_id: pageId }),
-      ).rejects.toMatchObject({
-        coreError: { code: "unauthorized" },
-      });
+      const crossProjectRow = await client.databaseRead({ kind: "row_detail", page_id: pageId });
+      if (crossProjectRow.value.kind !== "row_detail") throw new Error("Missing cross-Project row");
+      expect(crossProjectRow.value.value.summary).toEqual(before);
       const adapter = createCoreDatabaseModuleAdapter({
         ...ctx.runtime.identity,
         projectId: foreign.id,
         client,
       });
       for (const guess of ["review", "build"]) {
-        const result = await adapter.apply({
+        const request: Parameters<typeof adapter.apply>[0] = {
           operationId: createUuidV7(),
           projectId: foreign.id,
           storeEpoch: model.storeEpoch,
@@ -192,21 +190,34 @@ test.each(["data", "list"] as const)(
                   },
                 },
           ],
-        });
-        expect(result).toMatchObject({ ok: false, error: { code: "authorization_denied" } });
+        };
+        const result = await adapter.apply(request);
+        if (guess === "review") {
+          expect(result).toMatchObject({ ok: false, error: { code: "revision_conflict" } });
+          expect(await db.readRow(pageId)).toEqual(before);
+          continue;
+        }
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error(result.error.message);
+        const retry = await adapter.apply(request);
+        expect(retry.ok).toBe(true);
+        if (!retry.ok) throw new Error(retry.error.message);
+        expect(retry.value.duplicate).toBe(true);
+        expect(retry.value.commitSeq).toBe(result.value.commitSeq);
+        expect(retry.value.operationOutcomes).toEqual(result.value.operationOutcomes);
       }
-      expect(await db.readRow(pageId)).toEqual(before);
+      expect((await db.readRow(pageId)).database_values.status).toBe("ship");
     });
   },
 );
 
-test("history authorizes its complete batch before any permitted item can conflict or commit", async () => {
+test("cross-Project history validates the entire inverse before an atomic commit", async () => {
   await withCoreScenario(scenario, async (ctx) => {
     const db = database(ctx);
     const protectedModel = await db.read();
     const protectedPageId = ctx.manifest.pageIdsByKey.source!;
     const other = await ctx.seed.createProject({
-      name: "Own and restricted history",
+      name: "Other history context",
       sources: [ctx.profile.initialProjectsDirectory],
     });
     const ownPageId = createUuidV7();
@@ -216,7 +227,7 @@ test("history authorizes its complete batch before any permitted item can confli
       projectId: other.id,
       operationId: createUuidV7(),
       status: "build",
-      title: "Permitted row",
+      title: "Other Project row",
       nfm: "Independent content",
     });
     const ownModel = buildDatabaseViewWindowRenderModel(
@@ -270,7 +281,7 @@ test("history authorizes its complete batch before any permitted item can confli
                   },
                   propertyType: "select",
                   beforeValue: statusValue("ship"),
-                  afterValue: statusValue("build"),
+                  afterValue: statusValue(ownPostValue === "build" ? "review" : "build"),
                 },
               ],
               positionStates: [],
@@ -278,7 +289,7 @@ test("history authorizes its complete batch before any permitted item can confli
           },
         ],
       });
-      expect(result).toMatchObject({ ok: false, error: { code: "authorization_denied" } });
+      expect(result).toMatchObject({ ok: false, error: { code: "revision_conflict" } });
     }
     expect((await client.databaseRead({ kind: "row_detail", page_id: ownPageId })).value).toEqual(
       beforeOwn.value,
@@ -287,6 +298,58 @@ test("history authorizes its complete batch before any permitted item can confli
     expect(
       (await ctx.seed.readBoard(ctx.manifest.projectId, protectedModel.databaseViewId)).commitSeq,
     ).toBe(beforeCommit);
+    const request: Parameters<typeof adapter.apply>[0] = {
+      operationId: createUuidV7(),
+      projectId: other.id,
+      storeEpoch: ownModel.storeEpoch,
+      actor: { kind: "test" },
+      operations: [
+        {
+          kind: "reverse_data_edit",
+          recipe: {
+            propertyStates: [
+              {
+                address: {
+                  dataSourceId: ownModel.dataSourceId,
+                  pageId: ownPageId,
+                  propertyId: statusPropertyId,
+                },
+                propertyType: "select",
+                beforeValue: statusValue("ship"),
+                afterValue: statusValue("build"),
+              },
+              {
+                address: {
+                  dataSourceId: protectedModel.dataSourceId,
+                  pageId: protectedPageId,
+                  propertyId: statusPropertyId,
+                },
+                propertyType: "select",
+                beforeValue: statusValue("ship"),
+                afterValue: statusValue("build"),
+              },
+            ],
+            positionStates: [],
+          },
+        },
+      ],
+    };
+    const applied = await adapter.apply(request);
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.error.message);
+    expect(applied.value.affectedPageIds).toEqual(
+      expect.arrayContaining([ownPageId, protectedPageId]),
+    );
+    expect((await db.readRow(protectedPageId)).database_values.status).toBe("ship");
+    const ownAfter = await client.databaseRead({ kind: "row_detail", page_id: ownPageId });
+    if (ownAfter.value.kind !== "row_detail") throw new Error("Missing cross-Project row");
+    expect(ownAfter.value.value.summary.database_values.status).toBe("ship");
+    const retry = await adapter.apply(request);
+    expect(retry.ok).toBe(true);
+    if (!retry.ok) throw new Error(retry.error.message);
+    expect(retry.value.duplicate).toBe(true);
+    expect(retry.value.commitSeq).toBe(applied.value.commitSeq);
+    expect(retry.value.operationOutcomes).toEqual(applied.value.operationOutcomes);
   });
 });
 
@@ -496,7 +559,7 @@ test.each(["asc", "desc"] as const)(
   },
 );
 
-test("scalar codecs, set patches, option/schema guards and authority all survive canonical replay", async () => {
+test("scalar codecs, set patches, cross-Project inverses and option/schema guards survive canonical replay", async () => {
   await withCoreScenario(scenario, async (ctx) => {
     const db = database(ctx);
     const pageId = ctx.manifest.pageIdsByKey.source!;
@@ -633,7 +696,7 @@ test("scalar codecs, set patches, option/schema guards and authority all survive
     await db.reverse(empty);
     expect(await readValues()).toEqual(after);
     const foreign = await ctx.seed.createProject({
-      name: "Other authority",
+      name: "Other Project context",
       sources: [ctx.profile.initialProjectsDirectory],
     });
     const otherAdapter = createCoreDatabaseModuleAdapter({
@@ -641,14 +704,17 @@ test("scalar codecs, set patches, option/schema guards and authority all survive
       projectId: foreign.id,
       client: ctx.runtime.clientForProject(foreign.id),
     });
-    const denied = await otherAdapter.apply({
+    const crossProjectUndo = await otherAdapter.apply({
       operationId: createUuidV7(),
       projectId: foreign.id,
       storeEpoch: initial.storeEpoch,
       actor: { kind: "test" },
       operations: [{ kind: "reverse_data_edit", recipe: gesture }],
     });
-    expect(denied.ok).toBe(false);
+    expect(crossProjectUndo.ok).toBe(true);
+    if (!crossProjectUndo.ok) throw new Error(crossProjectUndo.error.message);
+    expect(await readValues()).toEqual(Array(7).fill(null));
+    await db.reverse(db.recipe(crossProjectUndo.value));
     expect(await readValues()).toEqual(after);
     const select = properties.find((entry) => entry.schema.kind === "select")!;
     const clearing = db.recipe(

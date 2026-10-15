@@ -318,7 +318,7 @@ export function DatabaseViewPageContextMenuOverlay({
         return;
       }
       void loadPageDocumentMaterialization({
-        accessContext: request.accessContext,
+        routingContext: request.routingContext,
         pageId: request.pageId,
       })
         .then((materialized) =>

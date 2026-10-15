@@ -4,9 +4,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use nodex_core_contracts::{
-    BoundModuleContext, ProjectionImpact, document::PageFileReferenceChange,
-};
+use nodex_core_contracts::{ProjectionImpact, document::PageFileReferenceChange};
 
 use crate::domain::derived_records::{BlockDocumentAssetKind, BlockDocumentReference};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
@@ -96,7 +94,6 @@ pub(crate) struct DocumentPlacementEvidence<'a> {
     reorder_attribution: DocumentReorderAttribution<'a>,
     allow_last_document_reactivation: bool,
     tombstone_reactivation: Option<DocumentTombstoneReactivation<'a>>,
-    authorized_file_ids: &'a [String],
 }
 
 impl<'a> DocumentPlacementEvidence<'a> {
@@ -110,7 +107,6 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Conservative,
         allow_last_document_reactivation: true,
         tombstone_reactivation: None,
-        authorized_file_ids: &[],
     };
 
     /// Typed structural updates name their exact move and authority evidence.
@@ -122,7 +118,6 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Exact(&[]),
         allow_last_document_reactivation: false,
         tombstone_reactivation: None,
-        authorized_file_ids: &[],
     };
 
     /// Blocks intentionally detached by the surrounding structural mutation.
@@ -158,14 +153,6 @@ impl<'a> DocumentPlacementEvidence<'a> {
         self
     }
 
-    /// Exact File identities derived from an authorized source Document or
-    /// authenticated structural snapshot, including a source detached by this
-    /// transaction. Fresh content must still prove current File read access.
-    pub(crate) const fn with_authorized_file_ids(mut self, file_ids: &'a [String]) -> Self {
-        self.authorized_file_ids = file_ids;
-        self
-    }
-
     /// Ordinary Blocks may reactivate only from the exact tombstone authority
     /// named by the typed structural operation. This supports both same-Document
     /// undo and capability-authorized cross-Document cut moves without making
@@ -193,8 +180,7 @@ struct ReconciledDocumentBlocks {
 pub(crate) struct PersistYjsCommit<'a> {
     pub authority: &'a DocumentAuthorityRow,
     pub actor_project_id: Option<&'a str>,
-    /// None permits only retained references or exact structural File evidence.
-    pub file_access_context: Option<&'a BoundModuleContext>,
+
     pub base_materialization: &'a DocumentMaterialization,
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
@@ -216,8 +202,7 @@ pub(crate) struct PersistYjsCommit<'a> {
 pub(crate) struct PersistYjsGenesis<'a> {
     pub authority: &'a DocumentAuthorityRow,
     pub actor_project_id: Option<&'a str>,
-    /// None permits only retained references or exact structural File evidence.
-    pub file_access_context: Option<&'a BoundModuleContext>,
+
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
     pub client_session_id: &'a str,
@@ -431,10 +416,8 @@ fn persist_yjs_commit_inner(
     validate_page_file_placements(
         connection,
         input.authority,
-        input.file_access_context,
         Some(input.base_materialization),
         input.materialization,
-        input.placement.authorized_file_ids,
     )?;
     let reconciled_blocks = reconcile_document_blocks(
         connection,
@@ -725,14 +708,7 @@ fn persist_yjs_genesis_inner(
         &input.materialization.references,
         &[],
     )?;
-    validate_page_file_placements(
-        connection,
-        input.authority,
-        input.file_access_context,
-        None,
-        input.materialization,
-        input.placement.authorized_file_ids,
-    )?;
+    validate_page_file_placements(connection, input.authority, None, input.materialization)?;
     reconcile_document_blocks(
         connection,
         ReconcileDocumentBlocksInput {
@@ -1865,10 +1841,8 @@ fn page_file_reference_change(
 fn validate_page_file_placements(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
-    access_context: Option<&BoundModuleContext>,
     base_materialization: Option<&DocumentMaterialization>,
     materialization: &DocumentMaterialization,
-    authorized_file_ids: &[String],
 ) -> Result<(), StoreError> {
     let existing_sources = base_materialization
         .into_iter()
@@ -1907,10 +1881,6 @@ fn validate_page_file_placements(
             "Page File placements require a containing Page Document".to_owned(),
         ));
     }
-    let authorized = authorized_file_ids
-        .iter()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>();
     for file_id in file_ids {
         let available = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM library_files WHERE file_id = ?1 AND library_id = ?2 AND lifecycle = 'live')",
@@ -1921,88 +1891,8 @@ fn validate_page_file_placements(
                 "Page Document references an unavailable File".to_owned(),
             ));
         }
-        if authorized.contains(file_id)
-            || context_can_read_file_placement(
-                connection,
-                &authority.head.library_id,
-                access_context,
-                file_id,
-            )?
-        {
-            continue;
-        }
-        return Err(invalid(
-            "Page Document references a File unavailable to this Page context".to_owned(),
-        ));
     }
     Ok(())
-}
-
-/// File read authority comes from the bound caller, never receipt provenance.
-/// Source-only structural writes must supply their exact File evidence instead.
-fn context_can_read_file_placement(
-    connection: &Connection,
-    library_id: &str,
-    context: Option<&BoundModuleContext>,
-    file_id: &str,
-) -> Result<bool, StoreError> {
-    let Some(context) = context else {
-        return Ok(false);
-    };
-    if context.library_id.0 != library_id {
-        return Err(invalid(
-            "File access context belongs to another Library".to_owned(),
-        ));
-    }
-    let Some(project_id) = &context.project_id else {
-        crate::library::require_trusted_library_authority(context)?;
-        return Ok(true);
-    };
-    if crate::library::file_grant_authorization_proof(
-        connection,
-        library_id,
-        &project_id.0,
-        file_id,
-        false,
-    )?
-    .is_some()
-    {
-        return Ok(true);
-    }
-    project_can_read_existing_file_placement(connection, library_id, &project_id.0, file_id)
-}
-
-fn project_can_read_page(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    page_id: &str,
-) -> Result<bool, StoreError> {
-    Ok(
-        crate::library::page_read_authorization_roots(connection, library_id, project_id, page_id)?
-            .is_some(),
-    )
-}
-
-fn project_can_read_existing_file_placement(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    file_id: &str,
-) -> Result<bool, StoreError> {
-    let placement_page_ids = connection
-        .prepare(
-            "SELECT owner_block_id FROM block_asset_refs WHERE library_id = ?1 AND file_id = ?2 \
-             UNION SELECT page_id FROM page_file_entries WHERE library_id = ?1 AND file_id = ?2",
-        )?
-        .query_map(params![library_id, file_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    for page_id in placement_page_ids {
-        if project_can_read_page(connection, library_id, project_id, &page_id)? {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn advance_page_file_body_usage_revision(
@@ -2625,8 +2515,8 @@ mod reference_tests {
                  INSERT INTO libraries (id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
                  INSERT INTO blocks (id, library_id, type, lifecycle, placement_revision, metadata_revision, created_at, updated_at)
                    VALUES ('database', 'library', 'database', 'active', 1, 1, 'now', 'now');
-                 INSERT INTO database_containers (block_id, library_id, name, lifecycle, access_revision, metadata_revision, created_at, updated_at)
-                   VALUES ('database', 'library', 'Database', 'active', 1, 1, 'now', 'now');
+                 INSERT INTO database_containers (block_id, library_id, name, lifecycle, metadata_revision, created_at, updated_at)
+                   VALUES ('database', 'library', 'Database', 'active', 1, 'now', 'now');
                  INSERT INTO data_sources (id, library_id, home_database_block_id, name, schema_key, schema_revision, lifecycle, rank_key, created_at, updated_at)
                    VALUES ('source', 'library', 'database', 'Source', 'nodex.pages', 1, 'active', 'a', 'now', 'now');
                  INSERT INTO database_views (id, database_block_id, data_source_id, name, layout, config_json, lifecycle, rank_key, revision, created_at, updated_at)

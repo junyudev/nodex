@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { DataSourcePropertyRecordV2 } from "../../shared/database-module-v2";
 import type { ProjectAppearance } from "../../shared/project-appearance";
 import { appScope, scopedAtom, type ScopeHandle, useScopedAtomValue } from "./maitai";
@@ -14,10 +14,9 @@ export interface PageCreateTarget {
   };
   readonly databaseViewId: string;
   readonly clientSessionId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly columns: readonly Pick<BoardSummaryColumn, "id" | "name">[];
-  readonly readOnlyReason: string | null;
 }
 
 export interface PageCreateTargetRegistration {
@@ -93,12 +92,6 @@ export function resolvePageCreateTarget(
     ? (state.boardRegistrations[state.activeSurfaceId] ?? null)
     : null;
 
-  if (active?.target.readOnlyReason) {
-    return {
-      status: "unavailable",
-      reason: active.target.readOnlyReason,
-    };
-  }
   if (active) {
     const columnId = resolveColumnId(active);
     if (columnId) {
@@ -122,7 +115,6 @@ export function resolvePageCreateTarget(
       (registration) =>
         registration.target.project.id === activeProjectId &&
         registration.activitySequence > 0 &&
-        !registration.target.readOnlyReason &&
         resolveColumnId(registration),
     )
     .toSorted((left, right) => right.activitySequence - left.activitySequence)[0];
@@ -148,9 +140,6 @@ export function resolvePageCreateTarget(
   }
 
   const defaultTarget = projectDefault.capability.target;
-  if (defaultTarget.readOnlyReason) {
-    return { status: "unavailable", reason: defaultTarget.readOnlyReason };
-  }
   const columnId = defaultTarget.columns[0]?.id ?? null;
   if (!columnId) {
     return {

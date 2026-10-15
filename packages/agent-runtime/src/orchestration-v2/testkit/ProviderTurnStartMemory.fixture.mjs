@@ -5,16 +5,21 @@ import * as NodeAssert from "node:assert/strict";
 const root = process.argv[2];
 const mode = process.argv[3];
 const withHandoff = mode.startsWith("handoff");
-const require = NodeModule.createRequire(root + "/apps/server/package.json");
+const require = NodeModule.createRequire(root + "/packages/agent-runtime/package.json");
 const load = (name) => import(NodeURL.pathToFileURL(require.resolve("effect/" + name)));
 const [Effect, Layer, FileSystem] = await Promise.all([
   load("Effect"),
   load("Layer"),
   load("FileSystem"),
 ]);
-const app = (file) => import(NodeURL.pathToFileURL(root + "/apps/server/src/" + file + ".ts"));
+const app = (file) =>
+  import(NodeURL.pathToFileURL(root + "/packages/agent-runtime/src/" + file + ".ts"));
 const providerCore = (file) =>
-  import(NodeURL.pathToFileURL(root + "/packages/provider-core/src/server/" + file + ".ts"));
+  import(
+    NodeURL.pathToFileURL(
+      root + "/packages/agent-runtime/vendor/provider-core/src/server/" + file + ".ts",
+    )
+  );
 const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project, Auth] =
   await Promise.all([
     app("orchestration-v2/ProviderTurnStartService"),
@@ -45,7 +50,7 @@ const session = {
   compactThread: () => Effect.void,
 };
 const dependencies = Layer.mergeAll(
-  Layer.mock(Handoff.ContextHandoffServiceV2)({}),
+  Layer.mock(Handoff.ContextHandoffServiceV2)({ historyBudget: 16000 }),
   Id.layer,
   FileSystem.layerNoop({}),
   Layer.mock(Git.GitWorkflowService)({}),
@@ -61,9 +66,25 @@ const dependencies = Layer.mergeAll(
     getTurnStartContext: () =>
       Effect.sync(() => {
         fullReads++;
-        return { ...current, hasConversation: true };
+        return {
+          ...current,
+          ...Projection.turnStartFactsFromProjection(current, current.runs[0].id),
+          hasConversation: true,
+        };
       }),
-    getTurnStartHistory: () => Effect.sync(() => current.turnItems),
+    getHandoffHistory: () =>
+      Effect.succeed({
+        sourceItemCount: 0,
+        sourceRunCount: 0,
+        sourceSelections: [],
+        history: { messages: [], coverage: "", omittedItems: 0 },
+        context: "",
+        coveredRunOrdinals: { from: 1, to: 1 },
+        fromProviderThreadIds: [],
+      }),
+    hasNativeTurns: () => Effect.succeed(false),
+    getNativeContextEstimate: () => Effect.succeed(0),
+    getDeliveredHandoffItemIds: () => Effect.succeed([]),
     getRuntimeRecoveryProjection: () => Effect.sync(() => current),
   }),
   Layer.mock(Sessions.ProviderSessionManagerV2)({ open: () => Effect.succeed(session) }),

@@ -1,6 +1,5 @@
 import type {
   CodexHeartbeatAutomationCollaborationMode,
-  CodexHeartbeatAutomationPermissions,
   CodexScheduledAutomation,
 } from "../../shared/types";
 
@@ -13,6 +12,8 @@ export interface CodexScheduledAutomationRunContext {
   readonly now: number;
   readonly reason: "scheduled";
   readonly leaseId?: string;
+  readonly dispatchId?: string;
+  readonly definitionRevision?: number;
   readonly heartbeat?: CodexScheduledAutomationHeartbeatRunContext;
 }
 
@@ -38,31 +39,27 @@ export interface CodexScheduledAutomationHeartbeatRunContext {
   readonly automationsEnabled: boolean;
   readonly rendererState: CodexScheduledAutomationHeartbeatRendererState | null;
   readonly collaborationMode: CodexHeartbeatAutomationCollaborationMode | null;
-  readonly permissions: CodexHeartbeatAutomationPermissions | null;
 }
 
 export interface CodexScheduledAutomationHeartbeatThreadStateInput {
-  readonly threadId: string;
+  readonly sessionId: string;
   readonly rendererClientId: string;
   readonly streamRole: "owner" | "follower" | null;
   readonly isEligible: boolean;
   readonly reason?: string | null;
   readonly collaborationMode?: CodexHeartbeatAutomationCollaborationMode | null;
-  readonly permissions?: CodexHeartbeatAutomationPermissions | null;
 }
 
 export interface ScheduledAutomationHeartbeatState {
   readonly automationsEnabled: boolean;
   readonly rendererStates: ReadonlyMap<string, CodexScheduledAutomationHeartbeatRendererState>;
   readonly collaborationModes: ReadonlyMap<string, CodexHeartbeatAutomationCollaborationMode>;
-  readonly permissions: ReadonlyMap<string, CodexHeartbeatAutomationPermissions>;
 }
 
 export const emptyHeartbeatState = (): ScheduledAutomationHeartbeatState => ({
   automationsEnabled: false,
   rendererStates: new Map(),
   collaborationModes: new Map(),
-  permissions: new Map(),
 });
 
 export const updateHeartbeatEnabled = (
@@ -75,7 +72,6 @@ export const updateHeartbeatEnabled = (
         automationsEnabled: false,
         rendererStates: new Map(),
         collaborationModes: new Map(),
-        permissions: new Map(),
       };
 
 export const updateHeartbeatThreadState = (
@@ -83,22 +79,19 @@ export const updateHeartbeatThreadState = (
   input: CodexScheduledAutomationHeartbeatThreadStateInput,
   now: number,
 ): ScheduledAutomationHeartbeatState => {
-  const threadId = input.threadId.trim();
-  if (!threadId) return state;
+  const sessionId = input.sessionId.trim();
+  if (!sessionId) return state;
 
-  const rendererStates = new Map(state.rendererStates).set(threadId, {
+  const rendererStates = new Map(state.rendererStates).set(sessionId, {
     rendererClientId: input.rendererClientId,
     isEligible: input.streamRole === "owner" && input.isEligible,
     reason: input.streamRole === "owner" ? input.reason?.trim() || null : "not_conversation_owner",
     updatedAtMs: now,
   });
   const collaborationModes = new Map(state.collaborationModes);
-  const permissions = new Map(state.permissions);
-  if (input.collaborationMode == null) collaborationModes.delete(threadId);
-  else collaborationModes.set(threadId, input.collaborationMode);
-  if (input.permissions == null) permissions.delete(threadId);
-  else permissions.set(threadId, input.permissions);
-  return { ...state, rendererStates, collaborationModes, permissions };
+  if (input.collaborationMode == null) collaborationModes.delete(sessionId);
+  else collaborationModes.set(sessionId, input.collaborationMode);
+  return { ...state, rendererStates, collaborationModes };
 };
 
 export const heartbeatRunContext = (input: {
@@ -106,8 +99,8 @@ export const heartbeatRunContext = (input: {
   readonly state: ScheduledAutomationHeartbeatState;
   readonly now: number;
 }): CodexScheduledAutomationHeartbeatRunContext => {
-  const targetThreadId = input.automation.targetThreadId?.trim() ?? "";
-  const rendererState = input.state.rendererStates.get(targetThreadId) ?? null;
+  const targetSessionId = input.automation.targetSessionId?.trim() ?? "";
+  const rendererState = input.state.rendererStates.get(targetSessionId) ?? null;
   return {
     automationsEnabled: input.state.automationsEnabled,
     rendererState:
@@ -115,7 +108,6 @@ export const heartbeatRunContext = (input: {
       input.now - rendererState.updatedAtMs <= HEARTBEAT_RENDERER_STATE_TTL_MS
         ? rendererState
         : null,
-    collaborationMode: input.state.collaborationModes.get(targetThreadId) ?? null,
-    permissions: input.state.permissions.get(targetThreadId) ?? null,
+    collaborationMode: input.state.collaborationModes.get(targetSessionId) ?? null,
   };
 };

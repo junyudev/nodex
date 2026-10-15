@@ -46,7 +46,7 @@ export interface BlockTransferDropEditor {
 
 export interface BlockTransferDropBoundary {
   readonly surfaceId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly hostPageId?: string;
@@ -344,7 +344,7 @@ export const setupBlockTransferDocumentDrop = (
   const canTransfer = (source: unknown): boolean => {
     const boundary = readBoundary();
     if (!isBoardCardDragData(source)) return false;
-    if (source.projectId !== boundary.projectId || source.storeEpoch !== boundary.storeEpoch) {
+    if (source.storeEpoch !== boundary.storeEpoch) {
       return false;
     }
     const forbidden = new Set(boundary.ancestorPageIds);
@@ -499,7 +499,7 @@ export const setupBlockTransferDocumentDrop = (
   };
   const canTransferPayload = (payload: CrossSurfaceBlockTransferPayload): boolean => {
     const boundary = readBoundary();
-    if (payload.projectId !== boundary.projectId || payload.storeEpoch !== boundary.storeEpoch) {
+    if (payload.storeEpoch !== boundary.storeEpoch) {
       return false;
     }
     const forbidden = new Set(boundary.ancestorPageIds);
@@ -565,7 +565,7 @@ export const setupBlockTransferDocumentDrop = (
 
     if (!canTransferPayload(session.payload)) {
       boundary.reportError(
-        "Block transfer belongs to another Project, store generation, or recursive Page boundary.",
+        "Block transfer belongs to another store generation or recursive Page boundary.",
       );
       return;
     }

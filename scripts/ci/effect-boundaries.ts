@@ -60,6 +60,8 @@ const effectAdapterAreas = new Set([
 ]);
 
 const effectApplicationRoots = [
+  "packages/agent-runtime/src/nodex/",
+  "src/main/agent-runtime/",
   "src/main/app/",
   "src/main/automation-application/",
   "src/main/browser-application/",
@@ -150,12 +152,21 @@ function isEffectFreePath(path: string): boolean {
 }
 
 function isEffectApplicationModule(path: string): boolean {
-  if (/\.(?:integration|node\.test|spec|test|test-support)\.[cm]?[jt]sx?$/.test(path)) return false;
+  if (isTestModule(path) || isNodeRuntimeEntry(path)) return false;
   return effectApplicationRoots.some((root) => path.startsWith(root));
 }
 
 function isTestModule(path: string): boolean {
-  return /\.(?:integration|node\.test|spec|test|test-support)\.[cm]?[jt]sx?$/.test(path);
+  return /\.(?:integration|node\.test|spec|test|testkit|test-support)\.[cm]?[jt]sx?$/.test(path);
+}
+
+// The standalone execution library owns its native/SQL platform contract. New
+// Nodex process integration belongs to src/nodex and keeps the application rules.
+function isExecutionLibraryModule(path: string): boolean {
+  return (
+    path.startsWith("packages/agent-runtime/") &&
+    !path.startsWith("packages/agent-runtime/src/nodex/")
+  );
 }
 
 function canImportConversationInternals(path: string): boolean {
@@ -170,14 +181,19 @@ function isEffectAdapter(path: string): boolean {
   return (
     path.startsWith("src/main/platform/") ||
     path.startsWith("packages/effect-codex-app-server/") ||
+    path.startsWith("packages/agent-runtime/") ||
+    path === "src/main/agent-runtime/AgentRuntimePeer.node.test.ts" ||
     path === "scripts/codex-probe-session.ts"
   );
 }
 
 const nodeRuntimeEntries = new Set([
+  "packages/agent-runtime/scripts/acp-mock-agent.ts",
+  "packages/agent-runtime/src/nodex/entry.ts",
+  "packages/agent-runtime/src/nodex/Daemon.ts",
+  "packages/agent-runtime/src/mcp/AcpMcpStdioBridge.ts",
   "packages/effect-codex-app-server/scripts/generate.ts",
   "scripts/codex-probe-session.ts",
-  "scripts/probe-acp-agent.ts",
   "scripts/testing/probe-agent-cli-bootstrap.ts",
   "scripts/dev-launcher.ts",
   "scripts/verify-native-runtime.ts",
@@ -193,7 +209,7 @@ const effectRunBoundaries = new Set([
 ]);
 
 function isEffectRunBoundary(path: string): boolean {
-  if (/\.(?:integration|test|spec)\.[cm]?[jt]sx?$/.test(path)) return true;
+  if (isTestModule(path) || isExecutionLibraryModule(path)) return true;
   return effectRunBoundaries.has(path);
 }
 
@@ -375,6 +391,7 @@ export function analyzeEffectBoundaries({
       }
       if (
         !isTestModule(path) &&
+        !isExecutionLibraryModule(path) &&
         !testOnlyUnboundedChannelAdapters.has(path) &&
         node.callee.property.name === "unbounded" &&
         (queueNamespaces.has(node.callee.object.name) ||

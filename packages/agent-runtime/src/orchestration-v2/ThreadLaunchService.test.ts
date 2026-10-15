@@ -15,12 +15,14 @@ import {
   ComposerContextId,
   type ChatAttachment,
   CommandId,
+  EventId,
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
   MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  ProviderTurnId,
   OrchestrationV2ThreadProjectionJson,
   ScheduledTaskId,
   type ServerProvider,
@@ -38,6 +40,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
@@ -52,6 +55,9 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
+import * as EventStore from "./EventStore.ts";
+import * as EventSink from "./EventSink.ts";
+import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
@@ -97,6 +103,7 @@ const adapter = {
 } as ProviderAdapter.ProviderAdapterV2["Service"];
 
 interface HarnessOptions {
+  readonly adapters?: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]>;
   readonly managedFolders?: Layer.Layer<ManagedProjectFolders.ManagedProjectFolders>;
   readonly createWorktree?: GitWorkflow.GitWorkflowService["Service"]["createWorktree"];
   readonly fetchRemote?: GitWorkflow.GitWorkflowService["Service"]["fetchRemote"];
@@ -112,7 +119,10 @@ interface HarnessOptions {
 
 function makeHarness(options: HarnessOptions = {}) {
   const layerDatabase = SqlitePersistence.layerMemory;
-  const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([adapter]);
+  const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
+    adapter,
+    ...(options.adapters ?? []),
+  ]);
   const layerOrchestrator = ProviderReplayHarness.layerWithRegistry(
     { name: "thread-launch" },
     layerRegistry,
@@ -204,6 +214,7 @@ function makeHarness(options: HarnessOptions = {}) {
         layerExternalServices,
         layerThreadManagement,
         layerReceipts,
+        EventStore.layer.pipe(Layer.provide(layerDatabase)),
         IdAllocator.layer,
       ),
     ),
@@ -235,6 +246,7 @@ function makeHarness(options: HarnessOptions = {}) {
     ),
   );
   return {
+    runtimeLayer: layerOrchestrator,
     layer: Layer.mergeAll(
       layerLaunch,
       layerThreadManagement,
@@ -271,7 +283,7 @@ function launchInput(input: {
       ? {}
       : {
           initialMessage: {
-            messageId: MessageId.make(`${input.message}:id`),
+            messageId: MessageId.make(`${input.command}:message`),
             text: input.message,
             attachments: [],
           },
@@ -806,14 +818,20 @@ it.effect("arms durable title generation after accepting the first message", () 
         [
           {
             type: "thread-title.generate",
-            kind: { type: "initial", messageId: MessageId.make("Generate my title:id") },
+            kind: {
+              type: "initial",
+              messageId: MessageId.make("command:launch:title-generation:message"),
+            },
           },
         ],
       );
       yield* titleRegeneration.execute({
         threadId: launched.threadId,
         requestId: generationCommandId,
-        kind: { type: "initial", messageId: MessageId.make("Generate my title:id") },
+        kind: {
+          type: "initial",
+          messageId: MessageId.make("command:launch:title-generation:message"),
+        },
       });
       const generated = yield* threads.getThreadProjection(launched.threadId);
       assert.equal(generated.thread.title, "Generated title");
@@ -1095,6 +1113,18 @@ it.effect("runs a Scratch thread launched at the root in its own folder", () =>
       assert.equal(
         (yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath,
         "/scratch/folder-1",
+      );
+      yield* threads.dispatch({
+        type: "thread.metadata.update",
+        commandId: CommandId.make("scratch-relocate"),
+        threadId: launched.threadId,
+        worktreePath: "/scratch/relocated",
+      });
+      yield* launches.launch(input);
+      assert.lengthOf(claimed, 1);
+      assert.equal(
+        (yield* threads.getThreadProjection(launched.threadId)).thread.worktreePath,
+        "/scratch/relocated",
       );
 
       const other = yield* launches.launch({
@@ -2112,7 +2142,7 @@ it.effect("schedules an accepted preparing message exactly once across concurren
         thread: "thread:launch:accepted-before-fork",
         message: "Resume preparation",
       });
-      const messageId = MessageId.make("message:launch:accepted-before-fork");
+      const messageId = input.initialMessage!.messageId;
 
       yield* threads.dispatch({
         type: "thread.create",
@@ -2136,7 +2166,7 @@ it.effect("schedules an accepted preparing message exactly once across concurren
         text: "Resume preparation",
         attachments: [],
         modelSelection: input.modelSelection,
-        dispatchMode: { type: "defer_start" },
+        dispatchMode: { type: "defer_start", workspaceStrategy: input.workspaceStrategy },
         createdBy: input.createdBy,
         creationSource: input.creationSource,
       });
@@ -2299,6 +2329,16 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
     );
     assert.equal((yield* claimedFiles).length, 1);
 
+    // Stable command replay returns its accepted result without rereading a
+    // changed upload or replacing the already committed attachment bytes.
+    yield* fs.writeFile(pendingPath, new Uint8Array([4, 3, 2, 1]));
+    const changedUpload = yield* ThreadMessageIntake.launchThread(input);
+    assert.equal(changedUpload.projection.messages[0]?.id, stored.id);
+    assert.deepEqual(changedUpload.projection.messages[0]?.attachments, stored.attachments);
+    assert.equal((yield* claimedFiles).length, 1);
+    assert.deepEqual(yield* fs.readFile(storedPath), new Uint8Array([1, 2, 3, 4]));
+    yield* fs.writeFile(pendingPath, new Uint8Array([1, 2, 3, 4]));
+
     const missingProject = yield* ThreadMessageIntake.launchThread({
       ...input,
       commandId: CommandId.make("intake-no-project"),
@@ -2407,7 +2447,8 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch 
     });
     yield* send;
     yield* send;
-    assert.equal((yield* claimedFiles).length, 4);
+    // One immutable upload snapshot can be referenced by several messages.
+    assert.equal((yield* claimedFiles).length, 2);
     const final = yield* threads.getThreadProjection(input.threadId);
     assert.equal(final.messages.length, 3);
     for (const message of final.messages) {
@@ -2443,6 +2484,7 @@ it.effect("cancels tracked setup before provider work is released", () =>
       assert.equal((yield* tracker.get(launched.threadId))?.phase, "running");
       assert.isTrue(yield* tracker.cancel(launched.threadId));
       assert.equal((yield* tracker.get(launched.threadId))?.phase, "cancelled");
+      assert.equal(harness.removeWorktree.mock.calls.length, 1);
       const projection = yield* threads.getThreadProjection(launched.threadId);
       assert.equal(projection.runs[0]?.status, "failed");
       assert.isNull(projection.thread.worktreePath);
@@ -2657,6 +2699,330 @@ it.effect("replays an accepted send after the project disables the instance", ()
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
 });
+
+it.effect.each(["steer", "restart"] as const)(
+  "replays an accepted %s send after its Run completes",
+  (mode) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const events = yield* EventSink.EventSinkV2;
+      const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+      const outbox = yield* EffectOutbox.EffectOutboxV2;
+      const created = yield* launches.launch(
+        launchInput({
+          command: `command:send:${mode}:setup`,
+          thread: `thread:send:${mode}:retry`,
+          message: "Start the original work.",
+        }),
+      );
+      const initial = yield* threads.getThreadProjection(created.threadId);
+      const run = initial.runs[0]!;
+      const native = initial.providerThreads[0]!;
+      const now = yield* DateTime.now;
+      const providerSession = {
+        id: native.providerSessionId!,
+        driver: adapter.driver,
+        providerInstanceId: modelSelection.instanceId,
+        status: "running" as const,
+        cwd: "/repo",
+        model: modelSelection.model,
+        capabilities: CodexProviderCapabilitiesV2,
+        createdAt: now,
+        updatedAt: now,
+        lastError: null,
+      };
+      const nativeTurn = {
+        id: ProviderTurnId.make(`native-turn:${mode}:retry`),
+        providerThreadId: native.id,
+        nodeId: run.rootNodeId!,
+        runAttemptId: run.activeAttemptId,
+        nativeTurnRef: null,
+        ordinal: 1,
+        status: "running" as const,
+        startedAt: now,
+        completedAt: null,
+      };
+      yield* events.write({
+        commandId: CommandId.make(`command:send:${mode}:running`),
+        events: [
+          {
+            id: EventId.make(`event:send:${mode}:running`),
+            type: "run.updated",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: { ...run, status: "running", startedAt: now },
+          },
+          {
+            id: EventId.make(`event:send:${mode}:session`),
+            type: "provider-session.attached",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: providerSession,
+          },
+          {
+            id: EventId.make(`event:send:${mode}:turn`),
+            type: "provider-turn.updated",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: nativeTurn,
+          },
+        ],
+      });
+      const liveSession = vi
+        .spyOn(sessions, "get")
+        .mockReturnValue(Effect.succeed(Option.some({ providerSession } as never)));
+      yield* Effect.addFinalizer(() => Effect.sync(() => liveSession.mockRestore()));
+      const input = {
+        commandId: CommandId.make(`command:send:${mode}:accepted`),
+        projectId,
+        threadId: created.threadId,
+        messageId: MessageId.make(`message:send:${mode}:accepted`),
+        text: "Include this follow-up.",
+        attachments: [],
+        mode,
+        createdBy: "user" as const,
+        creationSource: "web" as const,
+      };
+      const accepted = yield* threads.sendToThread(input);
+      assert.equal(accepted.run.id, run.id);
+      assert.equal(accepted.delivery, mode === "steer" ? "steered" : "restarted");
+      const effects = yield* outbox.listByCommandId(input.commandId);
+      assert.deepEqual(
+        effects.map((effect) => effect.request.type),
+        [mode === "steer" ? "provider-turn.steer" : "provider-turn.restart"],
+      );
+      yield* events.write({
+        commandId: CommandId.make(`command:send:${mode}:completed`),
+        events: [
+          {
+            id: EventId.make(`event:send:${mode}:completed`),
+            type: "run.updated",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: { ...accepted.run, status: "completed", completedAt: now },
+          },
+          {
+            id: EventId.make(`event:send:${mode}:turn-completed`),
+            type: "provider-turn.updated",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: { ...nativeTurn, status: "completed", completedAt: now },
+          },
+        ],
+      });
+      const retry = yield* threads.sendToThread(input);
+      assert.equal(retry.run.id, accepted.run.id);
+      assert.equal(retry.run.status, "completed");
+      assert.equal(retry.message.id, accepted.message.id);
+      assert.equal(retry.turnItem?.id, accepted.turnItem?.id);
+      assert.equal(retry.dispatch.sequence, accepted.dispatch.sequence);
+      assert.equal((yield* threads.getThreadRecords(created.threadId, ["runs"])).runs.length, 1);
+      assert.deepEqual(yield* outbox.listByCommandId(input.commandId), effects);
+    }).pipe(Effect.provide(Layer.mergeAll(harness.layer, harness.runtimeLayer)));
+  },
+);
+
+it.effect(
+  "sends and replays against a long child conversation without hydrating its old prompts",
+  () => {
+    const otherInstance = ProviderInstanceId.make("other-codex");
+    const harness = makeHarness({
+      adapters: [{ ...adapter, instanceId: otherInstance }],
+      serverSettings: {
+        providerInstances: {
+          [modelSelection.instanceId]: { driver: adapter.driver, config: {} },
+          [otherInstance]: { driver: adapter.driver, config: {} },
+        },
+      },
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const events = yield* EventSink.EventSinkV2;
+      const sql = yield* SqlClient.SqlClient;
+      const parent = yield* launches.launch(
+        launchInput({
+          command: "command:send:pressure:setup",
+          thread: "thread:send:pressure:parent",
+          message: "Delegate child work.",
+        }),
+      );
+      const parentRun = (yield* threads.getThreadRecords(parent.threadId, ["runs"])).runs[0]!;
+      const delegationId = CommandId.make("command:send:pressure:delegate");
+      yield* threads.dispatch({
+        type: "delegated_task.request",
+        commandId: delegationId,
+        parentThreadId: parent.threadId,
+        parentRunId: parentRun.id,
+        parentNodeId: parentRun.rootNodeId!,
+        task: "Original child work.",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+      const created = {
+        threadId: IdAllocator.derive.delegatedTaskThread({ commandId: delegationId }),
+      };
+      const initial = yield* threads.getThreadProjection(created.threadId);
+      const original = initial.runs[0]!;
+      const originalMessage = initial.messages[0]!;
+      const originalItem = initial.turnItems.find((item) => item.type === "user_message")!;
+      const now = yield* DateTime.now;
+      const iso = DateTime.formatIso(now);
+      yield* events.write({
+        commandId: CommandId.make("command:send:pressure:completed"),
+        events: [
+          {
+            id: EventId.make("event:send:pressure:completed"),
+            type: "run.updated",
+            threadId: created.threadId,
+            occurredAt: now,
+            payload: { ...original, status: "completed", startedAt: now, completedAt: now },
+          },
+        ],
+      });
+      yield* waitUntil(() =>
+        threads
+          .getThreadRecords(parent.threadId, ["subagents"])
+          .pipe(
+            Effect.map((projection) => projection.subagents.some((task) => task.result !== null)),
+          ),
+      );
+      const coldPrompt = "cold-child-prompt:" + "x".repeat(16_384);
+      // Storage scale is the pressure subject; the smaller retry tests above use public operations.
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          for (let ordinal = 2; ordinal <= 1_001; ordinal++) {
+            const runId = `run:send:pressure:${ordinal}`;
+            const messageId = `message:send:pressure:${ordinal}`;
+            const itemId = `turn-item:message:${messageId}`;
+            const { delegatedTaskId: _taskId, ...baseRun } = original;
+            const run = {
+              ...baseRun,
+              id: runId,
+              ordinal,
+              userMessageId: messageId,
+              status: "completed",
+              startedAt: iso,
+              requestedAt: iso,
+              completedAt: iso,
+              rootNodeId: null,
+              activeAttemptId: null,
+            };
+            yield* sql`INSERT INTO orchestration_v2_projection_runs
+          (run_id,thread_id,ordinal,provider,provider_thread_id,status,requested_at,completed_at,payload_json)
+          VALUES (${runId},${created.threadId},${ordinal},'codex',${original.providerThreadId},'completed',${iso},${iso},${JSON.stringify(run)})`;
+            yield* sql`INSERT INTO orchestration_v2_projection_messages
+          (message_id,thread_id,run_id,node_id,role,streaming,created_at,updated_at,payload_json)
+          VALUES (${messageId},${created.threadId},${runId},NULL,'user',0,${iso},${iso},${JSON.stringify(
+            {
+              ...originalMessage,
+              id: messageId,
+              runId,
+              nodeId: null,
+              text: coldPrompt,
+              createdAt: iso,
+              updatedAt: iso,
+            },
+          )})`;
+            yield* sql`INSERT INTO orchestration_v2_projection_turn_items
+          (turn_item_id,thread_id,run_id,node_id,provider_thread_id,provider_turn_id,parent_item_id,ordinal,type,status,updated_at,payload_json)
+          VALUES (${itemId},${created.threadId},${runId},NULL,${original.providerThreadId},NULL,NULL,${ordinal},'user_message','completed',${iso},${JSON.stringify(
+            {
+              ...originalItem,
+              id: itemId,
+              runId,
+              nodeId: null,
+              ordinal,
+              messageId,
+              text: coldPrompt,
+              startedAt: iso,
+              completedAt: iso,
+              updatedAt: iso,
+            },
+          )})`;
+          }
+        }),
+      );
+      const input = {
+        projectId,
+        threadId: created.threadId,
+        commandId: CommandId.make("command:send:pressure:fresh"),
+        messageId: MessageId.make("message:send:pressure:fresh"),
+        text: "Start the next follow-up.",
+        attachments: [],
+        senderThreadId: parent.threadId,
+        senderRunId: parentRun.id,
+        mode: "auto" as const,
+        createdBy: "agent" as const,
+        creationSource: "mcp" as const,
+      };
+      yield* Effect.acquireUseRelease(
+        Effect.sync(() => vi.spyOn(JSON, "parse")),
+        (parse) =>
+          Effect.gen(function* () {
+            const fresh = yield* threads.sendToThread(input);
+            const retry = yield* threads.sendToThread(input);
+            assert.equal(fresh.run.ordinal, 1_002);
+            assert.equal(fresh.delivery, "started");
+            assert.equal(retry.run.id, fresh.run.id);
+            assert.equal(retry.dispatch.sequence, fresh.dispatch.sequence);
+            assert.lengthOf(fresh.projection.runs, 1);
+            assert.lengthOf(fresh.projection.messages, 1);
+            assert.lengthOf(fresh.projection.turnItems, 1);
+            assert.lengthOf(
+              parse.mock.calls.filter(
+                ([value]) => typeof value === "string" && value.includes(coldPrompt),
+              ),
+              0,
+            );
+            assert.isAtMost(
+              parse.mock.calls.filter(
+                ([value]) =>
+                  typeof value === "string" &&
+                  value.includes('"userMessageId":"message:send:pressure:'),
+              ).length,
+              16,
+            );
+            parse.mockClear();
+            const queuedInput = {
+              ...input,
+              mode: "queue" as const,
+              commandId: CommandId.make("command:send:pressure:queued-provider"),
+              messageId: MessageId.make("message:send:pressure:queued-provider"),
+              modelSelection: { ...modelSelection, instanceId: otherInstance },
+            };
+            const queued = yield* threads.sendToThread(queuedInput);
+            const queuedRetry = yield* threads.sendToThread(queuedInput);
+            assert.equal(queued.run.ordinal, 1_003);
+            assert.equal(queued.run.providerInstanceId, otherInstance);
+            assert.equal(queued.delivery, "queued");
+            assert.equal(queuedRetry.run.id, queued.run.id);
+            assert.lengthOf(queued.projection.runs, 1);
+            assert.lengthOf(
+              parse.mock.calls.filter(
+                ([value]) => typeof value === "string" && value.includes(coldPrompt),
+              ),
+              0,
+            );
+            assert.isAtMost(
+              parse.mock.calls.filter(
+                ([value]) =>
+                  typeof value === "string" &&
+                  value.includes('"userMessageId":"message:send:pressure:'),
+              ).length,
+              16,
+            );
+          }),
+        (parse) => Effect.sync(() => parse.mockRestore()),
+      );
+    }).pipe(Effect.provide(Layer.mergeAll(harness.layer, harness.runtimeLayer)));
+  },
+);
 
 it.effect("replays an accepted message.dispatch after the project disables the instance", () => {
   const harness = makeHarness();

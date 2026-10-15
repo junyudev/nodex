@@ -50,7 +50,12 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SidebarSectionItemWindow { .. }
         | ProjectWorkspaceRead::BuiltinSidebarOrder { .. }
         | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. }
-        | ProjectWorkspaceRead::InboxWindow { .. } => ReadBudgetPolicy::CollectionWindow,
+        | ProjectWorkspaceRead::InboxWindow { .. }
+        | ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { .. }
+        | ProjectWorkspaceRead::AgentRuntimeAdmissionWindow { .. }
+        | ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow { .. } => {
+            ReadBudgetPolicy::CollectionWindow
+        }
         // Caller limits are clamped to a small fixed batch with bounded content per entry.
         ProjectWorkspaceRead::InboxPendingSuggestions { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
@@ -61,13 +66,11 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         ProjectWorkspaceRead::ManagedWorktreeLifecycleSnapshot => ReadBudgetPolicy::FixedDomain,
         ProjectWorkspaceRead::ProjectBootstrap
         | ProjectWorkspaceRead::Project { .. }
-        | ProjectWorkspaceRead::ProjectPermissionMode { .. }
-        | ProjectWorkspaceRead::ProjectlessPermissionMode
         | ProjectWorkspaceRead::Session { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBinding { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution { .. }
         | ProjectWorkspaceRead::AgentRuntimeTurnAuthority { .. }
-        | ProjectWorkspaceRead::AgentRuntimeParentAdmission { .. }
+        | ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority { .. }
         | ProjectWorkspaceRead::AgentAuthority { .. }
         | ProjectWorkspaceRead::AgentSession { .. }
         | ProjectWorkspaceRead::CodexThreadSession { .. }
@@ -198,7 +201,6 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::ProjectPageSearchFacets { .. }
         | LibraryRead::ProjectPageSearchMetadata { .. }
         | LibraryRead::PageReferenceCandidates { .. }
-        | LibraryRead::PlanAgentResourceAccess { .. }
         | LibraryRead::PrepareAgentPageCopy { .. }
         | LibraryRead::PrepareAgentCreatePages { .. }
         | LibraryRead::PrepareAgentMovePages { .. } => ReadBudgetPolicy::BoundedBatch,
@@ -206,8 +208,6 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
             ReadBudgetPolicy::LargeObject
         }
         LibraryRead::Metadata
-        | LibraryRead::ResourceProjectAccess { .. }
-        | LibraryRead::FilterProjectionImpactForProject { .. }
         | LibraryRead::PageDetail { .. }
         | LibraryRead::File { .. }
         | LibraryRead::FilePresentation { .. }

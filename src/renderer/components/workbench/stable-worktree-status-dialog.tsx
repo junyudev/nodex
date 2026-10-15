@@ -16,7 +16,7 @@ import type {
   CodexPendingWorktreeCreateResult,
   CodexPendingWorktreeEntry,
 } from "../../../shared/codex-pending-worktree";
-import type { CodexAgentMode } from "../../../shared/types";
+
 import type { StableWorktreeEntry } from "./stable-worktree-production";
 
 export type { StableWorktreeEntry } from "./stable-worktree-production";
@@ -26,17 +26,13 @@ export interface StableWorktreeStatusDialogTransport {
   subscribe: (listener: (entries: readonly CodexPendingWorktreeEntry[]) => void) => () => void;
   clearAttention: (hostId: string, pendingWorktreeId: string) => Promise<void>;
   cancel: (hostId: string, pendingWorktreeId: string) => Promise<void>;
-  autoFix: (
-    hostId: string,
-    pendingWorktreeId: string,
-    agentMode: CodexAgentMode,
-  ) => Promise<CodexPendingWorktreeCreateResult>;
+  autoFix: (hostId: string, pendingWorktreeId: string) => Promise<CodexPendingWorktreeCreateResult>;
   retry: (hostId: string, pendingWorktreeId: string) => Promise<void>;
 }
 
 export interface StableWorktreeStatusDialogProps {
   pendingWorktreeId: string;
-  agentMode?: CodexAgentMode;
+
   transport: StableWorktreeStatusDialogTransport;
   onClose: () => void;
   onEditEnvironment: (entry: StableWorktreeEntry) => void;
@@ -171,7 +167,7 @@ export function StableWorktreeStatusDialogView({
 
 function StableWorktreeStatusDialogController({
   pendingWorktreeId,
-  agentMode = "auto",
+
   transport,
   onClose,
   onEditEnvironment,
@@ -268,7 +264,7 @@ function StableWorktreeStatusDialogController({
         if (autoFixing) return;
         setAutoFixing(true);
         void transport
-          .autoFix(entry.hostId, entry.id, agentMode)
+          .autoFix(entry.hostId, entry.id)
           .then((result) => {
             if (!result.clientThreadId) {
               throw new Error("The worktree repair task has no client thread id.");

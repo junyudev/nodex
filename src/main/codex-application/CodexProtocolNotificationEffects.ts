@@ -49,7 +49,6 @@ import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexVisualizationState } from "./CodexVisualizationState";
-import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -135,7 +134,6 @@ export const make: Effect.Effect<
   CodexProtocolNotificationEffects["Service"],
   never,
   | CodexApplicationEventHub
-  | CodexAutomationTurnCompletion
   | CodexConversationDeltaBufferRuntime
   | CodexConversationLifecycle
   | CodexConversationProjection
@@ -157,7 +155,6 @@ export const make: Effect.Effect<
 > = Effect.gen(function* () {
   const events = yield* CodexApplicationEventHub;
   const visualizations = yield* CodexVisualizationState;
-  const automation = yield* CodexAutomationTurnCompletion;
   const deltas = yield* CodexConversationDeltaBufferRuntime;
   const lifecycle = yield* CodexConversationLifecycle;
   const conversationProjection = yield* CodexConversationProjection;
@@ -608,8 +605,7 @@ export const make: Effect.Effect<
     if (notification.method === "turn/completed") {
       yield* browserUse.turnEnded({ sessionId: threadId, turnId: notification.params.turn.id });
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
-      const decision = yield* automation.complete(threadId, notification.params.turn);
-      yield* publishTurnCompleted(input.hostId, threadId, notification.params.turn, decision);
+      yield* publishTurnCompleted(input.hostId, threadId, notification.params.turn, null);
       yield* queued.acceptTerminalOutcomeInCurrentLane({
         threadId,
         interrupted: notification.params.turn.status === "interrupted",

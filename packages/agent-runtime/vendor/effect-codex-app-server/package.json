@@ -32,6 +32,7 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
+    "@t3tools/shared": "workspace:*",
     "effect": "4.0.3"
   },
   "devDependencies": {

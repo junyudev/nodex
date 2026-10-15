@@ -239,7 +239,6 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         );
         actorId = actor.projectSessionId;
         await setAgentExecutionProfile(first, { preferredModelId: "gpt-5.6-sol" });
-        await invokeIpc(first, "codex:permission:mode:set", actor.projectId, "full-access");
         const opened = harness.application.waitForEvent("window");
         expect(await invokeIpc(first, "window:new", {})).toBe(true);
         const second = await opened;

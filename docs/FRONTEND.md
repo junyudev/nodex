@@ -31,7 +31,7 @@ Prefer the narrowest enforceable seam. Route information as follows:
 | User-visible feature behavior, labels, action order, and acceptance rules | [Product specifications](product-specs/index.md)                                  |
 | Runtime ownership, dependency direction, and cross-runtime flows          | [Architecture](ARCHITECTURE.md) and ADRs                                          |
 | Projection delivery, collaborative sync, recovery, and durability         | [Reliability](RELIABILITY.md)                                                     |
-| Detailed renderer state inventory and migration decisions                 | [Renderer view-state ownership](renderer-view-state-ownership.md)                 |
+| Detailed renderer state inventory and migration decisions                 | [Renderer view-state ownership](product-specs/renderer-view-state-ownership.md)   |
 | Reusable visual direction for agent-built UI                              | [General design guidelines](../.agents/skills/general-design-guidelines/SKILL.md) |
 | Exact dimensions, classes, timings, layer values, and component states    | Shared code, focused tests, and the nearest visual surface                        |
 | Test runtime selection and handoff commands                               | [AGENTS.md](../AGENTS.md) and [Development](development.md)                       |
@@ -78,7 +78,7 @@ lists here.
 
 ### Interactive search latency
 
-Interactive Page search uses the shared `InteractivePageSearch` interface. A keystroke queries the prewarmed Core-stamped metadata projection synchronously in render; it must not clear rows, wait for a deferred query or Effect, or introduce a skeleton. Async Core enrichment may add body-only results and evidence, represented by one stable trailing status row. Empty state is valid only after enrichment for the live query has settled. Store epoch, authorization scope, and commit revision fence every accepted projection and response.
+Interactive Page search uses the shared `InteractivePageSearch` interface. A keystroke queries the prewarmed Core-stamped metadata projection synchronously in render; it must not clear rows, wait for a deferred query or Effect, or introduce a skeleton. Async Core enrichment may add body-only results and evidence, represented by one stable trailing status row. Empty state is valid only after enrichment for the live query has settled. Current Profile, Store epoch, query identity and filters, and commit revision fence every accepted projection and response. Project filters select results; they do not grant content access.
 
 One state has one writable owner. Caches, descriptors, and projections may
 mirror an authority for presentation, but they must not become a second place
@@ -95,7 +95,7 @@ that decides truth.
 | Window Session aggregate                | Owner-scoped Scenes, surface descriptors, panel trees, navigation, and settled layout state                                               |
 
 The exhaustive inventory lives in
-[Renderer view-state ownership](renderer-view-state-ownership.md). Apply these
+[Renderer view-state ownership](product-specs/renderer-view-state-ownership.md). Apply these
 rules when choosing among the owners:
 
 - Keep disposable interaction state component-local. Promote it only when its
@@ -300,7 +300,9 @@ than inferring it from its DOM environment.
   session. Metadata summaries and read-model caches never seed or overwrite the
   collaborative title, body, or scene authority.
 - Key shared Document sessions and durable client queues by the Core-authored
-  `libraryId + accessContext + documentId` identity. Renderer-local scope IDs
+  `libraryId + routingContext + documentId` identity, together with Store epoch,
+  Document generation and schema. Routing context names presentation, not resource
+  permission. Renderer-local scope IDs
   and arbitrary routable Projects are presentation or navigation state, never
   substitutes for content authority.
 - Keep each editor source explicit and discriminated. Legacy serialized content,
@@ -448,7 +450,7 @@ Load the narrow contract only for the branch being changed:
 | Database Views, Page creation, Page Stage, and Properties                   | [Database, Pages, and Views](product-specs/database-pages-and-views-behavior.md)   |
 | Canvas inline and Stage presentation                                        | [Canvas](product-specs/canvas-behavior.md)                                         |
 | Chat lifecycle, workspaces, worktrees, forks, and runtime integrations      | [Codex workspace](product-specs/codex-workspace-behavior.md)                       |
-| Renderer scope and persistence ownership                                    | [Renderer view-state ownership](renderer-view-state-ownership.md)                  |
+| Renderer scope and persistence ownership                                    | [Renderer view-state ownership](product-specs/renderer-view-state-ownership.md)    |
 | Codex transcript, requests, tools, composer, and turn/activity projection   | [Codex transcript behavior](product-specs/codex-thread-transcript-behavior.md)     |
 | Codex owner/follower publication and recovery                               | [Owner/follower streaming](product-specs/codex-thread-owner-follower-streaming.md) |
 | Thread Summary sections, rows, artifacts, Git actions, Browser, and PiP     | [Thread Summary panel](product-specs/thread-summary-panel-behavior.md)             |

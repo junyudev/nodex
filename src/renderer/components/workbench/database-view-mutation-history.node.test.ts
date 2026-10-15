@@ -25,13 +25,12 @@ import {
 
 const model: DatabaseViewOperationsCommand["model"] = {
   libraryId: "library",
-  accessContext: { kind: "project", projectId: "project" },
+  routingContext: { kind: "project", projectId: "project" },
   storeEpoch: "epoch",
   databaseViewId: parseDatabaseViewId("view"),
-  readOnlyReason: null,
   viewName: "Tasks",
 };
-const scope = { accessContext: model.accessContext, storeEpoch: model.storeEpoch };
+const scope = { routingContext: model.routingContext, storeEpoch: model.storeEpoch };
 const address = {
   pageId: "page",
   dataSourceId: parseDataSourceId("source"),

@@ -11,7 +11,6 @@ import type {
   DatabaseViewWindowSnapshot,
 } from "../../../shared/database-views";
 import { TestQueryProvider } from "../../test/query";
-import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../../shared/testing/authorized-read-stamp-example";
 import { upgradeDatabaseViewConfigV2 } from "../../../shared/database-view-presentation";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import type { DatabaseViewMutationHistory } from "./database-view-mutation-history";
@@ -94,7 +93,6 @@ const makeWindow = <ProjectScope extends string | null>(
   viewId,
   storeEpoch: "epoch:test",
   commitSeq: 1,
-  authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
   projection: {
     scopeKey: `scope:${String(viewId)}`,
     schemaVersion: 1,
@@ -123,7 +121,6 @@ const makeWindow = <ProjectScope extends string | null>(
       name: "Tasks",
       lifecycle: "active",
       defaultViewId: viewId,
-      accessRevision: 1,
       metadataRevision: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -176,7 +173,6 @@ const makeGroups = <ProjectScope extends string | null>(
   viewId,
   storeEpoch: "epoch:test",
   commitSeq: 1,
-  authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
   projection: {
     scopeKey: `database_view:library:test:${projectId ?? "library"}:${databaseId}:${dataSourceId}:${viewId}`,
     schemaVersion: 1,
@@ -215,7 +211,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
     const transport = vi.fn<typeof commitDatabaseViewOperations>(
       async (request): ReturnType<typeof commitDatabaseViewOperations> => ({
         operationId: request.operationId ?? "operation",
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: canonical.libraryId,
         storeEpoch: canonical.storeEpoch,
         duplicate: false,
@@ -409,7 +405,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
     render(
       <TestQueryProvider>
         <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "project", projectId: "project-alpha" }}
+          routingContext={{ kind: "project", projectId: "project-alpha" }}
           target={{ kind: "database-view", databaseViewId: viewId }}
           onOpenPage={() => undefined}
           onOpenPageInNewChat={onOpenPageInNewChat}
@@ -430,42 +426,52 @@ describe("WorkbenchDatabaseViewSurface", () => {
     expect(pageActionPort.deletePage).toEqual(expect.any(Function));
   });
 
-  test("routes Page deletion through the renderer API boundary", async () => {
-    render(
-      <TestQueryProvider>
-        <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "project", projectId: "project-alpha" }}
-          target={{ kind: "database-view", databaseViewId: viewId }}
-          onOpenPage={() => undefined}
-        />
-      </TestQueryProvider>,
-    );
+  test.each([
+    {
+      route: "Project",
+      routingContext: { kind: "project" as const, projectId: "project-alpha" },
+      projectId: "project-alpha",
+    },
+    { route: "Library", routingContext: { kind: "library" as const }, projectId: null },
+  ])(
+    "deletes a Page from its $route presentation through the canonical lifecycle",
+    async ({ routingContext, projectId }) => {
+      render(
+        <TestQueryProvider>
+          <WorkbenchDatabaseViewSurface
+            routingContext={routingContext}
+            target={{ kind: "database-view", databaseViewId: viewId }}
+            onOpenPage={() => undefined}
+          />
+        </TestQueryProvider>,
+      );
 
-    await waitFor(() => expect(presenter.props?.model).toBeTruthy());
-    const pageActionPort = presenter.props?.pageActionPort as {
-      readonly deletePage: (input: { readonly pageId: string }) => Promise<void>;
-    };
+      await waitFor(() => expect(presenter.props?.model).toBeTruthy());
+      const pageActionPort = presenter.props?.pageActionPort as {
+        readonly deletePage: (input: { readonly pageId: string }) => Promise<void>;
+      };
 
-    await act(async () => {
-      await pageActionPort.deletePage({ pageId: "page-from-database" });
-      await Promise.resolve();
-    });
+      await act(async () => {
+        await pageActionPort.deletePage({ pageId: "page-from-database" });
+        await Promise.resolve();
+      });
 
-    expect(api.commitPageLifecycleIntent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: "delete",
-        projectId: "project-alpha",
-        pageId: "page-from-database",
-        operationId: expect.any(String),
-      }),
-    );
-  });
+      expect(api.commitPageLifecycleIntent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "delete",
+          projectId,
+          pageId: "page-from-database",
+          operationId: expect.any(String),
+        }),
+      );
+    },
+  );
 
   test("preserves a committed history barrier across equivalent presentation rerenders", async () => {
     const content = () => (
       <TestQueryProvider>
         <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "library" }}
+          routingContext={{ kind: "library" }}
           target={{ kind: "database-default", databaseId }}
           onOpenPage={() => undefined}
         />
@@ -479,7 +485,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
       operations: [{ kind: "position_pages", viewId, pages: [] }],
       commitOperations: async () => ({
         operationId: "operation",
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library:test",
         storeEpoch: "epoch:test",
         duplicate: false,
@@ -508,7 +514,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
     render(
       <TestQueryProvider>
         <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "library" }}
+          routingContext={{ kind: "library" }}
           target={{ kind: "database-default", databaseId }}
           onOpenPage={onOpenPage}
           onPresentationChange={onPresentationChange}
@@ -540,7 +546,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
     render(
       <TestQueryProvider>
         <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "project", projectId: "project-alpha" }}
+          routingContext={{ kind: "project", projectId: "project-alpha" }}
           target={{ kind: "database-view", databaseViewId: viewId }}
           onOpenPage={vi.fn()}
         />
@@ -590,7 +596,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
     render(
       <TestQueryProvider>
         <WorkbenchDatabaseViewSurface
-          accessContext={{ kind: "library" }}
+          routingContext={{ kind: "library" }}
           target={{ kind: "database-default", databaseId }}
           onOpenPage={vi.fn()}
         />
@@ -618,7 +624,7 @@ describe("WorkbenchDatabaseViewSurface", () => {
       render(
         <TestQueryProvider>
           <WorkbenchDatabaseViewSurface
-            accessContext={{ kind: "library" }}
+            routingContext={{ kind: "library" }}
             target={{ kind: "database-default", databaseId }}
             onOpenPage={vi.fn()}
           />

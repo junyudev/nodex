@@ -20,17 +20,17 @@ Nested Markdown for bodies, typed values and queries for Database operations,
 and explicit ownership commands. Provide direct stdin/stdout composition and
 bounded machine-readable help. Regular files and drafts remain optional tools
 for processing, review, and recovery. Share creation/query implementations inside
-Core while preserving the caller's actual authorization path.
+Core while preserving the caller's Profile identity and execution lifetime.
 
 Keep dynamic content tools behind the default-off development feature. Gate
 registration and execution; a persisted catalog is not authorization to bypass
 the current instance setting. Preserve historical result rendering.
 
-Provide host connection context for each eligible local Full access Turn. Pin
-the executable, Skill, Profile, and Project; refresh on each Turn. Native CLI
-uses Project access and is not advertised as Turn-scoped authorization. Restricted
-and remote modes remain outside automatic connection until a trusted channel
-can enforce their intended constraints.
+Provide host connection context for every local Agent, including children and
+background work. Pin the executable, Skill, Profile and exact execution source;
+refresh credentials for their native lifetime. Project selects placement and
+working context. Content access spans the current Profile in every interaction
+mode. Connection authentication and cancellation invalidate stale callers.
 
 Structured Page reads include title/body validators from the same observation,
 so a subsequent local edit can reuse its existing read. Operation-dependent

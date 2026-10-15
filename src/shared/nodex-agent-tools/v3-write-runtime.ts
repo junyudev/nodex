@@ -9,7 +9,6 @@ import type { AgentDocumentEditEffects } from "./document-edit-compiler";
 import type {
   NodexAgentCallIdentity,
   NodexAgentDocumentHead,
-  NodexAgentTransferAuthorizationEvidence,
   NodexAgentTransferCommand,
   PreparedNodexAgentCreateDestination,
 } from "./write-runtime";
@@ -29,7 +28,6 @@ import type {
   MovePagesV6OutputSchema,
 } from "./v6-schemas";
 import type { z } from "zod";
-import type { NodexAgentResourceAccessOverlay } from "../nodex-agent-resource-access";
 
 export interface NodexAgentPreparedPageUpdate extends Pick<
   DocumentOperationBatch,
@@ -79,7 +77,6 @@ export type PrepareNodexAgentPageUpdateResult =
             readonly mutation: NodexAgentPreparedPageUpdate;
             readonly effects: AgentDocumentEditEffects;
             readonly targetMarkdown: string;
-            readonly resourceAccess?: NodexAgentResourceAccessOverlay;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };
@@ -183,7 +180,6 @@ export type PrepareNodexAgentDuplicatePageResult =
         | {
             readonly kind: "prepared";
             readonly command: NodexAgentDuplicatePageCommand;
-            readonly authorization: NodexAgentTransferAuthorizationEvidence;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };
@@ -239,7 +235,6 @@ export type PrepareNodexAgentMovePagesResult =
         | {
             readonly kind: "prepared";
             readonly command: NodexAgentMovePagesCommand;
-            readonly authorization: NodexAgentTransferAuthorizationEvidence;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };

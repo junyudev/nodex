@@ -11,15 +11,13 @@ import { runCanonicalOwnerSteer } from "../../shared/codex-conversation-state/co
 import { CodexTurnDeliveryError } from "../../shared/codex-conversation-state/codex-turn-delivery";
 import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
 import { parseSteerTurnMismatchActualTurnId } from "../../shared/codex-steer-errors";
-import { ServerNotification__ActivePermissionProfile } from "@nodex/effect-codex-app-server/schema";
+import { selectCanonicalThreadSettingsControlPatch } from "../../shared/codex-conversation-state/codex-thread-settings-update";
+import { projectCodexGatewayThreadSettingsUpdateParams } from "../codex-runtime/CodexGatewayProtocolProjection";
 import { CodexMainConversationInterrupt } from "./CodexMainConversationInterrupt";
 import { CodexMainConversationSettings } from "./CodexMainConversationSettings";
 import { CodexMainConversationHistory } from "./CodexMainConversationHistory";
 import type {
   TurnStartParams,
-  ThreadSettingsUpdateParams,
-  CommandExecutionApprovalDecision,
-  PermissionsRequestApprovalResponse,
   McpServerElicitationRequestResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import {
@@ -82,8 +80,7 @@ export const install = Effect.gen(function* () {
             Schema.Struct({
               turnId: Schema.String,
               message: Schema.String,
-              agentMode: Schema.optionalKey(Schema.Unknown),
-              shouldSendPermissionOverrides: Schema.optionalKey(Schema.Boolean),
+
               serviceTier: Schema.optionalKey(Schema.NullOr(Schema.String)),
               additionalContext: Schema.optionalKey(Schema.Unknown),
               writingBlockContextPrepared: Schema.optionalKey(Schema.Boolean),
@@ -267,29 +264,14 @@ export const install = Effect.gen(function* () {
                     ifModelEquals: Schema.optionalKey(Schema.NullOr(Schema.String)),
                   }),
                 )(params.condition);
-          const activeTurnId =
-            params.activeTurnId == null
-              ? null
-              : yield* Schema.decodeUnknownEffect(Schema.String)(params.activeTurnId);
-          const rawProfile = record(params.threadSettings)?.activePermissionProfile;
-          const profile =
-            rawProfile === undefined
-              ? {}
-              : {
-                  activePermissionProfile: yield* Schema.decodeUnknownEffect(
-                    Schema.NullOr(ServerNotification__ActivePermissionProfile),
-                  )(rawProfile),
-                };
           return {
             applied: yield* settings.update(
               hostId,
               threadId,
-              {
-                ...(native as ThreadSettingsUpdateParams),
-                ...profile,
-              } as import("../../shared/codex-conversation-state/codex-thread-settings-update").CanonicalThreadSettingsPatch,
-              activeTurnId === null ? condition : undefined,
-              activeTurnId,
+              selectCanonicalThreadSettingsControlPatch(
+                projectCodexGatewayThreadSettingsUpdateParams(native),
+              ),
+              condition,
             ),
           };
         }
@@ -323,45 +305,6 @@ export const install = Effect.gen(function* () {
         }
         case "thread-follower-compact-thread": {
           yield* compaction.startAsOwner(hostId, threadId);
-          return { ok: true };
-        }
-        case "thread-follower-command-approval-decision": {
-          const id = yield* requireRequestId();
-          const response = yield* Schema.decodeUnknownEffect(
-            SERVER_REQUEST_RESPONSES["item/commandExecution/requestApproval"],
-          )({ decision: params.decision });
-          yield* responses.approval({
-            threadId,
-            requestId: id,
-            response: {
-              kind: "command",
-              decision: response.decision as CommandExecutionApprovalDecision,
-            },
-          });
-          return { ok: true };
-        }
-        case "thread-follower-file-approval-decision": {
-          const id = yield* requireRequestId();
-          const response = yield* Schema.decodeUnknownEffect(
-            SERVER_REQUEST_RESPONSES["item/fileChange/requestApproval"],
-          )({ decision: params.decision });
-          yield* responses.approval({
-            threadId,
-            requestId: id,
-            response: { kind: "file", decision: response.decision },
-          });
-          return { ok: true };
-        }
-        case "thread-follower-permissions-request-approval-response": {
-          const id = yield* requireRequestId();
-          const response = yield* Schema.decodeUnknownEffect(
-            SERVER_REQUEST_RESPONSES["item/permissions/requestApproval"],
-          )(params.response);
-          yield* responses.permission({
-            threadId,
-            requestId: id,
-            response: response as PermissionsRequestApprovalResponse,
-          });
           return { ok: true };
         }
         case "thread-follower-submit-mcp-server-elicitation-response": {

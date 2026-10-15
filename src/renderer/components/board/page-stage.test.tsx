@@ -22,7 +22,7 @@ import {
 } from "../../../shared/block-documents/page-document";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import { populateBlockDocumentBodyFromNfm } from "../../../shared/block-documents/block-document-codec";
-import { projectContentAccess } from "../../../shared/content-access-context";
+import { projectContentRoute } from "../../../shared/content-routing-context";
 import { buildPageDetailFixtureResult } from "@/test/page-detail-fixture";
 import { consumePageBlockFocus, requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import type { NfmEditorBoundaryHandle } from "./editor/nfm-editor";
@@ -160,12 +160,11 @@ function documentAuthority(): PageStageDocumentAuthority {
     kind: "yjs" as const,
     descriptor: {
       libraryId: "library-default",
-      accessContext: { kind: "project" as const, projectId: "default" },
+      routingContext: { kind: "project" as const, projectId: "default" },
       ownerBlockId: "page-1",
       ownerType: "page" as const,
       ownerLifecycle: "active" as const,
       documentId: "document:page-1",
-      authorization: null,
       storeEpoch: "store-1",
       generation: 1,
       headSeq: 1,
@@ -187,7 +186,7 @@ function renderStage(
   return renderView(
     <NodexTooltipProvider>
       <PageStage
-        contentAccessContext={projectContentAccess("default")}
+        contentRoutingContext={projectContentRoute("default")}
         onClose={() => undefined}
         page={page}
         projectName="Default"
@@ -336,7 +335,7 @@ describe("page stage", () => {
 
     expect(getByText("Mock collaborative editor").textContent).toBe("Mock collaborative editor");
     const source = lastNfmEditorProps?.source as Record<string, unknown>;
-    expect(lastNfmEditorProps?.contentAccessContext).toEqual(projectContentAccess("default"));
+    expect(lastNfmEditorProps?.contentRoutingContext).toEqual(projectContentRoute("default"));
     expect(source.kind).toBe("collaborative-document");
     expect(source.documentId).toBe("document:page-1");
     expect(Object.hasOwn(source, "content")).toBe(false);

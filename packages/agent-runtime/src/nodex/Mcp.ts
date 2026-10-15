@@ -48,13 +48,12 @@ const layerAuthentication = HttpRouter.middleware<{
   provides: Invocation.McpInvocationContext;
 }>()(makeAuthentication).layer;
 const tools = OrchestratorToolkit.tools;
-const executionToolkit = Toolkit.make(
+export const executionToolkit = Toolkit.make(
   tools.orchestrator_capabilities,
   tools.delegate_task,
   tools.task_status,
   tools.task_cancel,
   tools.t3_workflow_stop,
-  tools.create_threads,
   tools.t3_thread_list,
   tools.t3_thread_read,
   tools.t3_thread_update,

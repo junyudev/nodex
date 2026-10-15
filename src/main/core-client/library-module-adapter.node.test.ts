@@ -11,7 +11,6 @@ import {
 } from "../../shared/database-identities";
 import { LIBRARY_NAVIGATION_EVENT_VERSION } from "../../shared/library-events";
 import { committedLocalCommit } from "../../shared/testing/local-commit";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import type { PageLifecycleMutationRequestV2 } from "../../shared/page-lifecycle-v2";
 import { FakeCoreClient } from "./testing/fake-core-client";
 import { createCoreLocalCommitFixture } from "./testing/local-commit-fixture";
@@ -25,23 +24,10 @@ const identity = {
 } as const;
 const structuralDigest = "b".repeat(64);
 
-const pageAuthorization = (commitSeq: number) =>
-  authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "project",
-      library_id: identity.libraryId,
-      project_id: "project:test",
-    },
-    subject: { kind: "page", page_id: "page:one" },
-    commitSeq,
-    storeEpoch: identity.storeEpoch,
-  });
-
 const pageDetailSnapshot = () => ({
   contract_version: 9 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 9,
-  authorization: pageAuthorization(9),
   value: {
     kind: "page_detail" as const,
     value: {
@@ -79,7 +65,7 @@ const pageDetailSnapshot = () => ({
         },
       ],
       data_source_context: { kind: "standalone" as const },
-      access_context: { kind: "library" as const },
+      routing_context: { kind: "library" as const },
     },
   },
 });
@@ -88,7 +74,6 @@ const pageHistorySnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 12,
-  authorization: null,
   value: {
     kind: "page_history" as const,
     value: {
@@ -134,7 +119,6 @@ const projectPageSearchSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 13,
-  authorization: null,
   value: {
     kind: "project_page_search" as const,
     items: [
@@ -174,7 +158,6 @@ const projectPageSearchFacetsSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 13,
-  authorization: null,
   value: {
     kind: "project_page_search_facets" as const,
     value: {
@@ -195,7 +178,6 @@ const projectPageSearchMetadataSnapshot = () => ({
   contract_version: 28 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 13,
-  authorization: null,
   value: {
     kind: "project_page_search_metadata" as const,
     items: [
@@ -211,7 +193,7 @@ const projectPageSearchMetadataSnapshot = () => ({
         location_label: "Product / Editor",
         updated_at: "2026-07-19T18:12:00.000Z",
         properties: [{ property_id: "summary", property_name: "Summary", text: "Canonical" }],
-        authorized_project_ids: ["project:test"],
+        project_ids: ["project:test"],
         data_source_ids: ["source:test"],
       },
     ],
@@ -222,7 +204,6 @@ const pageReferenceCandidatesSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
-  authorization: null,
   value: {
     kind: "page_reference_candidates" as const,
     items: [
@@ -254,7 +235,6 @@ const pageTargetSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
-  authorization: null,
   value: {
     kind: "page_target" as const,
     value: {
@@ -274,7 +254,6 @@ const pageOwnershipPathSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
-  authorization: null,
   value: {
     kind: "page_ownership_path" as const,
     value: {
@@ -295,10 +274,9 @@ const pageLocationSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
-  authorization: null,
   value: {
     kind: "page_location" as const,
-    value: { page_id: "page:one", access_project_id: "project:test" },
+    value: { page_id: "page:one", project_id: "project:test" },
   },
 });
 
@@ -306,14 +284,13 @@ const viewLocationSnapshot = () => ({
   contract_version: 4 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 14,
-  authorization: null,
   value: {
     kind: "view_location" as const,
     value: {
       view_id: "view:test",
       data_source_id: "source:test",
       database_id: "database:test",
-      access_project_id: "project:test",
+      project_id: "project:test",
     },
   },
 });
@@ -392,7 +369,6 @@ const lifecycleDefaultView = () => ({
     name: "Tasks",
     lifecycle: "active",
     defaultViewId: "view:test",
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: "2026-07-19T18:00:00.000Z",
     updatedAt: "2026-07-19T18:00:00.000Z",
@@ -444,7 +420,6 @@ const pageLifecyclePreflightSnapshot = () => ({
   contract_version: 2 as const,
   store_epoch: identity.storeEpoch,
   commit_head: 15,
-  authorization: null,
   value: {
     kind: "page_lifecycle_preflight" as const,
     value: {
@@ -517,7 +492,6 @@ describe("Core Library Module Adapter", () => {
     expect(libraryDetail).toMatchObject({
       ok: true,
       value: {
-        accessContext: { kind: "library" },
         libraryId: identity.libraryId,
         page: { pageId: "page:one" },
       },
@@ -569,7 +543,6 @@ describe("Core Library Module Adapter", () => {
     await expect(rootAdapter.readLibraryPageDetail("page:one")).resolves.toMatchObject({
       ok: true,
       value: {
-        accessContext: { kind: "library" },
         page: { pageId: "page:one" },
       },
     });
@@ -666,7 +639,7 @@ describe("Core Library Module Adapter", () => {
 
     await expect(
       adapter.resolvePageTarget({
-        accessContext: { kind: "project", projectId: "project:test" },
+        routingContext: { kind: "project", projectId: "project:test" },
         targetPageId: "page:one",
       }),
     ).resolves.toMatchObject({
@@ -677,14 +650,13 @@ describe("Core Library Module Adapter", () => {
     });
     await expect(
       adapter.resolvePageOwnershipPath({
-        accessContext: { kind: "project", projectId: "project:test" },
+        routingContext: { kind: "project", projectId: "project:test" },
         targetPageId: "page:one",
       }),
     ).resolves.toEqual({
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 14,
-      authorization: null,
       status: "available",
       targetPageId: "page:one",
       ancestors: [
@@ -711,6 +683,32 @@ describe("Core Library Module Adapter", () => {
       { kind: "page_location", page_id: "page:one" },
       { kind: "view_location", view_id: "view:test" },
     ]);
+  });
+
+  test("maps Library lifecycle metadata without a Project default or implicit query", async () => {
+    const client = new FakeCoreClient();
+    const snapshot = pageLifecyclePreflightSnapshot();
+    client.enqueueRead({
+      ...snapshot,
+      value: {
+        ...snapshot.value,
+        value: { ...snapshot.value.value, default_view: null, tags_property: null },
+      },
+    });
+    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
+    await expect(adapter.readPageLifecyclePreflight(null, "page:one")).resolves.toMatchObject({
+      ok: true,
+      value: {
+        projectId: null,
+        libraryId: identity.libraryId,
+        value: {
+          defaultView: null,
+          tagsProperty: null,
+          page: { pageId: "page:one", metadataRevision: 3, parentRevision: 2 },
+        },
+      },
+    });
+    expect(client.reads).toEqual([{ kind: "page_lifecycle_preflight", page_id: "page:one" }]);
   });
 
   test("maps one native Page lifecycle compiler snapshot", async () => {
@@ -1261,19 +1259,19 @@ describe("Core Library Module Adapter", () => {
     const projectAdapter = createCoreLibraryModuleAdapter({ client: projectClient, ...identity });
 
     await projectAdapter.resolvePageTarget({
-      accessContext: { kind: "project", projectId: "project:test" },
+      routingContext: { kind: "project", projectId: "project:test" },
       targetPageId: "page:one",
     });
     await projectAdapter.resolvePageOwnershipPath({
-      accessContext: { kind: "project", projectId: "project:test" },
+      routingContext: { kind: "project", projectId: "project:test" },
       targetPageId: "page:one",
     });
     await rootAdapter.resolvePageTarget({
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       targetPageId: "page:one",
     });
     await rootAdapter.resolvePageOwnershipPath({
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       targetPageId: "page:one",
     });
     await expect(
@@ -1303,7 +1301,7 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
-  test("maps the Project-authorized Page search aggregate", async () => {
+  test("maps the Project-filtered Page search aggregate", async () => {
     const client = new FakeCoreClient();
     client.enqueueRead(projectPageSearchSnapshot());
     const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
@@ -1362,6 +1360,26 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
+  test("keeps standalone Library search hits without inventing a Project", async () => {
+    const client = new FakeCoreClient();
+    const snapshot = projectPageSearchSnapshot();
+    client.enqueueRead({
+      ...snapshot,
+      value: {
+        ...snapshot.value,
+        items: snapshot.value.items.map((item) => ({ ...item, project_id: null })),
+      },
+    });
+    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
+    const result = await adapter.searchPages({ projectIds: [], query: "page", limit: 25 });
+    expect(result.results[0]).toMatchObject({ projectId: null, pageId: "page:one" });
+    expect(client.reads[0]).toMatchObject({
+      kind: "project_page_search",
+      project_ids: [],
+      limit: 25,
+    });
+  });
+
   test("maps Page search facets from the same Project scope", async () => {
     const client = new FakeCoreClient();
     client.enqueueRead(projectPageSearchFacetsSnapshot());
@@ -1386,23 +1404,16 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
-  test("keeps metadata projection authorization and revision in one snapshot", async () => {
+  test("keeps metadata projection and revision in one snapshot", async () => {
     const client = new FakeCoreClient();
     client.enqueueRead(projectPageSearchMetadataSnapshot());
     const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
 
     const snapshot = await adapter.pageSearchMetadata(["project:test"]);
 
-    expect(snapshot.authorization).toEqual({
-      libraryId: "library:test",
-      storeEpoch: "epoch:test",
-      coveredCommitSeq: 13,
-      projectIds: ["project:test"],
-    });
     expect(snapshot.documents[0]).toMatchObject({
       pageId: "page:one",
       pageKey: "NDX-1",
-      authorizedProjectIds: ["project:test"],
       dataSourceIds: ["source:test"],
       properties: [{ propertyId: "summary", propertyName: "Summary", text: "Canonical" }],
     });
@@ -1467,7 +1478,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 2,
       store_epoch: identity.storeEpoch,
       commit_head: 7,
-      authorization: null,
       value: {
         kind: "children",
         parent: { kind: "library" },
@@ -1502,7 +1512,6 @@ describe("Core Library Module Adapter", () => {
         libraryId: identity.libraryId,
         storeEpoch: identity.storeEpoch,
         commitSeq: 7,
-        authorization: null,
         value: {
           kind: "children",
           parent: { kind: "library" },
@@ -1542,7 +1551,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 12,
       store_epoch: identity.storeEpoch,
       commit_head: 8,
-      authorization: null,
       value: {
         kind: "move_destinations",
         target: { kind: "page", page_id: "page:source" },
@@ -1623,7 +1631,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 14,
       store_epoch: identity.storeEpoch,
       commit_head: 9,
-      authorization: null,
       value: {
         kind: "page_relocation_destinations",
         page_id: "page:source",
@@ -1702,7 +1709,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 8,
       store_epoch: identity.storeEpoch,
       commit_head: 8,
-      authorization: null,
       value: {
         kind: "standalone_roots",
         items: [
@@ -1753,141 +1759,6 @@ describe("Core Library Module Adapter", () => {
     ]);
   });
 
-  test("maps the Project access matrix and atomic access intent", async () => {
-    const client = new FakeCoreClient();
-    client.enqueueRead({
-      contract_version: 8,
-      store_epoch: identity.storeEpoch,
-      commit_head: 9,
-      authorization: null,
-      value: {
-        kind: "resource_project_access",
-        value: {
-          target: { kind: "page", page_id: "page:one" },
-          projects: [
-            {
-              project_id: "project:test",
-              project_name: "Product",
-              appearance: {
-                color: "blue",
-                marker: { kind: "icon", icon: "folder" },
-              },
-              lifecycle: "active",
-              direct_grant: { access: "read", revision: 2 },
-              inherited_sources: [
-                {
-                  kind: "ancestor_page",
-                  page_id: "page:parent",
-                  page_title: "Strategy",
-                  access: "read_write",
-                },
-              ],
-              effective_access: "read_write",
-            },
-          ],
-        },
-      },
-    });
-    client.enqueueApply({
-      value: {
-        page_file_entries: [],
-        affected_resource_ids: ["page:one"],
-        page_copy: null,
-        block_transfer: null,
-        page_lifecycle: null,
-      },
-      receipt: {
-        operation_id: "operation:set-access",
-        duplicate: false,
-        operation_kind: "set_project_access",
-        did_mutate: true,
-        created_target: null,
-        affected_parent_keys: [],
-        affected_page_ids: ["page:one"],
-        affected_database_ids: [],
-        affected_view_ids: [],
-        committed_revisions: { "projectGrant:project:test": 3 },
-        commit_seq: 10,
-        committed_at: "2026-08-04T00:00:00.000Z",
-      },
-      event_sequence: 10,
-      store_epoch: identity.storeEpoch,
-    });
-    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
-
-    await expect(
-      adapter.read({
-        read: {
-          mode: "resource_project_access",
-          target: { kind: "page", pageId: "page:one" },
-        },
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      value: {
-        value: {
-          kind: "resource_project_access",
-          value: {
-            projects: [
-              {
-                projectId: "project:test",
-                directGrant: { access: "read", revision: 2 },
-                inheritedSources: [
-                  {
-                    kind: "ancestor_page",
-                    pageId: "page:parent",
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      },
-    });
-    await expect(
-      adapter.apply({
-        operationId: "operation:set-access",
-        storeEpoch: identity.storeEpoch,
-        operation: {
-          kind: "set_project_access",
-          target: { kind: "page", pageId: "page:one" },
-          changes: [
-            {
-              projectId: "project:test",
-              access: null,
-              expectedRevision: 2,
-            },
-          ],
-        },
-      }),
-    ).resolves.toMatchObject({
-      ok: true,
-      value: { operationKind: "set_project_access", didMutate: true },
-    });
-    expect(client.reads).toEqual([
-      {
-        kind: "resource_project_access",
-        target: { kind: "page", page_id: "page:one" },
-      },
-    ]);
-    expect(client.applies).toEqual([
-      {
-        operationId: "operation:set-access",
-        intent: {
-          kind: "set_project_access",
-          target: { kind: "page", page_id: "page:one" },
-          changes: [
-            {
-              project_id: "project:test",
-              access: null,
-              expected_revision: 2,
-            },
-          ],
-        },
-      },
-    ]);
-  });
-
   test("maps Canvas targets and typed Canvas lifecycle receipts", async () => {
     const canvasId = "019f7399-7676-70ae-b2aa-168692b64d21";
     const documentId = "019f7399-7676-70ae-b2aa-168692b64d22";
@@ -1896,7 +1767,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 2,
       store_epoch: identity.storeEpoch,
       commit_head: 11,
-      authorization: null,
       value: {
         kind: "canvas_target",
         value: {
@@ -2009,7 +1879,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 2,
       store_epoch: identity.storeEpoch,
       commit_head: 11,
-      authorization: null,
       value: {
         kind: "canvas_target",
         value: {
@@ -2233,7 +2102,6 @@ describe("Core Library Module Adapter", () => {
       contract_version: 35,
       store_epoch: identity.storeEpoch,
       commit_head: 8,
-      authorization: pageAuthorization(8),
       value: {
         kind: "page_mention_destination",
         value: {

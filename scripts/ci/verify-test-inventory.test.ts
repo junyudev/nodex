@@ -11,6 +11,7 @@ describe("actual test inventory", () => {
         "packages/new-package/behavior.spec.ts",
         "src/a.ts",
         "scripts/fixtures/tooling/invalid.test.ts",
+        "packages/agent-runtime/vendor/contracts/src/upstream.test.ts",
       ]),
     ).toEqual([file, "packages/new-package/behavior.spec.ts"]);
   });

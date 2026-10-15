@@ -39,6 +39,7 @@ export const localEndpointConfig = (options: CodexRuntimeOptions): CodexEndpoint
   hostId: options.local.hostId,
   hostKind: options.local.ssh ? "ssh" : "local",
   transportKind: options.local.ssh || options.local.localDaemon ? "websocket" : "stdio",
+  startup: "on-demand",
   sessionLayer:
     options.localSessionLayer ?? ((generation) => sessionLive({ ...options.local, generation })),
   ...(options.retryBase === undefined ? {} : { retryBase: options.retryBase }),

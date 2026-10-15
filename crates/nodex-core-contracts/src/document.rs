@@ -15,8 +15,8 @@ mod recovery;
 pub use recovery::*;
 pub mod recovery_bundle;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 15;
-pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 16;
+pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 4;
 /// A complete 2 MiB Canvas mutation plus bounded identity and File metadata.
 pub const MAX_CANVAS_MUTATION_EVENT_BYTES: usize = 2 * 1024 * 1024 + 256 * 1024;
 
@@ -66,7 +66,7 @@ pub struct DocumentRecoveryArtifact {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum OwnedDocumentAccessContext {
+pub enum ContentRoutingContext {
     Library,
     Project {
         #[serde(rename = "projectId")]
@@ -101,15 +101,14 @@ pub enum OwnedDocumentSyncDescriptor {
 }
 
 /// Canonical identity and durable head for a Document as observed through one
-/// explicit access boundary. Library ownership and Project authorization are
-/// deliberately separate fields; adapters must validate this descriptor, not
-/// rewrite it into a caller-shaped identity.
+/// explicit Document owner boundary. Project is presentation routing metadata;
+/// adapters preserve the canonical identity and current owner lifecycle.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnedDocumentDescriptor {
     pub version: u32,
     pub library_id: String,
-    pub access_context: OwnedDocumentAccessContext,
+    pub routing_context: ContentRoutingContext,
     pub owner_block_id: String,
     pub owner_type: String,
     pub owner_lifecycle: OwnedDocumentOwnerLifecycle,
@@ -130,7 +129,7 @@ pub enum DocumentLiveEngine {
     CanvasScene,
 }
 
-/// Atomic authorization and coverage boundary for one exact Document lease.
+/// Atomic identity and coverage boundary for one exact Document lease.
 /// Historical state through `commit_head` is supplied by canonical sync;
 /// only later addressed commits belong to this live stream.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -150,7 +149,6 @@ pub enum DocumentLiveRepairReason {
     ReceiverLagged,
     PayloadUnavailable,
     IdentityChanged,
-    AccessRevoked,
     EventGap,
 }
 
@@ -810,7 +808,7 @@ pub enum OwnedDocumentEvent {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DocumentInvalidationReason {
-    AccessChanged,
+    OwnerDeleted,
     GenerationChanged,
     Restored,
 }

@@ -419,7 +419,7 @@ describe("orchestration V2 contracts", () => {
         supportsMultipleProviderThreadsPerSession: false,
         supportsModelSwitchInSession: false,
         supportsProviderSwitchingViaHandoff: true,
-        supportsRuntimeModeSwitchInSession: false,
+
         pendingRequestsSurviveRestart: false,
       },
       threads: {
@@ -649,7 +649,7 @@ describe("orchestration V2 contracts", () => {
         instanceId: "claudeAgent",
         model: "claude-sonnet-4-6",
       },
-      runtimeMode: "approval-required",
+      runtimeMode: "full-access",
       interactionMode: "plan",
     });
 

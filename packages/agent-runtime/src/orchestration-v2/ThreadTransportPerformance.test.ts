@@ -34,9 +34,10 @@ const HISTORICAL_FULL_SNAPSHOT_APPLICATION_BYTES = 10_375_079;
 // snapshot variants. WebSocket framing and compression are intentionally out
 // of scope for this deterministic pre-compression measurement.
 const FULL_SNAPSHOT_RPC_JSON_BYTES = 10_375_121;
-const PRE_OMISSION_BOUNDED_SNAPSHOT_RPC_JSON_BYTES = 1_038_647;
-// The first payload-omitting projection measured 67,412 bytes.
-const MAX_PROJECTED_BOUNDED_SNAPSHOT_RPC_JSON_BYTES = 131_072;
+// The stable history cursor includes the captured source ordinal.
+const PRE_OMISSION_BOUNDED_SNAPSHOT_RPC_JSON_BYTES = 1_038_659;
+// A fallback without user-Turn boundaries now admits up to 500 items.
+const MAX_PROJECTED_BOUNDED_SNAPSHOT_RPC_JSON_BYTES = 524_288;
 const PRE_OMISSION_COMMAND_EVENT_RPC_JSON_BYTES = 8_790;
 // The first payload-omitting projection measured 586 bytes.
 const MAX_PROJECTED_COMMAND_EVENT_RPC_JSON_BYTES = 1_024;
@@ -193,9 +194,9 @@ describe("thread transport payload budget", () => {
     expect(projectedBoundedRpcJsonBytes).toBeLessThanOrEqual(
       MAX_PROJECTED_BOUNDED_SNAPSHOT_RPC_JSON_BYTES,
     );
-    expect(projectedBoundedRpcJsonBytes / fullRpcJsonBytes).toBeLessThanOrEqual(0.02);
+    expect(projectedBoundedRpcJsonBytes / fullRpcJsonBytes).toBeLessThanOrEqual(0.05);
     expect(preOmissionBoundedSnapshot.projection.visibleTurnItems).toHaveLength(60);
-    expect(projectedBoundedSnapshot.projection.visibleTurnItems).toHaveLength(75);
+    expect(projectedBoundedSnapshot.projection.visibleTurnItems).toHaveLength(500);
     expect(projectedBoundedSnapshot.hasMoreHistory).toBe(true);
     expect(projectedBoundedSnapshot.payloadBudgetExceeded).toBe(false);
   });
