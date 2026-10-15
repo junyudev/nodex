@@ -535,10 +535,11 @@ interaction retains the same content access.
 ### Execution identity
 
 Execution identity identifies the product Session, runtime, Run, attempt and native
-process that issued a call. A captured call remains attached to its original execution.
-Cancellation, connection retirement or Session deletion invalidates it. A replacement
-execution never adopts an invalid call. Profile and Store identity identify the
-physical resource lifetime.
+process that issued a call. A captured call remains attached to its original execution and
+is honored only while the engine still proves that execution live and its Session stays
+bound and active. Cancellation, connection retirement, Session archive or deletion end it.
+A replacement execution never adopts an invalid call. Profile and Store identity identify
+the physical resource lifetime.
 
 ### Structural edit
 
