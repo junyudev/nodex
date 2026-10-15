@@ -1,0 +1,28 @@
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_1ca65ffa5958ee::t_dae39c3c276609 127-128,130-140,147-159,161-162,265,273
+  s_1ca65ffa5958ee::t_797cef72278569 266-267,274-275,277-281
+  s_1ca65ffa5958ee::t_f3118b91fffa41 25-26,178-182,259-264,268-271,276
+  s_1ca65ffa5958ee::t_fdc16086826964 272
+tests/e2e/agent-runtime-delegation-pressure.spec.ts
+  s_1ca65ffa5958ee::t_e90f62dfc95817 204-205,214-216
+  s_1ca65ffa5958ee::t_ce6952d407ee59 1-44,47-64,66-78,80-117,119-157,161-165,180,182-183,185-203,211,217-232,235-248,252-285,287-305
+  s_1ca65ffa5958ee::t_d52df1eb58ec6b 45-46,79,118,286
+  s_1ca65ffa5958ee::t_41ef2c496eb167 65,158-160,166-179,181,233-234,249-251
+  s_1ca65ffa5958ee::t_c76b8a73af194d 184,206-210,212-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7f6d4874aa02f665f1cdc8474b646f32cb39aba5",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
