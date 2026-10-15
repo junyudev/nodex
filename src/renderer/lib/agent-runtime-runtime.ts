@@ -25,6 +25,8 @@ import type {
   AgentRuntimeAttachmentInput,
   AgentRuntimeSessionEvent,
   AgentRuntimeObserveInput,
+  AgentRuntimeSessionActivitySnapshot,
+  AgentRuntimeConnectionState,
 } from "../../shared/agent-runtime-api";
 import type {
   AgentHistoryPage,
@@ -177,6 +179,8 @@ export interface AgentRuntimeRendererTransport {
   readonly attachment: (
     input: AgentRuntimeAttachmentInput,
   ) => Promise<AgentRuntimeOperations["thread.attachment"]["output"]>;
+  readonly activity: () => Promise<AgentRuntimeSessionActivitySnapshot>;
+  readonly connection: () => Promise<AgentRuntimeConnectionState>;
   readonly subscribe: (
     input: AgentRuntimeSessionTarget &
       Pick<AgentRuntimeObserveInput, "afterSequence" | "eventTypes">,
@@ -209,6 +213,8 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   readQueuedMessage: (input) => invokeRendererQuery("agent-runtime:session:queued-message", input),
   item: (input) => invokeRendererQuery("agent-runtime:session:item", input),
   attachment: (input) => invokeRendererQuery("agent-runtime:session:attachment", input),
+  activity: () => invokeRendererQuery("agent-runtime:activity:read"),
+  connection: () => invokeRendererQuery("agent-runtime:connection:read"),
   subscribe: async (input, listener) => {
     const observe = resolveRendererTransport().subscribeAgentRuntimeSessionEvents;
     if (!observe) throw new Error("Agent Runtime event delivery is unavailable");

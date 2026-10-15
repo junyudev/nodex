@@ -12,6 +12,14 @@ export interface RendererTransport {
   subscribeAgentRuntimeSessionEvents?: (
     callback: (event: import("../../shared/agent-runtime-api").AgentRuntimeSessionEvent) => void,
   ) => () => void;
+  subscribeAgentRuntimeActivityChanges?: (
+    callback: (
+      change: import("../../shared/agent-runtime-api").AgentRuntimeSessionActivityChange,
+    ) => void,
+  ) => () => void;
+  subscribeAgentRuntimeConnectionChanges?: (
+    callback: (state: import("../../shared/agent-runtime-api").AgentRuntimeConnectionState) => void,
+  ) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
   subscribeClaudeAgentSettingsChanges: (callback: () => void) => () => void;
   sendGitWorkerMessage: (

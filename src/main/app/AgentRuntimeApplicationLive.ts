@@ -36,6 +36,8 @@ import {
   AgentRuntimeSupervisor,
   make as makeSupervisor,
 } from "../agent-runtime/AgentRuntimeSupervisor";
+import * as SessionActivity from "../agent-runtime/AgentRuntimeSessionActivity";
+import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessionActivity";
 import {
   AgentRuntimeProviderConfiguration,
   AgentRuntimeProviderConfigurationError,
@@ -464,6 +466,7 @@ const supervisor = Layer.effectContext(
         }),
     });
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
+      Context.add(AgentRuntimeSessionActivity, SessionActivity.inactive),
       Context.add(AgentRuntimeProviderConfiguration, { refresh }),
       Context.add(AgentRuntimeApplication, product),
       Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),

@@ -73,6 +73,8 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "agent-runtime:activity:read"
+  | "agent-runtime:connection:read"
   | "agent-runtime:session:read"
   | "agent-runtime:session:control"
   | "agent-runtime:session:inspect"

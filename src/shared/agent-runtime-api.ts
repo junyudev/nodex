@@ -181,7 +181,60 @@ export type AgentRuntimeSessionEvent =
       readonly reason: "delivery-gap" | "runtime-restarted" | "stream-failed";
     };
 
+/**
+ * Live execution facts for one Runtime-bound Session. Idle Sessions are absent.
+ * `waiting` means an information question awaits the user; `background` means no
+ * foreground Run is active but delegated or native background work is live, or a
+ * delegated result will wake the Session automatically.
+ */
+export interface AgentRuntimeSessionActivity {
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly status: "running" | "waiting" | "background";
+  readonly activeRunId: string | null;
+  readonly pendingRequestCount: number;
+  readonly activeTaskCount: number;
+  readonly resumesAutomatically: boolean;
+  readonly providerInstanceId: string;
+  readonly model: string;
+  readonly updatedAt: string;
+}
+
+/** Bounded snapshot of non-idle Sessions; `complete: false` means more exist than were returned. */
+export interface AgentRuntimeSessionActivitySnapshot {
+  readonly sequence: number;
+  readonly items: readonly AgentRuntimeSessionActivity[];
+  readonly complete: boolean;
+}
+
+export type AgentRuntimeSessionActivityChange =
+  | {
+      readonly type: "upsert";
+      readonly sequence: number;
+      readonly activity: AgentRuntimeSessionActivity;
+    }
+  | { readonly type: "remove"; readonly sequence: number; readonly sessionId: string }
+  /** Consumers discard local state and read a fresh snapshot. */
+  | { readonly type: "reset"; readonly sequence: number };
+
+/** Supervised execution process availability, independent of any one Session. */
+export type AgentRuntimeConnectionState =
+  /** Not running and nothing requires it; the next operation starts it. */
+  | { readonly status: "idle" }
+  | { readonly status: "starting" }
+  | { readonly status: "ready"; readonly generation: string }
+  | { readonly status: "restarting"; readonly attempt: number }
+  | { readonly status: "failed"; readonly message: string };
+
 export interface AgentRuntimeIpcApi {
+  "agent-runtime:activity:read": {
+    args: [];
+    result: AgentRuntimeSessionActivitySnapshot;
+  };
+  "agent-runtime:connection:read": {
+    args: [];
+    result: AgentRuntimeConnectionState;
+  };
   "agent-runtime:session:launch": {
     args: [input: AgentRuntimeLaunch];
     result: AgentRuntimeLaunchResult;

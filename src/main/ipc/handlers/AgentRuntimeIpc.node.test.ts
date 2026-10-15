@@ -11,6 +11,8 @@ import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { AgentRuntimeSupervisor } from "../../agent-runtime/AgentRuntimeSupervisor";
+import * as SessionActivity from "../../agent-runtime/AgentRuntimeSessionActivity";
+import { AgentRuntimeSessionActivity } from "../../agent-runtime/AgentRuntimeSessionActivity";
 import { testLayer } from "../../app/MainConfig";
 import { layer as callbacks, ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -95,6 +97,7 @@ const setup = Effect.gen(function* () {
         Layer.mergeAll(
           Layer.succeed(AgentRuntimeApplication, application),
           Layer.succeed(AgentRuntimeSupervisor, { get: () => Effect.succeed(connection) } as never),
+          Layer.succeed(AgentRuntimeSessionActivity, SessionActivity.inactive),
           Layer.succeed(
             ElectronIpc,
             makeTestElectronIpc({
@@ -105,7 +108,10 @@ const setup = Effect.gen(function* () {
               on: () => Effect.void,
             }),
           ),
-          Layer.succeed(WindowRuntime, { has: (id: number) => id === 1 || id === 2 } as never),
+          Layer.succeed(WindowRuntime, {
+            has: (id: number) => id === 1 || id === 2,
+            all: () => [],
+          } as never),
           testLayer(),
           Layer.succeed(ScopedCallbackRuntime, callbackRuntime),
         ),

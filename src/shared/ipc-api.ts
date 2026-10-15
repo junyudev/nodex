@@ -2836,6 +2836,8 @@ export interface IpcEvents {
   "dictation:open-recording": { readonly recordingId: string };
   "agent-import:progress": AgentImportProgress;
   "agent-runtime:session-event": import("./agent-runtime-api").AgentRuntimeSessionEvent;
+  "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
+  "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;
   "document-sync:event": DocumentSyncRealtimeEvent;
   "persisted-atom:updated": PersistedAtomEvent;

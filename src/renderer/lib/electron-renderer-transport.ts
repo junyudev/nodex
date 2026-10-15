@@ -371,6 +371,22 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeAgentRuntimeActivityChanges(callback) {
+      return bridge.on("agent-runtime:activity-changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/agent-runtime-api").AgentRuntimeSessionActivityChange
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
+    subscribeAgentRuntimeConnectionChanges(callback) {
+      return bridge.on("agent-runtime:connection-changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/agent-runtime-api").AgentRuntimeConnectionState
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeCodexHostMessages(callback: (message: CodexHostMessage) => void) {
       return bridge.on("codex:host-message", (...args: unknown[]) => {
         const payload = args[0] as CodexHostMessage | undefined;

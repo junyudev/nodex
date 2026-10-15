@@ -12,10 +12,11 @@ import type {
 } from "../../../shared/agent-runtime-api";
 import * as Inputs from "../../../shared/schemas/agent-runtime-api";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSessionActivity } from "../../agent-runtime/AgentRuntimeSessionActivity";
 import { AgentRuntimeSupervisor } from "../../agent-runtime/AgentRuntimeSupervisor";
 import { MainConfig } from "../../app/MainConfig";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
-import { safeSendToWebContents } from "../../ipc-safe-send";
+import { safeBroadcastToWindows, safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -33,6 +34,7 @@ export const live = Layer.effectDiscard(
   Effect.gen(function* () {
     const application = yield* AgentRuntimeApplication;
     const supervisor = yield* AgentRuntimeSupervisor;
+    const activity = yield* AgentRuntimeSessionActivity;
     const ipc = yield* ElectronIpc;
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
@@ -93,6 +95,29 @@ export const live = Layer.effectDiscard(
       );
     yield* Effect.addFinalizer(() =>
       Effect.forEach([...watchers.keys()], release, { discard: true }),
+    );
+    // One Main projection serves every window; renderers re-read the snapshot after `reset`.
+    yield* activity.activityChanges.pipe(
+      Stream.runForEach((change) =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.all(), "agent-runtime:activity-changed", [change]),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+    yield* activity.connectionChanges.pipe(
+      Stream.runForEach((state) =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.all(), "agent-runtime:connection-changed", [state]),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+    yield* ipc.handleQuery("agent-runtime:activity:read", (event) =>
+      authorize(event).pipe(Effect.andThen(activity.read)),
+    );
+    yield* ipc.handleQuery("agent-runtime:connection:read", (event) =>
+      authorize(event).pipe(Effect.andThen(activity.connection)),
     );
     yield* ipc.handlePlainCommand("agent-runtime:session:launch", (event, value) =>
       handle(event, Inputs.AgentRuntimeLaunchSchema, value, application.launch),
