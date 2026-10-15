@@ -131,7 +131,7 @@ const command = (
   preparation: CoreCreatePreparation,
 ): NodexAgentCreatePagesCommand => {
   if (!request.authority) {
-    throw new Error("Native Agent Page creation requires frozen Turn authority");
+    throw new Error("Native Agent Page creation requires captured execution provenance");
   }
   if (preparation.pages.length !== request.input.pages.length) {
     throw new Error("Core Agent Page creation returned a divergent Page batch");
@@ -191,7 +191,7 @@ export const prepareNativeNodexAgentPageCreate = async (
   const operationId = nativeNodexAgentPageCreateOperationId(request);
   try {
     if (!request.authority) {
-      throw new Error("Native Agent Page creation requires frozen Turn authority");
+      throw new Error("Native Agent Page creation requires captured execution provenance");
     }
     const createRequest = coreRequest(request);
     const snapshot = await nativeAgentClient(runtime, request.projectId).libraryRead(
@@ -203,7 +203,6 @@ export const prepareNativeNodexAgentPageCreate = async (
           runtime.identity.profileId,
           request.authority,
           request.callId,
-          request.resourceAccess,
         ),
         request: createRequest,
       },
@@ -306,7 +305,7 @@ export const executeNativeNodexAgentPageCreate = async (
         ok: false,
         error: {
           code: "authorization_denied",
-          message: "Native Agent Page creation lost its frozen Turn authority",
+          message: "Native Agent Page creation lost its captured execution provenance",
           retryable: false,
           recovery: "start_new_task",
         },
@@ -325,7 +324,6 @@ export const executeNativeNodexAgentPageCreate = async (
               runtime.identity.profileId,
               authority,
               pending.request.callId,
-              pending.request.resourceAccess,
             ),
             token: pending.token,
           },

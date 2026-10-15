@@ -416,7 +416,7 @@ describe("NFM typed suggestion sessions in Chromium", () => {
       releaseFirstCreation = resolve;
     });
     const runtime: BlockReferenceHostRuntime = {
-      contentAccessContext: { kind: "library" },
+      contentRoutingContext: { kind: "library" },
       projectName: null,
       projectWorkspacePath: null,
       hostPageId: "page:host",

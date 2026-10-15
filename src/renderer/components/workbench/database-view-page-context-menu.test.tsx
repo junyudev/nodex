@@ -49,7 +49,7 @@ vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
 
 const page = {
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   projectId: "project-1",
   pageId: "page-1",
   pageKey: "LAB-13",
@@ -143,7 +143,7 @@ describe("DatabaseViewPageContextMenu", () => {
     });
     await waitFor(() =>
       expect(mocks.loadPageDocumentMaterialization).toHaveBeenCalledWith({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         pageId: "page-1",
       }),
     );
@@ -157,7 +157,7 @@ describe("DatabaseViewPageContextMenu", () => {
       {},
       {
         ...page,
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         projectId: null,
       },
     );
@@ -175,7 +175,7 @@ describe("DatabaseViewPageContextMenu", () => {
 
     await waitFor(() =>
       expect(mocks.loadPageDocumentMaterialization).toHaveBeenCalledWith({
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         pageId: "page-1",
       }),
     );

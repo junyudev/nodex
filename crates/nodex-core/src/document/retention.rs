@@ -11,7 +11,6 @@ use crate::infrastructure::document_repository::{
 };
 use crate::infrastructure::request_execution::check_request_interruption;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
-use crate::infrastructure::visibility_delta_journal::with_maintenance_context;
 
 use super::canvas_scene::{CANVAS_OWNER_TYPE, CANVAS_SCHEMA_KEY, CANVAS_SCHEMA_VERSION};
 use super::history::{
@@ -1115,7 +1114,7 @@ fn maintain_dormant_document_candidate(
     document_id: &str,
 ) -> Result<CandidateOutcome, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let outcome = with_maintenance_context(&transaction, || {
+    let outcome = (|| -> Result<CandidateOutcome, StoreError> {
         let Some(closure) = build_dormant_document_closure(
             &transaction,
             library_id,
@@ -1157,7 +1156,7 @@ fn maintain_dormant_document_candidate(
         }
         collect_dormant_document_closure(&transaction, &replanned, &now)?;
         Ok(CandidateOutcome::Collected(replanned.block_ids))
-    })?;
+    })()?;
     settle_dormant_source(&transaction, library_id, document_id, placeholder_block_id)?;
     transaction.commit()?;
     Ok(outcome)
@@ -1360,7 +1359,7 @@ fn maintain_candidate(
     commit_head: i64,
 ) -> Result<CandidateOutcome, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let outcome = with_maintenance_context(&transaction, || {
+    let outcome = (|| -> Result<CandidateOutcome, StoreError> {
         let Some(root) = read_block(&transaction, root_block_id)? else {
             return Ok(CandidateOutcome::Covered);
         };
@@ -1410,7 +1409,7 @@ fn maintain_candidate(
         }
         let collected = collect_candidate_closure(&transaction, &replanned, &now)?;
         Ok(CandidateOutcome::Collected(collected))
-    })?;
+    })()?;
     if matches!(outcome, CandidateOutcome::Covered) {
         return Ok(outcome);
     }
@@ -2206,7 +2205,7 @@ mod tests {
                     persist_yjs_genesis(
                         connection,
                         PersistYjsGenesis {
-                            file_access_context: None,
+
                             authority: &authority,
                             actor_project_id: Some(PROJECT_ID),
                             materialization: &genesis.materialization,
@@ -2281,7 +2280,6 @@ mod tests {
                             persist_yjs_genesis(
                                 connection,
                                 PersistYjsGenesis {
-                                    file_access_context: None,
                                     authority: &authority,
                                     actor_project_id: Some(PROJECT_ID),
                                     materialization: &genesis.materialization,

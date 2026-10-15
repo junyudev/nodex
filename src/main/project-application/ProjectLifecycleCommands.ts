@@ -1,5 +1,4 @@
-import { OpenCodeSessionManager } from "../agent-backend/opencode/OpenCodeSessionManager";
-import { ClaudeSessionManager } from "../agent-backend/claude/ClaudeSessionManager";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -11,13 +10,11 @@ import type {
   ProjectSessionSummary,
   ProjectSessionSummaryWindow,
 } from "../../shared/types";
-import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import type {
   ProjectLifecycleCommandInput,
   ProjectLifecycleCommandRejected,
   ProjectLifecycleCommittedValue,
 } from "../../shared/workspace-catalog-commands";
-import { AcpBackendSessionManager } from "../agent-backend/acp/AcpBackendSessionManager";
 import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
@@ -61,9 +58,7 @@ export const live: Layer.Layer<
   ProjectLifecycleCommands,
   never,
   | BrowserApplication
-  | AcpBackendSessionManager
-  | ClaudeSessionManager
-  | OpenCodeSessionManager
+  | AgentRuntimeApplication
   | ProjectArchiveBlockers
   | ProjectRuntimeLifecycleRuntime
   | ProjectWorkspace
@@ -72,9 +67,7 @@ export const live: Layer.Layer<
   ProjectLifecycleCommands,
   Effect.gen(function* () {
     const blockers = yield* ProjectArchiveBlockers;
-    const acpSessions = yield* AcpBackendSessionManager;
-    const claudeSessions = yield* ClaudeSessionManager;
-    const openCodeSessions = yield* OpenCodeSessionManager;
+    const execution = yield* AgentRuntimeApplication;
     const browser = yield* BrowserApplication;
     const lifecycleRuntime = yield* ProjectRuntimeLifecycleRuntime;
     const workspace = yield* ProjectWorkspace;
@@ -124,25 +117,24 @@ export const live: Layer.Layer<
       ownership: ProjectOwnershipSnapshot,
     ) {
       const conversationIds = new Set(
-        ownership.sessions.flatMap((session) => (session.thread ? [session.thread.threadId] : [])),
+        ownership.sessions.flatMap((session) =>
+          session.executionRef
+            ? [session.executionRef.threadId]
+            : session.thread
+              ? [session.thread.threadId]
+              : [],
+        ),
       );
       const projectSessionIds = new Set(ownership.sessions.map((session) => session.id));
       const tasks = [
-        ...ownership.sessions.flatMap((session) =>
-          session.thread && !isCodexAgentBackendBinding(session.thread.backendBinding)
-            ? [
-                {
-                  label: `acp-session:${session.thread.threadId}`,
-                  effect: acpSessions
-                    .close(session.thread.threadId)
-                    .pipe(
-                      Effect.andThen(claudeSessions.close(session.thread.threadId)),
-                      Effect.andThen(openCodeSessions.close(session.thread.threadId)),
-                    ),
-                },
-              ]
-            : [],
-        ),
+        ...(ownership.sessions.some((session) => session.executionRef)
+          ? [
+              {
+                label: `agent-execution:${ownership.project.id}`,
+                effect: execution.closeProjectExecution(ownership.project.id),
+              },
+            ]
+          : []),
         ...ownership.sessions.map((session) => ({
           label: `browser-conversation:${session.id}`,
           effect: browser.closeConversation(session.id),

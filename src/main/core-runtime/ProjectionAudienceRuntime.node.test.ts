@@ -28,13 +28,12 @@ const address = (projectId: string): DeliveryAddress => ({
 const lease = (projectId: string, fill = "a"): AuthorizedRecipientLease => ({
   lease_id: fill.repeat(64),
   delivery_address: address(projectId),
-  authorization_scope: address(projectId),
 });
 
 const packet = (commitSeq: number, projectId = "project-1") =>
   createCoreLocalCommitFixture({
     commitSeq,
-    authorizationScope: address(projectId),
+    deliveryAddress: address(projectId),
   });
 
 const sender = (id = 1) => ({
@@ -77,7 +76,7 @@ const acknowledge = (
   envelope: RecipientDeliveryEnvelope,
 ) =>
   runtime.admit(targetId, {
-    version: 2,
+    version: 3,
     deliveryId: envelope.deliveryId,
     outcome: "ack",
   });
@@ -102,7 +101,7 @@ const subscribeReady = (
     return subscription;
   });
 
-it.effect("reuses the active Core grant after all windows briefly release an address", () =>
+it.effect("reuses the active Core lease after all windows briefly release an address", () =>
   Effect.gen(function* () {
     const harness = yield* makeHarness();
     const first = sender(1);
@@ -125,7 +124,7 @@ it.effect("reuses the active Core grant after all windows briefly release an add
     assert.isTrue(yield* acknowledge(harness.runtime, first.id, reopenedReset));
     assert.strictEqual((yield* harness.runtime.publish(packet(2))).sent, 1);
 
-    // Only a replacement Core barrier retires the old grant.
+    // Only a replacement Core barrier retires the old lease.
     yield* harness.runtime.installLeases(
       [lease("project-2")],
       { storeEpoch: "epoch-1", commitSeq: 2 },
@@ -156,7 +155,7 @@ it.effect("tracks a complete packet until the exact renderer ACK", () =>
     }
     assert.isFalse(
       yield* harness.runtime.admit(target.id, {
-        version: 2,
+        version: 3,
         deliveryId: "b".repeat(64),
         outcome: "ack",
       }),
@@ -218,7 +217,7 @@ it.effect("turns NACK and ACK timeout into an address reset", () =>
     const packetDelivery = harness.sent[0]!.envelope;
     assert.isTrue(
       yield* harness.runtime.admit(target.id, {
-        version: 2,
+        version: 3,
         deliveryId: packetDelivery.deliveryId,
         outcome: "nack",
         reason: "capacity",
@@ -457,7 +456,7 @@ it.effect("carries an in-flight floor across exact lease replacement", () =>
   }),
 );
 
-it.effect("does not reuse a grant retired by a replacement Core barrier", () =>
+it.effect("does not reuse a lease retired by a replacement Core barrier", () =>
   Effect.gen(function* () {
     const harness = yield* makeHarness();
     const target = sender();

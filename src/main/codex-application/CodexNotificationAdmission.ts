@@ -1,8 +1,5 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type * as Scope from "effect/Scope";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import {
   extractCodexThreadSubagentMetadata,
   hasCodexSubagentSource,
@@ -12,7 +9,6 @@ import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { CodexTurnPresentation } from "./CodexTurnPresentation";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 
@@ -42,18 +38,6 @@ export class CodexNotificationAdmission extends Context.Service<
 
 const admitted: CodexNotificationAdmissionDecision = { _tag: "Admit" };
 
-const latestInProgressTurnId = (
-  conversations: ConversationEntityMap["Service"],
-  threadId: string,
-): string | null => {
-  const turns = residentConversationTurns(conversations.current(threadId)?.readCanonicalState());
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const turn = turns[index];
-    if (turn?.status === "inProgress" && turn.turnId) return turn.turnId;
-  }
-  return null;
-};
-
 /**
  * Owns notification preconditions that must commit in the same per-Thread causal lane before
  * durable or renderer-visible projection runs.
@@ -65,22 +49,15 @@ export const make: Effect.Effect<
   | CodexSubagentDirectory
   | CodexTurnAuthority
   | CodexTurnPresentation
-  | ConversationEntityMap
   | CoreModules
-  | Scope.Scope
 > = Effect.gen(function* () {
   const internalThreads = yield* CodexInternalThreadRegistry;
   const subagents = yield* CodexSubagentDirectory;
   const authority = yield* CodexTurnAuthority;
   const presentation = yield* CodexTurnPresentation;
-  const conversations = yield* ConversationEntityMap;
   const core = yield* CoreModules;
-  const inheritedBySubagentThreadId = new Map<string, FrozenNodexAgentTurnAuthority>();
-
-  yield* Effect.addFinalizer(() => Effect.sync(() => inheritedBySubagentThreadId.clear()));
-
   const logAuthorityFailure = (
-    operation: "capture-parent" | "bind-started-turn" | "inherit-started-turn",
+    operation: "bind-started-turn",
     threadId: string,
     cause: unknown,
   ): Effect.Effect<void> =>
@@ -93,19 +70,10 @@ export const make: Effect.Effect<
   ): Effect.Effect<void> => {
     const threadId = notification.params.threadId;
     const turnId = notification.params.turn.id;
-    const inherited = inheritedBySubagentThreadId.get(threadId);
-    if (!inherited) {
-      return authority
-        .observeStarted(threadId, turnId)
-        .pipe(
-          Effect.catchCause((cause) => logAuthorityFailure("bind-started-turn", threadId, cause)),
-        );
-    }
-    inheritedBySubagentThreadId.delete(threadId);
     return authority
-      .inherit(threadId, turnId, inherited)
+      .observeStarted(threadId, turnId)
       .pipe(
-        Effect.catchCause((cause) => logAuthorityFailure("inherit-started-turn", threadId, cause)),
+        Effect.catchCause((cause) => logAuthorityFailure("bind-started-turn", threadId, cause)),
       );
   };
 
@@ -131,22 +99,7 @@ export const make: Effect.Effect<
     const threadId = thread.id.trim();
     if (!threadId) return Effect.void;
     subagents.observe(threadId);
-    const parentThreadId = metadata.parentThreadId;
-    if (!parentThreadId || inheritedBySubagentThreadId.has(threadId)) return Effect.void;
-    const parentTurnId = latestInProgressTurnId(conversations, parentThreadId);
-    if (!parentTurnId) return Effect.void;
-
-    return authority.capture(parentThreadId, parentTurnId).pipe(
-      Effect.tap((parentAuthority) =>
-        Effect.sync(() => {
-          if (parentAuthority?.scope === "library") {
-            inheritedBySubagentThreadId.set(threadId, parentAuthority);
-          }
-        }),
-      ),
-      Effect.catchCause((cause) => logAuthorityFailure("capture-parent", parentThreadId, cause)),
-      Effect.asVoid,
-    );
+    return Effect.void;
   };
 
   return CodexNotificationAdmission.of({

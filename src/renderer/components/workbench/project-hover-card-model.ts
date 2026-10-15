@@ -4,6 +4,7 @@ import {
   type LocalPathPresentationContext,
 } from "../../../shared/local-path-presentation";
 import type { ProjectActivitySummary, ProjectSource } from "@/lib/types";
+import type { SessionLiveIndicator } from "@/lib/session-execution";
 
 export interface ProjectHoverCardMetadataRow {
   kind: "repository" | "source";
@@ -13,6 +14,36 @@ export interface ProjectHoverCardMetadataRow {
 
 function pluralize(count: number, singular: string): string {
   return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+export interface ProjectRuntimeSessionFacts {
+  readonly sessionId: string;
+  readonly unread: boolean;
+}
+
+/**
+ * Core counts every Session as a task but derives waiting and active only from native threads.
+ * Runtime Sessions add their live activity with the same exclusive buckets: waiting wins over
+ * unread, and unread wins over active.
+ */
+export function mergeRuntimeProjectActivity(
+  summary: ProjectActivitySummary | null | undefined,
+  runtimeSessions: readonly ProjectRuntimeSessionFacts[],
+  activities: ReadonlyMap<string, { readonly status: SessionLiveIndicator }>,
+): ProjectActivitySummary | null | undefined {
+  if (!summary) return summary;
+  let { waitingCount, unreadCount, activeCount } = summary;
+  for (const session of runtimeSessions) {
+    const status = activities.get(session.sessionId)?.status;
+    if (!status) continue;
+    if (status === "waiting") {
+      waitingCount += 1;
+      if (session.unread) unreadCount = Math.max(0, unreadCount - 1);
+    } else if (!session.unread) {
+      activeCount += 1;
+    }
+  }
+  return { ...summary, waitingCount, unreadCount, activeCount };
 }
 
 export function formatProjectActivitySummary(

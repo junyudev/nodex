@@ -215,14 +215,12 @@ const libraryCommands = {
   create_page_mention: defineLibraryOperation("create_page_mention"),
   delete_canvas: defineLibraryOperation("delete_canvas"),
   duplicate_canvas: defineLibraryOperation("duplicate_canvas"),
-  grant_project_access: defineLibraryOperation("grant_project_access"),
   move_block: defineLibraryOperation("move_block"),
   move_canvas: defineLibraryOperation("move_canvas"),
   move_page: defineLibraryOperation("move_page"),
   rename_canvas: defineLibraryOperation("rename_canvas"),
   restore_resource: defineLibraryOperation("restore_resource"),
   reverse_structural_edit: defineLibraryOperation("reverse_structural_edit"),
-  set_project_access: defineLibraryOperation("set_project_access"),
   undo_page_relocation: defineLibraryOperation("undo_page_relocation"),
 } satisfies IpcOperationDefinitionMap<LibraryOperationKind, LibraryOperationCommand>;
 

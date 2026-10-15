@@ -124,21 +124,6 @@ export const make = Effect.gen(function* () {
               const response: Effect.Effect<unknown, CodexServerRequestResponseProjectionError> =
                 (() => {
                   switch (request.method) {
-                    case "item/commandExecution/requestApproval":
-                      return responses.approval({
-                        ...input,
-                        response: { kind: "command", decision: "decline" },
-                      });
-                    case "item/fileChange/requestApproval":
-                      return responses.approval({
-                        ...input,
-                        response: { kind: "file", decision: "decline" },
-                      });
-                    case "item/permissions/requestApproval":
-                      return responses.permission({
-                        ...input,
-                        response: { permissions: {}, scope: "turn" },
-                      });
                     case "item/tool/requestUserInput":
                       return responses.userInput({ ...input, answers: {} });
                     case "item/tool/requestOptionPicker":

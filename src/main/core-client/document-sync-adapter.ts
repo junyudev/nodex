@@ -2,8 +2,6 @@ import { documentSessionError, rethrowCoreTransportFailure } from "./document-se
 import { createHash } from "node:crypto";
 import type { components } from "@nodex/core-protocol";
 
-import { revocationsFromVisibilityDelta } from "../../shared/local-commit-delivery";
-
 import {
   encodeAdditionalDocumentCommandSemanticHashInput,
   parseAdditionalDocumentCommandRequest,
@@ -80,7 +78,6 @@ const decodeCoreOwnedDocumentDescriptor = (
     return decodeOwnedDocumentDescriptorHttp(
       JSON.stringify({
         ...value,
-        authorization: null,
       }),
     );
   }
@@ -94,7 +91,6 @@ const decodeCoreOwnedDocumentDescriptor = (
   return decodeOwnedDocumentDescriptorHttp(
     JSON.stringify({
       ...value,
-      authorization: null,
       sync: {
         kind: "yjs",
         stateVector: documentBytesToBase64(Uint8Array.from(stateVector)),
@@ -258,8 +254,6 @@ const additionalDocumentErrorCode = (
   switch (error.coreError.code) {
     case "invalid_input":
       return { code: "invalid_request", retryable: false };
-    case "unauthorized":
-      return { code: "project_not_found", retryable: false };
     case "not_found":
       if (message.includes("bound project")) {
         return { code: "project_not_found", retryable: false };
@@ -349,11 +343,6 @@ const historyFailure = <Value>(
       return {
         ok: false,
         error: documentHistoryFailure("invalid_document_history_request", error.message),
-      };
-    case "unauthorized":
-      return {
-        ok: false,
-        error: documentHistoryFailure("project_scope_mismatch", error.message),
       };
     case "not_found":
       return {
@@ -466,8 +455,6 @@ const documentMutationAdapterFailure = (
         return failure("invalid_block");
       }
       return failure("invalid_operation");
-    case "unauthorized":
-      return failure("project_scope_mismatch");
     case "not_found":
       return failure(
         "versionId" in request && error.message.toLowerCase().includes("version")
@@ -653,13 +640,7 @@ export const createCoreDocumentSyncAdapter = (client: CoreClientPort): CoreDocum
       throw new Error("Core returned a non-descriptor Document read value");
     }
     const descriptor = decodeCoreOwnedDocumentDescriptor(snapshot.value.descriptor);
-    if (!snapshot.authorization) {
-      throw new Error("Core Owned Document descriptor omitted canonical authorization");
-    }
-    if (descriptor.ownerBlockId !== input.ownerBlockId) {
-      throw new Error("Core Owned Document descriptor escaped its owner boundary");
-    }
-    return { ...descriptor, authorization: snapshot.authorization };
+    return descriptor;
   };
 
   const readUpdateResource = async (
@@ -1159,29 +1140,10 @@ export const mapDocumentLiveEnvelope = async (
         headSeq: 0,
         commitSeq: identity.commit_seq,
         effectSequence: effect.descriptor.atom_order,
-        reason: event.reason === "access_changed" ? "access-revoked" : "identity-boundary-changed",
+        reason: "identity-boundary-changed",
       });
     }
   });
-  if (
-    envelope.packet.visibility_deltas
-      .flatMap(revocationsFromVisibilityDelta)
-      .some(
-        (revocation) =>
-          revocation.resource_kind === "document" && revocation.resource_id === request.documentId,
-      )
-  ) {
-    events.push({
-      kind: "resync-required",
-      documentId: request.documentId,
-      storeEpoch: identity.store_epoch,
-      generation: 1,
-      headSeq: 0,
-      commitSeq: identity.commit_seq,
-      effectSequence: 0,
-      reason: "access-revoked",
-    });
-  }
   return events;
 };
 

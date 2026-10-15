@@ -6,10 +6,20 @@ import type { CommandKeymapState } from "../../shared/command-keybindings";
 import type { BoardChangeEvent } from "../../shared/ipc-api";
 import type { DatabaseChangeEvent } from "../../shared/database-events";
 import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
-import type { ContentAccessIdentity } from "../../shared/content-access-context";
+import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 
 export interface RendererTransport {
+  subscribeAgentRuntimeSessionEvents?: (
+    callback: (event: import("../../shared/agent-runtime-api").AgentRuntimeSessionEvent) => void,
+  ) => () => void;
+  subscribeAgentRuntimeActivityChanges?: (
+    callback: (
+      change: import("../../shared/agent-runtime-api").AgentRuntimeSessionActivityChange,
+    ) => void,
+  ) => () => void;
+  subscribeAgentRuntimeConnectionChanges?: (
+    callback: (state: import("../../shared/agent-runtime-api").AgentRuntimeConnectionState) => void,
+  ) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
   subscribeClaudeAgentSettingsChanges: (callback: () => void) => () => void;
   sendGitWorkerMessage: (
@@ -19,11 +29,11 @@ export interface RendererTransport {
     callback: (message: import("../../shared/git-worker-protocol").GitWorkerMessageForView) => void,
   ) => () => void;
   readPageLifecyclePreflight: (
-    projectId: string,
+    projectId: string | null,
     pageId: string,
   ) => Promise<import("../../shared/page-lifecycle-v2-runtime").PageLifecyclePreflightResultV2>;
   mutatePageLifecycle: (
-    projectId: string,
+    projectId: string | null,
     request: import("../../shared/page-lifecycle-v2").PageLifecycleMutationRequestV2,
   ) => Promise<import("../../shared/page-lifecycle-v2").PageLifecycleMutationCommandResultV2>;
   listPageHistory: (
@@ -45,11 +55,11 @@ export interface RendererTransport {
     request: import("../../shared/additional-document-command-transport").PublicAdditionalDocumentCommandRequest,
   ) => Promise<import("../../shared/additional-document-commands").AdditionalDocumentCommandResult>;
   transferBlocks: (
-    projectId: string,
+    projectId: string | null,
     intent: import("../../shared/block-transfer-transport").PublicBlockTransferIntent,
   ) => Promise<import("../../shared/block-transfer").BlockTransferCommandResult>;
   undoBlockTransfer: (
-    projectId: string,
+    projectId: string | null,
     intent: import("../../shared/block-transfer-transport").PublicBlockTransferUndoIntent,
   ) => Promise<import("../../shared/block-transfer").BlockTransferUndoCommandResult>;
   listDocumentVersions: (
@@ -78,7 +88,7 @@ export interface RendererTransport {
   ) => import("./nodex-y-provider").DocumentSyncAdapter;
   createLibraryDocumentSyncAdapter?: () => import("./nodex-y-provider").DocumentSyncAdapter;
   createCanvasSceneSyncAdapter?: (
-    identity: ContentAccessIdentity,
+    identity: ContentRoutingIdentity,
   ) => import("./canvas-scene-provider").CanvasSceneSyncAdapter;
   subscribeBoardChanges: (
     projectId: string,
@@ -87,10 +97,6 @@ export interface RendererTransport {
   subscribeProjectionStream: (
     scope: ProjectionScope,
     listener: (message: ProjectionStreamMessage) => void,
-  ) => () => void;
-  subscribeResourceRevocations: (
-    scope: ProjectionScope,
-    listener: (message: ResourceRevocationMessage) => void,
   ) => () => void;
   subscribePageOwnershipPathChanges: (
     projectId: string,
@@ -114,18 +120,10 @@ export interface RendererTransport {
   subscribeProjectChanges: (
     callback: (event: import("../../shared/ipc-api").ProjectsChangeEvent) => void,
   ) => () => void;
-  subscribeAgentBackendSessionChanges: (
-    callback: (
-      event: import("../../shared/agent-backend-api").AgentBackendSessionChangedEvent,
-    ) => void,
-  ) => () => void;
   subscribeCodexHostMessages: (
     callback: (message: import("./types").CodexHostMessage) => void,
   ) => () => void;
   subscribeCodexEvents: (callback: (event: import("./types").CodexEvent) => void) => () => void;
-  subscribeCodexRendererClientRequests: (
-    callback: (message: import("./types").CodexRendererClientRequestMessage) => void,
-  ) => () => void;
   subscribeDesktopNotificationActions: (
     callback: (payload: import("./types").DesktopNotificationActionInvocation) => void,
   ) => () => void;

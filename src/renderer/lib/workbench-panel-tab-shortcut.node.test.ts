@@ -16,7 +16,7 @@ function pageSurface(id: string): WorkbenchSurfaceDescriptor {
     stateKey: 0,
     state: null,
     config: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       pageId: id,
     },
   };

@@ -23,8 +23,8 @@ const address = {
 
 const packet = (commitSeq: number) =>
   createCoreLocalCommitFixture({
+    deliveryAddress: address,
     commitSeq,
-    authorizationScope: address,
     projectionEffects: [
       {
         scope: {
@@ -51,11 +51,10 @@ const packet = (commitSeq: number) =>
   });
 
 const envelope = (commitSeq: number): RecipientDeliveryEnvelope => ({
-  version: 2,
+  version: 3,
   deliveryId: "a".repeat(64),
   recipientLeaseId: "c".repeat(64),
   deliveryAddress: address,
-  authorizationScope: address,
   payload: { kind: "packet", packet: packet(commitSeq) },
 });
 
@@ -98,7 +97,7 @@ describe("Electron renderer recipient delivery", () => {
         stream: { commitSeq: 41 },
       });
       expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
-        version: 2,
+        version: 3,
         deliveryId: "a".repeat(64),
         outcome: "ack",
       });
@@ -115,14 +114,13 @@ describe("Electron renderer recipient delivery", () => {
     const divergent = {
       ...envelope(42),
       deliveryAddress: { ...address, project_id: "project-2" },
-      authorizationScope: { ...address, project_id: "project-2" },
     } satisfies RecipientDeliveryEnvelope;
 
     target.deliver(divergent);
 
     await vi.waitFor(() => {
       expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
-        version: 2,
+        version: 3,
         deliveryId: "a".repeat(64),
         outcome: "nack",
         reason: "invalid_message",

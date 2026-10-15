@@ -20,12 +20,11 @@ import { OwnedBlockDocumentBoundaryError } from "@/lib/owned-block-document";
 
 const descriptor = (): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   ownerBlockId: "card-1",
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "document:card-1",
-  authorization: null,
   storeEpoch: "store-1",
   generation: 1,
   headSeq: 0,
@@ -45,7 +44,7 @@ describe("OwnedBlockDocumentBoundary", () => {
     const view = render(
       <TestQueryProvider>
         <OwnedBlockDocumentBoundary
-          accessContext={{ kind: "project", projectId: "project-1" }}
+          routingContext={{ kind: "project", projectId: "project-1" }}
           ownerBlockId="card-1"
           dependencies={{ fetchDescriptor }}
         >
@@ -75,7 +74,7 @@ describe("OwnedBlockDocumentBoundary", () => {
     const view = render(
       <TestQueryProvider>
         <RegisteredOwnedBlockDocumentBoundary
-          accessContext={{ kind: "project", projectId: "project-1" }}
+          routingContext={{ kind: "project", projectId: "project-1" }}
           ownerBlockId="synced-source-1"
           dependencies={{
             fetchDescriptor: async () => ({
@@ -103,7 +102,7 @@ describe("OwnedBlockDocumentBoundary", () => {
     const view = render(
       <TestQueryProvider>
         <OwnedBlockDocumentBoundary
-          accessContext={{ kind: "project", projectId: "project-1" }}
+          routingContext={{ kind: "project", projectId: "project-1" }}
           ownerBlockId="card-1"
           dependencies={{
             fetchDescriptor: async () => {
@@ -146,7 +145,7 @@ describe("OwnedBlockDocumentBoundary", () => {
     const view = render(
       <TestQueryProvider>
         <OwnedBlockDocumentBoundary
-          accessContext={{ kind: "project", projectId: "project-1" }}
+          routingContext={{ kind: "project", projectId: "project-1" }}
           ownerBlockId="card-1"
           dependencies={{
             fetchDescriptor: async () => {
@@ -178,7 +177,7 @@ describe("OwnedBlockDocumentBoundary", () => {
     const view = render(
       <TestQueryProvider>
         <OwnedBlockDocumentBoundary
-          accessContext={{ kind: "project", projectId: "project-1" }}
+          routingContext={{ kind: "project", projectId: "project-1" }}
           ownerBlockId="card-1"
           dependencies={{
             fetchDescriptor: async () => {

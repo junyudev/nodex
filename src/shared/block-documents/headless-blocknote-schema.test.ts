@@ -56,7 +56,6 @@ describe("headless Block Document schema", () => {
               model: "gpt-5",
               reasoning: "high",
               speed: "fast",
-              permission: "auto",
               unknownAttributes: "",
               rawAttributes: "mode=agent",
             },

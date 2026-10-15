@@ -115,7 +115,7 @@ export function InboxMessage({
   /** While any message is selected, every row shows its checkbox. */
   readonly selectionActive: boolean;
   readonly onToggleSelected: () => void;
-  readonly onOpenSource: (threadId: string) => void;
+  readonly onOpenSource: (sessionId: string) => void;
   /** What Nodex made of the message, inside the card; null leaves the message alone. */
   readonly strip: React.ReactNode;
   /** The row of ways to act, under the card and exactly as wide. */
@@ -162,11 +162,11 @@ export function InboxMessage({
       {item.source.kind === "agent" ? (
         <button
           type="button"
-          disabled={!item.source.threadId}
+          disabled={!item.source.sessionId}
           onClick={() =>
             item.source.kind === "agent" &&
-            item.source.threadId &&
-            onOpenSource(item.source.threadId)
+            item.source.sessionId &&
+            onOpenSource(item.source.sessionId)
           }
           className="cursor-interaction max-w-[80%] truncate pl-1 text-xs text-token-description-foreground hover:text-token-foreground disabled:cursor-default disabled:hover:text-token-description-foreground"
         >

@@ -25,46 +25,11 @@ const readResult = (value: unknown) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 3,
-    authorization: null,
     value,
   },
 });
 
 describe("Library Module transport", () => {
-  test("authorizes File resources without accepting them as navigation or move targets", () => {
-    const target = { kind: "file", fileId: "file-1" };
-    expect(bindLibraryModuleRead({ read: { mode: "resource_project_access", target } })).toEqual({
-      read: { mode: "resource_project_access", target },
-    });
-    const operation = {
-      kind: "grant_project_access",
-      projectId: "project-1",
-      target,
-      access: "read",
-    };
-    expect(
-      bindLibraryModuleApply({ operationId: uuidV7(1), storeEpoch: "epoch-1", operation })
-        .operation,
-    ).toEqual(operation);
-    for (const read of [
-      { mode: "path", target },
-      { mode: "standalone_roots", forceIncludeTarget: target },
-      { mode: "move_destinations", target, scope: { kind: "suggested" } },
-    ])
-      expect(() => bindLibraryModuleRead({ read })).toThrow();
-    expect(() =>
-      bindLibraryModuleApply({
-        operationId: uuidV7(1),
-        storeEpoch: "epoch-1",
-        operation: {
-          kind: "move_block",
-          target: { ...target, expectedLocationRevision: 1 },
-          parent: { kind: "library" },
-        },
-      }),
-    ).toThrow();
-  });
-
   test("history reconciliation is bounded and accepts only exact lifecycle capabilities", () => {
     const tokens = Array.from({ length: 200 }, (_, index) => ({
       recipeOperationId: uuidV7(index),
@@ -512,70 +477,6 @@ describe("Library Module transport", () => {
     });
   });
 
-  test("binds and parses the authoritative Project access matrix", () => {
-    expect(
-      bindLibraryModuleRead({
-        read: {
-          mode: "resource_project_access",
-          target: { kind: "page", pageId: "page-1" },
-        },
-      }),
-    ).toEqual({
-      read: {
-        mode: "resource_project_access",
-        target: { kind: "page", pageId: "page-1" },
-      },
-    });
-
-    expect(
-      parseLibraryModuleReadResult(
-        readResult({
-          kind: "resource_project_access",
-          value: {
-            target: { kind: "page", pageId: "page-1" },
-            projects: [
-              {
-                projectId: "project-1",
-                projectName: "Product",
-                appearance: {
-                  color: "blue",
-                  marker: { kind: "icon", icon: "folder" },
-                },
-                lifecycle: "active",
-                directGrant: { access: "read_write", revision: 3 },
-                inheritedSources: [
-                  {
-                    kind: "ancestor_page",
-                    pageId: "page-parent",
-                    pageTitle: "Strategy",
-                    access: "read",
-                  },
-                ],
-                effectiveAccess: "read_write",
-              },
-            ],
-          },
-        }),
-      ),
-    ).toMatchObject({
-      ok: true,
-      value: {
-        value: {
-          kind: "resource_project_access",
-          value: {
-            projects: [
-              {
-                projectId: "project-1",
-                directGrant: { revision: 3 },
-                inheritedSources: [{ kind: "ancestor_page" }],
-              },
-            ],
-          },
-        },
-      },
-    });
-  });
-
   test("rejects unbounded and structurally ambiguous requests", () => {
     expect(() =>
       bindLibraryModuleRead({
@@ -605,7 +506,6 @@ describe("Library Module transport", () => {
           libraryId: "library-1",
           storeEpoch: "epoch-1",
           commitSeq: 3,
-          authorization: null,
           value: {
             kind: "children",
             parent: { kind: "library" },
@@ -817,7 +717,6 @@ describe("Library Module transport", () => {
           libraryId: "library-1",
           storeEpoch: "epoch-1",
           commitSeq: 3,
-          authorization: null,
           value: {
             kind: "canvas_target",
             value: {
@@ -863,7 +762,6 @@ describe("Library Module transport", () => {
           libraryId: "library-1",
           storeEpoch: "epoch-1",
           commitSeq: 3,
-          authorization: null,
           value: {
             kind: "children",
             parent: { kind: "library" },
@@ -975,30 +873,6 @@ describe("Library Module transport", () => {
         },
       }),
     ).toThrow("primary Canvas Block ID");
-  });
-
-  test("binds one revision-fenced Project access batch", () => {
-    const operation = bindLibraryModuleApply({
-      operationId: uuidV7(20),
-      storeEpoch: "epoch-1",
-      operation: {
-        kind: "set_project_access",
-        target: { kind: "page", pageId: "page-1" },
-        changes: [
-          { projectId: "project-1", access: null, expectedRevision: 4 },
-          { projectId: "project-2", access: "read", expectedRevision: null },
-        ],
-      },
-    }).operation;
-
-    expect(operation).toEqual({
-      kind: "set_project_access",
-      target: { kind: "page", pageId: "page-1" },
-      changes: [
-        { projectId: "project-1", access: null, expectedRevision: 4 },
-        { projectId: "project-2", access: "read", expectedRevision: null },
-      ],
-    });
   });
 
   test("binds one atomic Page metadata operation from owning-module payloads", () => {
@@ -1178,7 +1052,6 @@ describe("Library Module transport", () => {
         page_id: "page-1",
         revision: 3,
         body_usage_revision: 4,
-        can_write: true,
         files: [{ file, logical_path: "images/diagram.png", body_count: 2 }],
         next_cursor: null,
         has_more: false,
@@ -1193,7 +1066,6 @@ describe("Library Module transport", () => {
         value: {
           value: {
             body_usage_revision: 4,
-            can_write: true,
             files: [{ body_count: 2 }],
           },
         },

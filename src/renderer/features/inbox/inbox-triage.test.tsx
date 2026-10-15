@@ -6,6 +6,7 @@ import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { InboxHistory } from "./inbox-history";
+import { InboxMessage } from "./inbox-message";
 import { InboxTriage } from "./inbox-triage";
 import type { InboxActions } from "./use-inbox-actions";
 
@@ -204,13 +205,13 @@ describe("InboxHistory", () => {
       />,
     );
     expect(screen.getByText("Started “Homepage positioning”")).toBeTruthy();
-    expect(screen.getByText("Needs approval")).toBeTruthy();
+    expect(screen.getByText("Waiting")).toBeTruthy();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { expanded: false }));
       await Promise.resolve();
     });
     await click("Open chat");
-    expect(onOpenTarget).toHaveBeenCalledWith({ kind: "thread", threadId: "thread:1" });
+    expect(onOpenTarget).toHaveBeenCalledWith({ kind: "session", sessionId: "session:1" });
   });
 
   test("a kept message can return to the Inbox or be deleted", async () => {
@@ -257,5 +258,65 @@ describe("InboxDeleteDialog", () => {
     expect(onConfirm).not.toHaveBeenCalled();
     await click("Delete");
     await waitFor(() => expect(onConfirm).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("InboxMessage source navigation", () => {
+  test.each(["run:child", null])(
+    "opens the owning product Session for a child source with Run %s",
+    async (runId) => {
+      const onOpenSource = vi.fn();
+      render(
+        <InboxMessage
+          item={item({
+            source: {
+              kind: "agent",
+              sessionId: "session:owner",
+              threadId: "thread:child",
+              runId,
+              projectId: "project:another",
+              label: "Research Agent",
+            },
+          })}
+          selected={false}
+          selectionActive={false}
+          onToggleSelected={vi.fn()}
+          onOpenSource={onOpenSource}
+          strip={null}
+          actions={null}
+        />,
+      );
+      await click("From Research Agent");
+      expect(onOpenSource).toHaveBeenCalledExactlyOnceWith("session:owner");
+    },
+  );
+
+  test("an unavailable Session cannot be replaced with a native Thread lookup", async () => {
+    const onOpenSource = vi.fn();
+    render(
+      <InboxMessage
+        item={item({
+          source: {
+            kind: "agent",
+            sessionId: null,
+            threadId: "thread:child",
+            runId: null,
+            projectId: "project:another",
+            label: "Research Agent",
+          },
+        })}
+        selected={false}
+        selectionActive={false}
+        onToggleSelected={vi.fn()}
+        onOpenSource={onOpenSource}
+        strip={null}
+        actions={null}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "From Research Agent" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await click("From Research Agent");
+    expect(onOpenSource).not.toHaveBeenCalled();
   });
 });

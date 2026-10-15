@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import type { DatabasePropertyOption } from "../../../shared/database-kernel";
 import type { DataSourcePropertyRecordV2 } from "../../../shared/database-module-v2";
 import { MAX_DATA_SOURCE_PROPERTY_OPTIONS } from "../../../shared/data-source-option-registry";
@@ -46,11 +46,11 @@ const initialEntry = (property: DataSourcePropertyRecordV2): PropertyOptionRegis
 
 /** Shared, picker-driven option-window authority for Page Stage and Database View. */
 export function usePropertyOptionRegistries({
-  accessContext,
+  routingContext,
   properties,
   requiredOptionIds = EMPTY_REQUIRED_OPTION_IDS,
 }: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly properties: readonly DataSourcePropertyRecordV2[];
   /** Selected identities whose labels are visible before a picker opens. */
   readonly requiredOptionIds?: Readonly<Record<string, readonly string[]>>;
@@ -63,7 +63,7 @@ export function usePropertyOptionRegistries({
   const generationRef = useRef(0);
   const loadsRef = useRef(new Map<string, Promise<void>>());
   const propertyAuthorityKey = JSON.stringify([
-    accessContext.kind === "project" ? ["project", accessContext.projectId] : ["library"],
+    routingContext.kind === "project" ? ["project", routingContext.projectId] : ["library"],
     properties.map((property) => [
       property.dataSourceId,
       property.propertyId,
@@ -108,10 +108,10 @@ export function usePropertyOptionRegistries({
         let replace = after === null;
         let page;
         try {
-          page = await readPropertyOptionWindow(accessContext, property, after);
+          page = await readPropertyOptionWindow(routingContext, property, after);
         } catch (cause) {
           if (after === null) throw cause;
-          page = await readPropertyOptionWindow(accessContext, property, null);
+          page = await readPropertyOptionWindow(routingContext, property, null);
           replace = true;
         }
         const latest = entriesRef.current[propertyId] ?? current;
@@ -119,7 +119,7 @@ export function usePropertyOptionRegistries({
           after !== null &&
           !propertyOptionWindowMatchesProjection(latest.projectionRevision, page.projectionRevision)
         ) {
-          page = await readPropertyOptionWindow(accessContext, property, null);
+          page = await readPropertyOptionWindow(routingContext, property, null);
           replace = true;
         }
         const seenCursors = replace ? [] : latest.seenCursors;
@@ -169,7 +169,7 @@ export function usePropertyOptionRegistries({
         });
       loadsRef.current.set(propertyId, request);
     },
-    [accessContext],
+    [routingContext],
   );
 
   const requestOptions = useCallback(

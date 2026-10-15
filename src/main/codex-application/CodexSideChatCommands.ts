@@ -21,7 +21,6 @@ import {
   resolveCodexCanonicalHydratedCwd,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { buildCodexThreadConfig } from "../codex/codex-thread-config";
-import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   CodexGateway,
@@ -43,8 +42,8 @@ import {
   type CodexTurnStartOverrides,
 } from "./CodexTurnCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
-import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
-import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatPolicy";
+import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatBoundary";
+import { SIDE_CHAT_DEVELOPER_INSTRUCTIONS } from "./CodexSideChatBoundary";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
@@ -134,7 +133,6 @@ export const make: Effect.Effect<
   | CodexAppServerCapabilities
   | CodexGitProbe
   | CodexGateway
-  | DesktopToolRuntime
   | CodexThreadHostResolver
   | CodexEphemeralThreadRouting
   | CodexThreadDirectory
@@ -148,7 +146,6 @@ export const make: Effect.Effect<
   const gitProbe = yield* CodexGitProbe;
   const gateway = yield* CodexGateway;
   const applicationSettings = yield* ApplicationSettings;
-  const desktopTools = yield* DesktopToolRuntime;
   const hostResolver = yield* CodexThreadHostResolver;
   const routing = yield* CodexEphemeralThreadRouting;
   const turns = yield* CodexTurnCommands;
@@ -173,16 +170,6 @@ export const make: Effect.Effect<
     }
     const currentParent = conversations.current(parentThreadId);
     const currentParentSnapshot = currentParent?.readSnapshot() ?? null;
-    if (
-      currentParent?.readCanonicalState()?.sideConversation === true ||
-      currentParentSnapshot?.source?.sideConversation === true
-    ) {
-      return yield* new CodexSideChatProjectionError({
-        operation: "prepare",
-        threadId: parentThreadId,
-        cause: new Error("Side chats cannot be started from another side chat"),
-      });
-    }
     const parent = yield* directory.resolve({ threadId: parentThreadId, fidelity: "durable" }).pipe(
       Effect.mapError(
         (cause) =>
@@ -215,6 +202,16 @@ export const make: Effect.Effect<
         cause: new Error("Side chats require a native Codex Thread"),
       });
     }
+    const hostId = parent.durable.executionHostId;
+    if (!hostId || hostId.trim() !== hostId || hostId === gateway.localHostId) {
+      return yield* new CodexSideChatProjectionError({
+        operation: "prepare",
+        threadId: parentThreadId,
+        cause: new Error(
+          "Local imported history has no native execution owner; start an Agent Runtime Session",
+        ),
+      });
+    }
     // A resident canonical document supplies live context even without a presentation.
     const currentSnapshot =
       residentParent?.readSnapshot() ?? parent.snapshot ?? currentParentSnapshot;
@@ -223,17 +220,6 @@ export const make: Effect.Effect<
       parent.canonical ??
       currentSnapshot?.canonicalState ??
       null;
-    if (
-      canonical?.sideConversation === true ||
-      currentSnapshot?.source?.sideConversation === true ||
-      parent.summary.source?.sideConversation === true
-    ) {
-      return yield* new CodexSideChatProjectionError({
-        operation: "prepare",
-        threadId: parentThreadId,
-        cause: new Error("Side chats cannot be started from another side chat"),
-      });
-    }
     const cwd =
       canonical?.cwd?.trim() ||
       canonical?.hydrationContext?.cwd?.trim() ||
@@ -291,7 +277,7 @@ export const make: Effect.Effect<
               model: input.model,
               serviceTier:
                 input.serviceTier !== undefined ? input.serviceTier : executionProfile?.serviceTier,
-              permissionMode: input.permissionMode,
+
               reasoningEffort: input.reasoningEffort,
               collaborationMode: input.collaborationMode,
             },
@@ -457,26 +443,39 @@ export const make: Effect.Effect<
   const capabilityFailure = (threadId: string, cause: unknown): CodexSideChatProjectionError =>
     new CodexSideChatProjectionError({ operation: "prepare", threadId, cause });
 
-  const ensureCurrent = (plan: CodexSideChatPlan, snapshot: CodexAppServerCapabilitySnapshot) =>
-    capabilities.isCurrent(snapshot).pipe(
-      Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)),
-      Effect.flatMap((current) =>
-        current &&
-        (plan.parentGeneration === null ||
-          conversations.current(plan.parentThreadId)?.generation === plan.parentGeneration)
-          ? Effect.void
-          : Effect.fail(
-              capabilityFailure(
-                plan.parentThreadId,
-                new Error(
-                  current
-                    ? "Side chat parent generation changed during fork"
-                    : "Side chat host generation changed during fork",
-                ),
-              ),
-            ),
-      ),
-    );
+  const ensureCurrent = Effect.fn("CodexSideChatCommands.ensureCurrent")(function* (
+    plan: CodexSideChatPlan,
+    snapshot: CodexAppServerCapabilitySnapshot,
+  ) {
+    const current = yield* capabilities
+      .isCurrent(snapshot)
+      .pipe(Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)));
+    if (
+      !current ||
+      snapshot.hostId !== plan.parent.durable.executionHostId ||
+      snapshot.hostId === gateway.localHostId ||
+      (plan.parentGeneration !== null &&
+        conversations.current(plan.parentThreadId)?.generation !== plan.parentGeneration)
+    ) {
+      return yield* capabilityFailure(
+        plan.parentThreadId,
+        new Error("Side chat native generation changed"),
+      );
+    }
+    const source = yield* directory
+      .resolve({ threadId: plan.parentThreadId, fidelity: "durable" })
+      .pipe(Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)));
+    if (
+      !source ||
+      source.durable.executionHostId !== snapshot.hostId ||
+      !isCodexAgentBackendBinding(source.durable.backendBinding)
+    ) {
+      return yield* capabilityFailure(
+        plan.parentThreadId,
+        new Error("Side chat execution owner changed"),
+      );
+    }
+  });
 
   const startPrepared = Effect.fn("CodexSideChatCommands.startPrepared")(function* (
     plan: CodexSideChatPlan,
@@ -510,16 +509,8 @@ export const make: Effect.Effect<
     const developerInstructions = parentInstructions.trim()
       ? `${parentInstructions}\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`
       : SIDE_CHAT_DEVELOPER_INSTRUCTIONS;
-    const desktopToolConfig =
-      hostId === gateway.localHostId
-        ? yield* desktopTools
-            .threadConfig(plan.forkRequest.cwd ?? plan.parent.durable.cwd ?? "/")
-            .pipe(Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)))
-        : null;
-    const config = buildCodexThreadConfig({
-      nativeAppTools: capability.nativeAppTools,
-      overrides: desktopToolConfig,
-    });
+    const config = buildCodexThreadConfig({ nativeAppTools: capability.nativeAppTools });
+    yield* ensureCurrent(plan, capability);
     const response = (yield* gateway.requestOnHost(
       hostId,
       "thread/fork",
@@ -586,8 +577,16 @@ export const make: Effect.Effect<
     return prepare(input, context).pipe(
       Effect.flatMap((plan) =>
         hostResolver.resolve(plan.parentThreadId).pipe(
-          Effect.flatMap((hostId) =>
-            capabilities.forHost(hostId).pipe(
+          Effect.flatMap((hostId) => {
+            if (hostId !== plan.parent.durable.executionHostId || hostId === gateway.localHostId) {
+              return Effect.fail(
+                capabilityFailure(
+                  plan.parentThreadId,
+                  new Error("Side chat execution owner changed"),
+                ),
+              );
+            }
+            return capabilities.forHost(hostId).pipe(
               Effect.mapError((cause) => capabilityFailure(plan.parentThreadId, cause)),
               Effect.flatMap((capability) =>
                 threadStarts.materialize(
@@ -597,8 +596,8 @@ export const make: Effect.Effect<
                   (result) => result.threadId,
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ),
       ),
     );

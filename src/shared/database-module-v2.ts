@@ -1,4 +1,3 @@
-import type { AuthorizedReadStamp } from "./authorized-read-stamp";
 import type {
   DatabaseId,
   DatabaseViewId,
@@ -31,7 +30,6 @@ export interface DatabaseContainerRecordV2 {
   readonly name: string;
   readonly lifecycle: "active" | "archived" | "deleted";
   readonly defaultViewId: DatabaseViewId | null;
-  readonly accessRevision: number;
   readonly metadataRevision: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -245,7 +243,7 @@ export type DatabaseRelationTargetV2 =
       readonly lifecycle: string;
       readonly membershipState: string;
     }
-  | { readonly kind: "restricted"; readonly edgeId: string };
+  | { readonly kind: "unavailable"; readonly edgeId: string };
 
 export interface DatabaseRelationTargetWindowV2 {
   readonly valueRevision: number;
@@ -462,7 +460,6 @@ export interface DatabaseModuleReadSnapshotV2 {
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp | null;
   readonly value: DatabaseReadValueV2;
 }
 
@@ -471,7 +468,6 @@ export type DatabaseModuleErrorCodeV2 =
   | "store_not_initialized"
   | "project_not_found"
   | "resource_not_found"
-  | "authorization_denied"
   | "revision_conflict"
   | "operation_id_collision"
   | "resource_exhausted"
@@ -512,7 +508,7 @@ export interface LibraryDatabaseModuleReadSnapshotV2 extends Omit<
   DatabaseModuleReadSnapshotV2,
   "projectId"
 > {
-  readonly accessContext: { readonly kind: "library" };
+  readonly routingContext: { readonly kind: "library" };
 }
 
 export type LibraryDatabaseModuleReadResultV2 =
@@ -1000,7 +996,7 @@ export interface DatabaseApplyReceiptV2 {
 }
 
 export interface LibraryDatabaseApplyReceiptV2 extends Omit<DatabaseApplyReceiptV2, "projectId"> {
-  readonly accessContext: { readonly kind: "library" };
+  readonly routingContext: { readonly kind: "library" };
 }
 
 export type LibraryDatabaseApplyResultV2 =

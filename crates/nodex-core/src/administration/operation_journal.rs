@@ -8,7 +8,9 @@
 
 use std::path::Path;
 
-use nodex_core_contracts::administration::{BackupJobPhase, BackupRecord, BackupTrigger};
+use nodex_core_contracts::administration::{
+    BackupJobPhase, BackupRecord, BackupTrigger, ProfileSnapshotSource,
+};
 use rusqlite::Connection;
 
 use crate::infrastructure::sqlite::StoreError;
@@ -27,8 +29,10 @@ pub(super) fn stage_backup(
     trigger: BackupTrigger,
     progress: &dyn Fn(BackupJobPhase) -> Result<(), StoreError>,
     cancellation_requested: &dyn Fn() -> Result<bool, StoreError>,
+    participant: &dyn super::ProfileSnapshotParticipant,
+    profile_snapshot: Option<&ProfileSnapshotSource>,
 ) -> Result<backup::VerifiedStagedBackup, StoreError> {
-    backup::create_backup(
+    backup::create_profile_backup(
         connection,
         profile_home,
         profile_id,
@@ -39,6 +43,8 @@ pub(super) fn stage_backup(
         trigger,
         progress,
         cancellation_requested,
+        participant,
+        profile_snapshot,
     )
 }
 

@@ -95,7 +95,7 @@ const reloadAction = {
 } as const satisfies BlockDocumentSyncIndicatorAction;
 
 const recoveryAction = (status: NodexYProviderStatus): BlockDocumentSyncIndicatorAction | null => {
-  if (status.error?.code === "unauthorized") return null;
+  if (status.error?.code === "invalid_session") return null;
   if (status.recovery) return { kind: "review", label: "Review" };
   return reloadAction;
 };

@@ -112,7 +112,10 @@ test.each([
   "%s promotion into %s preserves shared File identity through changing heads and history",
   async (mode, destination) => {
     await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (ctx) => {
-      const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
+      const client =
+        destination === "library"
+          ? ctx.runtime.rootClient
+          : ctx.runtime.clientForProject(ctx.manifest.projectId);
       const facts = requireLibraryFilesScenarioFacts(ctx.facts);
       const pageId = ctx.manifest.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY]!;
       const descriptor = await createCoreDocumentSyncAdapter(client).readDescriptor({
@@ -354,7 +357,7 @@ test.each([
       if (!forwardHistory) throw new Error("Promotion omitted its symmetric history capability");
       let history: LibraryStructuralHistoryToken = forwardHistory;
       for (const direction of ["undo", "redo", "undo", "redo"] as const) {
-        const result = await client
+        const result = await ctx.runtime.rootClient
           .libraryApply({
             operationId: createUuidV7(),
             intent: { kind: "reverse_structural_edit", token: history },
@@ -475,67 +478,6 @@ test.each([
   },
 );
 
-test("promotion Undo authorizes every target before revealing an earlier target's changed content", async () => {
-  await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
-    const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
-    const documentId = ctx.manifest.entityIdsByKey!.sourceDocument!;
-    const source = await readDocument(client, documentId);
-    const roots = source.materialization.blockTree.slice(0, 2).map((block) => block.id);
-    const promoted = await client.libraryApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "transfer_blocks",
-        intent: {
-          actor: { kind: "electron_host" },
-          mode: "move",
-          root_block_ids: roots,
-          causal_dependencies: [
-            {
-              document_id: documentId,
-              generation: source.generation,
-              expected_head_seq: source.headSeq,
-            },
-          ],
-          source: { kind: "document", document_id: documentId },
-          target: {
-            kind: "library",
-            library_id: ctx.runtime.identity.libraryId,
-            before_block_id: null,
-          },
-          promotion_policy: "literal",
-        },
-      },
-    });
-    const token = promoted.outcome.block_transfer?.undo_token;
-    if (!token) throw new Error("Promotion omitted its inverse");
-    // The first target's head no longer matches the saved post-state.
-    await ctx.seed.replaceOwnedDocument({
-      projectId: ctx.manifest.projectId,
-      pageId: roots[0]!,
-      operationId: createUuidV7(),
-      mutationId: createUuidV7(),
-      clientSessionId: createUuidV7(),
-      nfm: "A later edit that must remain private after access changes.",
-    });
-    // The second target is no longer authorized. This must dominate every
-    // content comparison, regardless of the order of roots in the recipe.
-    await ctx.runtime.rootClient.libraryApply({
-      operationId: createUuidV7(),
-      intent: {
-        kind: "set_project_access",
-        target: { kind: "page", page_id: roots[1]! },
-        changes: [{ project_id: ctx.manifest.projectId, access: null, expected_revision: 1 }],
-      },
-    });
-    await expect(
-      client.libraryApply({
-        operationId: createUuidV7(),
-        intent: { kind: "undo_block_transfer", token },
-      }),
-    ).rejects.toMatchObject({ coreError: { code: "not_found" } });
-  });
-});
-
 test("clipboard File export crosses the byte transport after Cut and keeps exact capture retries", async () => {
   await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (ctx) => {
     const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
@@ -599,9 +541,12 @@ test("clipboard File export crosses the byte transport after Cut and keeps exact
       version: 1,
     });
     expect(after.bytes).toEqual(before.bytes);
-    await expect(
-      ctx.runtime.rootClient.readFileBlob({ fileId: facts.sharedFileId, source: readSource }),
-    ).rejects.toThrow();
+    const libraryCopy = await ctx.runtime.rootClient.readFileBlob({
+      fileId: facts.sharedFileId,
+      source: readSource,
+      version: 1,
+    });
+    expect(libraryCopy.bytes).toEqual(before.bytes);
   });
 });
 

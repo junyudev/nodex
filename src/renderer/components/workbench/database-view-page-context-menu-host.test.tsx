@@ -23,7 +23,7 @@ vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
 const session = (pageId: string): DatabaseViewPageMenuSession => ({
   page: {
     libraryId: "library-1",
-    accessContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "project", projectId: "project-1" },
     projectId: "project-1",
     pageId,
     pageKey: pageId.toUpperCase(),

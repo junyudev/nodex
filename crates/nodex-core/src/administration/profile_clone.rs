@@ -60,6 +60,13 @@ pub struct ProfileCloneThread {
     pub execution_host_id: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct ProfileCloneExecution {
+    pub session_id: String,
+    pub runtime_id: String,
+    pub thread_id: String,
+}
+
 /// A verified, unpublished Store clone. Dropping it removes only its owned staging tree.
 pub struct PreparedProfileClone {
     source: PathBuf,
@@ -67,6 +74,7 @@ pub struct PreparedProfileClone {
     staging: PathBuf,
     receipt: ProfileStoreCloneReceipt,
     threads: Vec<ProfileCloneThread>,
+    executions: Vec<ProfileCloneExecution>,
     published: bool,
 }
 
@@ -85,6 +93,9 @@ impl PreparedProfileClone {
     }
     pub fn threads(&self) -> &[ProfileCloneThread] {
         &self.threads
+    }
+    pub fn executions(&self) -> &[ProfileCloneExecution] {
+        &self.executions
     }
 
     /// Publishes only after the outer Profile owner has prepared every required artifact.
@@ -131,12 +142,14 @@ pub fn prepare_profile_clone(
             crate::infrastructure::sqlite::open_immutable_reader(&staging.join(STORE_FILE_NAME))?;
         let threads =
             read_clone_threads(&connection, MAX_CLONE_THREADS, MAX_THREAD_METADATA_BYTES)?;
+        let executions = read_clone_executions(&connection)?;
         Ok(PreparedProfileClone {
             source,
             target: target.clone(),
             staging: staging.clone(),
             receipt,
             threads,
+            executions,
             published: false,
         })
     })();
@@ -144,6 +157,40 @@ pub fn prepare_profile_clone(
         remove_owned_staging_directory(&target, &staging)?;
     }
     result
+}
+
+/// Reads only execution references, with the same allocation bounds as native requirements.
+pub(super) fn read_clone_executions(
+    connection: &rusqlite::Connection,
+) -> Result<Vec<ProfileCloneExecution>, StoreError> {
+    let mut statement = connection.prepare("SELECT session_id, runtime_id, runtime_thread_id FROM project_session_execution_bindings ORDER BY session_id")?;
+    let mut rows = statement.query([])?;
+    let mut executions = Vec::new();
+    let mut bytes = 0usize;
+    while let Some(row) = rows.next()? {
+        if executions.len() >= MAX_CLONE_THREADS {
+            return Err(invalid_profile(
+                "Profile execution references exceed their row budget",
+            ));
+        }
+        for column in 0..3 {
+            let rusqlite::types::ValueRef::Text(value) = row.get_ref(column)? else {
+                return Err(corrupt("Profile execution references must be text"));
+            };
+            bytes = bytes.saturating_add(value.len());
+            if bytes > MAX_THREAD_METADATA_BYTES {
+                return Err(invalid_profile(
+                    "Profile execution references exceed their byte budget",
+                ));
+            }
+        }
+        executions.push(ProfileCloneExecution {
+            session_id: row.get(0)?,
+            runtime_id: row.get(1)?,
+            thread_id: row.get(2)?,
+        });
+    }
+    Ok(executions)
 }
 
 /// Bounds retained Thread requirements before allocating text from SQLite cells.

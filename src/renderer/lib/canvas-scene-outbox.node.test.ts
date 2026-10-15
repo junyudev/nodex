@@ -9,7 +9,7 @@ import {
   type CanvasSceneOutbox,
 } from "./canvas-scene-outbox";
 import type { CanvasSceneMutationIntent } from "../../shared/block-documents";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 
 beforeAll(() => {
   Object.defineProperty(globalThis, "IDBKeyRange", {
@@ -18,23 +18,23 @@ beforeAll(() => {
   });
 });
 
-const projectAccessContext = {
+const projectRoutingContext = {
   kind: "project",
   projectId: "project-1",
-} as const satisfies ContentAccessContext;
-const libraryAccessContext = {
+} as const satisfies ContentRoutingContext;
+const libraryRoutingContext = {
   kind: "library",
-} as const satisfies ContentAccessContext;
+} as const satisfies ContentRoutingContext;
 const libraryId = "library-1";
 
 const intent = (
   mutationId: string,
   version: number,
   documentId = "document-1",
-  accessContext: ContentAccessContext = projectAccessContext,
+  routingContext: ContentRoutingContext = projectRoutingContext,
 ): CanvasSceneMutationIntent => ({
   mutationId,
-  accessContext,
+  routingContext,
   documentId,
   storeEpoch: "epoch-1",
   generation: 1,
@@ -58,9 +58,9 @@ const versionOneRequest = (
   version: number,
 ): Readonly<Record<string, unknown>> => ({
   ...Object.fromEntries(
-    Object.entries(intent(mutationId, version)).filter(([key]) => key !== "accessContext"),
+    Object.entries(intent(mutationId, version)).filter(([key]) => key !== "routingContext"),
   ),
-  projectId: projectAccessContext.projectId,
+  projectId: projectRoutingContext.projectId,
   clientSessionId: "dead-window",
 });
 
@@ -72,7 +72,7 @@ const verifyFifoAndIdempotence = async (outbox: CanvasSceneOutbox): Promise<void
   await outbox.put(second);
 
   expect(
-    (await outbox.list(projectAccessContext, "document-1")).map((entry) => entry.mutationId),
+    (await outbox.list(projectRoutingContext, "document-1")).map((entry) => entry.mutationId),
   ).toEqual(["mutation-z", "mutation-a"]);
   await expect(
     outbox.put({
@@ -86,10 +86,10 @@ const verifyFifoAndIdempotence = async (outbox: CanvasSceneOutbox): Promise<void
     }),
   ).rejects.toThrow("already exists");
 
-  await outbox.remove(projectAccessContext, "document-1", "mutation-z");
-  await outbox.remove(projectAccessContext, "document-1", "mutation-z");
+  await outbox.remove(projectRoutingContext, "document-1", "mutation-z");
+  await outbox.remove(projectRoutingContext, "document-1", "mutation-z");
   expect(
-    (await outbox.list(projectAccessContext, "document-1")).map((entry) => entry.mutationId),
+    (await outbox.list(projectRoutingContext, "document-1")).map((entry) => entry.mutationId),
   ).toEqual(["mutation-a"]);
 };
 
@@ -108,8 +108,8 @@ const verifyQuarantine = async (outbox: CanvasSceneOutbox): Promise<void> => {
     123,
   );
 
-  expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
-  expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toEqual([
+  expect(await outbox.list(projectRoutingContext, "document-1")).toEqual([]);
+  expect(await outbox.listQuarantined(projectRoutingContext, "document-1")).toEqual([
     {
       intent: rejected,
       error: {
@@ -132,21 +132,21 @@ const verifyQuarantine = async (outbox: CanvasSceneOutbox): Promise<void> => {
     },
     456,
   );
-  expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toHaveLength(1);
+  expect(await outbox.listQuarantined(projectRoutingContext, "document-1")).toHaveLength(1);
 };
 
 const verifyAccessIsolation = async (outbox: CanvasSceneOutbox): Promise<void> => {
   const projectIntent = intent("shared-mutation", 1);
-  const libraryIntent = intent("shared-mutation", 1, "document-1", libraryAccessContext);
+  const libraryIntent = intent("shared-mutation", 1, "document-1", libraryRoutingContext);
   await outbox.put(projectIntent);
   await outbox.put(libraryIntent);
 
-  expect(await outbox.list(projectAccessContext, "document-1")).toEqual([projectIntent]);
-  expect(await outbox.list(libraryAccessContext, "document-1")).toEqual([libraryIntent]);
+  expect(await outbox.list(projectRoutingContext, "document-1")).toEqual([projectIntent]);
+  expect(await outbox.list(libraryRoutingContext, "document-1")).toEqual([libraryIntent]);
 
-  await outbox.clear(projectAccessContext, "document-1");
-  expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
-  expect(await outbox.list(libraryAccessContext, "document-1")).toEqual([libraryIntent]);
+  await outbox.clear(projectRoutingContext, "document-1");
+  expect(await outbox.list(projectRoutingContext, "document-1")).toEqual([]);
+  expect(await outbox.list(libraryRoutingContext, "document-1")).toEqual([libraryIntent]);
 };
 
 const openVersionOneDatabase = (factory: IDBFactory, rows: readonly unknown[]): Promise<void> =>
@@ -183,9 +183,9 @@ const legacyProjectMutationIntent = (
   version: number,
 ): Readonly<Record<string, unknown>> => ({
   ...Object.fromEntries(
-    Object.entries(intent(mutationId, version)).filter(([key]) => key !== "accessContext"),
+    Object.entries(intent(mutationId, version)).filter(([key]) => key !== "routingContext"),
   ),
-  projectId: projectAccessContext.projectId,
+  projectId: projectRoutingContext.projectId,
 });
 
 const openVersionThreeDatabase = (
@@ -250,7 +250,7 @@ describe("CanvasSceneOutbox", () => {
       for (let index = 0; index < MAX_CANVAS_OUTBOX_MUTATIONS; index++)
         await outbox.put(intent(`mutation-${index}`, index + 1));
       await expect(outbox.put(intent("overflow", 300))).rejects.toThrow("local limit");
-      expect(await outbox.list(projectAccessContext, "document-1")).toHaveLength(
+      expect(await outbox.list(projectRoutingContext, "document-1")).toHaveLength(
         MAX_CANVAS_OUTBOX_MUTATIONS,
       );
       const error = {
@@ -264,11 +264,11 @@ describe("CanvasSceneOutbox", () => {
       await expect(outbox.quarantine(intent("mutation-32", 33), error, 33)).rejects.toThrow(
         "storage is full",
       );
-      expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toHaveLength(
+      expect(await outbox.listQuarantined(projectRoutingContext, "document-1")).toHaveLength(
         MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT,
       );
       expect(
-        (await outbox.list(projectAccessContext, "document-1")).some(
+        (await outbox.list(projectRoutingContext, "document-1")).some(
           (value) => value.mutationId === "mutation-32",
         ),
       ).toBe(true);
@@ -306,12 +306,12 @@ describe("CanvasSceneOutbox", () => {
 
     await first.put(sharedIntent);
     await second.put(sharedIntent);
-    expect(await first.list(projectAccessContext, "document-1")).toEqual([sharedIntent]);
-    expect(await second.list(projectAccessContext, "document-1")).toEqual([sharedIntent]);
+    expect(await first.list(projectRoutingContext, "document-1")).toEqual([sharedIntent]);
+    expect(await second.list(projectRoutingContext, "document-1")).toEqual([sharedIntent]);
 
-    await first.clear(projectAccessContext, "document-1");
-    expect(await first.list(projectAccessContext, "document-1")).toEqual([]);
-    expect(await second.list(projectAccessContext, "document-1")).toEqual([sharedIntent]);
+    await first.clear(projectRoutingContext, "document-1");
+    expect(await first.list(projectRoutingContext, "document-1")).toEqual([]);
+    expect(await second.list(projectRoutingContext, "document-1")).toEqual([sharedIntent]);
   });
 
   test("retains v1 requests for review without guessing their Library", async () => {
@@ -322,11 +322,11 @@ describe("CanvasSceneOutbox", () => {
     ]);
 
     const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
-    const migrated = await outbox.list(projectAccessContext, "document-1");
+    const migrated = await outbox.list(projectRoutingContext, "document-1");
 
     expect(migrated).toEqual([]);
     const page = await outbox.staging.listSummaries(
-      { libraryId, accessContext: { kind: "library" } },
+      { libraryId, routingContext: { kind: "library" } },
       null,
       null,
     );
@@ -361,10 +361,10 @@ describe("CanvasSceneOutbox", () => {
     );
 
     const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
-    expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
-    expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toEqual([]);
+    expect(await outbox.list(projectRoutingContext, "document-1")).toEqual([]);
+    expect(await outbox.listQuarantined(projectRoutingContext, "document-1")).toEqual([]);
     const page = await outbox.staging.listSummaries(
-      { libraryId, accessContext: { kind: "library" } },
+      { libraryId, routingContext: { kind: "library" } },
       null,
       null,
     );
@@ -381,9 +381,9 @@ describe("CanvasSceneOutbox", () => {
     ]);
 
     const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
-    expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
+    expect(await outbox.list(projectRoutingContext, "document-1")).toEqual([]);
     const page = await outbox.staging.listSummaries(
-      { libraryId, accessContext: { kind: "library" } },
+      { libraryId, routingContext: { kind: "library" } },
       null,
       null,
     );

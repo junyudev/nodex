@@ -306,16 +306,16 @@ const verifyClone = async (binaryPath?: string) => {
     const hiddenAgent = join(profile.runRoot, "hidden-agent");
     await rename(profile.codexHome, hiddenAgent);
     try {
-      await expect(clone(profile.nodexHome, missingTarget)).rejects.toThrow(
-        "no recoverable native history",
-      );
+      await expect(
+        context.withStoppedCore(() => clone(profile.nodexHome, missingTarget)),
+      ).rejects.toThrow("no recoverable native history");
       expect(await readdir(profile.runRoot)).not.toContain("missing-profile");
       expect(
         (await readdir(profile.runRoot)).filter((name) => name.startsWith(".profile-clone-")),
       ).toEqual([]);
-      const partial = await clone(profile.nodexHome, missingTarget, [
-        "--allow-missing-conversations",
-      ]);
+      const partial = await context.withStoppedCore(() =>
+        clone(profile.nodexHome, missingTarget, ["--allow-missing-conversations"]),
+      );
       expect(partial.missingThreadIds).toEqual([selectedId]);
       expect(partial.capturedThreadCount).toBe(0);
     } finally {
@@ -324,7 +324,7 @@ const verifyClone = async (binaryPath?: string) => {
     }
     const receipt = binaryPath
       ? await cloneWithOpenDesktop(binaryPath, profile.nodexHome, target, selectedId)
-      : await clone(profile.nodexHome, target);
+      : await context.withStoppedCore(() => clone(profile.nodexHome, target));
     expect(receipt.requiredThreadCount).toBe(1);
     expect(receipt.capturedThreadCount).toBe(1);
     expect(receipt.missingThreadIds).toEqual([]);
@@ -354,7 +354,6 @@ const verifyClone = async (binaryPath?: string) => {
         try {
           const chats = await copied.rootClient.forProject(manifest.projectId).workspaceRead({
             kind: "page_chat_window",
-            page_access_project_id: manifest.projectId,
             page_id: pageId,
             include_archived: false,
             window: { after: null, first: 50 },

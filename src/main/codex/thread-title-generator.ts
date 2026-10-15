@@ -21,46 +21,9 @@ export const CODEX_THREAD_TITLE_CONFIG = {
   web_search: "disabled",
 } satisfies Record<string, string | boolean>;
 
-export interface CodexThreadTitleReadOnlyAppTool {
-  readonly appId: string;
-  readonly toolNames: readonly string[];
-}
-
-/** Exact title-helper app sandbox: deny every app/tool except the matched read-only tools. */
-export function buildCodexThreadTitleAppConfig(
-  allowlist: readonly CodexThreadTitleReadOnlyAppTool[] = [],
-): Record<string, unknown> {
-  const apps = Object.fromEntries(
-    allowlist.map(({ appId, toolNames }) => [
-      appId,
-      {
-        enabled: true,
-        destructive_enabled: false,
-        open_world_enabled: false,
-        default_tools_enabled: false,
-        tools: Object.fromEntries(toolNames.map((toolName) => [toolName, { enabled: true }])),
-      },
-    ]),
-  );
-  return {
-    "features.apps": allowlist.length > 0,
-    apps: {
-      ...apps,
-      _default: {
-        enabled: false,
-        destructive_enabled: false,
-        open_world_enabled: false,
-      },
-    },
-  };
-}
-
-export function buildCodexThreadTitleThreadConfig(
-  allowlist: readonly CodexThreadTitleReadOnlyAppTool[] = [],
-): Record<string, unknown> {
+export function buildCodexThreadTitleThreadConfig(): Record<string, unknown> {
   return {
     ...CODEX_THREAD_TITLE_CONFIG,
-    ...buildCodexThreadTitleAppConfig(allowlist),
     "mcp_servers.codex_app": { enabled: false, command: "" },
     model_reasoning_effort: CODEX_THREAD_TITLE_REASONING_EFFORT,
   };

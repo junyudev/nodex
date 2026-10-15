@@ -40,6 +40,33 @@ function canonicalTurn(clientUserMessageId: string): CodexConversationTurn {
 }
 
 describe("SessionFirstSubmissionOwner", () => {
+  test("a remounted command retains its original launch, user-message and admission time", () => {
+    const owner = createSessionFirstSubmissionOwner({
+      createId: () => {
+        throw new Error("A resumed command must retain its identity");
+      },
+      now: () => 500,
+    });
+    const input = {
+      backend: "codex" as const,
+      originProjectId: "project_1",
+      originSessionId: "side_session",
+      prompt: "Answer separately",
+      identity: { launchId: LAUNCH_ID, clientUserMessageId: MESSAGE_ID, acceptedAt: 100 },
+    };
+    const first = owner.begin(input);
+    owner.update(first.launchId, { phase: "startingThread" });
+    const resumed = owner.begin(input);
+    expect(resumed).toEqual(first);
+    expect(owner.getSnapshot().submissions).toHaveLength(1);
+    expect(owner.getSnapshot().submissions[0]).toMatchObject({
+      launchId: LAUNCH_ID,
+      clientUserMessageId: MESSAGE_ID,
+      acceptedAt: 100,
+      targetSessionId: "side_session",
+    });
+  });
+
   test("publishes the submitted user row synchronously and yields to its canonical row", () => {
     const ids = [LAUNCH_ID, MESSAGE_ID];
     const owner = createSessionFirstSubmissionOwner({

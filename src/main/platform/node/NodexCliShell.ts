@@ -153,7 +153,7 @@ export async function bindNodexCliShell(input: {
   threadId: string;
   executable: string;
   profileId: string;
-  projectId: string;
+  projectId: string | null;
 }): Promise<void> {
   const file = bindingPath(input.nodexHome, input.threadId);
   await mkdir(nodexCliShellPaths(input.nodexHome).bindings, { recursive: true, mode: 0o700 });
@@ -162,7 +162,7 @@ export async function bindNodexCliShell(input: {
     [
       "#!/bin/sh",
       `export NODEX_HOME=${shellQuote(input.nodexHome)}`,
-      `exec ${shellQuote(input.executable)} --expect-profile ${shellQuote(input.profileId)} --project ${shellQuote(input.projectId)} "$@"`,
+      `exec ${shellQuote(input.executable)} --expect-profile ${shellQuote(input.profileId)} ${input.projectId ? `--project ${shellQuote(input.projectId)} ` : ""}"$@"`,
       "",
     ].join("\n"),
   );

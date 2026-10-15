@@ -389,7 +389,7 @@ function BoardDatabaseViewSurface({
     [effectivePresentation.rules, model.query.properties, model.query.rows],
   );
   const propertyOptionRegistries = usePropertyOptionRegistries({
-    accessContext: model.accessContext,
+    routingContext: model.routingContext,
     properties: model.query.properties,
     requiredOptionIds,
   });
@@ -428,10 +428,7 @@ function BoardDatabaseViewSurface({
     canonicalModel ?? model,
   );
   const mutationModel = presentationOwner.model;
-  const structuralProjectId =
-    model.accessContext.kind === "project" ? model.accessContext.projectId : "";
   const hiddenStructuralPageIds = useHiddenDatabasePageIds({
-    projectId: structuralProjectId,
     storeEpoch: model.storeEpoch,
     dataSourceId: model.dataSourceId,
   });
@@ -445,15 +442,14 @@ function BoardDatabaseViewSurface({
   );
   useEffect(() => {
     const evidence = canonicalMutationModel.boundedRead;
-    if (!evidence || model.accessContext.kind !== "project") return;
+    if (!evidence) return;
     localStructuralTransactionPresentation.observeDatabaseProjection({
-      projectId: model.accessContext.projectId,
       storeEpoch: evidence.storeEpoch,
       dataSourceId: model.dataSourceId,
       commitSeq: evidence.commitSeq,
       pageIds: new Set(evidence.pageIds),
     });
-  }, [canonicalMutationModel.boundedRead, model.accessContext, model.dataSourceId]);
+  }, [canonicalMutationModel.boundedRead, model.routingContext, model.dataSourceId]);
   const promotions = useDatabasePromotionPresentation({
     model: canonicalMutationModel,
     effective: effectivePresentation,
@@ -692,7 +688,7 @@ function BoardDatabaseViewSurface({
     );
     const pagination = [...(groupPagination?.values() ?? [])];
     const allRowsLoaded =
-      (groupPagination !== undefined || model.authorization === null) &&
+      (groupPagination !== undefined || model.boundedRead == null) &&
       pagination.every((entry) => !entry.hasMore && !entry.loadingMore && entry.error === null);
     const searched = compiledSearchQuery.normalizedQuery.length > 0;
     const totalOccurrenceCount = searched
@@ -1002,7 +998,7 @@ function BoardDatabaseViewSurface({
       viewName: model.viewName,
       historyScopeKey: databaseViewHistoryScopeKey(mutationModel),
       session,
-      projectId: model.accessContext.kind === "project" ? model.accessContext.projectId : null,
+      projectId: model.routingContext.kind === "project" ? model.routingContext.projectId : null,
       storeEpoch: model.storeEpoch,
       dataSourceId: model.dataSourceId,
       placement: {
@@ -1166,7 +1162,6 @@ function BoardDatabaseViewSurface({
     return null;
   };
   const buildHorizontalMoveOperations = (commandId: "boardMoveLeft" | "boardMoveRight") => {
-    if (mutationModel.readOnlyReason) return null;
     const active = findBoardKeyboardLocation(keyboardBoard, highlightedPageId);
     if (!active || actionPageIds.length === 0) return null;
     const offset = commandId === "boardMoveRight" ? 1 : -1;
@@ -1199,7 +1194,7 @@ function BoardDatabaseViewSurface({
     return operations.length > 0 ? operations : null;
   };
   const canMoveHighlightedPage = (commandId: CommandId): boolean => {
-    if (mutationModel.readOnlyReason || presentationOwner.owner.hasPendingPlacement()) return false;
+    if (presentationOwner.owner.hasPendingPlacement()) return false;
     if (commandId === "boardMoveLeft" || commandId === "boardMoveRight") {
       return buildHorizontalMoveOperations(commandId) !== null;
     }
@@ -1353,7 +1348,7 @@ function BoardDatabaseViewSurface({
     );
     if (!property) throw new Error(`Property is unavailable: ${propertyId}`);
     return await readDataSourceRelationTargets({
-      accessContext: model.accessContext,
+      routingContext: model.routingContext,
       pageId,
       property,
       after,
@@ -1365,7 +1360,7 @@ function BoardDatabaseViewSurface({
     after?: string | null,
   ) => {
     return await searchDataSourceRelationCandidates({
-      accessContext: model.accessContext,
+      routingContext: model.routingContext,
       property,
       query,
       after,
@@ -1373,7 +1368,7 @@ function BoardDatabaseViewSurface({
   };
   const loadRelationTargetDescriptor = async (property: DataSourcePropertyRecordV2) =>
     await readDataSourceRelationTargetDescriptor({
-      accessContext: model.accessContext,
+      routingContext: model.routingContext,
       property,
     });
   const cardProps = (row: DatabaseViewRenderRow) =>
@@ -1419,10 +1414,7 @@ function BoardDatabaseViewSurface({
       // Keep the same single-flight DnD boundary as List: a second placement
       // cannot start until the first optimistic projection has handed off to
       // receipt-covered authority.
-      draggable:
-        activeLayout === "board" &&
-        model.readOnlyReason === null &&
-        !presentationOwner.owner.hasPendingPlacement(),
+      draggable: activeLayout === "board" && !presentationOwner.owner.hasPendingPlacement(),
       pragmaticDragData: buildDatabaseViewPageDragData({
         model: mutationModel,
         row,

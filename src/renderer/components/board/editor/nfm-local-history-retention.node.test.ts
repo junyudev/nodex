@@ -10,7 +10,7 @@ import { NfmLocalHistoryRetention } from "./nfm-local-history-retention";
 import { NfmTextHistoryJournal } from "./nfm-text-history-journal";
 
 const scope = {
-  accessContext: { kind: "project", projectId: "project" } as const,
+  routingContext: { kind: "project", projectId: "project" } as const,
   source: { documentId: "history", generation: 1, storeEpoch: "epoch" },
 };
 const success = (): LibraryModuleApplyResult => ({

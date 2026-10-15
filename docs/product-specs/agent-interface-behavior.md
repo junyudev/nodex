@@ -7,9 +7,9 @@ interface for local shell-capable Agents and scripts. Direct reads, stdin
 writes, typed queries, property edits, and atomic Page creation share Core
 semantics with the desktop. See [CLI Reference](../CLI.md) for command behavior.
 
-Native CLI calls use the selected Profile and Project access context. They do
-not carry a verified Codex Turn identity. Native application tools use trusted
-host Turn authorization; the two authorization paths are not interchangeable.
+Native CLI calls use the authenticated current Profile and optional Project
+routing. Native application tools additionally carry the host-captured execution
+identity. Both can access every resource in the current Profile Library.
 Neither exposes SQL or private storage as a content-editing interface.
 
 The host places a managed `nodex` command in the Agent shell PATH. Each eligible
@@ -34,26 +34,29 @@ The connection prompt is maintained in
 and filled with the selected Project and Skill path. It is imported as source text
 without runtime file reads or separate packaged resources.
 
-Automatic connection is limited to local, Project-bound, non-Plan tasks using
-the verified built-in Full access mode and an available CLI/Skill build. Missing
-context, remote execution, or restricted modes replace both old connection
-instructions and the task's executable binding with unavailable state. This is
-connection availability, not an additional permission grant: shell identity and
-PATH are mutable, and unrestricted shell access is not a security sandbox.
-CLI access remains checked by Core for every operation.
+Automatic connection uses a local execution transport, the available CLI/Skill
+build and an exact product Session execution binding. Projectless tasks have the
+same current Profile content access; they supply no default Project presentation
+target. Plan changes planning behavior without disabling the connection. A
+remote transport without the local bridge or a missing executable build is
+unavailable. Core validates Profile, Store and the captured execution identity
+on every operation. Shell identity and PATH remain mutable; native shell access
+is not a security sandbox.
 
 ## Native application MCP
 
-Native application MCP supports local Codex, Claude Code and locally owned OpenCode execution
-through backend-specific catalogs. ACP, external OpenCode endpoints and remote
-execution integration, sharing and publishing services, Cloud task destinations,
-realtime voice, and `fire_confetti` remain unsupported application-tool capabilities.
+Native application MCP uses the catalog attached to the Session's configured Runtime
+Provider. Its captured connection can belong to Codex, Claude Code, OpenCode or ACP;
+unsupported native capabilities fail explicitly. External endpoints without the private
+application bridge receive no catalog. Remote execution integration, sharing and publishing
+services, Cloud task destinations, realtime voice controls and `fire_confetti` remain
+unsupported application-tool capabilities.
 Voice-session screen capture and ending a realtime voice call are also unavailable.
 These capabilities have no substitute tools or placeholder success responses.
 
 `load_workspace_dependencies` reads the managed Node/Python executable paths, Python import
 directory and installed document-library versions. It performs no package installation and
-requires a current calling Turn; Plan Mode can inspect it. The Python closure supports Word,
+requires a live captured Session source, with a Run only when proven; Plan can inspect it. The Python closure supports Word,
 PowerPoint, spreadsheet, PDF and image operations. Recommended `-I -B` arguments isolate imports
 and avoid bytecode writes. Missing, invalid or unsupported distributions return an explicit
 unavailable result without selecting a system runtime. See [workspace runtime distribution](../../resources/workspace-runtime/README.md).
@@ -63,31 +66,36 @@ Fresh Sessions, live resumes, forks, imported tasks, side chats, managed worktre
 runs refresh that catalog through the same configuration boundary. New local Threads register
 no dynamic tools. Internal title generation has no application tools. An execution endpoint
 without the native bridge receives no application catalog or private connection configuration.
-Tool visibility never substitutes for the calling Turn's authority.
+Tool visibility never substitutes for the captured execution identity.
 
-Claude and locally owned OpenCode connections issue claims only for a Main-admitted foreground Turn with exact
-persisted Core authority. Native stdio metadata cannot supply that identity. Every call
-rechecks the frozen authority; settlement, failed admission and connection closure revoke
-it. While a native background task or ambient watcher is live, native application calls
-are suspended because the shared transport does not establish trusted actor identity for
-each invocation. Clearing the roster enables fresh calls only for a still-active foreground
-Turn and never restores old claims. `get_app_capabilities` reports this foreground lifetime
-and explicitly marks background application tools, live Workbench controls and pull-request
-attachment unavailable. Their catalog includes content operations, Project SQL, Project
-and Session metadata/history, messaging, scheduling, terminal observation and workspace
-dependencies; Codex-only execution and account tools are not exposed.
+Native connections bind application calls to the authenticated Session and captured
+native generation. When a Run identity is available, it stays bound to that Run
+instead of following the latest foreground selection. Core validates the persisted
+execution credential on every content operation. Child and background work remain
+usable after foreground completion; cancellation, failed admission, native Scope
+exit and generation retirement invalidate their exact credentials. An invocation
+without evidence for a Run cannot silently acquire a later foreground identity.
+Standard ACP tool calls without causal Run metadata report the authenticated
+Session and `Run=null`. They retain that Session across ordinary Runs. Cancel
+retires the physical native connection; the next message restores its history
+through a fresh connection. A completed foreground Run does not retire it.
+The catalog includes content operations, explicit SQL queries, Project and Session
+metadata/history, messaging, scheduling, terminal observation and workspace
+dependencies. Provider-specific operations report their actual capabilities.
 
-Historical dynamic tool results remain readable. Local `nodex_app` content calls and `codex_app`
-application calls are rejected before renderer forwarding or pending request storage. Interactive setup
+Historical dynamic tool results remain readable. Legacy dynamic-tool envelopes for
+`nodex_app` content calls and `codex_app` application calls are rejected before renderer
+forwarding or pending request storage; they cannot bypass the authenticated MCP bridge. Interactive setup
 reports unavailable through application tools. Resuming an old task does not reactivate its
 retired dynamic catalog or select an automatic fallback transport.
 
 The native catalog includes `get_context`, `search`, `fetch`, `query_database_view`,
 `query_data_source`, `create_pages`, `update_page`, `advanced_update_page`, `move_pages`,
-and `duplicate_page`. These use the canonical Agent content contracts and semantic
-execution owner. Calls bind the backend-observed Thread and Turn to frozen Core authority;
-arguments cannot supply execution identity. Resource consent rechecks the same invocation
-and authority before granting access. Mutations retain stable operation identities, and
+and `duplicate_page`. `get_context` describes the current Library, optional Project
+routing and opt-in default Database or Markdown guide. These tools use the canonical
+Agent content contracts and semantic execution owner. Calls bind the backend-observed Thread and Turn to persisted Core execution identity;
+arguments cannot supply execution identity. Execution rechecks the captured invocation
+and current native lifetime. Mutations retain stable operation identities, and
 results must satisfy their content contract and the complete-response byte budget.
 
 Local Codex Sessions use the bundled `nodex_app` MCP server when the verified Node runtime
@@ -101,16 +109,16 @@ bounded semantic metadata, including exact file paths, not Page content. Only vi
 
 `list_projects` discovers available Projects and their local workspace paths. Git inspection
 distinguishes a repository, a non-repository directory, an unavailable inspection, and a Project
-without a workspace. Project discovery does not grant Page or Database access.
+without a workspace. Project discovery supplies execution and presentation coordinates.
 `get_app_capabilities` reports the tools actually registered on this connection and distinguishes
-execution identity, Project SQL reads, live Workbench access, and unavailable sharing
+execution identity, Profile SQL reads, live Workbench observations and resource lifecycle
 and cloud capabilities.
 
 `automation_update` lists, searches, reads, creates, replaces and deletes scheduled
 Codex and Claude tasks. The definition retains an explicit backend/Profile binding.
 An omitted cron binding selects the caller's native backend; an omitted Heartbeat
-binding selects its resolved target's backend. List results contain only currently authorized targets and use bounded
-cursors. Cron tasks select an explicit Project and its folders, or a projectless
+binding selects its resolved target's backend. List results span the current Profile
+and use bounded cursors. Cron tasks select an explicit Project and its folders, or a projectless
 local run. Heartbeats target a stable Session; omitting the target selects the
 caller’s Session. Notification preferences are separate from the task prompt.
 Read the definition before editing or deleting and retain its `definitionRevision`
@@ -118,8 +126,8 @@ as `expectedRevision`. An update carries the complete replacement definition,
 including values that should be preserved. The response returns the committed
 definition and operation ID. Retry an uncertain write with the same operation ID,
 revision and arguments; the same caller Thread can reconcile it across Turns and
-restarts without creating or updating twice. Current writable Turn authority and
-target access are checked again on every retry. See
+restarts without creating or updating twice. The captured execution identity and
+target lifecycle are checked again on every retry. See
 [Scheduled Route Behavior](scheduled-route-behavior.md) for execution and notification rules.
 
 `suggested_create` and `suggested_update` produce editable review proposals. They do
@@ -146,43 +154,39 @@ shows the current Profile's peers as active and omits foreign desktop copies; un
 plugins remain available. Signed runtime resources and overlay configuration remain in the
 Nodex Profile, separate from native credentials, configuration, and sessions.
 
-`describe_content_schema` and `query_content` expose the same public SQL relations as the CLI,
-using the calling Project's durable resource grants. Core verifies the exact frozen Turn before
-querying within one read snapshot. Library scope and temporary call/task consent do not expand
-this query universe. Results are complete or fail; SQL has no cursor, and oversized tool results
-require a narrower query. The SQL argument schema is generated from the Rust contract.
-Tasks without a Project cannot use these two SQL tools, including with Full access;
-they return `project_context_required` because this query universe requires durable Project grants.
+`describe_content_schema` and `query_content` expose the same public SQL relations
+as the CLI across the current Profile Library. Core verifies exact captured
+execution identity in the same read snapshot. Tasks without a Project can use
+both tools. Project filters are explicit query selections. Results are complete
+or fail their budgets; SQL has no cursor. The argument schema comes from the
+Rust contract.
 
-Workbench content descriptions resolve Page, Database View, and Canvas identities and current
-titles in the same Core read snapshot that checks the frozen Turn and current resource access.
-Project and Database defaults resolve to their current View, including its Data Source and layout.
-The displayed Project or Library context identifies the surface; it grants no Agent access.
-Page and View descriptions honor existing call/task consent. Embedded Canvas descriptions follow
-their owning Page access; standalone Canvases require an existing Project Canvas grant or verified
-Library scope. Restricted descriptions contain only a reason, with no content identity or title.
-Description reads do not load Page bodies, Canvas documents, or database rows.
+Workbench content descriptions resolve Page, Database View and Canvas identity
+and current titles in a metadata-only Core observation. Defaults resolve the
+current View, Data Source and layout. `ContentRoutingContext` selects presentation
+routing and does not restrict content access. Descriptions are Available or
+Unavailable according to physical owner lifecycle. Reads load no Page body,
+Canvas Document or relational rows.
 
 `list_session_tabs` and `list_tab_groups` enumerate a bounded, revisioned Workbench
-observation, including preview surfaces. Restricted tabs remain redacted. Opaque tab
+observation, including preview surfaces. Unavailable resources retain their lifecycle state. Opaque tab
 handles identify the observed occurrence, never whichever tab is selected later.
 Expired observations and changed presentation require a new observation.
 
-`open_in_nodex` opens an authorized file, Browser, Terminal, Review, Page, View or
+`open_in_nodex` opens an selected file, Browser, Terminal, Review, Page, View or
 Canvas in the calling Session's panel, or an explicitly selected Session. Its window
 defaults to the Turn's submission window. Hidden Sessions retain their opened tabs
 without navigation. Files can select a one-based line; relative paths resolve against
-the target task's workspace, and Project-scoped requests stay within canonical workspace
-roots. Existing Browser and Terminal identities must belong to the target Session.
+the target task's workspace, and workspace requests resolve within canonical selected roots. Existing Browser and Terminal identities must belong to the target Session.
 Review supports last-turn, staged, unstaged and branch sources, including an explicit
 base revision and file path. Source and file reveal requests are consumed once.
 
-`navigate_to_session` selects an authorized Session in that same window. Both tools
+`navigate_to_session` selects a Session in the current Profile in that same window. Both tools
 accept an explicit current window reference and return a revision-fenced apply/persistence
 receipt. They never select global focus or substitute another window after a reload.
 Calls without a submission window return window candidates for explicit selection.
 Exact retries preserve applied receipts; a stale preflight can observe a new revision
-without replaying an applied command. Plan Mode rejects both presentation mutations.
+without replaying an applied command. Plan Mode remains a planning convention.
 
 `read_tab_content` synchronizes the exact mounted Page editor before returning
 canonical content and write validators. Pending edits and presentation changes are
@@ -193,7 +197,7 @@ Canvas reads provide metadata only.
 For a Database View, `read_tab_content` returns the viewport, loaded, or selected
 occurrences with explicit coverage and bounded property selection. `query_displayed_view`
 instead executes captured effective rules, personal overrides, and search through Core.
-Core checks View, schema, preference revisions and content authority in one read snapshot.
+Core checks View, schema, preference revisions and resource lifecycle in one read snapshot.
 The result includes its rule fingerprint and separate display coverage; collapsed groups
 remain included in the effective query. Results are complete within the requested limit
 or fail their budget. Separate calls are independent observations, with no SQL cursor.
@@ -201,31 +205,29 @@ or fail their budget. Separate calls are independent observations, with no SQL c
 The bridge is scoped to the physical app-server connection. Restarting Nodex creates a new
 private connection for restored Sessions; connection credentials are not saved in Thread
 configuration. Native Turn and tool observations must match the MCP call before execution.
-Turn completion, cancellation, and connection closure withdraw application work.
-Content-tool consent uses the shared application authority policy. Resource planning, approval,
-and task-grant extensions recheck the captured authority; an expired binding cannot become
-usable again. Discovering a tool or Project never creates a resource grant.
+Cancellation, native Scope exit and generation retirement invalidate the
+captured execution lease. Completing a foreground Run or starting the next Run does not revoke
+original child or background work. Each observed native call retains its exact Thread, Turn,
+call identity and physical connection generation until call completion, cancellation or
+connection retirement. Registration has count and byte budgets; exceeding either retires
+the affected connection. A caller cannot borrow a later foreground Run's identity.
 
-Each accepted Turn freezes an execution policy alongside its resource authority. Plan Mode,
-read-only permissions, and unverified external sandbox policies permit reads only. Resource
-consent and Full access scope cannot override this constraint. Derived tasks inherit a parent's
-read-only restriction. The Core checks this policy during resource planning and write admission.
-Application organization commands carry this same frozen Turn provenance to Core. Core validates
-the caller and writable policy inside the mutation transaction, including receipt replay.
-The allowed organization commands cannot change Project permissions, Thread authority, or
-Session content links; nested Agent commands are rejected. This boundary does not itself
-register additional tools in the connection catalog.
+Application organization commands carry the same execution provenance to Core.
+Core validates it within the transaction, including receipt replay. Parent and
+Project relationships route execution; they do not confer or limit content access.
+Nested Agent commands remain invalid envelopes.
 
-Session launch admission creates the destination Session and a request-bound receipt in one
-Core transaction. It requires a writable Turn with access to the destination Project;
-projectless or other-Project launches require Library scope. The receipt binds a SHA-256
-digest of the complete normalized launch request. Only a fresh receipt admits a backend
-launch. Replays reconcile the existing Session binding and never repeat the launch or
-recreate a deleted Session. If the Host stops before a backend binding is recorded, the
-outcome remains unconfirmed; an admission receipt alone is not evidence of a started task.
-Current caller authorization is checked again before returning a replayed receipt.
+Session launch admission creates the destination Session and an operation receipt in one
+Core transaction. It requires a live captured execution identity. Project, other-Project
+and projectless destinations use the same admission boundary. Stable launch, Session
+and execution identities let retries reconcile the existing binding without launching
+twice or recreating a deleted Session. If the Host stops before a backend binding is
+recorded, the outcome remains unconfirmed; an admission receipt alone is not evidence
+of a started task. Core validates the current execution identity again on receipt replay.
 
-`create_session` starts a Codex Session through this admission boundary. It accepts a prompt,
+`create_session` starts a Session through this admission boundary. A Runtime caller retains
+its configured Provider instance unless a supported explicit model choice changes its model;
+an explicit native caller uses the configured Codex default. It accepts a prompt,
 optional title and model, and an explicit Project/local, Project/worktree, or projectless target.
 Created Sessions are independently visible tasks; they are not hidden internal helper Threads.
 Worktree starts may use the default branch, an existing branch, or the current working tree.
@@ -234,56 +236,67 @@ from the repository's default branch when absent. Omitting this option rejects a
 branch. Existing branches retain their history; failed worktree creation removes a newly
 created branch only while it still points at the original commit.
 Unspecified execution settings resolve through the destination's normal launch defaults.
-The response always identifies the Session and operation; immediate starts include a Thread ID,
-while queued worktrees include pending and client Thread identities. A replay reports `attached`
-when a backend binding exists, otherwise `unconfirmed`; attachment alone does not prove that the
-first Turn completed. Use `wait_sessions` to observe completion. Failed launches retain their
+The response identifies the Session, operation and accepted execution binding. Attachment
+alone does not prove that the first Run completed. Use `wait_sessions` to observe completion. Failed launches retain their
 Session and receipt so retries cannot silently create a second task.
 The same caller Thread can reuse an operation ID and unchanged launch arguments in a later
-Turn, including after restart. Every retry revalidates the current Turn's authority; read-only
-or out-of-scope callers cannot replay a write receipt.
+Turn, including after restart. Every retry validates its captured execution identity;
+cancelled or retired credentials cannot replay a write receipt.
 
-`send_message_to_session` starts a follow-up Turn in an existing, unarchived Codex, Claude or OpenCode Session.
-It retains the destination's settings unless a model is explicitly supplied. Threadless and
-ACP Sessions are unavailable for this command, and a caller cannot message its own Session.
-Core checks the caller's current writable authority, target Project access, and exact active
-Session/Thread binding before reserving dispatch. The receipt binds the normalized message
-and target; only a fresh receipt permits a send. The same caller Thread may retry across Turns
-and restarts, but a retry never resends. A fresh successful response includes the accepted Turn
-ID; failed dispatch and replay report unconfirmed delivery. Use `read_session` or `wait_sessions`
-to inspect progress; a reservation alone does not establish that the message was delivered.
+`send_message_to_session` sends a follow-up to an existing unarchived Runtime Session,
+including a configured ACP Session. It retains the destination's instance and settings unless
+a supported model is explicitly supplied. The calling Session cannot message itself, and
+an unstarted draft has no execution target. Core verifies the captured caller and exact
+destination binding; the Runtime's stable message identity and durable receipt prevent a
+retry from starting duplicate work. An accepted delivery identifies the Session, Thread and
+operation with `deliveryState: "accepted"` without claiming completion or a replay flag.
+Use `read_session` or `wait_sessions` to observe it. Explicit remote native Sessions use
+their own supported execution route.
 
 `send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
 caller's task, such as a follow-up, an idea, or a question for later. The text becomes the
-body of an Inbox Page, and an optional title names it. Core records the message's source
-from the frozen Turn authority as the caller's chat and Project. The tool starts no work and cannot read, triage, or dispatch other messages.
-Read-only Turns are refused, and one Turn can send at most five messages. A retry with the
-same operation ID returns the original receipt without a second message. Its default
-approval mode is automatic. See [Inbox Behavior](./inbox-behavior.md).
+body of an Inbox Page, and an optional title names it. Core records the caller's chat
+and Project from its verified execution source. A proven Run can send at most five
+messages. A native source without causal Run evidence keeps its Run null and uses an
+independent five-message budget for that native connection. A retry with the same
+operation ID returns the original receipt without another message or quota charge.
+The tool starts no work; Inbox triage and confirmation remain separate workflows.
+The backing Page retains full Profile content access, including for planning, child
+and background Agents. See [Inbox Behavior](./inbox-behavior.md).
 
-`fork_session` copies completed Codex conversation history into a separate visible Session.
-Omitting the source selects the caller's Session. Same-directory forks attach immediately;
-worktree forks return pending work and a client Thread identity. Core first reserves the
-stable destination Session under current source-Project authorization and exact Thread binding.
-The normal fork owner attaches its accepted Thread to that destination, including deferred
-worktree execution. Retrying the same operation never forks again: it returns the destination's
-attached Thread or unconfirmed state. Forking does not start a new Turn; a separately authorized
-follow-up starts work in the child, whose application context uses its own Session identity.
+`fork_session` captures a Runtime conversation prefix in a separate visible Session.
+The selected Provider uses an exact native fork when possible and bounded portable history
+otherwise; it does not borrow a rebound native incarnation.
+Omitting the source selects the caller's Session. Both same-directory and worktree forks
+finish workspace preparation and attach the new root to its stable product Session before
+returning `forkState: "attached"` with the Session, Thread and operation identities.
+Core verifies the captured caller and exact execution binding. A retry reconciles that
+same destination and native workspace ownership instead of forking again. Forking does
+not start a new Turn; an explicit follow-up starts work in the child, whose application
+context uses its own Session identity.
 
-`handoff_session` moves another active Codex Session through the existing local or cross-host
-handoff coordinator. Omit the destination host for the current-host checkout/worktree toggle.
-Core checks current writable authority and the exact Session binding before reserving the
-normalized request. Only fresh admission starts the operation; retries across Turns and
-restarts read its retained progress or report unconfirmed dispatch, never move again. The
-calling Session cannot move itself. A follow-up prompt uses the coordinator's post-commit
-at-most-once dispatch. Threadless and ACP Sessions are unavailable for this command.
+`handoff_session` moves another active Session between its local checkout and managed
+worktree while retaining the same Session, root Thread and conversation history. Runtime
+Sessions use the durable handoff journal and the Runtime's execution hold. The move stops
+active work and waits for native connection retirement before changing Git state or execution
+location. Existing queued messages remain durable; queues explicitly held by the user stay
+held. The next Provider execution resumes through the canonical Runtime owner at the committed
+location. Runtime handoff supports the local host. An explicit remote native Codex Session
+continues through its own supported local or cross-host coordinator.
 
-An admitted native handoff shows live progress in its calling conversation. The activity binds
-the returned operation ID to the calling thread, target thread, and requested host; Main owns
-the progress projection even after the tool call completes.
+Core checks the captured caller and exact Session binding. The calling Session cannot move
+itself, including through a delegated child. Reusing the stable operation ID reads or resumes
+the same journal operation across retries and restarts. Recovery retains the hold while native
+retirement, location or Git restoration is uncertain. A Runtime follow-up uses a stable message
+identity after verified completion, so retrying delivery cannot start duplicate work.
 
-`get_handoff_status` requires both Session and operation IDs. It checks current read access
-and the operation's Thread binding before waiting and checks access again afterward. A wait
+An admitted handoff shows live progress in its calling conversation. The activity binds the
+operation ID to the caller, target root and requested host; Main owns the progress projection
+after the tool call completes. See [Managed worktree lifecycle](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat)
+for Git preservation, compensation and restart recovery.
+
+`get_handoff_status` requires both Session and operation IDs. It checks the captured
+execution identity and the operation's Thread binding before and after waiting. A wait
 uses revision notifications with a maximum 60-second deadline; terminal outcomes return
 immediately, including retained journal outcomes after restart. Missing retained progress is
 not evidence that another move is safe. Responses contain the Session/operation identity and
@@ -320,16 +333,14 @@ The Pinned form of `reorder_section` accepts every current `sessionId` exactly o
 observed `expectedOrderRevision`. Stale or incomplete Session orders are rejected atomically.
 Title and activity changes leave the order revision valid. Pinning, placement and lifecycle
 changes update both windows through the same canonical Sidebar projections.
-These tools change organization only and do not grant access to Session transcripts or content.
-Core authorizes Session transcript reads separately: a Project-scoped Turn can read Sessions
-in that Project, while a verified built-in Full access Turn can read Sessions across the same
-Profile's Library. Read-only execution still permits these reads. Caller identity, current
-Project ownership, frozen authority, and Store epoch are checked in the read transaction;
-supplying a wider scope or discovering a Session in the sidebar does not grant that access.
+Organization and transcript reads use the same current Profile. Every admitted execution
+can read Sessions across its Library; Project placement is a routing coordinate. Core
+checks the captured execution identity, physical Library and Store epoch in the read
+transaction. Cancellation or connection retirement invalidates the caller.
 
 `set_session_title` renames an exact Session, or the calling Session when `sessionId` is omitted.
 It supports threadless drafts and ACP Sessions without creating a Thread. Core accepts the title
-under the frozen Turn policy before any native Codex title synchronization. The result includes
+under the captured execution identity policy before any native Codex title synchronization. The result includes
 the Session identity, accepted title, and retryable operation receipt.
 `set_session_archived` archives or restores a Session through the same Session owner; it preserves
 native Codex descendant cleanup and ACP runtime shutdown. `set_session_pinned` sets its pin state
@@ -341,11 +352,11 @@ Session or default to the caller. A failed backend synchronization after a Sessi
 current Profile, including projectless Sessions. Active discovery excludes archived
 Projects. Results use pinned-first recency order with opaque continuation cursors bound
 to the active or archived query. Each result identifies direct or Project-inherited sidebar
-placement, title, bounded preview, backend, and status. Discovery does not authorize
-conversation reads. A page contains at most 50 Sessions and fits a 32 KiB tool response;
+placement, title, bounded preview, backend, and status. Conversation reads use the same
+Profile identity. A page contains at most 50 Sessions and fits a 32 KiB tool response;
 callers reduce the limit if unusually large metadata exceeds that budget.
 
-`wait_sessions` observes up to eight unique authorized Sessions. A zero timeout returns a
+`wait_sessions` observes up to eight unique Sessions in the current Profile. A zero timeout returns a
 snapshot; otherwise the first changed completion, request for attention, or per-target
 error ends the wait. The maximum wait is two minutes. Each target returns an opaque cursor;
 passing it as `afterCursor` suppresses unchanged completion/history. Timeouts return compact
@@ -353,23 +364,24 @@ status, and cancellation releases event subscriptions. Core and backend events d
 status reads; the observer subscribes before its first read and does not poll full transcripts.
 Only changed completed/attention targets receive a bounded latest-turn history read. Drafts
 are complete with empty history; unloaded backends are explicitly unavailable. Conversation
-permission is checked for each target and rechecked when history is read.
+identity is checked for each target and rechecked when history is read.
 
-`read_session` returns an authorized Session's status and newest conversation turns without
+`read_session` returns a Session in the current Profile's status and newest conversation turns without
 opening a window. It defaults to the calling Session, three turns, and 300 characters per text
 item, with tool outputs omitted. The complete response has a 24 KiB budget; a larger response
-fails explicitly so the caller can narrow its limits. Core authorization is checked before and
-after backend history access, and a changed Project or backend binding discards the result.
-Codex history uses its existing history owner and cursor. Retained ACP history uses snapshot-bound
-cursors that fail after the snapshot changes; an unloaded ACP backend reports unavailable history.
-Threadless drafts report empty history and do not start a backend.
+fails explicitly so the caller can narrow its limits. Core validates the captured execution
+identity before and after backend history reads. A changed backend binding discards the
+result; Project movement changes routing without changing content access.
+Runtime history uses bounded Run/item queries and exact ancestry without opening a native
+Provider connection. Explicit native-history readers retain their own cursor and source
+lifetime. Threadless drafts report empty history and do not start a backend.
 
 ## Agent content operations
 
 The content interfaces let an agent:
 
 - inspect Project context and available Databases/Views;
-- search and fetch authorized Pages or Blocks;
+- search and fetch Pages or Blocks in the current Profile;
 - execute saved Views or bounded temporary Data Source queries;
 - create complete Pages;
 - update Page title/body through Nested Markdown or stable Block operations;
@@ -378,7 +390,7 @@ The content interfaces let an agent:
   Files through bounded semantic operations.
 
 Page results expose canonical `id`, nullable current `pageKey`, and bounded
-matched-key evidence when an authorized historical alias led to the result.
+matched-key evidence when a retained historical alias led to the result.
 Agents may discover and discuss a Page through its key, but every structured
 `pageId`/`pageIds` mutation input remains UUID-only: search resolves the key and
 the write reuses the returned canonical identity.
@@ -432,7 +444,7 @@ after their catalog becomes non-executable. Transcript presentation follows
 
 `query_database_view` executes one saved View's filter, presentation sort,
 grouping, completion policy, and shared manual positions. `query_data_source`
-instead executes one temporary query over an authorized Data Source. It accepts
+instead executes one temporary query over a Data Source in the current Library. It accepts
 a typed filter and at most four non-manual sort rules, and never inherits a saved
 View's filter, grouping, completion policy, or positions. With no sort rules,
 rows use stable Page-identity order.
@@ -441,36 +453,31 @@ Both tools may select up to 200 active canonical Property identities. Selection
 controls both the returned Property descriptors and each row's values, including
 Properties that are not displayed by a saved View. An omitted selection returns
 all active Properties. Core validates filter and sort capabilities against the
-current Data Source schema; Relation operands additionally require current read
-access to the target Data Source and Page. Pagination cursors are bound to the
+current Data Source schema; Relation operands additionally require current target Data Source and Page
+lifecycle. Pagination cursors are bound to the
 exact source or View, query rules, and selected Property set and cannot be reused
 after changing those coordinates.
 
-## Authorization
+## Profile access and execution lifecycle
 
-Reads follow current Project resource access. Direct `Read & write` authority
-executes writable intent after semantic validation. `Read` or known ungranted
-same-Library resources require resource-scoped consent for writes. The consent
-choices cover one exact call, the root task lifetime, or a durable Project grant;
-only the durable choice writes Project grants.
+One local user has full access to the current authenticated Profile Library.
+There are no resource grants, consent overlays, inherited permission ceilings or
+content read-only modes. Project is execution and presentation routing. Plan is
+an Agent planning mode and does not block content, organization or Automation
+writes.
 
-A Turn started with the built-in Full access preset receives temporary same-
-Library authority for that exact Turn. It does not create grants, cross a
-Profile/Library/store epoch, or transfer to later Turns merely because the UI
-setting changed.
+Native tools retain the exact Profile, Store epoch, runtime generation, Session,
+Thread and native incarnation supplied by the host. A captured Run is included only
+when provider metadata proves it; otherwise Run remains null. Parent completion does
+not change a child's access. Cancellation, native Scope closure, Session
+lifecycle and generation retirement invalidate the affected execution lease.
+Session movement changes the current Project route without replacing the exact
+execution identity.
 
-Tasks without a Project receive this authority only when their persisted permission
-preset is Full access at Turn start. Core verifies their current root task and exact
-Turn just as it does for Project tasks. Their actor Project remains null in receipts
-and audit records; a content resource never supplies a substitute execution Project.
-Explicit Library destinations allow content creation, and Workbench reads check each
-resource independently. Plan Mode permits authorized reads but rejects content and
-Automation mutations. Later Turns recapture authority from the persisted preset.
-
-Every write performs mutation-free preflight and revalidates the exact Turn,
-authority, resource footprint, and semantic preconditions at execution. Consent
-changes who may approve an operation; it never bypasses conflict, identity,
-ownership, or content validation.
+Prepared semantic writes preserve mutation-free preflight, a short-lived
+connection-bound token, immutable operation identity, footprint equality,
+resource lifecycle, ETag/CAS and transactional validation. These protect
+correctness and exact retry; they do not implement a content permission policy.
 
 ## Native CLI and Skill
 
@@ -500,7 +507,7 @@ revision, Store epoch, operation identity, and optional source Turn; Page entry
 writes separately bind the Page manifest revision. Agents
 never receive physical blob paths or read-by-hash access, and executable Files
 must be materialized into the ordinary approved workspace before execution.
-The Page draft projection eagerly exposes only that Page's authorized relation
+The Page draft projection eagerly exposes only that Page's canonical relation
 inventory; bytes are read explicitly and remain bounded. These capabilities do
 not alter Plan Mode.
 
@@ -517,7 +524,7 @@ the Core Administration materializer in-process; it cannot read a live Store or
 perform ordinary semantic operations through that exception.
 
 At human selector boundaries, a Page may be addressed by canonical `@pageId`,
-an authorized current or historical Page key, or an exact supported title path.
+a current or retained historical Page key, or an exact supported title path.
 Core resolves aliases inside the selected Project before the CLI calls the
 UUID-based read or mutation. Machine and human results report the canonical
 current key alongside Page ID when one exists.

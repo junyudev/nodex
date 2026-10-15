@@ -23,7 +23,7 @@ import {
   NodexDialogAction,
 } from "@/components/ui/dialog";
 import { RecoveryPreview } from "./recovery-preview";
-import { contentAccessIdentityKey } from "../../../shared/content-access-context";
+import { contentRoutingIdentityKey } from "../../../shared/content-routing-context";
 
 type RecoveryReviewProps = ModalCloseProps & {
   module: DocumentRecovery;
@@ -35,7 +35,7 @@ type RecoveryReviewProps = ModalCloseProps & {
 export function RecoveryReview(props: RecoveryReviewProps) {
   return (
     <RecoveryReviewContent
-      key={`${contentAccessIdentityKey(props.module.scope)}\0${props.module.documentId ?? "library"}\0${props.initialSourceKey ?? props.initialDraftId ?? "list"}`}
+      key={`${contentRoutingIdentityKey(props.module.scope)}\0${props.module.documentId ?? "library"}\0${props.initialSourceKey ?? props.initialDraftId ?? "list"}`}
       {...props}
     />
   );

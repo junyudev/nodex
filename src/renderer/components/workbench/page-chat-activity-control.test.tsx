@@ -15,6 +15,7 @@ const summary = (overrides: Partial<PageChatActivitySummary> = {}): PageChatActi
   errorCount: 0,
   unreadCount: 0,
   soleSessionId: "session-1",
+  runtimeSessionIds: [],
   ...overrides,
 });
 
@@ -24,6 +25,7 @@ const item = (overrides: Partial<PageChatItem> = {}): PageChatItem => ({
   projectName: "Nodex",
   displayTitle: "Implement activity",
   threadId: "thread-1",
+  executionRef: null,
   threadPreview: "Working through the renderer projection",
   threadStatus: { statusType: "idle", activeFlags: [] },
   threadArchived: false,

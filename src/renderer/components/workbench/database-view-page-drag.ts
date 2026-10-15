@@ -115,7 +115,7 @@ export const buildDatabaseViewPageDragData = ({
   readonly selectedPageIds: ReadonlySet<string>;
   readonly instanceId: symbol;
 }): BoardCardDragData | null => {
-  if (model.accessContext.kind !== "project") return null;
+  if (model.routingContext.kind !== "project") return null;
 
   const draggedRows = selectedPageIds.has(row.pageId)
     ? allRows.filter(
@@ -142,7 +142,7 @@ export const buildDatabaseViewPageDragData = ({
   return {
     type: "board-card",
     instanceId,
-    projectId: model.accessContext.projectId,
+    projectId: model.routingContext.projectId,
     databaseBlockId: model.databaseId,
     dataSourceId: model.dataSourceId,
     storeEpoch: model.storeEpoch,

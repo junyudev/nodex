@@ -551,13 +551,14 @@ export interface AgentSessionMetadata {
   readonly configOptions: readonly AgentSessionConfigOption[];
   readonly modes: AgentSessionModeState | null;
   readonly capabilities: AgentBackendCapabilityProfile;
-  readonly permissionMode?: import("./agent-backend-api").NativePermissionMode;
+
   readonly effectiveSelection?: {
     readonly model: string | null;
     readonly effort: string | null;
     readonly fast?: boolean | null;
     readonly thinking?: boolean | null;
-    readonly permissionMode?: string;
+    /** Observed SDK mode, independent of the fixed native launch configuration. */
+    readonly permissionMode?: string | null;
   };
   readonly requestedSelection?: {
     readonly model: string;

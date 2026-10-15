@@ -311,4 +311,44 @@ describe("buildComposerSlashCommands", () => {
 
     expect(goalCommand.isVisible).toBe(false);
   });
+
+  test("a Runtime conversation hides Goal and changes its own speed for Fast", async () => {
+    const onIntelligenceSelectionChange = vi.fn(async () => undefined);
+    const setServiceTier = vi.fn();
+    const provider = {
+      kind: "codex",
+      label: "Codex",
+      serviceTier: null,
+      controls: { goals: false },
+    } as unknown as NonNullable<ThreadFooterModel["provider"]>;
+    const commands = buildComposerSlashCommands({
+      model: buildNewThreadModel({
+        provider,
+        selectedModel: "gpt",
+        selectedReasoningEffort: "high",
+        availableModels: [],
+      }),
+      actions: {
+        onStartThreadForSession: async () => undefined,
+        onIntelligenceSelectionChange,
+        onCollaborationModeChange: () => undefined,
+      } as unknown as ThreadStageActions,
+      serviceTier: "fast",
+      setServiceTier,
+      openExpandedDialog: () => undefined,
+      onPetToggle: () => undefined,
+      activateGoalMode: () => undefined,
+    });
+    expect(commands.find((command) => command.id === "goal")?.isVisible).toBe(false);
+    await commands.find((command) => command.id === "service-tier:fast")!.onSelect!({
+      source: "dialog",
+    });
+    expect(onIntelligenceSelectionChange).toHaveBeenCalledWith({
+      kind: "codex",
+      model: "gpt",
+      reasoningEffort: "high",
+      serviceTier: "fast",
+    });
+    expect(setServiceTier).not.toHaveBeenCalled();
+  });
 });

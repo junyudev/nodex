@@ -100,7 +100,6 @@ export interface NfmAgentConfigInlineContent {
   model?: string;
   reasoning?: string;
   speed?: string;
-  permission?: string;
   unknownAttributes?: string[];
   rawAttributes?: string;
 }

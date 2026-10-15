@@ -5,7 +5,7 @@ import { createSurfaceHistory } from "./surface-history/owner";
 
 const scope = {
   libraryId: "library",
-  accessContext: { kind: "library" as const },
+  routingContext: { kind: "library" as const },
   storeEpoch: "epoch",
 };
 

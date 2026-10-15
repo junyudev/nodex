@@ -149,7 +149,6 @@ async function renderOverlay(path = buildSettingsPath("backups")) {
       if (channel === "settings:thread-notifications:get") {
         return {
           turnMode: "unfocused",
-          permissionsEnabled: true,
           questionsEnabled: true,
         };
       }
@@ -191,7 +190,6 @@ describe("SettingsRouteShell backups", () => {
         case "settings:thread-notifications:get":
           return {
             turnMode: "unfocused",
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -304,7 +302,6 @@ describe("SettingsRouteShell backups", () => {
         case "settings:thread-notifications:get":
           return {
             turnMode: "unfocused",
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -367,7 +364,6 @@ describe("SettingsRouteShell backups", () => {
         case "settings:thread-notifications:get":
           return {
             turnMode: "unfocused",
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -472,7 +468,6 @@ describe("SettingsRouteShell backups", () => {
         case "settings:thread-notifications:get":
           return {
             turnMode: "unfocused",
-            permissionsEnabled: true,
             questionsEnabled: true,
           };
         case "settings:app-updates:get":
@@ -589,6 +584,7 @@ describe("SettingsRouteShell backups", () => {
       label: "Before migration",
       includesAssets: true,
       dbBytes: 1024,
+      executionBytes: 0,
       assetsBytes: 512,
       totalBytes: 1536,
     };
@@ -738,6 +734,7 @@ describe("SettingsRouteShell backups", () => {
         label: "Before risky change",
         includesAssets: true,
         dbBytes: 1024,
+        executionBytes: 0,
         assetsBytes: 512,
         totalBytes: 1536,
       },

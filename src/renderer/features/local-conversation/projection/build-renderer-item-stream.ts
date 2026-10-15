@@ -332,6 +332,10 @@ function resolveSemanticRendererType(entry: CodexConversationItem): RendererTran
       return "autoReviewInterruptionWarning";
     case "multiAgentAction":
       return "multiAgentAction";
+    case "delegatedTask":
+      return "delegatedTask";
+    case "runtimeNotice":
+      return "runtimeNotice";
     case "steered":
       return "steered";
     case "userInputResponse":
@@ -479,16 +483,6 @@ function resolveRequestSearchableText(request: CodexTurnScopedConversationReques
 
   if (request.type === "setupCodexStep") {
     return request.step;
-  }
-
-  if (request.type === "nodexAgentAuthorization") {
-    return [
-      request.preview.summary,
-      ...request.preview.details.map((detail) => `${detail.label} ${detail.value}`),
-      request.preview.markdownPreview ?? request.preview.nfmPreview ?? "",
-    ]
-      .join("\n")
-      .trim();
   }
 
   return request.planContent.trim();

@@ -36,7 +36,6 @@ const emptyManifest = {
   page_id: "nested-page",
   revision: 0,
   body_usage_revision: 0,
-  can_write: true,
   files: [],
   next_cursor: null,
   has_more: false,
@@ -77,7 +76,6 @@ const manifestResponse = (manifest: LibraryPageFileInventory) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 1,
-    authorization: null,
     value: {
       kind: "page_file_inventory",
       value: manifest,
@@ -143,7 +141,7 @@ const emptyPropertyControls: PageStagePropertyControls = {
 const buildController = (overrides: Partial<PageStageController> = {}): PageStageController =>
   ({
     page,
-    contentAccessContext: { kind: "project", projectId: "project-1" },
+    contentRoutingContext: { kind: "project", projectId: "project-1" },
     storeEpoch: "store-1",
     hasDatabaseProperties: false,
     hasRelatedChatsRow: false,
@@ -181,7 +179,7 @@ describe("PageStagePropertiesSection", () => {
     });
     expect(modal.openModal).toHaveBeenCalledOnce();
     expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       pageId: "nested-page",
     });
   });
@@ -245,6 +243,7 @@ describe("PageStagePropertiesSection", () => {
               projectName: "Nodex",
               displayTitle: "Research follow-up",
               threadId: null,
+              executionRef: null,
               threadPreview: "",
               threadStatus: null,
               threadArchived: false,
@@ -339,7 +338,6 @@ describe("PageStagePropertiesSection", () => {
         ...emptyManifest,
         revision: 1,
         body_usage_revision: 1,
-        can_write: true,
         files: [pageFile("file-image", "image.png", { kind: "placed", placementCount: 1 })],
         total: 1,
         placed_total: 1,

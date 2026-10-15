@@ -13,11 +13,6 @@ import type {
   ProjectionScope,
   ProjectionStreamMessage,
 } from "./projection-stream";
-import type {
-  ResourceRevocation,
-  ResourceRevocationDelivery,
-  ResourceRevocationDeliveryMessage,
-} from "./resource-revocation-stream";
 
 export type { AuthorizedDeliveryPacket } from "./authorized-delivery-packet";
 
@@ -39,42 +34,6 @@ export interface LocalCommitCommandSuccess<Value> {
 }
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
-
-export const revocationsFromVisibilityDelta = (
-  delta: AuthorizedDeliveryPacket["visibility_deltas"][number],
-): readonly ResourceRevocation[] => {
-  if (delta.change.kind !== "revoke") return [];
-  const reason = delta.change.reason;
-  return delta.roots.flatMap((root): readonly ResourceRevocation[] => {
-    const identity =
-      root.kind === "page"
-        ? root.page_id
-        : root.kind === "document"
-          ? root.document_id
-          : root.kind === "database"
-            ? root.database_id
-            : root.kind === "data_source"
-              ? root.data_source_id
-              : root.kind === "view"
-                ? root.view_id
-                : root.kind === "canvas"
-                  ? root.canvas_id
-                  : root.kind === "file"
-                    ? root.file_id
-                    : null;
-    if (identity === null || root.kind === "library" || root.kind === "project") {
-      return [];
-    }
-    return [
-      {
-        authorization_scope: delta.authorization_scope,
-        resource_kind: root.kind,
-        resource_id: identity,
-        reason,
-      },
-    ];
-  });
-};
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -278,39 +237,3 @@ export const projectionMessageFromDelivery = (
     effect: mapEffect(effect),
   },
 });
-
-export const revocationScopeCanReceive = (
-  subscription: ProjectionScope,
-  revocation: ResourceRevocation,
-): boolean => {
-  const authorization = revocation.authorization_scope;
-  if (authorization.library_id !== subscription.libraryId) return false;
-  if (authorization.kind === "library") return subscription.kind === "library";
-  if (authorization.kind === "document") return false;
-  return subscription.kind === "project" && subscription.projectId === authorization.project_id;
-};
-
-export const revocationMessageFromDelivery = (
-  packet: AuthorizedDeliveryPacket,
-  revocation: ResourceRevocation,
-  scope: ProjectionScope,
-): ResourceRevocationDeliveryMessage => {
-  const delivery: ResourceRevocationDelivery = {
-    storeEpoch: packet.manifest.identity.store_epoch,
-    commitSeq: packet.manifest.identity.commit_seq,
-    manifestHash: packet.manifest.identity.manifest_hash,
-    operationId: packet.manifest.operation_id,
-    committedAt: packet.manifest.committed_at,
-    revocation,
-  };
-  return {
-    version: 1,
-    kind: "revocation",
-    scope,
-    stream: {
-      storeEpoch: packet.manifest.identity.store_epoch,
-      commitSeq: packet.manifest.identity.commit_seq,
-    },
-    delivery,
-  };
-};

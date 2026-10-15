@@ -9,7 +9,7 @@
 
 ADR 0017 renames the document-bearing Page to Page and replaces Space content
 ownership with Library ownership. The explicit per-owner Document and Yjs-root
-decisions remain current; Project is only an access/execution coordinate.
+decisions remain current; Project is only a presentation/execution coordinate.
 
 ## Context
 

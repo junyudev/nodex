@@ -25,6 +25,143 @@ const PROFILE_ID: &str = "profile:administration-test";
 const LIBRARY_ID: &str = "library:administration-test";
 const STORE_EPOCH: &str = "epoch:administration-test";
 
+struct ExecutionParticipant;
+impl super::ProfileSnapshotParticipant for ExecutionParticipant {
+    fn capture(&self, request: super::ProfileSnapshotCapture<'_>) -> Result<bool, StoreError> {
+        let source = request.source_profile.join("agent-runtime");
+        let destination = request.staging_profile.join("agent-runtime");
+        fs::create_dir_all(destination.join("native-history")).unwrap();
+        for name in ["agent-runtime.sqlite", "native-history/transcript.jsonl"] {
+            fs::copy(source.join(name), destination.join(name)).unwrap();
+        }
+        Ok(true)
+    }
+}
+
+fn write_execution(home: &Path, contents: &[u8]) {
+    fs::create_dir_all(home.join("agent-runtime/native-history")).unwrap();
+    fs::write(home.join("agent-runtime/agent-runtime.sqlite"), contents).unwrap();
+    fs::write(
+        home.join("agent-runtime/native-history/transcript.jsonl"),
+        contents,
+    )
+    .unwrap();
+}
+
+#[test]
+fn execution_history_is_covered_by_backup_digest_restore_and_safety_backup() {
+    let mut fixture = Fixture::new();
+    fixture.module = fixture
+        .module
+        .with_profile_snapshot_participant(ExecutionParticipant);
+    write_execution(fixture.home(), b"complete captured execution");
+    let created = fixture.create_backup("backup:execution-closure", None, true);
+    let backup_id = created.committed.value.backup_id.expect("Backup identity");
+    let record = super::backup::list_backup_inventory(fixture.home())
+        .unwrap()
+        .into_iter()
+        .find(|item| item.record.backup_id == backup_id)
+        .unwrap()
+        .record;
+    assert_eq!(
+        record.execution_bytes,
+        2 * b"complete captured execution".len() as u64
+    );
+    assert_eq!(
+        record.total_bytes,
+        record.db_bytes + record.assets_bytes + record.execution_bytes
+    );
+    write_execution(fixture.home(), b"current execution");
+    let replay = fixture.create_backup("backup:execution-closure", None, true);
+    assert_eq!(
+        replay.committed.value.backup_id,
+        Some(record.backup_id.clone())
+    );
+    let restored = fixture.restore_backup("restore:execution-closure", &record.backup_id, true);
+    assert_eq!(
+        fs::read(
+            fixture
+                .home()
+                .join("agent-runtime/native-history/transcript.jsonl")
+        )
+        .unwrap(),
+        b"complete captured execution"
+    );
+    let safety = restored.committed.value.safety_backup_id.unwrap();
+    assert_eq!(
+        fs::read(
+            fixture
+                .home()
+                .join("backups")
+                .join(safety)
+                .join("agent-runtime/agent-runtime.sqlite")
+        )
+        .unwrap(),
+        b"current execution"
+    );
+}
+
+#[test]
+fn altered_execution_history_and_failed_install_leave_the_current_profile_intact() {
+    for corrupt_snapshot in [true, false] {
+        let mut fixture = Fixture::new_with_hook(|epoch| {
+            if epoch == STORE_EPOCH {
+                return Ok(());
+            }
+            Err(StoreError::new(
+                StoreErrorCode::Internal,
+                "injected replacement failure",
+                false,
+            ))
+        });
+        fixture.module = fixture
+            .module
+            .with_profile_snapshot_participant(ExecutionParticipant);
+        write_execution(fixture.home(), b"original execution");
+        let created = fixture.create_backup("backup:execution-failure", None, true);
+        let backup_id = created.committed.value.backup_id.unwrap();
+        write_execution(fixture.home(), b"current execution");
+        if corrupt_snapshot {
+            fs::write(
+                fixture
+                    .home()
+                    .join("backups")
+                    .join(&backup_id)
+                    .join("agent-runtime/native-history/transcript.jsonl"),
+                b"corrupt execution",
+            )
+            .unwrap();
+        }
+        let outcome = fixture.module.apply(
+            &fixture.context(),
+            ModuleApplyRequest {
+                contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
+                operation_id: "restore:execution-failure".into(),
+                store_epoch: StoreEpoch(STORE_EPOCH.into()),
+                intent: StoreAdministrationIntent::RestoreBackup {
+                    backup_id,
+                    create_safety_backup: false,
+                    profile_snapshot: None,
+                },
+            },
+        );
+        assert!(outcome.is_err());
+        assert_eq!(
+            fs::read(fixture.home().join("agent-runtime/agent-runtime.sqlite")).unwrap(),
+            b"current execution"
+        );
+        assert_eq!(
+            fs::read(
+                fixture
+                    .home()
+                    .join("agent-runtime/native-history/transcript.jsonl")
+            )
+            .unwrap(),
+            b"current execution"
+        );
+    }
+}
+
 fn backups_read() -> StoreAdministrationRead {
     StoreAdministrationRead::Backups {
         window: CollectionWindowRequest {
@@ -189,6 +326,7 @@ impl Fixture {
                     operation_id: operation_id.to_owned(),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                     intent: StoreAdministrationIntent::CreateBackup {
+                        profile_snapshot: None,
                         label: label.map(str::to_owned),
                         include_assets,
                         trigger,
@@ -237,6 +375,7 @@ impl Fixture {
                     operation_id: operation_id.to_owned(),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                     intent: StoreAdministrationIntent::RestoreBackup {
+                        profile_snapshot: None,
                         backup_id: backup_id.to_owned(),
                         create_safety_backup,
                     },
@@ -596,7 +735,7 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
         .expect("backup manifest"),
     )
     .expect("valid backup manifest");
-    assert_eq!(manifest["version"], 3);
+    assert_eq!(manifest["version"], 4);
     assert_eq!(manifest["integrityEvidence"]["version"], 1);
     assert_eq!(
         manifest["integrityEvidence"]["databaseSha256"]
@@ -627,7 +766,7 @@ fn reports_rust_readiness_and_publishes_a_valid_exact_retry_backup() {
     };
     assert_eq!(backups.items.len(), 1);
     assert_eq!(backups.items[0].backup_id, backup_id);
-    assert_eq!(backups.items[0].version, 3);
+    assert_eq!(backups.items[0].version, 4);
     assert_eq!(backups.items[0].trigger, BackupTrigger::Manual);
     assert_eq!(backups.items[0].label.as_deref(), Some("before refactor"));
     assert!(backups.items[0].includes_assets);
@@ -695,6 +834,7 @@ fn rejects_request_collisions_and_symlinked_assets_without_a_receipt() {
                 operation_id: "administration:create-backup:collision".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
+                    profile_snapshot: None,
                     label: Some("different".to_owned()),
                     include_assets: false,
                     trigger: BackupTrigger::Manual,
@@ -718,6 +858,7 @@ fn rejects_request_collisions_and_symlinked_assets_without_a_receipt() {
                 operation_id: "administration:create-backup:symlink".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
+                    profile_snapshot: None,
                     label: None,
                     include_assets: true,
                     trigger: BackupTrigger::Manual,
@@ -860,6 +1001,8 @@ fn exact_create_retry_publishes_after_the_store_receipt_commit() {
                 BackupTrigger::Manual,
                 &|_| Ok(()),
                 &|| Ok(false),
+                &super::profile_snapshot::NoProfileSnapshotParticipant,
+                None,
             )?;
             let record = staged.record().clone();
             super::finish_backup_creation(
@@ -1327,6 +1470,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                 operation_id: "administration:create-backup:stale-after-restore".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::CreateBackup {
+                    profile_snapshot: None,
                     label: None,
                     include_assets: false,
                     trigger: BackupTrigger::Manual,
@@ -1394,6 +1538,7 @@ fn replacement_hook_failure_rolls_back_the_complete_source_store() {
                 operation_id: "administration:restore-backup:hook-failure".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
+                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },
@@ -1492,6 +1637,9 @@ fn adopts_a_committed_restore_after_the_pre_receipt_crash_boundary() {
                 create_safety_backup,
                 existing_journal: None,
                 replacement_hook: &|_| Ok(()),
+                profile_snapshot_participant:
+                    &super::profile_snapshot::NoProfileSnapshotParticipant,
+                profile_snapshot: None,
             })
         })
         .expect("committed file replacement");
@@ -1605,6 +1753,7 @@ fn rejects_a_corrupt_restore_candidate_without_touching_the_live_store() {
                 operation_id: "administration:restore-backup:corrupt".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
+                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },
@@ -1683,6 +1832,7 @@ fn deletes_one_backup_with_exact_replay_and_rejects_later_restore() {
                 operation_id: "administration:restore-deleted-backup".to_owned(),
                 store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                 intent: StoreAdministrationIntent::RestoreBackup {
+                    profile_snapshot: None,
                     backup_id,
                     create_safety_backup: false,
                 },

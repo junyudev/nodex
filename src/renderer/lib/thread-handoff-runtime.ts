@@ -3,6 +3,7 @@ import type {
   CodexAppHandoffOperation,
   CodexThreadHandoffSnapshot,
   ThreadExecutionHandoffInput,
+  ThreadExecutionLocationView,
 } from "../../shared/codex-thread-handoff";
 import { subscribeCodexThreadHandoffsChanged } from "./api";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
@@ -17,6 +18,13 @@ const moveThreadExecutionCommand = defineRendererCommand({
 
 export function moveThreadExecution(input: ThreadExecutionHandoffInput) {
   return invokePlainCommand(moveThreadExecutionCommand, input);
+}
+
+/** Main classifies the location exactly as a later move admission will. */
+export function readThreadExecutionLocation(
+  threadId: string,
+): Promise<ThreadExecutionLocationView> {
+  return invokeRendererQuery("thread-execution:location", { threadId });
 }
 
 export interface ThreadHandoffScope {

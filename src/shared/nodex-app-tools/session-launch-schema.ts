@@ -32,13 +32,16 @@ export const createSessionSchema = z.strictObject({
     }),
   ]),
   model: z.string().trim().min(1).max(256).optional(),
+  reasoningEffort: z
+    .enum(["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"])
+    .optional(),
   operationId: z.string().max(512).refine(isBoundedOperationId).optional(),
 });
 
 export const createSessionTool: Tool = {
   name: "create_session",
   description:
-    "Create and start a Codex Session. Choose a Project environment explicitly: normally worktree for Git repositories and local for other Projects; use projectless for work without a Project. Use onMissing create-branch only when the user explicitly requested that exact new branch name; otherwise a missing branch is an error. Omit model unless the user requested one. Returns a stable sessionId and started, pending, or unconfirmed launch state. Reuse operationId with identical arguments for retries; replay never starts a second Thread. Project-scoped Turns can create only in their own Project.",
+    "Create and start a Agent Session. Choose a Project environment explicitly: normally worktree for Git repositories and local for other Projects; use projectless for work without a Project. Use onMissing create-branch only when the user explicitly requested that exact new branch name; otherwise a missing branch is an error. Omit model unless the user requested one. Returns a stable sessionId and started, pending, or unconfirmed launch state. Reuse operationId with identical arguments for retries; replay never starts a second Thread. ",
   inputSchema: z.toJSONSchema(createSessionSchema) as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

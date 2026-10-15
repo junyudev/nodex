@@ -20,7 +20,7 @@ import {
   type NodexYProviderStatus,
 } from "./nodex-y-provider";
 import { BlockDocumentSurfaceError } from "./block-document-surface-failure";
-import { parseContentAccessContext } from "../../shared/content-access-context";
+import { parseContentRoutingContext } from "../../shared/content-routing-context";
 import {
   DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
   assertDocumentWaitActive,
@@ -152,7 +152,7 @@ const validateDescriptor = (descriptor: OwnedDocumentDescriptor): OwnedDocumentD
   if (!descriptor.libraryId || descriptor.libraryId !== descriptor.libraryId.trim()) {
     throw new TypeError("Block Document descriptor has an invalid libraryId");
   }
-  parseContentAccessContext(descriptor.accessContext);
+  parseContentRoutingContext(descriptor.routingContext);
   if (!descriptor.documentId || descriptor.documentId !== descriptor.documentId.trim()) {
     throw new TypeError("Block Document descriptor has an invalid documentId");
   }
@@ -273,7 +273,7 @@ export class BlockDocumentSurfaceRuntime {
       options.localCheckpointStore === undefined
         ? createDefaultDocumentLocalCheckpointStore({
             libraryId: this.descriptor.libraryId,
-            accessContext: this.descriptor.accessContext,
+            routingContext: this.descriptor.routingContext,
           })
         : options.localCheckpointStore;
     this.provider = (options.createProvider ?? createProvider)({
@@ -507,7 +507,7 @@ export class BlockDocumentSurfaceRuntime {
   exportRecovery = async (): Promise<void> => {
     const data = await this.provider.exportRecovery();
     await exportRecoveryEnvelope(
-      { libraryId: this.descriptor.libraryId, accessContext: this.descriptor.accessContext },
+      { libraryId: this.descriptor.libraryId, routingContext: this.descriptor.routingContext },
       this.descriptor.documentId,
       data,
     );

@@ -38,7 +38,7 @@ import type {
   CodexPendingWorktreeEntry,
   CodexPendingWorktreeThreadResolution,
 } from "../../../shared/codex-pending-worktree";
-import type { CodexAgentMode } from "../../../shared/types";
+
 import { PendingWorktreeProgress } from "./pending-worktree-progress";
 import { resolvePendingWorktreeRouteActions } from "./pending-worktree-route-model";
 import { resolveCreatedThreadTarget } from "../../lib/codex-created-thread-runtime";
@@ -336,7 +336,7 @@ export interface PendingWorktreeRouteProps {
   readTarget?: (
     input: CodexCreatedThreadResolveInput,
   ) => Promise<CodexCreatedThreadResolution | null>;
-  agentMode?: CodexAgentMode;
+
   externalHeader?: boolean;
   transport?: PendingWorktreeRouteTransport;
   onClose: () => void;
@@ -350,7 +350,7 @@ export function PendingWorktreeRoute({
   clientThreadId,
   expectedHostId,
   readTarget = resolveCreatedThreadTarget,
-  agentMode = "auto",
+
   transport = pendingWorktreeRouteTransport,
   onClose,
   onOpenThread,
@@ -488,7 +488,7 @@ export function PendingWorktreeRoute({
           return;
         }
         if (action === "auto-fix") {
-          const result = await transport.autoFix(hostId, pendingWorktreeId, agentMode);
+          const result = await transport.autoFix(hostId, pendingWorktreeId);
           if (!result.clientThreadId) {
             throw new Error("The worktree repair task has no client thread id.");
           }
@@ -513,7 +513,6 @@ export function PendingWorktreeRoute({
       }
     },
     [
-      agentMode,
       busyAction,
       load,
       onCancelToSource,

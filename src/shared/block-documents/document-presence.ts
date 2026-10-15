@@ -1,4 +1,4 @@
-import { parseContentAccessContext, type ContentAccessContext } from "../content-access-context";
+import { parseContentRoutingContext, type ContentRoutingContext } from "../content-routing-context";
 
 export const MAX_DOCUMENT_PRESENCE_BYTES = 64 * 1024;
 const MAX_CANVAS_PRESENCE_PUBLICATION_BYTES = 56 * 1024;
@@ -46,7 +46,7 @@ export interface CanvasPresenceEvent extends CanvasPresencePublication {
 
 /** Delivery identity is checked against the renderer's active subscription. */
 export interface CanvasPresencePublishRequest {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly clientSessionId: string;
   readonly publication: CanvasPresencePublication;
 }
@@ -58,7 +58,7 @@ export interface CanvasPresencePublishAck {
 }
 
 export type CanvasPresenceCommandErrorCode =
-  | "unauthorized"
+  | "invalid_session"
   | "invalid_presence"
   | "generation_mismatch"
   | "transport_unavailable";
@@ -79,7 +79,7 @@ export type CanvasPresenceRealtimeEvent =
   | {
       readonly type: "canvas_presence_snapshot";
       readonly libraryId: string;
-      readonly accessContext: ContentAccessContext;
+      readonly routingContext: ContentRoutingContext;
       readonly documentId: string;
       readonly generation: number;
       readonly presences: readonly CanvasPresenceEvent[];
@@ -87,7 +87,7 @@ export type CanvasPresenceRealtimeEvent =
   | {
       readonly type: "canvas_presence_updated";
       readonly libraryId: string;
-      readonly accessContext: ContentAccessContext;
+      readonly routingContext: ContentRoutingContext;
       readonly presence: CanvasPresenceEvent;
     };
 
@@ -207,12 +207,12 @@ export const canonicalizeCanvasPresencePublishRequest = (
 ): CanvasPresencePublishRequest => {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ["accessContext", "clientSessionId", "publication"])
+    !hasOnlyKeys(value, ["routingContext", "clientSessionId", "publication"])
   ) {
     throw new TypeError("Canvas presence publish request is invalid");
   }
   return {
-    accessContext: parseContentAccessContext(value.accessContext),
+    routingContext: parseContentRoutingContext(value.routingContext),
     clientSessionId: readIdentity(value.clientSessionId, "Canvas presence client session"),
     publication: canonicalizeCanvasPresencePublication(value.publication),
   };
@@ -271,14 +271,14 @@ export const canonicalizeCanvasPresenceRealtimeEvent = (
     throw new TypeError("Canvas presence realtime event is invalid");
   }
   if (value.type === "canvas_presence_updated") {
-    if (!hasOnlyKeys(value, ["type", "libraryId", "accessContext", "presence"])) {
+    if (!hasOnlyKeys(value, ["type", "libraryId", "routingContext", "presence"])) {
       throw new TypeError("Canvas presence update event is invalid");
     }
     return assertEncodedBound(
       {
         type: value.type,
         libraryId: readIdentity(value.libraryId, "Canvas presence Library"),
-        accessContext: parseContentAccessContext(value.accessContext),
+        routingContext: parseContentRoutingContext(value.routingContext),
         presence: canonicalizeCanvasPresenceEvent(value.presence),
       },
       MAX_DOCUMENT_PRESENCE_BYTES,
@@ -290,7 +290,7 @@ export const canonicalizeCanvasPresenceRealtimeEvent = (
     !hasOnlyKeys(value, [
       "type",
       "libraryId",
-      "accessContext",
+      "routingContext",
       "documentId",
       "generation",
       "presences",
@@ -318,7 +318,7 @@ export const canonicalizeCanvasPresenceRealtimeEvent = (
     {
       type: value.type,
       libraryId: readIdentity(value.libraryId, "Canvas presence Library"),
-      accessContext: parseContentAccessContext(value.accessContext),
+      routingContext: parseContentRoutingContext(value.routingContext),
       documentId,
       generation,
       presences,

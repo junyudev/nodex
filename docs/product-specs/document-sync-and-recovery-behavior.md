@@ -10,6 +10,8 @@ retries retain the original identity and payload. An expired or uncertain older
 submission remains explicit recovery work and is never silently reissued as a
 new edit.
 
+Document preparation and edits work from either Library or Project presentation. Project attribution is optional; exact owner identity, Store epoch, generation, revision and edit validators determine validity. Retried initialization and semantic edits retain their original durable receipt.
+
 ## Reference lifecycle during saves
 
 Existing Block, Database View, and Thread references may outlive their targets.
@@ -20,8 +22,8 @@ and occurrence count. Genesis, added occurrences, and retargeted references
 must pass target validation; a caller's stale base is not retention evidence.
 A new View reference requires its View, Database Block, Database, and Data Source
 to belong to the same Library and remain undeleted.
-Retaining a reference never grants access to its target. Target resolution keeps
-its normal authorization and unavailable presentation.
+Agents and user interfaces may resolve any undeleted target in the current
+Profile. Deleted or missing targets retain an unavailable presentation.
 
 ## Connection and failure
 
@@ -32,11 +34,11 @@ its original pending update. Opening an IPC subscription or pressing Retry does
 not itself prove that a stream is connected.
 
 Temporary transport, deadline, or busy failures retain pending identity and
-bytes. Protocol incompatibility, invalid updates, revoked access, and unsafe
+bytes. Protocol incompatibility, invalid updates, stale client sessions, and unsafe
 structural conflicts stop the affected replica. They are never presented as an
 indefinite Offline state with no recovery owner. Other documents remain usable.
 
-A late physical stream finalizer cannot remove its replacement's authorization.
+A late physical stream finalizer cannot remove its replacement's physical lease.
 Every replacement barrier checks document identity, engine, and Store epoch.
 Store replacement continues to require the application relaunch boundary.
 
@@ -54,7 +56,7 @@ old save later completes, and the next operation can proceed. Once a Core
 mutation may have been submitted, its exact identity and receipt determine the
 outcome; cancellation does not claim to undo a possible commit. A later user
 focus choice wins over focus restoration. Refreshing callbacks or props for the
-same Document and access context preserves queued and active waits. Actual view
+same Document and routing context preserves queued and active waits. Actual view
 deactivation, authority change or explicit Cancel ends those waits.
 
 ## Local protection and recovery
@@ -122,7 +124,7 @@ entries remain available there and in the review dialog.
 Core determines the available actions:
 
 - Restore edits creates a new forward commit after rechecking the draft revision,
-  current document head, generation, authorization, schema and structural barriers.
+  current document head, generation, lifecycle, schema and structural barriers.
   Existing unrelated content is preserved. Safety and result versions are recorded.
 - Save as a copy creates an independent Page or Canvas in the Library, with new
   owned identities. It is offered only for a complete recoverable package. Packages
@@ -166,9 +168,11 @@ is the only user-directed exception and does not claim Core receipt. The acknowl
 draft, source revision and exact submitted-byte digest; deleting the row also
 requires that its persisted revision has not changed. Lost replies leave staging bytes
 intact; repeated reception cannot overwrite a different package under the same
-identity. Drafts are Library-owned and every operation rechecks current access.
+identity. Drafts are Library-owned and every operation rechecks exact Profile, Store and
+resource identity.
 A Core recovery artifact still covers one rejected update rather than a complete
-later renderer draft. Cached content never grants new access.
+later renderer draft. Cached content never replaces current lifecycle or identity
+checks.
 
 Pending drafts have no age-based eviction. Handled drafts remain for 30 days,
 then bounded maintenance releases their package and resource roots. Core bounds

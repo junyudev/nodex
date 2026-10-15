@@ -1,38 +1,16 @@
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import type { AgentBackendSessionPresentation } from "../../shared/agent-conversation";
+import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
 import { agentBackendRuntime } from "./agent-backend-runtime";
 
-const presentation: AgentBackendSessionPresentation = {
-  snapshot: {
-    backend: "acp",
-    threadId: "thread-1",
-    sessionId: "session-1",
-    status: "idle",
-    error: null,
-    turns: [],
-    revision: 1,
-  },
-  capabilities: {
-    prompt: {
-      text: true,
-      resourceLink: true,
-      image: false,
-      audio: false,
-      embeddedContext: false,
-    },
-    session: {
-      load: true,
-      list: false,
-      delete: false,
-      resume: false,
-      unstableFork: false,
-      close: true,
-      additionalDirectories: false,
-    },
-    authMethods: [],
-  },
-  modes: null,
-  configOptions: [],
+const snapshot: AgentConversationSnapshot = {
+  backend: "claude",
+  threadId: "thread-1",
+  sessionId: "native-session-1",
+  status: "closed",
+  error: null,
+  turns: [],
+  revision: 1,
+  history: { cursor: "older-page", hasOlder: true, oldestSequence: 1 },
 };
 
 afterEach(() => vi.unstubAllGlobals());
@@ -77,54 +55,10 @@ it("completed discovery unregisters its cancellation consumer", async () => {
   expect(invoke).toHaveBeenCalledOnce();
 });
 
-it("routes typed lifecycle commands through the named ACP boundary", async () => {
-  const invoke = vi.fn(async (channel: string) => {
-    if (channel === "agent-backend:session:open") return presentation;
-    if (channel === "agent-backend:session:read") return presentation;
-    throw new Error(`Unexpected channel: ${channel}`);
-  });
-  vi.stubGlobal("window", { api: { invoke, on: vi.fn() } });
-
-  await expect(agentBackendRuntime.open({ threadId: "thread-1" })).resolves.toEqual(presentation);
-  await expect(agentBackendRuntime.read("thread-1")).resolves.toEqual(presentation);
-  expect(invoke).toHaveBeenNthCalledWith(1, "agent-backend:session:open", {
-    threadId: "thread-1",
-  });
-  expect(invoke).toHaveBeenNthCalledWith(2, "agent-backend:session:read", "thread-1");
-});
-
-it("observes only the attached thread and releases both delivery paths", async () => {
-  let eventListener: ((...args: unknown[]) => void) | null = null;
-  const release = vi.fn();
-  const on = vi.fn((_channel: string, listener: (...args: unknown[]) => void) => {
-    eventListener = listener;
-    return release;
-  });
-  const invoke = vi.fn(async () => undefined);
-  vi.stubGlobal("window", { api: { invoke, on } });
-  const listener = vi.fn();
-
-  const unsubscribe = await agentBackendRuntime.subscribe("thread-1", listener);
-  const publish = eventListener as ((...args: unknown[]) => void) | null;
-  expect(publish).not.toBeNull();
-  const delta = {
-    backend: "acp" as const,
-    threadId: "thread-1",
-    sessionId: "session-1",
-    baseRevision: 1,
-    revision: 2,
-    status: "running" as const,
-    error: null,
-    removedTurnSequences: [],
-    turns: [],
-  };
-  publish?.({ threadId: "thread-2", delta: { ...delta, threadId: "thread-2" } });
-  publish?.({ threadId: "thread-1", delta });
-
-  expect(listener).toHaveBeenCalledOnce();
-  expect(listener).toHaveBeenCalledWith({ threadId: "thread-1", delta });
-  expect(invoke).toHaveBeenCalledWith("agent-backend:session:observe", "thread-1");
-  unsubscribe();
-  expect(release).toHaveBeenCalledOnce();
-  expect(invoke).toHaveBeenCalledWith("agent-backend:session:unobserve", "thread-1");
+it("reads an addressed native history page through the query boundary", async () => {
+  const invoke = vi.fn(async () => snapshot);
+  vi.stubGlobal("window", { api: { invoke } });
+  const input = { threadId: "thread-1", before: "older-page", limit: 50 };
+  await expect(agentBackendRuntime.history(input)).resolves.toBe(snapshot);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("agent-backend:session:history", input);
 });

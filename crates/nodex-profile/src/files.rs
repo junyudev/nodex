@@ -17,6 +17,11 @@ pub(crate) struct Fingerprint {
     modified: (i64, i64),
     changed: (i64, i64),
 }
+impl Fingerprint {
+    pub(crate) fn length(&self) -> u64 {
+        self.length
+    }
+}
 
 pub(crate) fn invalid(message: impl Into<String>) -> ProfileCloneError {
     ProfileCloneError::Invalid(message.into())

@@ -43,15 +43,15 @@ pub(super) fn prepare_page_operation(
     page_id: &str,
     operation: LibraryPageOperation,
 ) -> Result<LibraryPageOperationPreparation, StoreError> {
-    let project_id = requesting_project_id
-        .ok_or_else(|| unauthorized("Page operation preparation requires a bound Project"))?;
-    require_project_in_library(connection, project_id, library_id)?;
+    if let Some(project_id) = requesting_project_id {
+        require_project_in_library(connection, project_id, library_id)?;
+    }
     let validators = match operation {
         LibraryPageOperation::Delete => LibraryPageOperationValidators::Delete {
             page_etag: mint_page_shell_etag(
                 connection,
                 library_id,
-                Some(project_id),
+                requesting_project_id,
                 store_epoch,
                 page_id,
             )?,
@@ -64,10 +64,10 @@ pub(super) fn prepare_page_operation(
                 }
             };
             LibraryPageOperationValidators::Move {
-                move_etag: crate::database::mint_page_move_etag(
+                move_etag: crate::database::mint_page_move_etag_prevalidated(
                     connection,
                     library_id,
-                    project_id,
+                    requesting_project_id,
                     store_epoch,
                     page_id,
                     view_id.as_deref(),
@@ -130,18 +130,16 @@ pub(super) fn page_projection_file(
             )?);
         }
         Some(LibraryPagePrepareKind::PageMove { view_id }) => {
-            let project_id = requesting_project_id
-                .ok_or_else(|| unauthorized("Page move preparation requires a bound Project"))?;
             let view_id = match view_id {
                 Some(view_id) => Some(view_id),
                 None => {
                     crate::database::default_page_move_view_id(connection, library_id, page_id)?
                 }
             };
-            validators.move_etag = Some(crate::database::mint_page_move_etag(
+            validators.move_etag = Some(crate::database::mint_page_move_etag_prevalidated(
                 connection,
                 library_id,
-                project_id,
+                requesting_project_id,
                 store_epoch,
                 page_id,
                 view_id.as_deref(),
@@ -244,19 +242,13 @@ pub(super) fn page_draft_projection(
         .validators
         .body_etag
         .ok_or_else(|| corrupt("Page draft body omitted its body ETag"))?;
-    let page_files = super::page_file_inventory::list_authorized_page(
+    let page_files = super::page_file_inventory::list_current_page(
         connection,
         library_id,
         page_id,
         None,
         None,
         Some(100),
-        super::page_file_inventory::write_capability(
-            connection,
-            library_id,
-            requesting_project_id,
-            page_id,
-        )?,
     )?;
     let tree_json: String = connection.query_row(
         "SELECT block_tree_json FROM document_materializations WHERE document_id = ?1 AND generation = ?2 AND projected_seq = ?3",
@@ -639,10 +631,10 @@ fn project_property_value(
                 .get("total_count")
                 .and_then(Value::as_i64)
                 .ok_or_else(|| corrupt("Relation Property total count is invalid"))?;
-            let restricted_count = preview
-                .get("restricted_count")
+            let unavailable_count = preview
+                .get("unavailable_count")
                 .and_then(Value::as_i64)
-                .ok_or_else(|| corrupt("Relation Property restricted count is invalid"))?;
+                .ok_or_else(|| corrupt("Relation Property unavailable count is invalid"))?;
             let has_more = preview
                 .get("has_more")
                 .and_then(Value::as_bool)
@@ -650,7 +642,7 @@ fn project_property_value(
             let summary = ProjectedRelationSummaryV1 {
                 targets,
                 total_count,
-                restricted_count,
+                unavailable_count,
                 has_more,
             };
             validate_relation_summary(&summary)?;
@@ -868,8 +860,8 @@ fn render_value(output: &mut String, value: &ProjectedPropertyValueV1) -> Result
             }
             output.push_str("      total_count: ");
             output.push_str(&summary.total_count.to_string());
-            output.push_str("\n      restricted_count: ");
-            output.push_str(&summary.restricted_count.to_string());
+            output.push_str("\n      unavailable_count: ");
+            output.push_str(&summary.unavailable_count.to_string());
             output.push_str("\n      has_more: ");
             output.push_str(if summary.has_more {
                 "true\n"
@@ -964,9 +956,9 @@ fn validate_projected_value(
 
 fn validate_relation_summary(value: &ProjectedRelationSummaryV1) -> Result<(), StoreError> {
     if value.total_count < 0
-        || value.restricted_count < 0
+        || value.unavailable_count < 0
         || value.targets.len() > 3
-        || value.total_count < value.restricted_count + value.targets.len() as i64
+        || value.total_count < value.unavailable_count + value.targets.len() as i64
         || value.has_more != (value.total_count > value.targets.len() as i64)
     {
         return Err(corrupt("Projected Relation summary is inconsistent"));
@@ -1086,10 +1078,6 @@ fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
 }
 
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
-}
-
 fn not_found(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::NotFound, message, false)
 }
@@ -1137,7 +1125,7 @@ mod tests {
                             name: "Dependency".to_owned(),
                         }],
                         total_count: 4,
-                        restricted_count: 1,
+                        unavailable_count: 1,
                         has_more: true,
                     }),
                 },
@@ -1177,7 +1165,7 @@ mod tests {
                 "        - id: \"page:dependency\"\n",
                 "          name: \"Dependency\"\n",
                 "      total_count: 4\n",
-                "      restricted_count: 1\n",
+                "      unavailable_count: 1\n",
                 "      has_more: true\n",
                 "schedule:\n",
                 "  start: \"2026-07-20T09:00:00+08:00\"\n",

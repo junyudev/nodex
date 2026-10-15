@@ -14,7 +14,7 @@ import {
   type DatabaseViewRenderModel,
 } from "./database-view-render-model";
 import { buildDatabaseViewPropertyValueOperations } from "./database-view-row-mutations";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { DatabaseViewOperationProjection } from "./database-view-operation-projection";
 
 const activeProperty = (
@@ -73,7 +73,7 @@ export const compileDatabaseViewBoardDropProjection = (
   const scope = (candidate: DatabaseViewRenderModel) =>
     JSON.stringify([
       candidate.libraryId,
-      contentAccessContextKey(candidate.accessContext),
+      contentRoutingContextKey(candidate.routingContext),
       candidate.storeEpoch,
       candidate.databaseId,
       candidate.dataSourceId,
@@ -470,7 +470,6 @@ export const buildDatabaseViewBoardDropOperations = (input: {
   /** Exact semantic Property changes accepted at mouse-up. */
   readonly propertyValues?: readonly DatabaseViewDropPropertyValue[];
 }): readonly DatabaseApplyOperationV2[] => {
-  if (input.model.readOnlyReason) return [];
   const pageIds = [...new Set(input.pageIds)];
   if (pageIds.length === 0) return [];
   const rowsById = new Map(input.model.query.rows.map((row) => [row.page.pageId, row] as const));

@@ -144,31 +144,35 @@ describe("Core Block Transfer Adapter", () => {
       });
     },
   );
-  test("commits one logical intent without a client-visible preparation round trip", async () => {
-    const client = new FakeCoreClient();
-    const adapter = createCoreBlockTransferAdapter({ client, ...identity });
-    client.enqueueApply(committedApply());
+  test.each([identity.projectId, null])(
+    "commits one logical intent in route %s without a preparation round trip",
+    async (projectId) => {
+      const client = new FakeCoreClient();
+      const adapter = createCoreBlockTransferAdapter({ client, ...identity, projectId });
+      client.enqueueApply(committedApply());
 
-    const committed = await adapter.commit(intent);
+      const committed = await adapter.commit({ ...intent, projectId });
 
-    expect(committed).toMatchObject({
-      ok: true,
-      value: {
-        operationId: intent.operationId,
-        commitSeq: 11,
-        documentCommits: [
-          { documentId: "document:source", headSeq: 4 },
-          { documentId: "document:target", headSeq: 8 },
-        ],
-      },
-    });
-    expect(client.reads).toHaveLength(0);
-    expect(client.applies).toHaveLength(1);
-    expect(client.applies[0]?.intent).toMatchObject({
-      kind: "transfer_blocks",
-      intent: { root_block_ids: ["block:root"] },
-    });
-  });
+      expect(committed).toMatchObject({
+        ok: true,
+        value: {
+          operationId: intent.operationId,
+          projectId,
+          commitSeq: 11,
+          documentCommits: [
+            { documentId: "document:source", headSeq: 4 },
+            { documentId: "document:target", headSeq: 8 },
+          ],
+        },
+      });
+      expect(client.reads).toHaveLength(0);
+      expect(client.applies).toHaveLength(1);
+      expect(client.applies[0]?.intent).toMatchObject({
+        kind: "transfer_blocks",
+        intent: { root_block_ids: ["block:root"] },
+      });
+    },
+  );
 
   test("maps Core transformation and Data Source placement evidence", async () => {
     const client = new FakeCoreClient();
@@ -421,60 +425,64 @@ describe("Core Block Transfer Adapter", () => {
     expect(client.applies).toHaveLength(1);
   });
 
-  test("submits an opaque Undo token and maps the authoritative inverse receipt", async () => {
-    const client = new FakeCoreClient();
-    const adapter = createCoreBlockTransferAdapter({ client, ...identity });
-    client.enqueueApply({
-      ...committedApply(),
-      outcome: {
-        page_file_entries: [],
-        affected_resource_ids: ["block:root", "page:promoted"],
-        page_copy: null,
-        block_transfer: null,
-        block_transfer_undo: {
-          transfer_operation_id: "transfer:test",
-          restored_source_root_ids: ["block:root"],
-          removed_page_ids: ["page:promoted"],
-          document_commits: [],
+  test.each([identity.projectId, null])(
+    "submits an opaque Undo token in route %s and maps its inverse",
+    async (projectId) => {
+      const client = new FakeCoreClient();
+      const adapter = createCoreBlockTransferAdapter({ client, ...identity, projectId });
+      client.enqueueApply({
+        ...committedApply(),
+        outcome: {
+          page_file_entries: [],
+          affected_resource_ids: ["block:root", "page:promoted"],
+          page_copy: null,
+          block_transfer: null,
+          block_transfer_undo: {
+            transfer_operation_id: "transfer:test",
+            restored_source_root_ids: ["block:root"],
+            removed_page_ids: ["page:promoted"],
+            document_commits: [],
+          },
         },
-      },
-      receipt: {
-        ...committedApply().receipt,
-        operation_id: "undo:test",
-        operation_kind: "undo_block_transfer",
-      },
-    });
+        receipt: {
+          ...committedApply().receipt,
+          operation_id: "undo:test",
+          operation_kind: "undo_block_transfer",
+        },
+      });
 
-    const result = await adapter.undo({
-      operationId: "undo:test",
-      projectId: identity.projectId,
-      storeEpoch: identity.storeEpoch,
-      token: {
-        transferOperationId: "transfer:test",
-        recipeHash: "a".repeat(64),
+      const result = await adapter.undo({
+        operationId: "undo:test",
+        projectId,
         storeEpoch: identity.storeEpoch,
-      },
-    });
+        token: {
+          transferOperationId: "transfer:test",
+          recipeHash: "a".repeat(64),
+          storeEpoch: identity.storeEpoch,
+        },
+      });
 
-    expect(result).toMatchObject({
-      ok: true,
-      value: {
-        transferOperationId: "transfer:test",
-        restoredSourceRootIds: ["block:root"],
-        removedPageIds: ["page:promoted"],
-      },
-    });
-    expect(client.applies[0]?.intent).toEqual({
-      kind: "undo_block_transfer",
-      token: {
-        transfer_operation_id: "transfer:test",
-        recipe_hash: "a".repeat(64),
-        store_epoch: identity.storeEpoch,
-      },
-    });
-  });
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          transferOperationId: "transfer:test",
+          projectId,
+          restoredSourceRootIds: ["block:root"],
+          removedPageIds: ["page:promoted"],
+        },
+      });
+      expect(client.applies[0]?.intent).toEqual({
+        kind: "undo_block_transfer",
+        token: {
+          transfer_operation_id: "transfer:test",
+          recipe_hash: "a".repeat(64),
+          store_epoch: identity.storeEpoch,
+        },
+      });
+    },
+  );
 
-  test("rejects a cross-project intent before contacting Core", async () => {
+  test("rejects a mismatched presentation route before contacting Core", async () => {
     const client = new FakeCoreClient();
     const adapter = createCoreBlockTransferAdapter({ client, ...identity });
 

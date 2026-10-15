@@ -15,7 +15,7 @@ type ResourceSurface = Extract<
   { kind: "page_stage" | "db_view" | "canvas_stage" }
 >;
 
-/** Library access stays attached to the resource while its Scene supplies only placement and lifetime. */
+/** Library routing stays attached to the resource while its Scene supplies only placement and lifetime. */
 export function WorkbenchLibraryResourceSurface({
   surface,
   owner,
@@ -40,8 +40,8 @@ export function WorkbenchLibraryResourceSurface({
     options?: { readonly titleSnapshot?: string; readonly mode?: "durable" | "preview" },
   ) => void;
 }) {
-  if (surface.config.accessContext.kind !== "library")
-    throw new Error("Library resource body requires Library access");
+  if (surface.config.routingContext.kind !== "library")
+    throw new Error("Library resource body requires Library routing context");
   if (surface.kind === "page_stage")
     return (
       <WorkbenchLibraryPageSurface
@@ -80,7 +80,7 @@ export function WorkbenchLibraryResourceSurface({
   return (
     <WorkbenchDatabaseViewSurface
       workbenchPresentation={{ owner, sceneOwner, surface }}
-      accessContext={surface.config.accessContext}
+      routingContext={surface.config.routingContext}
       target={surface.config.target}
       keyboardSurface={{ surfaceId: surface.id, presentationId: surface.id }}
       presentedPageIds={presentedPageIds}

@@ -125,24 +125,26 @@ export const live: Layer.Layer<
       return progress ? onProgress(progress) : Effect.void;
     };
     const threadTitle = (entry: CodexThreadHandoffJournalEntry) =>
-      core.workspace.read({ kind: "thread", thread_id: entry.threadId }).pipe(
-        Effect.mapError((cause) => error("read-thread", entry.threadId, cause)),
-        Effect.flatMap((snapshot) =>
-          snapshot.value.kind === "thread"
-            ? Effect.succeed(
-                snapshot.value.thread.thread_name?.trim() ||
-                  snapshot.value.thread.thread_preview.trim() ||
-                  entry.threadId,
-              )
-            : Effect.fail(
-                error(
-                  "read-thread",
-                  entry.threadId,
-                  new Error("Core returned a non-thread Workspace read variant"),
-                ),
-              ),
-        ),
-      );
+      entry.threadTitle?.trim()
+        ? Effect.succeed(entry.threadTitle.trim())
+        : core.workspace.read({ kind: "thread", thread_id: entry.threadId }).pipe(
+            Effect.mapError((cause) => error("read-thread", entry.threadId, cause)),
+            Effect.flatMap((snapshot) =>
+              snapshot.value.kind === "thread"
+                ? Effect.succeed(
+                    snapshot.value.thread.thread_name?.trim() ||
+                      snapshot.value.thread.thread_preview.trim() ||
+                      entry.threadId,
+                  )
+                : Effect.fail(
+                    error(
+                      "read-thread",
+                      entry.threadId,
+                      new Error("Core returned a non-thread Workspace read variant"),
+                    ),
+                  ),
+            ),
+          );
     const project = (entry: CodexThreadHandoffJournalEntry) => {
       if (!entry.source.projectId) {
         return Effect.fail(

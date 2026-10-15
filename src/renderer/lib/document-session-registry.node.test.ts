@@ -10,12 +10,11 @@ import { DocumentSessionRegistry, makeEditorSurfaceKey } from "./document-sessio
 
 const descriptor = (generation = 1, headSeq = 1): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   ownerBlockId: "page-1",
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "document-1",
-  authorization: null,
   storeEpoch: "epoch-1",
   generation,
   headSeq,
@@ -275,7 +274,7 @@ describe("DocumentSessionRegistry", () => {
     const firstRuntime = createRuntime({});
     const secondDescriptor = {
       ...descriptor(),
-      accessContext: { kind: "project" as const, projectId: "project-2" },
+      routingContext: { kind: "project" as const, projectId: "project-2" },
     };
     const secondRuntime = createRuntime({ descriptor: secondDescriptor });
     const first = registry.acquire({

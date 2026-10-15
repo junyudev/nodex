@@ -39,7 +39,7 @@ export function formatWorkbenchAutomationWorkspaceLabel(
     const first = basename(automation.cwds[0]) || automation.cwds[0];
     return `${first} + ${automation.cwds.length - 1} more`;
   }
-  if (automation.kind === "heartbeat" && automation.targetThreadId) return "Chat";
+  if (automation.kind === "heartbeat" && automation.targetSessionId) return "Chat";
   return null;
 }
 
@@ -87,7 +87,7 @@ export function workbenchAutomationRowMatchesSearch(
     row.workspaceLabel ?? "",
     row.scheduleLabel,
     row.automation.kind,
-    row.automation.targetThreadId ?? "",
+    row.automation.targetSessionId ?? "",
     row.automation.rrule ?? "",
     row.automation.cwds.join(" "),
   ]

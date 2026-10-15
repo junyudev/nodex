@@ -94,7 +94,6 @@ const model = (): DatabaseViewRenderModel => {
     name: "Tasks",
     lifecycle: "active" as const,
     defaultViewId: parseDatabaseViewId("view-default"),
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -162,7 +161,7 @@ const model = (): DatabaseViewRenderModel => {
   );
   return {
     libraryId: "library-1",
-    accessContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "project", projectId: "project-1" },
     databaseViewId: view.viewId,
     databaseId: database.databaseId,
     dataSourceId,
@@ -171,7 +170,6 @@ const model = (): DatabaseViewRenderModel => {
     viewName: view.name,
     storeEpoch: "epoch-1",
     commitSeq: 4,
-    authorization: null,
     query: { database, dataSource, view, properties, rows },
     columns: [
       {
@@ -196,7 +194,6 @@ const model = (): DatabaseViewRenderModel => {
         })),
       },
     ],
-    readOnlyReason: null,
   };
 };
 
@@ -390,7 +387,7 @@ describe("selected Database View Page mutations", () => {
   test("uses the Library apply contract without a synthetic Project", async () => {
     const authority: DatabaseViewRenderModel = {
       ...model(),
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
     };
     const operations = buildDatabaseViewPropertyValueOperations({
       model: authority,
@@ -415,7 +412,7 @@ describe("selected Database View Page mutations", () => {
             localCommit: noOpLocalCommit("epoch-1"),
             value: {
               operationId: request.operationId,
-              accessContext: { kind: "library" },
+              routingContext: { kind: "library" },
               libraryId,
               storeEpoch: "epoch-1",
               duplicate: false,

@@ -9,10 +9,9 @@ import type {
   CodexLiveFileAttachment,
   CodexReviewDiffCommentAttachment,
   CodexQueuedFollowUp,
-  CodexAgentMode,
   CodexTurnStartOptions,
 } from "./types";
-import type { CodexPermissionSelection } from "./codex-permission-selection";
+
 import { CODEX_INTERRUPTED_STEER_REASON } from "./codex-queued-follow-up-state";
 import type { QueuedMessageState } from "./codex-queued-message-coordinator";
 import {
@@ -36,7 +35,7 @@ export interface CodexQueuedMessageContext {
 /** Runtime queue preparation is recomputed per attempt and is never persisted with the message. */
 export interface CodexQueuedNativePreparationContext {
   readonly runtimeWorkspaceRoots: readonly string[];
-  readonly usePermissionSelection: boolean;
+
   readonly clientUserMessageId?: string;
   /** Actual native row; preparation binds its stored input before owner transfer. */
   readonly serverQueuedSubmission?: QueuedSubmission;
@@ -45,10 +44,6 @@ export interface CodexQueuedNativePreparationContext {
 /** Queue capture accepts the ordinary Turn options plus queue-only frozen execution intent. */
 export type CodexQueuedMessagePrepareOptions = CodexTurnStartOptions & {
   readonly workspaceRoots?: readonly string[];
-  readonly permissionSelection?: CodexPermissionSelection;
-  readonly permissionProfileId?: string;
-  readonly usePermissionSelection?: boolean;
-  readonly shouldSendPermissionOverrides?: boolean;
 };
 
 /** The persisted queue contains whole captured submissions, independently of transcript residency. */
@@ -62,13 +57,7 @@ export interface CodexQueuedMessage {
     readonly collaborationMode?: TurnStartParams["collaborationMode"];
     readonly serviceTier?: TurnStartParams["serviceTier"];
     readonly summary?: TurnStartParams["summary"];
-    readonly agentMode?: CodexAgentMode;
-    readonly permissionSelection?: CodexPermissionSelection;
-    readonly permissionProfileId?: string;
-    /** Captured execution-assignment readiness. False is distinct from absence. */
-    readonly usePermissionSelection?: boolean;
-    /** A displayed mode alone is not a request to change execution permissions. */
-    readonly shouldSendPermissionOverrides?: boolean;
+
     readonly [key: string]: unknown;
   };
   readonly writingBlockAdditionalContext?: TurnStartParams["additionalContext"];

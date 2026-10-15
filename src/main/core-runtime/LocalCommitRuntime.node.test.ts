@@ -114,7 +114,6 @@ const makeHarness = (overrides: Partial<LocalCommitRuntimeOptions> = {}) =>
       onDocument: () => Effect.void,
       onProjection: () => Effect.void,
       onNotification: () => Effect.void,
-      onVisibility: () => Effect.void,
       ...overrides,
     }).pipe(Effect.provideService(Scope.Scope, ownerScope));
     return { ownerScope, runtime };
@@ -289,38 +288,6 @@ it.effect("accepts durable-tail first and absorbs the later scoped-live copy", (
     yield* harness.runtime.admitAndWait(packet, "tailer");
     assert.strictEqual(notifications, 1);
     assert.strictEqual(projections, 1);
-    yield* closeHarness(harness);
-  }),
-);
-
-it.effect("deduplicates exact visibility evidence across both Main ingresses", () =>
-  Effect.gen(function* () {
-    let visibilityDeliveries = 0;
-    const harness = yield* makeHarness({
-      onVisibility: () =>
-        Effect.sync(() => {
-          visibilityDeliveries += 1;
-        }),
-    });
-    const revocation = {
-      authorization_scope: {
-        kind: "project" as const,
-        library_id: "library-1",
-        project_id: "project-a",
-      },
-      resource_kind: "page" as const,
-      resource_id: "page-a",
-      reason: "ownership_moved" as const,
-    };
-    const packet = createCoreLocalCommitFixture({
-      authorizationScope: revocation.authorization_scope,
-      commitSeq: 11,
-      revocations: [revocation],
-    });
-
-    yield* harness.runtime.admit(packet, "projection_live");
-    assert.strictEqual((yield* harness.runtime.admitAndWait(packet, "tailer")).kind, "duplicate");
-    assert.strictEqual(visibilityDeliveries, 1);
     yield* closeHarness(harness);
   }),
 );
@@ -526,24 +493,19 @@ it.effect("bounds completed commit memory and validates monotonic checkpoints", 
   }),
 );
 
-it.effect("keeps authorization audience and delimited scopes in semantic claim identity", () =>
+it.effect("keeps delivery audience in semantic claim identity", () =>
   Effect.gen(function* () {
-    const audiences: CoreAuthorizedDeliveryPacket["authorization_scope"][] = [];
+    const audiences: CoreAuthorizedDeliveryPacket["delivery_address"][] = [];
     const harness = yield* makeHarness({
       onNotification: (packet) =>
         Effect.sync(() => {
-          audiences.push(packet.authorization_scope);
-        }),
-      onVisibility: (_packet, delta) =>
-        Effect.sync(() => {
-          audiences.push(delta.authorization_scope);
+          audiences.push(packet.delivery_address);
         }),
     });
     const base = commit(13);
     const project = (projectId: string, packetHash: string): CoreAuthorizedDeliveryPacket => ({
       ...base,
       delivery_address: { kind: "project", library_id: "library-1", project_id: projectId },
-      authorization_scope: { kind: "project", library_id: "library-1", project_id: projectId },
       packet_hash: packetHash,
     });
     assert.strictEqual(
@@ -555,42 +517,8 @@ it.effect("keeps authorization audience and delimited scopes in semantic claim i
       "enriched",
     );
 
-    const revocations = [
-      {
-        authorization_scope: {
-          kind: "document" as const,
-          library_id: "library-1",
-          project_id: "project:a",
-          document_id: "document:b:c",
-        },
-        resource_kind: "page" as const,
-        resource_id: "page:shared",
-        reason: "access_revoked" as const,
-      },
-      {
-        authorization_scope: {
-          kind: "document" as const,
-          library_id: "library-1",
-          project_id: "project:a:document:b",
-          document_id: "c",
-        },
-        resource_kind: "page" as const,
-        resource_id: "page:shared",
-        reason: "access_revoked" as const,
-      },
-    ];
-    for (const [index, revocation] of revocations.entries()) {
-      yield* harness.runtime.admitAndWait(
-        createCoreLocalCommitFixture({
-          authorizationScope: revocation.authorization_scope,
-          commitSeq: 20 + index,
-          revocations: [revocation],
-        }),
-        "tailer",
-      );
-    }
-    assert.lengthOf(audiences, 4);
-    assert.notDeepEqual(audiences[2], audiences[3]);
+    assert.lengthOf(audiences, 2);
+    assert.notDeepEqual(audiences[0], audiences[1]);
     yield* closeHarness(harness);
   }),
 );
@@ -605,7 +533,7 @@ it.effect("fails closed for foreign Library scope and pending-capacity exhaustio
     const foreign = yield* Effect.exit(
       harness.runtime.admit(
         createCoreLocalCommitFixture({
-          authorizationScope: { kind: "library", library_id: "library-other" },
+          deliveryAddress: { kind: "library", library_id: "library-other" },
           commitSeq: 12,
         }),
         "tailer",
@@ -657,7 +585,7 @@ it.effect("closes all active lanes and fails durable waiters with the owning Sco
     assert.isTrue(Exit.isFailure(result));
     assert.strictEqual(interrupted, 1);
     assert.deepInclude(yield* harness.runtime.diagnostics, {
-      activeLanes: { document: 0, projection: 0, visibility: 0, notification: 0 },
+      activeLanes: { document: 0, projection: 0, notification: 0 },
       pendingDeliveries: 0,
       rememberedCommits: 0,
     });

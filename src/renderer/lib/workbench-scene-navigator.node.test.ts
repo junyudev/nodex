@@ -33,7 +33,7 @@ afterEach(() => {
   for (const dispose of disposers.splice(0).reverse()) dispose();
 });
 
-function createHarness(options: { readonly sessionHasAttachedThread?: boolean } = {}) {
+function createHarness(options: { readonly sessionHasConversation?: boolean } = {}) {
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
   const windowOwner = getWorkbenchWindowOwner(
@@ -61,7 +61,7 @@ function createHarness(options: { readonly sessionHasAttachedThread?: boolean } 
   );
   const port: WorkbenchSceneNavigatorPort = {
     presentDurable: createWorkbenchSceneSurfacePresenter(windowOwner, executor),
-    hasAttachedThread: () => options.sessionHasAttachedThread ?? true,
+    hasConversation: () => options.sessionHasConversation ?? true,
     setScene(owner, update) {
       windowOwner.setScene(owner, update);
     },
@@ -129,7 +129,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          accessContext: { kind: "project" as const, projectId: "alpha" },
+          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -163,7 +163,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            accessContext: { kind: "project" as const, projectId: "alpha" },
+            routingContext: { kind: "project" as const, projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -215,7 +215,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page:one",
         },
       },
@@ -298,7 +298,7 @@ describe("WorkbenchSceneNavigator", () => {
   });
 
   test("rejects Review surfaces in a threadless Session Scene", async () => {
-    const harness = createHarness({ sessionHasAttachedThread: false });
+    const harness = createHarness({ sessionHasConversation: false });
 
     await expect(
       harness.navigator.presentPanelSurface({
@@ -313,7 +313,7 @@ describe("WorkbenchSceneNavigator", () => {
       }),
     ).resolves.toEqual({
       status: "unavailable",
-      reason: "Review requires an attached Thread",
+      reason: "Review requires a started conversation",
     });
     expect(harness.scenes).toEqual({});
   });
@@ -343,7 +343,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage",
           config: {
-            accessContext: { kind: "project", projectId: "alpha" },
+            routingContext: { kind: "project", projectId: "alpha" },
             pageId,
           },
           titleSnapshot: pageId,
@@ -397,7 +397,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -458,7 +458,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,
@@ -538,7 +538,7 @@ describe("WorkbenchSceneNavigator", () => {
       request: {
         kind: "page_stage" as const,
         config: {
-          accessContext: { kind: "project" as const, projectId: "alpha" },
+          routingContext: { kind: "project" as const, projectId: "alpha" },
           pageId: "page:one",
         },
         titleSnapshot: "Page One",
@@ -588,7 +588,7 @@ describe("WorkbenchSceneNavigator", () => {
         request: {
           kind: "page_stage" as const,
           config: {
-            accessContext: { kind: "library" as const },
+            routingContext: { kind: "library" as const },
             pageId,
           },
           titleSnapshot: pageId,
@@ -616,7 +616,7 @@ describe("WorkbenchSceneNavigator", () => {
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
-        accessContext: { kind: "library" as const },
+        routingContext: { kind: "library" as const },
         pageId,
       },
       titleSnapshot: pageId,

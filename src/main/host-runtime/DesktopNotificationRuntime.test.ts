@@ -90,7 +90,7 @@ it.effect("projects native action, reply, timeout, and sanitized copy contracts"
               actions: Array.from({ length: 5 }, (_, index) => ({
                 id: `action-${index + 1}`,
                 title: `Action ${index + 1}`,
-                actionType: "approve" as const,
+                actionType: "open" as const,
               })),
             },
             origin(),

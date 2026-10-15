@@ -91,7 +91,7 @@ export type WorkbenchLibraryLocationTarget =
   | { readonly kind: "home" }
   | Extract<LibraryRouteTarget, { readonly kind: "page" }>
   | (Extract<LibraryRouteTarget, { readonly kind: "database" | "canvas" | "view" }> & {
-      readonly accessProjectId?: string;
+      readonly projectId?: string;
     });
 
 export type WorkbenchLocationV4 =

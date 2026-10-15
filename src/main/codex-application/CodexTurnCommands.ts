@@ -29,12 +29,7 @@ import {
   type CodexQueuedMessage,
   type CodexQueuedNativePreparationContext,
 } from "../../shared/codex-queued-message";
-import {
-  canonicalPermissionsForMode,
-  nativePermissionRequestFields,
-  type CanonicalPermissionConfig,
-} from "../../shared/codex-conversation-state/codex-native-permissions";
-import { materializeCodexPermissionSelection } from "../../shared/codex-permission-selection";
+
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
 import type {
   CanonicalOwnerSteerInput,
@@ -86,7 +81,6 @@ import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { CodexAutomationRunAcceptance } from "./CodexAutomationRunAcceptance";
 import { CodexConversationMaterialization } from "./CodexConversationMaterialization";
 import { CodexMainConversationResume } from "./CodexMainConversationResume";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -131,7 +125,7 @@ export type CodexTurnStartOverrides = CodexTurnStartOptions & {
     readonly generation: number;
   };
   readonly presentationClaim?: CodexTurnPresentationClaim;
-  readonly agentConfigPermissionMode?: boolean;
+
   readonly clientUserMessageId?: string;
   readonly preparedPrompt?: CodexPreparedPrompt;
   readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
@@ -208,12 +202,6 @@ export interface CodexTurnCommandsService {
     prompt: string,
     overrides?: CodexTurnStartOverrides,
   ) => Effect.Effect<CodexTurnSummary | null, CodexTurnCommandsError>;
-  /** Starts the first autonomous Automation Turn without marking the Run as user-accepted. */
-  readonly startAutomation: (
-    threadId: string,
-    prompt: string,
-    overrides?: CodexTurnStartOverrides,
-  ) => Effect.Effect<CodexTurnSummary | null, CodexTurnCommandsError>;
   readonly prepareNativeSteer: (
     input: CodexSteerTurnInput,
   ) => Effect.Effect<CanonicalOwnerSteerInput, CodexTurnCommandsError>;
@@ -258,7 +246,6 @@ export const make: Effect.Effect<
   | CodexConversationMaterialization
   | CodexMainConversationResume
   | CodexAutoThreadTitle
-  | CodexAutomationRunAcceptance
   | CodexGateway
   | CodexAppServerCapabilities
   | CodexQueuedFollowUps
@@ -293,14 +280,12 @@ export const make: Effect.Effect<
       plan: CodexTurnStartPlan | null;
       ownerId: string | null | undefined;
       injection: "pending" | "in-flight" | "complete";
-      acceptAutomationRun: boolean;
       callerOwnsPresentation: boolean;
       lock: Semaphore.Semaphore;
       disposal: Disposable;
     }
   >();
   const projectLifecycle = yield* ProjectRuntimeLifecycleRuntime;
-  const automationRuns = yield* CodexAutomationRunAcceptance;
   const materialization = yield* CodexConversationMaterialization;
   const resume = yield* CodexMainConversationResume;
   const autoTitle = yield* CodexAutoThreadTitle;
@@ -526,7 +511,6 @@ export const make: Effect.Effect<
     options: {
       readonly connection: NativeTurnConnection;
       readonly executionEpoch: number;
-      readonly acceptAutomationRun: boolean;
       readonly returnNativeResponse?: boolean;
       readonly assertCurrentOwner: () => void;
       readonly responseItems?: ClientRequestParamsByMethod["thread/inject_items"]["items"];
@@ -607,11 +591,7 @@ export const make: Effect.Effect<
         });
 
         return yield* Effect.gen(function* () {
-          transaction.launch = yield* authority.begin(
-            plan.threadId,
-            plan.verifiedBuiltinFullAccess,
-            plan.executionReadOnly,
-          );
+          transaction.launch = yield* authority.begin(plan.threadId);
           transaction.presentationLaunch = yield* presentation.begin(
             plan.presentationClaim,
             plan.threadId,
@@ -787,21 +767,6 @@ export const make: Effect.Effect<
                   : Effect.void,
               ),
               Effect.andThen(synchronizeAcceptedWorkspace(plan, response.turn.id)),
-              Effect.andThen(
-                options.acceptAutomationRun
-                  ? automationRuns.accept(plan.threadId).pipe(
-                      Effect.catch((cause) =>
-                        Effect.logWarning("Accepted Turn could not accept its automation run").pipe(
-                          Effect.annotateLogs({
-                            threadId: plan.threadId,
-                            turnId: response.turn.id,
-                            cause: String(cause),
-                          }),
-                        ),
-                      ),
-                    )
-                  : Effect.void,
-              ),
             ),
           );
           yield* confirmDelivery;
@@ -1215,12 +1180,7 @@ export const make: Effect.Effect<
     if (!role) manager.stream.setRole(threadId, { role: "owner" });
   });
   const startThroughOwner = Effect.fn("CodexTurnCommands.startThroughOwner")(
-    function* (
-      threadId: string,
-      prompt: string,
-      overrides: CodexTurnStartOverrides | undefined,
-      acceptAutomationRun: boolean,
-    ) {
+    function* (threadId: string, prompt: string, overrides: CodexTurnStartOverrides | undefined) {
       if (overrides?.freshNativeThread)
         yield* adoptFreshNativeThread(threadId, overrides.freshNativeThread);
       yield* resumeForStart(threadId);
@@ -1253,12 +1213,11 @@ export const make: Effect.Effect<
             },
             undefined,
             undefined,
-            acceptAutomationRun ? { kind: "ordinary" } : undefined,
+            { kind: "ordinary" },
           ),
           (operation) =>
             Effect.gen(function* () {
               const entry = yield* readNativePreparation(operation.request, false);
-              entry.acceptAutomationRun = acceptAutomationRun;
               entry.callerOwnsPresentation = true;
               yield* Effect.try(() => assertTurnConnection(connection));
               const role = manager.stream.getRole(threadId);
@@ -1602,52 +1561,6 @@ export const make: Effect.Effect<
           });
           return { steer, requiresIdle };
         }
-        const permissionSelection = message.submissionOptions?.permissionSelection;
-        const shouldSendPermissionOverrides =
-          message.submissionOptions?.shouldSendPermissionOverrides === true;
-        const config =
-          shouldSendPermissionOverrides || permissionSelection?.kind === "custom"
-            ? ((yield* gateway.requestOnHost(
-                hostId,
-                "config/read",
-                { includeLayers: false, cwd: message.cwd },
-                turnConnectionFence(connection),
-              )).config as CanonicalPermissionConfig)
-            : null;
-        let legacyPermissions =
-          config === null || permissionSelection != null
-            ? null
-            : canonicalPermissionsForMode(
-                message.submissionOptions?.agentMode ?? "auto",
-                preparationContext.runtimeWorkspaceRoots,
-                config,
-              );
-        if (legacyPermissions && message.submissionOptions?.permissionProfileId != null) {
-          legacyPermissions = {
-            ...legacyPermissions,
-            activePermissionProfile: {
-              id: message.submissionOptions.permissionProfileId,
-              extends: null,
-            },
-            runtimeWorkspaceRoots: [...preparationContext.runtimeWorkspaceRoots],
-          };
-        }
-        const legacyFields = legacyPermissions
-          ? nativePermissionRequestFields(legacyPermissions)
-          : null;
-        const selectedFields =
-          permissionSelection == null
-            ? null
-            : materializeCodexPermissionSelection(
-                permissionSelection,
-                preparationContext.runtimeWorkspaceRoots,
-                config,
-              );
-        const usePermissionSelection =
-          preparationContext.usePermissionSelection &&
-          (permissionSelection == null || permissionSelection.kind === "server-default");
-        const useAppServerPermissionDefault =
-          selectedFields == null && !shouldSendPermissionOverrides && usePermissionSelection;
         const start = yield* commands.prepareNativeStart(
           threadId,
           message.context.prompt,
@@ -1670,8 +1583,6 @@ export const make: Effect.Effect<
             collaborationMode: message.submissionOptions?.collaborationMode ?? null,
             serviceTier: message.submissionOptions?.serviceTier,
             summary: message.submissionOptions?.summary,
-            ...(legacyFields ?? {}),
-            ...(selectedFields ?? {}),
             additionalContext,
           },
           {
@@ -1680,8 +1591,7 @@ export const make: Effect.Effect<
             writingBlockContextPrepared: message.writingBlockAdditionalContext !== undefined,
             mcpAppModelContextAttachments: message.context.mcpAppModelContextAttachments,
             responseItems: appInput.responseItems,
-            useAppServerPermissionDefault,
-            usePermissionSelection,
+
             ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
             localTurnMetadata: {
               fileAttachmentCount:
@@ -1854,7 +1764,6 @@ export const make: Effect.Effect<
               plan: null,
               ownerId: undefined,
               injection: "pending",
-              acceptAutomationRun: true,
               callerOwnsPresentation: false,
               lock,
               disposal: manager.onConnectionReset(() =>
@@ -2013,7 +1922,6 @@ export const make: Effect.Effect<
               startTransaction(plan, {
                 connection: entry,
                 executionEpoch: entry.executionEpoch,
-                acceptAutomationRun: entry.acceptAutomationRun,
                 returnNativeResponse: true,
                 assertCurrentOwner,
                 responseItems,
@@ -2048,7 +1956,7 @@ export const make: Effect.Effect<
         );
       }).pipe(Effect.mapError((cause) => commandError("start", request.threadId, cause))),
     start: (threadId, prompt, overrides) =>
-      startThroughOwner(threadId, prompt, overrides, true).pipe(
+      startThroughOwner(threadId, prompt, overrides).pipe(
         Effect.map((result) => result as CodexTurnSummary | null),
         Effect.mapError((cause) =>
           cause instanceof Object && "_tag" in cause && cause._tag === "CodexRuntimeError"
@@ -2056,16 +1964,6 @@ export const make: Effect.Effect<
             : commandError("start", threadId, cause),
         ),
         Effect.withSpan("CodexTurnCommands.start", { attributes: { threadId } }),
-      ),
-    startAutomation: (threadId, prompt, overrides) =>
-      startThroughOwner(threadId, prompt, overrides, false).pipe(
-        Effect.map((result) => result as CodexTurnSummary | null),
-        Effect.mapError((cause) =>
-          cause instanceof Object && "_tag" in cause && cause._tag === "CodexRuntimeError"
-            ? (cause as CodexRuntimeError)
-            : commandError("start", threadId, cause),
-        ),
-        Effect.withSpan("CodexTurnCommands.startAutomation", { attributes: { threadId } }),
       ),
     prepareNativeSteer: (input) =>
       Effect.gen(function* () {

@@ -61,6 +61,7 @@ function canStartNewThreadGoalDraft(
 
 export function canUseComposerGoal(model: ThreadFooterModel, actions: ThreadStageActions): boolean {
   if (model.provider && model.provider.kind !== "codex") return false;
+  if (model.provider?.controls?.goals === false) return false;
   if (model.conversation === null) {
     return canStartNewThreadGoalDraft(model, actions);
   }
@@ -103,7 +104,21 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
-      onSelect: () => {
+      onSelect: async () => {
+        // A conversation that owns its speed changes its own selection, not the saved default.
+        const owned = input.model.provider?.serviceTier;
+        const commit = input.actions.onIntelligenceSelectionChange;
+        if (owned !== undefined && commit) {
+          await runCommand("Could not change speed", () =>
+            commit({
+              kind: input.model.provider?.kind ?? "codex",
+              model: input.model.selectedModel,
+              reasoningEffort: input.model.selectedReasoningEffort,
+              serviceTier: owned === "fast" ? null : "fast",
+            }),
+          );
+          return;
+        }
         input.setServiceTier(input.serviceTier === "fast" ? null : "fast", "slash_command");
       },
     },

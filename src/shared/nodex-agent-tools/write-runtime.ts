@@ -14,16 +14,14 @@ import type {
   TransferBlocksInput,
   TransferBlocksOutput,
 } from "./write-schemas";
-import type { FrozenNodexAgentTurnAuthority } from "../nodex-agent-authority";
-import type { NodexAgentResourceAccessOverlay } from "../nodex-agent-resource-access";
+import type { NodexAgentTurnContext } from "../nodex-agent-authority";
 
 export interface NodexAgentCallIdentity {
   readonly threadId: string;
   readonly callId: string;
   /** Main-issued bounded identity shared by every phase of one tool call. */
   readonly operationId?: string;
-  readonly authority?: FrozenNodexAgentTurnAuthority;
-  readonly resourceAccess?: NodexAgentResourceAccessOverlay;
+  readonly authority?: NodexAgentTurnContext;
 }
 
 export type NodexAgentDocumentEditTool = "edit_document" | "update_page" | "advanced_update_page";
@@ -151,23 +149,6 @@ export interface PrepareNodexAgentTransferRequest extends NodexAgentCallIdentity
   readonly input: TransferBlocksInput;
 }
 
-export interface NodexAgentTransferAuthorizationEvidence {
-  readonly roots: Readonly<
-    Record<
-      string,
-      {
-        readonly type: string;
-        readonly transformation: "preserved" | "promote" | "wrap";
-        readonly wrapperReason?:
-          | "type_requires_wrapper"
-          | "unsupported_primary_content"
-          | "unmapped_type_state";
-      }
-    >
-  >;
-  readonly documentIds: readonly string[];
-}
-
 export type PrepareNodexAgentTransferResult =
   | {
       readonly ok: true;
@@ -177,7 +158,6 @@ export type PrepareNodexAgentTransferResult =
             readonly kind: "prepared";
             readonly command: NodexAgentTransferCommand;
             readonly documentHeads: readonly NodexAgentDocumentHead[];
-            readonly authorization: NodexAgentTransferAuthorizationEvidence;
           };
     }
   | { readonly ok: false; readonly error: ToolFailure["error"] };

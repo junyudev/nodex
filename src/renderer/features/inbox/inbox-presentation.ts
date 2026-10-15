@@ -60,7 +60,7 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
 export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
 
 export type InboxOutcomeTarget =
-  | { readonly kind: "thread"; readonly threadId: string }
+  | { readonly kind: "session"; readonly sessionId: string }
   | { readonly kind: "database"; readonly databaseId: string };
 
 /** How a handled message was handled, as one History line. */
@@ -79,8 +79,8 @@ export function describeInboxOutcome(item: InboxItem): InboxOutcome {
   if (proposal && isChatAction(proposal.action)) {
     const chat = proposal.chat;
     const title = chat?.displayTitle ?? "chat";
-    const open: InboxOutcomeTarget | null = chat?.threadId
-      ? { kind: "thread", threadId: chat.threadId }
+    const open: InboxOutcomeTarget | null = chat
+      ? { kind: "session", sessionId: chat.sessionId }
       : null;
     if (proposal.state === "dispatching") {
       return {
@@ -189,11 +189,11 @@ export function describeInboxChatStatus(chat: InboxChat | null): InboxChatStatus
   if (chat.archived) return { label: "Archived", tone: "quiet" };
   const status = chat.status;
   if (!status) return { label: "Starting", tone: "working" };
-  if (status.activeFlags.includes("waitingOnApproval")) {
-    return { label: "Needs approval", tone: "attention" };
-  }
   if (status.activeFlags.includes("waitingOnUserInput")) {
     return { label: "Needs input", tone: "attention" };
+  }
+  if (status.activeFlags.includes("waitingOnApproval")) {
+    return { label: "Waiting", tone: "working" };
   }
   if (status.statusType === "active") return { label: "Working", tone: "working" };
   if (status.statusType === "systemError") return { label: "Error", tone: "error" };

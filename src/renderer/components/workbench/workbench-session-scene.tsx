@@ -94,8 +94,8 @@ function hasProjectDbView(session: ProjectSession, projectId: string): boolean {
   return session.tabs.some(
     (tab) =>
       tab.kind === "db_view" &&
-      tab.config.accessContext.kind === "project" &&
-      tab.config.accessContext.projectId === projectId,
+      tab.config.routingContext.kind === "project" &&
+      tab.config.routingContext.projectId === projectId,
   );
 }
 
@@ -130,7 +130,7 @@ export function WorkbenchSessionScene({
       kind: "session",
       backendKind: session.thread?.backendBinding.kind ?? "codex",
       projectId: session.projectId,
-      hasAttachedThread: Boolean(session.thread),
+      hasAttachedThread: Boolean(session.executionRef || session.thread),
       cwd: session.thread?.cwd,
       projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
     },
@@ -143,7 +143,7 @@ export function WorkbenchSessionScene({
       kind: "session",
       backendKind: session.thread?.backendBinding.kind ?? "codex",
       projectId: session.projectId,
-      hasAttachedThread: Boolean(session.thread),
+      hasAttachedThread: Boolean(session.executionRef || session.thread),
       cwd: session.thread?.cwd,
       projectWorkspaceRoot: projectWorkspaceRootOrNull(project),
     },

@@ -21,7 +21,6 @@ import {
   make as makeApplicationEvents,
 } from "./CodexApplicationEventHub";
 import { CodexAppProtocolTools } from "./CodexAppProtocolTools";
-import { CodexAutomationInbox } from "./CodexAutomationInbox";
 import {
   CodexOneShotServerRequests,
   live as oneShotServerRequestsLive,
@@ -266,9 +265,6 @@ const withProtocol = <A, E>(
           ),
         }),
     }).pipe(Effect.provideService(Scope.Scope, rootScope));
-    const automationInbox = CodexAutomationInbox.of({
-      create: () => Effect.succeed({ items: [] }),
-    });
     const executedDynamicTools: string[] = [];
     const nodexAgentTools = NodexAgentProtocolTools.of({
       execute: (params) =>
@@ -348,7 +344,6 @@ const withProtocol = <A, E>(
       Effect.provideService(CodexApplicationEventHub, observedApplicationEvents),
       Effect.provideService(CodexAppProtocolTools, codexAppTools),
       Effect.provideService(CodexApplicationRequestInbox, inbox),
-      Effect.provideService(CodexAutomationInbox, automationInbox),
       Effect.provideService(CodexNotificationAdmission, notificationAdmission),
       Effect.provideService(CodexOneShotServerRequests, oneShot),
       Effect.provideService(CodexPendingServerRequestRuntime, pending),

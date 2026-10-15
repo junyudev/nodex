@@ -14,6 +14,17 @@ a restorable snapshot.
 
 ## Creating a snapshot
 
+A snapshot includes the Store, managed assets, the complete execution database,
+execution identity and image attachments, and recoverable Codex/Claude native
+history. Runtime activity and queued work must finish before capture; a snapshot
+never interrupts an active conversation. History is captured in full regardless
+of the transcript window currently visible in the UI.
+
+Provider credentials remain in the configured account. Restored Codex and Claude
+Sessions retain their native IDs and resume using that account. ACP and OpenCode
+transcripts remain readable, while native continuation requires their original
+external history service or files.
+
 `Create snapshot` starts one manual background job. Settings acknowledges the
 start immediately, clears the optional label, and shows the current phase and
 progress while the app remains usable. Reopening Backups, opening it in another
@@ -60,7 +71,10 @@ operational-history size remains visible.
 ## Restore boundary
 
 Restore accepts only completed inventory entries and independently validates
-the selected database, manifest, and managed-asset closure. The optional safety
+the selected database, manifest, managed-asset and execution-history closure. The optional safety
 snapshot uses the same complete backup boundary before replacement begins.
+The old execution process is closed before installation and cannot write through
+its replaced database connection. A failed or interrupted install recovers every
+Profile component together.
 Restore behavior and crash recovery are specified in
 [Backup, Restore, and Maintenance](../reliability/backup-restore-and-maintenance.md).

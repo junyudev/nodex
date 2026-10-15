@@ -63,7 +63,7 @@ export const live: Layer.Layer<
             kind: "codex",
             value: {
               type: "scheduledAutomationChanged",
-              event: { automationId, targetThreadId: null, reason: "upsert" },
+              event: { automationId, sessionId: null, reason: "upsert" },
             },
           });
         }
@@ -77,7 +77,7 @@ export const live: Layer.Layer<
                   automationEvent.automationIds.length === 1
                     ? (automationEvent.automationIds[0] ?? null)
                     : null,
-                threadId:
+                runId:
                   automationEvent.runIds.length === 1 ? (automationEvent.runIds[0] ?? null) : null,
                 reason: "settle",
               },

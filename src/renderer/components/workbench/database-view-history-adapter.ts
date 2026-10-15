@@ -40,6 +40,7 @@ import type {
 } from "../../../shared/database-module-v2";
 import { parseDatabaseViewId } from "../../../shared/database-identities";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import { libraryContentRoute, projectContentRoute } from "../../../shared/content-routing-context";
 import {
   buildBlockToDataSourceTransferIntent,
   containsCanvasBlockDrag,
@@ -51,7 +52,7 @@ import {
 export interface DatabaseViewOperationsCommand {
   readonly model: Pick<
     DatabaseViewRenderModel,
-    "libraryId" | "accessContext" | "storeEpoch" | "databaseViewId" | "readOnlyReason" | "viewName"
+    "libraryId" | "routingContext" | "storeEpoch" | "databaseViewId" | "viewName"
   >;
   readonly operations: readonly DatabaseApplyOperationV2[];
   readonly label?: string;
@@ -65,7 +66,7 @@ export interface DatabaseViewBlockDropCommand {
   readonly viewName?: string;
   readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly dataSourceId: string;
   readonly placement: BlockTransferDataSourcePlacement;
@@ -88,7 +89,7 @@ type DatabaseViewHistoryRequest =
   | { readonly kind: "transfer"; readonly request: Parameters<typeof transferBlocks>[1] }
   | {
       readonly kind: "reverse_transfer";
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly request: Parameters<typeof applyLibraryModule>[1];
     };
 
@@ -104,7 +105,7 @@ export type DatabaseViewHistoryReceipt =
     }
   | {
       readonly kind: "reverse_transfer";
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly result: Extract<LibraryModuleApplyResult, { readonly ok: true }>;
     };
 
@@ -121,7 +122,7 @@ type DatabaseViewHistoryInverse =
     }
   | {
       readonly kind: "block_transfer";
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly token: LibraryStructuralHistoryToken;
       readonly documents: readonly StructuralReplayDocument[];
     };
@@ -216,8 +217,8 @@ const prepareBlockDrop = async (
   promotionPolicy: ReturnType<typeof resolvePagePromotionPolicy>,
 ): Promise<DatabaseViewHistoryRequest> => {
   const { payload } = command.session;
-  if (payload.projectId !== command.projectId || payload.storeEpoch !== command.storeEpoch)
-    throw new Error("Block transfer belongs to another Project or store generation.");
+  if (payload.storeEpoch !== command.storeEpoch)
+    throw new Error("Block transfer belongs to another store generation.");
   if (containsCanvasBlockDrag(payload))
     throw new Error("Canvas can only move between Page Documents, not into a Database View.");
   if (containsDatabaseBlockDrag(payload))
@@ -309,12 +310,11 @@ export const databaseViewHistoryAdapter = (
           request: await prepareBlockDrop(action.command, operationId, promotionPolicy),
         };
       const { model, operations } = action.command;
-      if (model.readOnlyReason) throw new Error(model.readOnlyReason);
       return {
         kind: "submit",
         request: {
           kind: "data",
-          scope: { accessContext: model.accessContext, storeEpoch: model.storeEpoch },
+          scope: { routingContext: model.routingContext, storeEpoch: model.storeEpoch },
           operations,
           operationId: createUuidV7(),
           replay: false,
@@ -394,7 +394,7 @@ export const databaseViewHistoryAdapter = (
             : { kind: "rejected", reason: result.error.message, retryable: result.error.retryable };
       }
       const result = await applyLibraryModule(
-        { kind: "project", projectId: request.projectId },
+        request.projectId === null ? libraryContentRoute : projectContentRoute(request.projectId),
         request.request,
       );
       if (result.ok)
@@ -418,7 +418,7 @@ export const databaseViewHistoryAdapter = (
         for (const operationId of submittedOperationIds) discardPresentation(operationId);
       if (inverse.kind !== "block_transfer" || reason !== "discarded") return;
       return releaseStructuralHistory(
-        { kind: "project", projectId: inverse.projectId },
+        inverse.projectId === null ? libraryContentRoute : projectContentRoute(inverse.projectId),
         inverse.token.storeEpoch,
         [inverse.token],
       );
@@ -427,7 +427,7 @@ export const databaseViewHistoryAdapter = (
       if (receipt.kind === "transfer") {
         const { value } = receipt.result;
         return releaseStructuralHistory(
-          { kind: "project", projectId: value.projectId },
+          value.projectId === null ? libraryContentRoute : projectContentRoute(value.projectId),
           value.storeEpoch,
           promotionRetentionResources(value),
         );
@@ -441,7 +441,7 @@ export const databaseViewHistoryAdapter = (
       if (request.kind === "transfer") return abandonPromotion(request.request);
       if (request.kind === "reverse_transfer")
         await abandonStructuralHistory(
-          { kind: "project", projectId: request.projectId },
+          request.projectId === null ? libraryContentRoute : projectContentRoute(request.projectId),
           request.request,
         );
     },

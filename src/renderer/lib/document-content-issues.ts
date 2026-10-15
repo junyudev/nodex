@@ -1,4 +1,4 @@
-import { contentAccessIdentityKey } from "../../shared/content-access-context";
+import { contentRoutingIdentityKey } from "../../shared/content-routing-context";
 import { PAGE_DOCUMENT_TITLE_KEY } from "../../shared/block-documents/page-document";
 import type { BlockDocumentSurfaceRuntime } from "./block-document-surface-runtime";
 import { resolveBlockDocumentSyncIndicator } from "./block-document-sync-indicator";
@@ -86,7 +86,7 @@ export function observeDocumentContentIssues(runtime: BlockDocumentSurfaceRuntim
                     descriptor.storeEpoch,
                     next.recovery.recoveryId,
                   )
-                : `${contentAccessIdentityKey(descriptor)}\0${descriptor.storeEpoch}\0document:${descriptor.documentId}:${descriptor.generation}`,
+                : `${contentRoutingIdentityKey(descriptor)}\0${descriptor.storeEpoch}\0document:${descriptor.documentId}:${descriptor.generation}`,
               scope: descriptor,
               location: { target: { kind: "page", pageId: descriptor.ownerBlockId }, label: title },
               title: model.label,

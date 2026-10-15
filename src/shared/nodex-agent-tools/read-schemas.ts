@@ -14,6 +14,7 @@ import {
   DocumentIdSchema,
   ETagSchema,
   JsonValueSchema,
+  LibraryIdSchema,
   ProjectIdSchema,
   PropertyIdSchema,
   TextInputSchema,
@@ -100,17 +101,13 @@ export const GetContextInputSchema = z.strictObject({
 });
 
 export const GetContextDataSchema = z.strictObject({
+  libraryId: LibraryIdSchema,
   project: z
     .strictObject({
       projectId: ProjectIdSchema,
       name: z.string(),
     })
     .nullable(),
-  access: z.strictObject({
-    read: z.enum(["allowed", "unavailable"]),
-    write: z.enum(["granted", "consent_required", "unavailable"]),
-    domains: z.array(z.enum(["document", "placement", "database"])),
-  }),
   databases: z.array(DatabaseSummarySchema).optional(),
   nfmGuide: z
     .strictObject({

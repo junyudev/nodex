@@ -6,7 +6,7 @@ import { render } from "../test/dom";
 import { TestQueryProvider } from "../test/query";
 import { usePageOwnershipPathReadModel } from "./block-reference-queries";
 import { ProjectionInvalidationRegistry } from "./projection-invalidation-registry";
-import { libraryContentAccess, projectContentAccess } from "../../shared/content-access-context";
+import { libraryContentRoute, projectContentRoute } from "../../shared/content-routing-context";
 
 const mocks = vi.hoisted(() => ({
   readLibraryModule: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock("./renderer-transport", () => ({
 }));
 
 function OwnershipPathHarness() {
-  const path = usePageOwnershipPathReadModel(projectContentAccess("host-project"), "nested-page");
+  const path = usePageOwnershipPathReadModel(projectContentRoute("host-project"), "nested-page");
   return (
     <output>
       {path.data?.status === "available"
@@ -49,7 +49,7 @@ function OwnershipPathHarness() {
 }
 
 function LibraryOwnershipPathHarness() {
-  const path = usePageOwnershipPathReadModel(libraryContentAccess, "nested-page");
+  const path = usePageOwnershipPathReadModel(libraryContentRoute, "nested-page");
   return <output>{path.data?.status ?? "pending"}</output>;
 }
 
@@ -79,7 +79,6 @@ describe("Page reference queries", () => {
         projectionListeners.add(listener);
         return () => projectionListeners.delete(listener);
       },
-      subscribeRevocations: () => () => {},
     });
   });
 
@@ -204,7 +203,7 @@ describe("Page reference queries", () => {
       expect(view.getByText("available")).toBeTruthy();
     });
     expect(mocks.resolvePageOwnershipPath).toHaveBeenCalledWith({
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       targetPageId: "nested-page",
     });
     expect(projectionScopes).toContainEqual({

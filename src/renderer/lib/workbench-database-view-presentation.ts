@@ -15,11 +15,11 @@ export interface WorkbenchDatabaseViewPresentationRegistration {
 
 /** Presentation metadata cannot retarget a capability; only the descriptor's semantic identity can. */
 export function databaseViewPresentationIdentity(surface: WorkbenchDatabaseViewReference): string {
-  const { accessContext, target } = surface.config;
+  const { routingContext, target } = surface.config;
   return JSON.stringify([
     surface.id,
-    accessContext.kind,
-    accessContext.kind === "project" ? accessContext.projectId : null,
+    routingContext.kind,
+    routingContext.kind === "project" ? routingContext.projectId : null,
     target.kind,
     target.kind === "database-view"
       ? target.databaseViewId

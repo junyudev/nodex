@@ -1,4 +1,5 @@
 import type { CodexUserAttachment } from "./types";
+import { parseAgentRuntimeAttachmentSource } from "./agent-runtime-attachments";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) return null;
@@ -54,7 +55,8 @@ export function buildCodexUserAttachmentsFromContent(
         type: "image",
         id: buildUserAttachmentId(itemId, "image", index),
         source: source || normalizeRemotePointerSource(imageSource),
-        sourceKind: source ? "inline-image" : "remote-pointer",
+        sourceKind:
+          source && !parseAgentRuntimeAttachmentSource(source) ? "inline-image" : "remote-pointer",
         caption: getString(input, ["caption", "name"]),
       });
       return;

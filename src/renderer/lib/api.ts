@@ -1,9 +1,9 @@
 import type { ReadFileBytesInput, SaveFileInput } from "../../shared/library-files";
 import { resolveRendererTransport } from "./renderer-transport";
 import type {
-  ContentAccessContext,
-  ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  ContentRoutingContext,
+  ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 import type { CoreResult } from "../../shared/core-result";
 import type {
   DatabaseListWindowInput,
@@ -545,16 +545,16 @@ export function createLibraryDocumentSyncAdapter(): DocumentSyncAdapter {
   throw new Error("Library Document sync is unavailable for this renderer transport");
 }
 
-export function createDocumentSyncAdapterForContentAccess(
-  accessContext: ContentAccessContext,
+export function createDocumentSyncAdapterForContentRouting(
+  routingContext: ContentRoutingContext,
 ): DocumentSyncAdapter {
-  return accessContext.kind === "project"
-    ? createDocumentSyncAdapter(accessContext.projectId)
+  return routingContext.kind === "project"
+    ? createDocumentSyncAdapter(routingContext.projectId)
     : createLibraryDocumentSyncAdapter();
 }
 
 export function createCanvasSceneSyncAdapter(
-  identity: ContentAccessIdentity,
+  identity: ContentRoutingIdentity,
 ): CanvasSceneSyncAdapter {
   const transport = resolveRendererTransport();
   const createAdapter = transport.createCanvasSceneSyncAdapter;
@@ -594,14 +594,14 @@ export function prepareLibraryOwnedBlockDocument(
   return invokePlainCommand(prepareLibraryOwnedBlockDocumentCommand, ownerBlockId);
 }
 
-export function prepareOwnedBlockDocumentForContentAccess(
-  accessContext: ContentAccessContext,
+export function prepareOwnedBlockDocumentForContentRouting(
+  routingContext: ContentRoutingContext,
   ownerBlockId: string,
 ): Promise<
   DocumentSyncCommandResult<ProjectAccessedDocumentDescriptor | LibraryAccessedDocumentDescriptor>
 > {
-  return accessContext.kind === "project"
-    ? prepareOwnedBlockDocument(accessContext.projectId, ownerBlockId)
+  return routingContext.kind === "project"
+    ? prepareOwnedBlockDocument(routingContext.projectId, ownerBlockId)
     : prepareLibraryOwnedBlockDocument(ownerBlockId);
 }
 
@@ -626,21 +626,21 @@ export async function applyAdditionalDocumentCommand(
 }
 
 export async function transferBlocks(
-  projectId: string,
+  projectId: string | null,
   intent: PublicBlockTransferIntent,
 ): Promise<BlockTransferCommandResult> {
   return await invokeLocalCommitCommandResult(blockTransferCommand, projectId, intent);
 }
 
 export function planBlockTransferPresentation(
-  projectId: string,
+  projectId: string | null,
   intent: PublicBlockTransferIntent,
 ): Promise<BlockTransferPresentationPlanResult> {
   return invokeRendererQuery("blocks:transfer:plan", projectId, intent);
 }
 
 export async function undoBlockTransfer(
-  projectId: string,
+  projectId: string | null,
   intent: PublicBlockTransferUndoIntent,
 ): Promise<BlockTransferUndoCommandResult> {
   return await invokeLocalCommitCommandResult(blockTransferUndoCommand, projectId, intent);
@@ -729,14 +729,14 @@ export async function mutateLibraryBlockProperties(
 }
 
 export function readPageLifecyclePreflight(
-  projectId: string,
+  projectId: string | null,
   pageId: string,
 ): Promise<PageLifecyclePreflightResultV2> {
   return resolveRendererTransport().readPageLifecyclePreflight(projectId, pageId);
 }
 
 export async function mutatePageLifecycle(
-  projectId: string,
+  projectId: string | null,
   request: PageLifecycleMutationRequestV2,
 ): Promise<PageLifecycleMutationCommandResultV2> {
   const definition = pageLifecycleCommandFor(request);
@@ -830,36 +830,36 @@ export async function applyDatabaseSettingsModule(
 }
 
 export function readLibraryModule(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   request: LibraryModuleReadRequest,
 ): Promise<LibraryModuleReadResult> {
-  return invokeRendererQuery("library-module:read", accessContext, request);
+  return invokeRendererQuery("library-module:read", routingContext, request);
 }
 
 export async function applyLibraryModule(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   request: LibraryModuleApplyRequest,
 ): Promise<LibraryModuleApplyResult> {
   const definition = libraryCommandFor(request);
-  return await invokeLocalCommitCommandResult(definition, accessContext, request);
+  return await invokeLocalCommitCommandResult(definition, routingContext, request);
 }
 
 export function prepareFileBlob(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   input: PrepareFileBlobInput,
 ): Promise<PreparedFileBlob> {
-  return invokePlainCommand(prepareFileBlobCommand, accessContext, input);
+  return invokePlainCommand(prepareFileBlobCommand, routingContext, input);
 }
 
 export function pickAndPrepareFiles(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   input: PickFilesInput,
 ): Promise<PickFilesResult> {
-  return invokePlainCommand(pickAndPrepareFilesCommand, accessContext, input);
+  return invokePlainCommand(pickAndPrepareFilesCommand, routingContext, input);
 }
 
 export async function prepareDroppedFiles(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   operationId: string,
   files: readonly File[],
 ): Promise<readonly PreparedFileBlob[]> {
@@ -870,29 +870,29 @@ export async function prepareDroppedFiles(
     throw new Error("Dropped Files are unavailable to the desktop host");
   }
   const input: PrepareDroppedFilesInput = { operationId, localPaths };
-  const result = await invokePlainCommand(prepareDroppedFilesCommand, accessContext, input);
+  const result = await invokePlainCommand(prepareDroppedFilesCommand, routingContext, input);
   return result.files;
 }
 
 export function readFileBytes(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   input: ReadFileBytesInput,
 ): Promise<FileBytes> {
-  return invokeRendererQuery("files:read", accessContext, input);
+  return invokeRendererQuery("files:read", routingContext, input);
 }
 
 export function materializeFile(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   input: SaveFileInput,
 ): Promise<string> {
-  return invokePlainCommand(materializeFileCommand, accessContext, input);
+  return invokePlainCommand(materializeFileCommand, routingContext, input);
 }
 
 export function saveFile(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   input: SaveFileInput,
 ): Promise<SaveFileResult> {
-  return invokePlainCommand(saveFileCommand, accessContext, input);
+  return invokePlainCommand(saveFileCommand, routingContext, input);
 }
 
 export function readLibraryDatabaseModule(
@@ -971,12 +971,6 @@ export function subscribeCodexEvents(
   callback: (event: import("./types").CodexEvent) => void,
 ): () => void {
   return resolveRendererTransport().subscribeCodexEvents(callback);
-}
-
-export function subscribeCodexRendererClientRequests(
-  callback: (message: import("./types").CodexRendererClientRequestMessage) => void,
-): () => void {
-  return resolveRendererTransport().subscribeCodexRendererClientRequests(callback);
 }
 
 export function subscribeDesktopNotificationActions(

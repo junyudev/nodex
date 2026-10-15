@@ -45,6 +45,8 @@ pub(super) struct InstallRestoreRequest<'a> {
     pub create_safety_backup: bool,
     pub existing_journal: Option<StoreReplacementJournal>,
     pub replacement_hook: &'a dyn Fn(&str) -> Result<(), StoreError>,
+    pub profile_snapshot_participant: &'a dyn super::ProfileSnapshotParticipant,
+    pub profile_snapshot: Option<&'a nodex_core_contracts::administration::ProfileSnapshotSource>,
 }
 
 pub(super) fn install_restore(
@@ -130,6 +132,8 @@ pub(super) fn install_restore(
             request.operation_id,
             request.request_hash,
             request.backup_id,
+            request.profile_snapshot_participant,
+            request.profile_snapshot,
         )?;
         drop(source);
         journal = advance_store_replacement_journal(

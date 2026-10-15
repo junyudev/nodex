@@ -82,12 +82,7 @@ impl PromotionPlacement {
         let Self::DataSource { data_source_id, .. } = self else {
             return Ok(());
         };
-        validate_page_transfer_data_source_source(
-            connection,
-            &recipe.library_id,
-            &recipe.project_id,
-            data_source_id,
-        )
+        validate_page_transfer_data_source_source(connection, &recipe.library_id, data_source_id)
     }
 
     pub(super) fn retire(

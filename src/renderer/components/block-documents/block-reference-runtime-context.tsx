@@ -1,16 +1,16 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { DatabaseId } from "../../../shared/database-identities";
 import type {
-  ContentAccessContext,
+  ContentRoutingContext,
   ContentCanvasNavigationTarget,
   ContentPageNavigationTarget,
-} from "../../../shared/content-access-context";
+} from "../../../shared/content-routing-context";
 import type { PortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import type { SurfaceHistoryControls } from "@/lib/surface-history/controls";
 
 export interface BlockReferenceHostRuntime {
   /** Authority inherited by every nested content editor in this host chain. */
-  readonly contentAccessContext: ContentAccessContext;
+  readonly contentRoutingContext: ContentRoutingContext;
   readonly projectName: string | null;
   readonly projectWorkspacePath: string | null;
   readonly hostPageId: string | null;

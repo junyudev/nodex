@@ -3,6 +3,7 @@ use nodex_core_contracts::library::LibraryPageOperation;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn fixture() -> (tempfile::TempDir, SqliteStoreKernel, LibraryModule) {
     let directory = tempdir().unwrap();
@@ -79,8 +80,8 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 context: &bound,
                 page_search: &page_search::PageSearchIndexRegistry::default(),
             };
-            assert_eq!(query.page_ids(None)?, ["page:visible"]);
-            assert!(query.page_ids(Some("page:hidden"))?.is_empty());
+            assert_eq!(query.page_ids(None)?, ["page:hidden", "page:visible"]);
+            assert_eq!(query.page_ids(Some("page:hidden"))?, ["page:hidden"]);
             assert!(query.page_ids(Some("page:missing"))?.is_empty());
             // Denial is executable evidence that metadata does not depend on body columns.
             transaction.authorizer(Some(|context: AuthContext<'_>| match context.action {
@@ -156,11 +157,11 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 "library_children",
                 &BTreeMap::from([("parent_kind".into(), json!("library"))]),
             )?;
-            assert_eq!(children.len(), 1);
+            assert_eq!(children.len(), 2);
             assert_eq!(children[0]["child_id"], "page:visible");
             let hits = query.search("Query", 5)?;
-            assert_eq!(hits.len(), 1);
-            assert_eq!(hits[0]["page_id"], "page:visible");
+            assert_eq!(hits.len(), 2);
+            assert!(hits.iter().any(|hit| hit["page_id"] == "page:visible"));
             assert!(query.search("Query", 0).is_err());
             assert!(
                 query
@@ -177,7 +178,7 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
 
 #[test]
 fn page_file_relations_do_not_expand_independent_file_authority() {
-    use nodex_core_contracts::library::{LibraryPageFileEntryChange, LibraryProjectAccessChange};
+    use nodex_core_contracts::library::LibraryPageFileEntryChange;
     let (directory, kernel, library) = fixture();
     let bound = BoundModuleContext {
         project_id: Some(ProjectId("project-1".into())),
@@ -241,20 +242,6 @@ fn page_file_relations_do_not_expand_independent_file_authority() {
             turn_id: None,
         },
     );
-    apply(
-        &context(),
-        "file:revoke-direct",
-        LibraryIntent::SetProjectAccess {
-            target: LibraryResourceTarget::File {
-                file_id: "file:query".into(),
-            },
-            changes: vec![LibraryProjectAccessChange {
-                project_id: "project-1".into(),
-                access: None,
-                expected_revision: Some(1),
-            }],
-        },
-    );
     let check = bound.clone();
     kernel
         .readers()
@@ -278,7 +265,7 @@ fn page_file_relations_do_not_expand_independent_file_authority() {
             assert_eq!(files[0]["version"], 1);
             for relation in ["files", "file_versions", "file_usages"] {
                 assert!(
-                    query
+                    !query
                         .rows(
                             relation,
                             &BTreeMap::from([("file_id".into(), json!("file:query"))])
@@ -383,7 +370,7 @@ fn intrinsic_properties_match_page_detail_without_loading_document_content() {
             let denied = query.page_intrinsic_properties("page:hidden");
             connection.authorizer(None::<fn(AuthContext<'_>) -> Authorization>)?;
             assert_eq!(actual?, direct_expected);
-            assert!(denied.is_err());
+            assert!(denied.is_ok());
             Ok(())
         })
         .unwrap();
@@ -488,7 +475,7 @@ fn retained_history_remains_queryable_after_page_archival() {
 fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
     use nodex_core_contracts::query::{QueryRead, QueryReadValue};
     use nodex_core_contracts::sql::{SqlQuery, SqlScope};
-    let (_directory, kernel, library) = fixture();
+    let (_directory, kernel, _library) = fixture();
     let bound = BoundModuleContext {
         project_id: Some(ProjectId("project-1".into())),
         ..context()
@@ -522,14 +509,11 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 operation_id: "query-turn".into(),
                 store_epoch: StoreEpoch("epoch-1".into()),
-                intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                     thread_id: "thread:query".into(),
                     turn_id: "turn:query".into(),
                     root_thread_id: "thread:query".into(),
                     actor_project_id: Some("project-1".into()),
-                    source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                    read_only: true,
-                    inherited_from: None,
                 },
             },
         )
@@ -543,8 +527,6 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
             actor_project_id: Some("project-1".into()),
             library_id: "library-1".into(),
             store_epoch: "epoch-1".into(),
-            scope: ProjectWorkspaceTurnAuthorityScope::Project,
-            source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
         },
     };
     let query = SqlQuery { scope: SqlScope::default(), sql: "SELECT pages.page_id, page_documents.nested_markdown FROM pages JOIN page_documents USING(page_id)".into(), parameters: BTreeMap::new() };
@@ -565,8 +547,8 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
     else {
         panic!("query result")
     };
-    assert_eq!(value.returned_count, 1);
-    assert_eq!(value.rows[0][0], json!("page:visible"));
+    assert_eq!(value.returned_count, 2);
+    assert_eq!(value.rows[0][0], json!("page:hidden"));
     let rejected = module
         .read(
             &agent,
@@ -577,52 +559,31 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
                 },
             },
         )
-        .expect_err("Agent cannot borrow host admission");
-    assert_eq!(rejected.code, CoreErrorCode::Unauthorized);
-    for field in ["thread", "turn", "root", "project", "epoch", "profile"] {
+        .expect("Authenticated Profile query");
+    assert!(matches!(rejected.value,QueryReadValue::Query {value} if value.returned_count==2));
+    for field in ["thread", "turn", "root", "epoch", "profile"] {
         let mut forged = provenance.clone();
         match field {
             "thread" => forged.authority.thread_id = "other".into(),
             "turn" => forged.authority.turn_id = "other".into(),
             "root" => forged.authority.root_thread_id = "other".into(),
-            "project" => forged.authority.actor_project_id = Some("other".into()),
             "epoch" => forged.authority.store_epoch = "other".into(),
             _ => forged.profile_id = "other".into(),
         }
         assert!(module.read(&agent, read(forged)).is_err(), "forged {field}");
     }
-    library
-        .apply(
-            &context(),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: "revoke-query-page".into(),
-                store_epoch: StoreEpoch("epoch-1".into()),
-                intent: LibraryIntent::SetProjectAccess {
-                    target: LibraryResourceTarget::Page {
-                        page_id: "page:visible".into(),
-                    },
-                    changes: vec![LibraryProjectAccessChange {
-                        project_id: "project-1".into(),
-                        access: None,
-                        expected_revision: Some(1),
-                    }],
-                },
-            },
-        )
-        .expect("revoke Page grant");
     let QueryReadValue::Query { value } =
         module.read(&agent, read(provenance.clone())).unwrap().value
     else {
         panic!("query result")
     };
-    assert_eq!(value.returned_count, 0);
+    assert_eq!(value.returned_count, 2);
     let cli = BoundModuleContext {
         adapter: AdapterKind::NativeCli,
         ..bound
     };
     assert!(
-        module.read(&cli, read(provenance)).is_err(),
-        "CLI cannot select Agent admission"
+        module.read(&cli, read(provenance)).is_ok(),
+        "Profile access is independent of adapter route"
     );
 }

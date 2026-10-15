@@ -4,12 +4,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::workspace::{
-    CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType,
-    ProjectSessionInvalidationScope, ProjectWorkspaceAgentConfigValue,
-    ProjectWorkspaceAgentRuntimeOptions, ProjectWorkspaceDynamicToolCatalog,
-    ProjectWorkspaceNativeAgentState, ProjectWorkspaceNativeTurnFact, ProjectWorkspaceThread,
-    ProjectWorkspaceThreadBackendSession, ProjectWorkspaceThreadExecutionLocation,
-    ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
+    CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionInvalidationScope,
+    ProjectWorkspaceAgentConfigValue, ProjectWorkspaceAgentRuntimeOptions,
+    ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceNativeAgentState,
+    ProjectWorkspaceNativeTurnFact, ProjectWorkspaceThread, ProjectWorkspaceThreadBackendSession,
+    ProjectWorkspaceThreadExecutionLocation, ProjectWorkspaceThreadPatch,
+    ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -945,35 +945,6 @@ pub(super) fn read_threads(
     rows.into_iter()
         .map(|row| project_workspace_thread(connection, library_id, row))
         .collect()
-}
-
-pub(super) fn read_permission_mode(
-    connection: &Connection,
-    project_id: &str,
-) -> Result<Option<CodexPermissionMode>, StoreError> {
-    connection
-        .query_row(
-            "SELECT mode FROM codex_project_permission_mode_selections WHERE project_id = ?1",
-            [project_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .map(|mode| parse_permission_mode(&mode))
-        .transpose()
-}
-
-pub(super) fn read_projectless_permission_mode(
-    connection: &Connection,
-) -> Result<Option<CodexPermissionMode>, StoreError> {
-    connection
-        .query_row(
-            "SELECT mode FROM codex_projectless_permission_mode_selection WHERE id = 1",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .map(|mode| parse_permission_mode(&mode))
-        .transpose()
 }
 
 pub(super) struct ThreadUpsertEffects {
@@ -2145,74 +2116,6 @@ pub(super) fn replace_dynamic_tool_catalogs(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn set_project_permission_mode(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    project_id: &str,
-    mode: CodexPermissionMode,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_id("project_id", project_id)?;
-    require_project(connection, library_id, project_id)?;
-    let now = sqlite_now(connection)?;
-    connection.execute(
-        "INSERT INTO codex_project_permission_mode_selections(project_id, mode, updated_at) \
-         VALUES (?1, ?2, ?3) \
-         ON CONFLICT(project_id) DO UPDATE SET \
-           mode = excluded.mode, updated_at = excluded.updated_at",
-        params![project_id, permission_mode_literal(mode), now],
-    )?;
-    finish_thread_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "set_project_permission_mode",
-        Vec::new(),
-        vec![project_id.to_owned()],
-        Vec::new(),
-        Vec::new(),
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn set_projectless_permission_mode(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    mode: CodexPermissionMode,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    let now = sqlite_now(connection)?;
-    connection.execute(
-        "INSERT INTO codex_projectless_permission_mode_selection(id, mode, updated_at) \
-         VALUES (1, ?1, ?2) \
-         ON CONFLICT(id) DO UPDATE SET \
-           mode = excluded.mode, updated_at = excluded.updated_at",
-        params![permission_mode_literal(mode), now],
-    )?;
-    finish_thread_mutation(
-        connection,
-        library_id,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        "set_projectless_permission_mode",
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    )
-}
-
 fn project_workspace_thread(
     connection: &Connection,
     library_id: &str,
@@ -2700,25 +2603,6 @@ fn status_type_literal(value: CodexThreadStatusType) -> &'static str {
     }
 }
 
-fn parse_permission_mode(value: &str) -> Result<CodexPermissionMode, StoreError> {
-    match value {
-        "auto" => Ok(CodexPermissionMode::Auto),
-        "guardian-approvals" => Ok(CodexPermissionMode::GuardianApprovals),
-        "full-access" => Ok(CodexPermissionMode::FullAccess),
-        "custom" => Ok(CodexPermissionMode::Custom),
-        _ => Err(corrupt("Codex Project permission mode is invalid")),
-    }
-}
-
-fn permission_mode_literal(value: CodexPermissionMode) -> &'static str {
-    match value {
-        CodexPermissionMode::Auto => "auto",
-        CodexPermissionMode::GuardianApprovals => "guardian-approvals",
-        CodexPermissionMode::FullAccess => "full-access",
-        CodexPermissionMode::Custom => "custom",
-    }
-}
-
 fn merge_identity(
     current: Option<String>,
     patch: &Option<Option<String>>,
@@ -3078,14 +2962,12 @@ mod tests {
     use nodex_core_contracts::agent::AgentBackendBinding;
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::workspace::{
-        CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionIntent,
+        CodexThreadActiveFlag, CodexThreadStatusType, ProjectSessionIntent,
         ProjectWorkspaceAgentRuntimeOptions, ProjectWorkspaceBackgroundProcess,
         ProjectWorkspaceBackgroundProcessSource, ProjectWorkspaceDynamicToolCatalog,
         ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         ProjectWorkspaceThreadExecutionLocation, ProjectWorkspaceThreadPatch,
         ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
-        ProjectWorkspaceTurnAuthorityScope, ProjectWorkspaceTurnAuthoritySource,
-        ProjectWorkspaceTurnCoordinate,
     };
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, CoreErrorCode, LibraryId, ModuleApplyRequest,
@@ -4501,44 +4383,6 @@ mod tests {
                 ),
             )
             .expect("replace dynamic catalogs");
-        module
-            .apply(
-                &context(),
-                request(
-                    "thread-permission-root",
-                    ProjectWorkspaceIntent::SetProjectPermissionMode {
-                        project_id: "project:default".to_owned(),
-                        mode: CodexPermissionMode::FullAccess,
-                    },
-                ),
-            )
-            .expect("select permission mode");
-        let ProjectWorkspaceReadValue::ProjectPermissionMode { mode } = read(
-            &module,
-            ProjectWorkspaceRead::ProjectPermissionMode {
-                project_id: "project:default".to_owned(),
-            },
-        ) else {
-            panic!("Project permission mode");
-        };
-        assert_eq!(mode, Some(CodexPermissionMode::FullAccess));
-        module
-            .apply(
-                &context(),
-                request(
-                    "thread-projectless-permission",
-                    ProjectWorkspaceIntent::SetProjectlessPermissionMode {
-                        mode: CodexPermissionMode::GuardianApprovals,
-                    },
-                ),
-            )
-            .expect("select projectless permission mode");
-        let ProjectWorkspaceReadValue::ProjectlessPermissionMode { mode } =
-            read(&module, ProjectWorkspaceRead::ProjectlessPermissionMode)
-        else {
-            panic!("Projectless permission mode");
-        };
-        assert_eq!(mode, Some(CodexPermissionMode::GuardianApprovals));
         create_thread(
             &module,
             "thread-projectless-create",
@@ -4558,10 +4402,6 @@ mod tests {
             panic!("projectless execution context");
         };
         assert!(projectless_execution_context.project.is_none());
-        assert_eq!(
-            projectless_execution_context.permission_mode,
-            Some(CodexPermissionMode::GuardianApprovals)
-        );
         let session_id = "session:thread-root".to_owned();
         create_session(&module, "thread-create-session-root", &session_id);
         module
@@ -4618,10 +4458,6 @@ mod tests {
         else {
             panic!("execution context");
         };
-        assert_eq!(
-            execution_context.permission_mode,
-            Some(CodexPermissionMode::FullAccess)
-        );
         assert_eq!(
             execution_context
                 .project
@@ -5355,205 +5191,16 @@ mod tests {
             .apply(
                 &context(),
                 request(
-                    "execution-permission-full-access",
-                    ProjectWorkspaceIntent::SetProjectPermissionMode {
-                        project_id: "project:default".to_owned(),
-                        mode: CodexPermissionMode::FullAccess,
+                    "execution-admit",
+                    ProjectWorkspaceIntent::AdmitTurnAuthority {
+                        thread_id: "thread-root".into(),
+                        turn_id: "turn-builtin".into(),
+                        root_thread_id: "thread-root".into(),
+                        actor_project_id: Some("project:default".into()),
                     },
                 ),
             )
-            .expect("full access permission");
-        let ProjectWorkspaceReadValue::TurnAuthority { resolution } = read(
-            &module,
-            ProjectWorkspaceRead::TurnAuthority {
-                thread_id: "thread-root".to_owned(),
-                turn_id: "turn-unrecorded".to_owned(),
-                root_thread_id: "thread-root".to_owned(),
-                actor_project_id: Some("project:default".to_owned()),
-            },
-        ) else {
-            panic!("unrecorded Turn authority read");
-        };
-        assert!(!resolution.persisted);
-        assert_eq!(resolution.frozen_at_ms, None);
-        assert_eq!(
-            resolution.authority.expect("project fallback").scope,
-            ProjectWorkspaceTurnAuthorityScope::Project
-        );
-
-        let mut untrusted = context();
-        untrusted.adapter = AdapterKind::NativeCli;
-        let rejected = module
-            .apply(
-                &untrusted,
-                request(
-                    "execution-authority-untrusted",
-                    ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
-                        thread_id: "thread-root".to_owned(),
-                        turn_id: "turn-untrusted".to_owned(),
-                        root_thread_id: "thread-root".to_owned(),
-                        actor_project_id: Some("project:default".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
-                    },
-                ),
-            )
-            .expect_err("untrusted Adapter cannot freeze Turn authority");
-        assert_eq!(rejected.code, CoreErrorCode::Unauthorized);
-
-        for (operation_id, turn_id, source) in [
-            (
-                "execution-authority-project",
-                "turn-project",
-                ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-            ),
-            (
-                "execution-authority-builtin",
-                "turn-builtin",
-                ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
-            ),
-        ] {
-            module
-                .apply(
-                    &context(),
-                    request(
-                        operation_id,
-                        ProjectWorkspaceIntent::FreezeTurnAuthority {
-                            read_only: false,
-                            thread_id: "thread-root".to_owned(),
-                            turn_id: turn_id.to_owned(),
-                            root_thread_id: "thread-root".to_owned(),
-                            actor_project_id: Some("project:default".to_owned()),
-                            source,
-                            inherited_from: None,
-                        },
-                    ),
-                )
-                .expect("freeze root Turn authority");
-        }
-        module
-            .apply(
-                &context(),
-                request(
-                    "execution-authority-inherited",
-                    ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
-                        thread_id: "thread-child".to_owned(),
-                        turn_id: "turn-child".to_owned(),
-                        root_thread_id: "thread-root".to_owned(),
-                        actor_project_id: Some("project:default".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
-                        inherited_from: Some(ProjectWorkspaceTurnCoordinate {
-                            thread_id: "thread-root".to_owned(),
-                            turn_id: "turn-builtin".to_owned(),
-                        }),
-                    },
-                ),
-            )
-            .expect("freeze inherited Turn authority");
-
-        let ProjectWorkspaceReadValue::TurnAuthority { resolution } = read(
-            &module,
-            ProjectWorkspaceRead::TurnAuthority {
-                thread_id: "thread-child".to_owned(),
-                turn_id: "turn-child".to_owned(),
-                root_thread_id: "thread-root".to_owned(),
-                actor_project_id: Some("project:default".to_owned()),
-            },
-        ) else {
-            panic!("Turn authority read");
-        };
-        assert!(resolution.persisted);
-        assert!(resolution.frozen_at_ms.is_some_and(|value| value > 0));
-        assert_eq!(
-            resolution.authority.expect("current authority").scope,
-            ProjectWorkspaceTurnAuthorityScope::Library
-        );
-        for (thread_id, turn_id, source, inherited_from) in [
-            (
-                "thread-root",
-                "turn-read-only",
-                ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
-                None,
-            ),
-            (
-                "thread-child",
-                "turn-inherited-read-only",
-                ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
-                Some(ProjectWorkspaceTurnCoordinate {
-                    thread_id: "thread-root".to_owned(),
-                    turn_id: "turn-read-only".to_owned(),
-                }),
-            ),
-        ] {
-            module
-                .apply(
-                    &context(),
-                    request(
-                        turn_id,
-                        ProjectWorkspaceIntent::FreezeTurnAuthority {
-                            thread_id: thread_id.to_owned(),
-                            turn_id: turn_id.to_owned(),
-                            root_thread_id: "thread-root".to_owned(),
-                            actor_project_id: Some("project:default".to_owned()),
-                            source,
-                            read_only: thread_id == "thread-root",
-                            inherited_from,
-                        },
-                    ),
-                )
-                .expect("freeze read-only lineage");
-            let ProjectWorkspaceReadValue::TurnAuthority { resolution } = read(
-                &module,
-                ProjectWorkspaceRead::TurnAuthority {
-                    thread_id: thread_id.to_owned(),
-                    turn_id: turn_id.to_owned(),
-                    root_thread_id: "thread-root".to_owned(),
-                    actor_project_id: Some("project:default".to_owned()),
-                },
-            ) else {
-                panic!("read-only authority")
-            };
-            assert!(resolution.read_only);
-        }
-        let rejected = module
-            .apply(
-                &context(),
-                request(
-                    "read-only-escalation",
-                    ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        thread_id: "thread-root".to_owned(),
-                        turn_id: "turn-read-only".to_owned(),
-                        root_thread_id: "thread-root".to_owned(),
-                        actor_project_id: Some("project:default".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
-                        read_only: false,
-                        inherited_from: None,
-                    },
-                ),
-            )
-            .expect_err("immutable Turn policy");
-        assert_eq!(rejected.code, CoreErrorCode::Conflict);
-
-        let fingerprint = kernel
-            .readers()
-            .read_default(|connection| {
-                connection
-                    .query_row(
-                        "SELECT authority_fingerprint FROM nodex_agent_turn_authorities \
-                         WHERE thread_id = 'thread-root' AND turn_id = 'turn-builtin'",
-                        [],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .map_err(crate::infrastructure::sqlite::StoreError::from)
-            })
-            .expect("Turn authority fingerprint");
-        assert_eq!(
-            fingerprint,
-            "0f460f8fdae5552468b1b7bedc4cf07ae5c02568cf5a1780244c0fc51364a792"
-        );
-
+            .unwrap();
         let process = ProjectWorkspaceBackgroundProcess {
             id: "thread-root:item-1".to_owned(),
             thread_id: "thread-root".to_owned(),
@@ -5662,7 +5309,7 @@ mod tests {
                 assert!(
                     connection
                         .execute(
-                            "UPDATE nodex_agent_turn_authorities SET scope = 'project' \
+                            "UPDATE nodex_agent_turn_authorities SET root_thread_id = 'thread:other' \
                              WHERE thread_id = 'thread-root' AND turn_id = 'turn-builtin'",
                             [],
                         )
@@ -5697,7 +5344,7 @@ mod tests {
         };
         assert!(resolution.persisted);
         assert!(resolution.authority.is_none());
-        assert_eq!(resolution.frozen_at_ms, None);
+        assert_eq!(resolution.admitted_at_ms, None);
     }
 
     #[test]

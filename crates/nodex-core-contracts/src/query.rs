@@ -1,11 +1,11 @@
-//! Public, authorized SQL reads across content Modules.
+//! Public SQL reads over the current authenticated Profile Library.
 use crate::agent::{AgentExecutionAuthorization, AgentTurnProvenance};
 use crate::database::{DatabaseDisplayedViewSelection, DatabaseEffectiveViewCoordinate};
 use crate::sql::{SqlQuery, SqlResult, SqlSchema, SqlScope};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-pub const QUERY_CONTRACT_VERSION: u32 = 3;
+pub const QUERY_CONTRACT_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -17,7 +17,7 @@ pub enum QueryRead {
     Query {
         query: SqlQuery,
     },
-    /// Agent SQL uses the calling Project's durable resource grants.
+    /// Agent SQL validates the captured execution identity before reading Library data.
     AgentSchema {
         provenance: Box<AgentTurnProvenance>,
         scope: SqlScope,
@@ -27,7 +27,7 @@ pub enum QueryRead {
         provenance: Box<AgentTurnProvenance>,
         query: SqlQuery,
     },
-    /// A fixed effective-View projection, independently authorized from public SQL bindings.
+    /// A fixed effective-View projection, selected independently of public SQL bindings.
     AgentDisplayedViewQuery {
         authorization: Box<AgentExecutionAuthorization>,
         coordinate: Box<DatabaseEffectiveViewCoordinate>,

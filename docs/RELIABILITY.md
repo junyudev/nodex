@@ -3,7 +3,7 @@
 ## Purpose
 
 Nodex is reliable when committed local work survives process and window
-lifecycle, every authorized presentation converges on the same semantic state,
+lifecycle, every current presentation converges on the same semantic state,
 and recovery never introduces a second authority or replays stale work into a
 new one.
 
@@ -18,7 +18,7 @@ Nodex uses four distinct recovery layers:
 
 1. **Semantic transaction:** Core validates one intent and atomically commits
    canonical state, receipt, history, projection effects, and visibility.
-2. **Authorized delivery:** the initiating caller admits its authorized committed
+2. **Committed delivery:** the initiating caller admits its committed
    effect immediately; other consumers receive the same fact through durable or
    exact-resource delivery.
 3. **Canonical repair:** a gap, stale projection, compacted update, or reconnect
@@ -29,7 +29,7 @@ Nodex uses four distinct recovery layers:
 
 These layers must not substitute for one another. A renderer reread cannot make
 an uncommitted command real. An event cursor cannot stand in for a Projection
-revision. A projection invalidation cannot grant access. A Core generation
+revision. A projection invalidation cannot validate a stale Profile or Store. A Core generation
 reconnect cannot hot-adopt another Store epoch.
 
 ## Completion and acknowledgement
@@ -74,7 +74,7 @@ missing legacy identity becomes an explicit error.
 A child operation with a durable parent episode derives its bounded identity
 from that parent's Core-owned issue coordinate and its own semantic key. In
 particular, an Agent tool retry after a Main restart retains the same identity
-for its frozen Turn and call rather than silently executing again.
+for its captured execution source and call rather than silently executing again.
 
 A state-idempotent request with no durable retry owner instead receives a fresh
 bounded identity at admission and keeps it only for that request's retry
@@ -162,7 +162,7 @@ Read [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store
 
 ## Documents and collaborative state
 
-Exact Page/Block and Canvas subscriptions establish an authorized live barrier
+Exact Page/Block and Canvas subscriptions establish a current-resource live barrier
 before canonical engine synchronization. Earlier state comes from state-vector
 or full-scene sync; later effects arrive through the addressed lane. Missing or
 out-of-order heads, receiver lag, generation changes, and compacted update bytes
@@ -209,8 +209,11 @@ authority together. Detailed identity and allocation decisions are recorded in
 
 ## Backup, restore, and maintenance
 
-A whole-Store backup covers the database and managed assets behind one Core
-maintenance boundary. The initiating renderer allocates a bounded operation
+A whole-Profile backup covers the Store, managed assets, complete execution
+history, execution identity and attachments, and recoverable Codex/Claude native
+history behind one Core publication boundary. Main drains Session mutations and
+borrows an idle execution snapshot; the physical writer lease spans the capture.
+Provider credentials remain outside the snapshot. The initiating renderer allocates a bounded operation
 identity before submission and retains the exact normalized command while its
 transport outcome is unknown. Main reports `submitted` once it owns the
 background operation; durable Core admission may follow asynchronously and is
@@ -229,7 +232,8 @@ through same-filesystem atomic publication from a sibling staging directory
 outside the backup closure; Core snapshots the database before
 enumerating that asset closure, so concurrent materialization can add only an
 unreferenced extra file, never omit a file referenced by the captured database.
-Restore validates the complete candidate, journals database/WAL/assets
+Restore validates the complete candidate, closes the old execution generation,
+journals database/WAL/assets/execution-history
 replacement, publishes all-or-nothing, rotates the Store epoch, and relaunches
 Electron. Old outboxes, checkpoints, Awareness, and cursors cannot replay across
 that epoch.
@@ -379,10 +383,33 @@ external cleanup fails closed and preserves recoverable state rather than claimi
 
 ## Runtime-specific recovery
 
-### Codex conversations
+### Local Agent Runtime conversations
 
-The app-server endpoint generation is the wire authority, Core Workspace is the durable Thread and
-execution-metadata authority, and one private Main Conversation Entity plus causal lane owns each
+Agent Runtime owns local Thread and Run history, queues, delegated work and command
+receipts in its execution store. Core retains the product Session and its immutable
+execution reference. Restart recovery reconciles those identities before execution;
+Main and renderer projections never become a second conversation writer. Stable
+command identities replay durable outcomes rather than creating another Session or
+starting the same task again.
+
+Native connection replacement invalidates the old source. Calls retain their exact
+Session and, when proved by the Provider, Run and attempt; Session-only calls keep an
+unknown Run null. Cancellation and native retirement cannot transfer old calls to
+replacement work. History reads remain bounded in SQL before body decoding, and live
+gaps recover from persisted cursors. Local voice and prediction use the Session's
+managed native connection. Their source checks, pins and late-response cleanup do
+not create another execution owner. See [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
+
+The execution process is started lazily and stops when quiet, but recovery stays conservative:
+a launch skips starting it only with durable evidence, bound to the exact store files, that it
+last stopped with no live or pending work. Unexpected exits restart it within a bounded
+sliding-window budget rather than once per user action.
+
+### Explicit remote Codex conversations
+
+For an explicitly attached remote conversation, the app-server endpoint generation
+is the wire authority, Core Workspace is the durable Thread and execution-metadata
+authority, and one private Main Conversation Entity plus causal lane owns each
 live Thread generation. Protocol occurrences are generation-fenced before they enter that lane. Endpoint
 replacement, failed hydration, or Thread removal settles the old generation's pending requests and
 interrupts its buffers and command fibers; recovery seeds durable Core facts, performs a fresh
@@ -656,7 +683,7 @@ and [Desktop Notification Behavior](product-specs/desktop-notification-behavior.
 | Response lost after commit             | Replay the immutable receipt for the same intent                                                                                                                                                                                                                                             |
 | Projection patch gap or stale read     | Fence affected state and coalesce a bounded canonical read                                                                                                                                                                                                                                   |
 | Document update bytes compacted        | Canonical Document resync; never fabricate an empty update                                                                                                                                                                                                                                   |
-| Exact resource authorization lost      | Revoke/evict before post-state presentation; later operations reauthorize                                                                                                                                                                                                                    |
+| Resource lifecycle or Profile retired  | Evict stale presentations and reject old handles before publishing post-state; later operations bind the current Profile, Store and resource lifecycle                                                                                                                                       |
 | Core transport generation lost         | Single-flight reconnect to the same Profile/Library/Store epoch                                                                                                                                                                                                                              |
 | Repeated Core losses                   | Open bounded circuit and show one app-wide Retry/Restart state                                                                                                                                                                                                                               |
 | Codex app-server session lost          | Reject that session's pending requests, retire its child, then reconnect with one bounded supervisor; never carry pending RPC state into the replacement generation                                                                                                                          |

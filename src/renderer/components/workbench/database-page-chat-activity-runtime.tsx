@@ -25,7 +25,7 @@ function DatabasePageChatActivityProvider({
 }) {
   const queryClient = useQueryClient();
   const pageAccessProjectId =
-    model.accessContext.kind === "project" ? model.accessContext.projectId : null;
+    model.routingContext.kind === "project" ? model.routingContext.projectId : null;
   const activity = useQuery(
     pageChatActivitySummariesQueryOptions(
       pageAccessProjectId ?? "",

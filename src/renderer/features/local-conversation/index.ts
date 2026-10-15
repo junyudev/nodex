@@ -18,7 +18,6 @@ export {
   useCodexConversationValue,
   useDefaultCodexAppServerManager,
   useMaybeCodexAppServerManagerForConversationId,
-  useCodexPermissionMode,
   useCodexThreadStartProgress,
   useComposerIntent,
   useConversation,
@@ -41,10 +40,6 @@ export {
 export { ConnectedReviewDiffPanel } from "./view/connected-review-diff-panel";
 export { ThreadSummaryPanelHeaderAction, ThreadSummaryPanelToggle } from "./view/summary-panel";
 export {
-  createThreadStageActions,
-  type ThreadActionControllerInput,
-} from "./thread-action-controller";
-export {
   selectBlockedTurnIds,
   selectConversationLiveRequests,
   selectConversationSearchUnits,
@@ -57,4 +52,5 @@ export type {
   ThreadPlanSidePanelTarget,
   ThreadStageActions,
   ThreadStageRouteInput,
+  SessionThreadCommands,
 } from "./thread-stage-types";

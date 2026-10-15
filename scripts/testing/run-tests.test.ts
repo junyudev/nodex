@@ -43,6 +43,7 @@ describe("test execution", () => {
       "prepare",
       "vitest.node.config.ts",
       "vitest.effect-codex.config.ts",
+      "packages/agent-runtime/vite.config.ts",
       "vitest.core-client.config.ts",
       "vitest.main.config.ts",
       "vitest.renderer.config.ts",

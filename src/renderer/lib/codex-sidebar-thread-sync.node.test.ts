@@ -220,9 +220,7 @@ describe("buildSidebarThreadSyncModel", () => {
         cwd: "/work/alpha",
         fileAttachments: [],
         addedFiles: [],
-        agentMode: "auto" as const,
-        permissionProfileId: undefined,
-        shouldSendPermissionOverrides: true as const,
+
         model: null,
         serviceTier: null,
         reasoningEffort: null,
@@ -320,9 +318,7 @@ describe("buildSidebarThreadSyncModel", () => {
         cwd: "/work/alpha",
         fileAttachments: [],
         addedFiles: [],
-        agentMode: "auto" as const,
-        permissionProfileId: undefined,
-        shouldSendPermissionOverrides: true as const,
+
         model: null,
         serviceTier: null,
         reasoningEffort: null,

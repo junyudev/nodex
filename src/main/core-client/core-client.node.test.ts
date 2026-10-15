@@ -189,9 +189,6 @@ describe("CoreClient over a Unix socket", () => {
         head_version: 1,
         revision: 1,
       });
-      expect((await read({ mode: "file", file_id: "file:shared" })).authorization?.subject).toEqual(
-        { kind: "file", file_id: "file:shared" },
-      );
       const pageIds = ["page:getting-started", "page:second"];
       await client.libraryApply({
         operationId: createUuidV7(),
@@ -233,7 +230,6 @@ describe("CoreClient over a Unix socket", () => {
           body_count: 0,
         },
       });
-      expect(resolved.authorization?.subject).toEqual({ kind: "page", page_id: pageIds[0] });
       const updateId = createUuidV7();
       const updateBlob = await client.prepareFileBlob({
         operationId: updateId,
@@ -637,14 +633,6 @@ describe("CoreClient over a Unix socket", () => {
           catalogs: [{ namespace: "nodex_app", toolset_revision: 5 }],
         },
       });
-      await client.workspaceApply({
-        operationId: "node-workspace-thread-permission-1",
-        intent: {
-          kind: "set_project_permission_mode",
-          project_id: "project:default",
-          mode: "guardian-approvals",
-        },
-      });
       const executionContext = await client.workspaceRead({
         kind: "execution_context",
         thread_id: "thread:node-integration",
@@ -652,7 +640,6 @@ describe("CoreClient over a Unix socket", () => {
       expect(executionContext.value).toMatchObject({
         kind: "execution_context",
         context: {
-          permission_mode: "guardian-approvals",
           project: { id: "project:default" },
           thread: {
             thread_id: "thread:node-integration",
@@ -669,14 +656,12 @@ describe("CoreClient over a Unix socket", () => {
       await client.workspaceApply({
         operationId: "node-workspace-turn-authority-1",
         intent: {
-          kind: "freeze_turn_authority",
-          read_only: false,
+          kind: "admit_turn_authority",
+
           thread_id: "thread:node-integration",
           turn_id: "turn:node-integration",
           root_thread_id: "thread:node-integration",
           actor_project_id: "project:default",
-          source: "project_turn",
-          inherited_from: null,
         },
       });
       const agentProvenance = {
@@ -688,33 +673,14 @@ describe("CoreClient over a Unix socket", () => {
           actor_project_id: "project:default",
           library_id: client.handshake.library_id,
           store_epoch: client.handshake.store_epoch,
-          scope: "project" as const,
-          source: "project_turn" as const,
         },
       };
-      await client.libraryApply({
-        operationId: "node-agent-search-grant-1",
-        intent: {
-          kind: "persist_agent_project_resource_grants",
-          provenance: agentProvenance,
-          grants: [
-            {
-              root: { kind: "page", page_id: "page:node-integration" },
-              access: "read",
-              library_actions: [],
-            },
-          ],
-        },
-      });
       const agentSearch = await client.libraryRead({
         kind: "agent_search",
-        authorization: {
-          provenance: agentProvenance,
-          call_id: "call:node-agent-search",
-        },
+        scope: { kind: "library" },
+        authorization: { provenance: agentProvenance, call_id: "call:node-agent-search" },
         query: "integraton",
         target: "pages",
-        scope: { kind: "library" },
         block_types: null,
         include_archived: false,
         cursor: null,
@@ -755,10 +721,7 @@ describe("CoreClient over a Unix socket", () => {
         kind: "agent_data_source_query",
         data_source_id: dataSourceId,
         query: {
-          authorization: {
-            provenance: agentProvenance,
-            call_id: "call:node-database-query",
-          },
+          authorization: { provenance: agentProvenance, call_id: "call:node-database-query" },
           cursor: null,
           limit: 1,
           projection_property_ids: null,
@@ -876,19 +839,30 @@ describe("CoreClient over a Unix socket", () => {
         kind: "reminder_snoozes",
         window: { items: [], next_cursor: null },
       });
+      await client.workspaceApply({
+        operationId: "node-automation-session-create",
+        intent: {
+          kind: "create_session",
+          session_id: "session:node-automation",
+          project_id: null,
+          title: "Node Automation Session",
+          initial_page_ids: [],
+        },
+      });
       const begunRun = await client.automationApply({
         operationId: "node-automation-run-begin-1",
         intent: {
           kind: "begin_run",
-          thread_id: "pending:node-automation-run",
+          session_id: null,
+          run_id: "run:node-automation",
           automation_id: "node-daily-report",
-          thread_title: "Node daily report",
+          session_title: "Node daily report",
           source_cwd: path.join(nodexHome, "workspace"),
         },
       });
       expect(begunRun.outcome.runs).toMatchObject([
         {
-          thread_id: "pending:node-automation-run",
+          run_id: "run:node-automation",
           run_revision: 1,
           status: "IN_PROGRESS",
         },
@@ -896,21 +870,22 @@ describe("CoreClient over a Unix socket", () => {
       const replacedRun = await client.automationApply({
         operationId: "node-automation-run-replace-1",
         intent: {
-          kind: "replace_pending_run_thread",
-          pending_thread_id: "pending:node-automation-run",
-          thread_id: "thread:node-integration",
+          kind: "bind_run_session",
+          run_id: "run:node-automation",
+          session_id: "session:node-automation",
           expected_revision: 1,
         },
       });
       expect(replacedRun.outcome.runs[0]).toMatchObject({
-        thread_id: "thread:node-integration",
+        run_id: "run:node-automation",
+        session_id: "session:node-automation",
         run_revision: 2,
       });
       const completedRun = await client.automationApply({
         operationId: "node-automation-run-complete-1",
         intent: {
           kind: "complete_run_for_review",
-          thread_id: "thread:node-integration",
+          run_id: "run:node-automation",
           expected_revision: 2,
           inbox_title: "Report ready",
           inbox_summary: "Review the native run.",
@@ -929,7 +904,8 @@ describe("CoreClient over a Unix socket", () => {
         window: {
           items: [
             {
-              thread_id: "thread:node-integration",
+              run_id: "run:node-automation",
+              session_id: "session:node-automation",
               title: "Node daily report",
               description: "Review the native run.",
             },
@@ -942,7 +918,7 @@ describe("CoreClient over a Unix socket", () => {
         operationId: "node-automation-run-read-1",
         intent: {
           kind: "set_run_read_state",
-          thread_id: "thread:node-integration",
+          run_id: "run:node-automation",
           expected_revision: 3,
           read: true,
         },

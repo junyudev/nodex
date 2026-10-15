@@ -1,9 +1,7 @@
 //! Database-owned effective occurrences for one authorized Query observation.
 use super::*;
 use nodex_core_contracts::BoundModuleContext;
-use nodex_core_contracts::agent::{
-    AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAction,
-};
+use nodex_core_contracts::agent::AgentExecutionAuthorization;
 use nodex_core_contracts::database::{
     DatabaseDisplayedViewSelection, DatabaseEffectiveViewCoordinate, DatabaseObservedOccurrence,
     DatabaseObservedRowCondition,
@@ -44,25 +42,17 @@ pub(crate) fn project(
         selection,
     } = request;
     validate_coordinate(coordinate, selection)?;
-    crate::library::agent_authorization::authorize_execution(
+    crate::library::agent_execution::validate_execution(
         connection,
         context,
         library_id,
         authorization,
-        &AgentAuthorizationTarget::View {
-            view_id: coordinate.view_id.clone(),
-        },
-        AgentProjectResourceAction::Read,
     )?;
-    crate::library::agent_authorization::authorize_execution(
+    crate::library::agent_execution::validate_execution(
         connection,
         context,
         library_id,
         authorization,
-        &AgentAuthorizationTarget::DataSource {
-            data_source_id: coordinate.data_source_id.clone(),
-        },
-        AgentProjectResourceAction::Read,
     )?;
     let mut view = resolve_coordinate(connection, context, library_id, coordinate)?;
     super::super::relation::validate_agent_view_filter_read_access(
@@ -134,9 +124,7 @@ pub(crate) fn project(
     )?;
     let relation_inputs = super::super::relation_projection::hydrate_agent_row_previews(
         connection,
-        context,
         library_id,
-        authorization,
         &view.data_source_id,
         &mut summaries,
     )?;

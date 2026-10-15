@@ -97,7 +97,7 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
     },
     selectedReasoningEffort: "high",
     reasoningEffortOptions: [],
-    permissionMode: "auto",
+
     isQueueingEnabled: false,
     composerEnterBehavior: "enter",
     composerIntent: null,
@@ -135,7 +135,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
-      showApprovalMode: false,
     },
     ...overrides,
   };
@@ -146,13 +145,12 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
+
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
     onSendCapturedFollowUp: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
-    onRespondApproval: async () => {},
     onRespondUserInput: async () => {},
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},
@@ -588,12 +586,10 @@ describe("LocalConversationFooter", () => {
     });
     const addContext = overlay.querySelector('button[aria-label="Add files and more"]');
     const prompt = overlay.querySelector('[data-codex-composer="true"]');
-    const permission = overlay.querySelector('button[aria-label="Change permissions"]');
+
     const formFooter = overlay.querySelector('[data-composer-form-footer="true"]');
     const inputSlot = formFooter?.querySelector('[data-composer-input-slot="true"]');
     expect(isBefore(addContext, prompt)).toBe(true);
-    expect(isBefore(prompt, permission)).toBe(true);
-    expect(permission?.textContent).toBe("");
     expect(formFooter?.getAttribute("data-composer-layout")).toBe("single-line");
     expect(inputSlot?.getAttribute("data-composer-footer-row")).toBe("single-line");
     expect(inputSlot?.contains(prompt)).toBe(true);
@@ -930,16 +926,14 @@ describe("LocalConversationFooter", () => {
         const inputSlot = formFooter?.querySelector('[data-composer-input-slot="true"]');
         const leadingSlot = formFooter?.querySelector('[data-composer-footer-leading="true"]');
         const trailingSlot = formFooter?.querySelector('[data-composer-footer-trailing="true"]');
-        const permissionTrigger = formFooter?.querySelector(
-          'button[aria-label="Change permissions"]',
-        );
+        const contextTrigger = formFooter?.querySelector('button[aria-label="Add files and more"]');
         const modelTrigger = formFooter?.querySelector(
           'button[data-intelligence-selector-trigger="true"]',
         );
         const sendButton = formFooter?.querySelector('button[aria-label="Send prompt"]');
         expect(formFooter?.getAttribute("data-composer-layout")).toBe("multiline");
         expect(inputSlot?.getAttribute("data-composer-footer-row")).toBe("prompt");
-        expect(leadingSlot?.contains(permissionTrigger ?? null)).toBe(true);
+        expect(leadingSlot?.contains(contextTrigger ?? null)).toBe(true);
         expect(trailingSlot?.contains(modelTrigger ?? null)).toBe(true);
         expect(trailingSlot?.contains(sendButton ?? null)).toBe(true);
         expect(leadingSlot?.contains(modelTrigger ?? null)).toBe(false);

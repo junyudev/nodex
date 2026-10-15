@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryFile,
   LibraryFileChange,
@@ -13,7 +13,7 @@ import { applyLibraryModule, prepareFileBlob } from "./api";
 import { prepareBrowserFiles } from "./library-file-resources";
 
 export interface LibraryFileCommandAuthority {
-  readonly contentAccessContext: ContentAccessContext;
+  readonly contentRoutingContext: ContentRoutingContext;
   readonly storeEpoch: string;
 }
 
@@ -46,7 +46,7 @@ export async function applyFileChange(
   operationId = createUuidV7(),
 ): Promise<LibraryFile | null> {
   const result = requireResult(
-    await applyLibraryModule(authority.contentAccessContext, {
+    await applyLibraryModule(authority.contentRoutingContext, {
       operationId,
       storeEpoch: authority.storeEpoch,
       operation: { kind: "apply_file_change", change },
@@ -74,7 +74,7 @@ export async function importFiles(
     try {
       const operationId = createUuidV7();
       const prepared = (
-        await prepareBrowserFiles(authority.contentAccessContext, operationId, [file])
+        await prepareBrowserFiles(authority.contentRoutingContext, operationId, [file])
       )[0];
       if (!prepared) throw new Error("File publication omitted its upload receipt");
       const committed = await applyFileChange(
@@ -107,7 +107,7 @@ export async function replaceFileContent(
 ): Promise<LibraryFile> {
   const operationId = createUuidV7();
   const prepared = (
-    await prepareBrowserFiles(authority.contentAccessContext, operationId, [replacement])
+    await prepareBrowserFiles(authority.contentRoutingContext, operationId, [replacement])
   )[0];
   if (!prepared) throw new Error("Choose one replacement File");
   const committed = await applyFileChange(
@@ -176,7 +176,7 @@ async function applyPageEntryChanges(
   operationId = createUuidV7(),
 ): Promise<LibraryPageFileEntryReceipt> {
   const result = requireResult(
-    await applyLibraryModule(authority.contentAccessContext, {
+    await applyLibraryModule(authority.contentRoutingContext, {
       operationId,
       storeEpoch: authority.storeEpoch,
       operation: {
@@ -199,7 +199,7 @@ export async function importPageEntries(
   files: readonly File[],
 ): Promise<LibraryPageFileEntryReceipt> {
   const operationId = createUuidV7();
-  const prepared = await prepareBrowserFiles(authority.contentAccessContext, operationId, files);
+  const prepared = await prepareBrowserFiles(authority.contentRoutingContext, operationId, files);
   return importPreparedPageEntries(
     authority,
     pageId,
@@ -280,7 +280,7 @@ export async function replacePageEntry(
 ): Promise<LibraryPageFileEntryReceipt> {
   const operationId = createUuidV7();
   const prepared = (
-    await prepareBrowserFiles(authority.contentAccessContext, operationId, [replacement])
+    await prepareBrowserFiles(authority.contentRoutingContext, operationId, [replacement])
   )[0];
   if (!prepared) throw new Error("Choose one replacement File");
   return applyPageEntryChanges(
@@ -306,7 +306,7 @@ export async function replaceTextFileContent(
   text: string,
 ): Promise<LibraryFile> {
   const operationId = createUuidV7();
-  const prepared = await prepareFileBlob(authority.contentAccessContext, {
+  const prepared = await prepareFileBlob(authority.contentRoutingContext, {
     operationId,
     source: {
       kind: "bytes",

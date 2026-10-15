@@ -4,7 +4,6 @@ import {
   CodexComposerPredictionClear,
   CodexComposerPredictionHost,
 } from "../../codex-application/CodexComposerPrediction";
-import { CodexRendererSessionLaunch } from "../../codex-application/CodexRendererSessionLaunch";
 import { CodexConversationFork } from "../../codex-application/CodexConversationFork";
 import { encodeCodexNativeRequestFailure } from "../../../shared/codex-native-request-outcome";
 import { codexNativeIpcMethod, type CodexNativeIpcChannel } from "../../../shared/codex-native-ipc";
@@ -68,11 +67,9 @@ import { CodexHistorySearchAdapter } from "../../codex-application/CodexHistoryS
 import { CodexHistoryTimelineAdapter } from "../../codex-application/CodexHistoryTimelineAdapter";
 import { CodexConversationHistoryExport } from "../../codex-application/CodexConversationHistoryExport";
 import { CodexConversationResumeRuntime } from "../../codex-application/CodexConversationResumeRuntime";
-import { CodexFreshThreadLaunchRuntime } from "../../codex-application/CodexFreshThreadLaunchRuntime";
 import { CodexManualCompactionRuntime } from "../../codex-application/CodexManualCompactionRuntime";
 import { CodexQueuedFollowUps } from "../../codex-application/CodexQueuedFollowUps";
 import { CodexServerRequestResponses } from "../../codex-application/CodexServerRequestResponses";
-import { CodexSessionThreadLaunch } from "../../codex-application/CodexSessionThreadLaunch";
 import { CodexSidebarSyncRuntime } from "../../codex-application/CodexSidebarSyncRuntime";
 import { CodexSideChatCommands } from "../../codex-application/CodexSideChatCommands";
 import { CodexStructuredThreadTitle } from "../../codex-application/CodexStructuredThreadTitle";
@@ -89,14 +86,12 @@ import { requireCredentialFreeHttpsUrl } from "../../../shared/external-navigati
 import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ManagedWorktreeCatalog } from "../../codex-application/ManagedWorktreeCatalog";
-import { parseCodexApprovalResponse } from "../../../shared/codex-approval-response";
 import {
   createCodexProjectlessWorkspace,
   parseCodexProjectlessThreadCwdInput,
 } from "../../codex/codex-projectless-workspace";
 import type {
   CodexBackgroundProcessRunActionInput,
-  CodexApprovalResponse,
   CodexCollaborationModeKind,
   CodexProtocolRequestId,
 } from "../../../shared/types";
@@ -124,7 +119,6 @@ import type {
   CodexConversationThreadSettingsPatch,
   CodexSideChatStartInput,
   CodexThreadGoalSetActionInput,
-  CodexThreadStartForSessionInput,
   CodexSteerTurnInput,
   CodexTurnStartOptions,
 } from "../../../shared/types";
@@ -163,7 +157,6 @@ const RENDERER_NATIVE_REQUEST_METHODS = new Set([
   "collaborationMode/list",
   "plugin/installed",
   "thread/settings/update",
-  "turn/settings/update",
   "turn/interrupt",
   "thread/backgroundTerminals/clean",
   "thread/goal/set",
@@ -259,7 +252,6 @@ export const live = Layer.effectDiscard(
     const conversationResume = yield* CodexConversationResumeRuntime;
     const nativeFork = yield* CodexConversationFork;
     const queuedFollowUps = yield* CodexQueuedFollowUps;
-    const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
     const structuredThreadTitle = yield* CodexStructuredThreadTitle;
     const composerPrediction = yield* CodexComposerPrediction;
     const backgroundProcesses = yield* CodexBackgroundProcesses;
@@ -275,8 +267,6 @@ export const live = Layer.effectDiscard(
     const conversationPeers = yield* CodexConversationPeerRuntime;
     const turnPresentation = yield* CodexTurnPresentation;
     const sideChatCommands = yield* CodexSideChatCommands;
-    const sessionThreadLaunch = yield* CodexSessionThreadLaunch;
-    const rendererSessionLaunch = yield* CodexRendererSessionLaunch;
     const gateway = yield* CodexGateway;
     const requestLifetimes = yield* makeCodexRendererRequestLifetimes;
     const callbacks = yield* ScopedCallbackRuntime;
@@ -818,81 +808,6 @@ export const live = Layer.effectDiscard(
       });
     });
 
-    const prepareSessionLaunchContext = (
-      event: IpcMainInvokeEvent,
-      input: CodexThreadStartForSessionInput,
-    ) =>
-      Effect.gen(function* () {
-        const presentationClaim = input.presentationTicket
-          ? yield* turnPresentation
-              .claim(
-                input.presentationTicket,
-                {
-                  kind: "session",
-                  sessionId: input.sessionId,
-                  launchId: input.firstSubmission.launchId,
-                },
-                input.firstSubmission.clientUserMessageId,
-              )
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new CodexIpcError({ operation: "codex:thread:start-for-session", cause }),
-                ),
-              )
-          : undefined;
-        const ownerClientId = yield* Effect.tryPromise({
-          try: () => conversationPeers.resolvePeerClientId(event.sender.id),
-          catch: (cause) => new CodexIpcError({ operation: "session-start-peer", cause }),
-        });
-        if (!ownerClientId)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "session-start-peer",
-              cause: new Error("Starting window peer unavailable"),
-            }),
-          );
-        if (!freshLaunchWindows.has(event.sender.id)) {
-          const senderId = event.sender.id;
-          const onDestroyed = () => {
-            freshLaunchWindows.delete(senderId);
-            freshThreadLaunch.releaseRenderer(ownerClientId, new Error("Starting window closed"));
-          };
-          event.sender.once("destroyed", onDestroyed);
-          freshLaunchWindows.set(senderId, () =>
-            event.sender.removeListener("destroyed", onDestroyed),
-          );
-        }
-        return {
-          presentationClaim,
-          ownerClientId,
-          browserViewScopeId:
-            windows.resolveSessionId(event.sender.id) ?? `headless:${input.sessionId}`,
-        };
-      });
-    registerEffectPlainCommand(
-      "codex:thread:start-for-session",
-      (event, input: CodexThreadStartForSessionInput) =>
-        interruptWhenRendererIsDestroyed(
-          event,
-          Effect.gen(function* () {
-            const context = yield* prepareSessionLaunchContext(event, input);
-            const { presentationClaim } = context;
-            return yield* sessionThreadLaunch.start(input, context).pipe(
-              Effect.onExit((exit) =>
-                exit._tag === "Failure"
-                  ? Effect.sync(() => turnPresentation.releaseClaim(presentationClaim))
-                  : Effect.void,
-              ),
-              Effect.mapError(
-                (cause) =>
-                  new CodexIpcError({ operation: "codex:thread:start-for-session", cause }),
-              ),
-            );
-          }),
-        ),
-    );
-
     registerEffectPlainCommand(
       "codex:thread:side-chat:start",
       (_, input: CodexSideChatStartInput) =>
@@ -1016,254 +931,6 @@ export const live = Layer.effectDiscard(
     );
     registerEffectControl("codex:thread:resume:release", (event, receiptId) =>
       Effect.sync(() => conversationResume.releaseRendererResume(receiptId, event.sender.id)),
-    );
-
-    registerEffectControl("codex:thread:fresh-owner:adopt", (event, threadId, launchId) =>
-      Effect.gen(function* () {
-        const ownerClientId = yield* Effect.tryPromise({
-          try: () => conversationPeers.resolvePeerClientId(event.sender.id),
-          catch: (cause) => new CodexIpcError({ operation: "fresh-adopt", cause }),
-        });
-        if (!ownerClientId)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "fresh-adopt",
-              cause: new Error("Fresh owner peer unavailable"),
-            }),
-          );
-        return yield* freshThreadLaunch.adopt({ threadId, launchId, ownerClientId });
-      }).pipe(Effect.mapError((cause) => new CodexIpcError({ operation: "fresh-adopt", cause }))),
-    );
-    registerEffectControl("codex:turn:native-fresh:prepare", (event, threadId, launchId) =>
-      Effect.gen(function* () {
-        const ownerClientId = yield* Effect.tryPromise({
-          try: () => conversationPeers.resolvePeerClientId(event.sender.id),
-          catch: (cause) => new CodexIpcError({ operation: "native-fresh-prepare", cause }),
-        });
-        if (!ownerClientId)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "native-fresh-prepare",
-              cause: new Error("Fresh owner peer unavailable"),
-            }),
-          );
-        const operation = yield* freshThreadLaunch.prepare({ threadId, launchId, ownerClientId });
-        const id = operation.request.clientUserMessageId;
-        if (!id)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "native-fresh-prepare",
-              cause: new Error("Fresh message identity unavailable"),
-            }),
-          );
-        const onDestroyed = () => {
-          turnCommands.releasePreparedNativeStart(id);
-          clearNativeTurnPreparation(id);
-        };
-        if (event.sender.isDestroyed()) {
-          onDestroyed();
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "native-fresh-prepare",
-              cause: new Error("Fresh owner closed"),
-            }),
-          );
-        }
-        clearNativeTurnPreparation(id);
-        event.sender.once("destroyed", onDestroyed);
-        nativeTurnPreparations.set(id, {
-          senderId: event.sender.id,
-          cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
-        });
-        return operation;
-      }).pipe(
-        Effect.mapError((cause) => new CodexIpcError({ operation: "native-fresh-prepare", cause })),
-      ),
-    );
-    registerNativeControl(
-      "codex:turn:native-fresh:execute",
-      (event, { threadId, launchId, request, caller, trace }) =>
-        Effect.gen(function* () {
-          const ownerClientId = yield* Effect.tryPromise({
-            try: () => conversationPeers.resolvePeerClientId(event.sender.id),
-            catch: (cause) => new CodexIpcError({ operation: "native-fresh-turn", cause }),
-          });
-          if (
-            !ownerClientId ||
-            !caller ||
-            typeof caller.requestId !== "string" ||
-            !caller.requestId ||
-            !Number.isFinite(caller.timeoutMs) ||
-            caller.timeoutMs < 0 ||
-            (caller.expiresAtMs !== null && !Number.isFinite(caller.expiresAtMs))
-          )
-            return yield* Effect.fail(
-              new CodexIpcError({
-                operation: "native-fresh-turn",
-                cause: new Error("Invalid first-turn caller"),
-              }),
-            );
-          const key = `${event.sender.id}:${caller.requestId}`;
-          let abandonmentReason: "timeout" | "disposed" | undefined;
-          const fiber = yield* requestLifetimes.start(
-            key,
-            caller.retainResponse === true,
-            freshThreadLaunch.start({ threadId, launchId, ownerClientId }, request).pipe(
-              Effect.provideService(CodexRendererRequestOrigin, {
-                ...caller,
-                method: "turn/start",
-                conversationId: threadId,
-                wireTrace: trace,
-                destinationId: String(event.sender.id),
-                abandonment: () => abandonmentReason,
-              }),
-            ),
-            (reason) => {
-              abandonmentReason = reason;
-            },
-          );
-          const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          event.sender.once("destroyed", onDestroyed);
-          if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-          return yield* Fiber.join(fiber).pipe(
-            Effect.ensuring(
-              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
-            ),
-          );
-        }).pipe(
-          Effect.mapError((cause) => new CodexIpcError({ operation: "native-fresh-turn", cause })),
-          Effect.match({
-            onSuccess: (result) => ({ type: "result" as const, result }),
-            onFailure: (cause) => ({
-              type: "error" as const,
-              error: encodeCodexNativeRequestFailure(cause),
-            }),
-          }),
-        ),
-    );
-
-    const nativeSessionReceipts = new Map<
-      string,
-      { senderId: number; ownerClientId: string; cleanup: () => void }
-    >();
-    const releaseNativeSession = (id: string) =>
-      Effect.gen(function* () {
-        nativeSessionReceipts.get(id)?.cleanup();
-        nativeSessionReceipts.delete(id);
-        yield* rendererSessionLaunch.release(id);
-      });
-    yield* Effect.addFinalizer(() =>
-      Effect.forEach([...nativeSessionReceipts.keys()], releaseNativeSession, { discard: true }),
-    );
-    registerEffectControl("codex:thread:native-session:prepare", (event, input) =>
-      interruptWhenRendererIsDestroyed(
-        event,
-        Effect.gen(function* () {
-          const context = yield* prepareSessionLaunchContext(event, input);
-          const prepared = yield* rendererSessionLaunch
-            .prepare(input, context)
-            .pipe(
-              Effect.onError(() =>
-                Effect.sync(() => turnPresentation.releaseClaim(context.presentationClaim)),
-              ),
-            );
-          const onDestroyed = () => callbacks.fork(releaseNativeSession(prepared.receiptId));
-          if (event.sender.isDestroyed()) {
-            yield* releaseNativeSession(prepared.receiptId);
-            return yield* Effect.fail(
-              new CodexIpcError({
-                operation: "session-prepare",
-                cause: new Error("Starting window closed"),
-              }),
-            );
-          }
-          event.sender.once("destroyed", onDestroyed);
-          nativeSessionReceipts.set(prepared.receiptId, {
-            senderId: event.sender.id,
-            ownerClientId: context.ownerClientId,
-            cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
-          });
-          return prepared;
-        }).pipe(
-          Effect.mapError((cause) => new CodexIpcError({ operation: "session-prepare", cause })),
-        ),
-      ),
-    );
-    registerNativeControl(
-      "codex:thread:native-session:execute",
-      (event, { receiptId, caller, trace }) =>
-        Effect.gen(function* () {
-          const entry = nativeSessionReceipts.get(receiptId);
-          if (
-            entry?.senderId !== event.sender.id ||
-            !caller ||
-            !caller.requestId ||
-            !Number.isFinite(caller.timeoutMs) ||
-            caller.timeoutMs < 0 ||
-            (caller.expiresAtMs !== null && !Number.isFinite(caller.expiresAtMs))
-          )
-            return yield* Effect.fail(
-              new CodexIpcError({
-                operation: "session-execute",
-                cause: new Error("Invalid native Session caller"),
-              }),
-            );
-          const key = `${event.sender.id}:${caller.requestId}`;
-          let abandonmentReason: "timeout" | "disposed" | undefined;
-          const fiber = yield* requestLifetimes.start(
-            key,
-            caller.retainResponse === true,
-            rendererSessionLaunch.execute(receiptId, entry.ownerClientId, {
-              ...caller,
-              method: "thread/start",
-              conversationId: "",
-              wireTrace: trace,
-              destinationId: String(event.sender.id),
-              abandonment: () => abandonmentReason,
-            }),
-            (reason) => {
-              abandonmentReason = reason;
-            },
-          );
-          const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          event.sender.once("destroyed", onDestroyed);
-          if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-          return yield* Fiber.join(fiber).pipe(
-            Effect.ensuring(
-              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
-            ),
-          );
-        }).pipe(
-          Effect.match({
-            onSuccess: (result) => ({ type: "result" as const, result }),
-            onFailure: (cause) => ({
-              type: "error" as const,
-              error: encodeCodexNativeRequestFailure(cause),
-            }),
-          }),
-        ),
-    );
-    registerEffectControl("codex:thread:native-session:accept", (event, id) =>
-      Effect.gen(function* () {
-        const entry = nativeSessionReceipts.get(id);
-        if (entry?.senderId !== event.sender.id)
-          return yield* Effect.fail(
-            new CodexIpcError({
-              operation: "session-accept",
-              cause: new Error("Session caller unavailable"),
-            }),
-          );
-        return yield* rendererSessionLaunch
-          .accept(id, entry.ownerClientId)
-          .pipe(Effect.ensuring(releaseNativeSession(id)));
-      }).pipe(
-        Effect.mapError((cause) => new CodexIpcError({ operation: "session-accept", cause })),
-      ),
-    );
-    registerEffectControl("codex:thread:native-session:release", (event, id) =>
-      nativeSessionReceipts.get(id)?.senderId === event.sender.id
-        ? releaseNativeSession(id)
-        : Effect.void,
     );
 
     const rendererForkReceipts = new Map<
@@ -1642,13 +1309,6 @@ export const live = Layer.effectDiscard(
         ),
     );
 
-    const freshLaunchWindows = new Map<number, () => void>();
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        for (const cleanup of freshLaunchWindows.values()) cleanup();
-        freshLaunchWindows.clear();
-      }),
-    );
     // Window cleanup only. A Main-originated preparation can execute in the window owner.
     const nativeTurnPreparations = new Map<string, { senderId: number; cleanup: () => void }>();
     const clearNativeTurnPreparation = (id: string) => {
@@ -1894,6 +1554,15 @@ export const live = Layer.effectDiscard(
             occurrence.params === null ||
             !("threadId" in occurrence.params) ||
             occurrence.params.threadId !== input.threadId
+          )
+            return false;
+          if (
+            ![
+              "item/tool/requestUserInput",
+              "mcpServer/elicitation/request",
+              "item/tool/requestOptionPicker",
+              "item/tool/requestSetupCodexContextPicker",
+            ].includes(input.method)
           )
             return false;
           if (input.method === "item/tool/requestOptionPicker") {
@@ -2382,12 +2051,8 @@ export const live = Layer.effectDiscard(
             serviceTier: opts?.serviceTier,
             promptInput: opts?.promptInput,
             summary: opts?.summary,
-            permissionMode: opts?.permissionMode,
+
             workspaceRoots: opts?.workspaceRoots,
-            permissionSelection: opts?.permissionSelection,
-            permissionProfileId: opts?.permissionProfileId,
-            usePermissionSelection: opts?.usePermissionSelection,
-            shouldSendPermissionOverrides: opts?.shouldSendPermissionOverrides,
           })
           .pipe(
             Effect.mapError(
@@ -2506,34 +2171,6 @@ export const live = Layer.effectDiscard(
     });
 
     registerEffectControl(
-      "codex:approval:respond",
-      (
-        _,
-        conversationId: string,
-        requestId: CodexProtocolRequestId,
-        response: CodexApprovalResponse,
-      ) =>
-        Effect.suspend(() => {
-          const parsedResponse = parseCodexApprovalResponse(response);
-          if (!parsedResponse) {
-            return Effect.fail(
-              new CodexIpcError({
-                operation: "codex:approval:respond",
-                cause: new Error("Invalid Codex approval response for approval kind."),
-              }),
-            );
-          }
-          return serverRequestResponses
-            .approval({ threadId: conversationId, requestId, response: parsedResponse })
-            .pipe(
-              Effect.mapError(
-                (cause) => new CodexIpcError({ operation: "codex:approval:respond", cause }),
-              ),
-            );
-        }),
-    );
-
-    registerEffectControl(
       "codex:user-input:respond",
       (_, conversationId: string, requestId: CodexProtocolRequestId, answers) =>
         serverRequestResponses
@@ -2553,19 +2190,6 @@ export const live = Layer.effectDiscard(
           .pipe(
             Effect.mapError(
               (cause) => new CodexIpcError({ operation: "codex:mcp-elicitation:respond", cause }),
-            ),
-          ),
-    );
-
-    registerEffectControl(
-      "codex:permission-request:respond",
-      (_, conversationId: string, requestId: CodexProtocolRequestId, response) =>
-        serverRequestResponses
-          .permission({ threadId: conversationId, requestId, response })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new CodexIpcError({ operation: "codex:permission-request:respond", cause }),
             ),
           ),
     );

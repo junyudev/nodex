@@ -1124,7 +1124,6 @@ fn inline_item_json(item: &NfmInlineContent) -> Value {
             model,
             reasoning,
             speed,
-            permission,
             raw_attributes,
         } => {
             let raw = raw_attributes.clone().unwrap_or_default();
@@ -1134,7 +1133,7 @@ fn inline_item_json(item: &NfmInlineContent) -> Value {
                 .filter(|key| {
                     !matches!(
                         key.as_str(),
-                        "mode" | "provider" | "model" | "reasoning" | "speed" | "permission"
+                        "mode" | "provider" | "model" | "reasoning" | "speed"
                     )
                 })
                 .cloned()
@@ -1148,7 +1147,6 @@ fn inline_item_json(item: &NfmInlineContent) -> Value {
                     "model": model.clone().unwrap_or_default(),
                     "reasoning": reasoning.clone().unwrap_or_default(),
                     "speed": speed.clone().unwrap_or_default(),
-                    "permission": permission.clone().unwrap_or_default(),
                     "unknownAttributes": unknown,
                     "rawAttributes": raw,
                 }
@@ -1471,6 +1469,31 @@ mod tests {
     use crate::domain::nfm::{materialize_nfm, serialize_nfm};
 
     use super::*;
+
+    #[test]
+    fn agent_config_materializes_and_serializes_execution_preferences() {
+        let input = "<agent-config mode=\"plan\" provider=\"openai\" model=\"gpt-5\" reasoning=\"high\" speed=\"fast\" />";
+        let parsed = parse_nfm(input).expect("Agent config parse");
+        let materialized = materialize_nfm_blocks_with_ids(&parsed, &mut || "block".into())
+            .expect("Agent config materialization");
+        assert_eq!(
+            materialize_nfm(&materialized).expect("canonical NFM").nfm,
+            input
+        );
+        let mut props =
+            materialized[0].content.as_ref().expect("inline content")[0]["props"].clone();
+        props
+            .as_object_mut()
+            .expect("atom properties")
+            .remove("rawAttributes");
+        assert_eq!(
+            props,
+            serde_json::json!({
+                "mode": "plan", "provider": "openai", "model": "gpt-5", "reasoning": "high", "speed": "fast",
+                "unknownAttributes": "",
+            })
+        );
+    }
 
     #[test]
     fn located_parse_retains_original_unicode_indentation_and_multiline_byte_ranges() {

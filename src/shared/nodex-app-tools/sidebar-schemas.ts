@@ -90,9 +90,9 @@ const descriptions: Record<keyof typeof sidebarSchemas, string> = {
   delete_sidebar_section:
     "Delete a custom Sidebar Section at its observed revision. Its Projects, Sessions and content remain available.",
   move_project_to_sidebar_section:
-    "Move a Project to an exact Sidebar Section ID returned by list_sidebar_sections, or null for the default placement. Does not change content access.",
+    "Move a Project to an exact Sidebar Section ID returned by list_sidebar_sections, or null for the default placement.",
   move_session_to_sidebar_section:
-    "Move a Session, including a Session without a Thread or using ACP, to an exact Sidebar Section ID or null for the default placement. Does not change its Project or content access.",
+    "Move a Session, including a Session without a Thread or using ACP, to an exact Sidebar Section ID or null for the default placement. Does not change its Project.",
   reorder_sidebar_sections:
     "Reorder custom Sidebar Sections. Include every active custom section ID exactly once.",
 };

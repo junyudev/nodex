@@ -1,6 +1,9 @@
-import { collectCodexSubagentInteractionReferences } from "../../shared/codex-subagent-interaction";
+import { collectCodexSubagentThreadIds } from "../../shared/codex-subagent-metadata";
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
+import {
+  readLocalConversation,
+  setLocalConversationComposerIntent,
+} from "@/features/local-conversation/local-conversation-store";
 import {
   useCallback,
   useEffect,
@@ -18,7 +21,12 @@ import type {
 } from "@/features/local-conversation";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
 import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../shared/codex-client-thread";
-import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
+import { launchAgentRuntimeSession } from "./agent-runtime-session-launch";
+import { agentRuntimeRuntime } from "./agent-runtime-runtime";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import { prepareAgentPrompt } from "../../shared/agent-prompt";
+import { readPastedTextAttachment } from "./api";
+import { agentRuntimePromptImages } from "./agent-runtime-prompt";
 import {
   createCommandKeymapState,
   matchesKeyboardEventToCommand,
@@ -105,9 +113,9 @@ function isResidentSubagentDescendant(
     current = readLocalConversation(current, hostId)?.source?.parentThreadId ?? null;
   }
   const parent = readLocalConversation(rootThreadId, hostId);
-  return collectCodexSubagentInteractionReferences(
-    conversationTurnsWithOverlay(parent?.canonicalState),
-  ).has(threadId);
+  return collectCodexSubagentThreadIds(conversationTurnsWithOverlay(parent?.canonicalState)).has(
+    threadId,
+  );
 }
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -223,6 +231,7 @@ export function useWorkbenchSessionCommands({
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
   const subagentSelectionRequestRef = useRef(0);
+  const runtimeNavigationRequestRef = useRef(0);
   const { pendingProcessOutputOpen } = controller;
   const { ensureActivePanelOpenWithoutRefresh, setActivePanelTab } = lifecycle;
   const { openWorkspaceFileTab } = panelOpeners;
@@ -294,7 +303,9 @@ export function useWorkbenchSessionCommands({
       const normalizedThreadId = threadId.trim();
       if (!normalizedThreadId) throw new Error("Chat thread ID is required");
       const known = knownSessions.find(
-        (session) => session.thread?.threadId === normalizedThreadId && !session.archived,
+        (session) =>
+          (session.executionRef?.threadId ?? session.thread?.threadId) === normalizedThreadId &&
+          !session.archived,
       );
       if (known) return known;
       const materialized = await sessionCatalog.ensureThreadSession(normalizedThreadId);
@@ -353,7 +364,7 @@ export function useWorkbenchSessionCommands({
             request: {
               kind: "page_stage",
               config: {
-                accessContext: { kind: "project", projectId: input.projectId },
+                routingContext: { kind: "project", projectId: input.projectId },
                 pageId: input.pageId,
                 ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
               },
@@ -410,7 +421,6 @@ export function useWorkbenchSessionCommands({
         return;
       }
 
-      const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const operation = (async () => {
         await sendPageToChatWithRelation(input, {
           loadPageContext: loadPagePromptContext,
@@ -419,29 +429,53 @@ export function useWorkbenchSessionCommands({
           ensureDefaultSession: async (projectId) =>
             (await sessionCatalog.ensureDefaultDraft(projectId)).domain,
           linkPage: linkPageToChat,
-          startTurn: async ({ projectId, threadId, context }) => {
-            await workbenchCodexControl.startTurn(
-              threadId,
+          startTurn: async ({ threadId, context }) => {
+            const session = await resolveChatSessionForThread(threadId);
+            if (!session.executionRef) throw new Error("This chat has no Agent Runtime execution");
+            const text = await prepareAgentPrompt(
               context.promptInput.text,
-              {
-                projectId,
-                promptInput: context.promptInput,
-              },
-              submittedPresentation,
+              context.promptInput,
+              (file) => readPastedTextAttachment({ file }),
+              { images: true, agentConfigs: true },
             );
+            await agentRuntimeRuntime.message({
+              sessionId: session.id,
+              threadId,
+              message: {
+                messageId: createUuidV7(),
+                text,
+                images: agentRuntimePromptImages(context.promptInput),
+                agentConfigs: context.promptInput.agentConfigs ?? [],
+              },
+            });
           },
-          startThread: async ({ projectId, sessionId, context }) =>
-            await workbenchCodexControl.startThreadForSession(
-              {
-                firstSubmission: createCodexFirstSubmissionIdentity(),
+          startThread: async ({ projectId, sessionId, context }) => {
+            const session = await resolveChatSessionById(sessionId);
+            if (session.executionRef) {
+              const text = await prepareAgentPrompt(
+                context.promptInput.text,
+                context.promptInput,
+                (file) => readPastedTextAttachment({ file }),
+                { images: true, agentConfigs: true },
+              );
+              await agentRuntimeRuntime.message({
+                sessionId,
+                message: {
+                  messageId: createUuidV7(),
+                  text,
+                  images: agentRuntimePromptImages(context.promptInput),
+                  agentConfigs: context.promptInput.agentConfigs ?? [],
+                },
+              });
+            } else
+              await launchAgentRuntimeSession({
                 projectId,
                 sessionId,
                 prompt: context.promptInput.text,
                 promptInput: context.promptInput,
-                runInTarget: "localProject",
-              },
-              submittedPresentation,
-            ),
+              });
+            return { kind: "started" };
+          },
           refreshSessions: async (projectId) => {
             await refreshProjectSessions(projectId);
           },
@@ -465,7 +499,6 @@ export function useWorkbenchSessionCommands({
       resolveChatSessionById,
       resolveChatSessionForThread,
       sessionCatalog,
-      workbenchCodexControl,
     ],
   );
 
@@ -546,28 +579,16 @@ export function useWorkbenchSessionCommands({
         throw new Error("No project is available for scheduled task personalization.");
       }
 
-      const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const session = await ensureDefaultDraftSessionForProject(targetProject.id);
       setSettingsPath(null);
       setAutomationsPath(null);
-      const result = await workbenchCodexControl.startThreadForSession(
-        {
-          firstSubmission: createCodexFirstSubmissionIdentity(),
-          projectId: targetProject.id,
-          sessionId: session.id,
-          prompt,
-          runInTarget: "localProject",
-          collaborationMode: "default",
-        },
-        submittedPresentation,
-      );
-      if (result.kind !== "started") {
-        throw new Error("Scheduled task personalization unexpectedly started in a worktree");
-      }
-      const { detail } = result;
+      await launchAgentRuntimeSession({
+        projectId: targetProject.id,
+        sessionId: session.id,
+        prompt,
+      });
       await refreshProjectSessions(targetProject.id);
       selectSession(session);
-      await workbenchCodexControl.requestThreadStreamSnapshot(detail.threadId).catch(() => null);
     },
     [
       activeProject,
@@ -578,7 +599,6 @@ export function useWorkbenchSessionCommands({
       selectSession,
       setAutomationsPath,
       setSettingsPath,
-      workbenchCodexControl,
     ],
   );
 
@@ -700,7 +720,7 @@ export function useWorkbenchSessionCommands({
       targetLeafId?: string,
     ): Promise<boolean> => {
       if (!activeSession) return false;
-      if (kind === "review" && !activeSession.thread) return false;
+      if (kind === "review" && !activeSession.executionRef && !activeSession.thread) return false;
       const panelId = targetPanelId ?? getDefaultPanelIdForTabKind(kind);
       if (kind === "review") {
         const existingReviewTab = activeSession.tabs.find((tab) => tab.kind === "review");
@@ -746,8 +766,10 @@ export function useWorkbenchSessionCommands({
       rootThreadId: string,
       subagent: ThreadOpenSubagentPayload | null = null,
       sourceSession: ProjectSession | null = activeSession,
+      observed?: Awaited<ReturnType<typeof agentRuntimeRuntime.inspect>>,
     ): Promise<boolean> => {
-      if (!sourceSession || sourceSession.projectId === null) return false;
+      if (!sourceSession || (!sourceSession.executionRef && sourceSession.projectId === null))
+        return false;
       const projectId = sourceSession.projectId;
       const normalizedRootThreadId = rootThreadId.trim();
       const selectedThreadId = subagent?.conversationId.trim() || null;
@@ -800,16 +822,17 @@ export function useWorkbenchSessionCommands({
             ? {
                 status: "pending",
                 requestId: requestSequence,
-                showLoading:
-                  !readLocalConversation(
-                    normalizedRootThreadId,
-                    sourceSession.thread?.executionHostId,
-                  )?.turns.length ||
-                  !isResidentSubagentDescendant(
-                    normalizedRootThreadId,
-                    selectedThreadId,
-                    sourceSession.thread?.executionHostId ?? null,
-                  ),
+                showLoading: sourceSession.executionRef
+                  ? true
+                  : !readLocalConversation(
+                      normalizedRootThreadId,
+                      sourceSession.thread?.executionHostId,
+                    )?.turns.length ||
+                    !isResidentSubagentDescendant(
+                      normalizedRootThreadId,
+                      selectedThreadId,
+                      sourceSession.thread?.executionHostId ?? null,
+                    ),
               }
             : null,
         }),
@@ -828,6 +851,36 @@ export function useWorkbenchSessionCommands({
       }
 
       try {
+        if (sourceSession.executionRef) {
+          const inspected =
+            observed ??
+            (await agentRuntimeRuntime.inspect({
+              sessionId: sourceSession.id,
+              threadId: selectedThreadId,
+            }));
+          if (requestSequence !== subagentSelectionRequestRef.current) return true;
+          if (
+            inspected.sessionId !== sourceSession.id ||
+            inspected.threadId !== selectedThreadId ||
+            inspected.rootThreadId !== normalizedRootThreadId
+          )
+            throw new Error("Subagent does not belong to this conversation");
+          settlePendingRoute(
+            routeTab({
+              selectedThreadId,
+              selectedDisplayName: subagent?.displayName.trim() || inspected.thread.title,
+              selectedCanInteract: inspected.thread.archivedAt === null,
+              selectedHydration: {
+                status: "ready",
+                revision: 0,
+                fidelity: "metadata",
+                checkpoint: null,
+              },
+            }),
+          );
+          await panelOpen;
+          return true;
+        }
         const hydrated = await workbenchCodexControl.hydrateSelectedSubagent({
           rootThreadId: normalizedRootThreadId,
           threadId: selectedThreadId,
@@ -877,6 +930,8 @@ export function useWorkbenchSessionCommands({
       sourceSession: ProjectSession | null = activeSession,
     ): Promise<boolean> => {
       if (!sourceSession || sourceSession.projectId === null) return false;
+      if (sourceSession.executionRef)
+        return openSubagentsPanelTab(rootThreadId, subagent, sourceSession);
       const hydrated = await workbenchCodexControl.hydrateSelectedSubagent(
         {
           rootThreadId,
@@ -930,6 +985,48 @@ export function useWorkbenchSessionCommands({
       context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
     ): Promise<boolean> => {
       if (context?.isSourceCurrent?.() === false) return false;
+      if (context?.runtimeSessionId) {
+        const navigationRequest = ++runtimeNavigationRequestRef.current;
+        const session = await sessionCatalog.readCurrent(context.runtimeSessionId);
+        if (
+          navigationRequest !== runtimeNavigationRequestRef.current ||
+          context.isSourceCurrent?.() === false
+        )
+          return false;
+        if (!session || session.archived || !session.executionRef)
+          throw new Error("Conversation identity changed");
+        const inspected = await agentRuntimeRuntime.inspect({ sessionId: session.id, threadId });
+        if (
+          navigationRequest !== runtimeNavigationRequestRef.current ||
+          context.isSourceCurrent?.() === false
+        )
+          return false;
+        if (inspected.rootThreadId !== session.executionRef.threadId)
+          throw new Error("Conversation identity changed");
+        sessionCatalog.seed(session);
+        closePendingWorktreeRoute();
+        selectSession(session);
+        const projected = presentWorkbenchSession({
+          domain: session,
+          scene: sessionCatalog.resolveScene(session),
+        });
+        if (threadId !== inspected.rootThreadId)
+          return openSubagentsPanelTab(
+            inspected.rootThreadId,
+            context.subagent ?? {
+              conversationId: threadId,
+              displayName: inspected.thread.title,
+              agentRole: null,
+              diffStats: null,
+              spawnModel: inspected.thread.modelSelection.model,
+              status: "unknown",
+              statusSummary: null,
+            },
+            projected,
+            inspected,
+          );
+        return true;
+      }
       const createdInput = context?.createdTarget
         ? createdThreadResolveInput(context.createdTarget)
         : context?.hostId
@@ -1029,7 +1126,10 @@ export function useWorkbenchSessionCommands({
       }
 
       const session =
-        knownSessions.find((candidate) => candidate.thread?.threadId === threadId) ?? null;
+        knownSessions.find(
+          (candidate) =>
+            (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === threadId,
+        ) ?? null;
       if (session) {
         closePendingWorktreeRoute();
         selectSession(session);
@@ -1093,21 +1193,22 @@ export function useWorkbenchSessionCommands({
   );
 
   const openAttachedThreadSessionById = useCallback(
-    async (threadId: string) => {
-      return await openAttachedThreadSessionResult(threadId);
+    async (
+      threadId: string,
+      context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
+    ) => {
+      return await openAttachedThreadSessionResult(threadId, context);
     },
     [openAttachedThreadSessionResult],
   );
 
-  const openAutomationHistoryThreadSessionById = useCallback(
-    async (threadId: string) => {
-      const opened = await openAttachedThreadSessionResult(threadId);
-      if (!opened) return;
-
+  const openAutomationHistorySessionById = useCallback(
+    async (sessionId: string) => {
+      await openProjectSessionById(sessionId);
       setSettingsPath(null);
       setAutomationsPath(null);
     },
-    [openAttachedThreadSessionResult, setAutomationsPath, setSettingsPath],
+    [openProjectSessionById, setSettingsPath, setAutomationsPath],
   );
 
   const openProcessOutputInCurrentSession = useCallback(
@@ -1255,7 +1356,10 @@ export function useWorkbenchSessionCommands({
       const sourceSession = [
         ...Object.values(sessionsByProject).flat(),
         ...projectlessSessions,
-      ].find((candidate) => candidate.thread?.threadId === input.threadId);
+      ].find(
+        (candidate) =>
+          (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === input.threadId,
+      );
       if (!sourceSession) {
         throw new Error("This thread is not attached to a project session");
       }
@@ -1273,12 +1377,15 @@ export function useWorkbenchSessionCommands({
       }
       selectSession(result.session);
       if (result.composerIntent) {
-        workbenchCodexControl.setComposerIntent(result.threadId, result.composerIntent);
+        if (result.session.executionRef)
+          setLocalConversationComposerIntent(result.threadId, result.composerIntent);
+        else workbenchCodexControl.setComposerIntent(result.threadId, result.composerIntent);
       }
       // The selected task owns resume/hydration; it must not extend the source task's fork action.
-      void workbenchCodexControl
-        .requestThreadStreamSnapshot(result.threadId)
-        .catch(() => undefined);
+      if (!result.session.executionRef)
+        void workbenchCodexControl
+          .requestThreadStreamSnapshot(result.threadId)
+          .catch(() => undefined);
     },
     [
       projectlessSessions,
@@ -1292,35 +1399,51 @@ export function useWorkbenchSessionCommands({
   );
 
   const forkSessionFromTurnIntoWorktree = useCallback(
-    async (input: { threadId: string; targetTurnId: string }) => {
+    async (input: { threadId: string; targetTurnId: string; runtimeSessionId?: string }) => {
       const sourceSession = [
         ...Object.values(sessionsByProject).flat(),
         ...projectlessSessions,
-      ].find((candidate) => candidate.thread?.threadId === input.threadId);
+      ].find((candidate) =>
+        input.runtimeSessionId
+          ? candidate.id === input.runtimeSessionId
+          : (candidate.executionRef?.threadId ?? candidate.thread?.threadId) === input.threadId,
+      );
       if (!sourceSession) {
         throw new Error("This thread is not attached to a project session");
       }
 
+      const runtimeSource = sourceSession.executionRef
+        ? await agentRuntimeRuntime.inspect({
+            sessionId: sourceSession.id,
+            threadId: input.threadId,
+          })
+        : null;
       const localEnvironmentConfigPath = await resolveForkLocalEnvironmentConfigPath(
-        sourceSession.thread?.cwd,
+        runtimeSource?.thread.worktreePath ??
+          sourceSession.thread?.cwd ??
+          projects.find((project) => project.id === sourceSession.projectId)?.primaryWorkspaceRoot,
       );
       const result = await sessionCatalog.fork(sourceSession, {
         target: "newWorktree",
+        sourceThreadId: input.threadId,
         turnId: input.targetTurnId,
         localEnvironmentConfigPath,
         browserViewScopeId: windowSessionId,
       });
-      if (!("pendingWorktreeId" in result)) {
-        throw new Error("Worktree fork started without a pending worktree");
+      if ("pendingWorktreeId" in result) {
+        setPendingWorktreeClientThreadId(result.clientThreadId);
+        return;
       }
-      setPendingWorktreeClientThreadId(result.clientThreadId);
+      selectSession(result.session);
     },
     [
       projectlessSessions,
+      projects,
       resolveForkLocalEnvironmentConfigPath,
       sessionCatalog,
       sessionsByProject,
       setPendingWorktreeClientThreadId,
+      selectSession,
       windowSessionId,
     ],
   );
@@ -1346,7 +1469,7 @@ export function useWorkbenchSessionCommands({
     openAttachedThreadSession,
     openResolvedPendingThreadSession,
     openAttachedThreadSessionById,
-    openAutomationHistoryThreadSessionById,
+    openAutomationHistorySessionById,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,

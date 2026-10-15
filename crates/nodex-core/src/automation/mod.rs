@@ -10,6 +10,8 @@ mod read;
 mod reminder;
 mod run;
 mod schedule;
+mod session_lifecycle;
+pub(crate) use session_lifecycle::{TargetSessionLifecycle, on_target_session_lifecycle};
 
 use nodex_core_contracts::automation::{
     AutomationCommitValue, AutomationIntent, AutomationRead, AutomationReadValue, AutomationReceipt,
@@ -91,7 +93,6 @@ impl AutomationModule {
                     contract_version: AUTOMATION_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(store_epoch),
                     commit_head: commit_seq,
-                    authorization: None,
                     value: read::read(
                         &transaction,
                         &library_id,

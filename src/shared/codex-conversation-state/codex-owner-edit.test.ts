@@ -80,13 +80,7 @@ function harness(
       calls.push("settings");
     },
     supportsRevert: () => options.supportsRevert ?? true,
-    readPermissionOverrides: async () => {
-      calls.push("config");
-      return (cwd) => {
-        calls.push(`permission:${cwd}`);
-        return { approvalPolicy: "never" };
-      };
-    },
+
     revert: async (_id, before) => {
       calls.push(`revert:${before}`);
       return response;
@@ -108,9 +102,8 @@ test("editing the latest message also reverts trailing automatic turns and keeps
   await editCanonicalLastUserTurn(f.client, "id", {
     turnId: "message",
     message: "new",
-    shouldSendPermissionOverrides: true,
   });
-  expect(f.calls).toEqual(["settings", "config", "revert:message", "permission:/returned"]);
+  expect(f.calls).toEqual(["settings", "revert:message"]);
   expect(f.starts[0]?.input).toEqual([
     { type: "text", text: "# Files\n## My request:\nnew\n", text_elements: [] },
     { type: "localImage", path: "/image.png" },

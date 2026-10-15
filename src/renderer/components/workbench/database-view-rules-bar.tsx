@@ -58,7 +58,7 @@ import {
   databaseViewRulesHaveVisibleSorts,
   type DatabaseViewRulesController,
 } from "@/lib/use-database-view-rules-controller";
-import type { DatabaseViewAccessContext } from "@/lib/database-view-render-model";
+import type { DatabaseViewRoutingContext } from "@/lib/database-view-render-model";
 import { cn } from "@/lib/utils";
 import {
   databaseViewFilterClauseIsEmpty,
@@ -89,7 +89,7 @@ interface DatabaseViewRulesBarProps {
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries?: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
 }
 
 interface DatabaseViewRuleToolbarControlsProps {
@@ -224,7 +224,7 @@ function QuickFilterEditor({
   properties,
   optionRegistries,
   onRequestPropertyOptions,
-  accessContext,
+  routingContext,
   busy,
 }: {
   readonly filter: DatabaseViewPropertyFilter;
@@ -232,7 +232,7 @@ function QuickFilterEditor({
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly busy: boolean;
 }) {
   const property =
@@ -336,7 +336,7 @@ function QuickFilterEditor({
           property={property}
           options={optionRegistries[property.propertyId] ?? readDatabasePropertyOptions(property)}
           onRequestOptions={onRequestPropertyOptions}
-          accessContext={accessContext}
+          routingContext={routingContext}
           disabled={busy}
           presentation="quick"
           onChange={(value) => update({ ...filter.clause, value })}
@@ -352,7 +352,7 @@ function SortableQuickFilterToken({
   properties,
   optionRegistries,
   onRequestPropertyOptions,
-  accessContext,
+  routingContext,
   busy,
   actionPreview,
 }: {
@@ -361,7 +361,7 @@ function SortableQuickFilterToken({
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
   readonly onRequestPropertyOptions?: (property: DataSourcePropertyRecordV2) => void;
-  readonly accessContext?: DatabaseViewAccessContext;
+  readonly routingContext?: DatabaseViewRoutingContext;
   readonly busy: boolean;
   readonly actionPreview?: PersonalRuleActionKind;
 }) {
@@ -418,7 +418,7 @@ function SortableQuickFilterToken({
             properties={properties}
             optionRegistries={optionRegistries}
             onRequestPropertyOptions={onRequestPropertyOptions}
-            accessContext={accessContext}
+            routingContext={routingContext}
             busy={busy}
           />
         </NodexPopoverContent>
@@ -945,7 +945,7 @@ export function DatabaseViewRulesBar({
   properties,
   optionRegistries = EMPTY_OPTIONS,
   onRequestPropertyOptions,
-  accessContext,
+  routingContext,
 }: DatabaseViewRulesBarProps) {
   const {
     filtersPersonal,
@@ -1124,7 +1124,7 @@ export function DatabaseViewRulesBar({
               properties={properties}
               optionRegistries={optionRegistries}
               onRequestPropertyOptions={onRequestPropertyOptions}
-              accessContext={accessContext}
+              routingContext={routingContext}
               disabled={busy}
               onChange={(next) => controller.setAdvancedFilter(next.rules.advancedFilter)}
             />
@@ -1163,7 +1163,7 @@ export function DatabaseViewRulesBar({
                   properties={properties}
                   optionRegistries={optionRegistries}
                   onRequestPropertyOptions={onRequestPropertyOptions}
-                  accessContext={accessContext}
+                  routingContext={routingContext}
                   busy={busy}
                   actionPreview={quickFilterActionPreview}
                 />

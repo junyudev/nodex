@@ -131,7 +131,7 @@ const target: PageCreateTarget = {
   },
   databaseViewId: "view-test",
   clientSessionId: "session-test",
-  accessContext: { kind: "project", projectId: "project-test" },
+  routingContext: { kind: "project", projectId: "project-test" },
   properties: [property("priority"), property("estimate")],
   columns: [
     { id: "triage", name: "Triage" },
@@ -139,7 +139,6 @@ const target: PageCreateTarget = {
     { id: "build", name: "Build" },
     { id: "ship", name: "Ship" },
   ],
-  readOnlyReason: null,
 };
 
 const origin = {

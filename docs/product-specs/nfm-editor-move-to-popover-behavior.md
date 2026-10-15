@@ -1,11 +1,11 @@
 # NFM Editor Move-To Popover Behavior
 
 Status: Active  
-Last Updated: 2026-08-29
+Last Updated: 2026-10-15
 
 ## Contract
 
-The NFM side-menu `Move to` action opens a destination popover instead of a two-row submenu. The popover searches DB destinations and Page destinations inside the source Project's write authority while preserving move semantics for the selected NFM blocks.
+The NFM side-menu `Move to` action opens a destination popover instead of a two-row submenu. The popover searches DB destinations and Page destinations in the source Project's destination list while preserving move semantics for the selected NFM blocks.
 
 The expanded text-selection menu uses the same `Move to` destination popover in its Actions area. It replaces the older separate `Move to card` and `Turn into cards` text-selection actions with one destination picker.
 
@@ -33,10 +33,10 @@ The `Page in` row inside the side-menu `Turn into` submenu uses the same popover
 ## Behavior
 
 - Opening the popover resets its query and expands the current source DB when available.
-- With an empty query, the `Page` section shows the bounded first window from the current source Project. Without a source Project, no destination is executable.
-- Typing filters DB and status destinations locally while Page rows come from the prewarmed, Core-authorized metadata projection in the same input event. Search visibility is not treated as write authority for another Project.
+- With an empty query, the `Page` section shows the bounded first window from the current source Project. Without a source Project, this picker has no default destination.
+- Typing filters DB and status destinations locally while Page rows come from the prewarmed, canonical metadata projection in the same input event. Selecting a destination retains its exact Page or active View identity rather than deriving it from search labels.
 - Page metadata uses the shared Rust search kernel for normalization, all-term matching, prefixes, fuzzy thresholds, ranking, and highlights. Debounced complete Core search may add body-only Page matches; pending enrichment is a stable trailing status row and never clears synchronous rows.
-- The renderer does not inspect loaded Board cards or implement a second Page-title/Page-key matcher. The Core move command remains the final destination authority.
+- The renderer does not inspect loaded Board cards or implement a second Page-title/Page-key matcher. Core validates the selected destination and commits the move.
 - A non-empty query resets keyboard focus to the first visible row and auto-expands matching DB rows.
 - Arrow Up and Arrow Down move through visible rows.
 - Enter toggles a DB row or accepts a DB status/Page row.
@@ -47,9 +47,9 @@ The `Page in` row inside the side-menu `Turn into` submenu uses the same popover
 - Selecting a DB status moves the selected NFM Block subtrees into the current Project's primary Data Source. Core promotes eligible ordinary Blocks to Pages, preserves subtree content, and assigns the selected Status through an active Status-grouped View.
 - Selecting a Page moves the selected NFM Block subtrees into that Page body.
 - Selecting a DB status from `Page in` uses the same DB-status move semantics as selecting a DB status from `Move to`.
-- Page and DB destinations share one renderer move runtime. The editor first releases focus and flushes its source mutation barrier; the runtime then validates the source fence, resolves the destination authority, and commits one idempotent `BlockTransfer` intent.
+- Page and DB destinations share one renderer move runtime. The editor first releases focus and flushes its source mutation barrier; the runtime then validates the source fence, resolves the exact destination, and commits one idempotent `BlockTransfer` intent.
 - Page destinations prepare the target Document and include exact source and target heads. DB destinations resolve the canonical Project-default Database descriptor and choose a real active View grouped by the built-in `status` Property rather than deriving Data Source identity from UI state.
 - Source and target epoch mismatches fail closed. Core commits source detachment, target attachment or Page promotion, typed membership values, Document updates, projections, receipt, and local delivery atomically.
 - When Move detaches every root Block, Core creates one stable-ID empty paragraph in the source Document within that same commit. The source Page remains blank and editable, while Undo removes the placeholder and restores the exact original roots.
-- The picker exposes only the source Project. Cross-Project movement requires a future Core command that authorizes both source and target contexts in the same transaction; the renderer must not emulate it with two mutations or advertise an unexecutable destination.
+- This picker lists the source Project and resolves its default Database for DB-status promotion. That routing choice is independent of content access. Explicit `BlockTransfer` destinations can address Pages, Documents and Data Sources across Projects or through the Library route; they retain the same Profile/Store identity, lifecycle, exact heads and atomic transfer guarantees. The renderer commits one transfer instead of splitting source and target changes into separate mutations.
 - Structured Database, Document, and BlockTransfer failures preserve their code, retryability, reload requirement, and operation ID for diagnostics. The picker shows the safe command message and keeps the failed destination available for retry.

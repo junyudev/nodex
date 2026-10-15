@@ -48,7 +48,7 @@ export function useComposerPrediction({
     subscribeComposerPredictionsEnabled,
     readComposerPredictionsEnabled,
   );
-  const allowed = eligible && !override && threadId !== null;
+  const allowed = eligible && (!override || override.kind === "codex") && threadId !== null;
   const availability = useQuery({
     queryKey: ["composer_prediction_availability", hostId],
     queryFn: () => runConversationOperation("codex:composer-prediction:availability", hostId),

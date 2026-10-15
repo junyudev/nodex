@@ -3,6 +3,12 @@ import {
   workbenchFileResourceId,
 } from "../../shared/workbench-resource-identity";
 import { useCallback, useEffect, useRef } from "react";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import {
+  captureCodexTurnPresentation,
+  readCodexSubmissionPresentation,
+} from "./codex-turn-presentation";
+import { useWorkbenchWindowOwner } from "./use-workbench-window-state";
 import {
   normalizeUserAttachmentImageEditorOptions,
   resolveImagePreviewOpenDisposition,
@@ -46,6 +52,7 @@ import {
 } from "./workbench-panel-preview";
 import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
+import { workspaceSessionCommands } from "./workspace-catalog-commands";
 import { listWorkbenchPanelLeaves } from "../../shared/workbench-panel-layout";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
@@ -170,8 +177,8 @@ export function findCanvasStageTab(
     session.tabs.find(
       (tab) =>
         tab.kind === "canvas_stage" &&
-        tab.config.accessContext.kind === "project" &&
-        tab.config.accessContext.projectId === projectId &&
+        tab.config.routingContext.kind === "project" &&
+        tab.config.routingContext.projectId === projectId &&
         tab.config.canvasBlockId === canvasBlockId,
     ) ?? null
   );
@@ -246,6 +253,7 @@ export function useWorkbenchPanelOpeners({
   pendingPageDeepLinkOpen,
   onPageDeepLinkHandled,
 }: WorkbenchPanelOpenersInput) {
+  const workbenchOwner = useWorkbenchWindowOwner();
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
   const { previewTabsByPanel, sideChatTabsBySession } = controller;
@@ -352,9 +360,106 @@ export function useWorkbenchPanelOpeners({
       input: ThreadOpenSideChatInput & {
         targetPanelId?: PanelId;
         targetLeafId?: string;
+        retryTabId?: string;
         collaborationMode?: CodexCollaborationModeKind;
       } = {},
     ) => {
+      const localSourceThreadId =
+        activeSession?.executionRef?.threadId ?? activeSession?.thread?.threadId;
+      const sourceHostId = activeSession?.thread?.executionHostId ?? "local";
+      if (
+        activeSession &&
+        localSourceThreadId &&
+        (activeSession.executionRef || sourceHostId === "local")
+      ) {
+        const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
+        const initialSubmission =
+          input.kind !== "draft" && input.prompt?.trim()
+            ? {
+                launchId: createUuidV7(),
+                clientUserMessageId: createUuidV7(),
+                acceptedAt: Date.now(),
+              }
+            : undefined;
+        const panelId = input.targetPanelId ?? "right";
+        const leafId =
+          input.targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
+        const prior = (sideChatTabsBySession[activeSession.id] ?? []).find(
+          (tab) => tab.id === input.retryTabId,
+        );
+        const index = (sideChatTabsBySession[activeSession.id] ?? []).length + 1;
+        const title = prior?.title ?? getSideChatTabTitle(index);
+        const loadingId = prior?.id ?? `sidechat-session-loading:${localSourceThreadId}:${index}`;
+        panelControllerRef.current.upsertEphemeralTab({
+          sideChat: true,
+          id: loadingId,
+          sessionId: activeSession.id,
+          panelId,
+          leafId,
+          parentThreadId: localSourceThreadId,
+          parentNavigationPath: "",
+          threadId: null,
+          title,
+          status: "loading",
+          stateKey: Date.now(),
+          draftPrompt: input.kind === "draft" ? input.draftPrompt : input.prompt,
+        });
+        await ensureActivePanelOpenWithoutRefresh(panelId);
+        try {
+          const session = await workspaceSessionCommands.create({
+            projectId: activeSession.projectId,
+            noThreadFallbackTitle: title,
+            initialPageIds: [],
+          });
+          const presentationTicket = initialSubmission
+            ? await captureCodexTurnPresentation(
+                workbenchOwner,
+                { kind: "session", sessionId: session.id, launchId: initialSubmission.launchId },
+                submittedPresentation,
+              )
+            : undefined;
+          const readyId = `sidechat-session:${session.id}`;
+          panelControllerRef.current.updateSideChatTabsBySession((current) => ({
+            ...current,
+            [activeSession.id]: (current[activeSession.id] ?? []).map((tab) =>
+              tab.id === loadingId
+                ? {
+                    ...tab,
+                    id: readyId,
+                    status: "ready",
+                    runtimeSession: session,
+                    draftPromptInput: input.kind === "draft" ? undefined : input.promptInput,
+                    initialSubmission: initialSubmission
+                      ? { ...initialSubmission, presentationTicket }
+                      : undefined,
+                    stateKey: tab.stateKey + 1,
+                  }
+                : tab,
+            ),
+          }));
+          panelControllerRef.current.updateSideChatActiveTabByPanel((current) => ({
+            ...current,
+            [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]: readyId,
+          }));
+          await refreshProjectSessions(session.projectId);
+        } catch (error) {
+          panelControllerRef.current.updateSideChatTabsBySession((current) => ({
+            ...current,
+            [activeSession.id]: (current[activeSession.id] ?? []).map((tab) =>
+              tab.id === loadingId
+                ? {
+                    ...tab,
+                    status: "failed",
+                    errorMessage: describeSideChatOpenFailure(error),
+                    stateKey: tab.stateKey + 1,
+                  }
+                : tab,
+            ),
+          }));
+        }
+        return;
+      }
+
       if (!activeSession?.thread) {
         toast.danger("Failed to open side chat", { id: "side-chat-open-failed" });
         return;
@@ -458,6 +563,8 @@ export function useWorkbenchPanelOpeners({
       ensureActivePanelOpenWithoutRefresh,
       sideChatTabsBySession,
       workbenchCodexControl,
+      workbenchOwner,
+      refreshProjectSessions,
     ],
   );
 
@@ -627,6 +734,20 @@ export function useWorkbenchPanelOpeners({
       );
       if (!existingTab) return;
 
+      if (
+        activeSession.executionRef ||
+        (activeSession.thread?.executionHostId ?? "local") === "local"
+      ) {
+        await openSideChat({
+          kind: "draft",
+          draftPrompt: existingTab.draftPrompt ?? "",
+          targetPanelId: existingTab.panelId,
+          targetLeafId: existingTab.leafId,
+          retryTabId: existingTab.id,
+        });
+        return;
+      }
+
       const titleIndexMatch = existingTab.title.match(/(\d+)$/u);
       const titleIndex = titleIndexMatch ? Number.parseInt(titleIndexMatch[1] ?? "1", 10) : 1;
       const safeIndex = Number.isFinite(titleIndex) && titleIndex > 0 ? titleIndex : 1;
@@ -720,7 +841,7 @@ export function useWorkbenchPanelOpeners({
         toast.danger("Failed to start a new side chat", { id: "side-chat-recreate-failed" });
       }
     },
-    [activeSession, sideChatTabsBySession, workbenchCodexControl],
+    [activeSession, sideChatTabsBySession, workbenchCodexControl, openSideChat],
   );
 
   const openPreviewTab = useCallback(
@@ -1013,8 +1134,8 @@ export function useWorkbenchPanelOpeners({
           tab.kind === "page_stage" &&
           "pageId" in tab.config &&
           tab.config.pageId === pageId &&
-          tab.config.accessContext.kind === "project" &&
-          tab.config.accessContext.projectId === projectId,
+          tab.config.routingContext.kind === "project" &&
+          tab.config.routingContext.projectId === projectId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(
@@ -1067,8 +1188,8 @@ export function useWorkbenchPanelOpeners({
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
         matchingPreviewTab.config.pageId === pageId &&
-        matchingPreviewTab.config.accessContext.kind === "project" &&
-        matchingPreviewTab.config.accessContext.projectId === projectId
+        matchingPreviewTab.config.routingContext.kind === "project" &&
+        matchingPreviewTab.config.routingContext.projectId === projectId
       ) {
         await pinPreviewTab(targetPanelId, matchingPreviewTab.id, previewLeafId);
         return;
@@ -1099,7 +1220,7 @@ export function useWorkbenchPanelOpeners({
         kind: "page_stage",
         title: titleSnapshot || pageId,
         config: {
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           pageId: pageId,
           titleSnapshot,
         },
@@ -1176,7 +1297,7 @@ export function useWorkbenchPanelOpeners({
         kind: "canvas_stage",
         title: titleSnapshot?.trim() || "Canvas",
         config: {
-          accessContext: { kind: "project", projectId },
+          routingContext: { kind: "project", projectId },
           canvasBlockId,
           ...(titleSnapshot?.trim() ? { titleSnapshot: titleSnapshot.trim() } : {}),
         },

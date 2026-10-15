@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct SearchArgs {
-    /// Search text matched against authorized Page titles, keys, Properties and bodies.
+    /// Search current Profile Page titles, keys, Properties and bodies.
     pub query: String,
     /// Maximum ranked Page hits to return.
     #[arg(long)]
@@ -106,14 +106,16 @@ pub(crate) fn execute(
     cwd: &Path,
     args: SearchArgs,
 ) -> Result<CommandOutput, CliError> {
-    let project = selected_project(client, explicit_project, cwd)?;
+    let project = explicit_project
+        .map(|_| selected_project(client, explicit_project, cwd))
+        .transpose()?;
     let snapshot = unwrap_library(client.library_read(
-        Some(&project.id),
+        project.as_ref().map(|project| project.id.as_str()),
         LibraryRead::ProjectPageSearch {
-            project_ids: vec![project.id.clone()],
+            project_ids: Vec::new(),
             query: args.query,
             filters: None,
-            preferred_project_id: Some(project.id.clone()),
+            preferred_project_id: project.as_ref().map(|project| project.id.clone()),
             recent_page_ids: Vec::new(),
             limit: args.limit,
         },

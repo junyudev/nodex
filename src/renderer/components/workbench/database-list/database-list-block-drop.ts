@@ -20,14 +20,10 @@ export interface DatabaseListBlockDropPreview {
 
 export const resolveDatabaseListBlockDropRejection = (input: {
   readonly pageDragActive: boolean;
-  readonly readOnly: boolean;
-  readonly projectScoped: boolean;
   readonly searchActive: boolean;
   readonly projectionReady: boolean;
 }): string | null => {
   if (input.pageDragActive) return "Finish moving Pages before importing Blocks";
-  if (input.readOnly) return "This Database View is read-only";
-  if (!input.projectScoped) return "Blocks can only move into a Project Database View";
   if (input.searchActive) return "Clear search to add Blocks as Pages";
   if (!input.projectionReady) return "Wait for the List to finish loading";
   return null;

@@ -1,21 +1,18 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexAccount, CodexAccountInputError } from "../codex-application/CodexAccount";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./AccountAppTools";
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread",
   turnId: "turn",
   rootThreadId: "thread",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const input: AppToolInvocation = {
   name: "consume_usage_reset",
@@ -30,15 +27,16 @@ const input: AppToolInvocation = {
   },
 };
 it.effect(
-  "preserves reset identity and outcomes without exposing login data or redeeming on read-only Turns",
+  "preserves reset identity and private account data while refusing withdrawn native calls",
   () =>
     Effect.gen(function* () {
-      let readOnly = true;
+      let active = true;
+      const call = { ...input, caller: { ...input.caller, isActive: () => active } };
       let uncertain = false;
       const calls: string[] = [];
       const execute = yield* make.pipe(
         Effect.provideService(CodexTurnAuthority, {
-          capture: () => Effect.sync(() => ({ ...authority, readOnly })),
+          capture: () => Effect.succeed(authority),
         } as unknown as CodexTurnAuthority["Service"]),
         Effect.provideService(CodexAccount, {
           readUsageLimits: Effect.succeed({
@@ -62,12 +60,8 @@ it.effect(
             }),
         } as unknown as CodexAccount["Service"]),
       );
-      assert.deepStrictEqual((yield* execute(input)).structuredContent, {
-        error: { code: "read_only_turn" },
-      });
-      assert.deepStrictEqual(calls, []);
       assert.deepStrictEqual(
-        (yield* execute({ ...input, name: "get_usage_limits", arguments: {} })).structuredContent,
+        (yield* execute({ ...call, name: "get_usage_limits", arguments: {} })).structuredContent,
         {
           ordinaryUsageAllowed: false,
           rateLimits: null,
@@ -75,19 +69,22 @@ it.effect(
           rateLimitResetCredits: null,
         },
       );
-      readOnly = false;
-      assert.deepStrictEqual((yield* execute(input)).structuredContent, {
+      assert.deepStrictEqual((yield* execute(call)).structuredContent, {
         outcome: "noCredit",
         rateLimits: null,
         rateLimitResetCredits: null,
         idempotencyKey: "exact-retry-key",
       });
       uncertain = true;
-      assert.deepStrictEqual((yield* execute(input)).structuredContent, {
+      assert.deepStrictEqual((yield* execute(call)).structuredContent, {
         error: {
           code: "reset_outcome_unavailable",
           details: { idempotencyKey: "exact-retry-key" },
         },
+      });
+      active = false;
+      assert.deepStrictEqual((yield* execute(call)).structuredContent, {
+        error: { code: "call_withdrawn" },
       });
       assert.deepStrictEqual(calls, ["exact-retry-key", "exact-retry-key"]);
     }),

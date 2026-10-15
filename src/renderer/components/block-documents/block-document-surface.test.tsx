@@ -35,12 +35,11 @@ const descriptor = (
   overrides: Partial<PrimaryPageBlockDocumentDescriptor> = {},
 ): PrimaryPageBlockDocumentDescriptor => ({
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   ownerBlockId: "card-1",
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "document:card-1",
-  authorization: null,
   storeEpoch: "store-1",
   generation: 1,
   headSeq: 0,
@@ -309,7 +308,7 @@ describe("BlockDocumentSurface", () => {
         <Activity mode={activeProjectId === "alpha" ? "visible" : "hidden"}>
           <BlockDocumentSurface
             descriptor={descriptor({
-              accessContext: { kind: "project", projectId: "alpha" },
+              routingContext: { kind: "project", projectId: "alpha" },
               ownerBlockId: "alpha-card",
               documentId: "document:alpha-card",
             })}
@@ -322,7 +321,7 @@ describe("BlockDocumentSurface", () => {
         <Activity mode={activeProjectId === "beta" ? "visible" : "hidden"}>
           <BlockDocumentSurface
             descriptor={descriptor({
-              accessContext: { kind: "project", projectId: "beta" },
+              routingContext: { kind: "project", projectId: "beta" },
               ownerBlockId: "beta-card",
               documentId: "document:beta-card",
             })}
@@ -373,12 +372,12 @@ describe("BlockDocumentSurface", () => {
     });
     const libraryDescriptor: PrimaryPageBlockDocumentDescriptor = {
       ...descriptor(),
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
     };
-    let observedAccessContext: unknown;
+    let observedRoutingContext: unknown;
     const dependencies: BlockDocumentSurfaceDependencies = {
-      createAdapter: (accessContext) => {
-        observedAccessContext = accessContext;
+      createAdapter: (routingContext) => {
+        observedRoutingContext = routingContext;
         throw new Error("Document adapter unavailable");
       },
     };
@@ -398,7 +397,7 @@ describe("BlockDocumentSurface", () => {
       await waitFor(() => expect(clipboardWrites).toHaveLength(1));
       expect(clipboardWrites[0]).toContain("Library: library-1");
       expect(clipboardWrites[0]).toContain("Access: library");
-      expect(observedAccessContext).toEqual({ kind: "library" });
+      expect(observedRoutingContext).toEqual({ kind: "library" });
       expect(view.getByRole("button", { name: "Copied" })).toBeTruthy();
     } finally {
       Object.defineProperty(navigator, "clipboard", {
@@ -477,47 +476,6 @@ describe("BlockDocumentSurface", () => {
     });
     await waitFor(() => expect(reloads).toBe(1));
     await waitFor(() => expect(adapter.unsubscriptions > 0).toBe(true));
-
-    view.unmount();
-    adapter.destroy();
-  });
-
-  test("keeps access revocation terminal without entering an automatic reload loop", async () => {
-    const adapter = new SurfaceTestAdapter();
-    let reloads = 0;
-    const view = render(
-      <BlockDocumentSurface
-        descriptor={descriptor()}
-        isActive
-        dependencies={{ createAdapter: () => adapter }}
-        onReload={async () => {
-          reloads += 1;
-        }}
-      >
-        {(surface) => <div>{surface.title.toString()}</div>}
-      </BlockDocumentSurface>,
-    );
-    await waitFor(() => expect(view.getByText("Synced title")).toBeTruthy());
-
-    await act(async () => {
-      adapter.emit({
-        kind: "resync-required",
-        documentId: "document:card-1",
-        storeEpoch: "store-1",
-        generation: 1,
-        headSeq: 0,
-        commitSeq: 2,
-        effectSequence: 0,
-        reason: "access-revoked",
-      });
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(view.getByText("Access to this content is unavailable")).toBeTruthy();
-    });
-    expect(view.queryByRole("button", { name: "Reload" })).toBeNull();
-    expect(reloads).toBe(0);
 
     view.unmount();
     adapter.destroy();

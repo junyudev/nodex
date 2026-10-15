@@ -19,7 +19,6 @@ const dependencies = (
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 7,
-      authorization: null,
       value:
         request.read.mode === "page_key_namespace"
           ? {
@@ -52,11 +51,10 @@ const dependencies = (
     return {
       ok: true,
       value: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library:test",
         storeEpoch: "epoch:test",
         commitSeq: 7,
-        authorization: null,
         value: {
           kind: "page_key_prefix_preview",
           value: {

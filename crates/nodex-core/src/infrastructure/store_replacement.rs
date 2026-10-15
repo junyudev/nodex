@@ -19,6 +19,7 @@ const MAX_JOURNAL_BYTES: u64 = 64 * 1024;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const MAX_STAGED_ASSET_ENTRIES: usize = 100_000;
 const ASSETS_DIRECTORY_NAME: &str = "assets";
+const EXECUTION_DIRECTORY_NAME: &str = "agent-runtime";
 const WAL_SUFFIX: &str = "-wal";
 const SHM_SUFFIX: &str = "-shm";
 
@@ -44,6 +45,10 @@ pub struct StoreReplacementJournal {
     pub rollback_directory_name: String,
     pub phase: StoreReplacementPhase,
     pub had_assets: bool,
+    #[serde(default)]
+    pub had_execution: bool,
+    #[serde(default)]
+    pub has_execution: bool,
     pub had_wal: bool,
     pub had_shm: bool,
     pub source_store_epoch: String,
@@ -121,6 +126,12 @@ pub fn create_store_replacement_journal(
         rollback_directory_name: input.rollback_directory_name.to_owned(),
         phase: StoreReplacementPhase::Prepared,
         had_assets: directory_exists(&profile_home.join(ASSETS_DIRECTORY_NAME))?,
+        had_execution: directory_exists(&profile_home.join(EXECUTION_DIRECTORY_NAME))?,
+        has_execution: directory_exists(
+            &backups_root(profile_home)
+                .join(input.staging_directory_name)
+                .join(EXECUTION_DIRECTORY_NAME),
+        )?,
         had_wal: regular_file_exists(&append_suffix(&database_path, WAL_SUFFIX))?,
         had_shm: regular_file_exists(&append_suffix(&database_path, SHM_SUFFIX))?,
         source_store_epoch: input.source_store_epoch.to_owned(),
@@ -164,6 +175,13 @@ pub fn install_staged_store_files(
             "Store files may be installed only in the install_started phase",
         ));
     }
+    if fs::symlink_metadata(profile_home.join("agent-runtime/.writer.lock")).is_ok() {
+        return Err(StoreError::new(
+            StoreErrorCode::MaintenanceInProgress,
+            "Execution must be closed before installing a Profile restore",
+            true,
+        ));
+    }
     let backup_root = backups_root(profile_home);
     let staging = validate_staged_candidate(profile_home, &journal.staging_directory_name)?;
     let rollback =
@@ -182,11 +200,21 @@ pub fn install_staged_store_files(
         &profile_home.join(ASSETS_DIRECTORY_NAME),
         &rollback.join(ASSETS_DIRECTORY_NAME),
     )?;
+    move_if_present(
+        &profile_home.join(EXECUTION_DIRECTORY_NAME),
+        &rollback.join(EXECUTION_DIRECTORY_NAME),
+    )?;
     move_required(&staging.join(STORE_FILE_NAME), &database)?;
     move_required(
         &staging.join(ASSETS_DIRECTORY_NAME),
         &profile_home.join(ASSETS_DIRECTORY_NAME),
     )?;
+    if journal.has_execution {
+        move_required(
+            &staging.join(EXECUTION_DIRECTORY_NAME),
+            &profile_home.join(EXECUTION_DIRECTORY_NAME),
+        )?;
+    }
     sync_directory(profile_home)
 }
 
@@ -269,30 +297,65 @@ pub fn rollback_store_replacement(
             &append_suffix(&database, SHM_SUFFIX),
             journal.had_shm,
         )?;
-        let live_assets = profile_home.join(ASSETS_DIRECTORY_NAME);
-        let rollback_assets = rollback.join(ASSETS_DIRECTORY_NAME);
-        if journal.had_assets {
-            if live_assets.exists() && !staging.join(ASSETS_DIRECTORY_NAME).exists() {
-                move_required(&live_assets, &staging.join(ASSETS_DIRECTORY_NAME))?;
-            } else if live_assets.exists() {
-                return Err(corrupt(
-                    "Store rollback found both live and staged candidate assets",
-                ));
-            }
-            move_required(&rollback_assets, &live_assets)?;
-        } else if live_assets.exists() {
-            if staging.join(ASSETS_DIRECTORY_NAME).exists() {
-                return Err(corrupt(
-                    "Store rollback cannot preserve duplicate candidate assets",
-                ));
-            }
-            move_required(&live_assets, &staging.join(ASSETS_DIRECTORY_NAME))?;
-        }
+        restore_directory(
+            profile_home,
+            &staging,
+            &rollback,
+            ASSETS_DIRECTORY_NAME,
+            journal.had_assets,
+        )?;
+        restore_directory(
+            profile_home,
+            &staging,
+            &rollback,
+            EXECUTION_DIRECTORY_NAME,
+            journal.had_execution,
+        )?;
         sync_directory(profile_home)?;
     }
     validate_live_store(profile_home, Some(&journal.source_store_epoch))?;
     validate_staged_candidate(profile_home, &journal.staging_directory_name)?;
     reset_journal_to_prepared(profile_home, journal)
+}
+
+/// A crash may occur between any two renames. An absent rollback entry means its original
+/// directory has not moved yet; never mistake that original for the installed candidate.
+fn restore_directory(
+    profile: &Path,
+    staging: &Path,
+    rollback: &Path,
+    name: &str,
+    had_original: bool,
+) -> Result<(), StoreError> {
+    let live = profile.join(name);
+    let original = rollback.join(name);
+    let candidate = staging.join(name);
+    if original.exists() {
+        if live.exists() {
+            if candidate.exists() {
+                return Err(corrupt(
+                    "Store rollback found duplicate candidate directories",
+                ));
+            }
+            move_required(&live, &candidate)?;
+        }
+        return move_required(&original, &live);
+    }
+    if had_original {
+        if !live.exists() {
+            return Err(corrupt("Store rollback lost an original Profile directory"));
+        }
+        return Ok(());
+    }
+    if live.exists() {
+        if candidate.exists() {
+            return Err(corrupt(
+                "Store rollback found duplicate new Profile directories",
+            ));
+        }
+        move_required(&live, &candidate)?;
+    }
+    Ok(())
 }
 
 fn reset_journal_to_prepared(
@@ -418,6 +481,10 @@ fn validate_staged_candidate(
     )?;
     validate_store_path(&staging_database_path(profile_home, staging_directory_name))?;
     validate_regular_tree(&staging.join(ASSETS_DIRECTORY_NAME))?;
+    let execution = staging.join(EXECUTION_DIRECTORY_NAME);
+    if directory_exists(&execution)? {
+        validate_regular_tree(&execution)?;
+    }
     Ok(staging)
 }
 
@@ -955,6 +1022,92 @@ mod tests {
             StoreReplacementPhase::Prepared
         );
         drop(kernel);
+    }
+
+    #[test]
+    fn startup_restores_execution_and_assets_after_every_partial_install_rename() {
+        for completed_moves in 0..=6 {
+            let fixture = ReplacementFixture::new();
+            let profile = fixture.home();
+            let staging = profile.join("backups").join(STAGING_NAME);
+            fs::create_dir(profile.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            fs::write(
+                profile.join("agent-runtime/history.jsonl"),
+                b"source complete history",
+            )
+            .unwrap();
+            fs::create_dir(staging.join(EXECUTION_DIRECTORY_NAME)).unwrap();
+            fs::write(
+                staging.join("agent-runtime/history.jsonl"),
+                b"candidate complete history",
+            )
+            .unwrap();
+            let prepared = fixture.create_journal();
+            let phase = advance_store_replacement_journal(
+                profile,
+                &prepared,
+                StoreReplacementPhase::RollbackStarted,
+                NOW,
+                None,
+                None,
+            )
+            .unwrap();
+            advance_store_replacement_journal(
+                profile,
+                &phase,
+                StoreReplacementPhase::InstallStarted,
+                NOW,
+                None,
+                None,
+            )
+            .unwrap();
+            let rollback = profile.join("backups").join(ROLLBACK_NAME);
+            fs::create_dir(&rollback).unwrap();
+            let moves = [
+                (
+                    profile.join(STORE_FILE_NAME),
+                    rollback.join(STORE_FILE_NAME),
+                ),
+                (
+                    profile.join(ASSETS_DIRECTORY_NAME),
+                    rollback.join(ASSETS_DIRECTORY_NAME),
+                ),
+                (
+                    profile.join(EXECUTION_DIRECTORY_NAME),
+                    rollback.join(EXECUTION_DIRECTORY_NAME),
+                ),
+                (staging.join(STORE_FILE_NAME), profile.join(STORE_FILE_NAME)),
+                (
+                    staging.join(ASSETS_DIRECTORY_NAME),
+                    profile.join(ASSETS_DIRECTORY_NAME),
+                ),
+                (
+                    staging.join(EXECUTION_DIRECTORY_NAME),
+                    profile.join(EXECUTION_DIRECTORY_NAME),
+                ),
+            ];
+            for (source, target) in moves.into_iter().take(completed_moves) {
+                fs::rename(source, target).unwrap();
+            }
+            assert_eq!(
+                recover_interrupted_store_replacement(profile).unwrap(),
+                StoreReplacementStartupRecovery::RolledBack
+            );
+            assert_eq!(fixture.live_epoch(), SOURCE_EPOCH);
+            assert_eq!(fixture.staged_epoch(), CANDIDATE_EPOCH);
+            assert_eq!(
+                fs::read(profile.join("assets/asset.bin")).unwrap(),
+                b"source asset"
+            );
+            assert_eq!(
+                fs::read(profile.join("agent-runtime/history.jsonl")).unwrap(),
+                b"source complete history"
+            );
+            assert_eq!(
+                fs::read(staging.join("agent-runtime/history.jsonl")).unwrap(),
+                b"candidate complete history"
+            );
+        }
     }
 
     #[test]

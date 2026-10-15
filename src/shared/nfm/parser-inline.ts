@@ -4,14 +4,7 @@ import { parseDateMentionAttrs } from "./date-mention";
 import { getXmlAttr, parseXmlAttrs } from "./xml-attributes";
 import { parsePageDeepLink } from "../nodex-deeplink";
 
-const AGENT_CONFIG_ATTRS = new Set([
-  "mode",
-  "provider",
-  "model",
-  "reasoning",
-  "speed",
-  "permission",
-]);
+const AGENT_CONFIG_ATTRS = new Set(["mode", "provider", "model", "reasoning", "speed"]);
 
 export function parseInlineContent(input: string): NfmInlineContent[] {
   if (!input) return [];
@@ -356,7 +349,6 @@ export function parseInlineContent(input: string): NfmInlineContent[] {
       ...(attributes.model ? { model: attributes.model } : {}),
       ...(attributes.reasoning ? { reasoning: attributes.reasoning } : {}),
       ...(attributes.speed ? { speed: attributes.speed } : {}),
-      ...(attributes.permission ? { permission: attributes.permission } : {}),
       ...(unknownAttributes.length > 0 ? { unknownAttributes } : {}),
       ...(rawAttributes.trim().length > 0 ? { rawAttributes } : {}),
     };

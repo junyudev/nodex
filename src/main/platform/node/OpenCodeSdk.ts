@@ -5,18 +5,11 @@ import {
   type Agent,
   type Command,
   type Config,
-  type Event,
   type Message,
   type Part,
-  type PermissionRequest,
-  type PermissionRuleset,
   type ProviderListResponse,
-  type QuestionRequest,
-  type Session,
-  type SessionStatusResponse,
 } from "@opencode-ai/sdk/v2";
 import * as Context from "effect/Context";
-import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,7 +21,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AgentRuntimeError } from "../../agent-backend/AgentRuntimeError";
 import { OPENCODE_MANAGED_ENVIRONMENT_NAMES } from "../../../shared/opencode-agent-settings";
 
-export type OpenCodeNativeMcp = NonNullable<Config["mcp"]>;
 export interface OpenCodeLaunchInput {
   readonly binaryPath: string;
   readonly serverUrl: string | null;
@@ -38,7 +30,6 @@ export interface OpenCodeLaunchInput {
   /** Only explicitly configured credentials may authenticate an external server. */
   readonly serverPassword?: string;
   readonly serverUsername?: string;
-  readonly nativeMcp?: OpenCodeNativeMcp;
 }
 export interface OpenCodeInventory {
   readonly providers: ProviderListResponse;
@@ -87,27 +78,6 @@ const inventoryMetadata = Schema.Struct({
     default_agent: Schema.optionalKey(Schema.String),
   }),
 });
-const permissionMetadata = Schema.Array(
-  Schema.Struct({
-    permission: Schema.String,
-    pattern: Schema.String,
-    action: Schema.Literals(["allow", "ask", "deny"]),
-  }),
-);
-
-// Native updates append rules; their requested suffix must retain last-match precedence.
-const retainsPermissionPolicy = (session: Session, requested: PermissionRuleset): boolean => {
-  const stored = session.permission;
-  if (!Schema.is(permissionMetadata)(stored) || stored.length < requested.length) return false;
-  return requested.every((rule, index) => {
-    const retained = stored[stored.length - requested.length + index];
-    return (
-      retained?.permission === rule.permission &&
-      retained.pattern === rule.pattern &&
-      retained.action === rule.action
-    );
-  });
-};
 export interface OpenCodeNativeMessage {
   readonly info: Message;
   readonly parts: readonly Part[];
@@ -117,28 +87,8 @@ export interface OpenCodeHistoryPage {
   readonly cursor: string | null;
   readonly hasMore: boolean;
 }
-export interface OpenCodePromptInput {
-  readonly sessionId: string;
-  readonly messageId: string;
-  readonly text: string;
-  readonly model: { readonly providerID: string; readonly modelID: string };
-  readonly variant?: string;
-  readonly agent?: string;
-  readonly system?: string;
-  readonly command?: { readonly name: string; readonly arguments: string };
-  readonly images?: readonly { readonly mediaType: string; readonly data: string }[];
-}
 export interface OpenCodeConnection {
-  readonly nextMessageId: Effect.Effect<string>;
   readonly inventory: Effect.Effect<OpenCodeInventory, AgentRuntimeError>;
-  readonly events: Stream.Stream<Event, AgentRuntimeError>;
-  readonly ready: Effect.Effect<void, AgentRuntimeError>;
-  readonly termination: Effect.Effect<never, AgentRuntimeError>;
-  readonly createSession: (
-    permission: PermissionRuleset,
-  ) => Effect.Effect<Session, AgentRuntimeError>;
-  readonly session: (id: string) => Effect.Effect<Session, AgentRuntimeError>;
-  readonly sessionStatuses: Effect.Effect<SessionStatusResponse, AgentRuntimeError>;
   readonly history: (
     id: string,
     input?: { readonly before?: string; readonly limit?: number },
@@ -147,29 +97,6 @@ export interface OpenCodeConnection {
     sessionId: string,
     messageId: string,
   ) => Effect.Effect<OpenCodeNativeMessage, AgentRuntimeError>;
-  readonly prompt: (input: OpenCodePromptInput) => Effect.Effect<void, AgentRuntimeError>;
-  readonly abort: (id: string) => Effect.Effect<void, AgentRuntimeError>;
-  readonly children: (id: string) => Effect.Effect<readonly Session[], AgentRuntimeError>;
-  readonly setPermissions: (
-    id: string,
-    permission: PermissionRuleset,
-  ) => Effect.Effect<void, AgentRuntimeError>;
-  readonly pendingPermissions: Effect.Effect<readonly PermissionRequest[], AgentRuntimeError>;
-  readonly pendingQuestions: Effect.Effect<readonly QuestionRequest[], AgentRuntimeError>;
-  readonly replyPermission: (
-    id: string,
-    reply: "once" | "reject",
-  ) => Effect.Effect<void, AgentRuntimeError>;
-  readonly replyQuestion: (
-    id: string,
-    answers: string[][],
-  ) => Effect.Effect<void, AgentRuntimeError>;
-  readonly rejectQuestion: (id: string) => Effect.Effect<void, AgentRuntimeError>;
-  readonly fork: (id: string, messageId: string) => Effect.Effect<Session, AgentRuntimeError>;
-  readonly compact: (
-    id: string,
-    model: OpenCodePromptInput["model"],
-  ) => Effect.Effect<void, AgentRuntimeError>;
 }
 export class OpenCodeSdk extends Context.Service<
   OpenCodeSdk,
@@ -224,11 +151,7 @@ export const openCodeEnvironment = (
     OPENCODE_TEST_HOME: input.profileDirectory,
     OPENCODE_SERVER_USERNAME: "opencode",
   };
-  if (!input.nativeMcp) return environment;
-  return {
-    ...environment,
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp: input.nativeMcp }),
-  };
+  return environment;
 };
 
 const request = <A>(operation: string, run: (signal: AbortSignal) => Promise<A>) =>
@@ -240,14 +163,6 @@ export const live = Layer.effect(
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     return OpenCodeSdk.of({
       open: Effect.fn("OpenCodeSdk.open")(function* (input) {
-        if (input.serverUrl && input.nativeMcp && Object.keys(input.nativeMcp).length > 0) {
-          return yield* new AgentRuntimeError({
-            message: "An external OpenCode server cannot isolate this thread's app tools",
-            operation: "opencode.open",
-            reason: "capability",
-            retryable: false,
-          });
-        }
         let baseUrl = input.serverUrl;
         let password = input.serverPassword;
         let termination: Effect.Effect<never, AgentRuntimeError> = Effect.never;
@@ -330,77 +245,8 @@ export const live = Layer.effect(
         );
         if (!health.data?.healthy)
           return yield* openCodeSdkFailure("health", new Error("server is unhealthy"));
-        const abortController = yield* Effect.acquireRelease(
-          Effect.sync(() => new AbortController()),
-          (controller) => Effect.sync(() => controller.abort()),
-        );
-        let streamError: AgentRuntimeError | null = null;
-        const stream = yield* request("events", () =>
-          client.event.subscribe(
-            {},
-            {
-              signal: abortController.signal,
-              throwOnError: true,
-              sseMaxRetryAttempts: 1,
-              onSseError: (cause) => {
-                streamError = openCodeSdkFailure("events", cause);
-              },
-            },
-          ),
-        );
-        const connected = yield* Deferred.make<void, AgentRuntimeError>();
-        const events = Stream.fromAsyncIterable(
-          {
-            [Symbol.asyncIterator]: () => ({
-              next: () => stream.stream.next(),
-              return: () => {
-                // A pending SDK read must abort before generator return can complete.
-                abortController.abort();
-                return stream.stream.return();
-              },
-            }),
-          },
-          (cause) => openCodeSdkFailure("events", cause),
-        ).pipe(
-          Stream.tap((event) =>
-            event.type === "server.connected"
-              ? Deferred.succeed(connected, undefined).pipe(Effect.asVoid)
-              : Effect.void,
-          ),
-          Stream.concat(
-            Stream.suspend(() =>
-              Stream.fail(
-                streamError ??
-                  new AgentRuntimeError({
-                    message: "The OpenCode event connection closed",
-                    operation: "opencode.events",
-                    reason: "session-lost",
-                    retryable: true,
-                  }),
-              ),
-            ),
-          ),
-        );
         const call = <A>(operation: string, run: (signal: AbortSignal) => Promise<{ data: A }>) =>
           request(operation, run).pipe(Effect.map((result) => result.data));
-        const confirmPermissions = (
-          operation: string,
-          session: Session,
-          permission: PermissionRuleset,
-        ) =>
-          retainsPermissionPolicy(session, permission)
-            ? Effect.void
-            : Effect.fail(
-                new AgentRuntimeError({
-                  message: `OpenCode ${health.data.version} did not retain the permission policy Nodex requires. Update the configured executable or server to OpenCode 1.15.13 or newer.`,
-                  operation: `opencode.${operation}`,
-                  reason: "protocol",
-                  retryable: false,
-                  sessionId: session.id,
-                }),
-              );
-        let lastTimestamp = 0;
-        let messageCounter = 0;
         return {
           inventory: Effect.gen(function* () {
             const [providers, agents, commands, config] = yield* Effect.all(
@@ -426,41 +272,6 @@ export const live = Layer.effect(
               });
             return inventory;
           }),
-          events,
-          ready: Deferred.await(connected).pipe(
-            Effect.timeout("10 seconds"),
-            Effect.mapError((cause) => openCodeSdkFailure("events-connect", cause)),
-          ),
-          termination,
-          nextMessageId: Clock.currentTimeMillis.pipe(
-            Effect.map((now) => {
-              if (now !== lastTimestamp) {
-                lastTimestamp = now;
-                messageCounter = 0;
-              }
-              messageCounter += 1;
-              const prefix = ((BigInt(now) * 0x1000n + BigInt(messageCounter)) & 0xffffffffffffn)
-                .toString(16)
-                .padStart(12, "0");
-              return `msg_${prefix}${randomBytes(7).toString("hex")}`;
-            }),
-          ),
-          createSession: Effect.fn("OpenCodeSdk.createSession")(function* (
-            permission: PermissionRuleset,
-          ) {
-            const session = yield* call("create-session", (signal) =>
-              client.session.create({ permission }, { signal, throwOnError: true }),
-            );
-            yield* confirmPermissions("create-session", session, permission);
-            return session;
-          }),
-          session: (sessionID) =>
-            call("get-session", (signal) =>
-              client.session.get({ sessionID }, { signal, throwOnError: true }),
-            ),
-          sessionStatuses: call("session-statuses", (signal) =>
-            client.session.status({}, { signal, throwOnError: true }),
-          ),
           history: (sessionID, input) =>
             request("history", (signal) =>
               client.session.messages({ sessionID, ...input }, { signal, throwOnError: true }),
@@ -474,95 +285,6 @@ export const live = Layer.effect(
             call("message", (signal) =>
               client.session.message({ sessionID, messageID }, { signal, throwOnError: true }),
             ),
-          prompt: (input) =>
-            request<unknown>("prompt", (signal) =>
-              input.command
-                ? client.session.command(
-                    {
-                      sessionID: input.sessionId,
-                      messageID: input.messageId,
-                      command: input.command.name,
-                      arguments: input.command.arguments,
-                      model: `${input.model.providerID}/${input.model.modelID}`,
-                      ...(input.variant ? { variant: input.variant } : {}),
-                      ...(input.agent ? { agent: input.agent } : {}),
-                      parts: (input.images ?? []).map((image) => ({
-                        type: "file" as const,
-                        mime: image.mediaType,
-                        url: `data:${image.mediaType};base64,${image.data}`,
-                      })),
-                    },
-                    { signal, throwOnError: true },
-                  )
-                : client.session.promptAsync(
-                    {
-                      sessionID: input.sessionId,
-                      messageID: input.messageId,
-                      model: input.model,
-                      ...(input.variant ? { variant: input.variant } : {}),
-                      ...(input.agent ? { agent: input.agent } : {}),
-                      ...(input.system ? { system: input.system } : {}),
-                      parts: [
-                        { type: "text", text: input.text },
-                        ...(input.images ?? []).map((image) => ({
-                          type: "file" as const,
-                          mime: image.mediaType,
-                          url: `data:${image.mediaType};base64,${image.data}`,
-                        })),
-                      ],
-                    },
-                    { signal, throwOnError: true },
-                  ),
-            ).pipe(Effect.asVoid),
-          abort: (sessionID) =>
-            request("abort", (signal) =>
-              client.session.abort({ sessionID }, { signal, throwOnError: true }),
-            ).pipe(Effect.asVoid),
-          children: (sessionID) =>
-            call("children", (signal) =>
-              client.session.children({ sessionID }, { signal, throwOnError: true }),
-            ),
-          setPermissions: Effect.fn("OpenCodeSdk.setPermissions")(function* (
-            sessionID: string,
-            permission: PermissionRuleset,
-          ) {
-            yield* request("permissions", (signal) =>
-              client.session.update({ sessionID, permission }, { signal, throwOnError: true }),
-            );
-            const session = yield* call("get-session", (signal) =>
-              client.session.get({ sessionID }, { signal, throwOnError: true }),
-            );
-            yield* confirmPermissions("permissions", session, permission);
-          }),
-          pendingPermissions: call("pending-permissions", (signal) =>
-            client.permission.list({}, { signal, throwOnError: true }),
-          ),
-          pendingQuestions: call("pending-questions", (signal) =>
-            client.question.list({}, { signal, throwOnError: true }),
-          ),
-          replyPermission: (requestID, reply) =>
-            request("permission-reply", (signal) =>
-              client.permission.reply({ requestID, reply }, { signal, throwOnError: true }),
-            ).pipe(Effect.asVoid),
-          replyQuestion: (requestID, answers) =>
-            request("question-reply", (signal) =>
-              client.question.reply({ requestID, answers }, { signal, throwOnError: true }),
-            ).pipe(Effect.asVoid),
-          rejectQuestion: (requestID) =>
-            request("question-reject", (signal) =>
-              client.question.reject({ requestID }, { signal, throwOnError: true }),
-            ).pipe(Effect.asVoid),
-          fork: (sessionID, messageID) =>
-            call("fork", (signal) =>
-              client.session.fork({ sessionID, messageID }, { signal, throwOnError: true }),
-            ),
-          compact: (sessionID, model) =>
-            request("compact", (signal) =>
-              client.session.summarize(
-                { sessionID, ...model, auto: false },
-                { signal, throwOnError: true },
-              ),
-            ).pipe(Effect.asVoid),
         } satisfies OpenCodeConnection;
       }),
     });

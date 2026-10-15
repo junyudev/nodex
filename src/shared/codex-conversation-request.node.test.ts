@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationRequestContext } from "./codex-conversation-request-context";
-import type { CodexApprovalRequest, CodexMcpServerElicitationRequest } from "./types";
+import type { CodexUserInputRequest, CodexMcpServerElicitationRequest } from "./types";
 import { selectPrimaryBackgroundConversationRequest } from "./codex-conversation-request";
 
 function elicitation(
@@ -42,10 +42,11 @@ function conversation(
   };
 }
 
-const approval: CodexApprovalRequest = {
-  type: "approval",
-  requestId: "approval",
-  kind: "command",
+const question: CodexUserInputRequest = {
+  type: "userInput",
+  requestId: "question",
+  questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+  isBlocking: true,
   projectId: "project",
   threadId: "child",
   turnId: "older",
@@ -64,15 +65,15 @@ describe("background conversation requests", () => {
     },
   );
 
-  test("prefers approval within a turn, but a newer turn's elicitation precedes older approval", () => {
+  test("prefers a genuine question within a turn, while a newer Turn elicitation precedes it", () => {
     const older = elicitation("older-mcp", "older");
     const newer = elicitation("newer-mcp", "newer");
     expect(
-      selectPrimaryBackgroundConversationRequest(conversation(["older"], [approval, older])),
-    ).toBe(approval);
+      selectPrimaryBackgroundConversationRequest(conversation(["older"], [question, older])),
+    ).toBe(question);
     expect(
       selectPrimaryBackgroundConversationRequest(
-        conversation(["older", "newer"], [approval, older, newer]),
+        conversation(["older", "newer"], [question, older, newer]),
       ),
     ).toBe(newer);
   });
@@ -87,8 +88,8 @@ describe("background conversation requests", () => {
       latest,
     );
     expect(
-      selectPrimaryBackgroundConversationRequest(conversation(["older"], [approval, latest])),
-    ).toBe(approval);
+      selectPrimaryBackgroundConversationRequest(conversation(["older"], [question, latest])),
+    ).toBe(question);
   });
 
   test("does not treat a discovered per-turn request as hydrated history", () => {
@@ -103,4 +104,20 @@ describe("background conversation requests", () => {
     ).toBe(pending);
     expect(selectPrimaryBackgroundConversationRequest(conversation(["turn"], []))).toBeNull();
   });
+});
+
+test("keeps a Session-origin question visible without inventing a Turn or loading history", () => {
+  const request = {
+    type: "userInput" as const,
+    requestId: "native-question",
+    threadId: "child",
+    projectId: "project",
+    turnId: null,
+    itemId: "question-item",
+    questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+    isBlocking: true,
+    createdAt: 3,
+  };
+  const context = conversation([], [request]);
+  expect(selectPrimaryBackgroundConversationRequest(context)).toBe(request);
 });

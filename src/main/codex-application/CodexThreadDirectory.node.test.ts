@@ -9,27 +9,16 @@ import {
   buildCodexDesktopThreadFeatureConfig,
   buildCodexThreadConfig,
 } from "../codex/codex-thread-config";
-import type {
-  Thread,
-  ThreadResumeParams,
-  ThreadResumeResponse,
-  Turn,
-} from "@nodex/codex-app-server-protocol/v2";
-import type { ConversationResumePreparationOptions } from "../../shared/codex-conversation-state/codex-resume-request";
+import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
-import * as Context from "effect/Context";
-import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
-import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { TestClock } from "effect/testing";
-import { ScopedCallbackRuntime, layer as callbackLayer } from "../app/ScopedCallbackRuntime";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
-import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
   CodexAppServerCapabilities,
@@ -47,16 +36,8 @@ import {
 import { CodexGitProbe } from "./CodexGitProbe";
 import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
-import { ConversationEntityMap, live as entityLayer } from "./internal/ConversationEntityMap";
-import { CodexThreadDirectory, make as makeDirectory } from "./CodexThreadDirectory";
-import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
-import {
-  CodexMainConversationHistory,
-  make as makeMainHistory,
-} from "./CodexMainConversationHistory";
-import { make as makeMainResume } from "./CodexMainConversationResume";
-import { CodexResumeIngress, make as makeResumeIngress } from "./CodexResumeIngress";
-import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
+import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { make as makeDirectory } from "./CodexThreadDirectory";
 import {
   projectCodexThreadDirectoryMaterialization,
   projectCoreWorkspaceThread,
@@ -338,15 +319,15 @@ it.effect.each([
     label: "obsolete cwd",
     workspaceBrowserRoot: null,
     expectedCwd: "/projectless-old",
-    expectedPermissionRoots: [] as string[],
+    expectedWorkspaceRoots: ["/projectless-old"],
   },
   {
     label: "workspace browser root",
     workspaceBrowserRoot: "/workspace/browser",
     expectedCwd: "/workspace/browser",
-    expectedPermissionRoots: ["/workspace/browser"],
+    expectedWorkspaceRoots: ["/workspace/browser"],
   },
-])("prepareResume preserves projectless permission roots for $label", (scenario) =>
+])("prepareResume captures the physical projectless workspace for $label", (scenario) =>
   Effect.scoped(
     Effect.gen(function* () {
       const threadId = "projectless-resume";
@@ -421,8 +402,11 @@ it.effect.each([
       assert.strictEqual(prepared.params.cwd, scenario.expectedCwd);
       assert.deepEqual(
         prepared.permissionContext.runtimeWorkspaceRootCandidates,
-        scenario.expectedPermissionRoots,
+        scenario.expectedWorkspaceRoots,
       );
+      assert.deepEqual(prepared.params.runtimeWorkspaceRoots, scenario.expectedWorkspaceRoots);
+      assert.strictEqual(prepared.params.permissions, ":danger-full-access");
+      assert.strictEqual(prepared.params.approvalPolicy, "never");
       assert.deepEqual(configCwds, [scenario.expectedCwd]);
     }),
   ),
@@ -2389,501 +2373,6 @@ it.effect.each([false, true])(
         assert.strictEqual(
           conversations.current("thread-a")?.readCanonicalState(),
           baseline?.canonical,
-        );
-      }),
-    ),
-);
-
-const mainResumeScenarios: Array<
-  ConversationResumePreparationOptions & {
-    label: string;
-    hostId: string;
-    supportsPagination: boolean;
-    reconnectRecovery: boolean;
-    drains: boolean;
-    responsePermissions?: Partial<
-      Pick<ThreadResumeResponse, "activePermissionProfile" | "runtimeWorkspaceRoots" | "sandbox">
-    >;
-    expectedRoots?: readonly string[];
-  }
-> = [
-  {
-    label: "legacy endpoint",
-    hostId: "remote-a",
-    supportsPagination: false,
-    reconnectRecovery: false,
-    drains: true,
-  },
-  {
-    label: "pagination-capable endpoint",
-    hostId: "remote-a",
-    supportsPagination: true,
-    reconnectRecovery: false,
-    drains: false,
-  },
-  {
-    label: "reconnect recovery",
-    hostId: "remote-a",
-    supportsPagination: false,
-    reconnectRecovery: true,
-    drains: false,
-  },
-  {
-    label: "durable endpoint",
-    hostId: "durable",
-    supportsPagination: false,
-    reconnectRecovery: false,
-    drains: false,
-  },
-  {
-    label: "pagination-capable durable endpoint",
-    hostId: "durable",
-    supportsPagination: true,
-    reconnectRecovery: false,
-    drains: false,
-  },
-  {
-    label: "explicit service tier",
-    hostId: "remote-a",
-    supportsPagination: true,
-    reconnectRecovery: false,
-    drains: false,
-    serviceTier: "priority",
-  },
-  ...["remote-a", "durable"].flatMap((hostId) =>
-    [false, true].map((useAppServerPermissionDefault) => ({
-      label: `explicit permissions on ${hostId}, server defaults ${useAppServerPermissionDefault}`,
-      hostId,
-      useAppServerPermissionDefault,
-      supportsPagination: true,
-      reconnectRecovery: false,
-      drains: false,
-      permissions: {
-        activePermissionProfile: { id: "selected-profile", extends: null },
-        runtimeWorkspaceRoots: ["/repo/packages/tool", "/selected"],
-        approvalPolicy: "never" as const,
-        approvalsReviewer: "user" as const,
-        sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
-      },
-    })),
-  ),
-  {
-    label: "preserved durable server configuration",
-    hostId: "durable",
-    supportsPagination: true,
-    reconnectRecovery: false,
-    drains: false,
-    preserveServerConfiguration: true,
-    serviceTier: "priority",
-  },
-  ...["remote-a", "durable"].flatMap((hostId) =>
-    [false, true].map((useAppServerPermissionDefault) => ({
-      label: `missing runtime grants on ${hostId}, server defaults ${useAppServerPermissionDefault}`,
-      hostId,
-      supportsPagination: true,
-      reconnectRecovery: false,
-      drains: false,
-      useAppServerPermissionDefault,
-      permissions: {
-        activePermissionProfile: { id: "selected-profile", extends: null },
-        runtimeWorkspaceRoots: ["/repo/packages/tool", "/selected"],
-        approvalPolicy: "never" as const,
-        approvalsReviewer: "user" as const,
-        sandboxPolicy: { type: "readOnly" as const, networkAccess: false },
-      },
-      responsePermissions: {
-        activePermissionProfile: { id: "server-profile", extends: null },
-        runtimeWorkspaceRoots: [],
-        sandbox: {
-          type: "workspaceWrite" as const,
-          writableRoots: ["/repo/packages/tool", "/selected"],
-          networkAccess: false,
-          excludeTmpdirEnvVar: false,
-          excludeSlashTmp: false,
-        },
-      },
-      expectedRoots: useAppServerPermissionDefault
-        ? ["/repo/packages/tool"]
-        : ["/repo/packages/tool", "/selected"],
-    })),
-  ),
-  ...["remote-a", "durable"].map((hostId) => ({
-    label: `missing full-access provenance on ${hostId}`,
-    hostId,
-    supportsPagination: true,
-    reconnectRecovery: false,
-    drains: false,
-    permissions: {
-      activePermissionProfile: { id: ":danger-full-access", extends: null },
-      runtimeWorkspaceRoots: ["/repo/packages/tool", "/selected"],
-      approvalPolicy: "never" as const,
-      approvalsReviewer: "user" as const,
-      sandboxPolicy: { type: "dangerFullAccess" as const },
-    },
-    expectedRoots: ["/repo/packages/tool", "/selected"],
-  })),
-];
-it.effect.each(mainResumeScenarios)(
-  "Main resumes and publishes the selected history contract on $label",
-  (scenario) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { hostId } = scenario;
-        const durableHost = hostId === "durable";
-        const scope = yield* Scope.Scope;
-        const conversations = Context.get(
-          yield* Layer.buildWithScope(entityLayer, scope),
-          ConversationEntityMap,
-        );
-        const callbacks = Context.get(
-          yield* Layer.buildWithScope(callbackLayer, scope),
-          ScopedCallbackRuntime,
-        );
-        const selectedCwd = "/repo/packages/tool";
-        const threads = new Map([
-          ["thread-a", coreThread("thread-a", { cwd: selectedCwd, execution_host_id: hostId })],
-        ]);
-        const core = makeCore(threads);
-        const eventHub = CodexApplicationEventHub.of({
-          events: Stream.empty,
-          publish: () => undefined,
-        });
-        const projection = yield* makeConversationProjection.pipe(
-          Effect.provideService(ConversationEntityMap, conversations),
-          Effect.provideService(CodexApplicationEventHub, eventHub),
-          Effect.provideService(CoreModules, core),
-        );
-        const capability = createCodexAppServerCapabilitySnapshot({
-          hostId,
-          generation: 2,
-          userAgent: scenario.supportsPagination ? "codex/0.148.0" : "codex/0.0.0",
-        });
-        const capabilities = CodexAppServerCapabilities.of({
-          forHost: () => Effect.succeed(capability),
-          forThread: () => Effect.succeed(capability),
-          isCurrent: () => Effect.succeed(true),
-        });
-        const goal = yield* Deferred.make<{ goal: null }>();
-        const completed = yield* Deferred.make<void>();
-        const pageRead: Array<unknown> = [];
-        const itemRead: Array<unknown> = [];
-        const publishedCursors: Array<string | null | undefined> = [];
-        let revision = 0;
-        let role: ConversationStreamRole | null = null;
-        const manager = {
-          hostId,
-          generation: 2,
-          assertCurrent(expected = 2) {
-            assert.strictEqual(expected, 2);
-          },
-          onConnectionReset: () => ({ [Symbol.dispose]() {} }),
-          onDispose: () => ({ [Symbol.dispose]() {} }),
-          stream: {
-            getRole: () => role,
-            setRole: (_id: string, next: ConversationStreamRole | null) => {
-              role = next;
-            },
-            setFollowing: () => undefined,
-            getRevision: () => revision,
-            broadcastSnapshot: () => {
-              publishedCursors.push(
-                conversations.current("thread-a")?.readCanonicalState()?.turnsPagination
-                  ?.olderCursor,
-              );
-              return ++revision;
-            },
-          },
-        };
-        const managers = {
-          get: () => Effect.succeed(manager),
-          current: () => manager,
-        } as unknown as CodexMainConversationManagers["Service"];
-        const turn = (id: string): Turn => ({
-          rootTurnId: null,
-          id,
-          items: [],
-          itemsView: "full",
-          status: "completed",
-          error: null,
-          startedAt: 1,
-          completedAt: 2,
-          durationMs: 1,
-        });
-        const requestOnHost = ((requestHostId, method, params, scheduling) => {
-          assert.strictEqual(requestHostId, hostId);
-          assert.strictEqual(scheduling?.expectedGeneration, 2);
-          if (method === "thread/read") {
-            assert.deepEqual<unknown>(params, { threadId: "thread-a", includeTurns: false });
-            return Effect.succeed({
-              thread: {
-                ...appThread("thread-a"),
-                historyMode: durableHost ? "paginated" : "legacy",
-                ...(scenario.permissions ? { status: { type: "active", activeFlags: [] } } : {}),
-              },
-            });
-          }
-          if (method === "thread/resume") {
-            assert.strictEqual((params as { excludeTurns: boolean }).excludeTurns, !durableHost);
-            if (scenario.preserveServerConfiguration) {
-              assert.deepEqual<unknown>(params, { threadId: "thread-a", excludeTurns: false });
-            } else {
-              assert.strictEqual((params as { cwd: string }).cwd, selectedCwd);
-            }
-            if (scenario.useAppServerPermissionDefault) {
-              for (const key of [
-                "permissions",
-                "approvalPolicy",
-                "approvalsReviewer",
-                "runtimeWorkspaceRoots",
-                "sandbox",
-              ])
-                assert.notProperty(params, key);
-            }
-            if (scenario.permissions && !scenario.useAppServerPermissionDefault) {
-              assert.include(params as ThreadResumeParams, {
-                permissions: scenario.permissions.activePermissionProfile!.id,
-                approvalPolicy: "never",
-                approvalsReviewer: "user",
-              });
-              assert.deepEqual(
-                (params as { runtimeWorkspaceRoots?: string[] }).runtimeWorkspaceRoots,
-                [selectedCwd, "/selected"],
-              );
-              assert.notProperty(params, "sandbox");
-            }
-            if (scenario.serviceTier != null && !scenario.preserveServerConfiguration) {
-              assert.strictEqual(
-                (params as { serviceTier?: string | null }).serviceTier,
-                scenario.serviceTier,
-              );
-            }
-            assert.deepEqual(
-              (params as { initialTurnsPage: unknown }).initialTurnsPage,
-              durableHost ? undefined : { limit: 5, itemsView: "full", sortDirection: "desc" },
-            );
-            return Effect.succeed({
-              thread: appThread(
-                "thread-a",
-                durableHost ? [{ ...turn("tail"), status: "inProgress" }, turn("inline")] : [],
-              ),
-              model: "gpt-test",
-              modelProvider: "openai",
-              serviceTier: null,
-              cwd: "/repo",
-              runtimeWorkspaceRoots: ["/repo"],
-              instructionSources: [],
-              approvalPolicy: "on-request",
-              approvalsReviewer: "user",
-              sandbox: { type: "readOnly", networkAccess: false },
-              activePermissionProfile: null,
-              ...scenario.responsePermissions,
-              reasoningEffort: "high",
-              multiAgentMode: "explicitRequestOnly",
-              initialTurnsPage: durableHost
-                ? null
-                : { data: [turn("tail")], nextCursor: "older", backwardsCursor: null },
-              turnsBackwardsCursor: null,
-              itemsBackwardsCursor: null,
-            });
-          }
-          if (method === "thread/goal/get") return Deferred.await(goal);
-          if (method === "thread/items/list") {
-            assert.isTrue(durableHost);
-            assert.strictEqual(scheduling?.timeoutMs, 30_000);
-            itemRead.push(params);
-            return Effect.succeed({
-              data: [
-                {
-                  turnId: "tail",
-                  item: {
-                    type: "agentMessage",
-                    id: "tail-output",
-                    text: "Completed durable output",
-                    phase: null,
-                    memoryCitation: null,
-                    delivery: null,
-                    questions: null,
-                  },
-                },
-              ],
-              nextCursor: null,
-              backwardsCursor: null,
-            });
-          }
-          assert.strictEqual(method, "thread/turns/list");
-          pageRead.push(params);
-          if (durableHost) {
-            assert.deepEqual(publishedCursors, []);
-            assert.strictEqual(scheduling?.timeoutMs, 30_000);
-            return Effect.succeed({
-              data: [{ ...turn("tail"), itemsView: "notLoaded" }],
-              nextCursor: "older",
-              backwardsCursor: null,
-            });
-          }
-          assert.include(publishedCursors, "older");
-          return Effect.succeed({
-            data: [turn("oldest")],
-            nextCursor: null,
-            backwardsCursor: null,
-          });
-        }) as RequestOnHost;
-        const gateway = makeGateway(requestOnHost, (threadId, method, params, scheduling) => {
-          assert.strictEqual(threadId, "thread-a");
-          return requestOnHost(hostId, method, params, scheduling);
-        });
-        const historyPages = yield* makeHistoryPageAdapter.pipe(
-          Effect.provideService(CodexGateway, gateway),
-        );
-        const directory = yield* directoryWithRequestSettings.pipe(
-          Effect.provideService(CodexApplicationEventHub, eventHub),
-          Effect.provideService(CodexConversationProjection, projection),
-          Effect.provideService(CodexGateway, gateway),
-          Effect.provideService(CodexHistoryPageAdapter, historyPages),
-          Effect.provideService(CodexAppServerCapabilities, capabilities),
-          Effect.provideService(ConversationEntityMap, conversations),
-          Effect.provideService(CoreModules, core),
-        );
-        const history = yield* makeMainHistory.pipe(
-          Effect.provideService(CodexMainConversationManagers, managers),
-          Effect.provideService(ConversationEntityMap, conversations),
-          Effect.provideService(CodexGateway, gateway),
-          Effect.provideService(CodexAppServerCapabilities, capabilities),
-          Effect.provideService(ScopedCallbackRuntime, callbacks),
-        );
-        const ingress = yield* makeResumeIngress;
-        const resume = yield* makeMainResume.pipe(
-          Effect.provideService(CodexThreadHostResolver, {
-            resolve: () => Effect.succeed(hostId),
-          }),
-          Effect.provideService(CodexGateway, gateway),
-          Effect.provideService(CodexMainConversationManagers, managers),
-          Effect.provideService(CodexThreadDirectory, directory),
-          Effect.provideService(ConversationEntityMap, conversations),
-          Effect.provideService(CodexResumeIngress, ingress),
-          Effect.provideService(CodexMainConversationHistory, {
-            loadComplete: (hostId, id) =>
-              history
-                .loadComplete(hostId, id)
-                .pipe(Effect.tap(() => Deferred.succeed(completed, undefined))),
-          }),
-        );
-        const result = yield* resume.resume("thread-a", {
-          isReconnectRecovery: scenario.reconnectRecovery,
-          serviceTier: scenario.serviceTier,
-          permissions: scenario.permissions,
-          useAppServerPermissionDefault: scenario.useAppServerPermissionDefault,
-          preserveServerConfiguration: scenario.preserveServerConfiguration,
-        });
-        assert.strictEqual(result.status, "ready");
-        if (scenario.permissions) {
-          const state = conversations.current("thread-a")?.readCanonicalState();
-          assert.deepEqual(
-            state?.currentPermissions?.activePermissionProfile,
-            scenario.responsePermissions?.activePermissionProfile ??
-              scenario.permissions.activePermissionProfile,
-          );
-          assert.deepEqual(
-            state?.hydrationContext?.latestThreadSettings?.activePermissionProfile,
-            scenario.responsePermissions?.activePermissionProfile ??
-              scenario.permissions.activePermissionProfile,
-          );
-          if (scenario.expectedRoots)
-            assert.deepEqual(
-              state?.currentPermissions?.runtimeWorkspaceRoots,
-              scenario.expectedRoots,
-            );
-          if (scenario.permissions.activePermissionProfile?.id === ":danger-full-access") {
-            assert.strictEqual(state?.currentPermissions?.sandboxPolicy.type, "dangerFullAccess");
-            assert.strictEqual(state?.currentPermissions?.approvalPolicy, "never");
-            for (const turn of residentConversationTurns(state)) {
-              assert.strictEqual(turn.params.approvalPolicy, "on-request");
-              assert.deepEqual(turn.params.sandboxPolicy, {
-                type: "readOnly",
-                networkAccess: false,
-              });
-              assert.strictEqual(turn.params.permissions, ":danger-full-access");
-            }
-          }
-        }
-        assert.strictEqual(
-          conversations.current("thread-a")?.readCanonicalState()?.cwd,
-          selectedCwd,
-        );
-        assert.strictEqual(
-          conversations.current("thread-a")?.readCanonicalState()?.hydrationContext?.cwd,
-          selectedCwd,
-        );
-        assert.strictEqual(threads.get("thread-a")?.cwd, selectedCwd);
-        const initialPageReads = durableHost
-          ? [
-              {
-                threadId: "thread-a",
-                cursor: null,
-                limit: 5,
-                itemsView: "notLoaded",
-                sortDirection: "desc",
-              },
-            ]
-          : [];
-        assert.deepEqual(pageRead, initialPageReads);
-        assert.deepEqual(
-          itemRead,
-          durableHost
-            ? [
-                {
-                  threadId: "thread-a",
-                  turnId: "tail",
-                  cursor: null,
-                  limit: 500,
-                  sortDirection: "asc",
-                },
-              ]
-            : [],
-        );
-        assert.deepEqual(publishedCursors, ["older"]);
-        assert.deepEqual(
-          residentConversationTurns(conversations.current("thread-a")?.readCanonicalState()).map(
-            (value) => value.turnId,
-          ),
-          durableHost ? ["tail", "inline"] : ["tail"],
-        );
-        if (durableHost) {
-          const canonical = conversations.current("thread-a")?.readCanonicalState();
-          const tail = residentConversationTurns(canonical)[0];
-          assert.strictEqual(tail?.status, "completed");
-          assert.deepEqual(
-            tail?.items.map((item) => item.id),
-            ["tail-output"],
-          );
-          assert.isUndefined(canonical?.paginatedHistory);
-        }
-        yield* Deferred.succeed(goal, { goal: null });
-        if (scenario.drains) {
-          yield* Deferred.await(completed);
-          assert.deepEqual(pageRead, [
-            {
-              threadId: "thread-a",
-              cursor: "older",
-              limit: 5,
-              itemsView: "full",
-              sortDirection: "desc",
-            },
-          ]);
-          const canonical = conversations.current("thread-a")?.readCanonicalState();
-          assert.deepEqual(
-            residentConversationTurns(canonical).map((value) => value.turnId),
-            ["oldest", "tail"],
-          );
-          assert.isTrue(canonical?.turnsPagination?.hasLoadedOldest);
-          assert.isNull(canonical?.turnsPagination?.olderCursor);
-          return;
-        }
-        yield* TestClock.adjust(0);
-        assert.deepEqual(pageRead, initialPageReads);
-        assert.strictEqual(
-          conversations.current("thread-a")?.readCanonicalState()?.turnsPagination?.olderCursor,
-          "older",
         );
       }),
     ),

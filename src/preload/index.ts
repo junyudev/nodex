@@ -117,6 +117,15 @@ ipcRenderer.setMaxListeners(50);
 const chunkedMessageReceiver = new CodexHostMessageReceiver();
 const nativeRequestClient = new CodexNativeIpcClient();
 const hostMessageListeners = new Set<(message: CodexHostMessage) => void>();
+const runtimeSessionListeners = new Set<
+  (message: import("../shared/agent-runtime-api").AgentRuntimeSessionEvent) => void
+>();
+ipcRenderer.on(
+  "agent-runtime:session-event",
+  (_event, message: import("../shared/agent-runtime-api").AgentRuntimeSessionEvent) => {
+    for (const listener of runtimeSessionListeners) listener(message);
+  },
+);
 
 // One receiver owns chunk assembly and acknowledgements, independently of renderer subscriptions.
 ipcRenderer.on("codex:host-message", (_event, payload: unknown) => {
@@ -156,6 +165,12 @@ contextBridge.exposeInMainWorld("api", {
   invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {
+    if (event === "agent-runtime:session-event") {
+      runtimeSessionListeners.add(callback);
+      return () => {
+        runtimeSessionListeners.delete(callback);
+      };
+    }
     if (event === "codex:host-message") {
       hostMessageListeners.add(callback);
       return () => {

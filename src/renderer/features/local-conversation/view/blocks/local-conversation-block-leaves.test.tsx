@@ -374,6 +374,29 @@ describe("UserMessageBubble collapse", () => {
     );
   });
 
+  test("attributes input another Agent sent and links to the sending conversation", async () => {
+    const block = buildUserMessageBlock("Review the auth module");
+    block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "parent-thread" };
+    block.entry.userInputIntent = "steer";
+    const onOpenThread = vi.fn();
+    const { getByRole, getByText } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          onOpenThread={onOpenThread}
+        />
+      </TooltipProvider>,
+    );
+    expect(getByText("Steer")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Open sending conversation" }));
+      await Promise.resolve();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith("parent-thread");
+  });
+
   test("keeps a failed launch distinct from a hook rejection", () => {
     const block = buildUserMessageBlock("Could not start task");
     block.entry.deliveryStatus = "not-sent";

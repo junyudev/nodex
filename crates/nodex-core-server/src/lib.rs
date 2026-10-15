@@ -65,7 +65,6 @@ use nodex_core_contracts::document::{
     DocumentLiveBarrier, DocumentLiveEngine, DocumentLiveRepair, DocumentLiveRepairReason,
     OwnedDocumentIntent, OwnedDocumentRead,
 };
-use nodex_core_contracts::events::DeliveryAuthorizationScope;
 use nodex_core_contracts::{
     AdapterKind, ApplyResponse, AuthorizedDeliveryPacket, AuthorizedRecipientLease,
     BoundModuleContext, CommitIdentity, CoreError, CoreErrorCode, CoreErrorRecovery,
@@ -124,10 +123,6 @@ const CONNECTION_BINDING_HEADER: &str = "x-nodex-connection-binding";
 const DOCUMENT_HEADER: &str = "x-nodex-document-id";
 const CLIENT_SESSION_HEADER: &str = "x-nodex-client-session-id";
 const EDITOR_HISTORY_OWNER_HEADER: &str = "x-nodex-editor-history-owner";
-const DOCUMENT_SCOPE_HEADER: &str = "x-nodex-document-scope";
-const LIBRARY_DOCUMENT_SCOPE: &str = "library";
-const DATABASE_SCOPE_HEADER: &str = "x-nodex-database-scope";
-const LIBRARY_DATABASE_SCOPE: &str = "library";
 static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 const INTERNAL_STARTUP_EVENTS_ENV: &str = "NODEX_INTERNAL_STARTUP_EVENTS_VERSION";
 const INTERNAL_STARTUP_EVENTS_VERSION: u32 = 1;
@@ -287,7 +282,7 @@ enum CommitRecipientResolver {
     ProjectionBroker {
         generation: String,
         host_context: BoundModuleContext,
-        scopes: Vec<DeliveryAuthorizationScope>,
+        scopes: Vec<DeliveryAddress>,
     },
 }
 
@@ -302,7 +297,7 @@ impl CommitRecipientResolver {
     fn projection_broker(
         generation: String,
         host_context: BoundModuleContext,
-        scopes: Vec<DeliveryAuthorizationScope>,
+        scopes: Vec<DeliveryAddress>,
     ) -> Self {
         Self::ProjectionBroker {
             generation,
@@ -932,19 +927,6 @@ async fn prepare_blob(
         MAX_FILE_BLOB_BYTES
     };
     let context = module_context(&state, &headers, &bound).map_err(api_core_error)?;
-    if context.project_id.is_none()
-        && !matches!(
-            context.adapter,
-            nodex_core_contracts::AdapterKind::ElectronHost
-                | nodex_core_contracts::AdapterKind::NativeCli
-                | nodex_core_contracts::AdapterKind::Test
-        )
-    {
-        return Err(ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "Prepared Blobs require a Project or trusted local Library authority",
-        ));
-    }
     if headers
         .get(CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())
@@ -1212,10 +1194,9 @@ fn module_storage_name(module: ModuleName) -> &'static str {
     }
 }
 
-/// Apply responses are capabilities for the command's bound authorization
-/// scope. The Electron Host receives its broader, multiplexed broker view on
-/// the live/durable delivery interfaces; that authority must never ride an IPC
-/// response into the initiating renderer.
+/// Apply responses carry the command's addressed commit delivery. The Host also
+/// receives multiplexed live/durable deliveries; renderer responses retain the
+/// initiating presentation coordinates rather than that combined broker view.
 fn authorized_apply_packet(
     state: &ServerState,
     commit_seq: i64,
@@ -2524,7 +2505,7 @@ async fn events(
 fn projection_live_scopes(
     state: &ServerState,
     encoded: &str,
-) -> Result<Vec<DeliveryAuthorizationScope>, ApiError> {
+) -> Result<Vec<DeliveryAddress>, ApiError> {
     if encoded.is_empty() || encoded.len() > 128 * 1024 {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -2550,7 +2531,7 @@ fn projection_live_scopes(
         let (key, scope) = match scope {
             ProjectionLiveRequestedScope::Library => (
                 "library".to_owned(),
-                DeliveryAuthorizationScope::Library {
+                DeliveryAddress::Library {
                     library_id: state.library_id.clone(),
                 },
             ),
@@ -2561,7 +2542,7 @@ fn projection_live_scopes(
             {
                 (
                     format!("project:{project_id}"),
-                    DeliveryAuthorizationScope::Project {
+                    DeliveryAddress::Project {
                         library_id: state.library_id.clone(),
                         project_id,
                     },
@@ -2586,9 +2567,7 @@ fn projection_live_scopes(
     Ok(scopes)
 }
 
-fn projection_live_subscription_key(
-    scopes: &[DeliveryAuthorizationScope],
-) -> Result<String, ApiError> {
+fn projection_live_subscription_key(scopes: &[DeliveryAddress]) -> Result<String, ApiError> {
     let canonical = serde_json::to_vec(scopes).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -2600,23 +2579,23 @@ fn projection_live_subscription_key(
 
 fn projection_live_recipient_leases(
     generation: &str,
-    scopes: &[DeliveryAuthorizationScope],
+    scopes: &[DeliveryAddress],
 ) -> Result<Vec<AuthorizedRecipientLease>, ApiError> {
     scopes
         .iter()
         .map(|scope| {
             let delivery_address = match scope {
-                DeliveryAuthorizationScope::Library { library_id } => DeliveryAddress::Library {
+                DeliveryAddress::Library { library_id } => DeliveryAddress::Library {
                     library_id: library_id.clone(),
                 },
-                DeliveryAuthorizationScope::Project {
+                DeliveryAddress::Project {
                     library_id,
                     project_id,
                 } => DeliveryAddress::Project {
                     library_id: library_id.clone(),
                     project_id: project_id.clone(),
                 },
-                DeliveryAuthorizationScope::Document { .. } => {
+                DeliveryAddress::Document { .. } => {
                     return Err(ApiError::new(
                         StatusCode::BAD_REQUEST,
                         "Projection live broker does not accept Document addresses",
@@ -2624,17 +2603,16 @@ fn projection_live_recipient_leases(
                 }
             };
             let encoded =
-                serde_json::to_vec(&("recipient-lease-v1", generation, &delivery_address, scope))
+                serde_json::to_vec(&("recipient-lease-v2", generation, &delivery_address))
                     .map_err(|_| {
-                    ApiError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Projection live recipient lease could not be encoded",
-                    )
-                })?;
+                        ApiError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Projection live recipient lease could not be encoded",
+                        )
+                    })?;
             Ok(AuthorizedRecipientLease {
                 lease_id: hex::encode(Sha256::digest(encoded)),
                 delivery_address,
-                authorization_scope: scope.clone(),
             })
         })
         .collect()
@@ -2902,12 +2880,12 @@ async fn document_live_events(
                                 }));
                             }
                             Ok(DocumentLiveDelivery::Unrelated) => {}
-                            Ok(DocumentLiveDelivery::AccessRevoked) => {
+                            Ok(DocumentLiveDelivery::DocumentUnavailable) => {
                                 yield Ok(sse_document_live_repair_at(
                                     &stream_barrier,
                                     stream_barrier.store_epoch.clone(),
                                     commit_seq,
-                                    DocumentLiveRepairReason::AccessRevoked,
+                                    DocumentLiveRepairReason::IdentityChanged,
                                 ));
                                 return;
                             }
@@ -3258,39 +3236,7 @@ fn database_context(
     headers: &HeaderMap,
     bound: &BoundConnection,
 ) -> Result<BoundModuleContext, CoreError> {
-    let project_id = optional_header(headers, PROJECT_HEADER, "Project")?;
-    let database_scope = optional_header(headers, DATABASE_SCOPE_HEADER, "Database scope")?;
-    let project_id = match (project_id, database_scope.as_deref()) {
-        (Some(project_id), None) => Some(ProjectId(project_id)),
-        (None, Some(LIBRARY_DATABASE_SCOPE))
-            if matches!(
-                bound.adapter,
-                AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-            ) =>
-        {
-            None
-        }
-        (None, Some(LIBRARY_DATABASE_SCOPE)) => {
-            return Err(unauthorized(
-                "Library Database scope requires a trusted local Adapter",
-            ));
-        }
-        (Some(_), Some(_)) => {
-            return Err(unauthorized(
-                "Database access cannot bind both Project and Library scope",
-            ));
-        }
-        (None, Some(_)) => return Err(unauthorized("Database scope is unsupported")),
-        (None, None) => return Err(unauthorized("Database scope binding is required")),
-    };
-    Ok(BoundModuleContext {
-        profile_id: ProfileId(state.profile_id.clone()),
-        library_id: LibraryId(state.library_id.clone()),
-        project_id,
-        connection_id: bound.id.clone(),
-        adapter: bound.adapter.clone(),
-        editor_history_owner: None,
-    })
+    module_context(state, headers, bound)
 }
 
 fn is_document_binary(headers: &HeaderMap) -> bool {
@@ -3484,39 +3430,7 @@ fn document_context(
     headers: &HeaderMap,
     bound: &BoundConnection,
 ) -> Result<BoundModuleContext, CoreError> {
-    let project_id = optional_header(headers, PROJECT_HEADER, "Project")?;
-    let document_scope = optional_header(headers, DOCUMENT_SCOPE_HEADER, "Document scope")?;
-    let project_id = match (project_id, document_scope.as_deref()) {
-        (Some(project_id), None) => Some(ProjectId(project_id)),
-        (None, Some(LIBRARY_DOCUMENT_SCOPE))
-            if matches!(
-                bound.adapter,
-                AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-            ) =>
-        {
-            None
-        }
-        (None, Some(LIBRARY_DOCUMENT_SCOPE)) => {
-            return Err(unauthorized(
-                "Library Document scope requires a trusted local Adapter",
-            ));
-        }
-        (Some(_), Some(_)) => {
-            return Err(unauthorized(
-                "Document access cannot bind both Project and Library scope",
-            ));
-        }
-        (None, Some(_)) => return Err(unauthorized("Document scope is unsupported")),
-        (None, None) => return Err(unauthorized("Document scope binding is required")),
-    };
-    Ok(BoundModuleContext {
-        profile_id: ProfileId(state.profile_id.clone()),
-        library_id: LibraryId(state.library_id.clone()),
-        project_id,
-        connection_id: bound.id.clone(),
-        adapter: bound.adapter.clone(),
-        editor_history_owner: editor_history_owner(headers, bound)?,
-    })
+    module_context(state, headers, bound)
 }
 
 fn connection_binding(
@@ -4034,6 +3948,7 @@ pub async fn run_with_selection(
     let replacement_lifecycle_summary = lifecycle_summary.clone();
     let administration =
         StoreAdministrationModule::new(&identity.profile_id, &identity.library_id, &store)
+            .with_profile_snapshot_participant(nodex_profile::ExecutionProfileSnapshotParticipant)
             .with_store_replacement_hook(move |store_epoch| {
                 replacement_library_operations.invalidate_all()?;
                 if let Some(search_snapshots) = &replacement_search_snapshots {

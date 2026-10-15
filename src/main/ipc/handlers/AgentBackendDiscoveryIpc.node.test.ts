@@ -7,7 +7,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import { AgentBackendApplication } from "../../agent-backend/AgentBackendApplication";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
@@ -82,9 +81,6 @@ it.effect(
                 releases++;
               }),
           ).pipe(Effect.andThen(Effect.never), Effect.scoped),
-        changes: Stream.empty,
-        observeAgentSession: () => Effect.void,
-        unobserveAgentSession: () => Effect.void,
       } as unknown as AgentBackendApplication["Service"]);
       yield* Layer.buildWithScope(
         live.pipe(

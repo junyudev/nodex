@@ -5,7 +5,7 @@ import {
   parseDataSourceId,
   parseDataSourcePropertyId,
 } from "../../../../shared/database-identities";
-import { projectContentAccess } from "../../../../shared/content-access-context";
+import { projectContentRoute } from "../../../../shared/content-routing-context";
 import type { DataSourcePropertyRecordV2 } from "../../../../shared/database-module-v2";
 import { testPropertySemantics } from "../../../../shared/testing/database-property-record";
 import type { PageStagePageModel } from "@/lib/page-stage-page";
@@ -116,7 +116,7 @@ describe("usePageStageProperties", () => {
     const hook = renderHook(() =>
       usePageStageProperties({
         pageModel,
-        contentAccessContext: projectContentAccess("project-1"),
+        contentRoutingContext: projectContentRoute("project-1"),
         onUpdateProperty: async () => ({ status: "updated", didMutate: true }),
         onOpenPage: () => undefined,
         onRefreshProperties: async () => undefined,
@@ -174,7 +174,7 @@ describe("usePageStageProperties", () => {
     const hook = renderHook(() =>
       usePageStageProperties({
         pageModel: statusPageModel,
-        contentAccessContext: projectContentAccess("project-1"),
+        contentRoutingContext: projectContentRoute("project-1"),
         onUpdateProperty,
         onOpenPage: () => undefined,
         onRefreshProperties: async () => undefined,

@@ -1,7 +1,7 @@
 use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap, ProjectWorkspaceBootstrapStatus,
     ProjectWorkspaceExecutionContext, ProjectWorkspaceProject, ProjectWorkspaceRead,
-    ProjectWorkspaceReadValue, ProjectWorkspaceSessionSummary,
+    ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -9,7 +9,7 @@ use crate::domain::project_appearance::project_appearance_from_storage;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::execution;
-use super::thread::{read_permission_mode, read_projectless_permission_mode, read_thread};
+use super::thread::read_thread;
 
 const MAX_ID_LENGTH: usize = 512;
 
@@ -45,6 +45,7 @@ struct SessionRow {
     thread_preview: Option<String>,
     created_at: String,
     updated_at: String,
+    execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
 }
 
 pub(super) fn read(
@@ -91,6 +92,18 @@ pub(super) fn read(
                 )?,
             })
         }
+        ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { runtime_id, window } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeExecutionCleanupWindow {
+                cleanups: super::agent_runtime_cleanup::read_window(
+                    connection,
+                    context,
+                    library_id,
+                    commit_head,
+                    &runtime_id,
+                    &window,
+                )?,
+            },
+        ),
         ProjectWorkspaceRead::LocalCodexThreadIds { window } => {
             Ok(ProjectWorkspaceReadValue::LocalCodexThreadIds {
                 thread_ids: super::local_codex_thread_ids::read_window(
@@ -171,20 +184,15 @@ pub(super) fn read(
                 projection_revision: commit_head,
             })
         }
-        ProjectWorkspaceRead::PageChatActivitySummaries {
-            page_access_project_id,
-            page_ids,
-        } => Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
-            summaries: super::page_chat::read_page_chat_activity_summaries(
-                connection,
-                library_id,
-                &page_access_project_id,
-                &page_ids,
-            )?,
-            projection_revision: commit_head,
-        }),
+        ProjectWorkspaceRead::PageChatActivitySummaries { page_ids } => {
+            Ok(ProjectWorkspaceReadValue::PageChatActivitySummaries {
+                summaries: super::page_chat::read_page_chat_activity_summaries(
+                    connection, library_id, &page_ids,
+                )?,
+                projection_revision: commit_head,
+            })
+        }
         ProjectWorkspaceRead::PageChatWindow {
-            page_access_project_id,
             page_id,
             include_archived,
             window,
@@ -193,24 +201,11 @@ pub(super) fn read(
                 connection,
                 library_id,
                 commit_head,
-                &page_access_project_id,
                 &page_id,
                 include_archived.unwrap_or(false),
                 &window,
             )?,
         }),
-        ProjectWorkspaceRead::ProjectPermissionMode { project_id } => {
-            validate_id("project_id", &project_id)?;
-            require_project(connection, library_id, &project_id)?;
-            Ok(ProjectWorkspaceReadValue::ProjectPermissionMode {
-                mode: read_permission_mode(connection, &project_id)?,
-            })
-        }
-        ProjectWorkspaceRead::ProjectlessPermissionMode => {
-            Ok(ProjectWorkspaceReadValue::ProjectlessPermissionMode {
-                mode: read_projectless_permission_mode(connection)?,
-            })
-        }
         ProjectWorkspaceRead::SessionWindow { archived, window } => {
             Ok(ProjectWorkspaceReadValue::SessionWindow {
                 sessions: super::session_listing::read_session_window(
@@ -300,6 +295,88 @@ pub(super) fn read(
                 session: session_summary(row),
             })
         }
+        ProjectWorkspaceRead::AgentRuntimeSessionBinding { session_id } => {
+            Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+                binding: super::agent_runtime_binding::read_binding(
+                    connection,
+                    context,
+                    library_id,
+                    &session_id,
+                )?,
+            })
+        }
+        ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority { identity } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeNativeSessionAuthority {
+                resolution: super::agent_runtime_native_session::read_authority(
+                    connection, context, library_id, &identity,
+                )?,
+            },
+        ),
+        ProjectWorkspaceRead::AgentRuntimeAdmissionWindow {
+            runtime_id,
+            lease_id,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeAdmissionWindow {
+            admissions: super::agent_runtime_admission_window::read_window(
+                connection,
+                context,
+                library_id,
+                commit_head,
+                &runtime_id,
+                &lease_id,
+                &window,
+            )?,
+        }),
+        ProjectWorkspaceRead::AgentRuntimeTurnAuthority { identity } => {
+            Ok(ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority {
+                resolution: super::agent_runtime_authority::read_authority(
+                    connection, context, library_id, &identity,
+                )?,
+            })
+        }
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution {
+            runtime_id,
+            runtime_thread_id,
+        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+            binding: super::agent_runtime_binding::read_binding_by_execution(
+                connection,
+                context,
+                library_id,
+                &runtime_id,
+                &runtime_thread_id,
+            )?,
+        }),
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
+            runtime_id,
+            project_id,
+            window,
+        } => Ok(
+            ProjectWorkspaceReadValue::AgentRuntimeSessionBindingWindow {
+                bindings: super::agent_runtime_binding::read_binding_window(
+                    connection,
+                    context,
+                    library_id,
+                    commit_head,
+                    &runtime_id,
+                    project_id.as_deref(),
+                    &window,
+                )?,
+            },
+        ),
+        ProjectWorkspaceRead::AgentAuthority { provenance } => {
+            super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
+            let authority = &provenance.authority;
+            Ok(ProjectWorkspaceReadValue::AgentAuthority {
+                resolution: execution::resolve_turn_authority(
+                    connection,
+                    library_id,
+                    &authority.thread_id,
+                    &authority.turn_id,
+                    &authority.root_thread_id,
+                    authority.actor_project_id.as_deref(),
+                )?,
+            })
+        }
         ProjectWorkspaceRead::AgentSession {
             provenance,
             session_id,
@@ -308,16 +385,6 @@ pub(super) fn read(
             validate_id("session_id", &session_id)?;
             let row = read_session(connection, library_id, &session_id)?
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
-            if provenance.authority.scope
-                != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library
-                && row.project_id.as_deref() != provenance.authority.actor_project_id.as_deref()
-            {
-                return Err(StoreError::new(
-                    StoreErrorCode::Unauthorized,
-                    "Session transcript is outside the Turn's authorized Project",
-                    false,
-                ));
-            }
             let thread = row
                 .thread_id
                 .as_deref()
@@ -441,10 +508,6 @@ pub(super) fn read(
                     })
                 })
                 .transpose()?;
-            let permission_mode = match thread.project_id.as_deref() {
-                Some(project_id) => read_permission_mode(connection, project_id)?,
-                None => read_projectless_permission_mode(connection)?,
-            };
             Ok(ProjectWorkspaceReadValue::ExecutionContext {
                 context: Box::new(ProjectWorkspaceExecutionContext {
                     workspace_state: super::execution::read_thread_workspace_state(
@@ -452,7 +515,6 @@ pub(super) fn read(
                     )?,
                     thread,
                     project,
-                    permission_mode,
                 }),
             })
         }
@@ -614,10 +676,12 @@ fn read_session(
                session.\"order\", session.pinned, session.pinned_order, session.archived, \
                session.archived_at, session.unread, \
                thread.thread_id, thread.thread_name, \
-               thread.thread_preview, session.created_at, session.updated_at \
+               thread.thread_preview, session.created_at, session.updated_at, \
+               execution.runtime_id, execution.runtime_thread_id \
              FROM project_sessions session \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
              LEFT JOIN codex_threads thread ON thread.thread_id = link.thread_id \
+             LEFT JOIN project_session_execution_bindings execution ON execution.session_id = session.id \
              WHERE session.id = ?1 \
                AND (session.project_id IS NULL OR EXISTS (\
                  SELECT 1 FROM projects owner \
@@ -646,6 +710,15 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
         thread_preview: row.get(11)?,
         created_at: row.get(12)?,
         updated_at: row.get(13)?,
+        execution_ref: row
+            .get::<_, Option<String>>(14)?
+            .zip(row.get::<_, Option<String>>(15)?)
+            .map(
+                |(runtime_id, thread_id)| ProjectWorkspaceSessionExecutionRef {
+                    runtime_id,
+                    thread_id,
+                },
+            ),
     })
 }
 
@@ -667,6 +740,7 @@ fn session_summary(row: SessionRow) -> ProjectWorkspaceSessionSummary {
         archived_at: row.archived_at,
         unread: row.unread == 1,
         thread_id: row.thread_id,
+        execution_ref: row.execution_ref,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -684,25 +758,6 @@ pub(super) fn project_session_display_title(
         .find(|title| !title.is_empty())
         .unwrap_or("New thread")
         .to_owned()
-}
-
-fn require_project(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-) -> Result<(), StoreError> {
-    if connection
-        .query_row(
-            "SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2",
-            params![project_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some()
-    {
-        return Ok(());
-    }
-    Err(not_found("Project is unavailable in this Library"))
 }
 
 fn validate_id(name: &str, value: &str) -> Result<(), StoreError> {

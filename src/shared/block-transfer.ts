@@ -88,7 +88,7 @@ export interface BlockTransferPropertyValue {
  */
 export interface BlockTransferIntent {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly clientSessionId?: string;
   readonly actor: Readonly<Record<string, DatabaseJsonValue>>;
@@ -180,7 +180,7 @@ export type BlockTransferTarget =
 
 export interface BlockTransferRequest {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly clientSessionId?: string;
   readonly actor: Readonly<Record<string, DatabaseJsonValue>>;
@@ -237,7 +237,7 @@ export type BlockTransferPromotionEvidence =
 
 export interface BlockTransferReceipt {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly mode: BlockTransferMode;
   readonly duplicate: boolean;
@@ -258,7 +258,7 @@ export interface BlockTransferReceipt {
 
 export interface BlockTransferUndoIntent {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly token: BlockTransferUndoToken;
 }
@@ -283,7 +283,7 @@ export const promotionRetentionResources = (
 
 export interface BlockTransferUndoReceipt {
   readonly operationId: string;
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly storeEpoch: string;
   readonly transferOperationId: string;
   readonly duplicate: boolean;
@@ -384,6 +384,12 @@ const readString = (
   }
   throw new BlockTransferContractError(`${label}.${key} must be a non-empty bounded string`);
 };
+
+const readNullableString = (
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+  label: string,
+): string | null => (record[key] === null ? null : readString(record, key, label));
 
 const readOptionalString = (
   record: Readonly<Record<string, unknown>>,
@@ -953,7 +959,7 @@ export const parseBlockTransferIntent = (value: unknown): BlockTransferIntent =>
   assertParentChange(intent.mode, source, target, "BlockTransfer");
   return {
     operationId: readString(intent, "operationId", "blockTransferIntent"),
-    projectId: readString(intent, "projectId", "blockTransferIntent"),
+    projectId: readNullableString(intent, "projectId", "blockTransferIntent"),
     storeEpoch: readString(intent, "storeEpoch", "blockTransferIntent"),
     ...(intent.clientSessionId === undefined
       ? {}
@@ -1075,7 +1081,7 @@ export const parseBlockTransferRequest = (value: unknown): BlockTransferRequest 
   assertParentChange(request.mode, source, target, "BlockTransfer");
   return {
     operationId: readString(request, "operationId", "blockTransfer"),
-    projectId: readString(request, "projectId", "blockTransfer"),
+    projectId: readNullableString(request, "projectId", "blockTransfer"),
     storeEpoch: readString(request, "storeEpoch", "blockTransfer"),
     ...(request.clientSessionId === undefined
       ? {}
@@ -1121,7 +1127,7 @@ export const parseBlockTransferUndoIntent = (value: unknown): BlockTransferUndoI
   }
   return {
     operationId: readString(intent, "operationId", "blockTransferUndo"),
-    projectId: readString(intent, "projectId", "blockTransferUndo"),
+    projectId: readNullableString(intent, "projectId", "blockTransferUndo"),
     storeEpoch,
     token,
   };

@@ -67,7 +67,7 @@ enum ProjectedRelationTarget {
         lifecycle: String,
         membership_state: String,
     },
-    Restricted,
+    Unavailable,
 }
 
 impl ProjectedRelationTarget {
@@ -85,7 +85,7 @@ impl ProjectedRelationTarget {
                 lifecycle,
                 membership_state,
             },
-            Self::Restricted => DatabaseRelationTargetItem::Restricted { edge_id },
+            Self::Unavailable => DatabaseRelationTargetItem::Unavailable { edge_id },
         }
     }
 }
@@ -1148,7 +1148,7 @@ pub(crate) fn target_window(
             let item = projected
                 .get(&(target_source.clone(), page_id.clone()))
                 .cloned()
-                .unwrap_or(ProjectedRelationTarget::Restricted)
+                .unwrap_or(ProjectedRelationTarget::Unavailable)
                 .with_edge(edge_id);
             Ok(WindowCandidate {
                 item,
@@ -1329,7 +1329,7 @@ fn value_revision(
 fn project_targets(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     targets: &BTreeSet<(String, String)>,
 ) -> Result<BTreeMap<(String, String), ProjectedRelationTarget>, StoreError> {
     if targets.is_empty() {
@@ -1344,55 +1344,13 @@ fn project_targets(
     let candidates_json = serde_json::to_string(&candidates)
         .map_err(|_| internal("Relation target candidates cannot encode"))?;
     let mut statement = connection.prepare(
-        "WITH RECURSIVE \
-         candidate(target_source_id, page_id) AS (\
-           SELECT json_extract(value, '$.targetSourceId'), json_extract(value, '$.pageId') \
-           FROM json_each(?1)\
-         ), \
-         ancestors(target_source_id, root_page_id, page_id, parent_kind, parent_id, path) AS (\
-           SELECT candidate.target_source_id, candidate.page_id, page.block_id, \
-             page.parent_kind, page.parent_id, '|' || page.block_id || '|' \
-           FROM candidate JOIN pages page ON page.block_id = candidate.page_id \
-             AND page.library_id = ?2 \
-           UNION ALL \
-           SELECT ancestors.target_source_id, ancestors.root_page_id, parent.block_id, \
-             parent.parent_kind, parent.parent_id, ancestors.path || parent.block_id || '|' \
-           FROM ancestors JOIN pages parent ON ancestors.parent_kind = 'page' \
-             AND parent.block_id = ancestors.parent_id AND parent.library_id = ?2 \
-           WHERE instr(ancestors.path, '|' || parent.block_id || '|') = 0\
-         ) \
+        "WITH candidate(target_source_id,page_id) AS (SELECT json_extract(value,'$.targetSourceId'),json_extract(value,'$.pageId') FROM json_each(?1)) \
          SELECT candidate.target_source_id, candidate.page_id, block.lifecycle, \
            materialization.title, \
            EXISTS(SELECT 1 FROM data_source_page_memberships membership \
              WHERE membership.data_source_id = candidate.target_source_id \
                AND membership.page_block_id = candidate.page_id \
-               AND membership.removed_at IS NULL), \
-           COALESCE(CASE WHEN ?3 IS NULL THEN 1 ELSE \
-             EXISTS(SELECT 1 FROM projects project \
-               WHERE project.id = ?3 AND project.library_id = ?2) \
-             AND (\
-               EXISTS(\
-                 SELECT 1 FROM ancestors terminal \
-                 JOIN data_sources source ON terminal.parent_kind = 'data_source' \
-                   AND source.id = terminal.parent_id AND source.library_id = ?2 \
-                 JOIN projects project ON project.id = ?3 AND project.library_id = ?2 \
-                 WHERE terminal.target_source_id = candidate.target_source_id \
-                   AND terminal.root_page_id = candidate.page_id \
-                   AND (source.home_database_block_id = project.database_block_id \
-                     OR EXISTS(SELECT 1 FROM project_resource_grants grant_row \
-                       WHERE grant_row.project_id = ?3 AND grant_row.root_kind = 'database' \
-                         AND grant_row.root_id = source.home_database_block_id \
-                         AND grant_row.lifecycle = 'active'))\
-               ) \
-               OR EXISTS(\
-                 SELECT 1 FROM ancestors ancestor \
-                 JOIN project_resource_grants grant_row \
-                   ON grant_row.project_id = ?3 AND grant_row.root_kind = 'page' \
-                   AND grant_row.root_id = ancestor.page_id AND grant_row.lifecycle = 'active' \
-                 WHERE ancestor.target_source_id = candidate.target_source_id \
-                   AND ancestor.root_page_id = candidate.page_id\
-               )\
-             ) END, 0) \
+               AND membership.removed_at IS NULL) \
          FROM candidate \
          LEFT JOIN pages page ON page.block_id = candidate.page_id AND page.library_id = ?2 \
          LEFT JOIN blocks block ON block.id = page.block_id AND block.type = 'page' \
@@ -1404,21 +1362,20 @@ fn project_targets(
            AND materialization.schema_version = document.schema_version",
     )?;
     let records = statement
-        .query_map(params![candidates_json, library_id, project_id], |row| {
+        .query_map(params![candidates_json, library_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, i64>(4)? != 0,
-                row.get::<_, i64>(5)? != 0,
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut projected = BTreeMap::new();
-    for (target_source_id, page_id, lifecycle, title, active_membership, authorized) in records {
-        let item = match (authorized, lifecycle, title) {
-            (true, Some(lifecycle), Some(title)) => {
+    for (target_source_id, page_id, lifecycle, title, active_membership) in records {
+        let item = match (lifecycle, title) {
+            (Some(lifecycle), Some(title)) if lifecycle != "deleted" => {
                 let membership_state = match lifecycle.as_str() {
                     "deleted" => "deleted",
                     "archived" => "archived",
@@ -1432,7 +1389,7 @@ fn project_targets(
                     membership_state: membership_state.to_owned(),
                 }
             }
-            _ => ProjectedRelationTarget::Restricted,
+            _ => ProjectedRelationTarget::Unavailable,
         };
         projected.insert((target_source_id, page_id), item);
     }
@@ -1446,9 +1403,6 @@ fn validate_readable_targets(
     target_data_source_id: &str,
     page_ids: &BTreeSet<String>,
 ) -> Result<(), StoreError> {
-    let Some(project_id) = project_id else {
-        return Ok(());
-    };
     if page_ids.is_empty() {
         return Ok(());
     }
@@ -1456,7 +1410,7 @@ fn validate_readable_targets(
         .iter()
         .map(|page_id| (target_data_source_id.to_owned(), page_id.clone()))
         .collect::<BTreeSet<_>>();
-    let projected = project_targets(connection, library_id, Some(project_id), &targets)?;
+    let projected = project_targets(connection, library_id, project_id, &targets)?;
     if targets.iter().all(|target| {
         matches!(
             projected.get(target),
@@ -1506,15 +1460,12 @@ pub(crate) fn validate_view_filter_read_access(
     data_source_id: &str,
     filter: &DatabaseViewFilter,
 ) -> Result<(), StoreError> {
-    let Some(project_id) = project_id else {
-        return Ok(());
-    };
     let mut targets = BTreeSet::new();
     collect_relation_filter_targets(connection, data_source_id, filter, 1, &mut 0, &mut targets)?;
     if targets.is_empty() {
         return Ok(());
     }
-    let projected = project_targets(connection, library_id, Some(project_id), &targets)?;
+    let projected = project_targets(connection, library_id, project_id, &targets)?;
     if targets.iter().all(|target| {
         matches!(
             projected.get(target),
@@ -1534,27 +1485,13 @@ pub(crate) fn validate_agent_view_filter_read_access(
     data_source_id: &str,
     filter: &DatabaseViewFilter,
 ) -> Result<(), StoreError> {
-    let mut targets = BTreeSet::new();
-    collect_relation_filter_targets(connection, data_source_id, filter, 1, &mut 0, &mut targets)?;
-    let page_ids = targets
-        .into_iter()
-        .map(|(_, page_id)| page_id)
-        .collect::<Vec<_>>();
-    let authorized = crate::library::agent_authorization::authorized_page_ids(
+    crate::library::agent_execution::validate_execution(
         connection,
         context,
         library_id,
         authorization,
-        &page_ids,
     )?;
-    if page_ids.iter().all(|page_id| authorized.contains(page_id)) {
-        return Ok(());
-    }
-    Err(StoreError::new(
-        StoreErrorCode::Unauthorized,
-        "Displayed View filter references an unavailable resource",
-        false,
-    ))
+    validate_view_filter_read_access(connection, library_id, None, data_source_id, filter)
 }
 
 fn collect_relation_filter_targets(
@@ -1670,7 +1607,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn view_relation_filter_is_reauthorized_after_target_access_revocation() {
+    fn relation_filter_checks_current_target_lifecycle() {
         let connection = Connection::open_in_memory().expect("Relation authorization fixture");
         connection
             .execute_batch(
@@ -1692,9 +1629,7 @@ mod tests {
                    id TEXT PRIMARY KEY, library_id TEXT NOT NULL, home_database_block_id TEXT NOT NULL); \
                  CREATE TABLE data_source_page_memberships( \
                    data_source_id TEXT NOT NULL, page_block_id TEXT NOT NULL, removed_at TEXT); \
-                 CREATE TABLE project_resource_grants( \
-                   project_id TEXT NOT NULL, root_kind TEXT NOT NULL, root_id TEXT NOT NULL, \
-                   lifecycle TEXT NOT NULL); \
+                  \
                  CREATE TABLE data_source_properties( \
                    data_source_id TEXT NOT NULL, id TEXT NOT NULL, value_type TEXT NOT NULL, \
                    lifecycle TEXT NOT NULL); \
@@ -1717,8 +1652,7 @@ mod tests {
                    'source:tasks', 'p_blocked0', 'relation', 'active'); \
                  INSERT INTO data_source_relation_properties VALUES ( \
                    'source:tasks', 'p_blocked0', 'source:secret'); \
-                 INSERT INTO project_resource_grants VALUES ( \
-                   'project:reader', 'database', 'database:secret', 'active');",
+                 ",
             )
             .expect("Relation authorization rows");
         let filters = [
@@ -1754,10 +1688,10 @@ mod tests {
 
         connection
             .execute(
-                "UPDATE project_resource_grants SET lifecycle = 'revoked'",
+                "UPDATE blocks SET lifecycle='deleted' WHERE id='page:secret'",
                 [],
             )
-            .expect("revoke target access");
+            .unwrap();
         for filter in &filters {
             let error = validate_view_filter_read_access(
                 &connection,

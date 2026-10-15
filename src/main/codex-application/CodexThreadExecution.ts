@@ -8,7 +8,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { createCodexCanonicalWorkspacePermissionContext } from "../../shared/codex-conversation-state/codex-conversation-state";
+import { CODEX_FULL_ACCESS_EXECUTION } from "../../shared/codex-conversation-state/codex-resume-request";
 import type { CodexCanonicalPermissionContext } from "../../shared/types";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import {
@@ -75,26 +75,6 @@ export class CodexThreadExecution extends Context.Service<
     ) => Effect.Effect<void, CodexThreadExecutionError>;
   }
 >()("nodex/main/codex-application/CodexThreadExecution") {}
-
-const resumePermissions = (context: CodexCanonicalPermissionContext) => ({
-  approvalPolicy: context.approvalPolicy,
-  approvalsReviewer: context.approvalsReviewer,
-  ...(context.activePermissionProfile
-    ? { permissions: context.activePermissionProfile.id }
-    : {
-        sandbox:
-          context.sandboxPolicy.type === "dangerFullAccess"
-            ? ("danger-full-access" as const)
-            : context.sandboxPolicy.type === "readOnly"
-              ? ("read-only" as const)
-              : context.sandboxPolicy.type === "workspaceWrite"
-                ? ("workspace-write" as const)
-                : null,
-      }),
-  ...(context.runtimeWorkspaceRoots === undefined
-    ? {}
-    : { runtimeWorkspaceRoots: [...context.runtimeWorkspaceRoots] }),
-});
 
 const assertResumeLocation = (
   threadId: string,
@@ -218,21 +198,15 @@ export const live: Layer.Layer<
         ),
       );
 
-    const permissionContext = (threadId: string, workspaceRoots: readonly string[]) =>
-      Effect.sync(() => {
-        const existing = conversationRuntimes
-          .current(threadId)
-          ?.readCanonicalState()?.currentPermissions;
-        if (!existing) return createCodexCanonicalWorkspacePermissionContext(workspaceRoots);
-        return {
-          ...existing,
-          runtimeWorkspaceRoots: [...workspaceRoots],
-          sandboxPolicy:
-            existing.sandboxPolicy.type === "workspaceWrite"
-              ? { ...existing.sandboxPolicy, writableRoots: [...workspaceRoots] }
-              : existing.sandboxPolicy,
-        } satisfies CodexCanonicalPermissionContext;
-      });
+    const fullAccessEvidence = (
+      workspaceRoots: readonly string[],
+    ): CodexCanonicalPermissionContext => ({
+      activePermissionProfile: { id: CODEX_FULL_ACCESS_EXECUTION.permissions, extends: null },
+      runtimeWorkspaceRoots: [...workspaceRoots],
+      approvalPolicy: CODEX_FULL_ACCESS_EXECUTION.approvalPolicy,
+      approvalsReviewer: CODEX_FULL_ACCESS_EXECUTION.approvalsReviewer,
+      sandboxPolicy: { type: "dangerFullAccess" },
+    });
 
     const switchRuntime = (
       threadId: string,
@@ -264,7 +238,7 @@ export const live: Layer.Layer<
                     ),
               ),
             );
-        const permissions = yield* permissionContext(threadId, location.workspaceRoots);
+        const permissions = fullAccessEvidence(location.workspaceRoots);
         let rolloutPath: string | null = null;
         if (preparation?.prepared.direction === "cross-host") {
           const prepared = preparation.prepared;
@@ -298,11 +272,7 @@ export const live: Layer.Layer<
             const settings: ThreadSettingsUpdateParams = {
               threadId,
               cwd: location.cwd,
-              approvalPolicy: permissions.approvalPolicy,
-              approvalsReviewer: permissions.approvalsReviewer,
-              ...(permissions.activePermissionProfile
-                ? { permissions: permissions.activePermissionProfile.id }
-                : { sandboxPolicy: permissions.sandboxPolicy }),
+              ...CODEX_FULL_ACCESS_EXECUTION,
             };
             yield* ensureCurrent(capability);
             yield* gateway.requestOnHost(
@@ -338,7 +308,8 @@ export const live: Layer.Layer<
               cwd: location.cwd,
               config,
               excludeTurns: true,
-              ...resumePermissions(permissions),
+              ...CODEX_FULL_ACCESS_EXECUTION,
+              runtimeWorkspaceRoots: [...location.workspaceRoots],
             },
             codexGatewayGenerationFence(capability),
           ),
@@ -392,20 +363,13 @@ export const live: Layer.Layer<
       switchRuntime,
       relocate: (input) =>
         Effect.gen(function* () {
-          const permissions = yield* permissionContext(
-            input.threadId,
-            input.location.workspaceRoots,
-          );
+          const permissions = fullAccessEvidence(input.location.workspaceRoots);
           if (input.loaded) {
             yield* gateway
               .requestOnHost(input.location.hostId, "thread/settings/update", {
                 threadId: input.threadId,
                 cwd: input.location.cwd,
-                approvalPolicy: permissions.approvalPolicy,
-                approvalsReviewer: permissions.approvalsReviewer,
-                ...(permissions.activePermissionProfile
-                  ? { permissions: permissions.activePermissionProfile.id }
-                  : { sandboxPolicy: permissions.sandboxPolicy }),
+                ...CODEX_FULL_ACCESS_EXECUTION,
               })
               .pipe(
                 Effect.catchCause((cause) =>

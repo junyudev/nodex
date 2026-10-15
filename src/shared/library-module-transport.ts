@@ -24,7 +24,6 @@ import {
   DEFAULT_LIBRARY_READ_LIMIT,
   MAX_LIBRARY_CURSOR_LENGTH,
   MAX_LIBRARY_QUERY_LENGTH,
-  MAX_LIBRARY_PROJECT_ACCESS_CHANGES,
   MAX_LIBRARY_READ_LIMIT,
   MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS,
   type LibraryCatalogEntry,
@@ -56,12 +55,6 @@ import {
 } from "./library-module";
 import { isWorkflowStatus } from "./workflow-status";
 import type { PageSearchMatch, PageSearchTextPart } from "./types";
-import { parseAuthorizedReadStamp } from "./authorized-read-stamp";
-import {
-  PROJECT_MARKER_COLORS,
-  PROJECT_MARKER_ICONS,
-  type ProjectAppearance,
-} from "./project-appearance";
 import { assertUuidV7 } from "./uuid-v7";
 import { canonicalizePortableRichText } from "./block-documents/portable-rich-text";
 import type { BlockHistoryPatch, BlockHistoryState } from "./block-documents/block-history-patch";
@@ -1199,68 +1192,6 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
       },
     };
   }
-  if (operation.kind === "grant_project_access") {
-    exactKeys(operation, "libraryModuleApply.operation", ["kind", "projectId", "target", "access"]);
-    if (operation.access !== "read" && operation.access !== "read_write") {
-      throw new TypeError("libraryModuleApply.operation.access is unsupported");
-    }
-    return {
-      operationId,
-      storeEpoch,
-      operation: {
-        kind: "grant_project_access",
-        projectId: string(operation.projectId, "libraryModuleApply.operation.projectId"),
-        target: parseResourceTarget(operation.target, "libraryModuleApply.operation.target"),
-        access: operation.access,
-      },
-    };
-  }
-  if (operation.kind === "set_project_access") {
-    exactKeys(operation, "libraryModuleApply.operation", ["kind", "target", "changes"]);
-    if (
-      !Array.isArray(operation.changes) ||
-      operation.changes.length === 0 ||
-      operation.changes.length > MAX_LIBRARY_PROJECT_ACCESS_CHANGES
-    ) {
-      throw new TypeError(
-        `libraryModuleApply.operation.changes must contain 1 to ${MAX_LIBRARY_PROJECT_ACCESS_CHANGES} Projects`,
-      );
-    }
-    const changes = operation.changes.map((value, index) => {
-      const label = `libraryModuleApply.operation.changes[${index}]`;
-      const change = record(value, label);
-      exactKeys(change, label, ["projectId", "access", "expectedRevision"]);
-      if (change.access !== null && change.access !== "read" && change.access !== "read_write") {
-        throw new TypeError(`${label}.access is unsupported`);
-      }
-      const access =
-        change.access === null ? null : parseLibraryAccess(change.access, `${label}.access`);
-      const expectedRevision =
-        change.expectedRevision === null
-          ? null
-          : revision(change.expectedRevision, `${label}.expectedRevision`);
-      if (expectedRevision !== null && expectedRevision < 1) {
-        throw new TypeError(`${label}.expectedRevision must be positive`);
-      }
-      return {
-        projectId: string(change.projectId, `${label}.projectId`),
-        access,
-        expectedRevision,
-      };
-    });
-    if (new Set(changes.map((change) => change.projectId)).size !== changes.length) {
-      throw new TypeError("libraryModuleApply.operation.changes must contain unique Projects");
-    }
-    return {
-      operationId,
-      storeEpoch,
-      operation: {
-        kind: operation.kind,
-        target: parseResourceTarget(operation.target, "libraryModuleApply.operation.target"),
-        changes,
-      },
-    };
-  }
   if (operation.kind === "apply_page_metadata_properties") {
     exactKeys(
       operation,
@@ -1678,15 +1609,6 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
   if (read.mode === "metadata") {
     exactKeys(read, "libraryModuleRead.read", ["mode"]);
     return { read: { mode: "metadata" } };
-  }
-  if (read.mode === "resource_project_access") {
-    exactKeys(read, "libraryModuleRead.read", ["mode", "target"]);
-    return {
-      read: {
-        mode: "resource_project_access",
-        target: parseResourceTarget(read.target, "libraryModuleRead.read.target"),
-      },
-    };
   }
   if (read.mode === "canvas_target") {
     exactKeys(read, "libraryModuleRead.read", ["mode", "canvasId"]);
@@ -2175,128 +2097,6 @@ const parseCanvasTarget = (value: unknown, label: string): LibraryCanvasTarget =
   };
 };
 
-const parseLibraryAccess = (value: unknown, label: string): "read" | "read_write" => {
-  if (value === "read" || value === "read_write") return value;
-  throw new TypeError(`${label} is unsupported`);
-};
-
-const parseProjectAppearance = (value: unknown, label: string): ProjectAppearance => {
-  const appearance = record(value, label);
-  exactKeys(appearance, label, ["color", "marker"]);
-  if (
-    typeof appearance.color !== "string" ||
-    !PROJECT_MARKER_COLORS.includes(appearance.color as (typeof PROJECT_MARKER_COLORS)[number])
-  ) {
-    throw new TypeError(`${label}.color is unsupported`);
-  }
-  const color = appearance.color as ProjectAppearance["color"];
-  const marker = record(appearance.marker, `${label}.marker`);
-  if (marker.kind === "icon") {
-    exactKeys(marker, `${label}.marker`, ["kind", "icon"]);
-    if (
-      typeof marker.icon !== "string" ||
-      !PROJECT_MARKER_ICONS.includes(marker.icon as (typeof PROJECT_MARKER_ICONS)[number])
-    ) {
-      throw new TypeError(`${label}.marker.icon is unsupported`);
-    }
-    return {
-      color,
-      marker: {
-        kind: "icon",
-        icon: marker.icon as Extract<ProjectAppearance["marker"], { kind: "icon" }>["icon"],
-      },
-    };
-  }
-  if (marker.kind === "emoji") {
-    exactKeys(marker, `${label}.marker`, ["kind", "emoji"]);
-    return {
-      color,
-      marker: {
-        kind: "emoji",
-        emoji: string(marker.emoji, `${label}.marker.emoji`, 256),
-      },
-    };
-  }
-  throw new TypeError(`${label}.marker.kind is unsupported`);
-};
-
-const parseProjectAccessRow = (
-  value: unknown,
-  label: string,
-): Extract<LibraryReadValue, { kind: "resource_project_access" }>["value"]["projects"][number] => {
-  const project = record(value, label);
-  exactKeys(project, label, [
-    "projectId",
-    "projectName",
-    "appearance",
-    "lifecycle",
-    "directGrant",
-    "inheritedSources",
-    "effectiveAccess",
-  ]);
-  if (
-    project.lifecycle !== "active" &&
-    project.lifecycle !== "inactive" &&
-    project.lifecycle !== "archived"
-  ) {
-    throw new TypeError(`${label}.lifecycle is unsupported`);
-  }
-  const directGrant =
-    project.directGrant === null
-      ? null
-      : (() => {
-          const grant = record(project.directGrant, `${label}.directGrant`);
-          exactKeys(grant, `${label}.directGrant`, ["access", "revision"]);
-          const grantRevision = revision(grant.revision, `${label}.directGrant.revision`);
-          if (grantRevision < 1) {
-            throw new TypeError(`${label}.directGrant.revision must be positive`);
-          }
-          return {
-            access: parseLibraryAccess(grant.access, `${label}.directGrant.access`),
-            revision: grantRevision,
-          };
-        })();
-  if (!Array.isArray(project.inheritedSources)) {
-    throw new TypeError(`${label}.inheritedSources must be an array`);
-  }
-  const inheritedSources = project.inheritedSources.map((value, index) => {
-    const sourceLabel = `${label}.inheritedSources[${index}]`;
-    const source = record(value, sourceLabel);
-    if (source.kind === "ancestor_page") {
-      exactKeys(source, sourceLabel, ["kind", "pageId", "pageTitle", "access"]);
-      return {
-        kind: source.kind,
-        pageId: string(source.pageId, `${sourceLabel}.pageId`),
-        pageTitle: string(source.pageTitle, `${sourceLabel}.pageTitle`, MAX_TITLE_LENGTH, true),
-        access: parseLibraryAccess(source.access, `${sourceLabel}.access`),
-      } as const;
-    }
-    if (source.kind === "primary_database" || source.kind === "database_grant") {
-      exactKeys(source, sourceLabel, ["kind", "databaseId", "databaseName", "access"]);
-      return {
-        kind: source.kind,
-        databaseId: parseDatabaseId(source.databaseId),
-        databaseName: string(source.databaseName, `${sourceLabel}.databaseName`, MAX_TITLE_LENGTH),
-        access: parseLibraryAccess(source.access, `${sourceLabel}.access`),
-      } as const;
-    }
-    throw new TypeError(`${sourceLabel}.kind is unsupported`);
-  });
-  const effectiveAccess =
-    project.effectiveAccess === null
-      ? null
-      : parseLibraryAccess(project.effectiveAccess, `${label}.effectiveAccess`);
-  return {
-    projectId: string(project.projectId, `${label}.projectId`),
-    projectName: string(project.projectName, `${label}.projectName`, MAX_TITLE_LENGTH),
-    appearance: parseProjectAppearance(project.appearance, `${label}.appearance`),
-    lifecycle: project.lifecycle,
-    directGrant,
-    inheritedSources,
-    effectiveAccess,
-  };
-};
-
 const parseReadValue = (value: unknown): LibraryReadValue => {
   const readValue = record(value, "libraryModuleReadResult.value.value");
   if (isLibraryFileReadValueKind(readValue.kind))
@@ -2331,26 +2131,6 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
   if (readValue.kind === "metadata") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind"]);
     return { kind: "metadata" };
-  }
-  if (readValue.kind === "resource_project_access") {
-    exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
-    const accessValue = record(readValue.value, "libraryModuleReadResult.value.value.value");
-    exactKeys(accessValue, "libraryModuleReadResult.value.value.value", ["target", "projects"]);
-    if (!Array.isArray(accessValue.projects)) {
-      throw new TypeError("library resource Project access must be an array");
-    }
-    return {
-      kind: readValue.kind,
-      value: {
-        target: parseResourceTarget(
-          accessValue.target,
-          "libraryModuleReadResult.value.value.value.target",
-        ),
-        projects: accessValue.projects.map((project, index) =>
-          parseProjectAccessRow(project, `library resource Project access[${index}]`),
-        ),
-      },
-    };
   }
   if (readValue.kind === "canvas_target") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
@@ -2711,7 +2491,6 @@ export const parseLibraryModuleReadResult = (value: unknown): LibraryModuleReadR
     "libraryId",
     "storeEpoch",
     "commitSeq",
-    "authorization",
     "value",
   ]);
   return {
@@ -2721,8 +2500,6 @@ export const parseLibraryModuleReadResult = (value: unknown): LibraryModuleReadR
       libraryId: string(snapshot.libraryId, "libraryModuleReadResult.value.libraryId"),
       storeEpoch: string(snapshot.storeEpoch, "libraryModuleReadResult.value.storeEpoch"),
       commitSeq: revision(snapshot.commitSeq, "libraryModuleReadResult.value.commitSeq"),
-      authorization:
-        snapshot.authorization === null ? null : parseAuthorizedReadStamp(snapshot.authorization),
       value: parseReadValue(snapshot.value),
     },
   };
@@ -2803,8 +2580,6 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     "move_block",
     "archive_resource",
     "restore_resource",
-    "grant_project_access",
-    "set_project_access",
     "apply_page_metadata_properties",
     "apply_structural_edit",
     "reverse_structural_edit",

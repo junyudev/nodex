@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  buildCodexThreadTitleThreadConfig,
   buildThreadTitleGenerationPrompt,
   buildThreadTitleReconsiderationPrompt,
   CODEX_THREAD_TITLE_MODEL,
@@ -87,43 +86,6 @@ describe("thread title generator parity helpers", () => {
         additionalProperties: false,
       }),
     );
-  });
-
-  test("builds the exact deny-by-default title helper config", () => {
-    expect(
-      buildCodexThreadTitleThreadConfig([
-        { appId: "github", toolNames: ["search_code", "get_file"] },
-      ]),
-    ).toEqual({
-      "features.enable_fanout": false,
-      "features.hooks": false,
-      "features.multi_agent": false,
-      "features.multi_agent_v2": false,
-      "features.plugins": false,
-      "features.shell_snapshot": false,
-      "features.tool_suggest": false,
-      web_search: "disabled",
-      "features.apps": true,
-      apps: {
-        github: {
-          enabled: true,
-          destructive_enabled: false,
-          open_world_enabled: false,
-          default_tools_enabled: false,
-          tools: {
-            search_code: { enabled: true },
-            get_file: { enabled: true },
-          },
-        },
-        _default: {
-          enabled: false,
-          destructive_enabled: false,
-          open_world_enabled: false,
-        },
-      },
-      "mcp_servers.codex_app": { enabled: false, command: "" },
-      model_reasoning_effort: "low",
-    });
   });
 
   test("truncates the source prompt before wrapping", () => {

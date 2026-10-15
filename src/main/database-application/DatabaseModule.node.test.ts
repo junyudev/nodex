@@ -6,7 +6,6 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import { TestClock } from "effect/testing";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import { parseDatabaseId } from "../../shared/database-identities";
 import { upgradeDatabaseViewConfigV2 } from "../../shared/database-view-presentation";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
@@ -28,7 +27,6 @@ const coreDatabase = () => ({
   name: "Tasks",
   lifecycle: "active" as const,
   default_view_id: "view:test",
-  access_revision: 1,
   metadata_revision: 1,
   created_at: "2026-08-23T00:00:00.000Z",
   updated_at: "2026-08-23T00:00:00.000Z",
@@ -39,14 +37,12 @@ const enqueueDatabaseDescriptor = (client: FakeCoreClient, commitHead: number): 
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
     value: { kind: "database", value: { database: coreDatabase() } },
   });
   client.enqueueDatabaseRead({
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
     value: {
       kind: "data_source_window",
       data_sources: {
@@ -60,7 +56,6 @@ const enqueueDatabaseDescriptor = (client: FakeCoreClient, commitHead: number): 
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
     value: {
       kind: "view_descriptor_window",
       views: { items: [], next_cursor: null, authority: { projection_revision: commitHead } },
@@ -72,16 +67,6 @@ const viewGroupsSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
   contract_version: 4,
   store_epoch: identity.storeEpoch,
   commit_head: commitHead,
-  authorization: authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "project",
-      library_id: identity.libraryId,
-      project_id: projectId,
-    },
-    subject: { kind: "view", view_id: "view:test" },
-    storeEpoch: identity.storeEpoch,
-    commitSeq: commitHead,
-  }),
   value: {
     kind: "view_groups",
     value: {
@@ -122,16 +107,6 @@ const rowDetailSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
   contract_version: 4,
   store_epoch: identity.storeEpoch,
   commit_head: commitHead,
-  authorization: authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "project",
-      library_id: identity.libraryId,
-      project_id: projectId,
-    },
-    subject: { kind: "page", page_id: "page:test" },
-    storeEpoch: identity.storeEpoch,
-    commitSeq: commitHead,
-  }),
   value: {
     kind: "row_detail",
     value: {
@@ -176,16 +151,6 @@ const rowDetailSnapshot = (commitHead: number): DatabaseReadSnapshot => ({
 
 const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   const commitHead = 23;
-  const authorization = authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "project",
-      library_id: identity.libraryId,
-      project_id: projectId,
-    },
-    subject: { kind: "view", view_id: "view:test" },
-    storeEpoch: identity.storeEpoch,
-    commitSeq: commitHead,
-  });
   const config = upgradeDatabaseViewConfigV2({
     schemaKey: "nodex.database-view",
     schemaVersion: 2,
@@ -201,7 +166,6 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   };
   client.enqueueDatabaseRead({
     ...base,
-    authorization,
     value: {
       kind: "view_window",
       value: {
@@ -234,7 +198,6 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization,
     value: {
       kind: "view",
       value: {
@@ -255,12 +218,10 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization: null,
     value: { kind: "database", value: { database: coreDatabase() } },
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization: null,
     value: {
       kind: "data_source_window",
       data_sources: {
@@ -272,7 +233,6 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization: null,
     value: {
       kind: "view_descriptor_window",
       views: { items: [], next_cursor: null, authority: { projection_revision: commitHead } },
@@ -280,7 +240,6 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization: null,
     value: {
       kind: "data_source",
       value: {
@@ -301,7 +260,6 @@ const enqueueDatabaseViewReference = (client: FakeCoreClient): void => {
   });
   client.enqueueDatabaseRead({
     ...base,
-    authorization: null,
     value: {
       kind: "property_window",
       properties: { items: [], next_cursor: null, authority: { projection_revision: commitHead } },
@@ -380,7 +338,7 @@ it.effect("routes canonical Project and Library reads through their exact Core s
       if (project.ok) assert.strictEqual(project.value.projectId, projectId);
       assert.isTrue(library.ok);
       if (library.ok) {
-        assert.deepEqual(library.value.accessContext, { kind: "library" });
+        assert.deepEqual(library.value.routingContext, { kind: "library" });
         assert.strictEqual(library.value.commitSeq, 2);
       }
     }),
@@ -425,7 +383,7 @@ it.effect("resolves a Database View reference from one bounded authoritative win
   return withDatabaseModule(client, (database, projectScopes) =>
     Effect.gen(function* () {
       const reference = yield* database.resolveDatabaseViewReference({
-        accessContext: { kind: "project", projectId },
+        routingContext: { kind: "project", projectId },
         databaseViewId: "view:test",
       });
 

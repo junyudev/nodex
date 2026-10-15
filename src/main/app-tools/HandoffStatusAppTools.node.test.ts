@@ -1,12 +1,15 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createStableOperationId } from "../core-runtime/operation-identity";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { make } from "./HandoffStatusAppTools";
+import { captureHostedAppToolAuthority, createHostedAppToolCaller } from "./AppToolCaller";
+import { make, makeWithCapture } from "./HandoffStatusAppTools";
 
 const input: AppToolInvocation = {
   name: "get_handoff_status",
@@ -55,7 +58,7 @@ const setup = (
             actorProjectId: "project",
             libraryId: "library",
             storeEpoch: "epoch",
-            frozenAtMs: 1,
+            admittedAtMs: 1,
             readOnly: true,
             scope: "project",
             source: "project_turn",
@@ -69,6 +72,7 @@ const setup = (
               return {
                 value: {
                   kind: "agent_session",
+                  session: { execution_ref: null },
                   thread:
                     options.denied || (options.changed && reads > 1)
                       ? null
@@ -91,7 +95,7 @@ const setup = (
   };
 };
 
-it.effect("allows a read-only Turn to wait on its authorized Session operation", () =>
+it.effect("waits on an exact Session handoff operation", () =>
   Effect.gen(function* () {
     const fixture = setup();
     const execute = yield* fixture.execute;
@@ -106,7 +110,7 @@ it.effect("allows a read-only Turn to wait on its authorized Session operation",
 );
 
 it.effect(
-  "withholds results for unauthorized Sessions, unrelated operations, changed bindings and withdrawn calls",
+  "withholds results for missing Sessions, unrelated operations, changed bindings and withdrawn calls",
   () =>
     Effect.gen(function* () {
       for (const options of [
@@ -128,4 +132,70 @@ it.effect(
       );
       assert.lengthOf(fixture.waits, 0);
     }),
+);
+
+it.effect("rereads hosted Runtime bindings after waiting and rejects a replaced root", () =>
+  Effect.gen(function* () {
+    for (const changed of [false, true]) {
+      let reads = 0;
+      let inspections = 0;
+      let waits = 0;
+      const authority = {
+        threadId: "runtime:source",
+        turnId: "native:source",
+        rootThreadId: "runtime:root",
+        actorProjectId: null,
+        libraryId: "library",
+        storeEpoch: "epoch",
+        admittedAtMs: 1,
+      };
+      const caller = createHostedAppToolCaller({
+        backend: "acp",
+        authority,
+        callId: "call",
+        generation: 2,
+        isActive: () => true,
+        capture: Effect.succeed(authority),
+      });
+      const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+        Effect.provideService(CoreModules, {
+          workspace: {
+            read: () =>
+              Effect.sync(() => {
+                reads += 1;
+                return {
+                  value: {
+                    kind: "agent_session",
+                    session: { execution_ref: { thread_id: "target-thread" } },
+                    thread: null,
+                  },
+                };
+              }),
+          },
+        } as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          inspect: () =>
+            Effect.gen(function* () {
+              assert.equal((yield* CoreApplicationAgent)?.authority.thread_id, authority.threadId);
+              inspections += 1;
+              return { threadId: changed && inspections > 1 ? "replacement" : "target-thread" };
+            }),
+        } as never),
+        Effect.provideService(CodexThreadHandoffRuntime, {
+          get: () => Effect.succeed({ sourceThreadId: "target-thread" }),
+          waitForRevision: () =>
+            Effect.sync(() => {
+              waits += 1;
+              return { sourceThreadId: "target-thread", revision: 3 };
+            }),
+        } as never),
+      );
+      const result = yield* execute({ ...input, caller });
+      assert.equal(result.isError ?? false, changed);
+      assert.equal(reads, 2);
+      assert.equal(inspections, 2);
+      assert.equal(waits, 1);
+    }
+  }),
 );

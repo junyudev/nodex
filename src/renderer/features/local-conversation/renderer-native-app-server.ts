@@ -143,49 +143,6 @@ export class RendererNativeAppServer implements Disposable {
     );
   }
 
-  executeSessionThread(
-    prepared: import("../../../shared/codex-native-thread-start").CodexNativeSessionLaunchPreparation,
-    options?: NativeRequestOptions,
-  ): Promise<import("@nodex/codex-app-server-protocol/v2").ThreadStartResponse> {
-    return this.client.sendNative(
-      "thread/start",
-      (caller, trace) =>
-        runConversationOperation("codex:thread:native-session:execute", {
-          hostId: this.hostId,
-          receiptId: prepared.receiptId,
-          caller,
-          trace,
-        }),
-      { ...options, params: prepared.request },
-    );
-  }
-
-  executeFreshTurn(
-    threadId: string,
-    launchId: string,
-    request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams,
-    options?: NativeRequestOptions,
-  ): Promise<import("@nodex/codex-app-server-protocol/v2").TurnStartResponse> {
-    return this.client.sendNative(
-      "turn/start",
-      (caller, trace) =>
-        runConversationOperation("codex:turn:native-fresh:execute", {
-          hostId: this.hostId,
-          threadId,
-          launchId,
-          request,
-          caller,
-          trace,
-        }),
-      {
-        ...options,
-        params: request,
-        clientUserMessageId:
-          options?.clientUserMessageId ?? request.clientUserMessageId ?? undefined,
-      },
-    );
-  }
-
   executePreparedFork(
     receiptId: string,
     options?: NativeRequestOptions,

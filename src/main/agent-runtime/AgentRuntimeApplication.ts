@@ -1,0 +1,1685 @@
+import { createHash } from "node:crypto";
+import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
+import type { components } from "@nodex/core-protocol";
+import type {
+  AgentCommand,
+  AgentHistoryPage,
+  AgentRuntimeIdentity,
+  AgentRuntimeMethod,
+  AgentRuntimeOperations,
+  AgentSnapshot,
+  AgentTurnItem,
+} from "@nodex/agent-runtime/contracts";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as Option from "effect/Option";
+import * as RcMap from "effect/RcMap";
+import * as Semaphore from "effect/Semaphore";
+import type * as Scope from "effect/Scope";
+import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mutations";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
+import { CoreModules } from "../core-runtime/CoreModules";
+import { createOperationId, createStableOperationId } from "../core-runtime/operation-identity";
+import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
+import type { ProjectWorkspaceApplyInput } from "../core-client/types";
+import { CoreModuleResponseError } from "../core-client/core-client";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
+import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
+import type {
+  ProjectSessionArchiveCommandInput,
+  ProjectSessionDeleteCommandInput,
+  ProjectSessionRenameCommandInput,
+  ProjectSessionPinnedCommandInput,
+} from "../../shared/workspace-catalog-commands";
+
+import type {
+  AgentRuntimeMessage,
+  AgentRuntimeLaunch,
+  AgentRuntimeSessionTarget,
+  AgentRuntimeConversation,
+} from "../../shared/agent-runtime-api";
+export type {
+  AgentRuntimeMessage,
+  AgentRuntimeLaunch,
+  AgentRuntimeSessionTarget,
+  AgentRuntimeConversation,
+} from "../../shared/agent-runtime-api";
+
+type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
+type CleanupWindow = Extract<
+  import("../core-client/types").ProjectWorkspaceReadSnapshot["value"],
+  { readonly kind: "agent_runtime_execution_cleanup_window" }
+>["cleanups"];
+type Cleanup = CleanupWindow["items"][number];
+type CreateThread = Extract<AgentCommand, { readonly type: "thread.create" }>;
+type DispatchMessage = Extract<AgentCommand, { readonly type: "message.dispatch" }>;
+type Respond = Extract<AgentCommand, { readonly type: "runtime-request.respond" }>;
+type ProjectWorkspaceBindingInput = {
+  readonly binding: Omit<Binding, "bound_at">;
+  readonly operation: ProjectWorkspaceApplyInput;
+};
+
+/** Requests on this value remain bound to the physical connection that supplied identity. */
+export interface AgentRuntimeApplicationConnection {
+  readonly identity: AgentRuntimeIdentity;
+  readonly subscribeNotifications?: import("../platform/node/AgentRuntimeProcess").AgentRuntimeProcessConnection["subscribeNotifications"];
+  readonly request: <M extends AgentRuntimeMethod>(
+    method: M,
+    input: AgentRuntimeOperations[M]["input"],
+  ) => Effect.Effect<AgentRuntimeOperations[M]["output"], unknown>;
+}
+
+export interface AgentRuntimeApplicationOptions {
+  readonly connect: Effect.Effect<AgentRuntimeApplicationConnection, unknown>;
+  /** Lets product-only draft deletion leave an unused Profile runtime cold. */
+  readonly runtimeExists?: Effect.Effect<boolean, unknown>;
+  /** Acquired before mutation admission; lifecycle delivery spans physical runtime generations. */
+  readonly subscribeExecutionChanges?: Effect.Effect<
+    Stream.Stream<void, unknown>,
+    unknown,
+    Scope.Scope
+  >;
+  readonly withWriter?: <A, E, R>(
+    operation: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, unknown, R>;
+  /** Explicit Profile-owned execution workspace; Core keeps its Project scope null. */
+  readonly projectless: {
+    readonly engineProjectId: string;
+    readonly workspaceRoot: string;
+    readonly ensureWorkspaceRoot: Effect.Effect<void, unknown>;
+  };
+  readonly prepareWorkspace?: NativeSessionWorkspace["Service"]["prepare"];
+  readonly presentation?: CodexTurnPresentation["Service"];
+  readonly reconcileWorkspace?: NativeSessionWorkspace["Service"]["reconcile"];
+  readonly prepareImages?: (
+    images: NonNullable<AgentRuntimeMessage["images"]>,
+  ) => Effect.Effect<
+    readonly import("../../shared/agent-conversation").AgentPromptImage[],
+    unknown
+  >;
+}
+
+export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntimeApplicationError>()(
+  "AgentRuntimeApplicationError",
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    cause: Schema.optionalKey(Schema.Defect()),
+    committedOperationId: Schema.optionalKey(Schema.String),
+  },
+) {}
+
+const failure = (operation: string, message: string, cause?: unknown) =>
+  new AgentRuntimeApplicationError({
+    operation,
+    message,
+    ...(cause === undefined ? {} : { cause }),
+  });
+const validId = (value: string) =>
+  value.length > 0 && value.trim() === value && value.length <= 512;
+const hash = (value: unknown) =>
+  createHash("sha256")
+    .update(stableStringifyBlockPropertyJson(JSON.parse(JSON.stringify(value))))
+    .digest("hex");
+const commandId = (kind: string, identity: unknown) => `nodex:${kind}:${hash(identity)}`;
+
+/** Product Session semantics cross one execution owner; this Module stores no runtime state. */
+export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
+  options: AgentRuntimeApplicationOptions,
+) {
+  const core = yield* CoreModules;
+  const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
+  const workspace = yield* ProjectWorkspace;
+  const sessionLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
+  if (!validId(options.projectless.engineProjectId) || !options.projectless.workspaceRoot.trim())
+    return yield* failure("configuration", "A projectless execution workspace is required");
+  const host = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+    operation.pipe(Effect.provideService(CoreApplicationAgent, null));
+  const owned = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+    effect.pipe(
+      Effect.mapError((cause) =>
+        Schema.is(AgentRuntimeApplicationError)(cause)
+          ? cause
+          : failure(operation, "Agent operation could not be completed", cause),
+      ),
+    );
+  const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
+    owned(operation, options.withWriter ? options.withWriter(effect) : effect);
+  const withSessionLane = <A, E, R>(
+    sessionId: string,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lane = yield* RcMap.get(sessionLanes, sessionId);
+        return yield* lane.withPermit(use);
+      }),
+    );
+  const assertSessionLifecycleAvailable = Effect.fn(
+    "AgentRuntimeApplication.assertSessionLifecycleAvailable",
+  )(function* (sessionId: string) {
+    if (!validId(sessionId)) return yield* failure("session", "Session identity is invalid");
+    yield* authorizeSession(sessionId);
+    const found = yield* host(
+      core.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }),
+    );
+    if (found.value.kind !== "agent_runtime_session_binding")
+      return yield* failure("session", "Session execution metadata is unavailable");
+    if (!found.value.binding) return;
+    const connection = yield* options.connect;
+    if (found.value.binding.runtime_id !== connection.identity.runtimeId)
+      return yield* failure("session", "Session belongs to another runtime");
+    const thread = yield* connection.request("thread.read", {
+      threadId: found.value.binding.runtime_thread_id,
+    });
+    if (thread?.executionHandoff)
+      return yield* failure("session", "The Session workspace requires handoff recovery");
+  });
+  const withSessionLifecycle = <A, E, R>(
+    operation: string,
+    sessionId: string,
+    use: Effect.Effect<A, E, R>,
+  ) =>
+    withSessionLane(
+      sessionId,
+      ownedWrite(operation, assertSessionLifecycleAvailable(sessionId).pipe(Effect.andThen(use))),
+    );
+  const afterCommit = <A, E, R>(
+    operationId: string,
+    operation: string,
+    effect: Effect.Effect<A, E, R>,
+  ) =>
+    effect.pipe(
+      Effect.mapError(
+        (cause) =>
+          new AgentRuntimeApplicationError({
+            operation,
+            message: "Session change committed; execution settlement may be retried",
+            committedOperationId: operationId,
+            cause,
+          }),
+      ),
+    );
+  const engineProjectId = (projectId: string | null) =>
+    projectId ?? options.projectless.engineProjectId;
+
+  const matchesBinding = (
+    binding: Binding | null | undefined,
+    expected: Pick<
+      Binding,
+      "session_id" | "project_id" | "runtime_id" | "runtime_thread_id" | "launch_request_id"
+    >,
+  ) =>
+    binding !== null &&
+    binding !== undefined &&
+    binding.session_id === expected.session_id &&
+    binding.runtime_id === expected.runtime_id &&
+    binding.runtime_thread_id === expected.runtime_thread_id &&
+    binding.launch_request_id === expected.launch_request_id;
+
+  /** An uncertain Core reply needs durable proof; metadata alone never admits execution. */
+  const bindExecution = Effect.fn("AgentRuntimeApplication.bindExecution")(function* (
+    input: ProjectWorkspaceBindingInput,
+  ) {
+    const applied = yield* core.workspace
+      .apply(input.operation, undefined, input.binding.project_id ?? null)
+      .pipe(Effect.result);
+    if (applied._tag === "Success") return;
+    const proof = yield* host(
+      core.workspace.read({
+        kind: "agent_runtime_session_binding_by_execution",
+        runtime_id: input.binding.runtime_id,
+        runtime_thread_id: input.binding.runtime_thread_id,
+      }),
+    );
+    if (
+      proof.value.kind === "agent_runtime_session_binding" &&
+      matchesBinding(proof.value.binding, input.binding)
+    )
+      return;
+    return yield* Effect.fail(applied.failure);
+  });
+
+  const authorizeSession = Effect.fn("AgentRuntimeApplication.authorizeSession")(function* (
+    sessionId: string,
+  ) {
+    const provenance = yield* CoreApplicationAgent;
+    if (!provenance) return;
+    const projectId = provenance.authority.actor_project_id ?? null;
+    // Core checks the live execution credential and actual Session before engine access.
+    yield* core.workspace.read(
+      { kind: "agent_session", provenance, session_id: sessionId },
+      undefined,
+      projectId,
+    );
+    yield* validateCaller();
+  });
+
+  const validateCaller = Effect.fn("AgentRuntimeApplication.validateCaller")(function* () {
+    const provenance = yield* CoreApplicationAgent;
+    if (!provenance) return;
+    const result = yield* core.workspace.read(
+      { kind: "agent_authority", provenance },
+      undefined,
+      provenance.authority.actor_project_id ?? null,
+    );
+    if (
+      result.value.kind !== "agent_authority" ||
+      !result.value.resolution.persisted ||
+      !result.value.resolution.authority
+    )
+      return yield* failure("caller", "The Agent connection is no longer available");
+  });
+
+  const projectScope = Effect.fn("AgentRuntimeApplication.projectScope")(function* (
+    projectId: string | null,
+    requireActive: boolean,
+  ) {
+    if (projectId === null)
+      return {
+        id: options.projectless.engineProjectId,
+        title: "Tasks",
+        workspaceRoot: options.projectless.workspaceRoot,
+        sourceRoots: [options.projectless.workspaceRoot],
+      };
+    const result = yield* host(
+      core.workspace.read({ kind: "project", project_id: projectId }, undefined, projectId),
+    );
+    if (
+      result.value.kind !== "project" ||
+      (requireActive && result.value.project.lifecycle !== "active")
+    )
+      return yield* failure("project", "Choose an active Project to run this task");
+    const project = result.value.project;
+    if (requireActive && !project.primary_workspace_root)
+      return yield* failure("project", "This Project has no execution workspace");
+    return {
+      id: project.id,
+      title: project.name,
+      workspaceRoot: project.primary_workspace_root ?? "",
+      sourceRoots: project.sources.map((source) => source.root),
+    };
+  });
+
+  const upsertProject = Effect.fn("AgentRuntimeApplication.upsertProject")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    scope: { readonly id: string; readonly title: string; readonly workspaceRoot: string },
+  ) {
+    if (scope.id === options.projectless.engineProjectId)
+      yield* options.projectless.ensureWorkspaceRoot;
+    yield* connection.request("project.upsert", {
+      id: scope.id,
+      title: scope.title,
+      workspaceRoot: scope.workspaceRoot,
+    });
+  });
+
+  const lookupDestinationBinding = Effect.fn("AgentRuntimeApplication.lookupDestinationBinding")(
+    function* (sessionId: string) {
+      const result = yield* host(
+        core.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }),
+      ).pipe(
+        Effect.catch((error) =>
+          // Creation precedes the product Session record. Only an exact missing-record
+          // response admits creation; uncertain reads must not start engine mutations.
+          error.cause instanceof CoreModuleResponseError &&
+          error.cause.coreError.code === "not_found"
+            ? Effect.succeed(null)
+            : Effect.fail(error),
+        ),
+      );
+      if (result === null) return null;
+      if (result.value.kind !== "agent_runtime_session_binding")
+        return yield* failure("session", "Session execution binding is unavailable");
+      return result.value.binding ?? null;
+    },
+  );
+
+  const readBinding = Effect.fn("AgentRuntimeApplication.readBinding")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    sessionId: string,
+    requireActive: boolean,
+  ) {
+    if (!validId(sessionId)) return yield* failure("session", "Session identity is invalid");
+    yield* authorizeSession(sessionId);
+    const result = yield* host(
+      core.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }),
+    );
+    if (
+      result.value.kind !== "agent_runtime_session_binding" ||
+      !result.value.binding ||
+      result.value.binding.runtime_id !== connection.identity.runtimeId
+    )
+      return yield* failure("session", "Session execution is unavailable in this runtime");
+    const binding = result.value.binding;
+    const projectId = binding.project_id ?? null;
+    if (!requireActive) {
+      yield* projectScope(projectId, false);
+      return binding;
+    }
+    yield* lifecycle.runExclusive(
+      projectId,
+      Effect.gen(function* () {
+        yield* projectScope(projectId, true);
+        const session = yield* host(
+          core.workspace.read({ kind: "session", session_id: sessionId }, undefined, projectId),
+        );
+        if (session.value.kind !== "session" || session.value.session.archived)
+          return yield* failure("session", "Archived tasks cannot start execution");
+      }),
+    );
+    return binding;
+  });
+
+  // Core owns mutable Session placement. Repair engine metadata without opening a transcript.
+  const reconcilePlacement = Effect.fn("AgentRuntimeApplication.reconcilePlacement")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    initial: Binding,
+    fence = false,
+  ) {
+    let binding = initial;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const thread = yield* connection.request("thread.read", {
+        threadId: binding.runtime_thread_id,
+      });
+      if (
+        !thread ||
+        thread.id !== binding.runtime_thread_id ||
+        thread.lineage.rootThreadId !== thread.id ||
+        thread.deletedAt !== null
+      )
+        return yield* failure("placement", "Session execution is unavailable");
+      const projectId = binding.project_id ?? null;
+      if (thread.projectId !== engineProjectId(projectId)) {
+        const repair = Effect.gen(function* () {
+          yield* validateCaller();
+          const scope = yield* projectScope(projectId, false);
+          yield* upsertProject(connection, scope);
+          yield* dispatch(connection, {
+            type: "thread.metadata.update",
+            threadId: thread.id,
+            projectId: scope.id,
+            commandId: createOperationId("agent-runtime.placement"),
+          });
+        });
+        yield* fence && options.withWriter ? options.withWriter(repair) : repair;
+      }
+      const current = yield* readBinding(connection, binding.session_id, false);
+      if ((current.project_id ?? null) === projectId) return current;
+      binding = current;
+    }
+    return yield* failure(
+      "placement",
+      "Session placement changed while execution was being reconciled",
+    );
+  });
+
+  const reconcileProject = Effect.fn("AgentRuntimeApplication.reconcileProject")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    projectId: string,
+    fence = false,
+  ) {
+    // Engine roots discover moved-out Sessions; Core's current placement discovers moved-in Sessions.
+    let cursor: string | undefined;
+    do {
+      const page = yield* connection.request("project.roots", {
+        projectId,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      for (const threadId of page.threadIds) {
+        const found = yield* host(
+          core.workspace.read({
+            kind: "agent_runtime_session_binding_by_execution",
+            runtime_id: connection.identity.runtimeId,
+            runtime_thread_id: threadId,
+          }),
+        );
+        if (found.value.kind === "agent_runtime_session_binding" && found.value.binding)
+          yield* reconcilePlacement(connection, found.value.binding, fence);
+      }
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    let after: string | undefined;
+    do {
+      const page = yield* host(
+        core.workspace.read({
+          kind: "agent_runtime_session_binding_window",
+          runtime_id: connection.identity.runtimeId,
+          project_id: projectId,
+          window: { first: 200, ...(after === undefined ? {} : { after }) },
+        }),
+      );
+      if (page.value.kind !== "agent_runtime_session_binding_window")
+        return yield* failure("placement", "Session placement metadata is unavailable");
+      for (const binding of page.value.bindings.items)
+        yield* reconcilePlacement(connection, binding, fence);
+      after = page.value.bindings.next_cursor ?? undefined;
+    } while (after !== undefined);
+  });
+
+  const load = Effect.fn("AgentRuntimeApplication.load")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    target: AgentRuntimeSessionTarget,
+    requireActive = false,
+  ) {
+    const binding = yield* readBinding(connection, target.sessionId, requireActive);
+    const threadId = target.threadId ?? binding.runtime_thread_id;
+    if (!validId(threadId)) return yield* failure("thread", "Thread identity is invalid");
+    const snapshot = yield* connection.request("thread.snapshot", { threadId });
+    const thread = snapshot.projection.thread;
+    if (
+      thread.id !== threadId ||
+      thread.lineage.rootThreadId !== binding.runtime_thread_id ||
+      thread.deletedAt !== null ||
+      (requireActive && thread.archivedAt !== null)
+    )
+      return yield* failure("thread", "Thread does not belong to this Session");
+    return { binding, threadId, snapshot };
+  });
+  const targetInfo = Effect.fn("AgentRuntimeApplication.targetInfo")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    target: AgentRuntimeSessionTarget,
+    requireActive = false,
+  ) {
+    let binding = yield* readBinding(connection, target.sessionId, requireActive);
+    const threadId = target.threadId ?? binding.runtime_thread_id;
+    let thread = yield* connection.request("thread.read", { threadId });
+    if (
+      !thread ||
+      thread.id !== threadId ||
+      thread.lineage.rootThreadId !== binding.runtime_thread_id ||
+      thread.deletedAt !== null ||
+      (requireActive && thread.archivedAt !== null)
+    )
+      return yield* failure("thread", "Thread does not belong to this Session");
+    if (requireActive && thread.projectId !== engineProjectId(binding.project_id ?? null)) {
+      yield* reconcilePlacement(connection, binding);
+      binding = yield* readBinding(connection, target.sessionId, true);
+      thread = yield* connection.request("thread.read", { threadId });
+      if (!thread || thread.projectId !== engineProjectId(binding.project_id ?? null))
+        return yield* failure(
+          "placement",
+          "Session placement changed while execution was being reconciled",
+        );
+    }
+    return { binding, threadId, thread };
+  });
+  const dispatch = (connection: AgentRuntimeApplicationConnection, command: AgentCommand) =>
+    connection.request("command.dispatch", command);
+  const prepareAgentConfig = Effect.fn("AgentRuntimeApplication.prepareAgentConfig")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    message: AgentRuntimeMessage,
+    modelSelection: CreateThread["modelSelection"],
+    interactionMode: CreateThread["interactionMode"],
+  ) {
+    const configs =
+      message.agentConfigs ?? splitCodexPromptAgentConfigLines(message.text).agentConfigs;
+    if (configs.length === 0) return { message, hasConfig: false };
+    const providers = yield* connection.request("providers.read", {});
+    return yield* Effect.try(() =>
+      resolveAgentRuntimeAgentConfig({
+        message,
+        modelSelection: message.modelSelection ?? modelSelection,
+        interactionMode: message.interactionMode ?? interactionMode,
+        providers,
+      }),
+    );
+  });
+  const prepareMessage = Effect.fn("AgentRuntimeApplication.prepareMessage")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    threadId: string,
+    message: AgentRuntimeMessage,
+  ) {
+    if (!message.images?.length) return message;
+    if (!options.prepareImages) return yield* failure("images", "Image preparation is unavailable");
+    const images = yield* options.prepareImages(message.images);
+    const attachments = [...(message.attachments ?? [])];
+    for (const [index, image] of images.entries()) {
+      // One attachment per request keeps transport frames bounded independently of total image input.
+      const persisted = yield* connection.request("attachments.persist", {
+        threadId,
+        messageId: message.messageId,
+        attachments: [
+          {
+            type: "image",
+            name: message.images[index]?.caption?.slice(0, 255) || `Image ${index + 1}`,
+            mimeType: image.mediaType,
+            sizeBytes: Buffer.from(image.data, "base64").byteLength,
+            dataUrl: `data:${image.mediaType};base64,${image.data}`,
+          },
+        ],
+      });
+      attachments.push(...persisted.attachments);
+    }
+    return { ...message, attachments };
+  });
+  const messageCommand = (
+    threadId: string,
+    message: AgentRuntimeMessage,
+    deliveryIntent: DispatchMessage["deliveryIntent"] = "auto",
+    agent = false,
+    queueAfterActive = false,
+  ): DispatchMessage => ({
+    type: "message.dispatch",
+    commandId: commandId("message", { threadId, messageId: message.messageId }),
+    threadId,
+    messageId: message.messageId,
+    text: message.text,
+    attachments: message.attachments ?? [],
+    ...(message.context === undefined ? {} : { context: message.context }),
+    ...(message.modelSelection === undefined ? {} : { modelSelection: message.modelSelection }),
+    ...(message.interactionMode === undefined ? {} : { interactionMode: message.interactionMode }),
+    createdBy: agent ? "agent" : "user",
+    creationSource: agent ? "mcp" : "web",
+    ...(queueAfterActive ? {} : { deliveryIntent }),
+    dispatchMode: { type: queueAfterActive ? "queue_after_active" : "start_immediately" },
+  });
+  const assertMessage = (message: AgentRuntimeMessage) =>
+    validId(message.messageId) &&
+    (message.text.trim().length > 0 ||
+      (message.attachments?.length ?? 0) > 0 ||
+      (message.images?.length ?? 0) > 0)
+      ? Effect.void
+      : Effect.fail(failure("message", "A message or attachment is required"));
+  const conversation = ({
+    binding,
+    threadId,
+    snapshot,
+  }: {
+    binding: Binding;
+    threadId: string;
+    snapshot: AgentSnapshot;
+  }): AgentRuntimeConversation => ({
+    sessionId: binding.session_id,
+    projectId: binding.project_id ?? null,
+    threadId,
+    snapshot,
+  });
+
+  const launch = Effect.fn("AgentRuntimeApplication.launch")(function* (input: AgentRuntimeLaunch) {
+    const provenance = yield* CoreApplicationAgent;
+
+    if (
+      !validId(input.launchId) ||
+      !validId(input.sessionId) ||
+      !Number.isSafeInteger(input.acceptedAt) ||
+      input.acceptedAt < 0 ||
+      !input.title.trim()
+    )
+      return yield* failure("launch", "Launch identity and title are required");
+    yield* assertMessage(input.message);
+    const connection = yield* options.connect;
+    const threadId = `nodex:thread:${hash({ launchId: input.launchId, sessionId: input.sessionId })}`;
+    const binding = {
+      session_id: input.sessionId,
+      project_id: input.projectId,
+      runtime_id: connection.identity.runtimeId,
+      runtime_thread_id: threadId,
+      launch_request_id: input.launchId,
+    };
+    yield* validateCaller();
+    const previousBinding = yield* lookupDestinationBinding(input.sessionId);
+    if (previousBinding && !matchesBinding(previousBinding, binding))
+      return yield* failure("launch", "Session is already bound to another launch request");
+    const projectId = previousBinding ? (previousBinding.project_id ?? null) : input.projectId;
+    const scope = yield* lifecycle.runExclusive(
+      projectId,
+      Effect.gen(function* () {
+        const scope = yield* projectScope(projectId, true);
+        if (previousBinding) {
+          yield* authorizeSession(input.sessionId);
+          return { ...scope, alreadyBound: true };
+        }
+        if (input.sourceRoot !== undefined && !scope.sourceRoots.includes(input.sourceRoot))
+          return yield* failure("workspace", "Choose a configured Project source workspace");
+        return { ...scope, alreadyBound: false };
+      }),
+    );
+    if (previousBinding) yield* reconcilePlacement(connection, previousBinding);
+    // No Project lifecycle permit crosses an engine request that can await host admission.
+    const existing = yield* connection.request("thread.read", { threadId });
+    const prepared = yield* prepareAgentConfig(
+      connection,
+      input.message,
+      input.modelSelection,
+      input.interactionMode,
+    );
+    yield* assertMessage(prepared.message);
+    if (
+      existing &&
+      (existing.projectId !== scope.id ||
+        existing.lineage.rootThreadId !== threadId ||
+        existing.deletedAt !== null ||
+        existing.archivedAt !== null ||
+        (!scope.alreadyBound && existing.activeRunId !== null))
+    )
+      return yield* failure("launch", "Launch metadata does not match this Session");
+    if (!existing && input.runInTarget === "newWorktree" && !options.prepareWorkspace)
+      return yield* failure("workspace", "Worktree preparation is unavailable");
+    const lease =
+      !existing && options.prepareWorkspace
+        ? yield* options.prepareWorkspace({
+            projectId,
+            targetId: input.sessionId,
+            title: input.title.trim(),
+            prompt: prepared.message.text,
+            sourceCwd: input.sourceRoot ?? scope.workspaceRoot,
+            sourceRoots: scope.sourceRoots,
+            runInTarget: input.runInTarget,
+            worktreeStartingState: input.worktreeStartingState,
+            localEnvironmentConfigPath: input.runInEnvironmentPath,
+            operationId: createStableOperationId("agent-runtime.workspace", input.acceptedAt, {
+              launchId: input.launchId,
+            }),
+          })
+        : null;
+    const cwd =
+      existing?.worktreePath ??
+      lease?.location.cwd ??
+      input.worktreePath ??
+      input.sourceRoot ??
+      scope.workspaceRoot;
+    yield* upsertProject(connection, scope);
+    // A remote creation can commit before its acknowledgement; preserve its workspace until proof reconciles ownership.
+    if (lease) yield* lease.retain;
+    if (!existing)
+      yield* dispatch(connection, {
+        type: "thread.create",
+        commandId: commandId("launch-thread", {
+          launchId: input.launchId,
+          sessionId: input.sessionId,
+        }),
+        threadId,
+        projectId: scope.id,
+        title: input.title.trim(),
+        modelSelection: prepared.message.modelSelection ?? input.modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: prepared.message.interactionMode ?? input.interactionMode,
+        branch: input.branch ?? null,
+        worktreePath: cwd,
+        createdBy: provenance ? "agent" : "user",
+        creationSource: provenance ? "mcp" : "web",
+      });
+    // Thread creation persists metadata only. Core promotion becomes observable before the first Run.
+    if (!previousBinding)
+      yield* lifecycle.runExclusive(
+        projectId,
+        Effect.gen(function* () {
+          yield* projectScope(projectId, true);
+          yield* bindExecution({
+            binding,
+            operation: {
+              operationId: createStableOperationId("agent-runtime.launch", input.acceptedAt, {
+                launchId: input.launchId,
+              }),
+              intent: {
+                kind: "create_agent_runtime_session",
+                ...binding,
+                replacement_default_session_id: commandId("default-session", {
+                  launchId: input.launchId,
+                }),
+                title: input.title.trim(),
+                initial_page_ids: [...new Set(input.initialPageIds ?? [])],
+              },
+            },
+          });
+        }),
+      );
+    const current = yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
+    if (lease) yield* lease.attach(threadId);
+    else if (existing && options.reconcileWorkspace)
+      yield* options.reconcileWorkspace({ cwd, threadId });
+    yield* (
+      options.presentation?.admitRuntimeMessage(
+        input.presentationTicket,
+        { kind: "session", sessionId: input.sessionId, launchId: input.launchId },
+        threadId,
+        input.message.messageId,
+      ) ?? Effect.void
+    );
+    yield* dispatch(
+      connection,
+      messageCommand(
+        threadId,
+        yield* prepareMessage(connection, threadId, prepared.message),
+        undefined,
+        provenance !== null,
+      ),
+    );
+    return { sessionId: input.sessionId, projectId: current.binding.project_id ?? null, threadId };
+  });
+
+  const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput,
+  ) {
+    if (
+      !validId(input.sessionId) ||
+      !validId(input.requestId) ||
+      !Number.isSafeInteger(input.acceptedAt) ||
+      input.acceptedAt < 0 ||
+      (input.sourceRunId !== undefined && !validId(input.sourceRunId)) ||
+      input.sessionId === input.source.sessionId
+    )
+      return yield* failure(
+        "fork",
+        "A distinct destination Session and stable fork identity are required",
+      );
+    const connection = yield* options.connect;
+    const source = yield* targetInfo(connection, input.source, true);
+    const provenance = yield* CoreApplicationAgent;
+
+    const projectId = source.binding.project_id ?? null;
+    const scope = yield* projectScope(projectId, true);
+    const threadId = `nodex:thread:${hash({ forkRequestId: input.requestId, sessionId: input.sessionId })}`;
+    const title = "Forked chat";
+    const binding = {
+      session_id: input.sessionId,
+      project_id: projectId,
+      runtime_id: connection.identity.runtimeId,
+      runtime_thread_id: threadId,
+      launch_request_id: input.requestId,
+    };
+    yield* validateCaller();
+    const previous = yield* lookupDestinationBinding(input.sessionId);
+    if (previous && !matchesBinding(previous, binding))
+      return yield* failure("fork", "Session is already bound to another fork request");
+    const existing = yield* connection.request("thread.read", { threadId });
+    if (!existing && input.environment === "worktree" && !options.prepareWorkspace)
+      return yield* failure("workspace", "Worktree preparation is unavailable");
+    const lease =
+      !existing && input.environment === "worktree" && options.prepareWorkspace
+        ? yield* options.prepareWorkspace({
+            projectId,
+            targetId: input.sessionId,
+            title,
+            prompt: title,
+            sourceCwd: source.thread.worktreePath ?? scope.workspaceRoot,
+            sourceRoots: scope.sourceRoots,
+            runInTarget: "newWorktree",
+            localEnvironmentConfigPath: input.runInEnvironmentPath ?? null,
+            operationId: createStableOperationId("agent-runtime.fork-workspace", input.acceptedAt, {
+              requestId: input.requestId,
+            }),
+          })
+        : null;
+    if (lease) yield* lease.retain;
+    yield* dispatch(connection, {
+      type: "thread.fork",
+      commandId: commandId("fork-thread", {
+        requestId: input.requestId,
+        sessionId: input.sessionId,
+      }),
+      sourceThreadId: source.threadId,
+      targetThreadId: threadId,
+      sourcePoint: input.sourceRunId
+        ? { type: "run", runId: input.sourceRunId }
+        : { type: "latest_stable" },
+      rootPolicy: "independent_root",
+      title,
+      createdBy: provenance ? "agent" : "user",
+      creationSource: provenance ? "mcp" : "web",
+    });
+    if (lease) {
+      yield* dispatch(connection, {
+        type: "thread.metadata.update",
+        commandId: commandId("fork-workspace", { requestId: input.requestId }),
+        threadId,
+        worktreePath: lease.location.cwd,
+        branch: null,
+      });
+    }
+    yield* lifecycle.runExclusive(
+      projectId,
+      Effect.gen(function* () {
+        yield* projectScope(projectId, true);
+        yield* bindExecution({
+          binding,
+          operation: {
+            operationId: createStableOperationId("agent-runtime.fork", input.acceptedAt, {
+              requestId: input.requestId,
+            }),
+            intent: {
+              kind: "create_agent_runtime_session",
+              ...binding,
+              replacement_default_session_id: commandId("fork-default-session", {
+                requestId: input.requestId,
+              }),
+              title,
+              initial_page_ids: [],
+            },
+          },
+        });
+      }),
+    );
+    yield* targetInfo(connection, { sessionId: input.sessionId, threadId }, true);
+    if (lease) yield* lease.attach(threadId);
+    else if (existing?.worktreePath && options.reconcileWorkspace)
+      yield* options.reconcileWorkspace({ cwd: existing.worktreePath, threadId });
+    return {
+      sourceSessionId: input.source.sessionId,
+      sessionId: input.sessionId,
+      projectId,
+      threadId,
+    };
+  });
+
+  const message = Effect.fn("AgentRuntimeApplication.message")(function* (
+    input: AgentRuntimeSessionTarget & {
+      readonly message: AgentRuntimeMessage;
+      readonly intent?: DispatchMessage["deliveryIntent"];
+      readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+    },
+    queueAfterActive = false,
+  ) {
+    yield* assertMessage(input.message);
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    const prepared = yield* prepareAgentConfig(
+      connection,
+      input.message,
+      loaded.thread.modelSelection,
+      loaded.thread.interactionMode,
+    );
+    yield* assertMessage(prepared.message);
+    yield* (
+      options.presentation?.admitRuntimeMessage(
+        input.presentationTicket,
+        { kind: "thread", threadId: loaded.threadId },
+        loaded.threadId,
+        input.message.messageId,
+      ) ?? Effect.void
+    );
+    return yield* dispatch(
+      connection,
+      messageCommand(
+        loaded.threadId,
+        yield* prepareMessage(connection, loaded.threadId, prepared.message),
+        input.intent,
+        (yield* CoreApplicationAgent) !== null,
+        queueAfterActive || prepared.hasConfig,
+      ),
+    );
+  });
+
+  const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
+    input: AgentRuntimeSessionTarget & { readonly runId: string },
+  ) {
+    const connection = yield* options.connect;
+    yield* authorizeSession(input.sessionId);
+    const loaded = yield* targetInfo(connection, input);
+    if (!validId(input.runId)) return yield* failure("stop", "Run identity is required");
+    if (loaded.thread.activeRunId !== input.runId) return { stopped: false };
+    yield* dispatch(connection, {
+      type: "run.interrupt",
+      commandId: commandId("stop", { threadId: loaded.threadId, runId: input.runId }),
+      threadId: loaded.threadId,
+      runId: input.runId,
+      holdQueue: true,
+    });
+    return { stopped: true };
+  });
+
+  const respond = Effect.fn("AgentRuntimeApplication.respond")(function* (
+    input: AgentRuntimeSessionTarget &
+      Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
+        readonly runId: string | null;
+      },
+  ) {
+    const connection = yield* options.connect;
+    if (!validId(input.requestId) || (input.runId !== null && !validId(input.runId)))
+      return yield* failure("respond", "Request identity is required");
+    const loaded = yield* targetInfo(connection, input, true);
+    const snapshot = yield* connection.request("thread.control", { threadId: loaded.threadId });
+    const request = snapshot.projection.runtimeRequests.find(
+      (request) => request.id === input.requestId,
+    );
+    const node = snapshot.projection.nodes.find((node) => node.id === request?.nodeId);
+    if (
+      !request ||
+      (request.kind !== "user_input" && request.kind !== "mcp-elicitation") ||
+      request.status !== "pending" ||
+      node?.runId !== input.runId ||
+      (input.runId === null && request.responseCapability.type !== "live")
+    )
+      return yield* failure(
+        "respond",
+        "This request is no longer pending for its original execution source",
+      );
+    if (request.responseCapability.type === "not_resumable")
+      return yield* failure("respond", request.responseCapability.reason);
+    const { decision, answers, attachmentsByQuestionId } = input;
+    return yield* dispatch(connection, {
+      type: "runtime-request.respond",
+      commandId: commandId("response", { threadId: loaded.threadId, requestId: input.requestId }),
+      threadId: loaded.threadId,
+      requestId: input.requestId,
+      ...(decision === undefined ? {} : { decision }),
+      ...(answers === undefined ? {} : { answers }),
+      ...(attachmentsByQuestionId === undefined ? {} : { attachmentsByQuestionId }),
+    });
+  });
+
+  const setModel = Effect.fn("AgentRuntimeApplication.setModel")(function* (
+    input: AgentRuntimeSessionTarget & {
+      readonly requestId: string;
+      readonly modelSelection: CreateThread["modelSelection"];
+    },
+  ) {
+    if (!validId(input.requestId)) return yield* failure("model", "Request identity is required");
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    return yield* dispatch(connection, {
+      type: "thread.model-selection.set",
+      commandId: commandId("model", { threadId: loaded.threadId, requestId: input.requestId }),
+      threadId: loaded.threadId,
+      modelSelection: input.modelSelection,
+    });
+  });
+
+  const setModes = Effect.fn("AgentRuntimeApplication.setModes")(function* (
+    input: AgentRuntimeSessionTarget & {
+      readonly requestId: string;
+      readonly interactionMode?: CreateThread["interactionMode"];
+    },
+  ) {
+    if (!validId(input.requestId) || input.interactionMode === undefined)
+      return yield* failure("mode", "An execution mode and request identity are required");
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    if (input.interactionMode !== undefined)
+      yield* dispatch(connection, {
+        type: "thread.interaction-mode.set",
+        commandId: commandId("interaction-mode", {
+          threadId: loaded.threadId,
+          requestId: input.requestId,
+        }),
+        threadId: loaded.threadId,
+        interactionMode: input.interactionMode,
+      });
+    return { changed: true };
+  });
+
+  const readCleanups = Effect.fn("AgentRuntimeApplication.readCleanups")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    after: string | null,
+  ) {
+    const response = yield* host(
+      core.workspace.read({
+        kind: "agent_runtime_execution_cleanup_window",
+        runtime_id: connection.identity.runtimeId,
+        window: { after, first: 200 },
+      }),
+    );
+    if (response.value.kind !== "agent_runtime_execution_cleanup_window")
+      return yield* failure("cleanup", "Session execution cleanup is unavailable");
+    return response.value.cleanups;
+  });
+  const queue = Effect.fn("AgentRuntimeApplication.queue")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeQueueInput,
+  ) {
+    if (!validId(input.requestId)) return yield* failure("queue", "Request identity is invalid");
+    if (
+      input.action === "reorder" &&
+      (input.orderedRunIds.length === 0 ||
+        input.orderedRunIds.length > 128 ||
+        new Set(input.orderedRunIds).size !== input.orderedRunIds.length ||
+        input.orderedRunIds.some((id) => !validId(id)))
+    )
+      return yield* failure("queue", "Queue order is invalid");
+    if ("runId" in input && !validId(input.runId))
+      return yield* failure("queue", "Run identity is invalid");
+    if (input.action === "steer" && !validId(input.targetRunId))
+      return yield* failure("queue", "Target Run identity is invalid");
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    const identity = {
+      requestId: input.requestId,
+      threadId: loaded.threadId,
+      action: input.action,
+    };
+    const base = { threadId: loaded.threadId, commandId: commandId("queue", identity) };
+    switch (input.action) {
+      case "resume":
+        return yield* dispatch(connection, { ...base, type: "queue.resume" });
+      case "cancel":
+        return yield* dispatch(connection, {
+          ...base,
+          type: "queued-run.cancel",
+          runId: input.runId,
+        });
+      case "steer":
+        return yield* dispatch(connection, {
+          ...base,
+          type: "queued-message.promote-to-steer",
+          queuedRunId: input.runId,
+          targetRunId: input.targetRunId,
+        });
+      case "edit": {
+        yield* assertMessage(input.message);
+        const prepared = yield* prepareAgentConfig(
+          connection,
+          input.message,
+          loaded.thread.modelSelection,
+          loaded.thread.interactionMode,
+        );
+        yield* assertMessage(prepared.message);
+        const message = yield* prepareMessage(connection, loaded.threadId, prepared.message);
+        const result = yield* dispatch(connection, {
+          ...base,
+          type: "queued-run.edit",
+          runId: input.runId,
+          text: message.text,
+          ...(message.attachments ? { attachments: message.attachments } : {}),
+          ...(message.context ? { context: message.context } : {}),
+          ...(message.modelSelection ? { modelSelection: message.modelSelection } : {}),
+          ...(message.interactionMode ? { interactionMode: message.interactionMode } : {}),
+        });
+        if (input.presentationTicket && options.presentation) {
+          const outcome = yield* connection.request("run.outcome", {
+            threadId: loaded.threadId,
+            messageId: input.message.messageId,
+          });
+          if (outcome?.runId === input.runId && outcome.status === "queued")
+            yield* options.presentation.replaceQueuedRuntimeMessage(
+              input.presentationTicket,
+              loaded.threadId,
+              input.message.messageId,
+              input.requestId,
+            );
+        }
+        return result;
+      }
+      case "reorder": {
+        let sequence = 0;
+        for (let index = input.orderedRunIds.length - 1; index >= 0; index -= 1) {
+          const result = yield* dispatch(connection, {
+            threadId: loaded.threadId,
+            type: "queued-run.reorder",
+            commandId: commandId("queue-order", { ...identity, index }),
+            runId: input.orderedRunIds[index]!,
+            beforeRunId: input.orderedRunIds[index + 1] ?? input.beforeRunId ?? null,
+          });
+          sequence = result.sequence;
+        }
+        return { sequence };
+      }
+    }
+  });
+  const rollback = Effect.fn("AgentRuntimeApplication.rollback")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeRollbackInput,
+  ) {
+    if (!validId(input.requestId) || !validId(input.runId))
+      return yield* failure("rollback", "Rollback identity is invalid");
+    if (!options.subscribeExecutionChanges)
+      return yield* failure("rollback", "Execution observation is unavailable");
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    const changes = yield* options.subscribeExecutionChanges;
+    const accepted = yield* connection.request("thread.rollback", {
+      threadId: loaded.threadId,
+      requestId: input.requestId,
+      runId: input.runId,
+    });
+    const result = yield* Stream.succeed(undefined).pipe(
+      Stream.concat(changes),
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          const current = yield* options.connect;
+          const target = yield* targetInfo(current, input, true);
+          const control = yield* current.request("thread.control", { threadId: target.threadId });
+          if (control.projection.thread.rollbackFailure?.requestId === accepted.commandId)
+            return yield* failure("rollback", control.projection.thread.rollbackFailure.message);
+          const outcome = yield* current.request("run.outcome", {
+            threadId: target.threadId,
+            messageId: accepted.userMessageId,
+          });
+          if (outcome && outcome.runId !== input.runId)
+            return yield* failure("rollback", "Rollback execution identity changed");
+          return outcome?.status === "rolled_back";
+        }),
+      ),
+      Stream.filter((settled) => settled),
+      Stream.runHead,
+      Effect.timeout("1 minute"),
+    );
+    if (Option.isNone(result))
+      return yield* failure("rollback", "Rollback observation ended before settlement");
+    return { rolledBack: true as const };
+  });
+  const settleCleanup = Effect.fn("AgentRuntimeApplication.settleCleanup")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    cleanup: Cleanup,
+  ) {
+    if (cleanup.runtime_id !== connection.identity.runtimeId)
+      return yield* failure("cleanup", "Execution cleanup belongs to another runtime");
+    const thread = yield* connection.request("thread.read", {
+      threadId: cleanup.runtime_thread_id,
+    });
+    if (thread?.deletedAt === null)
+      yield* dispatch(connection, {
+        type: "thread.delete",
+        threadId: cleanup.runtime_thread_id,
+        commandId: commandId("delete-session", {
+          cleanupId: cleanup.cleanup_id,
+          threadId: cleanup.runtime_thread_id,
+        }),
+      });
+    const settled = yield* connection.request("thread.read", {
+      threadId: cleanup.runtime_thread_id,
+    });
+    if (settled?.deletedAt === null)
+      return yield* failure("cleanup", "Execution deletion has not committed");
+    yield* host(
+      core.workspace.apply({
+        operationId: createOperationId("agent-runtime.cleanup-ack"),
+        intent: {
+          kind: "acknowledge_agent_runtime_execution_cleanup",
+          cleanup_id: cleanup.cleanup_id,
+          runtime_id: cleanup.runtime_id,
+          runtime_thread_id: cleanup.runtime_thread_id,
+        },
+      }),
+    );
+  });
+  const cleanupDeletedSessions = Effect.fn("AgentRuntimeApplication.cleanupDeletedSessions")(
+    function* () {
+      if (yield* CoreApplicationAgent)
+        return yield* failure("cleanup", "Execution cleanup requires the Desktop Host");
+      const connection = yield* options.connect;
+      let after: string | null = null;
+      let completed = 0;
+      do {
+        const window: CleanupWindow = yield* readCleanups(connection, after);
+        for (const cleanup of window.items) {
+          yield* settleCleanup(connection, cleanup);
+          completed += 1;
+        }
+        after = window.next_cursor ?? null;
+      } while (after !== null);
+      return { completed };
+    },
+  );
+  const renameSession = Effect.fn("AgentRuntimeApplication.renameSession")(function* (
+    command: ProjectSessionRenameCommandInput,
+  ) {
+    const result = yield* workspace.renameProjectSession(command);
+    const session = result.value;
+    if (
+      !session.executionRef ||
+      session.noThreadFallbackTitle !== command.payload.input.title.trim()
+    )
+      return result;
+    yield* afterCommit(
+      command.operationId,
+      "rename-session",
+      Effect.gen(function* () {
+        const connection = yield* options.connect;
+        const loaded = yield* host(targetInfo(connection, { sessionId: session.id }));
+        yield* dispatch(connection, {
+          type: "thread.metadata.update",
+          threadId: loaded.threadId,
+          commandId: commandId("rename-session", {
+            operationId: command.operationId,
+            threadId: loaded.threadId,
+          }),
+          title: session.noThreadFallbackTitle,
+        });
+      }),
+    );
+    return result;
+  });
+  const archiveSession = Effect.fn("AgentRuntimeApplication.archiveSession")(function* (
+    command: ProjectSessionArchiveCommandInput,
+    archived: boolean,
+  ) {
+    const result = yield* archived
+      ? workspace.archiveProjectSession(command)
+      : workspace.unarchiveProjectSession(command);
+    if (!result.value.executionRef || result.value.archived !== archived) return result;
+    yield* afterCommit(
+      command.operationId,
+      "archive-session",
+      Effect.gen(function* () {
+        const connection = yield* options.connect;
+        const loaded = yield* host(targetInfo(connection, { sessionId: result.value.id }));
+        if ((loaded.thread.archivedAt !== null) === archived) return;
+        yield* dispatch(connection, {
+          type: archived ? "thread.archive" : "thread.unarchive",
+          threadId: loaded.threadId,
+          commandId: commandId("archive-session", {
+            operationId: command.operationId,
+            threadId: loaded.threadId,
+          }),
+        });
+      }),
+    );
+    return result;
+  });
+  const deleteSession = Effect.fn("AgentRuntimeApplication.deleteSession")(function* (
+    command: ProjectSessionDeleteCommandInput,
+  ) {
+    const result = yield* workspace.deleteProjectSession(command);
+    if (!options.runtimeExists || (yield* options.runtimeExists))
+      yield* afterCommit(command.operationId, "delete-session", host(cleanupDeletedSessions()));
+    return result;
+  });
+
+  return {
+    clearPredictions: (threadId?: string) =>
+      owned(
+        "prediction-clear",
+        Effect.gen(function* () {
+          if (options.runtimeExists && !(yield* options.runtimeExists)) return;
+          const connection = yield* options.connect;
+          yield* connection.request(
+            "native.prediction.clear",
+            threadId === undefined ? {} : { threadId },
+          );
+        }),
+      ),
+    nativeThread: (threadId: string) =>
+      owned(
+        "native-thread",
+        Effect.gen(function* () {
+          if (options.runtimeExists && !(yield* options.runtimeExists)) return null;
+          const connection = yield* options.connect;
+          const thread = yield* connection.request("thread.read", { threadId });
+          if (!thread || thread.deletedAt || thread.archivedAt) return null;
+          const binding = yield* host(
+            core.workspace.read({
+              kind: "agent_runtime_session_binding_by_execution",
+              runtime_id: connection.identity.runtimeId,
+              runtime_thread_id: thread.lineage.rootThreadId,
+            }),
+          );
+          if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
+            return null;
+          yield* targetInfo(connection, { sessionId: binding.value.binding.session_id, threadId });
+          return { connection, thread, sessionId: binding.value.binding.session_id };
+        }),
+      ),
+    withExecutionLocationWriter: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+      withSessionLane(sessionId, ownedWrite("execution-handoff", use)),
+    generateStructured: (
+      input: import("../../shared/agent-runtime-api").AgentRuntimeStructuredGenerationInput,
+    ) =>
+      ownedWrite(
+        "structured-generation",
+        options.connect.pipe(
+          Effect.flatMap((connection) => connection.request("text.generate-structured", input)),
+        ),
+      ),
+    resolveSession: (sessionId: string) =>
+      owned(
+        "resolve",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const binding = yield* readBinding(connection, sessionId, false);
+          return {
+            sessionId: binding.session_id,
+            projectId: binding.project_id ?? null,
+            runtimeId: binding.runtime_id,
+            rootThreadId: binding.runtime_thread_id,
+            engineProjectId: engineProjectId(binding.project_id ?? null),
+          };
+        }),
+      ),
+    resolveTarget: (target: AgentRuntimeSessionTarget) =>
+      owned(
+        "resolve-target",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, target);
+          return {
+            sessionId: loaded.binding.session_id,
+            projectId: loaded.binding.project_id ?? null,
+            runtimeId: loaded.binding.runtime_id,
+            rootThreadId: loaded.binding.runtime_thread_id,
+            threadId: loaded.threadId,
+          };
+        }),
+      ),
+    launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
+    renameSession: (command: ProjectSessionRenameCommandInput) =>
+      ownedWrite("rename-session", renameSession(command)),
+    archiveSession: (command: ProjectSessionArchiveCommandInput) =>
+      withSessionLifecycle(
+        "archive-session",
+        command.payload.sessionId,
+        archiveSession(command, true),
+      ),
+    unarchiveSession: (command: ProjectSessionArchiveCommandInput) =>
+      withSessionLifecycle(
+        "unarchive-session",
+        command.payload.sessionId,
+        archiveSession(command, false),
+      ),
+    deleteSession: (command: ProjectSessionDeleteCommandInput) =>
+      withSessionLifecycle("delete-session", command.payload.sessionId, deleteSession(command)),
+    setPinnedSession: (command: ProjectSessionPinnedCommandInput) =>
+      ownedWrite("pin-session", workspace.setProjectSessionPinned(command)),
+    moveSession: (input: {
+      readonly operationId: string;
+      readonly sessionId: string;
+      readonly projectId: string | null;
+    }) =>
+      withSessionLifecycle(
+        "move-session",
+        input.sessionId,
+        Effect.gen(function* () {
+          if (
+            !validId(input.operationId) ||
+            !validId(input.sessionId) ||
+            (input.projectId !== null && !validId(input.projectId))
+          )
+            return yield* failure("move-session", "Session and Project identities are required");
+          yield* authorizeSession(input.sessionId);
+          yield* projectScope(input.projectId, false);
+          yield* core.workspace.apply({
+            operationId: input.operationId,
+            intent: {
+              kind: "move_session",
+              session_id: input.sessionId,
+              project_id: input.projectId,
+            },
+          });
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return { sessionId: input.sessionId, projectId: input.projectId };
+          yield* afterCommit(
+            input.operationId,
+            "move-session",
+            Effect.gen(function* () {
+              const proof = yield* host(
+                core.workspace.read({
+                  kind: "agent_runtime_session_binding",
+                  session_id: input.sessionId,
+                }),
+              );
+              if (proof.value.kind !== "agent_runtime_session_binding" || !proof.value.binding)
+                return;
+              const connection = yield* options.connect;
+              if (proof.value.binding.runtime_id !== connection.identity.runtimeId)
+                return yield* failure("placement", "Session belongs to another runtime");
+              yield* reconcilePlacement(connection, proof.value.binding);
+            }),
+          );
+          return { sessionId: input.sessionId, projectId: input.projectId };
+        }),
+      ),
+    cleanupDeletedSessions: ownedWrite("cleanup", cleanupDeletedSessions()),
+    closeProjectExecution: (projectId: string) =>
+      ownedWrite(
+        "close-project",
+        Effect.gen(function* () {
+          if (!validId(projectId))
+            return yield* failure("close-project", "A Project identity is required");
+          yield* validateCaller();
+          yield* projectScope(projectId, false);
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return { closedBindings: 0 };
+          const connection = yield* options.connect;
+          yield* validateCaller();
+          yield* reconcileProject(connection, projectId);
+          return yield* connection.request("project.close", { projectId });
+        }),
+      ),
+    fork: (input: Parameters<typeof fork>[0]) =>
+      ownedWrite("fork", fork(input).pipe(Effect.scoped)),
+    read: (target: AgentRuntimeSessionTarget) =>
+      owned(
+        "read",
+        options.connect.pipe(
+          Effect.flatMap((connection) => load(connection, target)),
+          Effect.map(conversation),
+        ),
+      ),
+    control: (target: AgentRuntimeSessionTarget) =>
+      owned(
+        "control",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, target);
+          const snapshot = yield* connection.request("thread.control", {
+            threadId: loaded.threadId,
+          });
+          return {
+            sessionId: loaded.binding.session_id,
+            projectId: loaded.binding.project_id ?? null,
+            threadId: loaded.threadId,
+            snapshot,
+          };
+        }),
+      ),
+    inspect: (target: AgentRuntimeSessionTarget) =>
+      owned(
+        "inspect",
+        options.connect.pipe(
+          Effect.flatMap((connection) => targetInfo(connection, target)),
+          Effect.map(({ binding, threadId, thread }) => ({
+            sessionId: binding.session_id,
+            projectId: binding.project_id ?? null,
+            runtimeId: binding.runtime_id,
+            rootThreadId: binding.runtime_thread_id,
+            threadId,
+            thread,
+          })),
+        ),
+      ),
+    projectActivity: (projectId: string) =>
+      owned(
+        "project-activity",
+        Effect.gen(function* () {
+          if (!validId(projectId)) return yield* failure("project", "Project identity is invalid");
+          yield* validateCaller();
+          yield* projectScope(projectId, false);
+          if (options.runtimeExists && !(yield* options.runtimeExists))
+            return { snapshotSequence: 0, run: null, runtimeRequest: null, nativeBackground: null };
+          const connection = yield* options.connect;
+          yield* reconcileProject(connection, projectId, true);
+          return yield* connection.request("project.activity", { projectId });
+        }),
+      ),
+    readQueuePage: (input: AgentRuntimeSessionTarget & { readonly cursor?: string }) =>
+      owned(
+        "queue-read",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.queue", {
+            threadId: loaded.threadId,
+            ...(input.cursor === undefined ? {} : { cursor: input.cursor }),
+          });
+        }),
+      ),
+    readQueuedPreview: (input: AgentRuntimeSessionTarget & { readonly runId: string }) =>
+      owned(
+        "queued-preview",
+        Effect.gen(function* () {
+          if (!validId(input.runId))
+            return yield* failure("queued-preview", "Run identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.queued-preview", {
+            threadId: loaded.threadId,
+            runId: input.runId,
+          });
+        }),
+      ),
+    readQueuedMessage: (input: AgentRuntimeSessionTarget & { readonly runId: string }) =>
+      owned(
+        "queued-message",
+        Effect.gen(function* () {
+          if (!validId(input.runId))
+            return yield* failure("queued-message", "Run identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.queued-message", {
+            threadId: loaded.threadId,
+            runId: input.runId,
+          });
+        }),
+      ),
+    runOutcome: (input: AgentRuntimeSessionTarget & { readonly messageId: string }) =>
+      owned(
+        "run-outcome",
+        Effect.gen(function* () {
+          if (!validId(input.messageId))
+            return yield* failure("run-outcome", "Message identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("run.outcome", {
+            threadId: loaded.threadId,
+            messageId: input.messageId,
+          });
+        }),
+      ),
+    message: (input: Parameters<typeof message>[0]) => ownedWrite("message", message(input)),
+    queueMessage: (input: Parameters<typeof message>[0]) =>
+      ownedWrite("queue-message", message(input, true)),
+    queue: (input: Parameters<typeof queue>[0]) => ownedWrite("queue", queue(input)),
+    rollback: (input: Parameters<typeof rollback>[0]) =>
+      ownedWrite("rollback", rollback(input).pipe(Effect.scoped)),
+    stopTask: (input: import("../../shared/agent-runtime-api").AgentRuntimeTaskStopInput) =>
+      ownedWrite(
+        "stop-task",
+        Effect.gen(function* () {
+          if (![input.requestId, input.runId, input.taskId].every(validId))
+            return yield* failure("stop-task", "Task identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input, true);
+          return yield* dispatch(connection, {
+            type: "subagent.stop",
+            commandId: commandId("stop-task", {
+              requestId: input.requestId,
+              threadId: loaded.threadId,
+            }),
+            threadId: loaded.threadId,
+            runId: input.runId,
+            subagentId: input.taskId,
+          });
+        }),
+      ),
+    stop: (input: Parameters<typeof stop>[0]) => ownedWrite("stop", stop(input)),
+    respond: (input: Parameters<typeof respond>[0]) => ownedWrite("respond", respond(input)),
+    setModel: (input: Parameters<typeof setModel>[0]) => ownedWrite("model", setModel(input)),
+    setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),
+    compact: (input: import("../../shared/agent-runtime-api").AgentRuntimeCompactInput) =>
+      ownedWrite(
+        "compact",
+        Effect.gen(function* () {
+          if (!validId(input.requestId))
+            return yield* failure("compact", "Request identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input, true);
+          return yield* connection.request("thread.compact", {
+            threadId: loaded.threadId,
+            requestId: input.requestId,
+          });
+        }),
+      ),
+    catalog: (input: AgentRuntimeOperations["providers.read"]["input"] = {}) =>
+      owned(
+        "catalog",
+        options.connect.pipe(
+          Effect.flatMap((connection) => connection.request("providers.read", input)),
+        ),
+      ),
+    history: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["thread.history"]["input"], "threadId">,
+    ): Effect.Effect<AgentHistoryPage, AgentRuntimeApplicationError> =>
+      owned(
+        "history",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.history", {
+            threadId: loaded.threadId,
+            cursor: input.cursor,
+            ...(input.throughEntryId === undefined ? {} : { throughEntryId: input.throughEntryId }),
+            ...(input.conversationOnly === undefined
+              ? {}
+              : { conversationOnly: input.conversationOnly }),
+          });
+        }),
+      ),
+    overview: (
+      input: AgentRuntimeSessionTarget &
+        Omit<AgentRuntimeOperations["tasks.overview"]["input"], "threadId">,
+    ) =>
+      owned(
+        "overview",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("tasks.overview", {
+            threadId: loaded.threadId,
+            ...(input.activeCursor === undefined ? {} : { activeCursor: input.activeCursor }),
+            ...(input.terminalCursor === undefined ? {} : { terminalCursor: input.terminalCursor }),
+          });
+        }),
+      ),
+    attachment: (
+      input: AgentRuntimeSessionTarget & {
+        readonly itemId: string;
+        readonly attachmentId: string;
+        readonly sourceThreadId?: string;
+      },
+    ) =>
+      owned(
+        "attachment",
+        Effect.gen(function* () {
+          if (
+            !validId(input.itemId) ||
+            !validId(input.attachmentId) ||
+            (input.sourceThreadId !== undefined && !validId(input.sourceThreadId))
+          )
+            return yield* failure("attachment", "Attachment identity is invalid");
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.attachment", {
+            threadId: loaded.threadId,
+            itemId: input.itemId,
+            attachmentId: input.attachmentId,
+            ...(input.sourceThreadId === undefined ? {} : { sourceThreadId: input.sourceThreadId }),
+          });
+        }),
+      ),
+    item: (
+      input: AgentRuntimeSessionTarget & {
+        readonly itemId: string;
+        readonly sourceThreadId?: string;
+        readonly full?: true;
+      },
+    ): Effect.Effect<AgentTurnItem | null, AgentRuntimeApplicationError> =>
+      owned(
+        "item",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          if (
+            !validId(input.itemId) ||
+            (input.sourceThreadId !== undefined && !validId(input.sourceThreadId))
+          )
+            return yield* failure("item", "Item identity is invalid");
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request(input.full ? "thread.item.full" : "thread.item", {
+            threadId: loaded.threadId,
+            itemId: input.itemId,
+            ...(input.sourceThreadId === undefined ? {} : { sourceThreadId: input.sourceThreadId }),
+          });
+        }),
+      ),
+  };
+});
+
+export class AgentRuntimeApplication extends Context.Service<
+  AgentRuntimeApplication,
+  Effect.Success<ReturnType<typeof make>>
+>()("nodex/main/agent-runtime/AgentRuntimeApplication") {}
+export const layer = (options: AgentRuntimeApplicationOptions) =>
+  Layer.effect(AgentRuntimeApplication, make(options));

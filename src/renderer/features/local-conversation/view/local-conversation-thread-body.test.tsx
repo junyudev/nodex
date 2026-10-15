@@ -372,12 +372,11 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
+
     onQueueingEnabledChange: () => {},
     onSendPrompt: async () => {},
     onSteerPrompt: async () => {},
     onInterruptTurn: async () => {},
-    onRespondApproval: async () => {},
     onRespondUserInput: async () => {},
     onRespondMcpElicitation: async () => {},
     onResolvePlanImplementationRequest: async () => {},

@@ -224,16 +224,6 @@ describe.runIf(enabled)("Rust Core Gate E runtime", () => {
         parent: { kind: "library", before: null },
       },
     });
-    await projectClient.libraryApply({
-      operationId: "gate-e-grant-database",
-      intent: {
-        kind: "grant_project_access",
-        project_id: projectId,
-        target: { kind: "database", database_id: databaseId },
-        access: "read_write",
-      },
-    });
-
     const pageIds: string[] = [];
     for (let index = 0; index < 1_000; index += 1) {
       const committed = await benchmarkStage(

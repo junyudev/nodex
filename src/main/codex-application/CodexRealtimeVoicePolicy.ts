@@ -1,8 +1,11 @@
 import * as Context from "effect/Context";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Scope from "effect/Scope";
+import { captureVoice, runtimeThread, type RuntimeVoiceCapture } from "./CodexRuntimeNative";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type {
   CodexRealtimeVoiceStartSettings,
@@ -28,6 +31,7 @@ export class CodexRealtimeVoicePolicyError extends Schema.TaggedError<CodexRealt
 ) {}
 
 export interface CodexPreparedRealtimeVoicePolicy extends CodexRealtimeVoiceTarget {
+  readonly runtime?: RuntimeVoiceCapture;
   readonly nativeStart: CodexRealtimeVoiceStartSettings;
   readonly bufferInputWhileConnecting: boolean;
   readonly productPolicy: RealtimeVoiceProductPolicy;
@@ -64,6 +68,8 @@ export const make = Effect.gen(function* () {
   const capabilities = yield* CodexAppServerCapabilities;
   const entities = yield* ConversationEntityMap;
   const core = yield* CoreModules;
+  const lifetime = yield* Scope.Scope;
+  const application = yield* Effect.serviceOption(AgentRuntimeApplication);
   const assertHost = Effect.fn("CodexRealtimeVoicePolicy.assertHost")(function* (
     target: CodexRealtimeVoiceTarget,
   ) {
@@ -123,6 +129,11 @@ export const make = Effect.gen(function* () {
       product.userId !== prepared.productPolicy.userId
     )
       return yield* changed();
+    if (prepared.runtime) {
+      if (!(yield* prepared.runtime.current.pipe(Effect.mapError(() => changed()))))
+        return yield* changed();
+      return;
+    }
     if (
       !(yield* capabilities
         .isCurrent(prepared.capabilities)
@@ -146,6 +157,42 @@ export const make = Effect.gen(function* () {
     const product = yield* media.realtimeVoiceProductPolicy;
     if (product.status !== "ready" || !product.entryPoint || !product.accessAllowed)
       return yield* unavailable();
+    const runtime =
+      target.hostId === gateway.localHostId
+        ? yield* captureVoice(target, application).pipe(
+            Effect.provideService(Scope.Scope, lifetime),
+            Effect.mapError(() => unavailable()),
+          )
+        : null;
+    if (runtime) {
+      const captured = runtime.capabilities;
+      const supported =
+        captured.version !== null &&
+        captured.version !== "0.0.0" &&
+        isCodexAppServerVersionAtLeast(captured.version, "0.147.0-alpha.6");
+      if (
+        !supported ||
+        product.config.existing_thread_voice_enabled !== true ||
+        (product.clientOwnedCall &&
+          isCodexAppServerVersionAtLeast(captured.version!, "0.150.0-alpha.3")) ||
+        runtime.capture.features.some(
+          (feature) => feature.name === "in_app_voice" && !feature.enabled,
+        )
+      ) {
+        yield* runtime.release;
+        return yield* unavailable();
+      }
+      const prepared = {
+        ...target,
+        productPolicy: product,
+        capabilities: captured,
+        nativeStart: resolveRealtimeVoiceStartSettings(product),
+        bufferInputWhileConnecting: true,
+        runtime,
+      };
+      yield* assertCurrent(prepared).pipe(Effect.onError(() => runtime.release));
+      return prepared;
+    }
     const canonical = yield* assertHost(target);
     if (
       canonical.threadSource !== "realtime_voice" &&
@@ -189,10 +236,26 @@ export const make = Effect.gen(function* () {
     prepare,
     assertCurrent,
     isAvailable: (target) =>
-      prepare(target).pipe(
-        Effect.as(true),
-        Effect.orElseSucceed(() => false),
-      ),
+      Effect.gen(function* () {
+        if (
+          target.hostId === gateway.localHostId &&
+          (yield* runtimeThread(target.threadId, application).pipe(
+            Effect.orElseSucceed(() => null),
+          ))
+        ) {
+          const product = yield* media.realtimeVoiceProductPolicy;
+          return (
+            product.status === "ready" &&
+            product.entryPoint &&
+            product.accessAllowed &&
+            product.config.existing_thread_voice_enabled === true
+          );
+        }
+        return yield* prepare(target).pipe(
+          Effect.as(true),
+          Effect.orElseSucceed(() => false),
+        );
+      }).pipe(Effect.orElseSucceed(() => false)),
   });
 });
 

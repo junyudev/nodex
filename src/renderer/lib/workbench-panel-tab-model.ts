@@ -11,6 +11,8 @@ import type {
   CodexSelectedSubagentHydrateResult,
   PanelId,
   WorkbenchTabProjection,
+  ProjectSession,
+  CodexPromptInput,
 } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 
@@ -49,6 +51,14 @@ export interface SideChatPanelTab {
   status: SideChatPanelTabStatus;
   errorMessage?: string;
   stateKey: number;
+  /** An independent product Session owns execution separately from the source chat. */
+  runtimeSession?: ProjectSession;
+  draftPrompt?: string;
+  draftPromptInput?: CodexPromptInput;
+  initialSubmission?: import("../features/conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
+    readonly acceptedAt: number;
+    readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
+  };
 }
 
 export interface McpAppPanelTab {
@@ -100,7 +110,7 @@ export interface BackgroundAgentPanelTab {
   backgroundAgent: true;
   id: string;
   sessionId: string;
-  projectId: string;
+  projectId: string | null;
   panelId: "right";
   leafId?: string;
   threadId: string;
@@ -122,7 +132,7 @@ export interface SubagentsPanelTab {
   subagentsPanel: true;
   id: string;
   sessionId: string;
-  projectId: string;
+  projectId: string | null;
   panelId: "right";
   leafId?: string;
   rootThreadId: string;

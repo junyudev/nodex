@@ -98,6 +98,86 @@ export async function runCopyConversationMarkdown(
   }
 }
 
+/** Explicit backward-page export retains bounded Markdown, never another execution owner. */
+export async function* streamReadOnlyConversationMarkdown(input: {
+  readonly title: string;
+  readonly cwd: string | null;
+  readonly signal: AbortSignal;
+  readonly readPage: (cursor: string | null) => Promise<{
+    readonly turns: readonly CodexConversationTurn[];
+    readonly olderCursor: string | null;
+  }>;
+}): AsyncGenerator<string> {
+  const groups = new Map<string, string[]>();
+  const items = new Set<string>();
+  const cursors = new Set<string>();
+  let cursor: string | null = null;
+  let bytes = utf8Bytes(renderConversationMarkdownHeader(input.title));
+  let pageCount = 0;
+  do {
+    if (input.signal.aborted) throw new ConversationMarkdownExportCancelled();
+    if (pageCount++ >= 1_024) throw new ConversationMarkdownClipboardLimitError();
+    const page = await input.readPage(cursor);
+    if (input.signal.aborted) throw new ConversationMarkdownExportCancelled();
+    for (const turn of [...page.turns].reverse()) {
+      const key =
+        turn.entityKey ?? turn.turnId ?? JSON.stringify([turn.threadId, turn.items[0]?.itemId]);
+      const fresh = turn.items.filter((item) => {
+        const address = JSON.stringify([key, item.itemId]);
+        if (items.has(address)) return false;
+        if (items.size >= 25_000) throw new ConversationMarkdownClipboardLimitError();
+        items.add(address);
+        return true;
+      });
+      if (fresh.length === 0 && !groups.has(key)) continue;
+      const markdown = renderConversationTurnMarkdown(
+        exportEntry({ ...turn, items: fresh }, groups.size),
+        input.cwd,
+      );
+      const fragments = groups.get(key) ?? [];
+      if (markdown) {
+        bytes += utf8Bytes(markdown) + 2;
+        if (bytes + 1 > CONVERSATION_MARKDOWN_CLIPBOARD_MAX_BYTES)
+          throw new ConversationMarkdownClipboardLimitError();
+        fragments.unshift(markdown);
+      }
+      // The oldest observed fragment locates its actual source Turn, including late background replies.
+      groups.delete(key);
+      groups.set(key, fragments);
+    }
+    cursor = page.olderCursor;
+    if (cursor && cursors.has(cursor)) throw new Error("History cursor did not advance");
+    if (cursor) cursors.add(cursor);
+  } while (cursor !== null);
+  if (![...groups.values()].some((fragments) => fragments.length > 0)) return;
+  yield renderConversationMarkdownHeader(input.title);
+  for (const fragments of [...groups.values()].reverse())
+    for (const markdown of fragments) yield `\n\n${markdown}`;
+  yield "\n";
+}
+
+export async function copyReadOnlyConversationMarkdown(
+  input: Omit<Parameters<typeof streamReadOnlyConversationMarkdown>[0], "signal">,
+): Promise<void> {
+  const controller = new AbortController();
+  const progress = toast.info("Preparing conversation Markdown…", {
+    duration: 0,
+    action: { label: "Cancel", onClick: () => controller.abort() },
+  });
+  try {
+    await runCopyConversationMarkdown({
+      streamMarkdown: (signal) => streamReadOnlyConversationMarkdown({ ...input, signal }),
+      signal: controller.signal,
+      writeText: writeTextToClipboardStrict,
+      showSuccess: () => toast.success("Conversation copied as Markdown"),
+      showTooLarge: () => toast.danger("Conversation is too large to copy"),
+      showError: () => toast.danger("Failed to copy conversation as Markdown"),
+    });
+  } finally {
+    progress.close();
+  }
+}
+
 async function ensureConversationAvailable(
   conversationId: string,
   executionHostId?: string | null,

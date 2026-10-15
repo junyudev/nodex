@@ -6,11 +6,8 @@ import * as Layer from "effect/Layer";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
 import { NODEX_APP_TOOL_NAMESPACE } from "../../shared/nodex-agent-tools/identity";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { CodexConversations } from "../codex-application/CodexConversations";
 import { CodexConversationContext } from "../codex-application/CodexConversationContext";
-import type { NodexAgentAuthorizationPresentationTarget } from "../codex-application/NodexAgentAuthorizationRuntime";
 import { NodexAppToolAuthority } from "../app-tools/NodexAppToolAuthority";
-import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CoreModules } from "../core-runtime/CoreModules";
 import {
   NodexAgentDynamicTools,
@@ -25,16 +22,14 @@ export class NodexAgentProtocolTools extends Context.Service<
 >()("nodex/main/nodex-agent-application/NodexAgentProtocolTools") {}
 
 /**
- * Executes Nodex Agent calls from their frozen Core Turn authority. Model-controlled arguments
- * never select Project, root Thread, toolset revision, resource grants, or presentation target.
+ * Executes Nodex Agent calls from their admitted Core execution identity. Model-controlled
+ * arguments never select caller coordinates, toolset revision, or presentation target.
  */
 export const live: Layer.Layer<
   NodexAgentProtocolTools,
   never,
   | CodexConversationContext
-  | CodexConversations
   | CodexTurnAuthority
-  | CodexRendererPresentationRegistry
   | CoreModules
   | NodexAppToolAuthority
   | NodexAgentDynamicTools
@@ -42,9 +37,7 @@ export const live: Layer.Layer<
   NodexAgentProtocolTools,
   Effect.gen(function* () {
     const conversationContext = yield* CodexConversationContext;
-    const conversations = yield* CodexConversations;
     const turnAuthority = yield* CodexTurnAuthority;
-    const renderer = yield* CodexRendererPresentationRegistry;
     const core = yield* CoreModules;
     const appAuthority = yield* NodexAppToolAuthority;
     const tools = yield* NodexAgentDynamicTools;
@@ -71,18 +64,6 @@ export const live: Layer.Layer<
       );
     });
 
-    const presentation = (
-      params: DynamicToolCallParams,
-      rootThreadId: string,
-    ): NodexAgentAuthorizationPresentationTarget | null => {
-      const direct = renderer.resolvePresentedSurfaceClient(params.threadId);
-      if (direct) return { clientId: direct, threadId: params.threadId, turnId: params.turnId };
-      if (rootThreadId === params.threadId) return null;
-      const clientId = renderer.resolvePresentedSurfaceClient(rootThreadId);
-      const turnId = conversations.latestTurnId(rootThreadId);
-      return clientId && turnId ? { clientId, threadId: rootThreadId, turnId } : null;
-    };
-
     return NodexAgentProtocolTools.of({
       execute: (params) =>
         Effect.gen(function* () {
@@ -103,8 +84,6 @@ export const live: Layer.Layer<
           );
           const context = yield* appAuthority.bind({
             authority,
-            callId: params.callId,
-            presentation: presentation(params, lineage.rootThreadId),
             isCurrent,
           });
           return yield* tools.execute(params, { toolsetRevision: revision, ...context });
@@ -114,21 +93,6 @@ export const live: Layer.Layer<
               .execute(params, {
                 toolsetRevision: null,
                 authority: null,
-                access: {
-                  read: "allowed",
-                  write: "unavailable",
-                  domains: ["document", "placement", "database"],
-                },
-                resolveResourceAccess: (intents) =>
-                  Effect.succeed({
-                    kind: "denied" as const,
-                    intent: intents[0] ?? {
-                      target: { kind: "library" as const, libraryId: "unavailable" },
-                      action: "read" as const,
-                    },
-                    reason: "authority_stale" as const,
-                  }),
-                authorize: () => Effect.succeed("unavailable" as const),
               })
               .pipe(Effect.annotateLogs({ cause })),
           ),

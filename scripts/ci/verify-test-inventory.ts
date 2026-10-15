@@ -24,6 +24,7 @@ export interface DiscoveredSuite {
 export function ownedTestCandidates(files: readonly string[]): readonly string[] {
   return files.filter((file) => {
     if (maintainedThirdPartyTests.includes(file)) return true;
+    if (file.startsWith("packages/agent-runtime/vendor/")) return false;
     if (!/^(src|scripts|config|packages)\//u.test(file)) return false;
     // These intentionally invalid programs are inputs to tooling:verify, never runnable tests.
     if (file.startsWith("scripts/fixtures/")) return false;

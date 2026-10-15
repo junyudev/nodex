@@ -1,5 +1,6 @@
 import type { CodexConversationTurn, CodexPromptInput, CodexUserAttachment } from "../../lib/types";
 import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { CodexTranscriptStructure } from "../local-conversation/normalized-transcript-read-owner";
 
 export type FirstSubmissionBackend = "codex" | "acp" | "claude" | "opencode";
 
@@ -60,6 +61,8 @@ export interface BeginFirstSubmissionInput {
   readonly originSessionId: string;
   readonly prompt: string;
   readonly promptInput?: CodexPromptInput;
+  /** Commands that survive a panel remount retain their original admission identity. */
+  readonly identity?: FirstSubmissionIdentity & { readonly acceptedAt: number };
 }
 
 interface SessionFirstSubmissionOwnerDependencies {
@@ -122,10 +125,17 @@ export function hasCanonicalFirstSubmission(
 export function hasDurableCanonicalFirstSubmission(
   turns: readonly CodexConversationTurn[],
   clientUserMessageId: string,
+  normalizedTurns?: CodexTranscriptStructure["turns"],
 ): boolean {
-  return turns.some(
-    (turn) =>
-      turn.turnId !== null && readCanonicalClientUserMessageId(turn) === clientUserMessageId,
+  return (
+    normalizedTurns?.some(
+      ({ value: { details } }) =>
+        details.turnId !== null && details.params.clientUserMessageId === clientUserMessageId,
+    ) === true ||
+    turns.some(
+      (turn) =>
+        turn.turnId !== null && readCanonicalClientUserMessageId(turn) === clientUserMessageId,
+    )
   );
 }
 
@@ -327,9 +337,9 @@ export function createSessionFirstSubmissionOwner(
       return () => listeners.delete(listener);
     },
     begin: (input) => {
-      const launchId = createId();
-      const clientUserMessageId = createId();
-      const acceptedAt = now();
+      const launchId = input.identity?.launchId ?? createId();
+      const clientUserMessageId = input.identity?.clientUserMessageId ?? createId();
+      const acceptedAt = input.identity?.acceptedAt ?? now();
       const retained = snapshot.submissions.filter((submission) => {
         const matchesOrigin =
           submission.originSessionId === input.originSessionId &&

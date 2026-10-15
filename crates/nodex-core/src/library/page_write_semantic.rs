@@ -11,30 +11,20 @@ use nodex_core_contracts::library::{
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
-use crate::database::resolve_page_transfer_data_source_destination;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::LibraryApplyOutcome;
-use super::mutation::{LibraryMutationAuthority, resolve_library_mutation_authority};
+use super::mutation::resolve_library_mutation_authority;
 
 const MAX_ID_BYTES: usize = 512;
 
 #[derive(Clone, Copy)]
-enum DestinationAuthority<'a> {
-    ProjectBound(&'a str),
-    TrustedLibrary(&'a LibraryMutationAuthority),
+struct DestinationAuthority<'a> {
+    actor_project_id: Option<&'a str>,
 }
-
 impl DestinationAuthority<'_> {
     fn actor_project_id(&self) -> Option<&str> {
-        match self {
-            Self::ProjectBound(project_id) => Some(project_id),
-            Self::TrustedLibrary(authority) => authority.actor_project_id.as_deref(),
-        }
-    }
-
-    fn is_trusted_library(&self) -> bool {
-        matches!(self, Self::TrustedLibrary(_))
+        self.actor_project_id
     }
 }
 
@@ -124,8 +114,11 @@ pub(super) fn duplicate_page(
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     validate_id(source_page_id, "source_page_id")?;
-    let project_id = bound_project_id(context)?;
-    super::require_page_read_access(connection, library_id, project_id, source_page_id)?;
+    let project_id = context
+        .project_id
+        .as_ref()
+        .map(|project_id| project_id.0.as_str());
+    super::require_page_read_access(connection, library_id, source_page_id)?;
     let source = connection
         .query_row(
             "SELECT block.placement_revision, block.placement_revision, \
@@ -158,7 +151,9 @@ pub(super) fn duplicate_page(
         library_id,
         destination,
         None,
-        DestinationAuthority::ProjectBound(project_id),
+        DestinationAuthority {
+            actor_project_id: project_id,
+        },
     )?;
     super::page_copy::copy_page(
         connection,
@@ -196,9 +191,8 @@ pub(super) fn move_page(
         return Err(invalid("Page move requires a move ETag"));
     }
     let authority = resolve_library_mutation_authority(connection, context, library_id)?;
-    let destination_authority = match authority.requesting_project_id.as_deref() {
-        Some(project_id) => DestinationAuthority::ProjectBound(project_id),
-        None => DestinationAuthority::TrustedLibrary(&authority),
+    let destination_authority = DestinationAuthority {
+        actor_project_id: authority.actor_project_id.as_deref(),
     };
     let project_id = authority.actor_project_id.as_deref();
     let source = read_source(connection, library_id, page_id)?;
@@ -217,26 +211,14 @@ pub(super) fn move_page(
             crate::database::default_page_move_view_id(connection, library_id, page_id)?
         }
     };
-    let current_etag = match destination_authority {
-        DestinationAuthority::ProjectBound(project_id) => crate::database::mint_page_move_etag(
-            connection,
-            library_id,
-            project_id,
-            store_epoch,
-            page_id,
-            validator_view_id.as_deref(),
-        ),
-        DestinationAuthority::TrustedLibrary(_) => {
-            crate::database::mint_page_move_etag_prevalidated(
-                connection,
-                library_id,
-                project_id,
-                store_epoch,
-                page_id,
-                validator_view_id.as_deref(),
-            )
-        }
-    }?;
+    let current_etag = crate::database::mint_page_move_etag_prevalidated(
+        connection,
+        library_id,
+        project_id,
+        store_epoch,
+        page_id,
+        validator_view_id.as_deref(),
+    )?;
     if !constant_time_equal(expected_etag.as_bytes(), current_etag.as_bytes()) {
         return Err(conflict("Page move ETag changed"));
     }
@@ -331,11 +313,7 @@ fn resolve_destination(
         }
         LibraryPageWriteDestination::Page { page_id, at } => {
             validate_id(page_id, "destination.page_id")?;
-            if !authority.is_trusted_library() {
-                let project_id = project_id
-                    .ok_or_else(|| unauthorized("Project destination requires an actor Project"))?;
-                super::require_page_write_access(connection, library_id, project_id, page_id)?;
-            }
+
             let (document_id, generation, head_seq) = connection
                 .query_row(
                     "SELECT page.document_id, document.generation, document.head_seq \
@@ -461,29 +439,15 @@ fn resolve_destination(
                 .collect::<rusqlite::Result<Vec<_>>>()?;
             let before_page_id =
                 resolve_before_id(ids, at.as_ref(), moving_page_id, "Destination View")?;
-            let destination = if authority.is_trusted_library() {
-                crate::database::resolve_page_transfer_data_source_destination_prevalidated(
-                    connection,
-                    library_id,
-                    project_id,
-                    data_source_id,
-                    &view_id,
-                    group_key.as_deref(),
-                    before_page_id.as_deref(),
-                )?
-            } else {
-                resolve_page_transfer_data_source_destination(
-                    connection,
-                    library_id,
-                    project_id.ok_or_else(|| {
-                        unauthorized("Project destination requires an actor Project")
-                    })?,
-                    data_source_id,
-                    &view_id,
-                    group_key.as_deref(),
-                    before_page_id.as_deref(),
-                )?
-            };
+            let destination = crate::database::resolve_page_transfer_data_source_destination(
+                connection,
+                library_id,
+                project_id,
+                data_source_id,
+                &view_id,
+                group_key.as_deref(),
+                before_page_id.as_deref(),
+            )?;
             Ok(LibraryPageCopyDestination::DataSource {
                 data_source_id: destination.data_source_id,
                 expected_data_source_revision: destination.expected_data_source_revision,
@@ -521,7 +485,9 @@ pub(super) fn resolve_batch_destination(
         library_id,
         destination,
         None,
-        DestinationAuthority::ProjectBound(bound_project_id(context)?),
+        DestinationAuthority {
+            actor_project_id: context.project_id.as_ref().map(|id| id.0.as_str()),
+        },
     )
 }
 
@@ -642,14 +608,6 @@ fn transfer_target(
     }
 }
 
-fn bound_project_id(context: &BoundModuleContext) -> Result<&str, StoreError> {
-    context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Semantic Page mutation requires a bound Project"))
-}
-
 fn validate_id(value: &str, field: &str) -> Result<(), StoreError> {
     if value.is_empty() || value.len() > MAX_ID_BYTES || value.trim() != value {
         return Err(invalid(format!(
@@ -665,10 +623,6 @@ fn invalid(message: impl Into<String>) -> StoreError {
 
 fn not_found(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::NotFound, message, false)
-}
-
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn corrupt(message: impl Into<String>) -> StoreError {

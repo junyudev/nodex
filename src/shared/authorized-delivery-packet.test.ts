@@ -6,13 +6,8 @@ import {
 } from "./authorized-delivery-packet";
 
 const packet = (): AuthorizedDeliveryPacket => ({
-  packet_version: 4,
+  packet_version: 5,
   delivery_address: {
-    kind: "project",
-    library_id: "library-1",
-    project_id: "project-1",
-  },
-  authorization_scope: {
     kind: "project",
     library_id: "library-1",
     project_id: "project-1",
@@ -47,7 +42,6 @@ const packet = (): AuthorizedDeliveryPacket => ({
     },
   ],
   projection_effects: [],
-  visibility_deltas: [],
   coverage: {
     atom_ids: [],
     document_effect_orders: [2],
@@ -177,46 +171,6 @@ describe("authorized delivery packet boundary", () => {
         eventVersion: 8,
         libraryId: "library-1",
         storeEpoch: "epoch-2",
-      }),
-    ).toThrow("Authorized delivery packet is invalid");
-  });
-
-  test.each([
-    { kind: "page", page_id: "page-1" },
-    { kind: "file", file_id: "file-1" },
-  ] as const)("accepts an exact $kind revoke and rejects a divergent delta scope", (root) => {
-    const value: AuthorizedDeliveryPacket = {
-      ...packet(),
-      document_effects: [],
-      coverage: {
-        atom_ids: [],
-        document_effect_orders: [],
-        inline_document_effect_orders: [],
-        projection_scope_keys: [],
-      },
-      visibility_deltas: [
-        {
-          authorization_scope: packet().authorization_scope,
-          change: { kind: "revoke", reason: "access_revoked" },
-          roots: [root],
-          delta_hash: "4".repeat(64),
-        },
-      ],
-    };
-    expect(parseAuthorizedDeliveryPacket(value)).toBe(value);
-    expect(() =>
-      parseAuthorizedDeliveryPacket({
-        ...value,
-        visibility_deltas: [
-          {
-            ...value.visibility_deltas[0]!,
-            authorization_scope: {
-              kind: "project",
-              library_id: "library-1",
-              project_id: "project-other",
-            },
-          },
-        ],
       }),
     ).toThrow("Authorized delivery packet is invalid");
   });

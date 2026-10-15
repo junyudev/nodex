@@ -2,8 +2,7 @@ use super::*;
 use crate::query::QueryModule;
 use nodex_core_contracts::QUERY_CONTRACT_VERSION;
 use nodex_core_contracts::library::{
-    LibraryAccess, LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest,
-    LibraryAgentPageDestination, LibraryResourceTarget,
+    LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentPageDestination,
 };
 use nodex_core_contracts::query::{QueryRead, QueryReadValue};
 use nodex_core_contracts::sql::{SqlBinding, SqlQuery, SqlScope};
@@ -235,27 +234,10 @@ fn public_sql_counts_complete_windows_and_enforces_cross_source_authority() {
             scope.clone(),
             "SELECT count(*) FROM left_pages CROSS JOIN right_pages"
         )
-        .unwrap_err()
-        .code,
-        CoreErrorCode::Unauthorized
+        .unwrap()
+        .rows[0][0],
+        json!(0)
     );
-    library
-        .apply(
-            &library_context(AdapterKind::Test),
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: "sql:grant-other".into(),
-                store_epoch: StoreEpoch("epoch-1".into()),
-                intent: LibraryIntent::GrantProjectAccess {
-                    project_id: "project-1".into(),
-                    target: LibraryResourceTarget::Database {
-                        database_id: second_db.into(),
-                    },
-                    access: LibraryAccess::ReadWrite,
-                },
-            },
-        )
-        .unwrap();
     library
         .apply(
             &context(),

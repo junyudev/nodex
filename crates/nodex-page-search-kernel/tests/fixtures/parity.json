@@ -12,7 +12,7 @@
       "locationLabel": "Product / Editor",
       "updatedAt": "2026-08-18T00:00:00.000Z",
       "properties": [{ "propertyId": "summary", "propertyName": "Summary", "text": "Metadata projection" }],
-      "authorizedProjectIds": ["project-1"],
+      "projectIds": ["project-1"],
       "dataSourceIds": ["source-1"]
     },
     {
@@ -27,7 +27,7 @@
       "locationLabel": "Pages",
       "updatedAt": "2026-08-17T00:00:00.000Z",
       "properties": [],
-      "authorizedProjectIds": ["project-1"],
+      "projectIds": ["project-1"],
       "dataSourceIds": ["source-1"]
     },
     {
@@ -42,7 +42,7 @@
       "locationLabel": "Pages",
       "updatedAt": "2026-08-16T00:00:00.000Z",
       "properties": [],
-      "authorizedProjectIds": ["project-1"],
+      "projectIds": ["project-1"],
       "dataSourceIds": []
     },
     {
@@ -57,7 +57,7 @@
       "locationLabel": "Pages",
       "updatedAt": "2026-08-15T00:00:00.000Z",
       "properties": [],
-      "authorizedProjectIds": ["project-1"],
+      "projectIds": ["project-1"],
       "dataSourceIds": []
     },
     {
@@ -72,7 +72,7 @@
       "locationLabel": "Pages",
       "updatedAt": "2026-08-15T00:00:00.000Z",
       "properties": [],
-      "authorizedProjectIds": ["project-1"],
+      "projectIds": ["project-1"],
       "dataSourceIds": []
     }
   ],

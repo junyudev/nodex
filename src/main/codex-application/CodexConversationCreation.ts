@@ -66,10 +66,6 @@ export class CodexConversationCreation extends Context.Service<
   }
 >()("nodex/main/codex-application/CodexConversationCreation") {}
 
-const permissionMode = (
-  mode: CodexPendingStartConversationRequest["startConversationParamsInput"]["agentMode"],
-) => (mode === "read-only" || mode === "granular" ? "custom" : mode);
-
 const collaborationMode = (
   value: CodexPendingStartConversationRequest["startConversationParamsInput"]["collaborationMode"],
 ) => (value?.mode === "default" || value?.mode === "plan" ? value.mode : undefined);
@@ -206,6 +202,13 @@ export const make: Effect.Effect<
         "resolve-fork-source",
         entry,
         new Error(`Fork source '${entry.sourceConversationId}' was not found`),
+      );
+    }
+    if (source.durable.executionHostId !== entry.hostId) {
+      return yield* fail(
+        "resolve-fork-source",
+        entry,
+        new Error("Pending fork native execution owner changed"),
       );
     }
     const roots = rewriteExecutionWorkspaceRoots({
@@ -395,8 +398,7 @@ export const make: Effect.Effect<
         serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
         reasoningEffort: executionProfile?.reasoningEffort ?? params.reasoningEffort ?? undefined,
         collaborationMode: collaborationMode(params.collaborationMode),
-        permissionMode: permissionMode(params.agentMode),
-        agentConfigPermissionMode: params.agentConfigPermissionMode,
+
         ...(entry.skipAutoTitleGeneration === undefined
           ? {}
           : { skipAutoTitleGeneration: entry.skipAutoTitleGeneration }),
@@ -454,7 +456,6 @@ export const make: Effect.Effect<
             startedAt: observedAt,
             goalObjective: "",
             rawGoalDraft: null,
-            heartbeatAutomation: entry.heartbeatAutomation ?? null,
           }),
         );
       }
@@ -522,6 +523,13 @@ export const make: Effect.Effect<
       const capability = yield* capabilities
         .forHost(targetHostId)
         .pipe(Effect.mapError((cause) => fail("start", entry, cause)));
+      if (capability.hostId !== targetHostId || capability.hostId === gateway.localHostId) {
+        return yield* fail(
+          "start",
+          entry,
+          new Error("Pending launch native execution owner changed"),
+        );
+      }
       return yield* threadStarts.materialize(
         capability.hostId,
         capability.generation,
@@ -535,6 +543,25 @@ export const make: Effect.Effect<
       if (entry.launchMode === "create-stable-worktree") {
         return Effect.fail(
           fail("launch", entry, new Error("Stable pending worktrees do not launch Threads")),
+        );
+      }
+      const targetHostId =
+        entry.launchMode === "start-conversation"
+          ? (entry.threadStartHostId ?? entry.hostId)
+          : entry.hostId;
+      if (
+        !targetHostId ||
+        targetHostId.trim() !== targetHostId ||
+        targetHostId === gateway.localHostId
+      ) {
+        return Effect.fail(
+          fail(
+            "launch",
+            entry,
+            new Error(
+              "Local pending native history cannot launch; create an Agent Runtime Session",
+            ),
+          ),
         );
       }
       const worktreeInit = includeWorktreeInit

@@ -35,7 +35,7 @@ describe("CollaborativePageTitle in Chromium", () => {
     const historyScope = {
       libraryId: "title-browser-library",
       storeEpoch: "title-browser-epoch",
-      accessContext: { kind: "library" as const },
+      routingContext: { kind: "library" as const },
     };
     const view = render(
       <>

@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 
 import type { CodexConversationTurn } from "../../lib/types";
+import type { CodexTranscriptStructure } from "../local-conversation/normalized-transcript-read-owner";
 import {
   hasDurableCanonicalFirstSubmission,
   projectSessionFirstSubmissionTurns,
@@ -72,12 +73,17 @@ export function useAcknowledgeSessionFirstSubmission(
   target: FirstSubmissionPresentationTarget,
   canonicalTurns: readonly CodexConversationTurn[],
   ready: boolean,
+  normalizedTurns?: CodexTranscriptStructure["turns"],
 ): void {
   const snapshot = useFirstSubmissionSnapshot();
   const submission = selectSessionFirstSubmission(snapshot, target);
   const durableCanonicalSubmissionVisible = Boolean(
     submission &&
-    hasDurableCanonicalFirstSubmission(canonicalTurns, submission.clientUserMessageId),
+    hasDurableCanonicalFirstSubmission(
+      canonicalTurns,
+      submission.clientUserMessageId,
+      normalizedTurns,
+    ),
   );
   const launchId = submission?.launchId ?? null;
   useEffect(() => {

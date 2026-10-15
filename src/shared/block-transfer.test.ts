@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { bindBlockTransferIntent, bindBlockTransferUndoIntent } from "./block-transfer-transport";
 import {
   BlockTransferContractError,
   canonicalizeBlockTransferIntent,
@@ -37,6 +38,33 @@ const request = (): BlockTransferRequest => ({
 describe("BlockTransfer contract", () => {
   test("round-trips an exclusive Database-to-Document parent move", () => {
     expect(parseBlockTransferRequest(request())).toEqual(request());
+  });
+
+  test("binds a Library transfer and inverse to exact transport and Store identities", () => {
+    const logical = blockTransferIntentFromRequest({ ...request(), projectId: null });
+    const { actor: _actor, clientSessionId: _clientSessionId, ...publicIntent } = logical;
+    const identity = { clientSessionId: "window-current", actor: { kind: "electron_renderer" } };
+    const bound = bindBlockTransferIntent(publicIntent, null, identity);
+    expect(bound).toEqual({ ok: true, value: { ...publicIntent, ...identity } });
+    expect(bindBlockTransferIntent(publicIntent, "project-1", identity).ok).toBe(false);
+    expect(bindBlockTransferIntent(publicIntent, undefined, identity).ok).toBe(false);
+    expect(bindBlockTransferIntent({ ...publicIntent, projectId: "" }, null, identity).ok).toBe(
+      false,
+    );
+    const inverse = {
+      operationId: "undo-library",
+      projectId: null,
+      storeEpoch: logical.storeEpoch,
+      token: {
+        transferOperationId: logical.operationId,
+        recipeHash: "a".repeat(64),
+        storeEpoch: logical.storeEpoch,
+      },
+    };
+    expect(bindBlockTransferUndoIntent(inverse, null)).toEqual({ ok: true, value: inverse });
+    expect(bindBlockTransferUndoIntent({ ...inverse, storeEpoch: "old-epoch" }, null).ok).toBe(
+      false,
+    );
   });
 
   test("excludes transport attempt identity from canonical intent", () => {

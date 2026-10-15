@@ -107,15 +107,15 @@ function toLegacySurface(surface: WorkbenchSurfaceDescriptor): WorkbenchSurfaceD
   ) {
     return surface;
   }
-  if (surface.config.accessContext.kind !== "project") {
+  if (surface.config.routingContext.kind !== "project") {
     throw new Error("Legacy Scenes only carried Project resource surfaces");
   }
-  const { accessContext, ...config } = surface.config;
+  const { routingContext, ...config } = surface.config;
   return {
     ...surface,
     config: {
       ...config,
-      projectId: accessContext.projectId,
+      projectId: routingContext.projectId,
       ...(surface.kind === "db_view" ? { view: "board" as const } : {}),
     },
   } as WorkbenchSurfaceDescriptorV3;
@@ -135,7 +135,7 @@ describe("WorkbenchScene", () => {
     expect(project.primary).toMatchObject({
       kind: "db_view",
       config: {
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         target: { kind: "project-default" },
       },
     });
@@ -198,7 +198,7 @@ describe("WorkbenchScene", () => {
     const exact = updateWorkbenchSceneSurface(initial, primary.id, {
       titleSnapshot: "List",
       config: {
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         target: { kind: "database-view", databaseViewId: "view-list" },
       },
     });
@@ -295,7 +295,7 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Library Page",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page:library",
         },
         stateKey: 0,
@@ -324,7 +324,7 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Right Page",
         config: {
-          accessContext: { kind: "project", projectId: "project-1" },
+          routingContext: { kind: "project", projectId: "project-1" },
           pageId: "page:right",
         },
         stateKey: 0,
@@ -350,7 +350,7 @@ describe("WorkbenchScene", () => {
       kind: "page_stage",
       titleSnapshot: "Visible Page",
       config: {
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         pageId: "page:visible",
       },
       stateKey: 0,
@@ -388,7 +388,7 @@ describe("WorkbenchScene", () => {
             kind: "page_stage" as const,
             titleSnapshot: `Page ${index}`,
             config: {
-              accessContext: { kind: "library" as const },
+              routingContext: { kind: "library" as const },
               pageId: `page:${index}`,
             },
             stateKey: 0,
@@ -411,7 +411,7 @@ describe("WorkbenchScene", () => {
         id: "library-root",
         kind: "page_stage",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page:root",
         },
       },
@@ -461,7 +461,7 @@ describe("WorkbenchScene", () => {
         id: "library-root",
         kind: "page_stage",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page:root",
         },
       },
@@ -471,7 +471,7 @@ describe("WorkbenchScene", () => {
           kind: "page_stage",
           titleSnapshot: "Project Page",
           config: {
-            accessContext: { kind: "project", projectId: "legacy" },
+            routingContext: { kind: "project", projectId: "legacy" },
             pageId: "page:project",
           },
           stateKey: 0,
@@ -683,7 +683,7 @@ describe("WorkbenchScene", () => {
     expect(migrated.primary).toMatchObject({
       kind: "db_view",
       config: {
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
       },
     });
     expect(WorkbenchSceneSnapshotSchema.parse(legacy)).toEqual(
@@ -838,7 +838,7 @@ describe("WorkbenchScene", () => {
         kind: "page_stage",
         titleSnapshot: "Page",
         config: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           pageId: "page-1",
         },
         stateKey: 0,

@@ -12,7 +12,7 @@ export const sessionMessageSchema = z.strictObject({
 export const sessionMessageTool: Tool = {
   name: "send_message_to_session",
   description:
-    "Send a follow-up prompt to an existing, unarchived Codex Session. This starts a Turn using the Session's settings; omit model to keep its model. Use only when the user authorized continuing that Session. Reuse operationId and identical arguments to retry: a replay never sends another message and returns unconfirmed when delivery cannot be proven. Read the Session to inspect progress. Project-scoped Turns can send only within their own Project. ACP and threadless Sessions are unavailable for this command.",
+    "Send a follow-up prompt to an existing, unarchived Agent Session. This starts a Turn using the Session's settings; omit model to keep its model. Use only when the user authorized continuing that Session. Reuse operationId and identical arguments to retry: a replay never sends another message and returns unconfirmed when delivery cannot be proven. Read the Session to inspect progress. Sessions without execution are unavailable for this command.",
   inputSchema: z.toJSONSchema(sessionMessageSchema) as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

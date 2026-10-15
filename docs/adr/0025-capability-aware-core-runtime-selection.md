@@ -50,7 +50,10 @@ decoder, migrator, or rejection boundary.
 The executable version-surface inventory records every retained Rust and
 TypeScript declaration with its owner, lifecycle category, and compatibility
 strategy. The source gate rejects unclassified declarations and shadow
-`*_CONTRACT_VERSION` constants outside the Rust Module-contract authority.
+`*_CONTRACT_VERSION` constants outside the Rust Module-contract authority. The
+standalone Agent execution library also owns independent native and external
+service wire versions, including its usage summary protocol; these are registered
+with their own compatibility strategy and never supplied as Core Module requirements.
 
 Every launcher runs the candidate executable as a selector before connecting.
 The selector serializes on the Profile lifetime lock, validates and authenticates

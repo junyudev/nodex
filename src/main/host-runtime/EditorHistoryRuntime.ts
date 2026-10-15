@@ -5,7 +5,11 @@ import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import type { WebContents, WebContentsDidStartNavigationEventParams } from "electron";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import {
+  libraryContentRoute,
+  projectContentRoute,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 import type {
   EditorHistoryReleaseHandoff,
   LibraryModuleApplyRequest,
@@ -85,7 +89,7 @@ export class EditorHistoryRuntime extends Context.Service<
     ) => Effect.Effect<LibraryDatabaseApplyResultV2>;
     readonly handoffAbandon: (
       target: Target,
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
     ) => Effect.Effect<EditorHistoryReleaseHandoff>;
     readonly handoffAbandonTransfer: (
@@ -94,12 +98,12 @@ export class EditorHistoryRuntime extends Context.Service<
     ) => Effect.Effect<EditorHistoryReleaseHandoff>;
     readonly handoffRelease: (
       target: Target,
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
     ) => Effect.Effect<EditorHistoryReleaseHandoff>;
     readonly apply: (
       target: Target,
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
     ) => Effect.Effect<LibraryModuleApplyResult>;
   }
@@ -203,7 +207,7 @@ export const live: Layer.Layer<
 
     const execute = (
       owner: Owner,
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
     ): Effect.Effect<LibraryModuleApplyResult> =>
       Effect.gen(function* () {
@@ -251,7 +255,7 @@ export const live: Layer.Layer<
 
     const admit = (
       owner: Owner | undefined,
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       request: LibraryModuleApplyRequest,
     ): Effect.Effect<Admission> =>
       Effect.gen(function* () {
@@ -452,7 +456,9 @@ export const live: Layer.Layer<
               if (tokens.length === 0) return;
               const released = yield* execute(
                 owner,
-                { kind: "project", projectId: frozen.projectId },
+                frozen.projectId === null
+                  ? libraryContentRoute
+                  : projectContentRoute(frozen.projectId),
                 {
                   operationId: createUuidV7(),
                   storeEpoch: frozen.storeEpoch,

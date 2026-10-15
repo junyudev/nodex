@@ -85,11 +85,7 @@ import {
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
 import { usePortalHost } from "../use-portal-host";
 import { ThreadGoalStatusRow } from "./local-conversation-thread-goal-status-row";
-import {
-  useAutoReviewApprovalNudgeActions,
-  useAutoReviewApprovalNudgeState,
-} from "../../auto-review-approval-nudge-state";
-import { AutoReviewApprovalNudge } from "./auto-review-approval-nudge";
+
 import {
   ComposerScope,
   ThreadScope,
@@ -652,6 +648,29 @@ function QueuePanel({
             </AnimatePresence>
           </SortableContext>
         </DndContext>
+        {model.composerShell.queuedFollowUpHasPreviousPage ||
+        model.composerShell.queuedFollowUpHasNextPage ? (
+          <div className="flex justify-end gap-2 px-3 pb-2 text-xs">
+            <button
+              type="button"
+              disabled={!model.composerShell.queuedFollowUpHasPreviousPage}
+              onClick={() => {
+                void actions.onPreviousQueuedFollowUpPage?.();
+              }}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={!model.composerShell.queuedFollowUpHasNextPage}
+              onClick={() => {
+                void actions.onNextQueuedFollowUpPage?.();
+              }}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
       </div>
     </ComposerShellCard>
   );
@@ -777,12 +796,10 @@ function RequestCardStack({
   model,
   actions,
   intelligenceController,
-  onManualApproval,
 }: {
   model: ThreadFooterModel;
   actions: ThreadStageActions;
   intelligenceController: ComposerIntelligenceController;
-  onManualApproval: (conversationId: string) => Promise<void>;
 }) {
   const entries = [model.composerShell.backgroundRequest, model.composerShell.activeRequest].filter(
     (entry) => entry !== null,
@@ -803,7 +820,6 @@ function RequestCardStack({
               entry={entry}
               actions={actions}
               intelligenceController={intelligenceController}
-              onManualApproval={onManualApproval}
             />
           </div>
         );
@@ -824,16 +840,14 @@ function RequestCardStack({
   );
 }
 
-export type ComposerReplacementOwner = "normal" | "autoReviewNudge" | "requestStack";
+export type ComposerReplacementOwner = "normal" | "requestStack";
 
 export function resolveComposerReplacementOwner(input: {
   threadId: string | null;
-  hasAutoReviewNudge: boolean;
   isResponseInProgress: boolean;
   hasRequestCards: boolean;
 }): ComposerReplacementOwner {
   if (!input.threadId) return "normal";
-  if (input.hasAutoReviewNudge && !input.isResponseInProgress) return "autoReviewNudge";
   if (input.hasRequestCards) return "requestStack";
   return "normal";
 }
@@ -975,22 +989,9 @@ function ScopedLocalConversationComposerShell({
   hasFixedPortalContent = false,
 }: LocalConversationComposerShellProps) {
   const intelligenceController = useComposerIntelligenceController(model, actions);
-  const permissionState = model.permissionState;
-  const autoReviewNudgeState = useAutoReviewApprovalNudgeState();
-  const { recordManualApproval: recordManualApprovalForNudge, resolveNudge } =
-    useAutoReviewApprovalNudgeActions();
-  const autoReviewNudgeEligible =
-    permissionState?.mode === "auto" &&
-    permissionState.autoReviewAvailable &&
-    permissionState.availableModes.includes("guardian-approvals");
-  const hasAutoReviewNudge = Boolean(
-    model.threadId &&
-    autoReviewNudgeEligible &&
-    autoReviewNudgeState.activeThreadIds[model.threadId] === true,
-  );
+
   const replacementOwner = resolveComposerReplacementOwner({
     threadId: model.threadId,
-    hasAutoReviewNudge,
     isResponseInProgress: model.isThreadRunning,
     hasRequestCards: model.composerShell.showRequestCards,
   });
@@ -1025,16 +1026,6 @@ function ScopedLocalConversationComposerShell({
     ],
   );
   useContextualKeyboardActionTarget(contextualSelectorTarget);
-  useEffect(() => {
-    if (!model.threadId || permissionState?.mode === "auto") return;
-    resolveNudge(model.threadId);
-  }, [model.threadId, permissionState?.mode, resolveNudge]);
-  const recordManualApproval = async (conversationId: string) => {
-    await recordManualApprovalForNudge({
-      threadId: conversationId,
-      eligible: autoReviewNudgeEligible,
-    });
-  };
   const queuePortalHost = usePortalHost({
     attribute: LOCAL_CONVERSATION_FIXED_ABOVE_COMPOSER_QUEUE_PORTAL_ATTRIBUTE,
     fallbackId: LOCAL_CONVERSATION_FIXED_ABOVE_COMPOSER_QUEUE_PORTAL_ID,
@@ -1115,15 +1106,12 @@ function ScopedLocalConversationComposerShell({
       {replacementOwner === "normal" && model.threadId ? (
         <AsyncQuestionComposer threadId={model.threadId} model={model} />
       ) : null}
-      {replacementOwner === "autoReviewNudge" && model.threadId ? (
-        <AutoReviewApprovalNudge threadId={model.threadId} actions={actions} />
-      ) : replacementOwner === "requestStack" ? (
+      {replacementOwner === "requestStack" ? (
         <>
           <RequestCardStack
             model={model}
             actions={actions}
             intelligenceController={intelligenceController}
-            onManualApproval={recordManualApproval}
           />
         </>
       ) : (

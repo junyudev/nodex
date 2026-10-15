@@ -33,7 +33,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { LibraryFilesDialog, ManagedFilePreview } from "@/components/library/library-files-dialog";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type {
   LibraryPageFileInventory,
   LibraryPageFileItem,
@@ -67,7 +67,7 @@ interface PageFilesRowProps {
 }
 
 interface PageFilesDialogProps extends ModalCloseProps {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly initialFileId?: string;
   readonly onChanged: () => Promise<void>;
@@ -75,7 +75,6 @@ interface PageFilesDialogProps extends ModalCloseProps {
 
 const EMPTY_INVENTORY = (pageId: string): LibraryPageFileInventory => ({
   page_id: pageId,
-  can_write: false,
   revision: 0,
   body_usage_revision: 0,
   files: [],
@@ -99,14 +98,14 @@ const isSystemFileDrag = (dataTransfer: DataTransfer): boolean =>
 export function PageFilesDialog(props: PageFilesDialogProps) {
   return (
     <PageFilesDialogContent
-      key={JSON.stringify([props.accessContext, props.pageId, props.initialFileId ?? null])}
+      key={JSON.stringify([props.routingContext, props.pageId, props.initialFileId ?? null])}
       {...props}
     />
   );
 }
 
 function PageFilesDialogContent({
-  accessContext,
+  routingContext,
   pageId,
   initialFileId,
   onChanged,
@@ -123,7 +122,7 @@ function PageFilesDialogContent({
   const [fileDragActive, setFileDragActive] = useState(false);
   const fileDragDepthRef = useRef(0);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const inventory = usePageFiles(accessContext, pageId, { query });
+  const inventory = usePageFiles(routingContext, pageId, { query });
   const value = inventory.inventory ?? EMPTY_INVENTORY(pageId);
   const fileGroups = [
     {
@@ -137,8 +136,8 @@ function PageFilesDialogContent({
       files: value.files.filter((item) => item.body_count > 0),
     },
   ].filter((group) => group.files.length > 0);
-  const canWrite = value.can_write;
-  const selectedQuery = usePageFile(accessContext, pageId, selectedFileId);
+  const inventoryReady = inventory.inventory !== null;
+  const selectedQuery = usePageFile(routingContext, pageId, selectedFileId);
   const selected =
     value.files.find((item) => item.file.file_id === selectedFileId) ?? selectedQuery.item;
 
@@ -154,7 +153,7 @@ function PageFilesDialogContent({
 
   const authority = metadata.data
     ? {
-        contentAccessContext: accessContext,
+        contentRoutingContext: routingContext,
         storeEpoch: metadata.data.storeEpoch,
         libraryId: metadata.data.libraryId,
       }
@@ -165,7 +164,7 @@ function PageFilesDialogContent({
   };
 
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
-    if (!authority || !canWrite) return;
+    if (!authority || !inventoryReady) return;
     setMutating(true);
     try {
       await action();
@@ -184,11 +183,11 @@ function PageFilesDialogContent({
   };
 
   const addLocalSelection = async (selection: "files" | "directory"): Promise<void> => {
-    if (!authority || !canWrite) return;
+    if (!authority || !inventoryReady) return;
     const operationId = createUuidV7();
     setMutating(true);
     try {
-      const picked = await pickAndPrepareFiles(accessContext, {
+      const picked = await pickAndPrepareFiles(routingContext, {
         operationId,
         selection,
         title: selection === "directory" ? "Add folder to Page" : "Add Files to Page",
@@ -215,7 +214,7 @@ function PageFilesDialogContent({
     operationId: string,
     files: readonly PreparedFileBlob[],
   ): Promise<void> => {
-    if (!authority || !canWrite || files.length === 0) return;
+    if (!authority || !inventoryReady || files.length === 0) return;
     setMutating(true);
     try {
       await importPreparedPageEntries(authority, pageId, value.revision, operationId, files);
@@ -242,7 +241,7 @@ function PageFilesDialogContent({
     if (!isSystemFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (mutating || !authority || !canWrite) {
+    if (mutating || !authority || !inventoryReady) {
       event.dataTransfer.dropEffect = "none";
       return;
     }
@@ -255,7 +254,7 @@ function PageFilesDialogContent({
     if (!isSystemFileDrag(event.dataTransfer)) return;
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = mutating || !authority || !canWrite ? "none" : "copy";
+    event.dataTransfer.dropEffect = mutating || !authority || !inventoryReady ? "none" : "copy";
   };
 
   const handleFileDragLeave = (event: DragEvent<HTMLElement>): void => {
@@ -271,9 +270,9 @@ function PageFilesDialogContent({
     event.preventDefault();
     event.stopPropagation();
     resetFileDrag();
-    if (mutating || !authority || !canWrite) return;
+    if (mutating || !authority || !inventoryReady) return;
     const operationId = createUuidV7();
-    void prepareDroppedFiles(accessContext, operationId, Array.from(event.dataTransfer.files))
+    void prepareDroppedFiles(routingContext, operationId, Array.from(event.dataTransfer.files))
       .then((files) => addDroppedFiles(operationId, files))
       .catch((error) => toast.danger(mutationMessage(error)));
   };
@@ -296,7 +295,7 @@ function PageFilesDialogContent({
   };
 
   const savePath = async (): Promise<void> => {
-    if (!selected || !authority || !canWrite || !path.trim()) return;
+    if (!selected || !authority || !inventoryReady || !path.trim()) return;
     const action = () =>
       selected.logical_path
         ? renamePageEntry(
@@ -384,11 +383,11 @@ function PageFilesDialogContent({
                 <NodexIconButton
                   icon={FolderOpenIcon}
                   ariaLabel="Browse Library"
-                  disabled={!canWrite || mutating}
+                  disabled={!inventoryReady || mutating}
                   onClick={() => {
                     onClose();
                     openModal(appHandle, LibraryFilesDialog, {
-                      accessContext,
+                      routingContext,
                       pageTarget: {
                         pageId,
                         manifestRevision: value.revision,
@@ -400,13 +399,13 @@ function PageFilesDialogContent({
                 <NodexIconButton
                   icon={FolderPlusIcon}
                   ariaLabel="Add folder"
-                  disabled={mutating || !authority || !canWrite}
+                  disabled={mutating || !authority || !inventoryReady}
                   onClick={() => void addLocalSelection("directory")}
                 />
                 <NodexDialogAction
                   tone="primary"
                   size="compact"
-                  disabled={mutating || !authority || !canWrite}
+                  disabled={mutating || !authority || !inventoryReady}
                   onClick={() => void addLocalSelection("files")}
                 >
                   {mutating ? <ActivitySpinnerIcon className="size-3" /> : <PlusIcon />}
@@ -533,10 +532,7 @@ function PageFilesDialogContent({
                           Replacing a path creates an independent File for that entry. Existing Page
                           content and other Pages stay unchanged.
                         </p>
-                        <p>
-                          Open in Library to manage shared content and versions. Direct File access
-                          is required.
-                        </p>
+                        <p>Open in Library to manage shared content and versions.</p>
                       </>
                     }
                   >
@@ -546,7 +542,7 @@ function PageFilesDialogContent({
                       disabled={mutating}
                       onClick={() => void saveFile()}
                     />
-                    {selected.logical_path && canWrite ? (
+                    {selected.logical_path && inventoryReady ? (
                       <NodexIconButton
                         icon={ReplaceIcon}
                         ariaLabel="Replace path entry…"
@@ -560,12 +556,12 @@ function PageFilesDialogContent({
                       onClick={() => {
                         onClose();
                         openModal(appHandle, LibraryFilesDialog, {
-                          accessContext,
+                          routingContext,
                           initialFileId: selected.file.file_id,
                         });
                       }}
                     />
-                    {selected.logical_path && canWrite ? (
+                    {selected.logical_path && inventoryReady ? (
                       <NodexIconButton
                         icon={DeleteIcon}
                         ariaLabel="Remove Page path"
@@ -586,11 +582,6 @@ function PageFilesDialogContent({
                       />
                     ) : null}
                   </FileDetailsToolbar>
-                  {!canWrite ? (
-                    <p className="px-4 text-xs text-token-description-foreground">
-                      Read-only Page. Files can be previewed and saved.
-                    </p>
-                  ) : null}
                   <div className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-xs text-token-description-foreground">
@@ -616,7 +607,7 @@ function PageFilesDialogContent({
                       ) : (
                         <button
                           type="button"
-                          disabled={!canWrite || mutating}
+                          disabled={!inventoryReady || mutating}
                           className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 text-left text-sm text-token-text-secondary hover:bg-token-foreground/4"
                           onClick={() => {
                             setPath(selected.logical_path ?? selected.file.default_name);
@@ -660,7 +651,7 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
 
   const openFiles = (initialFileId?: string): void => {
     openModal(appHandle, PageFilesDialog, {
-      accessContext: controller.contentAccessContext,
+      routingContext: controller.contentRoutingContext,
       pageId,
       ...(initialFileId ? { initialFileId } : {}),
       onChanged: async () => {

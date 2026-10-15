@@ -403,7 +403,6 @@ function resolveAutomationUpdateDisplayMode(
 
 function buildAutomationUpdateCreateInput(
   args: Record<string, unknown>,
-  currentThreadId: string | null,
 ): CodexScheduledAutomationCreateInput | null {
   const kind = normalizeAutomationKind(args.kind);
   const name = normalizeOptionalString(args.name);
@@ -412,13 +411,11 @@ function buildAutomationUpdateCreateInput(
   if (!kind || !name || !prompt || !rrule) return null;
 
   if (kind === "heartbeat") {
-    const targetThreadId =
-      normalizeOptionalString(args.targetThreadId) ??
-      (args.destination === "thread" ? currentThreadId : null);
-    if (!targetThreadId) return null;
+    const targetSessionId = normalizeOptionalString(args.targetSessionId);
+    if (!targetSessionId) return null;
     return {
       kind,
-      targetThreadId,
+      targetSessionId,
       name,
       prompt,
       rrule,
@@ -449,11 +446,10 @@ function buildAutomationUpdateCreateInput(
 
 function buildAutomationUpdateUpdateInput(
   args: Record<string, unknown>,
-  currentThreadId: string | null,
 ): CodexScheduledAutomationUpdateInput | null {
   const id = normalizeOptionalString(args.id);
   const status = normalizeAutomationStatus(args.status);
-  const createInput = buildAutomationUpdateCreateInput(args, currentThreadId);
+  const createInput = buildAutomationUpdateCreateInput(args);
   if (!id || !status || !createInput) return null;
   const updateInput: CodexScheduledAutomationUpdateInput = {
     ...createInput,
@@ -480,7 +476,6 @@ function resolveAutomationUpdateDisabledReason(input: {
 
 export function resolveAutomationUpdateRenderState(
   call: CodexDynamicToolCallView,
-  currentThreadId: string | null = null,
 ): AutomationUpdateRenderState | null {
   if (call.namespace !== CODEX_APP_NAMESPACE || call.tool !== "automation_update") return null;
   const args = asRecord(call.arguments);
@@ -493,11 +488,11 @@ export function resolveAutomationUpdateRenderState(
   const displayMode = resolveAutomationUpdateDisplayMode(argsMode, result);
   const createInput =
     inputMode === "suggested_create" || inputMode === "create"
-      ? buildAutomationUpdateCreateInput(args, currentThreadId)
+      ? buildAutomationUpdateCreateInput(args)
       : null;
   const updateInput =
     inputMode === "suggested_update" || inputMode === "update"
-      ? buildAutomationUpdateUpdateInput(args, currentThreadId)
+      ? buildAutomationUpdateUpdateInput(args)
       : null;
   const snapshot = result?.snapshot ?? null;
   const title =

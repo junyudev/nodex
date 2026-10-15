@@ -5,7 +5,11 @@ import type {
   ThreadTurnsListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import { formatCodexReasoningEffortLabel } from "../../../src/renderer/lib/codex-thread-settings";
-import { chooseComposerModel, openComposerOptionControl } from "./composer-model-picker";
+import {
+  chooseComposerModel,
+  openComposerOptionControl,
+  refreshComposerModels,
+} from "./composer-model-picker";
 
 import {
   classifyAgentSmokeTurnSnapshot,
@@ -15,6 +19,8 @@ import type { CodexExecutionProfile } from "../../../src/shared/codex-execution-
 import { parseModelOption } from "../../../src/shared/codex-composer-catalog";
 import type { CodexNativeRequestOutcome } from "../../../src/shared/codex-native-request-outcome";
 import type { CodexModelOption } from "../../../src/shared/types";
+import type { IpcApi } from "../../../src/shared/ipc-api";
+import type { AgentRuntimeConversation } from "../../../src/shared/agent-runtime-api";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import { waitForDraftScene } from "./new-chat-draft";
@@ -47,7 +53,7 @@ export const invokeIpc = async (
     { targetChannel: channel, targetArguments: arguments_ },
   );
 
-/** Read the model catalog through the same native request transport used by the renderer. */
+/** Read native catalog facts for tests of the Codex account and protocol surface. */
 export const readCodexModelCatalog = async (page: Page): Promise<CodexModelOption[]> => {
   const models: CodexModelOption[] = [];
   const seen = new Set<string>();
@@ -141,7 +147,11 @@ export const createAgentSmokeDraft = async (
       );
       if (!Array.isArray(window.items)) return "missing";
       const draft = window.items.find(
-        (item) => isRecord(item) && item.projectId === project.id && item.thread === null,
+        (item) =>
+          isRecord(item) &&
+          item.projectId === project.id &&
+          item.thread === null &&
+          item.executionRef == null,
       );
       projectSessionId = isRecord(draft) && typeof draft.id === "string" ? draft.id : null;
       return projectSessionId ? "ready" : "missing";
@@ -156,26 +166,50 @@ export const setAgentExecutionProfile = async (
   page: Page,
   input: { readonly preferredModelId?: string } = {},
 ): Promise<CodexExecutionProfile> => {
-  const models = await readCodexModelCatalog(page);
-  const model =
-    models.find(
-      (candidate) =>
-        !candidate.hidden &&
-        (candidate.id === input.preferredModelId || candidate.model === input.preferredModelId),
-    ) ?? models.find((candidate) => !candidate.hidden);
-  if (!model) throw new Error("Scripted Agent smoke found no visible Codex model");
+  // The Composer owns a Runtime catalog, independent of the native account endpoint. Explicit
+  // refresh is user demand; reading the native catalog cannot populate this cold cache.
+  await refreshComposerModels(page);
+  type RuntimeModel = IpcApi["agent-runtime:providers:read"]["result"][number]["models"][number];
+  let model: RuntimeModel | undefined;
+  await expect
+    .poll(
+      async () => {
+        const providers = (await invokeIpc(
+          page,
+          "agent-runtime:providers:read",
+          {},
+        )) as IpcApi["agent-runtime:providers:read"]["result"];
+        const provider = providers.find((candidate) => candidate.instanceId === "codex");
+        if (!provider?.enabled || !provider.installed || provider.status === "error") return null;
+        model =
+          provider.models.find((candidate) => candidate.slug === input.preferredModelId) ??
+          provider.models.find((candidate) => candidate.isDefault) ??
+          provider.models[0];
+        return model?.slug ?? null;
+      },
+      {
+        timeout: 15_000,
+        message: "The Composer Runtime catalog must advertise a selectable Codex model",
+      },
+    )
+    .not.toBeNull();
+  if (!model) throw new Error("Scripted Agent smoke found no visible Runtime Codex model");
+  const effort = model.capabilities?.optionDescriptors?.find(
+    (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
+  );
+  const choices = effort?.type === "select" ? effort.options : [];
   const reasoningEffort =
-    model.supportedReasoningEfforts.find((candidate) => candidate.reasoningEffort === "low")
-      ?.reasoningEffort ??
-    model.defaultReasoningEffort ??
-    model.supportedReasoningEfforts[0]?.reasoningEffort ??
+    choices.find((candidate) => candidate.id === "low")?.id ??
+    (effort?.type === "select" ? effort.currentValue : undefined) ??
+    choices.find((candidate) => candidate.isDefault)?.id ??
+    choices[0]?.id ??
     null;
   const profile: CodexExecutionProfile = {
-    modelId: model.id,
+    modelId: model.slug,
     reasoningEffort,
     serviceTier: null,
   };
-  await selectCodexExecutionProfile(page, model, profile);
+  await chooseCodexExecutionProfile(page, model.name, profile);
   return profile;
 };
 
@@ -184,7 +218,16 @@ export const selectCodexExecutionProfile = async (
   model: CodexModelOption,
   profile: CodexExecutionProfile,
 ): Promise<void> => {
-  await chooseComposerModel(page, `${model.id} Codex`);
+  await refreshComposerModels(page);
+  await chooseCodexExecutionProfile(page, model.displayName, profile);
+};
+
+const chooseCodexExecutionProfile = async (
+  page: Page,
+  modelName: string,
+  profile: CodexExecutionProfile,
+): Promise<void> => {
+  await chooseComposerModel(page, `${modelName} Codex`, modelName);
   if (profile.reasoningEffort) {
     await openComposerOptionControl(page, "Effort");
     await page
@@ -303,8 +346,12 @@ export const sendAgentPromptWithEvidence = async (
             return "failed";
           }
           const session = await invokeIpc(page, "project-sessions:get", projectSessionId);
-          if (!isRecord(session) || !isRecord(session.thread)) return "missing";
-          threadId = typeof session.thread.threadId === "string" ? session.thread.threadId : null;
+          if (!isRecord(session)) return "missing";
+          const execution = isRecord(session.executionRef) ? session.executionRef : session.thread;
+          threadId =
+            isRecord(execution) && typeof execution.threadId === "string"
+              ? execution.threadId
+              : null;
           return threadId ? "linked" : "missing";
         },
         { timeout: 45_000 },
@@ -398,6 +445,35 @@ export const waitForCompletedAgentTurn = async (
   throw new Error(
     `Timed out waiting for Agent turn completion. Latest state:\n${JSON.stringify(summarizeAgentSmokeTurnSnapshot(latestSnapshot, threadId), null, 2)}`,
   );
+};
+
+/** Runtime-backed Sessions complete through their captured product binding, including restart. */
+export const waitForRuntimeCompletedAgentTurn = async (
+  page: Page,
+  target: { readonly sessionId: string; readonly threadId: string },
+  timeout = 20_000,
+): Promise<AgentRuntimeConversation> => {
+  const deadline = Date.now() + timeout;
+  let latest: AgentRuntimeConversation | null = null;
+  while (Date.now() < deadline) {
+    latest = (await invokeIpc(
+      page,
+      "agent-runtime:session:control",
+      target,
+    )) as AgentRuntimeConversation;
+    expect(latest.sessionId).toBe(target.sessionId);
+    expect(latest.threadId).toBe(target.threadId);
+    const projection = latest.snapshot.projection;
+    const run = projection.runs.at(-1);
+    const providerThread = projection.providerThreads.find(
+      (candidate) => candidate.id === run?.providerThreadId,
+    );
+    if (run?.status === "completed" && providerThread?.status === "idle") return latest;
+    if (run && ["failed", "cancelled", "interrupted", "rolled_back"].includes(run.status))
+      throw new Error(`Runtime Run ended with ${run.status}: ${JSON.stringify(run)}`);
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`Runtime Run did not complete: ${JSON.stringify(latest).slice(0, 8_000)}`);
 };
 
 export interface NativeAgentThreadTail {

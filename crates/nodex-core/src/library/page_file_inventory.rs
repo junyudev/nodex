@@ -29,26 +29,10 @@ pub(super) fn require_page(
     page_id: &str,
     write_required: bool,
 ) -> Result<(), StoreError> {
-    if let Some(project_id) = &context.project_id {
-        return if write_required {
-            super::require_page_write_access(
-                connection,
-                &context.library_id.0,
-                &project_id.0,
-                page_id,
-            )
-        } else {
-            super::require_page_read_access(
-                connection,
-                &context.library_id.0,
-                &project_id.0,
-                page_id,
-            )
-        };
+    if write_required {
+        return super::require_page_write_access(connection, &context.library_id.0, page_id);
     }
-    super::require_trusted_library_authority(context)?;
-    revisions(connection, &context.library_id.0, page_id)?;
-    Ok(())
+    super::require_page_read_access(connection, &context.library_id.0, page_id)
 }
 
 pub(super) fn revisions(
@@ -109,33 +93,25 @@ pub(super) fn list(
     requested_limit: Option<u32>,
 ) -> Result<LibraryPageFileInventory, StoreError> {
     require_page(connection, context, page_id, false)?;
-    let can_write = write_capability(
-        connection,
-        &context.library_id.0,
-        context.project_id.as_ref().map(|id| id.0.as_str()),
-        page_id,
-    )?;
-    list_authorized_page(
+    list_current_page(
         connection,
         &context.library_id.0,
         page_id,
         query,
         requested_cursor,
         requested_limit,
-        can_write,
     )
 }
 
-/// Reads an already-authorized Page projection. Callers must establish Page
+/// Reads the current Page projection. Callers establish its canonical owner
 /// read authority before entering this narrow projection seam.
-pub(super) fn list_authorized_page(
+pub(super) fn list_current_page(
     connection: &Connection,
     library_id: &str,
     page_id: &str,
     query: Option<&str>,
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
-    can_write: bool,
 ) -> Result<LibraryPageFileInventory, StoreError> {
     let (revision, body_usage_revision) = revisions(connection, library_id, page_id)?;
     let query = query.unwrap_or_default().trim();
@@ -218,7 +194,6 @@ pub(super) fn list_authorized_page(
         None
     };
     Ok(LibraryPageFileInventory {
-        can_write,
         page_id: page_id.to_owned(),
         revision,
         body_usage_revision,
@@ -233,28 +208,4 @@ pub(super) fn list_authorized_page(
 
 fn error(code: StoreErrorCode, message: &'static str) -> StoreError {
     StoreError::new(code, message, false)
-}
-
-/// A caller must establish Page read authority before requesting its write capability.
-pub(super) fn write_capability(
-    connection: &Connection,
-    library_id: &str,
-    project_id: Option<&str>,
-    page_id: &str,
-) -> Result<bool, StoreError> {
-    let Some(project_id) = project_id else {
-        return Ok(true);
-    };
-    match super::require_page_write_access(connection, library_id, project_id, page_id) {
-        Ok(()) => Ok(true),
-        Err(error)
-            if matches!(
-                error.code,
-                StoreErrorCode::Unauthorized | StoreErrorCode::NotFound
-            ) =>
-        {
-            Ok(false)
-        }
-        Err(error) => Err(error),
-    }
 }

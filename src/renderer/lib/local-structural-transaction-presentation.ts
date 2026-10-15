@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from "react";
 
 interface DatabaseRemovalProjection {
-  readonly projectId: string;
   readonly storeEpoch: string;
   readonly dataSourceId: string;
   readonly pageIds: readonly string[];
@@ -66,7 +65,6 @@ export class LocalStructuralTransactionPresentationStore {
 
   beginDatabasePageMove = (input: {
     readonly operationId: string;
-    readonly projectId: string;
     readonly storeEpoch: string;
     readonly dataSourceId: string;
     readonly pageIds: readonly string[];
@@ -75,7 +73,6 @@ export class LocalStructuralTransactionPresentationStore {
     const operation = this.require(input.operationId);
     this.claimPageIds(input.operationId, input.storeEpoch, input.pageIds);
     operation.databaseRemoval = {
-      projectId: input.projectId,
       storeEpoch: input.storeEpoch,
       dataSourceId: input.dataSourceId,
       pageIds: [...input.pageIds],
@@ -182,7 +179,6 @@ export class LocalStructuralTransactionPresentationStore {
   };
 
   observeDatabaseProjection = (input: {
-    readonly projectId: string;
     readonly storeEpoch: string;
     readonly dataSourceId: string;
     readonly commitSeq: number;
@@ -194,7 +190,6 @@ export class LocalStructuralTransactionPresentationStore {
       const receipt = operation.receipt;
       if (!removal || removal.materialized || !receipt) continue;
       if (
-        removal.projectId !== input.projectId ||
         removal.storeEpoch !== input.storeEpoch ||
         removal.dataSourceId !== input.dataSourceId ||
         receipt.storeEpoch !== input.storeEpoch ||
@@ -210,7 +205,6 @@ export class LocalStructuralTransactionPresentationStore {
   };
 
   hiddenDatabasePageIds = (input: {
-    readonly projectId: string;
     readonly storeEpoch: string;
     readonly dataSourceId: string;
   }): ReadonlySet<string> => {
@@ -220,7 +214,6 @@ export class LocalStructuralTransactionPresentationStore {
       if (
         !removal ||
         removal.materialized ||
-        removal.projectId !== input.projectId ||
         removal.storeEpoch !== input.storeEpoch ||
         removal.dataSourceId !== input.dataSourceId
       )
@@ -267,7 +260,6 @@ export const localStructuralTransactionPresentation =
   new LocalStructuralTransactionPresentationStore();
 
 export const useHiddenDatabasePageIds = (input: {
-  readonly projectId: string;
   readonly storeEpoch: string;
   readonly dataSourceId: string;
 }): ReadonlySet<string> => {

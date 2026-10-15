@@ -69,7 +69,6 @@ const descriptor = {
     name: "Tasks",
     lifecycle: "active",
     defaultViewId: viewId,
-    accessRevision: 1,
     metadataRevision: 1,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -107,7 +106,6 @@ const readResult = (
     libraryId,
     storeEpoch,
     commitSeq,
-    authorization: null,
     value,
   },
 });

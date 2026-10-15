@@ -88,7 +88,7 @@ export function makeWorkbenchTabProjectionDraft(
   }
 
   if (kind === "review") {
-    if (!session.thread) return null;
+    if (!session.executionRef && !session.thread) return null;
     return {
       kind,
       title: "Review",
@@ -316,7 +316,7 @@ export function makePreviewPageStageTab(
     title,
     order: session.tabs.filter((tab) => tab.panelId === panelId).length,
     config: {
-      accessContext: { kind: "project", projectId: input.projectId },
+      routingContext: { kind: "project", projectId: input.projectId },
       pageId: input.pageId,
       ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
     },

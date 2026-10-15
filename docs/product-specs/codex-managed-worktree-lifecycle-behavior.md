@@ -3,8 +3,8 @@
 ## Intent
 
 This document owns the product contract after a managed Git worktree has been
-allocated for a Codex Chat. Local Claude Chats share the execution-location and
-moving contracts below. This document covers durable execution-location identity,
+allocated for a Chat. Runtime Sessions use local checkout and worktree execution;
+explicit remote native Codex Chats also use their registered execution hosts. This document covers durable execution-location identity,
 sidebar presentation, snapshot-before-removal, Environment cleanup, restore,
 archive ownership transfer, automatic retention, permanent-worktree
 protection, and moving an existing Chat between checkouts, worktrees, and
@@ -18,47 +18,38 @@ remains in
 [Codex Thread Transcript Behavior](codex-thread-transcript-behavior.md).
 
 The capabilities in this document fail closed when their required host adapter
-or app-server operation is unavailable. Nodex must not expose a control or
+or execution-owner operation is unavailable. Nodex must not expose a control or
 agent tool that reports success without performing the promised lifecycle
 operation.
 
 ## Execution location
 
-Every Chat has one canonical execution location. Codex supports:
+Every Chat has one canonical execution location. Runtime Sessions support a local
+checkout or managed worktree. Explicit remote native Codex Chats also support a
+checkout or managed worktree on a registered execution host.
 
-- a local checkout;
-- a local managed worktree;
-- a checkout on a registered remote execution host; or
-- a managed worktree on a registered remote execution host.
+Agent Runtime owns the durable cwd, managed-worktree path and workspace roots of
+its local Threads. Core owns the product Session's Project placement and immutable
+execution binding. For an explicit native Codex Chat, Core Workspace owns its durable
+host id, cwd, managed-worktree path and runtime roots. Main reads the bound execution
+owner and coordinates physical effects; it does not persist a second location authority.
+A renderer never infers location from path spelling.
 
-Claude supports the local checkout and local managed worktree locations.
+Provider cwd and runtime roots are observations. Every subsequent execution or resume
+uses the canonical execution owner's exact location again. Native `thread/read` or
+`thread/resume` metadata cannot replace those coordinates, including an equivalent
+platform spelling such as `/private/var` for `/var`. The cwd and managed-worktree path
+remain one coherent path identity for both execution and the worker's filesystem checks.
 
-Core Workspace owns the durable host id, cwd, managed-worktree path, runtime
-workspace roots, and Project assignment for the Chat. A location change commits
-those coordinates together. Main may cache and project the location but cannot
-persist a second semantic authority. A renderer never infers the location from
-path spelling.
+A Session binds its exact execution root before work starts. Lifecycle planning reads
+consumer identities together with pinned, archived, activity and Project-source protection
+metadata. An incomplete or ambiguous observation fails instead of presenting missing
+protection data as an empty set.
 
-App-server cwd and runtime roots are runtime observations, not durable
-execution-location authority. Every resume of a managed-worktree Chat sends
-Core's exact cwd and writable roots again. Metadata returned by `thread/read`
-or `thread/resume` cannot replace those coordinates, including when the host
-reports an equivalent platform spelling such as `/private/var` for `/var`.
-The cwd and managed-worktree path therefore remain one coherent path identity;
-a worker never receives one spelling as its authorization root and another as
-the path to mutate.
-
-The first Session-to-Chat link publishes the Chat and its complete execution
-location in the same Core revision. Lifecycle planning reads every Chat that
-consumes a managed-worktree path, together with pinned, archived, activity, and
-Project-source protection metadata, from one revision. An incomplete or
-ambiguous snapshot fails instead of presenting missing protection data as an
-empty set.
-
-The Project's source catalog is independent from a Chat's execution location.
-Moving a Chat into a worktree replaces only the primary execution root. Other
-Project source roots retain their order. The source checkout that was replaced
-does not remain writable merely because it belongs to the same Project.
+The Project's source catalog is independent from a Chat's execution location. Moving a
+Chat into a worktree replaces its primary execution root and preserves additional source
+roots in order. Roots select execution context and lifecycle targets; they do not restrict
+an Agent's full Profile content access or native full-access execution policy.
 
 ## Sidebar identity
 
@@ -190,9 +181,9 @@ sparse-checkout mechanism when needed. Failure removes only the worktree
 created by that restore attempt. Rewriting owner metadata is best effort and a
 failure is surfaced as a warning without deleting successfully restored data.
 
-After restore, Main refreshes the Chat's app-server hydration, runtime roots,
-permissions, sidebar projection, and availability before allowing the next
-Turn.
+After restore, Main refreshes the Chat's canonical execution context, sidebar projection
+and availability before allowing the next Turn. Runtime Sessions resume through their
+Provider owner; explicit native Codex Chats refresh their own app-server hydration.
 
 ## Archive and shared worktrees
 
@@ -218,7 +209,7 @@ The Worktrees settings surface owns three Main-persisted preferences:
 Each execution host has exactly one current managed root. That root controls
 future creation and physical inventory discovery; changing it replaces the
 previous discovery root and does not create root history. Existing Chats keep
-their exact Core-owned execution locations, so inspection, restore, archive,
+their exact canonical execution locations, so inspection, restore, archive,
 handoff, and cleanup continue to target those paths after the current root
 changes. A legacy `worktree_known_roots` value is ignored and is removed on the
 next canonical worktree-settings write; Nodex neither scans nor deletes those
@@ -245,7 +236,7 @@ produces an empty inventory, while an unexpected host/worker failure uses the
 surface's retryable load failure.
 
 The inventory groups physical worktrees by source repository and lists every
-associated Chat using a bounded bulk Core projection. Permanent Project roots
+associated Chat using bounded consumer metadata. Permanent Project roots
 are excluded. Targeted deletion first revalidates that exact host/path against
 a fresh physical inventory, archives the associated Chats without triggering
 per-Chat cleanup, then asks the lifecycle owner to remove the physical
@@ -300,9 +291,8 @@ retention until the user explicitly removes it from the Project.
 
 Creating or moving to a permanent worktree replaces the Project's primary root
 for that execution context and preserves all additional source roots in order.
-Workspace-write permission includes the new primary, the additional roots, and
-explicit custom writable roots. It does not silently retain write access to the
-old primary checkout.
+Those roots describe the execution context; Agents retain full native access and
+full read and write access to the current Profile.
 
 Local creation, setup, snapshot, cleanup, and restore execute as the logged-in
 desktop user. Nodex does not change ownership with `chown`. A created worktree
@@ -327,39 +317,44 @@ identity and history while moving its Git state and subsequent execution
 between a checkout, a managed worktree, or a registered execution host.
 
 The attached Chat's `Continue in` selector requests a confirmed local move and
-shows the actual execution location until Core commits the destination. Its
+shows the actual execution location until its canonical execution owner commits the destination. Its
 requested destination is checked against the current durable location, so a
 stale menu cannot reverse a move. Unsupported backends and host combinations fail
 before stopping execution or preparing files.
 
-The backend owner seals new turn and steering admission throughout the
-transaction after draining requests already admitted. Claude also suspends its
-idle native Query, preventing autonomous timers from writing while Git state
-moves. Live background tasks must finish or be stopped before that Query can
-be suspended. Interruption, relocation and rollback remain available within the
-same owner; no command lane is held across unrelated filesystem preparation.
+The execution owner seals new work throughout the transaction. Runtime stores the
+hold on the root and applies it to delegated Threads. Quiescence stops native root,
+child and background work, retires its source and tool credentials, and waits for native
+terminal acknowledgments and durable detach effects. Metadata saying a connection is
+detached is insufficient while its work or cleanup remains pending. An idle shared Provider
+process may remain resident. Queued messages are preserved; queues explicitly
+held by the user remain held when the move completes. Main holds the Profile snapshot
+writer lease across the complete physical and journal transaction.
 
 The transaction:
 
-1. Stops or waits for an active Turn according to the user-visible operation.
-2. Captures source Git state and prepares the destination without destroying
-   the source.
-3. Transfers missing Git objects and rollout state when hosts differ.
-4. Applies the destination state and resolves branch or dirty-destination
-   conflicts without destructive reset.
-5. Switches the backend runtime's cwd and writable roots.
-6. Commits the complete durable execution location in Core.
-7. Refreshes runtime caches, ownership, sidebar, browser/diff context, and other
-   path-sensitive Chat metadata.
-8. Cleans or transfers ownership of the source only after the destination is
-   authoritative.
+1. Seals admission and quiesces the source execution tree.
+2. Captures source Git state and prepares the destination without destroying the source.
+3. Transfers missing Git objects and rollout state for supported explicit native cross-host moves.
+4. Applies destination state and resolves branch or dirty-destination conflicts without destructive reset.
+5. Reconciles the locations of bounded descendant metadata sharing the moved workspace.
+6. Commits the complete root execution location through its canonical writer.
+7. Transfers ownership and refreshes path-sensitive presentation from that location.
+8. Cleans the source only after the destination is authoritative, then releases verified execution.
+
+Runtime Sessions retain the same product Session, root Thread and history. Their next
+Provider execution resumes through the canonical Runtime owner at the committed cwd;
+the move does not prewarm a provisional connection or introduce another native writer.
+Explicit remote native Codex Chats switch through their own execution-host adapter.
+Runtime handoff accepts only the local host.
 
 Main keeps a durable operation journal around effects that cannot share one
 database transaction. Recovery preserves at least one complete usable copy.
 Failure before durable commit rolls back the destination and keeps the source;
 source cleanup failure after commit leaves the Chat at the destination and
 reports a recoverable warning. A follow-up prompt is sent only after durable
-commit and at most once.
+commit and verified execution release. Runtime retries use one stable message identity
+and durable command receipt to prevent duplicate follow-up work.
 
 For a local checkout-to-worktree move, the host worker creates a detached
 destination, moves the source branch into it, and transfers tracked, staged,
@@ -377,8 +372,8 @@ proves that the source was untouched or completely restored.
 The originating tool activity observes a revisioned Main-owned operation snapshot. Repeated delivery of the same tool call reuses its operation; another conversation cannot claim that operation through presentation state. Snapshots retain the requesting Chat, target Chat, Project, execution hosts, title, direction, and available branch context. Progress and terminal results are restored from the journal on restart. Failed steps do not mark subsequent unperformed phases as successful.
 
 Only one handoff may run for a Chat at a time. Main journals the source,
-prepared destination, runtime-switch and Core-commit boundaries with an atomic
-replace. On restart it reads Core's canonical location to decide whether to
+prepared destination, runtime-switch and location-commit boundaries with an atomic
+replace. On restart it reads the bound execution owner's canonical location to decide whether to
 finish destination ownership/cleanup or restore the source; an unavailable or
 ambiguous canonical read defers recovery without mutating Git.
 
@@ -387,57 +382,52 @@ acknowledgement failed. A destination is removed only after the source location,
 runtime and Git state are confirmed restored. An unreadable or unexpected
 location, or failed restoration, retains the journal and destination artifacts
 with recovery required; both new execution and another move stay blocked.
-Native Queries remain suspended until verified repair. Startup restores these
-admission seals before exposing execution, and restart retries recovery.
-Cleanup retry does not repeat a Git rollback already confirmed complete.
+Runtime native connections remain retired until verified repair. A partial descendant
+location update is restored from the prepared source/destination mapping even when
+the root never committed. Startup restores journal-owned admission seals before
+execution resumes. Paged orphan-hold metadata is reconciled once by background recovery;
+window readiness does not wait for this cleanup, and persisted holds keep execution sealed.
+Holds without a
+journal entry precede Git preparation and can be released; pending native retirement
+still blocks release. Restart retries recovery, and cleanup retry does not repeat a
+Git rollback already confirmed complete.
 
 Destination allocation is checkpointed before the worker may mutate source Git
 state. If preparation was interrupted without a proven restoration outcome,
-recovery keeps the operation unresolved even when Core still names the source.
+recovery keeps the operation unresolved even when the canonical location still names the source.
 The durable journal protects source and destination worktrees from automatic
 retention until verified completion or cleanup; process lifetime is not that
 protection's authority.
 
-Prepared turn, steering and tool-output requests retain their execution
-admission epoch. Every handoff invalidates earlier receipts, including receipts
-already materialized before the move. A delayed request cannot execute with its
-previous directory after the new location is committed; it must be prepared
-again under the current owner. Queued messages prepared after a move use the
-Chat’s current location rather than their earlier captured directory; independent
-permission and model choices remain retained.
+Cancelled or retired native connections cannot continue execution or application tool
+calls using their old directory. A new Provider source must resolve the committed
+location under the current Runtime generation. Stable command receipts remain valid
+for retrying already accepted work; location movement does not erase their identities.
+Queued messages use the Chat's current location when promoted, retaining their model
+choices and any explicit queue hold.
 
 Progress queries restore retained operation outcomes from the handoff journal after
 restart, including success, warning, and failure. Reading an outcome never resumes
 the move or sends its follow-up again. Terminal outcomes return immediately even
 when the caller supplies a revision from the previous application process.
 
-Claude relocation retains the same handle, Profile and native session UUID,
-reopens that exact conversation at the destination with its worktree environment,
-and commits Core only after the native runtime is ready. Native history remains
-bound to its canonical history directory across cwd changes. A failed native
-switch restores the source Query; a failed durable-location check cannot grant
-an obsolete source or provisional destination new execution authority.
+An explicit native Codex Chat uses its app-server Thread runtime methods while Main
+retains worktree lifecycle ownership. A loaded Chat is interrupted when active, then
+receives `thread/settings/update` for cwd and full-access execution policy and a
+same-rollout `thread/resume` for its complete roots. An unloaded Chat resumes with
+the canonical cwd and roots. A non-empty rollout path must match the active Thread;
+a mismatch fails before runtime location changes. Runtime observations never replace
+Core's native location authority.
 
-The Codex app-server owns Thread runtime methods but not worktree lifecycle. A loaded
-Chat is first interrupted when it has an active Turn, then receives
-`thread/settings/update` for cwd and sandbox policy and a same-rollout
-`thread/resume` for the complete cwd/runtime-root projection. An unloaded Chat
-resumes with the new cwd and runtime roots. A non-empty rollout path must match
-the loaded Thread's active rollout path; a mismatch fails closed before the
-runtime location changes.
-
-Runtime cwd overrides are not Nodex's durable location authority. A complete
-app-server restart may or may not expose the last override through a cold
-`thread/read`, so every resume reprojects the canonical execution location from
-Core. Nodex advertises handoff only when the pinned app-server version and
-methods, Core's atomic location mutation, and both source and destination host
-transaction effects are available. Persisted older tool catalogs also fail
-closed at execution when those capabilities are unavailable; they cannot fall
-back to a UI-only or metadata-only move.
+Handoff is available only when its bound execution owner and required host transaction
+effects can perform the move. Missing capabilities fail at execution; a presentation or
+metadata-only change cannot report success.
 
 ## Remote execution hosts
 
-A remote worktree operation is routed entirely to the host that owns its path.
+Explicit remote native Codex Chats use the cross-host path below. Runtime Sessions
+remain on the local execution host. A remote worktree operation is routed entirely
+to the host that owns its path.
 Local filesystem code never inspects or deletes a remote path. Remote capability
 is visible only for a registered, health-checked adapter with repository,
 worktree, execution, cancellation, and file-transfer support.
@@ -508,8 +498,8 @@ Core does not inspect Git, execute scripts, or store snapshot refs. The host
 worker does not mutate Core or renderer state. The app-server protocol does not
 gain a managed-worktree method or a `worktreeInit` item.
 
-The client-only worktree initialization activity remains app-side and is
-filtered from accepted app-server history. Main retains it in the live
+For explicit native Codex Chats, the client-only worktree initialization activity
+remains app-side and is filtered from accepted app-server history. Main retains it in the live
 conversation document, so replacing or reloading a renderer preserves the
 activity and its position before the first user prompt. It is not a durable
 protocol item or Core record: restarting Electron Main, including a complete

@@ -44,33 +44,6 @@ target_candidates(target_data_source_id, page_id) AS MATERIALIZED (
     AND edge.source_membership_id = relation_value.membership_id
     AND edge.property_id = relation_value.property_id
 ),
-ancestors(target_data_source_id, root_page_id, page_id, parent_kind, parent_id, path) AS (
-  SELECT
-    candidate.target_data_source_id,
-    candidate.page_id,
-    page.block_id,
-    page.parent_kind,
-    page.parent_id,
-    '|' || page.block_id || '|'
-  FROM target_candidates candidate
-  JOIN pages page
-    ON page.block_id = candidate.page_id
-   AND page.library_id = ?4
-  UNION ALL
-  SELECT
-    ancestor.target_data_source_id,
-    ancestor.root_page_id,
-    parent.block_id,
-    parent.parent_kind,
-    parent.parent_id,
-    ancestor.path || parent.block_id || '|'
-  FROM ancestors ancestor
-  JOIN pages parent
-    ON ancestor.parent_kind = 'page'
-   AND parent.block_id = ancestor.parent_id
-   AND parent.library_id = ?4
-  WHERE instr(ancestor.path, '|' || parent.block_id || '|') = 0
-),
 target_facts AS MATERIALIZED (
   SELECT
     candidate.target_data_source_id,
@@ -83,59 +56,11 @@ target_facts AS MATERIALIZED (
       WHERE membership.data_source_id = candidate.target_data_source_id
         AND membership.page_block_id = candidate.page_id
         AND membership.removed_at IS NULL
-    ) AS active_membership,
-    CASE
-      WHEN ?6 IS NOT NULL THEN EXISTS(SELECT 1 FROM json_each(?6) allowed WHERE allowed.value = candidate.page_id)
-      WHEN ?3 IS NULL THEN 1
-      ELSE EXISTS(
-        SELECT 1
-        FROM projects project
-        WHERE project.id = ?3
-          AND project.library_id = ?4
-          AND project.lifecycle = 'active'
-      ) AND (
-        EXISTS(
-          SELECT 1
-          FROM ancestors terminal
-          JOIN data_sources source
-            ON terminal.parent_kind = 'data_source'
-           AND source.id = terminal.parent_id
-           AND source.library_id = ?4
-          JOIN projects project
-            ON project.id = ?3
-           AND project.library_id = ?4
-           AND project.lifecycle = 'active'
-          WHERE terminal.target_data_source_id = candidate.target_data_source_id
-            AND terminal.root_page_id = candidate.page_id
-            AND (
-              source.home_database_block_id = project.database_block_id
-              OR EXISTS(
-                SELECT 1
-                FROM project_resource_grants grant_row
-                WHERE grant_row.project_id = ?3
-                  AND grant_row.root_kind = 'database'
-                  AND grant_row.root_id = source.home_database_block_id
-                  AND grant_row.lifecycle = 'active'
-              )
-            )
-        )
-        OR EXISTS(
-          SELECT 1
-          FROM ancestors ancestor
-          JOIN project_resource_grants grant_row
-            ON grant_row.project_id = ?3
-           AND grant_row.root_kind = 'page'
-           AND grant_row.root_id = ancestor.page_id
-           AND grant_row.lifecycle = 'active'
-          WHERE ancestor.target_data_source_id = candidate.target_data_source_id
-            AND ancestor.root_page_id = candidate.page_id
-        )
-      )
-    END AS authorized
+    ) AS active_membership
   FROM target_candidates candidate
   LEFT JOIN pages page
     ON page.block_id = candidate.page_id
-   AND page.library_id = ?4
+   AND page.library_id = ?3
   LEFT JOIN blocks block
     ON block.id = page.block_id
    AND block.type = 'page'
@@ -178,8 +103,7 @@ visible_counts AS (
     ON relation_value.membership_id = edge.source_membership_id
    AND relation_value.property_id = edge.property_id
    AND relation_value.target_data_source_id = fact.target_data_source_id
-  WHERE fact.authorized = 1
-    AND fact.lifecycle IS NOT NULL
+  WHERE fact.lifecycle IS NOT NULL
     AND fact.title IS NOT NULL
     AND edge.source_data_source_id = ?1
     AND edge.property_id = relation_property.property_id
@@ -191,7 +115,7 @@ SELECT
   relation_value.property_id,
   relation_value.revision,
   total.total_count,
-  total.total_count - COALESCE(visible.visible_count, 0) AS restricted_count,
+  total.total_count - COALESCE(visible.visible_count, 0) AS unavailable_count,
   COALESCE((
     SELECT json_group_array(json_object(
       'edge_id', selected.edge_id,
@@ -214,11 +138,10 @@ SELECT
         AND edge.property_id = relation_value.property_id
         AND fact.target_data_source_id = relation_value.target_data_source_id
         AND fact.page_id = edge.target_page_block_id
-        AND fact.authorized = 1
         AND fact.lifecycle IS NOT NULL
         AND fact.title IS NOT NULL
       ORDER BY edge.target_page_block_id
-      LIMIT ?5
+      LIMIT ?4
     ) selected
   ), '[]') AS targets_json
 FROM relation_values relation_value
@@ -237,7 +160,7 @@ struct ProjectionRow {
     property_id: String,
     revision: i64,
     total_count: i64,
-    restricted_count: i64,
+    unavailable_count: i64,
     targets: Vec<DatabaseRelationTargetItem>,
 }
 
@@ -261,27 +184,18 @@ struct ProjectionBatch {
 fn previews_for_memberships(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
+    _project_id: Option<&str>,
     data_source_id: &str,
     membership_ids: &[&str],
 ) -> Result<ProjectionBatch, StoreError> {
-    previews_with_visibility(
-        connection,
-        library_id,
-        project_id,
-        data_source_id,
-        membership_ids,
-        None,
-    )
+    previews_for_selected_memberships(connection, library_id, data_source_id, membership_ids)
 }
 
-fn previews_with_visibility(
+fn previews_for_selected_memberships(
     connection: &Connection,
     library_id: &str,
-    project_id: Option<&str>,
     data_source_id: &str,
     membership_ids: &[&str],
-    authorized_page_ids_json: Option<&str>,
 ) -> Result<ProjectionBatch, StoreError> {
     if membership_ids.is_empty() {
         return Ok(ProjectionBatch {
@@ -302,10 +216,8 @@ fn previews_with_visibility(
             params![
                 data_source_id,
                 membership_ids_json,
-                project_id,
                 library_id,
                 preview_limit,
-                authorized_page_ids_json,
             ],
             |row| {
                 Ok((
@@ -327,7 +239,7 @@ fn previews_with_visibility(
                 property_id,
                 revision,
                 total_count,
-                restricted_count,
+                unavailable_count,
                 targets_json,
             )| {
                 let encoded_targets =
@@ -356,7 +268,7 @@ fn previews_with_visibility(
                     property_id,
                     revision,
                     total_count,
-                    restricted_count,
+                    unavailable_count,
                     targets,
                 })
             },
@@ -375,7 +287,7 @@ fn previews_with_visibility(
                 total_count: row.total_count,
                 has_more: row.total_count > target_count,
                 targets: row.targets,
-                restricted_count: row.restricted_count,
+                unavailable_count: row.unavailable_count,
             },
         );
     }
@@ -412,12 +324,10 @@ pub(crate) fn hydrate_row_previews(
     hydrate_rows(rows, previews)
 }
 
-/// Reuses the bounded preview query with exact Turn/task visibility instead of a renderer scope.
+/// Hydrates bounded Relation previews from the current Library for the selected rows.
 pub(crate) fn hydrate_agent_row_previews(
     connection: &Connection,
-    context: &nodex_core_contracts::BoundModuleContext,
     library_id: &str,
-    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
     data_source_id: &str,
     rows: &mut [DatabaseRowSummary],
 ) -> Result<usize, StoreError> {
@@ -447,24 +357,9 @@ pub(crate) fn hydrate_agent_row_previews(
             false,
         ));
     }
-    let authorized = crate::library::agent_authorization::authorized_page_ids(
-        connection,
-        context,
-        library_id,
-        authorization,
-        &targets,
-    )?;
-    let authorized_json = serde_json::to_string(&authorized)
-        .map_err(|_| internal("Relation visibility cannot encode"))?;
-    let previews = previews_with_visibility(
-        connection,
-        library_id,
-        None,
-        data_source_id,
-        &memberships,
-        Some(&authorized_json),
-    )?
-    .previews;
+    let previews =
+        previews_for_selected_memberships(connection, library_id, data_source_id, &memberships)?
+            .previews;
     hydrate_rows(rows, previews)?;
     Ok(targets.len())
 }
@@ -540,7 +435,7 @@ mod tests {
 
     use super::*;
 
-    fn fixture(source_count: i64, target_count: i64, visible_count: i64) -> Connection {
+    fn fixture(source_count: i64, target_count: i64) -> Connection {
         let connection = Connection::open_in_memory().expect("Relation projection fixture");
         connection
             .execute_batch(
@@ -583,10 +478,7 @@ mod tests {
                  CREATE TABLE data_sources(\
                    id TEXT PRIMARY KEY, library_id TEXT, home_database_block_id TEXT\
                  );
-                 CREATE TABLE project_resource_grants(\
-                   project_id TEXT, root_kind TEXT, root_id TEXT, lifecycle TEXT,\
-                   PRIMARY KEY(project_id, root_kind, root_id)\
-                 ) WITHOUT ROWID;
+
                  CREATE INDEX idx_data_source_relation_edges_property_target
                    ON data_source_relation_edges(\
                      source_data_source_id, property_id, target_page_block_id, \
@@ -599,8 +491,7 @@ mod tests {
                    );
                  CREATE INDEX idx_relation_target_membership
                    ON data_source_page_memberships(data_source_id, page_block_id, removed_at);
-                 CREATE INDEX idx_project_resource_grants_active
-                   ON project_resource_grants(project_id, root_kind, root_id, lifecycle);
+
                  INSERT INTO projects VALUES \
                    ('project:owner', 'library:relation', 'active', 'database:owner'), \
                    ('project:reader', 'library:relation', 'active', NULL);
@@ -690,17 +581,7 @@ mod tests {
                 params![source_count, target_count],
             )
             .expect("seed Relation edges");
-        connection
-            .execute(
-                "WITH RECURSIVE target(value) AS (\
-                   SELECT 1 UNION ALL SELECT value + 1 FROM target WHERE value < ?1\
-                 )
-                 INSERT INTO project_resource_grants
-                 SELECT 'project:reader', 'page', printf('target:%05d', value), 'active' \
-                 FROM target",
-                [visible_count],
-            )
-            .expect("seed readable target grants");
+
         connection
     }
 
@@ -708,7 +589,6 @@ mod tests {
         let connection = fixture(
             i64::try_from(source_count).expect("source count"),
             i64::try_from(target_count).expect("target count"),
-            3,
         );
         let membership_ids = (1..=source_count)
             .map(|value| format!("source:{value:03}"))
@@ -726,10 +606,8 @@ mod tests {
                 params![
                     "source:data",
                     membership_ids_json,
-                    "project:reader",
                     "library:relation",
                     i64::try_from(RELATION_PREVIEW_TARGETS).unwrap(),
-                    Option::<&str>::None,
                 ],
                 |row| row.get::<_, String>(3),
             )
@@ -767,10 +645,7 @@ mod tests {
         );
         for preview in batch.previews.values() {
             assert_eq!(preview.total_count, i64::try_from(target_count).unwrap());
-            assert_eq!(
-                preview.restricted_count,
-                i64::try_from(target_count - 3).unwrap()
-            );
+            assert_eq!(preview.unavailable_count, 0);
             assert_eq!(preview.targets.len(), RELATION_PREVIEW_TARGETS);
             assert!(preview.targets.iter().all(|target| matches!(
                 target,
@@ -790,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_boundary_returns_only_top_k_visible_relation_targets() {
+    fn sqlite_boundary_returns_only_top_k_relation_targets() {
         assert_bounded_projection(8, 128);
     }
 

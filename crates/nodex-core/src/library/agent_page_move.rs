@@ -3,9 +3,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use nodex_core_contracts::agent::{
-    AgentConsentRequirement, AgentEffectClass, AgentExecutionAuthorization,
-    AgentOperationFootprint, AgentOperationPreparation, AgentOperationPreparationState,
-    AgentOwnershipTransformation, AgentPreparedExecution, AgentResourceKind, AgentResourceTarget,
+    AgentEffectClass, AgentExecutionAuthorization, AgentOperationFootprint,
+    AgentOperationPreparation, AgentOperationPreparationState, AgentOwnershipTransformation,
+    AgentPreparedExecution, AgentResourceKind, AgentResourceTarget,
 };
 use nodex_core_contracts::library::{
     LibraryAgentDocumentHead, LibraryAgentMovePagePreparation, LibraryAgentMovePagesPreparation,
@@ -25,8 +25,7 @@ use serde_json::json;
 
 use crate::database::{
     PageCopyDataSourceDestination, PageCopyPositionAnchor, PageCopyValueDraft,
-    PageCopyViewPlacement, current_page_key_for_page,
-    finalize_agent_moved_pages_in_data_source_prevalidated,
+    PageCopyViewPlacement, current_page_key_for_page, finalize_agent_moved_pages_in_data_source,
 };
 use crate::document::{DocumentRuntimeCache, read_store_epoch, sha256};
 use crate::infrastructure::agent_operations::{
@@ -43,7 +42,7 @@ use super::agent_page_write::{
     resolve_before_id, resolve_destination,
 };
 use super::block_transfer::{
-    AgentPageMoveTransferAuthority, AppliedAgentPageDocumentBatch, PreparedAgentPageDocumentBatch,
+    AgentPageMoveTransferContext, AppliedAgentPageDocumentBatch, PreparedAgentPageDocumentBatch,
     PreparedBlockTransfer, PreparedTransferReadSet,
 };
 use super::mutation::{MutationEffects, library_commit_result, seal_mutation_with, sqlite_now};
@@ -189,12 +188,11 @@ pub(super) fn prepare_move_pages(
             contract_version: LIBRARY_CONTRACT_VERSION,
             store_epoch: StoreEpoch(store_epoch),
             commit_head,
-            authorization: None,
             value: LibraryReadValue::AgentMovePagesPreparation {
                 value: Box::new(LibraryAgentMovePagesPreparation {
                     preparation: AgentOperationPreparation {
                         state: AgentOperationPreparationState::CommittedReplay,
-                        consent: AgentConsentRequirement::None,
+
                         footprint,
                         preview_markdown: None,
                         token: None,
@@ -219,12 +217,11 @@ pub(super) fn prepare_move_pages(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: LibraryReadValue::AgentMovePagesPreparation {
                     value: Box::new(LibraryAgentMovePagesPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::Prepared,
-                            consent: AgentConsentRequirement::None,
+
                             footprint: preflight.footprint,
                             preview_markdown: None,
                             token: Some(issued.token),
@@ -571,7 +568,7 @@ fn apply_pages(
 
     if let LibraryPageCopyDestination::DataSource { .. } = &preflight.destination {
         let destination = data_source_destination(&preflight.destination)?;
-        let finalization = finalize_agent_moved_pages_in_data_source_prevalidated(
+        let finalization = finalize_agent_moved_pages_in_data_source(
             connection,
             library_id,
             preflight.actor_project_id.as_deref(),
@@ -663,15 +660,11 @@ fn compile_preflight(
     let mut steps = Vec::with_capacity(request.page_ids.len());
     let mut document_heads = destination_heads;
     for (index, page_id) in request.page_ids.iter().enumerate() {
-        let source_fingerprint = super::agent_authorization::authorize_execution(
+        let source_fingerprint = super::agent_execution::validate_execution(
             connection,
             context,
             library_id,
             authorization,
-            &nodex_core_contracts::agent::AgentAuthorizationTarget::Page {
-                page_id: page_id.clone(),
-            },
-            nodex_core_contracts::agent::AgentProjectResourceAction::Move,
         )?;
         source_fingerprints.push(source_fingerprint.clone());
         let source = read_source(connection, library_id, page_id)?;
@@ -872,15 +865,11 @@ fn revalidate_preflight(
         if page_id != &step.page_id {
             return Err(corrupt("Agent Page-move preparation reordered its Pages"));
         }
-        let source_authorization_fingerprint = super::agent_authorization::authorize_execution(
+        let source_authorization_fingerprint = super::agent_execution::validate_execution(
             connection,
             context,
             library_id,
             authorization,
-            &nodex_core_contracts::agent::AgentAuthorizationTarget::Page {
-                page_id: page_id.clone(),
-            },
-            nodex_core_contracts::agent::AgentProjectResourceAction::Move,
         )?;
         if source_authorization_fingerprint != step.source_authorization_fingerprint {
             return Err(stale_preflight("Agent Page-move authorization changed"));
@@ -1191,8 +1180,8 @@ fn data_source_destination(
     })
 }
 
-fn transfer_authority(actor_project_id: Option<&str>) -> AgentPageMoveTransferAuthority {
-    AgentPageMoveTransferAuthority {
+fn transfer_authority(actor_project_id: Option<&str>) -> AgentPageMoveTransferContext {
+    AgentPageMoveTransferContext {
         actor_project_id: actor_project_id.map(str::to_owned),
     }
 }

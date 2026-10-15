@@ -7,6 +7,13 @@ export interface ThreadExecutionHandoffInput {
   readonly destination: "local" | "worktree";
 }
 
+/** The canonical execution location that handoff admission compares a move against. */
+export interface ThreadExecutionLocationView {
+  readonly hostId: string;
+  readonly cwd: string;
+  readonly managedWorktreePath: string | null;
+}
+
 export interface CodexAppHandoffStep {
   readonly id: string;
   readonly label: string;

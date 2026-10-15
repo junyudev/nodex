@@ -71,7 +71,7 @@ export interface LibraryBlockPropertyMutationResultV2 extends Omit<
   BlockPropertyMutationResultV2,
   "projectId"
 > {
-  readonly accessContext: { readonly kind: "library" };
+  readonly routingContext: { readonly kind: "library" };
 }
 
 export type BlockPropertyMutationErrorCodeV2 =
@@ -692,7 +692,7 @@ const parseLibraryBlockPropertyMutationResultV2 = (
   const receipt = readRecord(value, label);
   assertExactKeys(receipt, label, [
     "mutationId",
-    "accessContext",
+    "routingContext",
     "storeEpoch",
     "duplicate",
     "fields",
@@ -700,16 +700,16 @@ const parseLibraryBlockPropertyMutationResultV2 = (
     "commitSeq",
     "committedAt",
   ]);
-  const accessContext = readRecord(receipt.accessContext, `${label}.accessContext`);
-  assertExactKeys(accessContext, `${label}.accessContext`, ["kind"]);
-  if (accessContext.kind !== "library") {
+  const routingContext = readRecord(receipt.routingContext, `${label}.routingContext`);
+  assertExactKeys(routingContext, `${label}.routingContext`, ["kind"]);
+  if (routingContext.kind !== "library") {
     throw new BlockPropertyMutationV2ContractError(
       "Library property mutation access context must be library",
     );
   }
   return {
     ...parseBlockPropertyMutationResultBody(receipt, label),
-    accessContext: { kind: "library" },
+    routingContext: { kind: "library" },
   };
 };
 

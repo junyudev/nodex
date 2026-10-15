@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   DatabaseApplyResultV2,
   DatabaseApplyV2,
@@ -70,7 +70,7 @@ type DatabaseEffect<A> = Effect.Effect<
   DatabaseModuleError | CoreStoreEpochMismatch | CoreMinimumCommitTimeout
 >;
 
-type ProjectScope<Access extends ContentAccessContext> = Access extends {
+type ProjectScope<Access extends ContentRoutingContext> = Access extends {
   readonly kind: "project";
 }
   ? string
@@ -78,7 +78,7 @@ type ProjectScope<Access extends ContentAccessContext> = Access extends {
 type ConcreteProjectionTarget =
   | { readonly databaseViewId: string }
   | { readonly databaseId: string };
-type ProjectionInput<Access extends ContentAccessContext, Input> = Access extends {
+type ProjectionInput<Access extends ContentRoutingContext, Input> = Access extends {
   readonly kind: "library";
 }
   ? Input & ConcreteProjectionTarget
@@ -97,15 +97,15 @@ export class DatabaseModule extends Context.Service<
     readonly applyLibrary: (
       request: LibraryDatabaseApplyV2,
     ) => DatabaseEffect<LibraryDatabaseApplyResultV2>;
-    readonly viewWindow: <Access extends ContentAccessContext>(
+    readonly viewWindow: <Access extends ContentRoutingContext>(
       access: Access,
       input: ProjectionInput<Access, DatabaseViewWindowInput>,
     ) => DatabaseEffect<DatabaseViewWindowSnapshot<ProjectScope<Access>>>;
-    readonly listWindow: <Access extends ContentAccessContext>(
+    readonly listWindow: <Access extends ContentRoutingContext>(
       access: Access,
       input: ProjectionInput<Access, DatabaseListWindowInput>,
     ) => DatabaseEffect<DatabaseListWindowSnapshot<ProjectScope<Access>>>;
-    readonly viewGroups: <Access extends ContentAccessContext>(
+    readonly viewGroups: <Access extends ContentRoutingContext>(
       access: Access,
       input: ProjectionInput<Access, DatabaseViewGroupsInput>,
     ) => DatabaseEffect<DatabaseViewGroupsSnapshot<ProjectScope<Access>>>;
@@ -143,9 +143,9 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
               }),
           ),
         );
-      const projectIdForAccess = (access: ContentAccessContext): string | undefined =>
+      const projectIdForAccess = (access: ContentRoutingContext): string | undefined =>
         access.kind === "project" ? access.projectId : undefined;
-      const projectScopeForAccess = <Access extends ContentAccessContext>(
+      const projectScopeForAccess = <Access extends ContentRoutingContext>(
         access: Access,
       ): ProjectScope<Access> =>
         (access.kind === "project" ? access.projectId : null) as ProjectScope<Access>;
@@ -210,7 +210,7 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
         );
       };
       const readProjection = (
-        access: ContentAccessContext,
+        access: ContentRoutingContext,
         operation: string,
         coreRead: DatabaseRead,
         minimumCommitSeq: number,
@@ -223,7 +223,7 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
         );
       };
       const descriptor = (
-        access: ContentAccessContext,
+        access: ContentRoutingContext,
         descriptorRead: Parameters<typeof read>[0]["read"],
       ) =>
         access.kind === "project"
@@ -235,7 +235,7 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
           catch: (cause) => new DatabaseModuleError({ operation, cause }),
         });
       const validateProjectionAccess = (
-        access: ContentAccessContext,
+        access: ContentRoutingContext,
         input: DatabaseViewWindowInput | DatabaseListWindowInput | DatabaseViewGroupsInput,
       ): DatabaseEffect<void> => {
         if (access.kind === "project" || input.databaseViewId || input.databaseId) {
@@ -243,24 +243,24 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
         }
         return Effect.fail(
           new DatabaseModuleError({
-            operation: "database.projection.authorize",
+            operation: "database.projection.resolve",
             cause: new Error("Library Database projections require a concrete Database or View"),
           }),
         );
       };
       const isUnavailableReference = (cause: unknown): boolean => {
         if (cause instanceof DatabaseProjectionDescriptorError) {
-          return cause.code === "resource_not_found" || cause.code === "authorization_denied";
+          return cause.code === "resource_not_found";
         }
         if (cause instanceof CoreModuleResponseError) {
-          return cause.coreError.code === "not_found" || cause.coreError.code === "unauthorized";
+          return cause.coreError.code === "not_found";
         }
         if (cause instanceof DatabaseModuleError || cause instanceof CoreRuntimeError) {
           return isUnavailableReference(cause.cause);
         }
         return false;
       };
-      const viewWindow = <Access extends ContentAccessContext>(
+      const viewWindow = <Access extends ContentRoutingContext>(
         access: Access,
         input: ProjectionInput<Access, DatabaseViewWindowInput>,
       ): DatabaseEffect<DatabaseViewWindowSnapshot<ProjectScope<Access>>> =>
@@ -367,7 +367,7 @@ export const live: Layer.Layer<DatabaseModule, never, CoreAuthority | CoreSessio
           } catch {
             return Effect.succeed(null);
           }
-          return viewWindow(input.accessContext, { databaseViewId: viewId, first: 50 }).pipe(
+          return viewWindow(input.routingContext, { databaseViewId: viewId, first: 50 }).pipe(
             Effect.flatMap((window) =>
               evaluate("database.resolveDatabaseViewReference.project", () =>
                 projectDatabaseViewReferenceModel(window, input),

@@ -9,7 +9,7 @@ const databaseSurface: WorkbenchSurfaceDescriptor = {
   kind: "db_view",
   titleSnapshot: "Database",
   config: {
-    accessContext: { kind: "project", projectId: "alpha" },
+    routingContext: { kind: "project", projectId: "alpha" },
     target: { kind: "project-default" },
   },
   stateKey: 0,

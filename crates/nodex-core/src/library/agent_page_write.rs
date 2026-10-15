@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use nodex_core_contracts::agent::{
-    AgentConsentRequirement, AgentEffectClass, AgentOperationFootprint, AgentOperationPreparation,
+    AgentEffectClass, AgentOperationFootprint, AgentOperationPreparation,
     AgentOperationPreparationState, AgentOwnershipTransformation, AgentPreparedExecution,
-    AgentProjectResourceAction, AgentResourceKind, AgentResourceTarget,
+    AgentResourceKind, AgentResourceTarget,
 };
 use nodex_core_contracts::library::{
     LibraryAgentDocumentHead, LibraryAgentPageCopyPreparation, LibraryAgentPageCopyRequest,
@@ -188,12 +188,11 @@ pub(super) fn prepare_page_copy(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: LibraryReadValue::AgentPageCopyPreparation {
                     value: Box::new(LibraryAgentPageCopyPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::CommittedReplay,
-                            consent: AgentConsentRequirement::None,
+
                             footprint,
                             preview_markdown: None,
                             token: None,
@@ -220,12 +219,11 @@ pub(super) fn prepare_page_copy(
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head,
-                authorization: None,
                 value: LibraryReadValue::AgentPageCopyPreparation {
                     value: Box::new(LibraryAgentPageCopyPreparation {
                         preparation: AgentOperationPreparation {
                             state: AgentOperationPreparationState::Prepared,
-                            consent: AgentConsentRequirement::None,
+
                             footprint: preflight.footprint,
                             preview_markdown: None,
                             token: Some(issued.token),
@@ -353,7 +351,6 @@ pub(super) fn execute_page_copy(
                         preflight.source.document_head_seq,
                         &preflight.destination,
                         PageCopyParentDocumentMode::Commit,
-                        true,
                         &assets_root,
                         &committed_at,
                     )?;
@@ -434,16 +431,8 @@ fn compile_preflight(
     request_hash: String,
 ) -> Result<CopyPreflight, StoreError> {
     validate_id(&request.source_page_id, "source_page_id")?;
-    let source_fingerprint = super::agent_authorization::authorize_execution(
-        connection,
-        context,
-        library_id,
-        authorization,
-        &nodex_core_contracts::agent::AgentAuthorizationTarget::Page {
-            page_id: request.source_page_id.clone(),
-        },
-        AgentProjectResourceAction::Read,
-    )?;
+    let source_fingerprint =
+        super::agent_execution::validate_execution(connection, context, library_id, authorization)?;
     let source = read_source(connection, library_id, &request.source_page_id)?;
     let resolved_destination = resolve_destination(
         connection,
@@ -599,15 +588,11 @@ pub(super) fn resolve_destination(
 ) -> Result<ResolvedDestination, StoreError> {
     match destination {
         LibraryAgentPageDestination::Library { at } => {
-            let fingerprint = super::agent_authorization::authorize_execution(
+            let fingerprint = super::agent_execution::validate_execution(
                 connection,
                 context,
                 library_id,
                 authorization,
-                &nodex_core_contracts::agent::AgentAuthorizationTarget::Library {
-                    library_id: library_id.to_owned(),
-                },
-                AgentProjectResourceAction::CreateChild,
             )?;
             let actor_project_id = authorization
                 .provenance
@@ -638,15 +623,11 @@ pub(super) fn resolve_destination(
         }
         LibraryAgentPageDestination::Page { page_id, at } => {
             validate_id(page_id, "destination.page_id")?;
-            let fingerprint = super::agent_authorization::authorize_execution(
+            let fingerprint = super::agent_execution::validate_execution(
                 connection,
                 context,
                 library_id,
                 authorization,
-                &nodex_core_contracts::agent::AgentAuthorizationTarget::Page {
-                    page_id: page_id.clone(),
-                },
-                AgentProjectResourceAction::CreateChild,
             )?;
             let (document_id, generation, head_seq) = connection
                 .query_row(
@@ -743,16 +724,8 @@ fn resolve_data_source_destination(
             )));
         }
     }
-    let fingerprint = super::agent_authorization::authorize_execution(
-        connection,
-        context,
-        library_id,
-        authorization,
-        &nodex_core_contracts::agent::AgentAuthorizationTarget::DataSource {
-            data_source_id: data_source_id.to_owned(),
-        },
-        AgentProjectResourceAction::CreateChild,
-    )?;
+    let fingerprint =
+        super::agent_execution::validate_execution(connection, context, library_id, authorization)?;
     let (database_id, source_revision, default_view_id) = connection
         .query_row(
             "SELECT source.home_database_block_id, source.schema_revision, \

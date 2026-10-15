@@ -59,13 +59,13 @@ schedule, exception, projection, and receipt atomically.
 ## Reminders and notifications
 
 Reminder offsets are evaluated from current schedule authority and Page content.
-The scheduler deduplicates a Page occurrence across Project access paths and
-chooses an active authorized Project context for delivery. Startup/resume catch-
+The scheduler deduplicates a Page occurrence across Project presentation routes
+and chooses an active Project context for delivery. Startup/resume catch-
 up does not send the same logical reminder twice.
 
 Notification activation opens the exact Page. Snooze belongs to the requesting
-Project and Page, requires current read access, and expires when the Project or
-access is no longer valid. A stale schedule index or stale Page materialization
+Project and Page and validates their current identity and lifecycle. It expires
+when that delivery context is no longer valid. A stale schedule index or stale Page materialization
 fails closed rather than resurfacing legacy content.
 
 Desktop notification suppression, payload, and activation rules live in

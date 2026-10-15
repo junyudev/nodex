@@ -1,4 +1,4 @@
-import type { ContentAccessIdentity } from "../../shared/content-access-context";
+import type { ContentRoutingIdentity } from "../../shared/content-routing-context";
 import type { LibraryRouteTarget } from "../../shared/library-module";
 import type { DocumentRecoveryScope } from "../../shared/block-documents/document-recovery";
 
@@ -33,7 +33,7 @@ export type ContentEditIssueAction =
 export interface ContentEditIssue {
   readonly kind: "history" | "save" | "draft";
   readonly id: string;
-  readonly scope: ContentAccessIdentity;
+  readonly scope: ContentRoutingIdentity;
   readonly location: ContentEditLocation | null;
   readonly title: string;
   readonly detail: string;
@@ -41,7 +41,7 @@ export interface ContentEditIssue {
 }
 
 export const contentRecoveryIssueId = (
-  scope: ContentAccessIdentity,
+  scope: ContentRoutingIdentity,
   storeEpoch: string,
   draftId: string,
 ): string => `${scope.libraryId}\0${storeEpoch}\0draft:${draftId}`;

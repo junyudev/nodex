@@ -145,7 +145,6 @@ describe("Database promotion presentation", () => {
 
     localStructuralTransactionPresentation.beginDatabasePageMove({
       operationId: "move-away",
-      projectId: "project",
       storeEpoch: "epoch",
       dataSourceId: "source",
       pageIds: ["wrapped-page"],

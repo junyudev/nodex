@@ -3,16 +3,19 @@ import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as Stream from "effect/Stream";
 import type { AgentModelCatalog } from "../../shared/agent-model-catalog";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { makeTestApplicationSettings } from "../settings/ApplicationSettings.test-support";
 import { make } from "./AgentBackendApplication";
 import { AgentBackendRegistry } from "./AgentBackendRegistry";
-import { AcpBackendSessionManager } from "./acp/AcpBackendSessionManager";
-import { inactiveClaudeSessions } from "./claude/ClaudeSessionManager.test-fixtures";
-import { OpenCodeSessionManager } from "./opencode/OpenCodeSessionManager";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { ClaudeSdk } from "../platform/node/ClaudeSdk";
+import { OpenCodeSdk } from "../platform/node/OpenCodeSdk";
+import { NativePromptImages } from "./NativePromptImages";
+import { testLayer as mainConfigLayer } from "../app/MainConfig";
+import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
+import { OpenCodeModelCatalog } from "./opencode/OpenCodeModelCatalog";
 
 const binding = { kind: "opencode", instanceConfigId: "work" } as const;
 const catalog: AgentModelCatalog = {
@@ -32,7 +35,16 @@ const fixture = Effect.gen(function* () {
   const discovered: unknown[] = [];
   const settings = makeTestApplicationSettings();
   const app = yield* make.pipe(
-    Effect.provide(inactiveClaudeSessions),
+    Effect.provide(mainConfigLayer()),
+    Effect.provideService(ClaudeNativeCatalog, {} as never),
+    Effect.provideService(AgentRuntimeApplication, {} as never),
+    Effect.provideService(ClaudeSdk, {
+      discover: () => Effect.die("Catalogue must not execute a Query"),
+    } as never),
+    Effect.provideService(OpenCodeSdk, {
+      open: () => Effect.die("Catalogue must not acquire a Session"),
+    } as never),
+    Effect.provideService(NativePromptImages, {} as never),
     Effect.provideService(ApplicationSettings, {
       ...settings,
       snapshot: () =>
@@ -46,13 +58,7 @@ const fixture = Effect.gen(function* () {
       resolveAcpInstance: () => Effect.die("Unexpected ACP resolution"),
     }),
     Effect.provideService(ProjectWorkspace, { getProject: () => Effect.succeed(project) } as never),
-    Effect.provideService(AcpBackendSessionManager, {
-      get: () => Effect.succeed(null),
-      changes: Stream.empty,
-    } as never),
-    Effect.provideService(OpenCodeSessionManager, {
-      nativeHome: () => Effect.die("Discovery must not resolve a session owner"),
-      open: () => Effect.die("Discovery must not allocate a conversation"),
+    Effect.provideService(OpenCodeModelCatalog, {
       discover: (input) =>
         Effect.gen(function* () {
           discovered.push(input);
@@ -60,11 +66,6 @@ const fixture = Effect.gen(function* () {
           yield* Deferred.await(release);
           return catalog;
         }),
-      get: () => Effect.succeed(null),
-      close: () => Effect.void,
-      observe: () => Effect.void,
-      unobserve: () => Effect.void,
-      changes: Stream.empty,
     }),
   );
   return {
@@ -103,7 +104,7 @@ it.effect("discovers models in the exact Project workspace without creating a se
 
 for (const change of ["changeSettings", "changeProject"] as const) {
   it.effect(
-    `rejects discovery when ${change === "changeSettings" ? "instance settings" : "Project authority"} changes before publication`,
+    `rejects discovery when ${change === "changeSettings" ? "instance settings" : "Project lifecycle"} changes before publication`,
     () =>
       Effect.scoped(
         Effect.gen(function* () {

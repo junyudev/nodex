@@ -1,6 +1,6 @@
 # ADR 0052: File placement is independent of ownership
 
-- Status: Superseded for File ownership, exclusive rehome, and owner-closure copy by [ADR 0057](0057-library-files-and-page-relations.md); canonical placement and narrow presentation authority remain valid
+- Status: Superseded for File ownership, exclusive rehome, and owner-closure copy by [ADR 0057](0057-library-files-and-page-relations.md); canonical placement remains valid; resource permission rules are superseded by [ADR 0068](0068-agent-runtime-execution-authority.md)
 - Date: 2026-08-29
 
 ## Context
@@ -55,19 +55,17 @@ same deterministic ` (N)` suffix used for new Files. The source and target
 Documents, placement projections, namespace, both Files manifests, history,
 receipt, and LocalCommit commit or roll back together.
 
-A canonical placement grants a deliberately narrow presentation capability.
-Read access to the containing Page may resolve the File's current logical
-metadata and current bytes. It does not grant access to the owner Page, owner
-Files manifest, version history, mutations, or lifecycle operations. A File ID by
-itself is never a bearer capability: Core verifies the requesting Page and its
-current `block_asset_refs` projection on every current-content read.
+A canonical placement identifies the File shown by a Page occurrence. The user
+and every Agent can read the current Profile's File metadata, bytes and history
+and use its semantic mutation and lifecycle operations. Page presentation reads
+validate the exact File occurrence and captured source version; a locator never
+replaces authenticated Profile/Store identity or physical resource lifecycle.
 
-Generic collaborative persistence may introduce a placement only when the
-acting Project can already read the File owner or another canonical placement.
-Typed Core structural compilers carry authorization evidence from their source
-Document, including transactions that remove the source projection before
-writing the target. Missing, deleted, cross-Library, and unauthorized Files are
-rejected before Document commit. Non-Page Documents cannot contain Page File
+Generic collaborative persistence validates each File placement in the current
+Library. Typed Core structural compilers retain exact source File identity and
+version evidence, including transactions that remove the source projection
+before writing the target. Missing, deleted or cross-Library Files are rejected
+before Document commit. Non-Page Documents cannot contain Page File
 placements.
 
 The owner Page's Files inventory remains direct and complete. Its body-usage
@@ -131,7 +129,7 @@ Cloning on every cross-Page placement preserves owner-local reads but gives a
 move unexpected copy semantics and forces every structural compiler to
 coordinate two aggregates. Treating `nodex://files/<id>` as unrestricted read
 authority is simpler but turns an opaque identifier into a bearer token and can
-leak bytes across Project grants. Unconditionally moving ownership with any
+cross authenticated Profile or physical resource boundaries. Unconditionally moving ownership with any
 placement would be ambiguous when other placements survive or the moved
 placement is foreign; the exclusive post-state rule avoids that ambiguity.
 Adding a second shared-asset type duplicates File identity, versions, and

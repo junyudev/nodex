@@ -3,8 +3,8 @@ import { BlockNoteEditor, type BlockNoteEditorOptions } from "@blocknote/core";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import { PAGE_DOCUMENT_TITLE_KEY } from "../../../../shared/block-documents/page-document";
 import type { ContentEditLocation } from "@/lib/content-edit-issues";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
-import { contentAccessContextKey } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
+import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { toast } from "@/components/ui/toast";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
@@ -38,7 +38,7 @@ export interface NfmEditorCallbackPorts {
 export interface NfmEditorOwnerInput {
   readonly pageId?: string;
   readonly source: NfmEditorSource;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly editorInstanceKey: string;
   readonly libraryId?: string;
   readonly placeholder?: string;
@@ -49,7 +49,7 @@ export interface NfmEditorOwnerInput {
 function ownerIdentity(input: NfmEditorOwnerInput): string {
   return JSON.stringify([
     input.editorInstanceKey,
-    getNfmEditorInstanceKey({ source: input.source, accessContext: input.accessContext }),
+    getNfmEditorInstanceKey({ source: input.source, routingContext: input.routingContext }),
     input.source.storeEpoch,
     input.source.clientSessionId,
     input.libraryId ?? input.editorSession?.descriptor.libraryId,
@@ -63,8 +63,8 @@ function validateRetainedAuthority(input: NfmEditorOwnerInput): void {
     (descriptor.documentId !== input.source.documentId ||
       descriptor.generation !== input.source.generation ||
       descriptor.storeEpoch !== input.source.storeEpoch ||
-      contentAccessContextKey(descriptor.accessContext) !==
-        contentAccessContextKey(input.accessContext) ||
+      contentRoutingContextKey(descriptor.routingContext) !==
+        contentRoutingContextKey(input.routingContext) ||
       (input.libraryId !== undefined && input.libraryId !== descriptor.libraryId))
   )
     throw new Error("A retained editor cannot change its Document or history authority.");
@@ -129,7 +129,7 @@ export class NfmEditorOwner {
       (input.libraryId
         ? {
             libraryId: input.libraryId,
-            accessContext: input.accessContext,
+            routingContext: input.routingContext,
             storeEpoch: input.source.storeEpoch,
           }
         : undefined);

@@ -17,7 +17,6 @@ const envelope = (value: unknown) => ({
     libraryId: "library-1",
     storeEpoch: "epoch-1",
     commitSeq: 4,
-    authorization: null,
     value,
   },
 });
@@ -36,7 +35,6 @@ beforeEach(() => {
             page_id: request.read.page_id,
             revision: 3,
             body_usage_revision: 2,
-            can_write: true,
             files: [],
             next_cursor: null,
             has_more: false,

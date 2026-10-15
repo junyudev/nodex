@@ -11,7 +11,7 @@ It is deliberately not a file inventory, migration ledger, product specification
 
 ## System at a glance
 
-Nodex is a local-first, block-based agent orchestrator. One detached native Rust Core is the exclusive SQLite and collaborative-document authority for a Profile. Electron is the Desktop Host: it supervises Core, owns windows and operating system integration, hosts the pinned native Codex app-server and capability-negotiated external runtimes, and exposes typed capabilities to sandboxed renderers. The native CLI reaches the same Core contracts without going through Electron.
+Nodex is a local-first, block-based agent orchestrator. One detached native Rust Core is the exclusive content SQLite and collaborative-document authority for a Profile. Electron is the Desktop Host: it supervises Core and the Profile's Agent Runtime, owns windows and operating system integration, retains native account capabilities, and exposes typed capabilities to sandboxed renderers. The Agent Runtime owns provider execution and its separate history store. The native CLI reaches Core contracts without going through Electron.
 
 ```mermaid
 flowchart LR
@@ -20,21 +20,23 @@ flowchart LR
     Main --> Core["Detached Rust Core"]
     CLI["Native CLI"] --> Core
     Core --> Store["SQLite + Yrs/Canvas Documents"]
-    Main --> Codex["Pinned native Codex app-server"]
-    Main --> ACP["Capability-negotiated ACP Agents"]
-    Main --> Claude["Native Claude Code via Agent SDK"]
-    Main --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
+    Main --> Agent["Supervised Agent Runtime / execution SQLite"]
+    Agent --> Codex["Pinned native Codex app-server"]
+    Agent --> ACP["Capability-negotiated ACP Agents"]
+    Agent --> Claude["Native Claude Code via Agent SDK"]
+    Agent --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
+    Main --> Accounts["Native account and host capabilities"]
     Main --> Host["OS, filesystem, Browser, Terminal, Git"]
     Renderer --> Scene["Renderer-owned live Scenes"]
     Scene --> Catalog["Main-persisted Window Session catalog"]
 ```
 
-The CLI is the default shell Agent content Interface. Its Native CLI authorization
-uses selected Project access. Native application MCP provides live Workbench context,
-application operations and content operations under separately verified Turn authority.
+The CLI is the default shell Agent content Interface. Its authenticated connection
+has full access to the current Profile. Native application MCP provides live Workbench context,
+application operations and content operations under verified execution identity.
 Both Interfaces share Core semantics. Per-Turn host connection
 context selects the Skill and a task-bound shell entrypoint for the current
-executable, Profile, and Project without becoming an authorization proxy. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
+executable, Profile, and content placement. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
 and [ADR 0064](adr/0064-native-application-mcp.md).
 
 The Main-owned Workspace Dependency Runtime exposes verified host document dependencies.
@@ -64,7 +66,7 @@ Core Modules -> Electron / renderer / transport presentation
 
 ## Domain and authority model
 
-The canonical vocabulary and full domain invariants live in [CONTEXT.md](CONTEXT.md). This section records only the ownership relationships needed to navigate the system.
+The canonical vocabulary and full domain invariants live in [CONTEXT.md](../CONTEXT.md). This section records only the ownership relationships needed to navigate the system.
 
 ### Content and execution are separate
 
@@ -83,21 +85,31 @@ Profile
 
 Project                              execution context
 ├── primary Database binding
-├── explicit Library resource grants
 ├── filesystem sources
-└── Sessions / Threads / terminals / approval policy
+└── Sessions / Threads / terminals
 ```
 
-One Profile owns one Library. Library owns durable content; Project owns execution context and access to content. Archiving or deleting a Project never owns, moves, or deletes Library content.
+One Profile owns one Library. Library owns durable content; Project owns execution and presentation context. Archiving or deleting a Project never owns, moves, or deletes Library content.
+
+An Agent Runtime bound Session retains its Core product identity while its root Thread
+has one external execution owner. Core atomically admits the immutable reference and
+Page links, and records exact execution leases for verified Runs. Native and external
+execution bindings are mutually exclusive. The execution runtime owns its separate SQL
+transaction for history, delegated work, receipts and pending effects; it does not open
+Core's content database or infer execution identity from its workspace. Runtime metadata
+owns local execution location; Main owns the physical worktree transaction and durable
+handoff journal, while Core retains product Session placement and binding. See
+[Agent Runtime behavior](product-specs/agent-runtime-behavior.md) and
+[ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
 Blocks, Documents, owner registries, search/asset projections, and top-level placement are physically Library-scoped. A Project coordinate retained by a receipt, change log, automation record, recovery artifact, or delivery packet names actor/execution/delivery provenance, not content ownership. `library_block_placements` is the sole root-order authority; runtime mutations do not dual-write a Project-local placement graph.
 
-Projectless execution retains a null actor Project. Resource authorization and event delivery follow the affected Library resources independently of that actor coordinate; content location never supplies a fallback execution identity.
+Projectless execution retains a null actor Project. Authenticated Profile content access and event delivery remain independent of that actor coordinate; content location never supplies a fallback execution identity.
 
-Every active Page has exactly one `library | page | data_source` parent. Page ownership forms an acyclic forest. References, mentions, backlinks, relations, and Views are non-owning and do not expand authorization. Page ID is Block ID; Document identity remains independent.
+Every active Page has exactly one `library | page | data_source` parent. Page ownership forms an acyclic forest. References, mentions, backlinks, relations, and Views are non-owning. Page ID is Block ID; Document identity remains independent.
 
 The Library Module owns stable File identity, global metadata, immutable content
-versions, lifecycle, and direct Project grants. The Profile owns physical Blob
+versions and lifecycle. The Profile owns physical Blob
 storage; equal content hashes may share bytes without merging File identities.
 A Page owns only its explicit File entries and their portable logical paths.
 Canonical Document occurrences reference File IDs independently of entries.
@@ -105,15 +117,11 @@ Page Files is the deduplicated union of both relationships; descendant Pages
 retain their own relationships.
 
 Library navigation and placement use a closed Page/Database/Canvas target type.
-The authorization resource type additionally includes File; granting access
-does not make a File a navigable or movable Block.
-
-A Page relationship authorizes current presentation metadata and bytes. Direct
-File grants separately authorize global reads and writes; provenance does not
-grant access. File changes publish File-scoped events and independently
-invalidate current Page presentations. Entry revisions, body-use revisions, and
-File revisions remain distinct concurrency boundaries. Cached bytes never
-substitute for current authorization.
+Files are independent Library resources rather than navigable or movable Blocks.
+An authenticated current Profile has full Library content access. File changes
+publish File effects and invalidate current Page presentations. Entry revisions,
+body-use revisions and File revisions remain distinct concurrency boundaries.
+Cached bytes never substitute for canonical identity and current lifecycle.
 
 Document history owns exact File content bindings and frozen default names in
 its canonical snapshot. Its retention index is derived evidence, never a second
@@ -133,11 +141,11 @@ explicitly selected bytes. Physical locators are never File identity or general
 renderer/Agent read capabilities. See [Page Files Behavior](product-specs/page-files-behavior.md)
 and [ADR 0057](adr/0057-library-files-and-page-relations.md).
 
-A top-level Canvas is authorized by an explicit generic Canvas resource grant. An embedded Canvas inherits the host Page authorization path and has no active direct Canvas grant. Moving between Library and Page placement changes that grant state atomically with the host shell and never rehomes content.
+A Canvas has canonical Library ownership. Moving between Library and Page placement changes its structural parent atomically with the host shell and never rehomes content.
 
-A Database is a Container Block that owns Data Sources and Views. An enabled Database also owns one Page-key namespace whose Library-unique prefix history, monotonic counter, and immutable Database/Page assignments provide readable aliases without replacing Page UUID identity. A Data Source owns its schema, row Pages, typed Property values, Page Property layout, and query identity. Its fixed `task_parent` Property is a cardinality-one self-Relation; the Relation value header is the sole concurrency authority for roots and children, and only its edge may carry sibling rank. The resulting task hierarchy is non-owning presentation semantics: it never changes a Page's structural `library | page | data_source` parent or expands authorization, and there is no parallel hierarchy graph. A View targets exactly one Data Source and owns one durable Board or List layout, ordered query rules, presentation, conditional colors, complete Property order and visibility, and one View-global Page rank. Every visible View tab selects one View identity; an explicit layout conversion preserves that identity while replacing layout-specific settings. Per-View Profile state has two independent authorities: one revision-fenced preference envelope with separately sparse rules and presentation overrides that cannot change layout or identity, and a bounded set of typed collapsed occurrences changed by idempotent per-target patches. Their delivery atoms require View read authorization but carry no shared projection coordinates, so personal changes converge without invalidating View content or Library navigation. The Rust Database Module contract owns the complete typed View-definition grammar and a tagged read command for each legal coordinate set; identity descriptors are typed responses, so unrelated target, window, group, and Page-ID parameters cannot cross the Core boundary. SQLite schema markers and canonical JSON are storage encoding, while Main and renderer casing and compatibility envelopes are explicit mechanical projections rather than parallel domain grammars. Core validates Property-typed operators and normalizes the effective rules and presentation against Data Source capabilities before query execution. Board consumes its established bounded group windows. List consumes a dedicated grouped/nested occurrence window whose complete Core projection graph also resolves semantic subtree moves; the renderer's bounded window owns pointer preview only and never expands descendants or composes authoritative Property, Parent, or order writes. Both View layouts commit through the same atomic Database boundary. View display and Source-owned Page layout are independent identities and must not be derived from one another.
+A Database is a Container Block that owns Data Sources and Views. An enabled Database also owns one Page-key namespace whose Library-unique prefix history, monotonic counter, and immutable Database/Page assignments provide readable aliases without replacing Page UUID identity. A Data Source owns its schema, row Pages, typed Property values, Page Property layout, and query identity. Its fixed `task_parent` Property is a cardinality-one self-Relation; the Relation value header is the sole concurrency authority for roots and children, and only its edge may carry sibling rank. The resulting task hierarchy is non-owning presentation semantics: it never changes a Page's structural `library | page | data_source` parent or changes content access, and there is no parallel hierarchy graph. A View targets exactly one Data Source and owns one durable Board or List layout, ordered query rules, presentation, conditional colors, complete Property order and visibility, and one View-global Page rank. Every visible View tab selects one View identity; an explicit layout conversion preserves that identity while replacing layout-specific settings. Per-View Profile state has two independent authorities: one revision-fenced preference envelope with separately sparse rules and presentation overrides that cannot change layout or identity, and a bounded set of typed collapsed occurrences changed by idempotent per-target patches. Their delivery atoms bind the current Profile and View identity but carry no shared projection coordinates, so personal changes converge without invalidating View content or Library navigation. The Rust Database Module contract owns the complete typed View-definition grammar and a tagged read command for each legal coordinate set; identity descriptors are typed responses, so unrelated target, window, group, and Page-ID parameters cannot cross the Core boundary. SQLite schema markers and canonical JSON are storage encoding, while Main and renderer casing and compatibility envelopes are explicit mechanical projections rather than parallel domain grammars. Core validates Property-typed operators and normalizes the effective rules and presentation against Data Source capabilities before query execution. Board consumes its established bounded group windows. List consumes a dedicated grouped/nested occurrence window whose complete Core projection graph also resolves semantic subtree moves; the renderer's bounded window owns pointer preview only and never expands descendants or composes authoritative Property, Parent, or order writes. Both View layouts commit through the same atomic Database boundary. View display and Source-owned Page layout are independent identities and must not be derived from one another.
 
-The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library-pages-data-sources-and-project-resource-grants.md), [ADR 0020](docs/adr/0020-database-identity-scopes.md), [ADR 0039](docs/adr/0039-data-source-relation-properties-and-property-semantics.md), and [ADR 0043](docs/adr/0043-database-scoped-page-keys.md).
+The content ownership decisions are recorded in [ADR 0017](adr/0017-library-pages-data-sources-and-project-resource-grants.md), [ADR 0020](adr/0020-database-identity-scopes.md), [ADR 0039](adr/0039-data-source-relation-properties-and-property-semantics.md), and [ADR 0043](adr/0043-database-scoped-page-keys.md). Current execution identity and Profile-wide access follow [ADR 0068](adr/0068-agent-runtime-execution-authority.md).
 
 View manual ordering and semantic position history share one Database authority.
 Physical rank generations and cached position metadata are neither history proof
@@ -145,29 +153,30 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 
 ### State authority table
 
-| State or capability                                                                                                                    | Authoritative owner                                                          | Adapters and projections                                                                                                                           |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Blocks, Pages, Library Files, Databases, Documents, search, schedules, history                                                         | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                            |
-| Page-key namespaces, prefix history, counters, assignments                                                                             | Rust Core Database Module                                                    | Contextual Core projections; CLI/Agent resolve to canonical Page IDs                                                                               |
-| Projects, Sessions, durable Thread metadata, queued-message state and execution context                                                | Rust Core Workspace Module                                                   | Electron Codex/Workspace services and renderer queries                                                                                             |
-| Explicit Thread backend binding, guarded native/protocol recovery identity, requested native preferences and bounded turn observations | Rust Core Workspace Module                                                   | Main backend registry and scoped backend session managers; transcript content remains native-owned and renderer sees typed canonical projections   |
-| Sidebar Section identities, root order, mixed Project/Session placement, host links                                                    | Rust Core Workspace Module                                                   | Main bounded adapters, renderer projections, agent tools, per-host app-server ThreadSection synchronization                                        |
-| Page–Project Session Linked chat edges and Page Chat activity                                                                          | Rust Core Workspace Module                                                   | Effect Main Workspace Adapter; renderer joins bounded Workspace activity with Database Page windows                                                |
-| Inbox entries, Dispatch proposals, and the confirmed-dispatch outbox                                                                   | Rust Core Workspace Module                                                   | Main suggests and delivers only confirmed work; Agents and CLI append only; renderer stream queries                                                |
-| Project access to Library resources                                                                                                    | Rust Core Library authorization and resource-grant boundary                  | Workspace supplies Project identity; Electron and CLI bind access context                                                                          |
-| Automation definitions, runs, occurrences, reminder leases and receipts                                                                | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                   |
-| Backups, restore, bounded operational journals, Store maintenance                                                                      | Rust Core Administration Module                                              | Electron administration adapter, background backup jobs, and controlled relaunch                                                                   |
-| Active Codex conversation document                                                                                                     | Current conversation owner peer, seeded from app-server state                | Main and window managers are ordinary peers; followers apply canonical snapshots and patches                                                       |
-| Codex wire protocol and remote Thread observations                                                                                     | Pinned Codex-compatible app-server                                           | Main validates and routes generated protocol envelopes                                                                                             |
-| Live Claude Code/OpenCode/ACP processes, capabilities, prompt/cancel/interaction lifecycle, and bounded transcripts                    | Electron Main backend Modules                                                | Core supplies durable Thread/workspace authority; renderer invokes Thread-scoped lifecycle APIs                                                    |
-| Codex subagent observed descendant identity, status evidence and discovery facts                                                       | Rust Core Workspace Module                                                   | Main `CodexSubagentDirectory` reconciles observations; shared pure rows drive all presentations; app-server owns the execution graph and lifecycle |
-| Managed worktree creation and lifecycle                                                                                                | Electron Main lifecycle coordinator and the worktree's execution-host worker | Renderer projects typed pending/availability/inventory state; Core persists only durable execution location and Session/Thread/worktree metadata   |
-| Window layout, owner-scoped Scenes, surface placement                                                                                  | Renderer Window Session App aggregate                                        | Main persists the revisioned Window Session catalog                                                                                                |
-| Browser guests, Browser Use, MCP App guests, Terminal processes                                                                        | Electron Main runtime aggregates                                             | Renderer holds presentation descriptors and host bindings only                                                                                     |
-| Git repository live-read state                                                                                                         | Main-owned Git worker process                                                | Typed Main/preload bus and renderer query projections                                                                                              |
-| Structural clipboard preparing/ready/superseded lifecycle and native slot ownership                                                    | Electron Main Structural Clipboard Runtime                                   | Private MIME routes trusted windows; standard HTML/text stays portable; Core retains durable bundle and cut authority                              |
-| Durable File, Canvas, queue, and submitted-input bytes                                                                                 | Rust Core Blob infrastructure and concrete domain retention roots            | Authenticated streams and transaction-bound publication receipts; each domain authorizes its own references                                        |
-| Preferences, temporary media, logs, OS notifications                                                                                   | Electron Main local/OS adapters                                              | Typed renderer IPC and private media caches; persistent content is published through Core                                                          |
+| State or capability                                                                                       | Authoritative owner                                                          | Adapters and projections                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Blocks, Pages, Library Files, Databases, Documents, search, schedules, history                            | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                                                         |
+| Page-key namespaces, prefix history, counters, assignments                                                | Rust Core Database Module                                                    | Contextual Core projections; CLI/Agent resolve to canonical Page IDs                                                                                                            |
+| Projects, product Sessions, execution bindings and workspace context                                      | Rust Core Workspace Module                                                   | Desktop Session adapters and bounded renderer queries                                                                                                                           |
+| Local Threads, Runs, queues, normalized history, delegated tasks and command receipts                     | Supervised Agent Runtime                                                     | Desktop Host binds Core Sessions before execution; renderer retains bounded Session query owners                                                                                |
+| Native import identity, external execution bindings and bounded native observations                       | Rust Core Workspace Module                                                   | Main native history readers and explicit remote owners; imported local history remains passive                                                                                  |
+| Sidebar Section identities, root order, mixed Project/Session placement, host links                       | Rust Core Workspace Module                                                   | Main bounded adapters, renderer projections, agent tools, per-host app-server ThreadSection synchronization                                                                     |
+| Page–Project Session Linked chat edges and Page Chat activity                                             | Rust Core Workspace Module                                                   | Effect Main Workspace Adapter; renderer joins bounded Workspace activity with Database Page windows                                                                             |
+| Inbox entries, Dispatch proposals and confirmed-dispatch outbox                                           | Rust Core Workspace Module                                                   | Main proposes and delivers confirmed work; renderer presents triage; Agent/CLI Inbox endpoints append entries                                                                   |
+| Profile content access                                                                                    | Rust Core authenticated Profile and resource lifecycle boundary              | Workspace supplies execution routing; Electron and CLI bind the current Profile                                                                                                 |
+| Automation definitions, runs, occurrences, reminder leases and receipts                                   | Rust Core Automation Module                                                  | Electron scheduler/executor and renderer queries                                                                                                                                |
+| Backups, restore, bounded operational journals, Store maintenance                                         | Rust Core Administration Module                                              | Electron administration adapter, background backup jobs, and controlled relaunch                                                                                                |
+| Explicit remote Codex conversation document                                                               | Attached remote conversation owner peer, seeded from app-server state        | Main and window managers are ordinary peers; followers apply canonical snapshots and patches                                                                                    |
+| Codex wire protocol and remote Thread observations                                                        | Pinned Codex-compatible app-server                                           | Main validates and routes generated protocol envelopes                                                                                                                          |
+| Live local Provider processes, capabilities, prompt/cancel/interaction lifecycle, and bounded transcripts | Supervised Agent Runtime Provider owners                                     | Core supplies durable Session/workspace identity; renderer invokes the Session Interface                                                                                        |
+| Explicit native Codex subagent observations, status evidence and discovery facts                          | Rust Core Workspace Module                                                   | Main `CodexSubagentDirectory` reconciles observations; shared pure rows drive all presentations; app-server owns the execution graph and lifecycle                              |
+| Managed worktree creation and lifecycle                                                                   | Electron Main lifecycle coordinator and the worktree's execution-host worker | Renderer projects typed pending/availability/inventory state; Core owns Session/worktree metadata and native execution locations; Agent Runtime owns its local Thread locations |
+| Window layout, owner-scoped Scenes, surface placement                                                     | Renderer Window Session App aggregate                                        | Main persists the revisioned Window Session catalog                                                                                                                             |
+| Browser guests, Browser Use, MCP App guests, Terminal processes                                           | Electron Main runtime aggregates                                             | Renderer holds presentation descriptors and host bindings only                                                                                                                  |
+| Git repository live-read state                                                                            | Main-owned Git worker process                                                | Typed Main/preload bus and renderer query projections                                                                                                                           |
+| Structural clipboard preparing/ready/superseded lifecycle and native slot ownership                       | Electron Main Structural Clipboard Runtime                                   | Private MIME routes trusted windows; standard HTML/text stays portable; Core retains durable bundle and cut authority                                                           |
+| Durable File, Canvas, queue, and submitted-input bytes                                                    | Rust Core Blob infrastructure and concrete domain retention roots            | Authenticated streams and transaction-bound publication receipts; each domain authorizes its own references                                                                     |
+| Preferences, temporary media, logs, OS notifications                                                      | Electron Main local/OS adapters                                              | Typed renderer IPC and private media caches; persistent content is published through Core                                                                                       |
 
 Retained document edits and their resolution belong to Core's Owned Document Module.
 Renderer IndexedDB stages unacknowledged packages, while the semantic DocumentRecovery
@@ -184,7 +193,7 @@ The native Codex app-server owns autonomous goal execution. Conversation manager
 status and expose explicit goal commands; an idle observation does not create a second execution
 authority in Main or a window.
 
-Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, scope, authorization, and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch or authorization-scope changes revoke that projection immediately. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [NFM Editor Page Connection Behavior](product-specs/nfm-editor-page-reference-behavior.md).
+Page discovery is one Core-owned capability across Page references, Command Palette search, Agent search, and transport clients. Core maintains the durable projection, applies lifecycle, explicit query scope and typed filters before the result bound, and returns complete ordering plus typed match evidence. Interactive renderers may hold only a commit-fenced, Core-authored metadata projection and query it synchronously with the same Rust search kernel compiled to WASM; Store-epoch and resource-lifecycle changes invalidate that projection. Body evidence and historical-key resolution remain asynchronous Core enrichment. Adapters translate contracts mechanically, and renderers do not define a second normalization, fuzzy, ranking, or highlighting policy. User-visible policy belongs to [Command Palette Behavior](product-specs/command-palette-behavior.md) and [NFM Editor Page Connection Behavior](product-specs/nfm-editor-page-reference-behavior.md).
 
 ## Runtime boundaries
 
@@ -192,37 +201,38 @@ Page discovery is one Core-owned capability across Page references, Command Pale
 
 The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private Unix socket.
 
-Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](crates/nodex-core/src):
+Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](../crates/nodex-core/src):
 
-| Module         | Owns                                                                                    |
-| -------------- | --------------------------------------------------------------------------------------- |
-| Library        | Block/Page ownership, Files, navigation, lifecycle, content operations, resource grants |
-| Database       | Database/Data Source/View schema, values, relations, queries, and positions             |
-| Query          | Authorized cross-domain SQL observations, lazy public projections, query budgets        |
-| Document       | Yrs/Canvas persistence, live sync, versions, and content operations                     |
-| Workspace      | Projects, Sessions, Threads, sidebar order, execution metadata, Inbox triage            |
-| Automation     | Definitions, schedules, runs, occurrences, reminders, leases                            |
-| Administration | Backup, restore, retention, compaction, Store maintenance                               |
+| Module         | Owns                                                                        |
+| -------------- | --------------------------------------------------------------------------- |
+| Library        | Block/Page ownership, Files, navigation, lifecycle, content operations      |
+| Database       | Database/Data Source/View schema, values, relations, queries, and positions |
+| Query          | Cross-domain SQL observations, lazy public projections, query budgets       |
+| Document       | Yrs/Canvas persistence, live sync, versions, and content operations         |
+| Workspace      | Projects, Sessions, execution references, sidebar order and Inbox triage    |
+| Automation     | Definitions, schedules, runs, occurrences, reminders, leases                |
+| Administration | Backup, restore, retention, compaction, Store maintenance                   |
 
-Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
+Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](../crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
 
-[`crates/nodex-core-protocol`](crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](crates/nodex-core-server) owns socket transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code.
+[`crates/nodex-core-protocol`](../crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](../crates/nodex-core-server) owns socket transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code.
 
 Core Server also owns one request-execution boundary for synchronous Module work. It admits bounded `interactive`, `background`, and `maintenance` classes, preserves capacity for interactive requests, runs admitted work outside async transport workers, and carries one absolute deadline and cancellation token through reader checkout, writer queueing, and SQLite execution. Electron supplies request identity and intent but does not decide when Core work has actually stopped. A semantic deadline, caller cancellation, admission overload, and authority/transport loss are distinct typed outcomes.
 
 That class continues through the serialized Store writer rather than ending at request admission. The writer prefers interactive commands, ages bounded background/maintenance work for fairness, promptly evicts interrupted queued commands, and checks the same cancellation/deadline again across dequeue races. Maintenance owns resumable orchestration and must yield through short writer commands; read-heavy planning belongs on a consistent reader snapshot with an explicit writer-side authority fence. A transaction boundary hidden inside one long writer closure is not a scheduling boundary. Administration snapshots use a dedicated online-backup reader and publish through a durable background-job coordinator, so database copying, validation, and hashing never borrow writer ownership.
 
-Store formats and migration sequences are implementation/recovery contracts, not architecture prose. Their executable authority is under [`crates/nodex-core/src/infrastructure`](crates/nodex-core/src/infrastructure), [`crates/nodex-core/schema`](crates/nodex-core/schema), and the corresponding Core tests. Operational expectations belong in [Reliability](docs/RELIABILITY.md).
+Store formats and migration sequences are implementation/recovery contracts, not architecture prose. Their executable authority is under [`crates/nodex-core/src/infrastructure`](../crates/nodex-core/src/infrastructure), [`crates/nodex-core/schema`](../crates/nodex-core/schema), and the corresponding Core tests. Operational expectations belong in [Reliability](RELIABILITY.md).
 
 ### Electron Main / Desktop Host
 
-[`src/main`](src/main) owns the non-transactional desktop boundary:
+[`src/main`](../src/main) owns the non-transactional desktop boundary:
 
 - Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); process-lifetime supervision and recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts).
 - Trusted identity binding and strict mapping between renderer/Host contracts and Core Module contracts.
 - BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, temporary media capture, logs, and platform integration.
-- Native Codex app-server, Claude Code SDK and OpenCode server lifecycles, plus capability-negotiated ACP Agent
-  processes. Each backend owns its session and callback lifecycle; shared projections carry only
+- Native Codex account/catalog and explicit remote-host lifecycles. Local conversation
+  execution belongs to Agent Runtime, whose Providers own their native Session and
+  callback lifecycles; shared projections carry only
   transport-neutral conversation data. See [Agent Backend Behavior](product-specs/agent-backend-behavior.md)
   and [ADR 0065](adr/0065-native-claude-code-backend.md) / [ADR 0066](adr/0066-native-model-selection-and-opencode.md).
 - Native Agent homes own their account, configuration, and conversation persistence independently
@@ -234,7 +244,7 @@ Store formats and migration sequences are implementation/recovery contracts, not
 
 Main is an Adapter, coordinator, and runtime host. It may bind Profile/Library/Project/Session identity, perform host preflight, and coordinate external effects around a Core command. It must not open Nodex's SQLite, reconstruct a semantic transaction, infer authorization from renderer state, or provide a fallback data authority when Core is unavailable. Read-only native Agent format inspection belongs to a version-bound platform Adapter and never substitutes for Core-owned Thread bindings.
 
-Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native Codex, Claude Code, OpenCode and ACP backend operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. The acquired application owns an inner consumer Scope that completes bounded renderer persistence and window closure before its provided IPC and persistence Layers release; window cleanup remains one shared scoped operation. Physical Core generations, Codex app-server sessions, Claude Code SDK sessions, OpenCode server connections, ACP Agent sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
+Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/MainEntry.ts) is the Main-process Node runtime root; [`MainApp`](../src/main/app/MainApp.ts) owns ready, bootstrap handoff, shutdown admission, and the process Scope; [`MainApplicationLive`](../src/main/app/MainApplicationLive.ts) declaratively composes the pre-Core window state, Core, native account capabilities, Agent Runtime supervision, semantic application operations, post-Core Window activation, renderer-ingress, and host Layer clusters. Pre-Core state creates the canonical BrowserWindow and Window Session, installs only bootstrap IPC and deny-by-default navigation/guest guards, and keeps that outer Scope alive while the full authority graph acquires. Post-Core activation attaches capabilities to the same WebContents and opens its renderer gate; it never replaces the physical window. `MainApp` acquires that graph with one `Effect.provide`, so startup rollback and every normal or authority-driven quit close the same Scope. The acquired application owns an inner consumer Scope that completes bounded renderer persistence and window closure before its provided IPC and persistence Layers release; window cleanup remains one shared scoped operation. Physical Core and Agent Runtime generations, native account sessions, windows, workers, PTYs, file watchers, and callback fibers are subordinate scoped resources rather than parallel lifecycle owners. The Agent Runtime owns its provider-session Scopes; closing the supervised generation releases those native processes before replacement. Worker and standalone script processes have their own explicitly allowlisted `NodeRuntime.runMain` entries and never share Main's runtime.
 
 Structural clipboard coordination belongs to one application-scoped Main
 runtime because native clipboard ownership and cross-window rendezvous outlive
@@ -289,7 +299,7 @@ Native application MCP invocation admission belongs to the exact Codex Endpoint 
 request inbox Scope. Only canonical protocol notifications admitted after Turn authority capture
 can establish invocation identity; MCP metadata must match the observed Thread, Turn, call, tool,
 and arguments. Turn completion and generation closure revoke active claims. This identity boundary
-does not grant data access or mutation consent: Core authority and operation policy remain required.
+does not establish a Profile connection or execution identity: Core admission remains required.
 Application tool interpretation crosses a bounded, lossless invocation inbox, separating transport
 resource acquisition from semantic application dependencies. Withdrawing a caller interrupts its
 interpreter; duplicate delivery cannot execute a ticket twice. The inbox owns no content authority.
@@ -580,9 +590,9 @@ Main propagates renderer cancellation across IPC and the Core transport using th
 
 ### Preload and renderer
 
-[`src/preload`](src/preload) is a narrow context-isolated bridge. It exposes the typed IPC surface required by the application and contains no general Node or filesystem capability.
+[`src/preload`](../src/preload) is a narrow context-isolated bridge. It exposes the typed IPC surface required by the application and contains no general Node or filesystem capability.
 
-[`src/renderer`](src/renderer) is a sandboxed React application. Durable writes enter the renderer Module that owns their visible lifecycle and then cross a named typed command Adapter; queries and runtime bookkeeping use their distinct typed query and control Adapters. Shared operations may expose narrow methods from [`src/renderer/lib/api.ts`](src/renderer/lib/api.ts), but no general channel-invocation facade is available to features. The renderer never accesses SQLite, Core sockets, arbitrary filesystem paths, or Node APIs directly.
+[`src/renderer`](../src/renderer) is a sandboxed React application. Durable writes enter the renderer Module that owns their visible lifecycle and then cross a named typed command Adapter; queries and runtime bookkeeping use their distinct typed query and control Adapters. Shared operations may expose narrow methods from [`src/renderer/lib/api.ts`](../src/renderer/lib/api.ts), but no general channel-invocation facade is available to features. The renderer never accesses SQLite, Core sockets, arbitrary filesystem paths, or Node APIs directly.
 
 The shared IPC contract exhaustively classifies every endpoint as query, command, or control, and every command declares whether its result proves a Core LocalCommit, a Main revision, or only a plain typed result. The renderer semantic command contract is a separate source of truth for authority, visible owner, and presentation protocol. Transport evidence cannot own React presentation, and renderer presentation cannot weaken transport acknowledgement.
 
@@ -594,15 +604,15 @@ Renderer state follows explicit ownership:
 - The Window Session App aggregate owns live owner-scoped Scenes, navigation, surface descriptors, panel trees, and geometry.
 - React components render these owners; component lifetime is not durable state authority.
 
-Reusable transport-neutral helpers and contracts live in [`src/shared`](src/shared). Shared code must not import Electron Main or renderer presentation. Protocol-facing Codex shapes come from [`packages/codex-app-server-protocol`](packages/codex-app-server-protocol); local types may derive or project those shapes but must not hand-write a second raw protocol model.
+Reusable transport-neutral helpers and contracts live in [`src/shared`](../src/shared). Shared code must not import Electron Main or renderer presentation. Protocol-facing Codex shapes come from [`packages/codex-app-server-protocol`](../packages/codex-app-server-protocol); local types may derive or project those shapes but must not hand-write a second raw protocol model.
 
-Cross-feature renderer construction, state-owner selection, and shared UI/editor conventions are detailed in [Frontend](docs/FRONTEND.md). Feature presentation remains with its product specification; Workbench presentation is detailed in [the Workbench shell specification](docs/product-specs/workbench-shell.md) and the Scene ADRs beginning with [ADR 0026](docs/adr/0026-window-owned-project-session-views.md).
+Cross-feature renderer construction, state-owner selection, and shared UI/editor conventions are detailed in [Frontend](FRONTEND.md). Feature presentation remains with its product specification; Workbench presentation is detailed in [the Workbench shell specification](product-specs/workbench-shell.md) and the Scene ADRs beginning with [ADR 0026](adr/0026-window-owned-project-session-views.md).
 
 ### Native CLI
 
-[`crates/nodex-cli`](crates/nodex-cli) is a native Adapter over the same Core contracts used by Desktop. It resolves explicit Profile and Project scope, performs bounded reads and semantic writes, and never accesses private Store SQL or private lifecycle authority. It does not depend on Electron and does not bypass Module authorization. The provisioning exception is `profile clone`: because its target Core does not exist yet, the CLI invokes the Profile provisioning Module in-process. That outer Module composes an unpublished Core Administration Store clone with the backend-owned conversation closure, verifies local Thread requirements across those owners, and publishes one new Profile directory. Core reads only a published evidence-backed Store backup, preserves imported Store lineage, and remints instance secrets; it never interprets native transcripts. The native Adapter owns capture consistency and relocation of its selected rollout paths. A running source Desktop may lend a connection-bound snapshot window; its existing Endpoint supervisor exclusively owns Agent admission, pause, and recovery while the native materializer retains all capture and validation authority. Ordinary reads and mutations remain protocol-only. The result is an isolated local fork whose post-clone history is never merged or replayed into its source Profile. See [Profile clone reliability](reliability/backup-restore-and-maintenance.md#development-profile-clones) for capture boundaries and failure behavior.
+[`crates/nodex-cli`](../crates/nodex-cli) is a native Adapter over the same Core contracts used by Desktop. It resolves explicit Profile and Project scope, performs bounded reads and semantic writes, and never accesses private Store SQL or private lifecycle authority. It does not depend on Electron and does not bypass Module identity, lifecycle or transaction validation. The provisioning exception is `profile clone`: because its target Core does not exist yet, the CLI invokes the Profile provisioning Module in-process. That outer Module composes an unpublished Core Administration Store clone with the backend-owned conversation closure, verifies local Thread requirements across those owners, and publishes one new Profile directory. Core reads only a published evidence-backed Store backup, preserves imported Store lineage, and remints instance secrets; it never interprets native transcripts. The native Adapter owns capture consistency and relocation of its selected rollout paths. A running source Desktop may lend a connection-bound snapshot window; its existing Endpoint supervisor exclusively owns Agent admission, pause, and recovery while the native materializer retains all capture and validation authority. Ordinary reads and mutations remain protocol-only. The result is an isolated local fork whose post-clone history is never merged or replayed into its source Profile. See [Profile clone reliability](reliability/backup-restore-and-maintenance.md#development-profile-clones) for capture boundaries and failure behavior.
 
-Agent tools use versioned semantic contracts from [`src/shared/nodex-agent-tools`](src/shared/nodex-agent-tools) and Core contract counterparts. They pass intent and semantic preconditions; Core resolves storage coordinates, authorization, and exact mutation evidence.
+Agent tools use versioned semantic contracts from [`src/shared/nodex-agent-tools`](../src/shared/nodex-agent-tools) and Core contract counterparts. They pass intent and semantic preconditions; Core resolves storage coordinates, resource lifecycle and exact mutation evidence.
 
 ## Critical flows
 
@@ -625,9 +635,9 @@ sequenceDiagram
     O->>O: apply contiguous projection or schedule canonical repair
 ```
 
-Core writes the semantic mutation, immutable receipt, physical evidence, Document references, visibility changes, and per-scope Projection effects in one transaction represented by one LocalCommit identity. Command authorization and delivery authorization are separate Core decisions. Main routes Core-authored audiences; it cannot broaden them.
+Core writes the semantic mutation, immutable receipt, physical evidence, Document references and per-scope Projection effects in one transaction represented by one LocalCommit identity. Execution identity and presentation delivery routing are separate Core responsibilities. Main routes Core-authored audiences; it cannot broaden them.
 
-The initiating renderer admits its authorized apply-response delivery before the feature Promise resolves. Its semantic owner may keep an identity-keyed local presentation after acknowledgement until the exact bounded projection materializes the intent and the subscribed React owner commits that canonical result. Acknowledgement and materialization may arrive in either order; neither a broad commit floor nor installation in an external store is a rendered handoff. Other renderers converge through the scoped live broker and durable replay. Scoped live delivery includes authorized metadata atoms and projection/visibility effects; engine update resources remain on Document streams. Main's Projection delivery capability directly composes Core authority/session access, application projection, Document sessions, LocalCommit delivery, and renderer audience ownership; the composition root does not reconstruct causal delivery as a callback bag or borrow a legacy data-authority client. LocalCommit owns Manifest/resource deduplication, exact-key causal Queue actors, shared completion signals, bounded pending work, retry, and checkpoint gating as children of the Main Scope; an interrupted tail waiter never becomes the physical delivery owner. The Projection live Module separately owns the multiplexed physical lease, replacement attempts, callback ingress, backoff, and release. Its audience Module atomically owns renderer subscriptions, Core-issued recipient leases, ACK correlation, reset recovery, and the desired-scope projection; audience membership does not own a physical Core connection. Apply delivery and later stream delivery are complementary copies of the same committed fact, not competing authorities.
+The initiating renderer admits its authorized apply-response delivery before the feature Promise resolves. Its semantic owner may keep an identity-keyed local presentation after acknowledgement until the exact bounded projection materializes the intent and the subscribed React owner commits that canonical result. Acknowledgement and materialization may arrive in either order; neither a broad commit floor nor installation in an external store is a rendered handoff. Other renderers converge through the scoped live broker and durable replay. Scoped live delivery includes canonical metadata atoms and projection effects; engine update resources remain on Document streams. Main's Projection delivery capability directly composes Core authority/session access, application projection, Document sessions, LocalCommit delivery, and renderer audience ownership; the composition root does not reconstruct causal delivery as a callback bag or borrow a legacy data-authority client. LocalCommit owns Manifest/resource deduplication, exact-key causal Queue actors, shared completion signals, bounded pending work, retry, and checkpoint gating as children of the Main Scope; an interrupted tail waiter never becomes the physical delivery owner. The Projection live Module separately owns the multiplexed physical lease, replacement attempts, callback ingress, backoff, and release. Its audience Module atomically owns renderer subscriptions, Core-issued recipient leases, ACK correlation, reset recovery, and the desired-scope projection; audience membership does not own a physical Core connection. Apply delivery and later stream delivery are complementary copies of the same committed fact, not competing authorities.
 
 Database-scoped Page-key namespace reads and prefix mutations belong to the Database Module. Project creation may provide the primary Database's initial prefix inside its aggregate transaction; after creation, Project surfaces only adapt the primary Database coordinate and do not copy namespace revision into Project state. A prefix rename authors bounded Database/View canonical-read floors plus `PageDetailDatabase` delivery in one LocalCommit, so mounted Views and Page Detail converge without advancing Project binding revision or enumerating Page patches.
 
@@ -639,24 +649,24 @@ Sessions, and optional Threads. Core application projection publishes the existi
 invalidation through Main's scoped database notification runtime, and mounted renderer surfaces
 invalidate batched Page Chat queries. Board, List, and Page Stage join that read with their current
 Page projection; they do not write Chat state into Database rows or infer a relation from Scene
-layout. [ADR 0049](docs/adr/0049-page-project-session-links.md) owns the relationship, access, and
+layout. [ADR 0049](adr/0049-page-project-session-links.md) owns the relationship, access, and
 lifecycle decision.
 
-Renderer projections advance by an exact Core-authored scope coordinate. A complete contiguous patch may apply synchronously. Revision gaps, missing patches, integrity conflicts, resets, incomplete windows, or authorization loss fence stale state and schedule a bounded canonical read. The global LocalCommit sequence is replay progress, never a projection version.
+Renderer projections advance by an exact Core-authored scope coordinate. A complete contiguous patch may apply synchronously. Revision gaps, missing patches, integrity conflicts, resets, incomplete windows, or resource-lifecycle changes fence stale state and schedule a bounded canonical read. The global LocalCommit sequence is replay progress, never a projection version.
 
 Exact Document live sync is resource-addressed and separate from the global durable ledger. Opening a Document establishes an authorized live barrier, performs canonical state-vector or scene synchronization, and then admits later live effects. It does not replay LocalCommit history from genesis.
 
 The Main-scoped Document Session Module is the single owner of Document/Canvas adapters, admitted subscriptions, pending owner reservations, delivery cursors, owner bindings, and renderer-destruction listeners. Scope release first closes admission, then cancels pending opens, closes every physical live lease, removes exact target listeners, and clears projection state. IPC and Projection delivery compose its typed Effects; only the Core transport and Electron handler edges adapt to Promises or callbacks.
 
-The complete recovery and authorization contracts live in [Reliability](docs/RELIABILITY.md), [Security](docs/SECURITY.md), [ADR 0024](docs/adr/0024-durable-projection-invalidation.md), and [ADR 0040](docs/adr/0040-local-commit-authority-and-causal-structural-mutations.md).
+The complete recovery and authorization contracts live in [Reliability](RELIABILITY.md), [Security](SECURITY.md), [ADR 0024](adr/0024-durable-projection-invalidation.md), and [ADR 0040](adr/0040-local-commit-authority-and-causal-structural-mutations.md).
 
 ### Document and structural mutation
 
 A Document is an independently synchronized content owner. Page title/body Documents use Yrs; Canvas Documents use the scene-native engine. Store epoch, Document generation, durable head, Yjs state vector, and content hash are distinct coordinates with different purposes.
 
-The public identity of an authorized Document observation is `(libraryId, accessContext, documentId)`: Library owns physical lifetime, while `accessContext` is the explicit Library or Project authorization path. Core authors this identity; Main and renderer adapters validate it without projecting Library access into a synthetic Project.
+The public identity of a Document observation is `(libraryId, routingContext, documentId)`: Library owns physical lifetime, while `routingContext` is explicit Library or Project presentation routing. Core authors this identity; Main and renderer adapters validate it without projecting Library access into a synthetic Project.
 
-A mounted surface first resolves an authorized descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
+A mounted surface first resolves a current content descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
 
 The renderer Content Interaction History Module owns the chronological interval,
 command admission, preparation order and outcome state shared by Page bodies,
@@ -741,7 +751,7 @@ Document identity, owner shells, relocation, history, and Canvas decisions are r
 
 A renderer conversation runtime Interface connects backend-owned snapshots, subscriptions and
 lifecycle operations to one shared conversation presentation. Codex adapts its owner/follower
-manager; Claude Code, OpenCode and ACP adapt Main-owned, revision-fenced projections. Semantic command
+manager for native peers; Runtime-bound Sessions use the shared keyed execution cache. Semantic command
 Adapters retain backend identity and capability boundaries. Presentation reuse never creates
 Codex protocol authority for another backend. Product capabilities belong to
 [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
@@ -759,9 +769,31 @@ native metadata; Core atomically owns connection to a Nodex Session, destination
 native recovery identity. Authentication location never substitutes for history identity. See
 [Native Conversation Connection Behavior](product-specs/native-conversation-connection-behavior.md).
 
-### Codex conversation ownership
+### Agent Runtime conversation ownership
 
-Codex has four distinct authorities that must not collapse into one another:
+The Agent Runtime owns each bound Session's execution root, Runs, provider sessions,
+history, delegated descendants and durable result delivery. Core owns the product
+Session and content authority. Main's semantic Session Interface resolves the
+immutable execution reference before querying or commanding its root and descendants;
+it never hydrates child histories for status observation. Product writers share
+snapshot admission without holding a Project lifecycle gate across Host callbacks.
+Live Session activity (running, waiting, background) is one Main-owned projection derived from
+the Runtime per process generation and served to every window; it is never copied into Core.
+
+The renderer owns a bounded, keyed presentation cache derived from execution snapshots
+and events. Root and child views lease that same owner; the final reader releases
+transcript bodies and transport observation. Session links and window navigation use
+Core identity without creating a second Thread or transcript writer. Voice and composer
+prediction use the same managed native Session through finite Runtime capabilities;
+Main retains account policy, media ownership and renderer routing. Their owners acquire
+after the Runtime facade, before protocol consumers, within the same Main Scope.
+The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
+
+### Native Codex conversation peers
+
+Direct native Codex peers serve explicit native account/catalog and remote-host conversations.
+These peer rules do not give a Runtime-bound local Session another execution writer.
+They have four distinct authorities that must not collapse into one another:
 
 - The pinned Codex-compatible app-server owns the generated wire contract and its transcript
   history.
@@ -892,10 +924,10 @@ directly; it never re-enters the lane through a sibling public command. Optimist
 committed or compensated within the owning transaction, and interruption reaches the same physical
 Gateway, worker, or Core operation.
 
-The handoff owner composes backend-specific execution capabilities with one journaled Git and
-Core location transaction. Codex admission belongs to its canonical Thread generation; Claude
-admission, exact native identity, Query suspension and provisional location belong to its existing
-native conversation owner. The transaction seals new execution while retaining internal interruption
+Execution-location handoff composes native capabilities with one journaled Git and
+Core location transaction. A local Session keeps its Agent Runtime execution owner;
+an explicit remote native conversation keeps its captured peer generation. Exact native
+identity and provisional execution location remain owned by that execution source. The transaction seals new execution while retaining internal interruption
 and rollback capability. Unresolved recovery seals survive Thread retirement and are restored
 from the journal before execution startup; durable journal paths also protect recovery worktrees
 from retention. Prepared requests are fenced by their execution admission epoch across moves.
@@ -917,22 +949,22 @@ The executing manager owns delivery locks, settings waits, terminal recovery and
 or steer. Main provides durable storage and admitted input capabilities without owning a second
 renderer queue projection. See [Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
 
-App-server approval, elicitation, permission, and user-input requests have one canonical pending
-request lifecycle. Admission records the exact endpoint and Thread generation before presentation;
+Native permission requests receive a fixed automatic approval. Genuine elicitation and
+user-input requests have one canonical pending request lifecycle. Admission records
+the exact native endpoint and Session generation before presentation;
 renderer or automation responses claim that identity once and send through the typed Gateway.
 Replacement, timeout, renderer loss, server resolution, and Scope close settle the same authority
 at most once. Automatic user-input resolution is a policy over this state, not a second responder
 or timer registry.
 
-Operation approval is distinct from resource authorization. Main-scoped permission and transient
-task-grant capabilities compile the operation policy and correlate renderer consent to the exact
-Thread, Turn, Store epoch, and requester lifetime. Core remains the only durable Project-grant
-authority and revalidates access at the semantic operation. Renderer presence or approval can never
-broaden a Core resource boundary, and Scope close clears every transient grant.
+Application tools have full access to the current authenticated Profile. Main captures
+exact runtime and Run identities; Core validates their execution leases and transaction
+preconditions. Plan is an Agent planning mode. Parent completion does not revoke child
+or background execution; cancellation, native Scope exit and generation retirement do.
 
 Each authenticated execution host has ordinary conversation managers in Main and its windows.
 Their shared stream owns role selection, follow intent, canonical snapshots, patches and revision
-waiters. Main owns the native app-server connection and product authorization; its entity is a
+waiters. Main owns the native app-server connection and execution correlation; its entity is a
 canonical writer only while its manager owns that conversation. A window-owned document installs
 in Main as follower state without a second publication or terminal-state rewrite.
 
@@ -1025,7 +1057,7 @@ Live Scene changes are pure renderer transitions. Main persists validated, revis
 
 Surface resource identity is independent of placement and preview lifetime. Surface descriptors contain stable resource or runtime references, not live Query observers, Documents, editors, Browser WebContents, PTYs, DOM nodes, or Promises. Browser and Terminal lifetimes remain with their Main-owned aggregates when a React surface unmounts.
 
-See [the Workbench shell specification](docs/product-specs/workbench-shell.md), [ADR 0032](docs/adr/0032-workbench-window-state-and-routing.md), and [ADR 0034](docs/adr/0034-owner-scoped-workbench-scenes.md).
+See [the Workbench shell specification](product-specs/workbench-shell.md), [ADR 0032](adr/0032-workbench-window-state-and-routing.md), and [ADR 0034](adr/0034-owner-scoped-workbench-scenes.md).
 
 ### Startup, recovery, and restore
 
@@ -1062,9 +1094,11 @@ returned. Core re-plans inside the writer transaction before applying the
 claim, so idle polling and stale ticks neither create semantic commits nor turn
 Main's clock into a second due-work authority. Core remains the durable
 definition and lease authority. `AutomationRoutingIndex` owns the synchronous routing
-projection from Codex Thread IDs to runs and stable Session IDs to active heartbeat definitions.
-Heartbeat definitions own a Session target; their current backend Thread is a Workspace projection,
-resolved again at execution rather than persisted as automation identity.
+projection from Automation Run IDs to definitions and stable Session IDs to active heartbeat definitions.
+Automation Runs retain a stable identity and an immutable optional Session binding. Heartbeat
+definitions own a Session target; execution resolves its current Workspace execution reference.
+Core-authored dispatch identity survives lease reclamation and retry, so physical scheduling
+attempts cannot mint a second execution for the same firing.
 Cron definitions own an optional Project identity; Core validates selected sources
 against that Project, and execution places the new Session in the same Project.
 Projectless runs receive independent workspaces.
@@ -1072,18 +1106,19 @@ A complete cursor-paginated background read, including archived runs, atomically
 rebuilds that projection. A newer committed mutation fences a stale read and
 forces a new canonical rebuild; successful definition/run mutations apply their
 routing consequence before returning to application code. The Automation
-command adapter and Codex conversation code may borrow only that commit or pure
+command adapters may borrow only that commit or pure
 lookup capability; neither owns a parallel Map or synchronization policy. Core
 recovery triggers an immediate projection rebuild and
 automation pass, while Main Scope closure interrupts every schedule and returns
 admitted leases. `AutomationExecution` owns provider-profile normalization,
 run-now admission, Cron and Heartbeat execution, worktree and projectless launch,
 run lifecycle projection, and archive-message capture. The scheduler and Automation
-IPC compose that Effect capability directly; Main only provides its formal
-application, Gateway, conversation, project, permission, provider, execution-host,
-and managed-worktree requirements. Scope interruption therefore reaches active
-Gateway and worktree effects without an application-level Promise or `AbortSignal`
-adapter. Shutdown cancels active external work in addition to stopping future ticks.
+IPC compose that Effect capability directly through the Session application and
+scoped workspace owner. Agent Runtime admits and executes the exact message and
+Run; native provider callbacks do not independently mutate Automation results.
+Scope interruption reaches the owned Run and workspace effects without an
+application-level Promise or `AbortSignal` adapter. Shutdown cancels active
+external work in addition to stopping future ticks.
 `DesktopNotificationRuntime` is the sole registry for active operating-system notification
 occurrences and their Electron callbacks. It derives platform, home, packaged resources, and
 development resources from immutable `MainConfig`, fences action admission before Scope release,
@@ -1108,17 +1143,17 @@ Electron keeps one process-scoped Effect `CoreAuthority` for its lifetime. A dis
 
 Whole-store restore is an exclusive Core maintenance operation. It drains admitted work, validates and journals the database/assets replacement, rotates the Store epoch, resets native caches and streams, and returns a committed receipt. Electron then performs a controlled relaunch so every Adapter binds the new authority.
 
-The operational contract belongs in [Reliability](docs/RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](docs/release-macos.md).
+The operational contract belongs in [Reliability](RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](release-macos.md).
 
 The Query Module owns the public SQL read boundary and one pinned Store observation
-for its lifetime. Library and Database expose internal authorized projection seams
+for its lifetime. Library and Database expose internal canonical projection seams
 that borrow that same observation; Document and File semantics remain with their
 domain owners. User expressions run against lazy read-only virtual relations in
 an isolated transient database, never against private Store tables. Query owns
-execution budgets and cancellation. Agent admission verifies frozen Turn provenance within
-that observation and preserves the bound Project's resource universe. Exact displayed-View
+execution budgets and cancellation. Agent admission verifies exact captured execution identity within
+that observation. Project filters are explicit query selections. Exact displayed-View
 observations use the same Query execution boundary with Database-owned effective
-occurrences and target-specific Turn authorization; they do not widen public SQL
+occurrences and exact execution identity; they do not widen public SQL
 relations. Domain owners retain visibility and value rules. The SQLite callback bridge is isolated in `nodex-sqlite-query`, while Core
 retains its unsafe-code prohibition. Configuration scripts remain atomic Database
 intents. [ADR 0063](adr/0063-sql-first-content-observations.md) records this boundary;
@@ -1131,12 +1166,12 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 1. One detached Rust Core is the exclusive durable SQLite and Document authority for a Profile.
 2. Electron Main binds identity and coordinates runtimes but never opens `nodex.db`, reconstructs Yrs/Canvas transaction authority, or supplies a semantic fallback.
 3. Renderer code reaches durable state only through an owning semantic Module and typed preload/Main Adapters; it has no general command-channel escape hatch or direct Node, filesystem, SQLite, or Core-socket access.
-4. One Profile owns one Library. Project lifecycle changes execution authority and access, never Library content ownership.
+4. One Profile owns one Library. Project lifecycle changes execution routing and lifecycle, never Library content ownership.
 5. `blocks.id` is the persistent content identity. Page ID is Block ID; Document, Database, Data Source, and View identities are independent coordinates.
 6. Every active Page has one exclusive acyclic structural parent. References, Views, the `task_parent` Relation projection, other Relations, mentions, and backlinks are non-owning and non-authorizing.
 7. Database Container owns Data Sources and Views; Data Source owns schema, Pages, and values; every View targets one Data Source.
-8. Page ID remains canonical. A Page key is a Database-scoped, authorized secondary locator; candidate ambiguity is evaluated only after lifecycle and access filtering, and the alias never becomes a Block, Document, cursor, reference, View-position, or mutation identity.
-9. Authorization is evaluated by Core from explicit trusted access context. Renderer presentation and Codex operation approval are not resource authorization.
+8. Page ID remains canonical. A Page key is a Database-scoped secondary locator; candidate ambiguity is evaluated after lifecycle filtering, and the alias never becomes a Block, Document, cursor, reference, View-position, or mutation identity.
+9. The current authenticated Profile has full Library content access. Core validates execution identity, resource lifecycle and transactional preconditions; Project and Plan are not permission boundaries.
 10. Runtime validation occurs at transport, persistence, and external-data boundaries. Normalized in-memory domain state remains typed without repeated permissive parsing.
 11. Core query collections use bounded count and byte windows with stable keyset pagination. Native conversation history follows its explicit paging and resource-lifetime contract; it does not inherit a universal resident-content byte cap. List and Board reads never hydrate full Page Documents.
 12. A durable mutation has one semantic intent, exact-retry receipt, atomic LocalCommit evidence, and Core-authored projection impact. Response and replay deliveries represent the same committed fact; local presentation settles only from the proof required by its owning visibility protocol.
@@ -1149,40 +1184,40 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 19. Each Codex conversation has one effective owner peer. Main and window managers publish canonical mutations only while they own that stream; derived presentations and follower-local history reads cannot become competing publications.
 20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
-22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File grants and Page presentation authority remain separate.
+22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File and Page relationship identities remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
 
 ## Codemap
 
 This map names stable regions and responsibilities rather than enumerating individual files.
 
-| Region                                                                                    | Responsibility                                                                                                                                         |
-| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`crates/nodex-core`](crates/nodex-core)                                                  | Domain Modules, SQLite/Yrs/Canvas authority, transactions, projections, migrations                                                                     |
-| [`crates/nodex-core-contracts`](crates/nodex-core-contracts)                              | Versioned transport-neutral semantic Module contracts                                                                                                  |
-| [`crates/nodex-core-protocol`](crates/nodex-core-protocol)                                | Authenticated transport, compatibility, events, generated OpenAPI                                                                                      |
-| [`crates/nodex-core-server`](crates/nodex-core-server)                                    | UDS server, connections, lifecycle, streams, health                                                                                                    |
-| [`crates/nodex-cli`](crates/nodex-cli)                                                    | Native CLI and agent-facing Core Adapter                                                                                                               |
-| [`packages/codex-app-server-protocol`](packages/codex-app-server-protocol)                | Generated Codex app-server TypeScript and runtime schema authority                                                                                     |
-| [`src/shared`](src/shared)                                                                | Transport-neutral contracts, schemas, pure domain and projection helpers                                                                               |
-| [`src/main/core-client`](src/main/core-client)                                            | Core selection, supervision, authenticated clients, Desktop Module Adapters                                                                            |
-| [`src/main/app`](src/main/app)                                                            | Main kernel, immutable configuration, composition root, shutdown and callback Scope                                                                    |
-| [`src/main/codex-application`](src/main/codex-application)                                | Codex application Modules, per-thread runtimes, permissions, tools and dynamic execution-host resources                                                |
-| [`src/main/codex-runtime`](src/main/codex-runtime)                                        | Codex app-server endpoint, gateway, generation fencing and typed protocol runtime                                                                      |
-| [`src/main/codex`](src/main/codex)                                                        | Codex-specific host and external-runtime adapters that sit outside the application capability graph                                                    |
-| [`src/main/host-runtime`](src/main/host-runtime)                                          | Scoped operating-system and Electron feature runtimes                                                                                                  |
-| [`src/main/platform`](src/main/platform)                                                  | Dedicated Electron/Node adapters, including narrow unstable Effect/platform seams                                                                      |
-| [`src/main/browser`](src/main/browser) and [`src/main/browser-use`](src/main/browser-use) | Main-owned Browser runtime and automation integration                                                                                                  |
-| [`src/main/mcp-app`](src/main/mcp-app)                                                    | Sandboxed MCP App guest attachment and MessagePort host                                                                                                |
-| [`src/main/git-worker`](src/main/git-worker)                                              | Generation-bound repository read worker                                                                                                                |
-| [`src/main/worktree-worker`](src/main/worktree-worker)                                    | Main-internal execution-host adapter for cancellable managed-worktree creation, snapshot/removal/restore, setup/cleanup streaming, and handoff effects |
-| [`src/main/local-store`](src/main/local-store)                                            | Host-only preferences, temporary media caches, notification and persistence support; never semantic DB or durable Blob authority                       |
-| [`src/preload`](src/preload)                                                              | Context-isolated typed bridge                                                                                                                          |
-| [`src/renderer/features`](src/renderer/features)                                          | Feature-owned application state and workflows                                                                                                          |
-| [`src/renderer/components`](src/renderer/components)                                      | Reusable and surface-level React presentation                                                                                                          |
-| [`src/renderer/lib`](src/renderer/lib)                                                    | Renderer API, stores, Window Session state, pure helpers                                                                                               |
-| [`scripts/release`](scripts/release)                                                      | Release identity, bundle assembly, publication state                                                                                                   |
-| [`tests`](tests) and colocated tests                                                      | Runtime-appropriate behavior and integration verification                                                                                              |
+| Region                                                                                          | Responsibility                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`crates/nodex-core`](../crates/nodex-core)                                                     | Domain Modules, SQLite/Yrs/Canvas authority, transactions, projections, migrations                                                                     |
+| [`crates/nodex-core-contracts`](../crates/nodex-core-contracts)                                 | Versioned transport-neutral semantic Module contracts                                                                                                  |
+| [`crates/nodex-core-protocol`](../crates/nodex-core-protocol)                                   | Authenticated transport, compatibility, events, generated OpenAPI                                                                                      |
+| [`crates/nodex-core-server`](../crates/nodex-core-server)                                       | UDS server, connections, lifecycle, streams, health                                                                                                    |
+| [`crates/nodex-cli`](../crates/nodex-cli)                                                       | Native CLI and agent-facing Core Adapter                                                                                                               |
+| [`packages/codex-app-server-protocol`](../packages/codex-app-server-protocol)                   | Generated Codex app-server TypeScript and runtime schema authority                                                                                     |
+| [`src/shared`](../src/shared)                                                                   | Transport-neutral contracts, schemas, pure domain and projection helpers                                                                               |
+| [`src/main/core-client`](../src/main/core-client)                                               | Core selection, supervision, authenticated clients, Desktop Module Adapters                                                                            |
+| [`src/main/app`](../src/main/app)                                                               | Main kernel, immutable configuration, composition root, shutdown and callback Scope                                                                    |
+| [`src/main/codex-application`](../src/main/codex-application)                                   | Native account and host Modules, per-thread observation, tools and dynamic execution-host resources                                                    |
+| [`src/main/codex-runtime`](../src/main/codex-runtime)                                           | Codex app-server endpoint, gateway, generation fencing and typed protocol runtime                                                                      |
+| [`src/main/codex`](../src/main/codex)                                                           | Codex-specific host and external-runtime adapters that sit outside the application capability graph                                                    |
+| [`src/main/host-runtime`](../src/main/host-runtime)                                             | Scoped operating-system and Electron feature runtimes                                                                                                  |
+| [`src/main/platform`](../src/main/platform)                                                     | Dedicated Electron/Node adapters, including narrow unstable Effect/platform seams                                                                      |
+| [`src/main/browser`](../src/main/browser) and [`src/main/browser-use`](../src/main/browser-use) | Main-owned Browser runtime and automation integration                                                                                                  |
+| [`src/main/mcp-app`](../src/main/mcp-app)                                                       | Sandboxed MCP App guest attachment and MessagePort host                                                                                                |
+| [`src/main/git-worker`](../src/main/git-worker)                                                 | Generation-bound repository read worker                                                                                                                |
+| [`src/main/worktree-worker`](../src/main/worktree-worker)                                       | Main-internal execution-host adapter for cancellable managed-worktree creation, snapshot/removal/restore, setup/cleanup streaming, and handoff effects |
+| [`src/main/local-store`](../src/main/local-store)                                               | Host-only preferences, temporary media caches, notification and persistence support; never semantic DB or durable Blob authority                       |
+| [`src/preload`](../src/preload)                                                                 | Context-isolated typed bridge                                                                                                                          |
+| [`src/renderer/features`](../src/renderer/features)                                             | Feature-owned application state and workflows                                                                                                          |
+| [`src/renderer/components`](../src/renderer/components)                                         | Reusable and surface-level React presentation                                                                                                          |
+| [`src/renderer/lib`](../src/renderer/lib)                                                       | Renderer API, stores, Window Session state, pure helpers                                                                                               |
+| [`scripts/release`](../scripts/release)                                                         | Release identity, bundle assembly, publication state                                                                                                   |
+| [`tests`](../tests) and colocated tests                                                         | Runtime-appropriate behavior and integration verification                                                                                              |
 
 ## Cross-cutting boundaries
 
@@ -1190,19 +1225,19 @@ This map names stable regions and responsibilities rather than enumerating indiv
 
 Reliability and security are architectural constraints but their operational detail changes more frequently than this map.
 
-- [Reliability](docs/RELIABILITY.md) routes LocalCommit recovery, Document sync, backup/restore, retention, event delivery, and operational checks to its focused reliability contracts.
-- [Security](docs/SECURITY.md) owns trust boundaries, authorization, renderer and guest sandboxing, release supply chain, and the hardening backlog.
-- [Engineering Learnings](docs/ENGINEERING_LEARNINGS.md) distills reusable cross-cutting principles and routes narrower knowledge to its owner.
+- [Reliability](RELIABILITY.md) routes LocalCommit recovery, Document sync, backup/restore, retention, event delivery, and operational checks to its focused reliability contracts.
+- [Security](SECURITY.md) owns trust boundaries, authorization, renderer and guest sandboxing, release supply chain, and the hardening backlog.
+- [Engineering Learnings](ENGINEERING_LEARNINGS.md) distills reusable cross-cutting principles and routes narrower knowledge to its owner.
 
-Security-sensitive Adapters fail closed. Core authorizes product resources; Main verifies local process, renderer, guest, and operating-system capabilities at their respective boundaries. No UI projection, URL, Project label, PID, or cached descriptor is sufficient proof of authority by itself.
+Security-sensitive Adapters fail closed. Core validates Profile identity, resource lifecycle and transactions; Main verifies local process, renderer, guest, and operating-system capabilities at their respective boundaries. No UI projection, URL, Project label, PID, or cached descriptor is sufficient proof of authority by itself.
 
 ### Build and distribution
 
-The repository-owned Release Module under [`scripts/release`](scripts/release) owns release identity, source transitions, bundle assembly, publication state, and downstream projections. GitHub workflows are Adapters over that Module rather than a second release decision engine.
+The repository-owned Release Module under [`scripts/release`](../scripts/release) owns release identity, source transitions, bundle assembly, publication state, and downstream projections. GitHub workflows are Adapters over that Module rather than a second release decision engine.
 
 The [`scripts/build-resources.ts`](../scripts/build-resources.ts) Build Resources Module owns the derived third-party notices and their canonical manifest. It derives a deterministic, exact-inventory tree under `.generated/build-resources/` from the repository dependency graph and exposes one resolver for development, tests, packaging, and release. Generated files are never source-review inputs or PR branch mutations. CI verifies two independent staging builds and keeps the existing read-only PR permission model.
 
-Prepared Electron output, signed package provenance, and public Release Bundle identity remain distinct evidence. Production artifacts are built natively for each supported macOS architecture, signed and notarized, smoke-tested as packaged applications, assembled into one verified release, and only then published to update and package-manager channels. The complete workflow belongs in [the macOS release runbook](docs/release-macos.md).
+Prepared Electron output, signed package provenance, and public Release Bundle identity remain distinct evidence. Production artifacts are built natively for each supported macOS architecture, signed and notarized, smoke-tested as packaged applications, assembled into one verified release, and only then published to update and package-manager channels. The complete workflow belongs in [the macOS release runbook](release-macos.md).
 
 ### Test runtimes
 
@@ -1214,7 +1249,7 @@ Tests run in the runtime that owns the behavior:
 - Layout, selection, pointer, observer, and computed-style contracts use Browser Mode with Playwright Chromium.
 - Playwright Electron smoke tests cover complete Main/preload/IPC/renderer/Core workflows.
 
-Commands and suite-selection rules live in [AGENTS.md](AGENTS.md) and [development documentation](docs/development.md).
+Commands and suite-selection rules live in [AGENTS.md](../AGENTS.md) and [development documentation](development.md).
 
 ## Documentation ownership
 
@@ -1230,14 +1265,14 @@ Do not add implementation chronology, current version inventories, individual fi
 
 | Information                                                                                                        | Source of truth                                                  |
 | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](CONTEXT.md)                                         |
-| Significant decisions and tradeoffs                                                                                | [ADRs](docs/adr/)                                                |
-| User-visible behavior and public contracts                                                                         | [Product specifications](docs/product-specs/index.md)            |
-| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](docs/RELIABILITY.md)                            |
-| Security model and hardening                                                                                       | [SECURITY.md](docs/SECURITY.md)                                  |
-| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](docs/FRONTEND.md)                                  |
-| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](docs/ENGINEERING_LEARNINGS.md)        |
-| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](docs/release-macos.md)                        |
+| Domain vocabulary and ownership invariants                                                                         | [CONTEXT.md](../CONTEXT.md)                                      |
+| Significant decisions and tradeoffs                                                                                | [ADRs](adr/)                                                     |
+| User-visible behavior and public contracts                                                                         | [Product specifications](product-specs/index.md)                 |
+| Reliability, sync, recovery, backup, retention                                                                     | [RELIABILITY.md](RELIABILITY.md)                                 |
+| Security model and hardening                                                                                       | [SECURITY.md](SECURITY.md)                                       |
+| Cross-feature renderer construction, state ownership, shared UI/editor primitives, and UI verification conventions | [FRONTEND.md](FRONTEND.md)                                       |
+| Cross-cutting engineering principles                                                                               | [ENGINEERING_LEARNINGS.md](ENGINEERING_LEARNINGS.md)             |
+| Build, signing, notarization, distribution recovery                                                                | [release-macos.md](release-macos.md)                             |
 | Executable migration and protocol versions                                                                         | Source contracts, migration code, generated artifacts, and tests |
 | Temporary implementation sequence and evidence                                                                     | `notes.local/living-plans/`; see [plan requirements](PLANS.md)   |
 

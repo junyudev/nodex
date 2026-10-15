@@ -10,7 +10,7 @@ pub(super) fn apply(
     connection: &Connection,
     profile_id: &str,
     library_id: &str,
-    authority: &DatabaseMutationAuthority,
+    authority: &DatabaseMutationRoute,
     source_id: &str,
     script: &DatabaseConfigurationScript,
     operation_index: u32,
@@ -37,13 +37,7 @@ pub(super) fn apply(
         return Err(invalid("Configuration exceeds 4096 semantic operations"));
     }
     let source = require_source(connection, library_id, source_id)?;
-    authorize_write(
-        connection,
-        authority.actor_project_id.as_deref(),
-        &source.database_id,
-        DatabaseWriteAction::ManageSchema,
-        authority.is_library(),
-    )?;
+
     require_revision(
         script.if_schema_revision,
         source.revision,

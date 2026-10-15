@@ -158,12 +158,12 @@ test.each(["page", "canvas", "checkpoint"] as const)(
           return;
         }
         const libraryId = runtime.identity.libraryId;
-        const accessContext = { kind: "project", projectId: manifest.projectId } as const;
-        const adapter = createCoreCanvasSceneAdapter(client, { libraryId, accessContext });
+        const routingContext = { kind: "project", projectId: manifest.projectId } as const;
+        const adapter = createCoreCanvasSceneAdapter(client, { libraryId, routingContext });
         const requests: CanvasSceneMutationRequest[] = [];
         const provider = new CanvasSceneProvider({
           libraryId,
-          accessContext,
+          routingContext,
           documentId,
           clientSessionId,
           outbox: new MemoryCanvasSceneOutbox(libraryId),

@@ -1,34 +1,34 @@
 import { createHash } from "node:crypto";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import type { InboxSettings } from "../../shared/inbox";
-import type { ConversationFirstSubmissionIdentity } from "../../shared/types";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
-import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
-import { NativeConversationExtension } from "../app-tools/NativeConversationExtension";
-import { CodexSessionThreadLaunch } from "../codex-application/CodexSessionThreadLaunch";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
-import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import {
   inboxDispatchActionFromCore,
   type CoreInboxDispatchWork,
 } from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../logging/logger";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { InboxApplication, InboxRuntimeError } from "./InboxApplication";
+import { resolveInboxModel } from "./InboxRuntimeSelection";
 import { composeInboxDispatchPrompt, describeInboxRuntimeFailure } from "./inbox-suggestions";
 
 const OUTBOX_BATCH = 8;
 const SAFETY_POLL = "30 seconds";
 
-/** Stable launch identities make a retried delivery reuse the same first submission. */
+/** Confirmed proposals retain these identities across reconnects and lost acknowledgements. */
 export const inboxDispatchIdentity = (
   work: Pick<CoreInboxDispatchWork, "proposal_id" | "attempt" | "confirmed_at">,
   purpose: string,
@@ -44,176 +44,137 @@ export const inboxDispatchIdentity = (
   );
 };
 
-const firstSubmission = (work: CoreInboxDispatchWork): ConversationFirstSubmissionIdentity => ({
-  launchId: inboxDispatchIdentity(work, "launch"),
-  clientUserMessageId: inboxDispatchIdentity(work, "message"),
-});
+/** One serialized outbox pass; the Runtime owns command receipts and execution state. */
+export const make = Effect.gen(function* () {
+  const inbox = yield* InboxApplication;
+  const settings = yield* ApplicationSettings;
+  const runtime = yield* AgentRuntimeApplication;
+  const workspace = yield* ProjectWorkspace;
+  const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
+  const logger = getLogger({ component: "inbox-dispatch-runtime" });
+  const lane = yield* Semaphore.make(1);
 
-const failureMessage = (cause: unknown): string =>
-  describeInboxRuntimeFailure(
-    cause instanceof Error && cause.message.trim()
-      ? cause.message
-      : "The chat could not be started",
-    "dispatch",
-  );
-
-/**
- * Delivers confirmed Inbox dispatches through the same Desktop Host launch and message
- * capabilities that ordinary chats use. Core's `dispatching` proposals are a durable outbox:
- * the runtime re-reads it on startup and whenever Inbox or chat state changes.
- */
-export const live: Layer.Layer<
-  never,
-  never,
-  | AgentBackendApplication
-  | ApplicationSettings
-  | CodexSessionThreadLaunch
-  | CodexTurnCommands
-  | DatabaseNotifierRuntime
-  | InboxApplication
-> = Layer.effectDiscard(
-  Effect.gen(function* () {
-    const inbox = yield* InboxApplication;
-    const settings = yield* ApplicationSettings;
-    const launches = yield* CodexSessionThreadLaunch;
-    const turns = yield* CodexTurnCommands;
-    const agents = yield* AgentBackendApplication;
-    const native = yield* Effect.serviceOption(NativeConversationExtension);
-    const notifier = yield* DatabaseNotifierRuntime;
-    const logger = getLogger({ component: "inbox-dispatch-runtime" });
-    const lane = yield* Semaphore.make(1);
-
-    const promptFor = Effect.fn("InboxDispatchRuntime.promptFor")(function* (
-      work: CoreInboxDispatchWork,
-      prompt: string,
-    ) {
-      const context = yield* inbox.dispatchContext(work.page_ids);
-      return composeInboxDispatchPrompt({
-        prompt,
-        messages: context.entries.map((entry) => ({
-          pageKey: entry.page_key ?? null,
-          text: entry.body,
-        })),
-      });
+  const promptFor = Effect.fn("InboxDispatchRuntime.promptFor")(function* (
+    work: CoreInboxDispatchWork,
+    prompt: string,
+  ) {
+    const context = yield* inbox.dispatchContext(work.page_ids);
+    return composeInboxDispatchPrompt({
+      prompt,
+      messages: context.entries.map((entry) => ({
+        pageKey: entry.page_key ?? null,
+        text: entry.body,
+      })),
     });
+  });
 
-    const startChat = Effect.fn("InboxDispatchRuntime.startChat")(function* (
-      work: CoreInboxDispatchWork,
-      projectId: string | null,
-      prompt: string,
-      chatAgent: InboxSettings["chatAgent"],
-    ) {
-      const text = yield* promptFor(work, prompt);
-      if (chatAgent.kind === "claude") {
-        const started = yield* agents.startAgentThread({
-          sessionId: work.session_id,
-          instanceConfigId: chatAgent.instanceConfigId,
-          backendKind: "claude",
-          prompt: text,
-          firstSubmission: firstSubmission(work),
+  const deliver = Effect.fn("InboxDispatchRuntime.deliver")(function* (
+    work: CoreInboxDispatchWork,
+    current: InboxSettings,
+  ) {
+    const action = inboxDispatchActionFromCore(work.action);
+    if (action.type !== "new_chat" && action.type !== "send_to_chat")
+      return yield* new InboxRuntimeError({ message: "This suggestion is not a chat dispatch" });
+    const sessionId = action.type === "send_to_chat" ? action.sessionId : work.session_id;
+    const session = yield* workspace.getProjectSession(sessionId);
+    if (!session || session.archived)
+      return yield* new InboxRuntimeError({ message: "The target chat is unavailable" });
+
+    if (action.type === "new_chat") {
+      if (session.thread && !session.executionRef)
+        return yield* new InboxRuntimeError({
+          message: "The chat has a different execution owner",
         });
-        return started.thread.threadId;
-      }
-      const projectlessWorkspace =
-        projectId === null
-          ? yield* Effect.tryPromise(() =>
-              createCodexProjectlessWorkspace({ createSplitDirectories: true, prompt: text }),
-            )
-          : undefined;
-      const launched = yield* launches.start(
-        {
-          sessionId: work.session_id,
-          projectId,
-          executionHostId: CODEX_APP_LOCAL_HOST_ID,
-          prompt: text,
-          firstSubmission: firstSubmission(work),
-          runInTarget: "localProject",
-          threadSource: "user",
-          ...(projectlessWorkspace ? { projectlessWorkspace } : {}),
-        },
-        { browserViewScopeId: "nodex-inbox", ownerClientId: null },
-      );
-      return launched.kind === "started" ? launched.detail.threadId : null;
-    });
-
-    const sendToChat = Effect.fn("InboxDispatchRuntime.sendToChat")(function* (
-      work: CoreInboxDispatchWork,
-      threadId: string,
-      prompt: string,
-    ) {
-      const text = yield* promptFor(work, prompt);
-      const backend = work.thread_backend_kind ?? "codex";
-      if (backend === "codex") {
-        const turn = yield* turns.start(threadId, text, {
-          clientUserMessageId: inboxDispatchIdentity(work, "message"),
-        });
-        return turn ? threadId : null;
-      }
-      if (Option.isNone(native)) {
-        return yield* new InboxRuntimeError({ message: "This chat's runtime is unavailable" });
-      }
-      const state = yield* native.value.read(threadId);
-      if (!state || state.archived) {
-        return yield* new InboxRuntimeError({ message: "The target chat is unavailable" });
-      }
-      // A native runtime accepts one Turn at a time; deliver after the current one ends.
-      if (state.busy) return "busy" as const;
-      yield* native.value.submit({
-        threadId,
-        prompt: text,
-        operationId: inboxDispatchIdentity(work, "message"),
+      const existing = session.executionRef ? yield* runtime.inspect({ sessionId }) : null;
+      const modelSelection = existing
+        ? existing.thread.modelSelection
+        : yield* resolveInboxModel(runtime, current.chatAgent);
+      const text = yield* promptFor(work, action.prompt);
+      // Confirmation can outlive Core's operation window. Durable launch/message IDs stay fixed;
+      // a fresh issuance is safe because launch first reconciles the exact Session binding.
+      const started = yield* runtime.launch({
+        launchId: inboxDispatchIdentity(work, "launch"),
+        acceptedAt: yield* Clock.currentTimeMillis,
+        sessionId,
+        projectId: existing?.projectId ?? session.projectId,
+        title: existing?.thread.title ?? session.displayTitle,
+        modelSelection,
+        interactionMode: existing?.thread.interactionMode ?? "default",
+        runInTarget: "localProject",
+        message: { messageId: inboxDispatchIdentity(work, "message"), text },
       });
-      return threadId;
-    });
+      // Binding proves product identity, not message delivery. Every replay crosses launch.
+      return yield* inbox.completeDispatch(work.proposal_id, started.threadId);
+    }
 
-    const deliver = Effect.fn("InboxDispatchRuntime.deliver")(function* (
-      work: CoreInboxDispatchWork,
-      current: InboxSettings,
-    ) {
-      const action = inboxDispatchActionFromCore(work.action);
-      if (action.type === "new_chat") {
-        // A previous attempt may have launched before its completion was recorded.
-        if (work.thread_id) return yield* inbox.completeDispatch(work.proposal_id, work.thread_id);
-        const threadId = yield* startChat(work, action.projectId, action.prompt, current.chatAgent);
-        yield* inbox.completeDispatch(work.proposal_id, threadId);
-        return;
-      }
-      if (action.type !== "send_to_chat") {
-        return yield* inbox.failDispatch(
-          work.proposal_id,
-          "This suggestion is not a chat dispatch",
+    if (session.executionRef) {
+      const target = yield* runtime.inspect({ sessionId });
+      if (target.thread.activeRunId !== null) return;
+      const text = yield* promptFor(work, action.prompt);
+      // The engine queues if another Run starts after the idle metadata read.
+      yield* runtime.queueMessage({
+        sessionId,
+        message: { messageId: inboxDispatchIdentity(work, "message"), text },
+      });
+      return yield* inbox.completeDispatch(work.proposal_id, target.threadId);
+    }
+
+    // Only an explicitly remote Codex Session retains the remote peer's native writer.
+    const thread = session.thread;
+    if (
+      !thread ||
+      thread.archived ||
+      thread.executionHostId === CODEX_APP_LOCAL_HOST_ID ||
+      thread.backendBinding.kind !== "codex" ||
+      Option.isNone(remoteTurns)
+    )
+      return yield* new InboxRuntimeError({ message: "This chat's runtime is unavailable" });
+    if (thread.statusType === "active") return;
+    const text = yield* promptFor(work, action.prompt);
+    const turn = yield* remoteTurns.value.start(thread.threadId, text, {
+      clientUserMessageId: inboxDispatchIdentity(work, "message"),
+    });
+    if (!turn) return;
+    yield* inbox.completeDispatch(work.proposal_id, thread.threadId);
+  });
+
+  const drain = lane.withPermits(1)(
+    Effect.gen(function* () {
+      const current = (yield* settings.snapshot()).inbox;
+      const outbox = yield* inbox.outbox(OUTBOX_BATCH);
+      for (const work of outbox) {
+        yield* deliver(work, current).pipe(
+          Effect.catchCause((cause) => {
+            const error = Cause.squash(cause);
+            if (Schema.is(InboxRuntimeError)(error))
+              return inbox
+                .failDispatch(
+                  work.proposal_id,
+                  describeInboxRuntimeFailure(error.message, "dispatch"),
+                )
+                .pipe(Effect.ignore);
+            // A launch, message, or Core completion may already have committed. Keep the same
+            // outbox attempt so the next pass reconciles its durable command receipts.
+            return Effect.sync(() =>
+              logger.warn("Inbox delivery awaits retry", { proposalId: work.proposal_id, cause }),
+            );
+          }),
         );
       }
-      if (!work.thread_id) {
-        return yield* inbox.failDispatch(work.proposal_id, "The target chat has no conversation");
-      }
-      // Waiting for idle is the queue: delivery resumes on the next chat state change.
-      if (work.thread_status?.status_type === "active") return;
-      const delivered = yield* sendToChat(work, work.thread_id, action.prompt);
-      if (delivered === "busy") return;
-      yield* inbox.completeDispatch(work.proposal_id, delivered);
-    });
-
-    const drain = lane.withPermits(1)(
-      Effect.gen(function* () {
-        const current = (yield* settings.snapshot()).inbox;
-        const outbox = yield* inbox.outbox(OUTBOX_BATCH);
-        for (const work of outbox) {
-          yield* deliver(work, current).pipe(
-            Effect.catchCause((cause) =>
-              inbox
-                .failDispatch(work.proposal_id, failureMessage(Cause.squash(cause)))
-                .pipe(Effect.ignore),
-            ),
-          );
-        }
-      }).pipe(
-        Effect.catchCause((cause) =>
-          Effect.sync(() => logger.warn("Inbox dispatch pass failed", { cause })),
-        ),
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => logger.warn("Inbox dispatch pass failed", { cause })),
       ),
-    );
+    ),
+  );
+  return { drain };
+});
 
+/** Restarts and metadata invalidations resume the durable confirmed outbox. */
+export const live = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const { drain } = yield* make;
+    const notifier = yield* DatabaseNotifierRuntime;
     const triggers = Stream.mergeAll(
       [
         notifier.inboxInvalidations.pipe(Stream.map(() => undefined)),

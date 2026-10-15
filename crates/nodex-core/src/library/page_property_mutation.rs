@@ -969,17 +969,10 @@ fn authorize_page(
     page: &PageAuthority,
     path: &str,
 ) -> Result<(), PropertyApplyError> {
-    let Some(requesting_project_id) = context.project_id.as_ref() else {
+    let Some(_requesting_project_id) = context.project_id.as_ref() else {
         return Ok(());
     };
-    if require_page_write_access(
-        connection,
-        library_id,
-        &requesting_project_id.0,
-        &page.page_id,
-    )
-    .is_ok()
-    {
+    if require_page_write_access(connection, library_id, &page.page_id).is_ok() {
         return Ok(());
     }
     Err(rejected(
@@ -1016,7 +1009,7 @@ fn make_evidence(
     let request = json!({
         "version": 3,
         "mutationId": operation_id,
-        "accessContext": { "kind": "library" },
+        "routingContext": { "kind": "library" },
         "libraryId": library_id,
         "actorProjectId": actor_project_id,
         "storeEpoch": store_epoch,
@@ -1276,7 +1269,7 @@ fn ledger_success_json(
     json!({
         "version": 3,
         "mutationId": operation_id,
-        "accessContext": { "kind": "library" },
+        "routingContext": { "kind": "library" },
         "libraryId": library_id,
         "actorProjectId": actor_project_id,
         "storeEpoch": store_epoch,

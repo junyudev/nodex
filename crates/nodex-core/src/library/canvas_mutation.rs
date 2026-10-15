@@ -22,7 +22,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use super::LibraryApplyOutcome;
 use super::mutation::{
     MutationEffects, ParentDocumentWriteContext, ResolvedWriteParent, embedded_resource_block,
-    insert_creator_resource_grant, insert_library_placement, library_commit_result,
+    insert_library_placement, library_commit_result,
     persist_parent_operations_detailed_with_local_commit,
     persist_parent_relocation_source_with_local_commit, resolve_library_mutation_authority,
     resolve_write_parent_for_context, seal_mutation, sqlite_now,
@@ -169,7 +169,6 @@ fn create_internal(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            context,
                             actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,
@@ -350,13 +349,9 @@ pub(super) fn move_canvas(
                 "DELETE FROM library_block_placements WHERE block_id = ?1 AND library_id = ?2",
                 params![canvas_id, library_id],
             )?;
-            if canvas.containing_document_id.is_none() && target_document_id.is_some() {
-                revoke_canvas_direct_grants(connection, library_id, canvas_id, &now)?;
-            }
 
             let mut document_commits = Vec::new();
             let parent_write = ParentDocumentWriteContext {
-                context,
                 actor_project_id: actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
@@ -426,19 +421,7 @@ pub(super) fn move_canvas(
                     &now,
                 )?;
             }
-            if canvas.containing_document_id.is_some()
-                && target_document_id.is_none()
-                && let Some(project_id) = resolved.parent.creator_project_id.as_deref()
-            {
-                insert_creator_resource_grant(
-                    connection,
-                    Some(project_id),
-                    library_id,
-                    "canvas",
-                    canvas_id,
-                    &now,
-                )?;
-            }
+
             if target_document_id.is_none() {
                 let changed = connection.execute(
                     "UPDATE blocks SET placement_revision = placement_revision + 1, \
@@ -474,22 +457,6 @@ pub(super) fn move_canvas(
         },
     )?;
     library_commit_result(connection, commit_result)
-}
-
-fn revoke_canvas_direct_grants(
-    connection: &Connection,
-    library_id: &str,
-    canvas_id: &str,
-    now: &str,
-) -> Result<(), StoreError> {
-    connection.execute(
-        "UPDATE project_resource_grants \
-         SET lifecycle = 'revoked', revision = revision + 1, updated_at = ?1 \
-         WHERE library_id = ?2 AND root_kind = 'canvas' AND root_id = ?3 \
-           AND lifecycle = 'active'",
-        params![now, library_id, canvas_id],
-    )?;
-    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -602,7 +569,6 @@ pub(super) fn delete(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            context,
                             actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,
@@ -619,14 +585,7 @@ pub(super) fn delete(
                     )
                 })
                 .transpose()?;
-            insert_creator_resource_grant(
-                connection,
-                actor_project_id.as_deref(),
-                library_id,
-                "canvas",
-                canvas_id,
-                &now,
-            )?;
+
             let resolved = resolved_current_location(
                 connection,
                 library_id,
@@ -724,30 +683,16 @@ fn read_canvas_authority(
 
 fn require_canvas_access(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     library_id: &str,
     canvas: &CanvasAuthority,
     write: bool,
 ) -> Result<(), StoreError> {
-    let authority = resolve_library_mutation_authority(connection, context, library_id)?;
-    let Some(requesting_project_id) = authority.requesting_project_id.as_deref() else {
-        return Ok(());
-    };
     let Some(document_id) = canvas.containing_document_id.as_deref() else {
         return if write {
-            super::require_canvas_write_access(
-                connection,
-                library_id,
-                requesting_project_id,
-                &canvas.canvas_id,
-            )
+            super::require_canvas_write_access(connection, library_id, &canvas.canvas_id)
         } else {
-            super::require_canvas_read_access(
-                connection,
-                library_id,
-                requesting_project_id,
-                &canvas.canvas_id,
-            )
+            super::require_canvas_read_access(connection, library_id, &canvas.canvas_id)
         };
     };
     let page_id = connection
@@ -762,14 +707,9 @@ fn require_canvas_access(
         .optional()?
         .ok_or_else(|| corrupt("Canvas host Document has no active Page owner"))?;
     if write {
-        return super::require_page_write_access(
-            connection,
-            library_id,
-            requesting_project_id,
-            &page_id,
-        );
+        return super::require_page_write_access(connection, library_id, &page_id);
     }
-    super::require_page_read_access(connection, library_id, requesting_project_id, &page_id)
+    super::require_page_read_access(connection, library_id, &page_id)
 }
 
 fn resolve_destination(
@@ -1038,7 +978,7 @@ fn resolved_current_location(
                 .map_or_else(|| "library".to_owned(), |id| format!("page:{id}")),
             page_id,
             actor_project_id: actor_project_id.map(str::to_owned),
-            creator_project_id: None,
+
             document: None,
             before_block_id: None,
         },
@@ -1197,16 +1137,6 @@ fn create_canvas_records(
             resolved.library_before.as_ref(),
             now,
         )?;
-        if let Some(project_id) = resolved.parent.creator_project_id.as_deref() {
-            insert_creator_resource_grant(
-                connection,
-                Some(project_id),
-                library_id,
-                "canvas",
-                canvas_id,
-                now,
-            )?;
-        }
     }
     let authority = read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Created Canvas has no Document authority"))?;

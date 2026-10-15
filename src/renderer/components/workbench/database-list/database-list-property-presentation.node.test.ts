@@ -46,7 +46,7 @@ describe("Database List property presence", () => {
         value_revision: 1,
         total_count: 0,
         targets: [],
-        restricted_count: 0,
+        unavailable_count: 0,
         has_more: false,
       },
     } as const;

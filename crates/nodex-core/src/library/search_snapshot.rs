@@ -44,7 +44,7 @@ pub(super) struct PreparedSearchSnapshot {
 
 #[derive(Clone, Eq, PartialEq)]
 pub(super) struct SearchSnapshotCacheKey {
-    project_id: String,
+    library_id: String,
     store_epoch: String,
     commit_head: i64,
     scope: LibrarySearchSnapshotScope,
@@ -434,14 +434,8 @@ pub(super) fn cache_key(
     scope: LibrarySearchSnapshotScope,
     strict_materialization: bool,
 ) -> Result<SearchSnapshotCacheKey, StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project| project.0.clone())
-        .ok_or_else(|| unauthorized("Search snapshots require a bound Project"))?;
-    validate_identity(&project_id, "Search snapshot Project")?;
     Ok(SearchSnapshotCacheKey {
-        project_id,
+        library_id: context.library_id.0.clone(),
         store_epoch: store_epoch.to_owned(),
         commit_head,
         scope,
@@ -461,10 +455,8 @@ pub(super) fn prepare(
     let project_id = context
         .project_id
         .as_ref()
-        .map(|project| project.0.as_str())
-        .ok_or_else(|| unauthorized("Search snapshots require a bound Project"))?;
-    validate_identity(project_id, "Search snapshot Project")?;
-    authorize_scope(connection, library_id, project_id, &scope)?;
+        .map(|project| project.0.as_str());
+    require_scope(connection, library_id, &scope)?;
     let page_ids = page_ids_in_scope(connection, library_id, &scope)?;
     if page_ids.len() > MAX_SCOPE_PAGES {
         return Err(resource_exhausted(
@@ -477,14 +469,14 @@ pub(super) fn prepare(
     let mut warnings = Vec::new();
     let mut total_bytes = 0usize;
     for page_id in page_ids {
-        super::require_page_read_access(connection, library_id, project_id, &page_id)?;
+        super::require_page_read_access(connection, library_id, &page_id)?;
         let body = match super::page_projection::page_projection_file(
             connection,
             library_id,
             store_epoch,
             super::page_projection::PageProjectionFileRequest {
                 commit_head,
-                requesting_project_id: Some(project_id),
+                requesting_project_id: project_id,
                 page_id: &page_id,
                 kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
                 prepare: None,
@@ -522,7 +514,7 @@ pub(super) fn prepare(
             store_epoch,
             super::page_projection::PageProjectionFileRequest {
                 commit_head,
-                requesting_project_id: Some(project_id),
+                requesting_project_id: project_id,
                 page_id: &page_id,
                 kind: LibraryPageProjectionFileKind::MetaYaml,
                 prepare: None,
@@ -594,7 +586,7 @@ pub(super) fn prepare(
             version: SNAPSHOT_VERSION,
             projection_version: PROJECTION_VERSION,
             library_id: library_id.to_owned(),
-            access_project_id: project_id.to_owned(),
+            project_id: project_id.map(str::to_owned),
             store_epoch: store_epoch.to_owned(),
             commit_head,
             scope,
@@ -691,73 +683,38 @@ fn page_evidence(
     Ok(evidence)
 }
 
-fn authorize_scope(
+fn require_scope(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     scope: &LibrarySearchSnapshotScope,
 ) -> Result<(), StoreError> {
     match scope {
         LibrarySearchSnapshotScope::Page { page_id } => {
             validate_identity(page_id, "Search snapshot Page")?;
-            super::require_page_read_access(connection, library_id, project_id, page_id)
+            super::require_page_read_access(connection, library_id, page_id)
         }
         LibrarySearchSnapshotScope::Database { database_id } => {
-            authorize_database(connection, library_id, project_id, database_id)
+            require_database(connection, library_id, database_id)
         }
         LibrarySearchSnapshotScope::DataSource { data_source_id } => {
             validate_identity(data_source_id, "Search snapshot Data Source")?;
             let database_id = database_for_data_source(connection, library_id, data_source_id)?;
-            authorize_database(connection, library_id, project_id, &database_id)
+            require_database(connection, library_id, &database_id)
         }
     }
 }
 
-fn authorize_database(
+fn require_database(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
     database_id: &str,
 ) -> Result<(), StoreError> {
     validate_identity(database_id, "Search snapshot Database")?;
-    let active = connection
-        .query_row(
-            "SELECT 1 FROM database_containers \
-             WHERE block_id = ?1 AND library_id = ?2 AND lifecycle = 'active'",
-            params![database_id, library_id],
-            |_| Ok(()),
-        )
-        .optional()?;
+    let active = connection.query_row("SELECT 1 FROM database_containers WHERE block_id = ?1 AND library_id = ?2 AND lifecycle = 'active'", params![database_id, library_id], |_| Ok(())).optional()?;
     if active.is_none() {
         return Err(not_found("Search snapshot Database is unavailable"));
     }
-    let primary = connection
-        .query_row(
-            "SELECT database_block_id FROM projects \
-             WHERE id = ?1 AND library_id = ?2 AND lifecycle = 'active'",
-            params![project_id, library_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .optional()?
-        .flatten();
-    if primary.as_deref() == Some(database_id) {
-        return Ok(());
-    }
-    let granted = connection
-        .query_row(
-            "SELECT 1 FROM project_resource_grants \
-             WHERE project_id = ?1 AND library_id = ?2 AND root_kind = 'database' \
-               AND root_id = ?3 AND lifecycle = 'active' LIMIT 1",
-            params![project_id, library_id, database_id],
-            |_| Ok(()),
-        )
-        .optional()?;
-    if granted.is_some() {
-        return Ok(());
-    }
-    Err(not_found(
-        "Search snapshot Database is unavailable to the bound Project",
-    ))
+    Ok(())
 }
 
 fn database_for_data_source(
@@ -1213,10 +1170,6 @@ fn invalid(message: impl Into<String>) -> StoreError {
 
 fn invalid_profile(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidProfile, message, false)
-}
-
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn not_found(message: impl Into<String>) -> StoreError {

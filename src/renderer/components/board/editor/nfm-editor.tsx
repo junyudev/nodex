@@ -42,13 +42,13 @@ import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex
 import { applyLibraryModule } from "@/lib/api";
 import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import {
-  libraryContentAccess,
-  projectIdFromContentAccessContext,
-  projectContentAccess,
+  libraryContentRoute,
+  projectIdFromContentRoutingContext,
+  projectContentRoute,
   type ContentCanvasNavigationTarget,
-  type ContentAccessContext,
+  type ContentRoutingContext,
   type ContentPageNavigationTarget,
-} from "../../../../shared/content-access-context";
+} from "../../../../shared/content-routing-context";
 import { NodexPopover, NodexPopoverAnchor, NodexPopoverContent } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { useEditorDragBehaviors } from "./use-editor-drag-behaviors";
@@ -200,7 +200,6 @@ import {
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import {
   useCodexAvailableModels,
-  useCodexPermissionState,
   useProjectThreadSummaries,
 } from "@/features/local-conversation/local-conversation-store";
 import type { ModifyShortcutEditor } from "./modify-block-shortcut";
@@ -237,7 +236,7 @@ import {
 } from "./special-block-copy";
 
 interface NfmEditorCommonProps {
-  contentAccessContext: ContentAccessContext;
+  contentRoutingContext: ContentRoutingContext;
   projectName?: string | null;
   projectWorkspacePath?: string | null;
   sourcePageContext?: {
@@ -416,7 +415,7 @@ function resolveImagePreview(input: { readonly source: string; readonly alt: str
 export function NfmEditor(props: NfmEditorProps) {
   const source = props.source;
   const editorInstanceKey = getNfmEditorInstanceKey({
-    accessContext: props.contentAccessContext,
+    routingContext: props.contentRoutingContext,
     source,
   });
 
@@ -426,7 +425,7 @@ export function NfmEditor(props: NfmEditorProps) {
       input={{
         pageId: props.sourcePageContext?.pageId,
         source,
-        accessContext: props.contentAccessContext,
+        routingContext: props.contentRoutingContext,
         editorInstanceKey,
         libraryId: props.surfaceMutationBarrier?.libraryId,
         placeholder: props.placeholder,
@@ -449,7 +448,7 @@ const EMPTY_LINKED_CODEX_THREADS: readonly PageStageLinkedThread[] = [];
 
 function NfmEditorInstance({
   owner,
-  contentAccessContext,
+  contentRoutingContext,
   projectName = null,
   projectWorkspacePath,
   source,
@@ -477,13 +476,12 @@ function NfmEditorInstance({
   editorSession,
 }: NfmEditorInstanceProps) {
   const queryClient = useQueryClient();
-  const executionProjectId = projectIdFromContentAccessContext(contentAccessContext);
+  const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
   const parentBlockReferenceRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
   const { spellcheck } = useSpellcheck();
   const { settings: pasteResourceSettings } = usePasteResourceSettings();
   const workbenchOwner = useWorkbenchWindowOwner();
-  const codexPermissionState = useCodexPermissionState(executionProjectId);
   const availableCodexModels = useCodexAvailableModels();
   const projectThreadSummaries = useProjectThreadSummaries(executionProjectId);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -564,8 +562,8 @@ function NfmEditorInstance({
   const sourcePageId = sourcePageContext?.pageId;
   // Keep equivalent authority inputs referentially stable. Recreating this object on every
   // document commit would release live object URLs and remount otherwise unchanged media.
-  const pageFileContentAccessContext = useMemo(
-    () => (executionProjectId ? projectContentAccess(executionProjectId) : libraryContentAccess),
+  const pageFileContentRoutingContext = useMemo(
+    () => (executionProjectId ? projectContentRoute(executionProjectId) : libraryContentRoute),
     [executionProjectId],
   );
   // One editor instance owns one isolated cache; the Provider releases every acquired scope.
@@ -575,7 +573,7 @@ function NfmEditorInstance({
       sourcePageId && surfaceMutationBarrier?.libraryId
         ? createFilePlacementRuntime(
             {
-              contentAccessContext: pageFileContentAccessContext,
+              contentRoutingContext: pageFileContentRoutingContext,
               libraryId: surfaceMutationBarrier.libraryId,
               readSource: { kind: "page", page_id: sourcePageId },
               storeEpoch: source.storeEpoch,
@@ -586,7 +584,7 @@ function NfmEditorInstance({
         : null,
     [
       pageFileReadCache,
-      pageFileContentAccessContext,
+      pageFileContentRoutingContext,
       source.storeEpoch,
       source.documentId,
       sourcePageId,
@@ -1656,7 +1654,7 @@ function NfmEditorInstance({
     if (!surfaceMutationBarrier.libraryId)
       throw new Error("Structural editing requires the Document's Library authority.");
     structuralEditingController.activate(structuralEditingSession, {
-      accessContext: contentAccessContext,
+      routingContext: contentRoutingContext,
       libraryId: surfaceMutationBarrier.libraryId,
       source: {
         documentId: source.documentId,
@@ -1670,7 +1668,7 @@ function NfmEditorInstance({
       onClipboardFallback: (message) => toast.info(message),
     });
   }, [
-    contentAccessContext,
+    contentRoutingContext,
     source.documentId,
     source.generation,
     source.storeEpoch,
@@ -2170,7 +2168,7 @@ function NfmEditorInstance({
   );
 
   const crossSurfaceDrag = useMemo(() => {
-    if (executionProjectId === null || !structuralMutationParticipant) {
+    if (!structuralMutationParticipant) {
       return undefined;
     }
     return {
@@ -2265,7 +2263,6 @@ function NfmEditorInstance({
   );
   const handleBlockDragStart = useCallback(
     ({ dataTransfer, blockIds }: { dataTransfer: DataTransfer; blockIds: readonly string[] }) => {
-      if (executionProjectId === null) return;
       const roots = resolveTopLevelDraggedBlocks(editor, [...blockIds]);
       if (roots.length === 0) return;
       beginLocalBlockDragSession(
@@ -2289,7 +2286,7 @@ function NfmEditorInstance({
             title: resolveDraggedBlockPromotionTitle(block, (pageId) => {
               const target = readCachedPageTargetReadModel(
                 queryClient,
-                contentAccessContext,
+                contentRoutingContext,
                 pageId,
               );
               return target?.status === "available" ? target.page.title : null;
@@ -2313,7 +2310,7 @@ function NfmEditorInstance({
         dataTransfer,
       );
     },
-    [contentAccessContext, editor, executionProjectId, queryClient, source, sourcePageContext],
+    [contentRoutingContext, editor, executionProjectId, queryClient, source, sourcePageContext],
   );
   const handleBlockDragEnd = useCallback(
     () => endLocalBlockDragSession({ sourceSurfaceId: source.clientSessionId }),
@@ -2455,14 +2452,14 @@ function NfmEditorInstance({
         throw new Error("The Page Document is not ready to create a Canvas.");
       }
       return createCanvasInHostPage({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         hostPageId: sourcePageContext.pageId,
         replacementBlockId: blockId,
         displayName,
         runtime: surfaceMutationBarrier,
       });
     },
-    [contentAccessContext, sourcePageContext, surfaceMutationBarrier],
+    [contentRoutingContext, sourcePageContext, surfaceMutationBarrier],
   );
 
   const createSubpageAtEmptyParagraph = useCallback(
@@ -2482,7 +2479,7 @@ function NfmEditorInstance({
         throw new Error("The host Page changed; reopen it before creating the Subpage.");
       }
       const pageId = createUuidV7();
-      const result = await applyLibraryModule(contentAccessContext, {
+      const result = await applyLibraryModule(contentRoutingContext, {
         operationId: createUuidV7(),
         storeEpoch: source.storeEpoch,
         operation: {
@@ -2509,7 +2506,7 @@ function NfmEditorInstance({
       return { pageId };
     },
     [
-      contentAccessContext,
+      contentRoutingContext,
       source.documentId,
       source.generation,
       source.storeEpoch,
@@ -2562,11 +2559,11 @@ function NfmEditorInstance({
       event.stopPropagation();
       if (!onOpenPage) return;
       void onOpenPage({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         pageId: action.pageId,
       });
     },
-    [contentAccessContext, editor, onOpenPage],
+    [contentRoutingContext, editor, onOpenPage],
   );
 
   const duplicateCanvasAfter = useCallback(
@@ -2626,12 +2623,12 @@ function NfmEditorInstance({
       readonly displayName: string;
     }) => {
       await renameCanvasOwner({
-        accessContext: contentAccessContext,
+        routingContext: contentRoutingContext,
         canvasBlockId,
         displayName,
       });
     },
-    [contentAccessContext],
+    [contentRoutingContext],
   );
   canvasCommandHandlersRef.current = {
     duplicate: async (canvasBlockId) => {
@@ -2682,15 +2679,14 @@ function NfmEditorInstance({
       availableModels: availableCodexModels,
       availableModelsLoading: availableCodexModels.length === 0,
       defaultIntelligence: resolveDefaultAgentConfigIntelligence(availableCodexModels),
-      permissionState: codexPermissionState,
     }),
-    [availableCodexModels, codexPermissionState, executionProjectId],
+    [availableCodexModels, executionProjectId],
   );
 
   const blockReferenceRuntimeValue = useMemo<BlockReferenceHostRuntime>(() => {
     const currentDocumentOwnerBlockId = documentOwnerBlockId ?? sourcePageContext?.pageId;
     return {
-      contentAccessContext,
+      contentRoutingContext,
       projectName,
       projectWorkspacePath: projectWorkspacePath ?? null,
       hostPageId: sourcePageContext?.pageId ?? null,
@@ -2721,7 +2717,7 @@ function NfmEditorInstance({
         : {}),
     };
   }, [
-    contentAccessContext,
+    contentRoutingContext,
     documentOwnerBlockId,
     isActivePanelTab,
     onOpenPage,

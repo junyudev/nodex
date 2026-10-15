@@ -1,6 +1,6 @@
 import type { components } from "@nodex/core-protocol";
 import * as Effect from "effect/Effect";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { WorkbenchViewSnapshot } from "../../shared/nodex-app-tools/workbench-view-content";
 import { toCoreAgentExecutionAuthorization } from "../core-client/core-agent-execution-authorization";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -89,7 +89,7 @@ export const make = Effect.gen(function* () {
   ): Effect.fn.Return<WorkbenchViewContentReadResult> {
     if (!(yield* input.isCurrent)) return { status: "cancelled" };
     const description = input.description;
-    if (description.status !== "authorized" || description.kind !== "database_view")
+    if (description.status !== "available" || description.kind !== "database_view")
       return { status: "access_denied" };
     if (!input.live) return { status: "surface_unavailable" };
     const captured = yield* bridge
@@ -118,8 +118,8 @@ export const make = Effect.gen(function* () {
       captured.databaseViewId !== description.viewId ||
       captured.layout !== description.layout ||
       captured.storeEpoch !== input.authority.storeEpoch ||
-      contentAccessContextKey(captured.accessContext) !==
-        contentAccessContextKey(description.displayedAccessContext)
+      contentRoutingContextKey(captured.routingContext) !==
+        contentRoutingContextKey(description.displayedRoutingContext)
     )
       return { status: "stale_presentation" };
     if (
@@ -142,7 +142,6 @@ export const make = Effect.gen(function* () {
             identity.identity.profileId,
             input.authority,
             input.callId,
-            input.taskAccess,
           ),
           coordinate: coordinate(captured),
           projection_property_ids: input.propertyIds ? [...input.propertyIds] : null,

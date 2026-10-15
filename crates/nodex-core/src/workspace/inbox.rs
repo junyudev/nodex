@@ -19,7 +19,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::database::{
     create_database_authority_records, create_page_key_namespace,
-    resolve_page_transfer_data_source_destination_prevalidated,
+    resolve_page_transfer_data_source_destination,
 };
 use crate::domain::identity::stable_uuid_v7;
 use crate::domain::nfm::{NfmBlock, NfmInlineContent, NfmStyleSet, serialize_nfm};
@@ -45,7 +45,7 @@ const MAX_PRODUCED_BY_CHARS: usize = 256;
 const MAX_MESSAGE_CHARS: usize = 2_000;
 const MAX_SOURCE_LABEL_CHARS: usize = 512;
 const MAX_SESSION_TITLE_CHARS: usize = 120;
-/// An Agent Turn is a drop slot, not a feed: it can leave only a few messages.
+/// Capture remains bounded per causal Run, or per native connection when its Run is unknown.
 pub(super) const MAX_AGENT_MESSAGES_PER_TURN: i64 = 5;
 pub(super) const COMMAND_LINE_SOURCE_LABEL: &str = "Command line";
 
@@ -55,32 +55,12 @@ pub(super) struct InboxRegistry {
     pub(super) view_id: String,
 }
 
-/// Inbox reads and host commands require trusted local Library authority, never
-/// a Project-scoped or Agent connection.
-pub(super) fn require_trusted_local(context: &BoundModuleContext) -> Result<(), StoreError> {
-    if context.project_id.is_none()
-        && matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-        )
-    {
-        return Ok(());
-    }
-    Err(StoreError::new(
-        StoreErrorCode::Unauthorized,
-        "The Inbox requires trusted local Library authority",
-        false,
-    ))
-}
-
 /// Dispatch suggestions and delivery are Desktop Host responsibilities.
 fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
-    if context.project_id.is_none()
-        && matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::Test
-        )
-    {
+    if matches!(
+        context.adapter,
+        AdapterKind::ElectronHost | AdapterKind::Test
+    ) {
         return Ok(());
     }
     Err(StoreError::new(
@@ -343,13 +323,14 @@ struct EntrySource {
     session_id: Option<String>,
     thread_id: Option<String>,
     turn_id: Option<String>,
+    budget_key: Option<String>,
     project_id: Option<String>,
     label: Option<String>,
 }
 
 /// Who left the message is decided here from the connection, never by the caller.
-/// The Desktop Host speaks for the user; the command line and Agent Turns may
-/// only append, and their messages carry where they came from.
+/// The Desktop Host speaks for the user; command line and Agent messages retain
+/// their captured execution source independently of the selected Project.
 fn entry_source(
     connection: &Connection,
     library_id: &str,
@@ -360,12 +341,10 @@ fn entry_source(
         return agent_source(connection, provenance);
     }
     match context.adapter {
-        AdapterKind::ElectronHost | AdapterKind::Test if context.project_id.is_none() => {
-            Ok(EntrySource {
-                kind: "user",
-                ..EntrySource::default()
-            })
-        }
+        AdapterKind::ElectronHost | AdapterKind::Test => Ok(EntrySource {
+            kind: "user",
+            ..EntrySource::default()
+        }),
         AdapterKind::NativeCli => {
             let project = context
                 .project_id
@@ -410,68 +389,99 @@ fn require_turn_capacity(
     library_id: &str,
     source: &EntrySource,
 ) -> Result<(), StoreError> {
-    let (Some(thread_id), Some(turn_id)) = (&source.thread_id, &source.turn_id) else {
+    let Some(budget_key) = &source.budget_key else {
         return Ok(());
     };
     let sent = connection.query_row(
         "SELECT COUNT(*) FROM inbox_entries \
-         WHERE source_thread_id = ?1 AND source_turn_id = ?2 AND library_id = ?3",
-        params![thread_id, turn_id, library_id],
+         WHERE library_id = ?1 AND source_budget_key = ?2",
+        params![library_id, budget_key],
         |row| row.get::<_, i64>(0),
     )?;
     if sent >= MAX_AGENT_MESSAGES_PER_TURN {
         return Err(StoreError::new(
             StoreErrorCode::ResourceExhausted,
-            format!("An Agent Turn can send at most {MAX_AGENT_MESSAGES_PER_TURN} Inbox messages"),
+            format!(
+                "An Agent execution source can send at most {MAX_AGENT_MESSAGES_PER_TURN} Inbox messages"
+            ),
             false,
         ));
     }
     Ok(())
 }
 
+/// Core resolves provenance from the admitted credential, never from a foreground Run.
+/// A native connection without causal Run evidence keeps that coordinate empty.
 fn agent_source(
     connection: &Connection,
     provenance: &AgentTurnProvenance,
 ) -> Result<EntrySource, StoreError> {
-    let thread_id = provenance.authority.thread_id.clone();
-    let turn_id = provenance.authority.turn_id.clone();
-    let session = connection
+    let authority = &provenance.authority;
+    let runtime = connection
         .query_row(
-            "SELECT session.id, thread.thread_name, thread.thread_preview, \
-               session.no_thread_fallback_title \
-             FROM project_session_threads link \
-             JOIN project_sessions session ON session.id = link.session_id \
-             JOIN codex_threads thread ON thread.thread_id = link.thread_id \
-             WHERE link.thread_id = ?1",
-            [&thread_id],
+            "SELECT session_id, runtime_id, runtime_thread_id, runtime_run_id, NULL \
+         FROM nodex_agent_runtime_turn_admissions \
+         WHERE authority_thread_id=?1 AND authority_turn_id=?2 AND active=1 \
+         UNION ALL \
+         SELECT session_id, runtime_id, runtime_thread_id, NULL, incarnation_id \
+         FROM nodex_agent_runtime_native_session_admissions \
+         WHERE authority_thread_id=?1 AND authority_turn_id=?2 AND active=1 LIMIT 1",
+            params![authority.thread_id, authority.turn_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             },
         )
         .optional()?;
-    let (session_id, label) = match session {
-        Some((session_id, name, preview, fallback)) => {
-            let preview = super::task_window::bounded_preview(&preview);
-            let title = super::read::project_session_display_title(
-                name.as_deref(),
-                Some(preview.as_str()),
-                &fallback,
-            );
-            (Some(session_id), title)
+    let (session_id, thread_id, turn_id, budget_key) = match runtime {
+        Some((session, runtime, thread, run, incarnation)) => {
+            let key = if let Some(run) = &run {
+                serde_json::json!(["runtime-run", runtime, thread, run])
+            } else {
+                serde_json::json!(["native-connection", runtime, thread, incarnation])
+            };
+            (Some(session), thread, run, key.to_string())
         }
-        None => (None, "Agent".to_owned()),
+        None => {
+            let session = connection
+                .query_row(
+                    "SELECT session_id FROM project_session_threads WHERE thread_id=?1",
+                    [&authority.root_thread_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            (
+                session,
+                authority.thread_id.clone(),
+                Some(authority.turn_id.clone()),
+                serde_json::json!(["native-turn", authority.thread_id, authority.turn_id])
+                    .to_string(),
+            )
+        }
+    };
+    let label = if let Some(session_id) = &session_id {
+        connection.query_row(
+            "SELECT COALESCE(thread.thread_name,NULLIF(substr(thread.thread_preview,1,240),''), \
+               session.no_thread_fallback_title) \
+             FROM project_sessions session LEFT JOIN project_session_threads link ON link.session_id=session.id \
+             LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.id=?1",
+            [session_id], |row| row.get::<_,String>(0),
+        )?
+    } else {
+        "Agent".to_owned()
     };
     Ok(EntrySource {
         kind: "agent",
         session_id,
         thread_id: Some(thread_id),
-        turn_id: Some(turn_id),
-        project_id: provenance.authority.actor_project_id.clone(),
+        turn_id,
+        budget_key: Some(budget_key),
+        project_id: authority.actor_project_id.clone(),
         label: Some(truncate_chars(label.trim(), MAX_SOURCE_LABEL_CHARS)),
     })
 }
@@ -505,7 +515,7 @@ pub(super) fn send_message(
         |scope| {
             require_turn_capacity(connection, library_id, &source)?;
             let (registry, created) = ensure_registry(connection, library_id, operation_id, &now)?;
-            let destination = resolve_page_transfer_data_source_destination_prevalidated(
+            let destination = resolve_page_transfer_data_source_destination(
                 connection,
                 library_id,
                 None,
@@ -521,7 +531,6 @@ pub(super) fn send_message(
                     commit_context: scope.evidence(),
                     library_id,
                     actor_project_id: None,
-                    placement_access_project_id: None,
                     operation_id,
                     store_epoch,
                     page_id,
@@ -536,9 +545,9 @@ pub(super) fn send_message(
             connection.execute(
                 "INSERT INTO inbox_entries(\
                    page_id, library_id, seq, submitted_at, source_kind, source_session_id, \
-                   source_thread_id, source_turn_id, source_project_id, source_label, \
+                   source_thread_id, source_turn_id, source_project_id, source_label, source_budget_key, \
                    provisional_title, updated_at\
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?4)",
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?4)",
                 params![
                     page_id,
                     library_id,
@@ -550,6 +559,7 @@ pub(super) fn send_message(
                     source.turn_id,
                     source.project_id,
                     source.label,
+                    source.budget_key,
                     message.provisional_title,
                 ],
             )?;
@@ -835,7 +845,6 @@ pub(super) fn confirm(
     edited_action: Option<&ProjectWorkspaceInboxDispatchAction>,
     session_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     validate_id("proposal_id", proposal_id)?;
     let proposal = require_proposal(connection, library_id, proposal_id)?;
     if proposal.state != "open" {
@@ -892,7 +901,6 @@ pub(super) fn dispatch_entries(
     action: &ProjectWorkspaceInboxDispatchAction,
     session_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     validate_id("proposal_id", proposal_id)?;
     let page_ids = unique_page_ids(page_ids, MAX_PROPOSAL_PAGES)?;
     require_live_entries(connection, library_id, &page_ids)?;
@@ -1017,14 +1025,13 @@ fn apply_confirmation(
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: target, ..
         } => {
-            let authority =
-                super::session_mutation::require_session(connection, library_id, target)?;
+            super::session_mutation::require_session(connection, library_id, target)?;
             start_dispatch(
                 connection,
                 proposal_id,
                 &encoded_action,
                 target,
-                authority.thread_id.as_deref(),
+                session_thread_id(connection, target)?.as_deref(),
                 now,
             )?;
             Ok(simple_effects("inbox_confirm_send", now))
@@ -1045,6 +1052,19 @@ fn finish_proposal(
         params![proposal_id, action_json, now],
     )?;
     Ok(())
+}
+
+fn session_thread_id(
+    connection: &Connection,
+    session_id: &str,
+) -> Result<Option<String>, StoreError> {
+    Ok(connection.query_row(
+        "SELECT COALESCE(binding.runtime_thread_id,link.thread_id) FROM project_sessions session \
+         LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id \
+         LEFT JOIN project_session_threads link ON link.session_id=session.id WHERE session.id=?1",
+        [session_id],
+        |row| row.get(0),
+    )?)
 }
 
 fn start_dispatch(
@@ -1098,7 +1118,6 @@ pub(super) fn keep_entries(
     request_hash: &str,
     page_ids: &[String],
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let page_ids = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
     require_live_entries(connection, library_id, &page_ids)?;
     let now = sqlite_now(connection)?;
@@ -1129,7 +1148,6 @@ pub(super) fn delete_messages(
     request_hash: &str,
     page_ids: &[String],
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let page_ids = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
     let now = sqlite_now(connection)?;
     run_mutation(
@@ -1250,7 +1268,6 @@ pub(super) fn set_state(
     page_ids: &[String],
     state: ProjectWorkspaceInboxEntryState,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let page_ids = unique_page_ids(page_ids, MAX_BULK_PAGES)?;
     require_live_entries(connection, library_id, &page_ids)?;
     let now = sqlite_now(connection)?;
@@ -1305,7 +1322,6 @@ pub(super) fn set_kind(
     page_id: &str,
     kind: Option<ProjectWorkspaceInboxEntryKind>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let page_ids = unique_page_ids(std::slice::from_ref(&page_id.to_owned()), 1)?;
     require_live_entries(connection, library_id, &page_ids)?;
     let now = sqlite_now(connection)?;
@@ -1344,7 +1360,6 @@ pub(super) fn request_suggestion(
     request_hash: &str,
     page_ids: &[String],
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let page_ids = unique_page_ids(page_ids, MAX_PROPOSAL_PAGES)?;
     require_live_entries(connection, library_id, &page_ids)?;
     if has_in_flight_dispatch(connection, &page_ids)? {
@@ -1498,7 +1513,6 @@ pub(super) fn retry_dispatch(
     request_hash: &str,
     proposal_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_trusted_local(context)?;
     let proposal = require_proposal(connection, library_id, proposal_id)?;
     if proposal.state != "failed" || proposal.dispatch_session_id.is_none() {
         return Err(conflict("Only a failed chat dispatch can be retried"));
@@ -1726,7 +1740,7 @@ fn normalize_action(
             if authority.archived {
                 return Err(conflict("The target chat is archived"));
             }
-            if authority.thread_id.is_none() {
+            if session_thread_id(connection, session_id)?.is_none() {
                 return Err(conflict(
                     "The target chat has not started yet; start a new chat instead",
                 ));

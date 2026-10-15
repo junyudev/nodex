@@ -3,7 +3,6 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { IpcEvents } from "../../shared/ipc-api";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexFreshThreadLaunchRuntime } from "../codex-application/CodexFreshThreadLaunchRuntime";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
@@ -17,7 +16,6 @@ export const live: Layer.Layer<
   never,
   never,
   | CodexApplicationEventHub
-  | CodexFreshThreadLaunchRuntime
   | CodexRendererPresentationRegistry
   | CodexUserInputAutoResolution
   | RendererClientRuntime
@@ -25,7 +23,6 @@ export const live: Layer.Layer<
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const events = yield* CodexApplicationEventHub;
-    const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
     const presentation = yield* CodexRendererPresentationRegistry;
     const rendererClients = yield* RendererClientRuntime;
     const userInputAutoResolution = yield* CodexUserInputAutoResolution;
@@ -33,10 +30,6 @@ export const live: Layer.Layer<
     const releasePresentation = Effect.fn("CodexRendererProjectionRuntime.releasePresentation")(
       function* (clientId: string) {
         const conversationIds = presentation.handleClientDisposed(clientId);
-        freshThreadLaunch.releaseRenderer(
-          clientId,
-          new Error("Fresh thread renderer became unavailable"),
-        );
         yield* Effect.forEach(
           conversationIds,
           (conversationId) => userInputAutoResolution.reevaluatePresentation(conversationId),

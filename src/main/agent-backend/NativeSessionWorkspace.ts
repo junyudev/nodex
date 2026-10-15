@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { rm } from "node:fs/promises";
+import { realpath, rm } from "node:fs/promises";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -13,6 +13,11 @@ import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime"
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
+import {
+  isCurrentManagedWorktreeDirectory,
+  isLegacyManagedWorktreeParent,
+} from "../codex/codex-managed-worktree-effects";
+import { readManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
 export interface NativeSessionWorkspaceInput {
   readonly projectId: string | null;
@@ -43,6 +48,11 @@ export interface NativeSessionWorkspaceLease {
   readonly attach: (threadId: string) => Effect.Effect<void>;
 }
 
+export interface NativeSessionWorkspaceReconcileInput {
+  readonly cwd: string;
+  readonly threadId: string;
+}
+
 export class NativeSessionWorkspaceError extends Schema.TaggedError<NativeSessionWorkspaceError>()(
   "NativeSessionWorkspaceError",
   { operation: Schema.String, cause: Schema.Defect() },
@@ -54,6 +64,9 @@ export class NativeSessionWorkspace extends Context.Service<
     readonly prepare: (
       input: NativeSessionWorkspaceInput,
     ) => Effect.Effect<NativeSessionWorkspaceLease, NativeSessionWorkspaceError, Scope.Scope>;
+    readonly reconcile: (
+      input: NativeSessionWorkspaceReconcileInput,
+    ) => Effect.Effect<void, NativeSessionWorkspaceError>;
   }
 >()("nodex/main/agent-backend/NativeSessionWorkspace") {}
 
@@ -64,6 +77,66 @@ export const make = Effect.gen(function* () {
   const worktrees = yield* ManagedWorktreeRuntime;
   const git = yield* CodexGitProbe;
   return NativeSessionWorkspace.of({
+    reconcile: Effect.fn("NativeSessionWorkspace.reconcile")(function* (
+      input: NativeSessionWorkspaceReconcileInput,
+    ) {
+      const root = yield* git.readPath(input.cwd, ["rev-parse", "--show-toplevel"]);
+      if (!root) return;
+      const error = (cause: unknown) =>
+        new NativeSessionWorkspaceError({ operation: "workspace.reconcile", cause });
+      const host = yield* hosts.resolve("local", "set-owner").pipe(Effect.mapError(error));
+      const roots = yield* Effect.tryPromise(async () => ({
+        managed: await realpath(host.descriptor.managedRoot),
+        worktree: await realpath(root),
+      })).pipe(Effect.orElseSucceed(() => null));
+      if (!roots) return;
+      const relative = path.relative(roots.managed, roots.worktree);
+      if (
+        !relative ||
+        relative.startsWith(`..${path.sep}`) ||
+        relative === ".." ||
+        path.isAbsolute(relative)
+      )
+        return;
+      // Keep the configured spelling used by newborn ownership while comparing canonical paths.
+      const worktreeGitRoot = path.join(host.descriptor.managedRoot, relative);
+      const parts = relative.split(path.sep);
+      if (
+        !(parts.length === 1 && isCurrentManagedWorktreeDirectory(parts[0]!)) &&
+        !(parts.length === 2 && isLegacyManagedWorktreeParent(parts[0]!))
+      )
+        return;
+      const gitDirectory = yield* git.readPath(worktreeGitRoot, [
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-dir",
+      ]);
+      const commonDirectory = yield* git.readPath(worktreeGitRoot, [
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-common-dir",
+      ]);
+      if (
+        !gitDirectory ||
+        !commonDirectory ||
+        path.resolve(gitDirectory) === path.resolve(commonDirectory)
+      )
+        return;
+      const previous = yield* Effect.tryPromise({
+        try: (signal) => readManagedWorktreeOwnerThread(worktreeGitRoot, signal),
+        catch: (cause) =>
+          new NativeSessionWorkspaceError({ operation: "workspace.reconcile", cause }),
+      });
+      if (previous !== null && previous !== input.threadId)
+        return yield* new NativeSessionWorkspaceError({
+          operation: "workspace.reconcile",
+          cause: new Error("Managed worktree belongs to another execution Thread"),
+        });
+      yield* worktrees
+        .setOwner({ hostId: "local", worktreeGitRoot, ownerThreadId: input.threadId })
+        .pipe(Effect.mapError(error));
+      yield* worktrees.releaseNewborn({ hostId: "local", worktreeGitRoot });
+    }),
     prepare: Effect.fn("NativeSessionWorkspace.prepare")(function* (
       input: NativeSessionWorkspaceInput,
     ) {

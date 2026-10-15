@@ -9,10 +9,10 @@ This specification defines `Move to` for standalone Database resources in
 Pages. All Pages, including standalone Sidebar Pages and Database View rows,
 use the separate [Page Relocation](page-relocation-behavior.md) contract. The
 two actions share a compact destination-picker substrate but not destination
-reads, authorization, mutation, or Undo recipes.
+reads, mutation, or Undo recipes.
 
 The action changes exclusive Library ownership only.
-It preserves the resource ID, owned Document, Database bindings, and Project grants.
+It preserves the resource ID, owned Document and Database bindings.
 
 ## Presentation
 

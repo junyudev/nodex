@@ -6,7 +6,7 @@ import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { AutomationApplication } from "../../automation-application/AutomationApplication";
 import { AutomationExecution } from "../../automation-application/AutomationExecution";
-import { ConversationCommands } from "../../codex-application/ConversationCommands";
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import type { RendererClientRuntimeService } from "../../codex/renderer-client-runtime-contracts";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
@@ -33,12 +33,9 @@ it.effect("owns calendar and scheduled automation ingress with the Main Scope", 
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(
-              ConversationCommands,
-              ConversationCommands.of({
-                unarchive: () => Effect.die("unused"),
-              } as unknown as ConversationCommands["Service"]),
-            ),
+            Layer.succeed(AgentRuntimeApplication, {
+              unarchiveSession: () => Effect.die("unused"),
+            } as unknown as AgentRuntimeApplication["Service"]),
             Layer.succeed(ElectronIpc, ipc),
             Layer.succeed(RendererClientRuntime, {} as RendererClientRuntimeService),
             mainConfigLayer(),

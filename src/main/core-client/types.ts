@@ -1,7 +1,7 @@
 import type { ReadFileBytesInput } from "../../shared/library-files";
 import type { components } from "@nodex/core-protocol";
 import type { LocalCommitApply } from "../../shared/local-commit-delivery";
-import type { ProjectionImpact, ProjectionScope } from "../../shared/projection-stream";
+import type { ProjectionScope } from "../../shared/projection-stream";
 import type {
   DocumentAwarenessPublishAck,
   DocumentAwarenessPublishRequest,
@@ -204,12 +204,7 @@ export interface DocumentLiveRepair {
   readonly document_generation: number;
   readonly head_seq: number;
   readonly commit_head: number;
-  readonly reason:
-    | "receiver_lagged"
-    | "payload_unavailable"
-    | "identity_changed"
-    | "access_revoked"
-    | "event_gap";
+  readonly reason: "receiver_lagged" | "payload_unavailable" | "identity_changed" | "event_gap";
 }
 
 export interface CoreEventSubscription {
@@ -275,10 +270,6 @@ export interface CoreClientPort {
     },
     options?: CoreRequestOptions,
   ): Promise<PreparedBlobReceipt>;
-  filterProjectionImpactForProject(
-    projectId: string,
-    impact: ProjectionImpact,
-  ): Promise<ProjectionImpact>;
   databaseRead(read: DatabaseRead, options?: CoreRequestOptions): Promise<DatabaseReadSnapshot>;
   queryRead(read: QueryRead, options?: CoreRequestOptions): Promise<QueryReadSnapshot>;
   databaseApply(

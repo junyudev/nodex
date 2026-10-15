@@ -26,7 +26,7 @@ import {
   type LibraryModuleApplyRequest,
   type LibraryModuleApplyResult,
 } from "../../shared/library-module";
-import { libraryContentAccess, projectContentAccess } from "../../shared/content-access-context";
+import { libraryContentRoute, projectContentRoute } from "../../shared/content-routing-context";
 import { isWorkflowStatus } from "../../shared/workflow-status";
 import type { DatabaseJsonValue, DatabasePropertyValueType } from "../../shared/database-kernel";
 import type { LibraryPageDetail, PageDetail } from "../../shared/page-detail";
@@ -90,7 +90,7 @@ const DEFAULT_DEPENDENCIES: PageDetailMetadataRuntimeDependencies = {
   mutateProperties: mutateBlockProperties,
   applyDatabase: applyDatabaseModule,
   applyMetadataProperties: (projectId, request) =>
-    applyLibraryModule(projectContentAccess(projectId), request),
+    applyLibraryModule(projectContentRoute(projectId), request),
   refreshDetail: fetchPageDetail,
 };
 
@@ -117,7 +117,7 @@ const DEFAULT_LIBRARY_DEPENDENCIES: LibraryPageDetailMetadataRuntimeDependencies
   readDetail: readLibraryDetail,
   mutateProperties: mutateLibraryBlockProperties,
   applyDatabase: applyLibraryDatabaseModule,
-  applyMetadataProperties: (request) => applyLibraryModule(libraryContentAccess, request),
+  applyMetadataProperties: (request) => applyLibraryModule(libraryContentRoute, request),
   refreshDetail: readLibraryDetail,
 };
 
@@ -568,10 +568,7 @@ export const commitPageDetailMetadataPatchWithReceipt = async (input: {
         await refreshPageDetailBestEffort(input.projectId, input.pageId, dependencies);
         return mutationEnvelope({ status: "conflict" });
       }
-      if (
-        databaseResult.error.code === "resource_not_found" ||
-        databaseResult.error.code === "authorization_denied"
-      ) {
+      if (databaseResult.error.code === "resource_not_found") {
         return mutationEnvelope({ status: "not_found" });
       }
       return mutationEnvelope({ status: "error", error: databaseResult.error.message });

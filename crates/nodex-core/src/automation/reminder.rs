@@ -401,7 +401,7 @@ fn snooze(
             "Reminder snooze requires an active bound Project",
         ));
     }
-    crate::library::require_page_read_access(connection, library_id, project_id, page_id)?;
+    crate::library::require_page_read_access(connection, library_id, page_id)?;
     if snooze_minutes > MAX_SNOOZE_MINUTES {
         return Err(invalid("Reminder snooze duration exceeds its bound"));
     }
@@ -653,12 +653,7 @@ fn collect_snooze_candidates(
     };
     let mut consumed_ids = Vec::new();
     for (snooze_id, project_id, page_id, occurrence, due) in rows {
-        match crate::library::require_page_read_access(
-            connection,
-            library_id,
-            &project_id,
-            &page_id,
-        ) {
+        match crate::library::require_page_read_access(connection, library_id, &page_id) {
             Ok(()) => {}
             Err(error)
                 if matches!(

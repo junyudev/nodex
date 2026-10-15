@@ -132,6 +132,7 @@ export interface NodexElectronLaunchInput {
   readonly initialProjectsDirectory: string;
   readonly nodexHome: string;
   readonly runId?: string;
+  readonly isolatedHostHome?: string;
 }
 
 export async function launchNodexElectronApplication(
@@ -142,9 +143,13 @@ export async function launchNodexElectronApplication(
     Object.entries(process.env).filter(([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
   );
   return await electron.launch({
-    ...(input.executablePath
-      ? { executablePath: input.executablePath }
-      : { args: [repositoryRoot] }),
+    ...(input.executablePath ? { executablePath: input.executablePath } : {}),
+    args: [
+      ...(input.isolatedHostHome
+        ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]
+        : []),
+      ...(input.executablePath ? [] : [repositoryRoot]),
+    ],
     cwd: input.cwd ?? repositoryRoot,
     env: {
       ...inheritedEnvironment,
@@ -152,6 +157,7 @@ export async function launchNodexElectronApplication(
       ...(input.codexHome ? { CODEX_HOME: input.codexHome } : {}),
       NODEX_HOME: input.nodexHome,
       NODEX_INITIAL_PROJECTS_DIR: input.initialProjectsDirectory,
+      ...(input.isolatedHostHome ? { NODEX_INTERNAL_SCENARIO_HOME: input.isolatedHostHome } : {}),
       ...(input.runId ? { NODEX_INTERNAL_ISOLATED_RUN_ID: input.runId } : {}),
       NODE_ENV: "test",
     },
@@ -245,6 +251,8 @@ export interface ElectronHarnessInput {
   readonly executablePath?: string;
   readonly enabledFeatures?: readonly string[];
   readonly prepareAgentRuntime?: boolean;
+  /** Isolate Electron's home/Documents paths before Main captures its host configuration. */
+  readonly isolateHostDirectories?: boolean;
 }
 
 export class ElectronScenarioHarness {
@@ -254,6 +262,7 @@ export class ElectronScenarioHarness {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #executablePath: string | undefined;
   readonly #lease: IsolatedRunLease;
+  readonly #isolateHostDirectories: boolean;
   #application: ElectronApplication | null = null;
   #page: Page | null = null;
   #closing: Promise<void> | null = null;
@@ -265,6 +274,7 @@ export class ElectronScenarioHarness {
     environment: NodeJS.ProcessEnv,
     lease: IsolatedRunLease,
     executablePath?: string,
+    isolateHostDirectories = false,
   ) {
     this.profile = profile;
     this.#cwd = cwd;
@@ -272,6 +282,7 @@ export class ElectronScenarioHarness {
     this.#environment = environment;
     this.#executablePath = executablePath;
     this.#lease = lease;
+    this.#isolateHostDirectories = isolateHostDirectories;
   }
 
   static async create(input: ElectronHarnessInput): Promise<ElectronScenarioHarness> {
@@ -306,6 +317,7 @@ export class ElectronScenarioHarness {
         },
         lease,
         input.executablePath,
+        input.isolateHostDirectories,
       );
     } catch (error) {
       const cleanup = await cleanupIsolatedProfile({
@@ -313,7 +325,6 @@ export class ElectronScenarioHarness {
         retention: "dispose",
       });
       if (cleanup.status === "unsafe") {
-        // oxlint-disable-next-line eslint/preserve-caught-error -- AggregateError retains the primary failure and cleanup failure explicitly.
         throw new AggregateError(
           [error, new Error(cleanup.reason)],
           `Failed to initialize and clean Electron scenario ${profile.runRoot}`,
@@ -344,6 +355,9 @@ export class ElectronScenarioHarness {
       runId: this.profile.runId,
       environment: this.#environment,
       executablePath: this.#executablePath,
+      ...(this.#isolateHostDirectories
+        ? { isolatedHostHome: path.join(this.profile.runRoot, "home") }
+        : {}),
     });
     this.#application = application;
     const page =

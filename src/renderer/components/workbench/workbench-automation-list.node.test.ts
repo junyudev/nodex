@@ -13,11 +13,10 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     id: "automation-alpha",
     definitionRevision: 1,
     projectId: null,
-    targetSessionId: null,
     notificationPolicy: null,
     kind: "cron",
     status: "ACTIVE",
-    targetThreadId: null,
+    targetSessionId: null,
     name: "Daily report",
     prompt: "Summarize repository status.",
     rrule: "FREQ=DAILY",
@@ -109,7 +108,7 @@ describe("workbench automation list model", () => {
       formatWorkbenchAutomationWorkspaceLabel(
         automation({
           kind: "heartbeat",
-          targetThreadId: "thread-alpha",
+          targetSessionId: "thread-alpha",
           cwds: [],
         }),
       ),

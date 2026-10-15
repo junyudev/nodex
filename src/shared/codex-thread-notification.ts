@@ -10,7 +10,6 @@ import { extractCodexThreadSpawnMetadata } from "./codex-subagent-metadata";
 export const DEFAULT_CODEX_NOTIFICATION_HOST_ID = DEFAULT_CODEX_HOST_ID;
 
 export type CodexNotificationTurnStatus = "completed" | "failed" | "interrupted";
-export type CodexNotificationApprovalKind = "commandExecution" | "fileChange" | "permissionRequest";
 
 export interface CodexNotificationConversationFacts {
   conversationId: string;
@@ -19,6 +18,8 @@ export interface CodexNotificationConversationFacts {
   parentThreadId: string | null;
   source: unknown;
   sideConversationParentNavigationPath: string | null;
+  /** A Runtime-bound conversation opens through its product Session, not native Thread lookup. */
+  runtimeSessionId?: string | null;
 }
 
 export interface CodexTurnCompletedNotificationEvent {
@@ -31,16 +32,6 @@ export interface CodexTurnCompletedNotificationEvent {
   heartbeatAssistantMessage: CodexHeartbeatAssistantMessage | null;
   automationNotificationDecision: CodexHeartbeatDecision | null;
   hasPendingContinuation: boolean;
-}
-
-export interface CodexApprovalRequestedNotificationEvent {
-  type: "approval-requested";
-  hostId: string;
-  conversation: CodexNotificationConversationFacts;
-  requestId: CodexAppServerRequestId;
-  turnId: string;
-  approvalKind: CodexNotificationApprovalKind;
-  reason: string | null;
 }
 
 export interface CodexUserInputRequestedNotificationEvent {
@@ -88,7 +79,6 @@ export type CodexThreadNotificationEvent =
   | CodexAsyncQuestionNotificationEvent
   | CodexAsyncQuestionResolvedNotificationEvent
   | CodexTurnCompletedNotificationEvent
-  | CodexApprovalRequestedNotificationEvent
   | CodexUserInputRequestedNotificationEvent
   | CodexRequestResolvedNotificationEvent;
 
@@ -193,22 +183,6 @@ export function resolveCodexTurnNotificationTitle(title: string | null): string 
   return normalizeDesktopNotificationText(title) ?? "Turn complete";
 }
 
-export function resolveCodexApprovalNotificationCopy(input: {
-  approvalKind: CodexNotificationApprovalKind;
-  reason: string | null;
-}): { title: string; body: string; hasActions: boolean } {
-  const titles: Record<CodexNotificationApprovalKind, string> = {
-    commandExecution: "Command approval",
-    fileChange: "File edit approval",
-    permissionRequest: "Permission approval",
-  };
-  return {
-    title: titles[input.approvalKind],
-    body: normalizeDesktopNotificationText(input.reason) ?? "Approval required",
-    hasActions: input.approvalKind !== "permissionRequest",
-  };
-}
-
 export function resolveCodexQuestionNotificationTitle(title: string | null): string {
   return normalizeDesktopNotificationText(title) ?? "Need your input";
 }
@@ -231,13 +205,6 @@ export function buildCodexTurnNotificationOccurrenceId(
   return JSON.stringify(["turn", hostId, conversationId, turnId]);
 }
 
-export function buildCodexApprovalNotificationId(
-  hostId: string,
-  requestId: CodexAppServerRequestId,
-): string {
-  return `approval-${hostId}-${requestId}`;
-}
-
 export function buildCodexQuestionNotificationId(
   hostId: string,
   requestId: CodexAppServerRequestId,
@@ -246,7 +213,7 @@ export function buildCodexQuestionNotificationId(
 }
 
 export function buildCodexRequestNotificationOccurrenceId(
-  family: "approval" | "question",
+  family: "question",
   hostId: string,
   conversationId: string,
   requestId: CodexAppServerRequestId,

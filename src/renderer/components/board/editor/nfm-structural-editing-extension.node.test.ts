@@ -177,7 +177,7 @@ describe("NFM structural editing session", () => {
       editor,
       historyReconciliation: availableHistoryReconciliation,
       runtime: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library:test",
         source: { documentId: "document:target", storeEpoch: "epoch:test", generation: 1 },
         participant: {
@@ -275,7 +275,7 @@ describe("NFM structural editing session", () => {
         historyLane: history,
         historyReconciliation: availableHistoryReconciliation,
         runtime: {
-          accessContext: { kind: "project", projectId: "project:test" },
+          routingContext: { kind: "project", projectId: "project:test" },
           libraryId: "library:test",
           source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
           getContainer: () => null,
@@ -486,7 +486,7 @@ describe("NFM structural editing session", () => {
         editor,
         historyReconciliation: availableHistoryReconciliation,
         runtime: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: "library:test",
           source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
           participant: {
@@ -607,7 +607,7 @@ describe("NFM structural editing session", () => {
         editor,
         historyReconciliation: availableHistoryReconciliation,
         runtime: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: "library:test",
           source: { documentId: document.guid, storeEpoch: "epoch:test", generation: 1 },
           participant: {
@@ -692,7 +692,7 @@ describe("NFM structural editing session", () => {
         historyReconciliation: availableHistoryReconciliation,
         editor,
         runtime: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: "library:test",
           source: { documentId: document.guid, storeEpoch: "epoch:test", generation: 1 },
           participant: {
@@ -824,7 +824,7 @@ describe("NFM structural editing session", () => {
         ],
       },
     } as unknown as BlockNoteEditor<any, any, any>;
-    const apply: typeof applyLibraryModule = async (_accessContext, request) => {
+    const apply: typeof applyLibraryModule = async (_routingContext, request) => {
       const operation = request.operation;
       commands.push(operation);
       if (operation.kind === "reverse_structural_edit") {
@@ -911,7 +911,7 @@ describe("NFM structural editing session", () => {
       historyReconciliation: availableHistoryReconciliation,
       editor,
       runtime: {
-        accessContext: { kind: "project", projectId: "project:test" },
+        routingContext: { kind: "project", projectId: "project:test" },
         libraryId: "library:test",
         source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
         participant: {
@@ -1251,7 +1251,7 @@ describe("NFM structural editing session", () => {
       expect(cursorPlacements.at(-1)).toEqual({ blockId: "toggle", edge: "end" });
 
       session.rebind({
-        accessContext: { kind: "project", projectId: "project:test" },
+        routingContext: { kind: "project", projectId: "project:test" },
         libraryId: "library:test",
         source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
         participant: {
@@ -1360,7 +1360,7 @@ describe("NFM structural editing session", () => {
     const session = controller.attachEditor(editor);
     const installedCallback = () => controller.current;
     const runtime = {
-      accessContext: { kind: "project" as const, projectId: "project:test" },
+      routingContext: { kind: "project" as const, projectId: "project:test" },
       libraryId: "library:test",
       source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
       participant: {
@@ -1423,7 +1423,7 @@ test("eviction during inverse preparation prevents a late Core submission", asyn
     historyLane: history,
     historyReconciliation: availableHistoryReconciliation,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:test",
       source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
       getContainer: () => null,
@@ -1497,7 +1497,7 @@ test("cancelling a structural preparation releases the queue and prevents late s
     historyReconciliation: availableHistoryReconciliation,
     editor,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:test",
       source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
       getContainer: () => null,
@@ -1556,7 +1556,7 @@ test("history cannot cross authorization scopes or take over an active IME compo
     }),
   } as unknown as BlockNoteEditor<any, any, any>;
   const runtime = {
-    accessContext: { kind: "library" as const },
+    routingContext: { kind: "library" as const },
     libraryId: "library:test",
     source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
     getContainer: () => null,
@@ -1578,7 +1578,7 @@ test("history cannot cross authorization scopes or take over an active IME compo
     expect(session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent)).toBe(false);
     expect(session.handleBeforeInput({ inputType: "historyUndo" } as InputEvent)).toBe(false);
     expect(() =>
-      session.rebind({ ...runtime, accessContext: { kind: "project", projectId: "other" } }),
+      session.rebind({ ...runtime, routingContext: { kind: "project", projectId: "other" } }),
     ).toThrow("cannot change its Document authority");
     expect(() => session.rebind({ ...runtime, libraryId: "another-library" })).toThrow(
       "cannot change its Document authority",
@@ -1615,7 +1615,7 @@ test("refreshing an equivalent view binding preserves queued and active structur
   let submissions = 0;
   const errors: string[] = [];
   const runtime = {
-    accessContext: { kind: "library" as const },
+    routingContext: { kind: "library" as const },
     libraryId: "library:test",
     source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
     getContainer: () => null,
@@ -1644,7 +1644,7 @@ test("refreshing an equivalent view binding preserves queued and active structur
   });
   try {
     expect(session.duplicateBlocks(["page"])).toBe(true);
-    session.rebind({ ...runtime, accessContext: { kind: "library" } });
+    session.rebind({ ...runtime, routingContext: { kind: "library" } });
     await Promise.resolve();
     expect(preparations).toBe(1);
     session.rebind({ ...runtime, getContainer: () => null });
@@ -1688,7 +1688,7 @@ test("queued clipboard gestures register immediately and cancel without capture"
   const presentations: (readonly string[])[] = [];
   const presentationStates: string[] = [];
   const runtime = {
-    accessContext: { kind: "library" as const },
+    routingContext: { kind: "library" as const },
     libraryId: "library:test",
     source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
     getContainer: () => null,

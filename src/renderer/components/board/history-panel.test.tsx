@@ -15,7 +15,7 @@ const HistoryPanel = (props: Omit<HistoryPanelProps, "fileAuthority">) => (
     fileAuthority={{
       libraryId: "library:one",
       storeEpoch: "epoch:one",
-      contentAccessContext: { kind: "project", projectId: props.projectId },
+      contentRoutingContext: { kind: "project", projectId: props.projectId },
     }}
   />
 );
@@ -557,12 +557,11 @@ function makeVersionDetail(): DocumentVersionDetail {
 function makeDescriptor(): OwnedDocumentDescriptor {
   return {
     libraryId: "library-1",
-    accessContext: { kind: "project", projectId: "project-1" },
+    routingContext: { kind: "project", projectId: "project-1" },
     ownerBlockId: "card-1",
     ownerType: "page",
     ownerLifecycle: "active",
     documentId: "document-1",
-    authorization: null,
     storeEpoch: "epoch-1",
     generation: 1,
     headSeq: 14,

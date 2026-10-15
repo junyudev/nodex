@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -19,7 +20,7 @@ import {
   invokeIpc,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -56,32 +57,32 @@ test("native presentation tools preserve Session ownership and reveal exact file
             const common = [
               '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 18000}',
               'const unwrap=r=>{const v=typeof r==="string"?JSON.parse(r):r;return v.structuredContent??(v.content?JSON.parse(v.content[0].text):v);};',
-              'async function invoke(name,args){for(let i=0;i<3;i++){const result=unwrap(await tools[name](args));if(result.error!=="stale_presentation")return result;}throw new Error("Presentation kept changing");}',
+              'async function invoke(name,args){for(let i=0;i<3;i++){const result=unwrap(await app[name](args));if(result.error!=="stale_presentation")return result;}throw new Error("Presentation kept changing");}',
             ];
             const script =
               phase === "review"
                 ? [
                     ...common,
-                    "text({initial:unwrap(await tools.mcp__nodex_app__get_session_context({}))});",
-                    `text({browser:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"open-browser",target:{kind:"browser",url:${JSON.stringify(browserUrl)}}})});`,
-                    'let context=unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"}));let tabs=unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:context.presentation.observationId}));const browser=tabs.items.find(t=>t.browserTabId);text({browserAgain:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"reuse-browser",target:{kind:"browser",tabId:browser.browserTabId}})});',
-                    'text({terminal:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"open-terminal",placement:"bottom",target:{kind:"terminal"}})});',
-                    'context=unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"}));tabs=unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:context.presentation.observationId}));text({terminalTabs:tabs});const terminal=tabs.items.find(t=>t.terminalId);text({terminalAgain:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"reuse-terminal",placement:"bottom",target:{kind:"terminal",terminalId:terminal.terminalId}})});',
-                    `text({hidden:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"hidden-file",sessionId:${JSON.stringify(otherSessionId)},target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
-                    `text({navigated:await invoke("mcp__nodex_app__navigate_to_session",{operationId:"navigate-other",sessionId:${JSON.stringify(otherSessionId)}})});`,
-                    'text({otherContext:unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"}))});',
-                    `text({returned:await invoke("mcp__nodex_app__navigate_to_session",{operationId:"navigate-caller",sessionId:${JSON.stringify(callerSessionId)}})});`,
-                    'text({review:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"open-staged",target:{kind:"review",view:"staged",path:"review.ts"}})});',
-                    "text({terminalContent:unwrap(await tools.mcp__nodex_app__read_session_terminal({terminalId:terminal.terminalId,maxChars:1024}))});",
+                    "text({initial:unwrap(await app.get_session_context({}))});",
+                    `text({browser:await invoke("open_in_nodex",{operationId:"open-browser",target:{kind:"browser",url:${JSON.stringify(browserUrl)}}})});`,
+                    'let context=unwrap(await app.get_session_context({mode:"refresh"}));let tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));const browser=tabs.items.find(t=>t.browserTabId);text({browserAgain:await invoke("open_in_nodex",{operationId:"reuse-browser",target:{kind:"browser",tabId:browser.browserTabId}})});',
+                    'text({terminal:await invoke("open_in_nodex",{operationId:"open-terminal",placement:"bottom",target:{kind:"terminal"}})});',
+                    'context=unwrap(await app.get_session_context({mode:"refresh"}));tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId}));text({terminalTabs:tabs});const terminal=tabs.items.find(t=>t.terminalId);text({terminalAgain:await invoke("open_in_nodex",{operationId:"reuse-terminal",placement:"bottom",target:{kind:"terminal",terminalId:terminal.terminalId}})});',
+                    `text({hidden:await invoke("open_in_nodex",{operationId:"hidden-file",sessionId:${JSON.stringify(otherSessionId)},target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({navigated:await invoke("navigate_to_session",{operationId:"navigate-other",sessionId:${JSON.stringify(otherSessionId)}})});`,
+                    'text({otherContext:unwrap(await app.get_session_context({mode:"refresh"}))});',
+                    `text({returned:await invoke("navigate_to_session",{operationId:"navigate-caller",sessionId:${JSON.stringify(callerSessionId)}})});`,
+                    'text({review:await invoke("open_in_nodex",{operationId:"open-staged",target:{kind:"review",view:"staged",path:"review.ts"}})});',
+                    "text({terminalContent:unwrap(await app.read_session_terminal({terminalId:terminal.terminalId,maxChars:1024}))});",
                   ]
                 : [
                     ...common,
-                    `text({file:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
-                    `text({fileAgain:await invoke("mcp__nodex_app__open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({file:await invoke("open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
+                    `text({fileAgain:await invoke("open_in_nodex",{operationId:"show-line",target:{kind:"file",path:${JSON.stringify(filePath)},line:12}})});`,
                   ];
             return responses.stream([
               responses.created(callId),
-              responses.customToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
+              nativeAppToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
               responses.completed(callId),
             ]);
           }
@@ -161,6 +162,11 @@ test("native presentation tools preserve Session ownership and reveal exact file
         { mode: 0o600 },
       );
       let threadId: string | null = null;
+      const rendererErrors: string[] = [];
+      const captureRendererError = (message: string) => {
+        rendererErrors.push(message.slice(0, 1_000));
+        if (rendererErrors.length > 20) rendererErrors.shift();
+      };
       try {
         const workspace = harness.profile.initialProjectsDirectory;
         filePath = join(workspace, "review.ts");
@@ -186,10 +192,14 @@ test("native presentation tools preserve Session ownership and reveal exact file
         writeFileSync(filePath, original.replace("line12 = 12", "line12 = 120"));
         execFileSync("git", ["-C", workspace, "add", "review.ts"]);
         const page = await harness.launch();
+        page.on("pageerror", (error) => captureRendererError(error.message));
+        page.on("console", (message) => {
+          if (message.type() === "error" || message.type() === "warning")
+            captureRendererError(`${message.type()}: ${message.text()}`);
+        });
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
         const draft = await createAgentSmokeDraft(page, workspace, "Presentation fixture");
         callerSessionId = draft.projectSessionId;
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         await invokeIpc(page, "project-sessions:create", {
           operationId: createBoundedOperationId("e2e.presentation.target"),
           payload: {
@@ -203,7 +213,11 @@ test("native presentation tools preserve Session ownership and reveal exact file
         });
         threadId = await sendAgentPrompt(page, callerSessionId, "PRESENT_review");
         await waitForFinalMarker(page, "PRESENT_review_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: callerSessionId, threadId },
+          60_000,
+        );
         await expect(page.getByRole("button", { name: "Review source", exact: true })).toHaveText(
           "Staged",
         );
@@ -214,7 +228,11 @@ test("native presentation tools preserve Session ownership and reveal exact file
         await composer.fill("PRESENT_file");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "PRESENT_file_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: callerSessionId, threadId },
+          60_000,
+        );
         const editor = page.getByRole("region", {
           name: "Source editor for review.ts",
           exact: true,
@@ -235,12 +253,31 @@ test("native presentation tools preserve Session ownership and reveal exact file
           .toBe(true);
       } catch (error) {
         const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
-              () => null,
-            )
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: callerSessionId,
+              threadId,
+            }).catch(() => null)
           : null;
+        const presentation = await harness.page
+          .locator('button, [role="tab"], [role="tabpanel"]')
+          .evaluateAll((elements) =>
+            elements.slice(0, 80).map((element) => ({
+              role: element.getAttribute("role") ?? element.tagName.toLowerCase(),
+              label: element.getAttribute("aria-label"),
+              text: element.textContent?.trim().slice(0, 160),
+              selected: element.getAttribute("aria-selected"),
+              state: element.getAttribute("data-state"),
+              visible: element.getClientRects().length > 0,
+            })),
+          )
+          .catch(() => null);
         throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-36_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
+          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-36_000)}\nRenderer errors: ${JSON.stringify(rendererErrors)}\nPresentation controls: ${JSON.stringify(presentation)}\nVisible content: ${(
+            await harness.page
+              .locator("body")
+              .innerText()
+              .catch(() => "unavailable")
+          ).slice(-12_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
           { cause: error },
         );
       } finally {

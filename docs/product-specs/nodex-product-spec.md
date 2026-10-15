@@ -22,7 +22,7 @@ Nodex helps a local builder:
 - start and resume coding-agent Chats in the correct filesystem context;
 - use local worktrees and Environments for isolated execution;
 - keep Browser, Files, Terminal, Review, and agent output beside the Chat;
-- let local agents read and change authorized Nodex content through semantic
+- let local agents read and change all content in the current Profile through semantic
   tools rather than raw storage access;
 - recover windows, Documents, history, and whole-Store backups without creating
   a second cloud authority.
@@ -36,13 +36,13 @@ server.
 A local Profile owns one Library. The Library owns durable content: Blocks,
 Pages, Documents, Databases, Data Sources, Views, Canvases, assets, schedules,
 and history. A Project is an execution context: it owns filesystem sources,
-Chats, terminals, approval policy, and one primary Database binding, and it may
-receive access to other Library resources.
+Chats, terminals, execution settings, and one primary Database binding. Every
+Agent has full access to the current Profile, including across Projects and Sessions.
 
 Project lifecycle never owns or deletes Library content. A Page has one stable
 Block identity, one independently synchronized Document, and exactly one
-Library, Page, or Data Source parent. References, mentions, relations, Views,
-and grants present or authorize content without changing that parent.
+Library, Page, or Data Source parent. References, mentions, relations and Views
+present content without changing that parent.
 
 Database, Data Source, and View are independent identities. Database is a
 placeable Container; Data Source owns schema, row Pages, and values; View owns a
@@ -68,7 +68,7 @@ state. Pages offers bounded navigation to Library roots that need an entry
 outside active Projects and never becomes a second content owner.
 
 Read [Product Foundations](product-foundations.md) for onboarding, Projects,
-Library navigation, grants, and lifecycle. Read
+Library navigation and lifecycle. Read
 [Workbench Shell](workbench-shell.md) for Scenes, sidebar, panels, tabs,
 previews, Browser/Files/Terminal placement, navigation history, and multi-window
 presentation. Read [Desktop Startup Behavior](desktop-startup-behavior.md) for
@@ -94,7 +94,7 @@ Creating a Page commits identity, title, body, membership, property values, and
 placement as one semantic operation. Moving and drag/drop operate on stable
 identities and preserve Documents and history. Source Properties use registered
 identity/type rather than display-name matching; Relation remains a non-owning,
-authorization-safe reference set.
+lifecycle-validated reference set.
 
 Read [Database, Pages, and Views Behavior](database-pages-and-views-behavior.md)
 for the feature contract, [Board Drag and Drop Behavior](board-drag-and-drop-behavior.md)
@@ -170,23 +170,24 @@ Read [Settings Route Behavior](settings-route-behavior.md),
 
 ### Agent and automation interfaces
 
-Eligible Codex tasks receive revisioned `nodex_app` semantic tools scoped by
-trusted Project/Turn context. Local shell-capable agents and scripts use the
-native `nodex` CLI and official Skill. Both interfaces use bounded semantic
+Agents receive revisioned `nodex_app` semantic tools with captured Profile,
+Session and execution identity. Native permission requests are approved
+automatically; questions needing user information remain interactive. Local
+shell-capable agents and scripts use the native `nodex` CLI and official Skill. Both interfaces use bounded semantic
 Core contracts; neither receives raw SQL, a database path, renderer state, or
 caller-forged authority.
 
 Nested Markdown is the default agent bulk-content representation. Stable Block
-operations remain available when identity matters. Consent and Full access may
-grant authority for an exact operation or scope, but never bypass semantic
-preconditions or cross a Profile/Library/store epoch.
+operations remain available when identity matters. Full Profile access retains
+semantic preconditions, exact execution routing and Profile/Library/Store epoch
+identity. Plan mode does not restrict content writes.
 
 Read [Agent Interface Behavior](agent-interface-behavior.md),
 [CLI Reference](../CLI.md), and [Nested Markdown](../references/nested-markdown-spec.md).
 
 ## Product invariants
 
-1. Library owns durable content; Project owns execution context and access.
+1. Library owns durable content; Project owns execution context and presentation.
 2. Stable identity, not a row, title, path coincidence, or renderer object,
    determines the target of an operation.
 3. One semantic intent commits atomically or does not change product state.
@@ -195,8 +196,8 @@ Read [Agent Interface Behavior](agent-interface-behavior.md),
 5. Collaborative content has one Document authority. Summaries, search rows,
    NFM, and UI caches are rebuildable projections.
 6. Window layout and local interaction state never become content authority.
-7. Authorization is evaluated from trusted current context; presentation,
-   references, paths, and cached descriptors do not grant access.
+7. Every Agent has full access to the current Profile; authenticated connection,
+   captured execution identity and resource lifecycle remain exact.
 8. User-growing collections are bounded and paginated.
 9. Restore and history create forward state and invalidate stale work; they do
    not rewind causal identity.

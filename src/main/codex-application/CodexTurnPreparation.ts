@@ -2,7 +2,7 @@ import { isReviewDiffCommentAttachment } from "../../shared/codex-canonical-item
 import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import { latestAssignedConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
-import { resolveConversationTurnPermissions } from "../../shared/codex-conversation-state/codex-turn-permissions";
+import { fullAccessTurnExecution } from "../codex-runtime/CodexNativeExecutionPolicy";
 import type { CodexPreparedTurnExecution } from "../../shared/codex-conversation-state/codex-turn-execution";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { MainConfig } from "../app/MainConfig";
@@ -48,16 +48,10 @@ import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGat
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
-import { isNodexAgentTurnReadOnly } from "../codex/nodex-agent-access";
-import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
-import {
-  CodexAgentConfigRuntime,
-  validateCodexAgentConfigPermissionDecision,
-} from "./CodexAgentConfigRuntime";
+import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexConversationContext } from "./CodexConversationContext";
-import { CodexPermissions } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
 import { parseCodexPersonality } from "./CodexPersonality";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
@@ -110,8 +104,6 @@ export interface CodexTurnStartPlan extends CodexPreparedTurnExecution {
   > | null;
   readonly clientUserMessageId: string;
   readonly rendererOwnsState: boolean;
-  readonly verifiedBuiltinFullAccess: boolean;
-  readonly executionReadOnly: boolean;
   readonly promptText: string;
   readonly serviceName?: string | null;
   readonly pendingWorkspace: CodexConversationWorkspace | null;
@@ -148,9 +140,7 @@ export interface CodexTurnStartPreparationInput {
     readonly reasoningEffort?: CodexReasoningEffort | null;
     readonly collaborationMode?: CodexCollaborationModeKind | null;
     readonly summary?: TurnStartParams["summary"];
-    readonly permissionMode?: import("../../shared/types").CodexPermissionMode;
-    /** Preserves the content-origin safety check after new-task preflight consumes the atom. */
-    readonly agentConfigPermissionMode?: boolean;
+
     readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
     /** Title-only pasted sources that must not be inserted into the actual turn twice. */
     readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
@@ -244,7 +234,6 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexConversationContext
   | CodexConversationProjection
-  | CodexPermissions
   | CodexPreferences
   | CodexThreadSettingsRuntime
   | TemporaryAssets
@@ -258,7 +247,6 @@ export const make: Effect.Effect<
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
   const projection = yield* CodexConversationProjection;
-  const permissions = yield* CodexPermissions;
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
   const assets = yield* TemporaryAssets;
@@ -360,13 +348,6 @@ export const make: Effect.Effect<
         state: liveContext.workspaceState ?? null,
         stateProjectId: projectId,
       });
-      const workspaceBrowserRoot =
-        workspaceKind === "projectless"
-          ? (projectlessWorkspace?.workspaceRoot ??
-            state.canonical.workspaceBrowserRoot ??
-            state.snapshot?.projectlessWorkspaceBrowserRoot ??
-            null)
-          : null;
       const cwd =
         environment?.cwd ??
         preparedWorkspace.pendingWorkspace?.cwd ??
@@ -375,12 +356,9 @@ export const make: Effect.Effect<
       const workspaceRoots = projectlessWorkspace
         ? [...new Set([...liveContext.writableRoots, projectlessWorkspace.workspaceRoot])]
         : [...liveContext.writableRoots];
-      const permissionContextRoots =
-        preparedWorkspace.pendingWorkspace?.runtimeWorkspaceRoots ?? workspaceRoots;
       const preparedAgentConfig = yield* agentConfig.prepare({
         target: { kind: "existing-thread", threadId: input.threadId },
         configs: prepared.agentConfigs,
-        permissionContext: { projectId, workspaceRoots: permissionContextRoots },
       });
       const settings = state.canonical.latestThreadSettings;
       const hydration = state.canonical.hydrationContext;
@@ -391,24 +369,6 @@ export const make: Effect.Effect<
       const inheritedParams = inheritThreadSettings
         ? latestAssignedConversationTurn(state.canonical)?.params
         : null;
-      const requestedPermissionMode =
-        preparedAgentConfig.permissionMode ?? input.overrides?.permissionMode;
-      const permission =
-        preparedAgentConfig.permissionDecision ??
-        (yield* permissions.resolve({
-          projectId,
-          requestedMode: requestedPermissionMode,
-          workspaceRoots,
-        }));
-      if (input.overrides?.agentConfigPermissionMode && requestedPermissionMode) {
-        yield* Effect.try(() =>
-          validateCodexAgentConfigPermissionDecision(requestedPermissionMode, permission),
-        );
-      }
-      const turnPermissions = buildTurnPermissionOverrides({
-        permissionState: permission.state,
-        workspaceRoots,
-      });
       const fallbackCollaboration = inheritThreadSettings
         ? (nextSettings?.collaborationMode ?? state.canonical.latestCollaborationMode)
         : null;
@@ -432,38 +392,14 @@ export const make: Effect.Effect<
             : inheritedEffort;
       const mode =
         preparedAgentConfig.collaborationMode ?? input.overrides?.collaborationMode ?? null;
-      // A resolved Project mode is only a fallback. Caller permission fields and
-      // explicit default intent must survive the receiving owner's materialization.
-      const explicitPermissions =
-        requestedPermissionMode === undefined
-          ? {}
-          : requestedPermissionMode === "custom"
-            ? {
-                approvalPolicy: permission.state.approvalPolicy,
-                approvalsReviewer: permission.state.approvalsReviewer,
-                sandboxPolicy: permission.state.sandbox,
-              }
-            : turnPermissions;
-      const resolvedPermissions = yield* Effect.try({
-        try: () =>
-          resolveConversationTurnPermissions({
-            state: state.canonical,
-            request: {
-              ...explicitPermissions,
-              ...originalRequest,
-              ...(environment?.runtimeWorkspaceRoots == null
-                ? {}
-                : { runtimeWorkspaceRoots: environment.runtimeWorkspaceRoots }),
-            },
-            context: input.originalContext,
-            cwd,
-            writableRoots: workspaceRoots,
-            workspaceKind,
-            workspaceBrowserRoot,
-            workspaceTransition: preparedWorkspace.permissionTransition,
-          }),
-        catch: (cause) =>
-          new CodexTurnPreparationError({ operation: "start", threadId: input.threadId, cause }),
+      const resolvedPermissions = fullAccessTurnExecution({
+        cwd,
+        workspaceRoots,
+        runtimeWorkspaceRoots:
+          environment?.runtimeWorkspaceRoots ??
+          originalRequest?.runtimeWorkspaceRoots ??
+          state.canonical.currentPermissions?.runtimeWorkspaceRoots,
+        workspaceTransition: preparedWorkspace.workspaceTransition,
       });
       const canonicalPermissions = resolvedPermissions.permissions;
       const workspaceCommit = prepareCodexTurnWorkspaceCommit({
@@ -484,13 +420,6 @@ export const make: Effect.Effect<
           : candidate,
       );
       const hasSelectedEnvironment = (preparedEnvironments?.length ?? 0) > 0;
-      const verifiedBuiltinFullAccess =
-        permission.verifiedBuiltinFullAccess &&
-        canonicalPermissions.sandboxPolicy.type === "dangerFullAccess" &&
-        (canonicalPermissions.activePermissionProfile?.id === ":danger-full-access" ||
-          (requestedPermissionMode === "full-access" &&
-            canonicalPermissions.activePermissionProfile === null &&
-            !resolvedPermissions.params.useAppServerPermissionDefault));
       const sourceAttachments = input.originalContext?.attachments;
       const sourceComments = input.originalContext?.commentAttachments;
       if (
@@ -610,9 +539,6 @@ export const make: Effect.Effect<
         threadId: input.threadId,
         hostId: executionHostId,
         projectId,
-        verifiedBuiltinFullAccess,
-        sandboxPolicy: canonicalPermissions.sandboxPolicy,
-        planMode: (selectedCollaborationMode ?? fallbackCollaboration)?.mode === "plan",
       });
       const additionalContext = {
         ...prepared.additionalContext,
@@ -706,7 +632,6 @@ export const make: Effect.Effect<
             sandboxPolicy: resolvedPermissions.params.sandboxPolicy,
             permissions: resolvedPermissions.params.permissions,
             runtimeWorkspaceRoots: resolvedPermissions.params.runtimeWorkspaceRoots,
-            useAppServerPermissionDefault: resolvedPermissions.params.useAppServerPermissionDefault,
             serviceTier,
             multiAgentMode: "explicitRequestOnly",
             attachments:
@@ -715,15 +640,6 @@ export const make: Effect.Effect<
             commentAttachments: sourceComments ?? [...prepared.commentAttachments],
           }
         : null;
-      const effectiveCollaborationMode = selectedCollaborationMode ??
-        fallbackCollaboration ?? {
-          mode: "default" as const,
-          settings: {
-            model: model ?? "",
-            reasoning_effort: effort,
-            developer_instructions: null,
-          },
-        };
       const startedAtMs = yield* Clock.currentTimeMillis;
       return {
         ...(input.overrides?.presentationClaim
@@ -751,11 +667,7 @@ export const make: Effect.Effect<
         projectlessWorkspace,
         clientUserMessageId,
         rendererOwnsState: input.rendererOwnsState,
-        verifiedBuiltinFullAccess,
-        executionReadOnly: isNodexAgentTurnReadOnly({
-          planMode: effectiveCollaborationMode.mode === "plan",
-          sandboxPolicy: canonicalPermissions.sandboxPolicy,
-        }),
+
         promptText: prepared.promptText,
         serviceName: state.snapshot?.serviceName ?? null,
         pendingWorkspace: preparedWorkspace.pendingWorkspace,

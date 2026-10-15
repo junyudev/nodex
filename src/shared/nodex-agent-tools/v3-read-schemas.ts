@@ -52,6 +52,7 @@ export const GetContextV3InputSchema = z.strictObject({
 });
 
 export const GetContextV3DataSchema = z.strictObject({
+  libraryId: LibraryIdSchema,
   project: z
     .strictObject({
       projectId: ProjectIdSchema,
@@ -61,11 +62,6 @@ export const GetContextV3DataSchema = z.strictObject({
       boundDatabaseId: BlockIdSchema,
     })
     .nullable(),
-  access: z.strictObject({
-    read: z.enum(["allowed", "unavailable"]),
-    write: z.enum(["granted", "consent_required", "unavailable"]),
-    domains: z.array(z.enum(["page", "database"])),
-  }),
   databases: z.array(DatabaseSummaryV3Schema).optional(),
   markdownGuide: z
     .strictObject({

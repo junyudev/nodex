@@ -91,7 +91,7 @@ export function useBoardPagePropertyBindings({
     [model, properties],
   );
   const optionRegistries = usePropertyOptionRegistries({
-    accessContext: { kind: "project", projectId },
+    routingContext: { kind: "project", projectId },
     properties,
     requiredOptionIds,
   });
@@ -224,7 +224,7 @@ export function useBoardPagePropertyBindings({
               property,
               value: current?.value,
               revision: current?.revision ?? 0,
-              disabled: model.readOnlyReason !== null,
+              disabled: property.lifecycle !== "active",
               pending: pendingKeys.has(key),
               error: errors.get(key) ?? null,
               options: optionRegistries.options[property.propertyId] ?? [],
@@ -277,21 +277,21 @@ export function useBoardPagePropertyBindings({
                 ),
               onLoadRelationTargets: (after) =>
                 readDataSourceRelationTargets({
-                  accessContext: model.accessContext,
+                  routingContext: model.routingContext,
                   pageId,
                   property,
                   after,
                 }),
               onSearchRelationCandidates: (query, after) =>
                 searchDataSourceRelationCandidates({
-                  accessContext: model.accessContext,
+                  routingContext: model.routingContext,
                   property,
                   query,
                   after,
                 }),
               onLoadRelationTargetDescriptor: () =>
                 readDataSourceRelationTargetDescriptor({
-                  accessContext: model.accessContext,
+                  routingContext: model.routingContext,
                   property,
                 }),
               onOpenRelationPage,

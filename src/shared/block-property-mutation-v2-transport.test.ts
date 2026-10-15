@@ -43,7 +43,7 @@ describe("Block property mutation v2 transport binding", () => {
       },
       value: {
         mutationId: "mutation-v2-1",
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         storeEpoch: "epoch-1",
         duplicate: false,
         fields: [field],
@@ -54,7 +54,7 @@ describe("Block property mutation v2 transport binding", () => {
     });
     expect(exposed).toMatchObject({
       ok: true,
-      value: { accessContext: { kind: "library" } },
+      value: { routingContext: { kind: "library" } },
     });
     if (!exposed.ok) throw new Error(exposed.error.message);
     expect("projectId" in exposed.value).toBe(false);

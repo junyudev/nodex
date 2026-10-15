@@ -270,12 +270,7 @@ fn collect_occurrences(
         window_end_ms,
         None,
         |row| {
-            match crate::library::require_page_read_access(
-                connection,
-                library_id,
-                project_id,
-                &row.page_id,
-            ) {
+            match crate::library::require_page_read_access(connection, library_id, &row.page_id) {
                 Ok(()) => {}
                 Err(error)
                     if matches!(

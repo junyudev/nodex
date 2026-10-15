@@ -2,9 +2,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { FULL_ACCESS_PERMISSION_PROFILE_ID } from "../codex/codex-permission-resolver";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -14,7 +13,7 @@ import { CodexConversationContext } from "./CodexConversationContext";
 export class CodexTurnAuthorityError extends Schema.TaggedError<CodexTurnAuthorityError>()(
   "CodexTurnAuthorityError",
   {
-    operation: Schema.Literals(["begin", "bind", "capture", "inherit"]),
+    operation: Schema.Literals(["begin", "bind", "capture"]),
     threadId: Schema.String,
     cause: Schema.Defect(),
   },
@@ -29,14 +28,6 @@ export interface CodexTurnAuthorityLaunch {
     readonly libraryId: string;
     readonly profileId: string;
     readonly storeEpoch: string;
-    readonly scope: FrozenNodexAgentTurnAuthority["scope"];
-    readonly source: FrozenNodexAgentTurnAuthority["source"];
-    readonly permissionProfileId: string | null;
-    readonly readOnly: boolean;
-    readonly inheritedFrom?: {
-      readonly threadId: string;
-      readonly turnId: string;
-    };
   };
   boundTurnId: string | null;
   aborted: boolean;
@@ -47,8 +38,6 @@ export class CodexTurnAuthority extends Context.Service<
   {
     readonly begin: (
       threadId: string,
-      builtinFullAccess: boolean,
-      readOnly: boolean,
     ) => Effect.Effect<CodexTurnAuthorityLaunch | null, CodexTurnAuthorityError>;
     readonly bind: (
       threadId: string,
@@ -60,17 +49,11 @@ export class CodexTurnAuthority extends Context.Service<
       threadId: string,
       turnId: string,
     ) => Effect.Effect<void, CodexTurnAuthorityError>;
-    /** Resolves the exact frozen authority, binding a racing pending launch when necessary. */
+    /** Resolves the exact admitted identity, binding a racing pending launch when necessary. */
     readonly capture: (
       threadId: string,
       turnId: string,
-    ) => Effect.Effect<FrozenNodexAgentTurnAuthority | null, CodexTurnAuthorityError>;
-    /** Freezes inherited library authority for the first Turn of a spawned child. */
-    readonly inherit: (
-      threadId: string,
-      turnId: string,
-      inherited: FrozenNodexAgentTurnAuthority,
-    ) => Effect.Effect<void, CodexTurnAuthorityError>;
+    ) => Effect.Effect<NodexAgentTurnContext | null, CodexTurnAuthorityError>;
     readonly abort: (launch: CodexTurnAuthorityLaunch | null) => void;
   }
 >()("nodex/main/codex-application/CodexTurnAuthority") {}
@@ -89,29 +72,18 @@ type CoreTurnAuthority = NonNullable<
 
 const fromCoreAuthority = (
   authority: CoreTurnAuthority,
-  frozenAtMs: number,
-  readOnly: boolean,
-): FrozenNodexAgentTurnAuthority => {
-  const coordinates = {
-    threadId: authority.thread_id,
-    turnId: authority.turn_id,
-    rootThreadId: authority.root_thread_id,
-    libraryId: authority.library_id,
-    storeEpoch: authority.store_epoch,
-    frozenAtMs,
-    readOnly,
-    source: authority.source,
-  };
-  if (authority.scope === "library") {
-    return { ...coordinates, scope: "library", actorProjectId: authority.actor_project_id ?? null };
-  }
-  if (authority.actor_project_id == null) {
-    throw new Error("Core returned Project authority without an actor Project");
-  }
-  return { ...coordinates, scope: "project", actorProjectId: authority.actor_project_id };
-};
+  admittedAtMs: number,
+): NodexAgentTurnContext => ({
+  threadId: authority.thread_id,
+  turnId: authority.turn_id,
+  rootThreadId: authority.root_thread_id,
+  actorProjectId: authority.actor_project_id ?? null,
+  libraryId: authority.library_id,
+  storeEpoch: authority.store_epoch,
+  admittedAtMs,
+});
 
-/** Owns pending authority launches and freezes the exact accepted Turn directly in Core. */
+/** Owns pending launches and binds the exact accepted Turn directly in Core. */
 export const make: Effect.Effect<
   CodexTurnAuthority["Service"],
   never,
@@ -149,9 +121,6 @@ export const make: Effect.Effect<
     readonly threadId: string;
     readonly rootThreadId: string;
     readonly actorProjectId: string | null;
-    readonly builtinFullAccess: boolean;
-    readonly readOnly: boolean;
-    readonly inherited?: FrozenNodexAgentTurnAuthority;
   }) =>
     Effect.gen(function* () {
       const actorProjectId =
@@ -189,20 +158,6 @@ export const make: Effect.Effect<
           return null;
       }
 
-      const inherited = input.inherited;
-      const inheritsLibraryAuthority =
-        inherited?.scope === "library" &&
-        inherited.rootThreadId === rootThreadId &&
-        inherited.actorProjectId === actorProjectId &&
-        inherited.libraryId === coreAuthority.identity.libraryId &&
-        inherited.storeEpoch === coreAuthority.identity.storeEpoch;
-      const scope = input.builtinFullAccess || inheritsLibraryAuthority ? "library" : "project";
-      if (actorProjectId === null && scope !== "library") return null;
-      const source = input.builtinFullAccess
-        ? "builtin_full_access"
-        : inheritsLibraryAuthority
-          ? "inherited_builtin_full_access"
-          : "project_turn";
       const launch: CodexTurnAuthorityLaunch = {
         launchId: createUuidV7(),
         snapshot: {
@@ -212,18 +167,6 @@ export const make: Effect.Effect<
           libraryId: coreAuthority.identity.libraryId,
           profileId: coreAuthority.identity.profileId,
           storeEpoch: coreAuthority.identity.storeEpoch,
-          scope,
-          source,
-          readOnly: input.readOnly || (inherited?.readOnly ?? false),
-          permissionProfileId: scope === "library" ? FULL_ACCESS_PERMISSION_PROFILE_ID : null,
-          ...(inheritsLibraryAuthority && inherited
-            ? {
-                inheritedFrom: {
-                  threadId: inherited.threadId,
-                  turnId: inherited.turnId,
-                },
-              }
-            : {}),
         },
         boundTurnId: null,
         aborted: false,
@@ -234,15 +177,13 @@ export const make: Effect.Effect<
       return launch;
     });
 
-  const begin: CodexTurnAuthority["Service"]["begin"] = (threadId, builtinFullAccess, readOnly) =>
+  const begin: CodexTurnAuthority["Service"]["begin"] = (threadId) =>
     conversationContext.read(threadId).pipe(
       Effect.flatMap((lineage) =>
         beginWithLineage({
           threadId,
           rootThreadId: lineage.rootThreadId,
           actorProjectId: lineage.projectId,
-          builtinFullAccess,
-          readOnly,
         }),
       ),
       Effect.mapError((cause) =>
@@ -271,21 +212,11 @@ export const make: Effect.Effect<
           {
             operationId: `electron:turn-authority:${launch.launchId}:${turnId}`,
             intent: {
-              kind: "freeze_turn_authority",
+              kind: "admit_turn_authority",
               thread_id: launch.snapshot.threadId,
               turn_id: turnId,
               root_thread_id: launch.snapshot.rootThreadId,
               actor_project_id: launch.snapshot.actorProjectId,
-              source: launch.snapshot.source,
-              read_only: launch.snapshot.readOnly,
-              ...(launch.snapshot.inheritedFrom
-                ? {
-                    inherited_from: {
-                      thread_id: launch.snapshot.inheritedFrom.threadId,
-                      turn_id: launch.snapshot.inheritedFrom.turnId,
-                    },
-                  }
-                : {}),
             },
           },
           undefined,
@@ -392,15 +323,15 @@ export const make: Effect.Effect<
         return null;
       const resolution = yield* readResolution(coordinate);
       if (resolution.persisted) {
-        return resolution.authority && resolution.frozen_at_ms != null
-          ? fromCoreAuthority(resolution.authority, resolution.frozen_at_ms, resolution.read_only)
+        return resolution.authority && resolution.admitted_at_ms != null
+          ? fromCoreAuthority(resolution.authority, resolution.admitted_at_ms)
           : null;
       }
       if (!launch) return null;
       yield* bind(threadId, launch, turnId);
       const bound = yield* readResolution(coordinate);
-      return bound.persisted && bound.authority && bound.frozen_at_ms != null
-        ? fromCoreAuthority(bound.authority, bound.frozen_at_ms, bound.read_only)
+      return bound.persisted && bound.authority && bound.admitted_at_ms != null
+        ? fromCoreAuthority(bound.authority, bound.admitted_at_ms)
         : null;
     }).pipe(
       Effect.mapError(
@@ -409,30 +340,5 @@ export const make: Effect.Effect<
     );
   };
 
-  const inherit: CodexTurnAuthority["Service"]["inherit"] = (rawThreadId, turnId, inherited) => {
-    const threadId = normalizeIdentity(rawThreadId) ?? rawThreadId;
-    return Effect.gen(function* () {
-      const launch = yield* beginWithLineage({
-        threadId,
-        rootThreadId: inherited.rootThreadId,
-        actorProjectId: inherited.actorProjectId,
-        builtinFullAccess: false,
-        readOnly: inherited.readOnly,
-        inherited,
-      });
-      if (!launch || launch.snapshot.scope !== "library") {
-        abort(launch);
-        return;
-      }
-      yield* bind(threadId, launch, turnId).pipe(
-        Effect.onError(() => Effect.sync(() => abort(launch))),
-      );
-    }).pipe(
-      Effect.mapError(
-        (cause) => new CodexTurnAuthorityError({ operation: "inherit", threadId, cause }),
-      ),
-    );
-  };
-
-  return CodexTurnAuthority.of({ begin, bind, observeStarted, capture, inherit, abort });
+  return CodexTurnAuthority.of({ begin, bind, observeStarted, capture, abort });
 });

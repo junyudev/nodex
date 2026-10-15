@@ -24,10 +24,10 @@ import { decodeCanvasSceneSseEvent } from "../../shared/block-documents/canvas-s
 import { CoreModuleResponseError } from "./core-client";
 import { documentSessionError, unwrapDocumentSessionFailure } from "./document-session-error";
 import {
-  contentAccessContextKey,
-  type ContentAccessContext,
-  type ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  contentRoutingContextKey,
+  type ContentRoutingContext,
+  type ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 import {
   findCoreModulePayload,
   rendererLocalCommitApply,
@@ -36,7 +36,7 @@ import {
   type CoreEventEnvelope,
 } from "./types";
 
-export type CoreCanvasSceneAdapterBinding = ContentAccessIdentity;
+export type CoreCanvasSceneAdapterBinding = ContentRoutingIdentity;
 
 type CanvasFailure = Extract<CanvasSceneMutationCommandResult, { readonly ok: false }>;
 type CanvasSyncSuccess = Extract<CanvasSceneSyncCommandResult, { readonly ok: true }>;
@@ -84,23 +84,23 @@ export const createCoreCanvasSceneCommands = (
   binding: CoreCanvasSceneAdapterBinding,
   options?: CoreRequestOptions,
 ): CoreCanvasSceneCommands => {
-  const bindingAccessKey = contentAccessContextKey(binding.accessContext);
+  const bindingAccessKey = contentRoutingContextKey(binding.routingContext);
 
-  const assertBoundAccess = (accessContext: ContentAccessContext): void => {
-    if (contentAccessContextKey(accessContext) === bindingAccessKey) return;
+  const assertBoundAccess = (routingContext: ContentRoutingContext): void => {
+    if (contentRoutingContextKey(routingContext) === bindingAccessKey) return;
     throw new CanvasSceneAdapterContractError("Canvas request escaped its access boundary");
   };
 
   return {
     sync: async (request) => {
-      assertBoundAccess(request.accessContext);
+      assertBoundAccess(request.routingContext);
       const response = await client.documentCanvasSync(request, options);
       if (response.documentId !== request.documentId) {
         throw new CanvasSceneAdapterContractError("Core Canvas sync escaped its Document boundary");
       }
       if (
         response.libraryId !== binding.libraryId ||
-        contentAccessContextKey(response.accessContext) !== bindingAccessKey
+        contentRoutingContextKey(response.routingContext) !== bindingAccessKey
       ) {
         throw new CanvasSceneAdapterContractError(
           "Core Canvas sync escaped its Library or access boundary",
@@ -109,7 +109,7 @@ export const createCoreCanvasSceneCommands = (
       return { ok: true, value: response };
     },
     applyMutation: async (request) => {
-      assertBoundAccess(request.accessContext);
+      assertBoundAccess(request.routingContext);
       const canonical = canonicalizeCanvasSceneMutationRequest(request);
       const committed = await client.documentApply({
         operationId: canonical.mutationId,
@@ -136,7 +136,7 @@ export const createCoreCanvasSceneCommands = (
         value.documentId !== canonical.documentId ||
         value.mutationId !== canonical.mutationId ||
         value.libraryId !== binding.libraryId ||
-        contentAccessContextKey(value.accessContext) !== bindingAccessKey
+        contentRoutingContextKey(value.routingContext) !== bindingAccessKey
       ) {
         throw new CanvasSceneAdapterContractError(
           "Core Canvas mutation escaped its request boundary",
@@ -149,7 +149,7 @@ export const createCoreCanvasSceneCommands = (
       };
     },
     readCompaction: async (request) => {
-      assertBoundAccess(request.accessContext);
+      assertBoundAccess(request.routingContext);
       const snapshot = await client.documentRead(request.clientSessionId, {
         kind: "canvas_compaction_eligibility",
         document_id: request.documentId,
@@ -168,7 +168,7 @@ export const createCoreCanvasSceneCommands = (
       return { ok: true, value };
     },
     compact: async (request, stats) => {
-      assertBoundAccess(request.accessContext);
+      assertBoundAccess(request.routingContext);
       const committed = await client.documentApply({
         operationId: request.mutationId,
         clientSessionId: request.clientSessionId,
@@ -190,7 +190,7 @@ export const createCoreCanvasSceneCommands = (
         value.documentId !== request.documentId ||
         value.operationId !== request.mutationId ||
         value.libraryId !== binding.libraryId ||
-        contentAccessContextKey(value.accessContext) !== bindingAccessKey
+        contentRoutingContextKey(value.routingContext) !== bindingAccessKey
       ) {
         throw new CanvasSceneAdapterContractError(
           "Core Canvas compaction escaped its request boundary",
@@ -255,7 +255,7 @@ export const mapCanvasLiveEnvelope = (
     return {
       type: "canvas_scene_resync_required",
       libraryId: binding.libraryId,
-      accessContext: binding.accessContext,
+      routingContext: binding.routingContext,
       documentId: event.document_id,
       storeEpoch: envelope.packet.manifest.identity.store_epoch,
       generation: event.generation,
@@ -272,7 +272,7 @@ export const mapCanvasLiveEnvelope = (
       JSON.stringify({
         type: "canvas_scene_committed",
         libraryId: binding.libraryId,
-        accessContext: binding.accessContext,
+        routingContext: binding.routingContext,
         documentId: event.document_id,
         storeEpoch: envelope.packet.manifest.identity.store_epoch,
         generation: event.generation,
@@ -320,7 +320,7 @@ const canvasCommandError = (failure: unknown, mutationId?: string): CanvasSceneM
     };
   }
   const documentError = documentSessionError(error);
-  const code = documentError.code === "unauthorized" ? "access_scope_mismatch" : documentError.code;
+  const code = documentError.code === "invalid_session" ? "invalid_session" : documentError.code;
   return {
     code:
       code === "transport_unavailable" ||
@@ -328,7 +328,7 @@ const canvasCommandError = (failure: unknown, mutationId?: string): CanvasSceneM
       code === "request_timeout" ||
       code === "service_busy" ||
       code === "invalid_response" ||
-      code === "access_scope_mismatch"
+      code === "invalid_session"
         ? code
         : "unknown",
     message: documentError.message,
@@ -343,7 +343,7 @@ const mapCoreErrorCode = (
 ): CanvasSceneMutationError["code"] => {
   switch (code) {
     case "unauthorized":
-      return "access_scope_mismatch";
+      return "invalid_session";
     case "not_found":
       return "document_not_found";
     case "stale_store_epoch":

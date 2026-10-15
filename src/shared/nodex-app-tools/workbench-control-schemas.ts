@@ -68,7 +68,7 @@ export const workbenchControlSchemas = {
 
 const descriptions: Record<keyof typeof workbenchControlSchemas, string> = {
   open_tab:
-    "Open a semantic Page, View, Canvas, Browser URL, Files, Review or Terminal target in a group returned by list_tab_groups. Nodex resolves runtime identities and checks content access. Does not navigate another window or expose arbitrary saved layout/configuration fields.",
+    "Open a semantic Page, View, Canvas, Browser URL, Files, Review or Terminal target in a group returned by list_tab_groups. Nodex resolves runtime identities and presentation destinations. Does not navigate another window or expose arbitrary saved layout/configuration fields.",
   activate_tab: "Select an observed tab through the normal Workbench lifecycle.",
   close_tab:
     "Close an observed tab, saving its content and releasing its view attachment through the normal Workbench lifecycle. Protected primary tabs cannot close.",

@@ -213,39 +213,6 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
   }
 
-  async setResourceProjectAccess(
-    input: Parameters<ScenarioSeedPort["setResourceProjectAccess"]>[0],
-  ) {
-    const library = this.#library(input.projectId, true);
-    const state = requireSuccess(
-      await library.read({ read: { mode: "resource_project_access", target: input.target } }),
-      "Read resource access",
-    );
-    if (state.value.kind !== "resource_project_access")
-      throw new Error("Resource access response has the wrong kind");
-    const grant = state.value.value.projects.find(
-      (project) => project.projectId === input.projectId,
-    )?.directGrant;
-    requireSuccess(
-      await library.apply({
-        operationId: createUuidV7(),
-        storeEpoch: this.#runtime.identity.storeEpoch,
-        operation: {
-          kind: "set_project_access",
-          target: input.target,
-          changes: [
-            {
-              projectId: input.projectId,
-              access: input.access,
-              expectedRevision: grant?.revision ?? null,
-            },
-          ],
-        },
-      }),
-      "Set resource access",
-    );
-  }
-
   async createLibraryFile(input: ScenarioLibraryFileSeed) {
     const prepared = await this.#runtime.clientForProject(input.projectId).prepareFileBlob({
       operationId: input.operationId,

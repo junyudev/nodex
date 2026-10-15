@@ -91,7 +91,7 @@ fn has_current_binding(
 /// Canvas binding. A scene-file ID and a bare File URI are not capabilities.
 pub(super) fn authorize_additions<'a>(
     connection: &Connection,
-    context: &BoundModuleContext,
+    _context: &BoundModuleContext,
     authority: &DocumentAuthorityRow,
     files: impl IntoIterator<Item = &'a CanvasFile>,
 ) -> Result<(), StoreError> {
@@ -114,22 +114,9 @@ pub(super) fn authorize_additions<'a>(
         )? {
             continue;
         }
-        let direct = match &context.project_id {
-            Some(project) => crate::library::file_grant_authorization_proof(
-                connection,
-                &context.library_id.0,
-                &project.0,
-                &file.target_file_id,
-                false,
-            )?
-            .is_some(),
-            None => true, // The Document boundary has already checked trusted Library authority.
-        };
-        if !direct || name != file.default_name {
-            return Err(StoreError::new(
-                StoreErrorCode::Unauthorized,
-                "Canvas File binding has no matching read authority",
-                false,
+        if name != file.default_name {
+            return Err(invalid(
+                "Canvas File metadata does not match the canonical File",
             ));
         }
     }
@@ -153,18 +140,6 @@ pub(super) fn capture_recovery_target(
     }
     let current = has_current_binding(connection, &context.library_id.0, document_id, file, None)?;
     if !current {
-        if let Some(project) = &context.project_id
-            && crate::library::file_grant_authorization_proof(
-                connection,
-                &context.library_id.0,
-                &project.0,
-                &file.target_file_id,
-                false,
-            )?
-            .is_none()
-        {
-            return Ok(None);
-        }
         let name: String = connection.query_row(
             "SELECT default_name FROM library_files WHERE file_id = ?1 AND library_id = ?2",
             params![file.target_file_id, context.library_id.0],
@@ -192,7 +167,7 @@ pub(crate) fn resolve_current_target(
          WHERE owned.block_id = ?1 AND owned.library_id = ?2 AND block.type = 'canvas' AND block.lifecycle = 'active'",
         params![canvas_id, context.library_id.0], |row| row.get::<_, String>(0),
     ).optional()?.ok_or_else(|| StoreError::new(StoreErrorCode::NotFound, "Canvas is unavailable", false))?;
-    super::require_owned_document_read_access(connection, context, &document_id)?;
+    super::require_owned_document_for_live_read(connection, context, &document_id)?;
     let json = connection
         .query_row(
             "SELECT file_json FROM canvas_scene_files WHERE document_id = ?1 AND file_id = ?2",
@@ -240,7 +215,7 @@ pub(super) fn validated_revision_scene(
     document_id: &str,
     revision_id: &str,
 ) -> Result<super::canvas_scene::CanvasScene, StoreError> {
-    super::require_owned_document_read_access(connection, context, document_id)?;
+    super::require_owned_document_for_live_read(connection, context, document_id)?;
     let authority = super::read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Canvas revision lost its Document"))?;
     let version = super::history::get_document_version(connection, &authority, revision_id)?

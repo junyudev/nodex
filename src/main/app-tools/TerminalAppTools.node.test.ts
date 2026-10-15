@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { TerminalSessionSnapshot } from "../../shared/types";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -8,17 +8,14 @@ import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./TerminalAppTools";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread",
   turnId: "turn",
   rootThreadId: "thread",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  readOnly: true,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const input: AppToolInvocation = {
   name: "read_session_terminal",

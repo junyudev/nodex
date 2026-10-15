@@ -2,6 +2,26 @@
 
 ## Backup boundary
 
+Formal Profile snapshots include `nodex.db`, managed assets, the execution
+database and environment identity, execution attachments, and managed native
+history for Codex and Claude. Core Administration remains the sole owner of
+staging, complete validation, receipt commit, publication, retention, and restore
+recovery. Its injected Profile participant reads required Session roots from the
+staged Store and rejects mismatched runtime identities, missing roots, child
+Threads presented as independent Sessions, and incomplete native transcripts.
+
+Main borrows the physical execution lease after draining admitted Session
+mutations. Active, queued, provider-native background, or unknown work refuses
+capture. Native providers are closed while their history is copied. Full history
+and attachment bytes are included independently of bounded UI projections.
+Native history files and their source inventory must remain stable throughout
+capture; account configuration and authentication files are excluded.
+
+Codex and Claude keep their native continuation IDs. Restored history lives in
+the Profile's managed history closure, while authentication comes from the
+configured account. ACP/OpenCode canonical transcripts are preserved, but their
+external native persistence is not a restorable Profile-owned closure.
+
 A whole-Store backup contains the SQLite database and managed assets from one
 Core Administration boundary. Core drains admitted Store writes, blocks new
 Store work, flushes/validates authority, and creates the SQLite snapshot before
@@ -69,11 +89,14 @@ Core rejects a candidate unless it passes:
 
 ## Journaled replacement
 
-Database, WAL, and assets are one recoverable replacement. Core records and
+The execution generation is disposed before installation; a surviving execution
+writer lock rejects replacement before its first rename. Database, WAL, assets,
+and the execution/native-history directory are one recoverable replacement. Core records and
 fsyncs a replacement journal before moving live/staged pieces. Every rename and
 parent directory is fsynced. Startup recovery either restores the complete
 previous authority or finishes the complete new authority; it never mixes
-database and asset generations.
+Store, asset, and execution generations. Partial directory renames preserve both
+the complete original and staged candidate so startup can recover either safely.
 
 After installation, Core rotates the Store epoch transactionally, invalidates
 subscriptions and process-local leases, and returns a committed receipt. A

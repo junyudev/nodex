@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,9 +22,8 @@ import {
   requireRecord,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
-  waitForNativeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 
 const toolOutputRecords = (output: unknown) =>
@@ -42,7 +42,6 @@ const labeledResult = (records: Record<string, unknown>[], label: string) =>
 test("manages durable Automation definitions through native MCP across a restart", async () => {
   test.setTimeout(180_000);
   let callerSessionId = "";
-  let callerProjectId = "";
   let workspaceRoot = "";
   const selectedProjectId = createUuidV7();
   let retained: Record<string, unknown> | null = null;
@@ -62,36 +61,36 @@ test("manages durable Automation definitions through native MCP across a restart
             const tool = request.toolInvocation("functions", "exec");
             expect(tool).not.toBeNull();
             const initialScript = [
-              "text({projects:unwrap(await tools.mcp__nodex_app__list_projects({}))});",
+              "text({projects:unwrap(await app.list_projects({}))});",
               `const cronArgs = {mode:"create",kind:"cron",name:"MCP scheduled review",prompt:"Review the selected Project",rrule:"FREQ=YEARLY",projectId:${JSON.stringify(selectedProjectId)},cwds:[${JSON.stringify(workspaceRoot)}],executionEnvironment:"local",notificationPolicy:"failed_runs_only"};`,
-              "const created = unwrap(await tools.mcp__nodex_app__automation_update(cronArgs)); text({created});",
-              "text({createReplay:unwrap(await tools.mcp__nodex_app__automation_update({...cronArgs,operationId:created.operationId}))});",
-              "const viewed = unwrap(await tools.mcp__nodex_app__automation_update({mode:'view',id:created.item.id})); text({viewed});",
+              "const created = unwrap(await app.automation_update(cronArgs)); text({created});",
+              "text({createReplay:unwrap(await app.automation_update({...cronArgs,operationId:created.operationId}))});",
+              "const viewed = unwrap(await app.automation_update({mode:'view',id:created.item.id})); text({viewed});",
               "const updateArgs = {...cronArgs,mode:'update',id:viewed.item.id,expectedRevision:viewed.item.definitionRevision,status:'PAUSED',name:'MCP paused review',notificationPolicy:null};",
-              "const updated = unwrap(await tools.mcp__nodex_app__automation_update(updateArgs)); text({updated});",
-              "text({updateReplay:unwrap(await tools.mcp__nodex_app__automation_update({...updateArgs,operationId:updated.operationId}))});",
+              "const updated = unwrap(await app.automation_update(updateArgs)); text({updated});",
+              "text({updateReplay:unwrap(await app.automation_update({...updateArgs,operationId:updated.operationId}))});",
               "const heartbeatArgs = {mode:'create',kind:'heartbeat',name:'MCP follow-up',prompt:'Check this Session for progress',rrule:'FREQ=YEARLY',notificationPolicy:'failed_runs_only'};",
-              "const heartbeat = unwrap(await tools.mcp__nodex_app__automation_update(heartbeatArgs)); text({heartbeat});",
-              "text({heartbeatReplay:unwrap(await tools.mcp__nodex_app__automation_update({...heartbeatArgs,operationId:heartbeat.operationId}))});",
+              "const heartbeat = unwrap(await app.automation_update(heartbeatArgs)); text({heartbeat});",
+              "text({heartbeatReplay:unwrap(await app.automation_update({...heartbeatArgs,operationId:heartbeat.operationId}))});",
               "text({retained:{cronCreateArgs:{...cronArgs,operationId:created.operationId},cronUpdateArgs:{...updateArgs,operationId:updated.operationId},cronId:updated.item.id,cronRevision:updated.item.definitionRevision,heartbeatCreateArgs:{...heartbeatArgs,operationId:heartbeat.operationId},heartbeatId:heartbeat.item.id,heartbeatRevision:heartbeat.item.definitionRevision}});",
             ];
             const restoredScript = [
               `const retained = ${JSON.stringify(retained)};`,
-              "text({restoredCron:unwrap(await tools.mcp__nodex_app__automation_update({mode:'view',id:retained.cronId}))});",
-              "text({restoredHeartbeat:unwrap(await tools.mcp__nodex_app__automation_update({mode:'view',id:retained.heartbeatId}))});",
-              "text({restoredCreateReplay:unwrap(await tools.mcp__nodex_app__automation_update(retained.cronCreateArgs))});",
-              "text({restoredUpdateReplay:unwrap(await tools.mcp__nodex_app__automation_update(retained.cronUpdateArgs))});",
-              "text({restoredHeartbeatReplay:unwrap(await tools.mcp__nodex_app__automation_update(retained.heartbeatCreateArgs))});",
+              "text({restoredCron:unwrap(await app.automation_update({mode:'view',id:retained.cronId}))});",
+              "text({restoredHeartbeat:unwrap(await app.automation_update({mode:'view',id:retained.heartbeatId}))});",
+              "text({restoredCreateReplay:unwrap(await app.automation_update(retained.cronCreateArgs))});",
+              "text({restoredUpdateReplay:unwrap(await app.automation_update(retained.cronUpdateArgs))});",
+              "text({restoredHeartbeatReplay:unwrap(await app.automation_update(retained.heartbeatCreateArgs))});",
               "const deleteArgs = {mode:'delete',id:retained.cronId,expectedRevision:retained.cronRevision};",
-              "const deleted = unwrap(await tools.mcp__nodex_app__automation_update(deleteArgs)); text({deleted});",
-              "text({deleteReplay:unwrap(await tools.mcp__nodex_app__automation_update({...deleteArgs,operationId:deleted.operationId}))});",
+              "const deleted = unwrap(await app.automation_update(deleteArgs)); text({deleted});",
+              "text({deleteReplay:unwrap(await app.automation_update({...deleteArgs,operationId:deleted.operationId}))});",
               "const heartbeatDeleteArgs = {mode:'delete',id:retained.heartbeatId,expectedRevision:retained.heartbeatRevision};",
-              "const heartbeatDeleted = unwrap(await tools.mcp__nodex_app__automation_update(heartbeatDeleteArgs)); text({heartbeatDeleted});",
-              "text({heartbeatDeleteReplay:unwrap(await tools.mcp__nodex_app__automation_update({...heartbeatDeleteArgs,operationId:heartbeatDeleted.operationId}))});",
+              "const heartbeatDeleted = unwrap(await app.automation_update(heartbeatDeleteArgs)); text({heartbeatDeleted});",
+              "text({heartbeatDeleteReplay:unwrap(await app.automation_update({...heartbeatDeleteArgs,operationId:heartbeatDeleted.operationId}))});",
             ];
             return responses.stream([
               responses.created(`${phase}_call`),
-              responses.customToolCall(
+              nativeAppToolCall(
                 callId,
                 tool!.name,
                 [
@@ -224,8 +223,6 @@ test("manages durable Automation definitions through native MCP across a restart
           "Automation caller",
         );
         callerSessionId = draft.projectSessionId;
-        callerProjectId = draft.projectId;
-        await invokeIpc(page, "codex:permission:mode:set", callerProjectId, "full-access");
         requireCoreValue(
           await invokeIpc(page, "projects:create", {
             operationId: createBoundedOperationId("e2e.app-tools.automation.project"),
@@ -241,7 +238,16 @@ test("manages durable Automation definitions through native MCP across a restart
         );
 
         const threadId = await sendAgentPrompt(page, callerSessionId, "APP_AUTOMATION_initial");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        const initial = await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: callerSessionId, threadId },
+          60_000,
+        );
+        const providerThreadId = initial.snapshot.projection.thread.activeProviderThreadId;
+        const nativeThread = initial.snapshot.projection.providerThreads.find(
+          (candidate) => candidate.id === providerThreadId,
+        )?.nativeThreadRef;
+        expect(nativeThread).toMatchObject({ driver: "codex", nativeId: expect.any(String) });
         await waitForFinalMarker(page, "APP_AUTOMATION_OK_initial");
         const persisted = (await invokeIpc(
           page,
@@ -271,7 +277,17 @@ test("manages durable Automation definitions through native MCP across a restart
         await composer.fill("APP_AUTOMATION_restored");
         await composer.press("Enter");
         await waitForFinalMarker(page, "APP_AUTOMATION_OK_restored");
-        await waitForNativeCompletedAgentTurn(page, threadId, 60_000);
+        const restored = await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: callerSessionId, threadId },
+          60_000,
+        );
+        expect(restored.snapshot.projection.thread.activeProviderThreadId).toBe(providerThreadId);
+        expect(
+          restored.snapshot.projection.providerThreads.find(
+            (candidate) => candidate.id === providerThreadId,
+          )?.nativeThreadRef,
+        ).toEqual(nativeThread);
         expect(await invokeIpc(page, "codex:scheduled-automations:list")).toEqual({ items: [] });
       } catch (error) {
         throw new Error(

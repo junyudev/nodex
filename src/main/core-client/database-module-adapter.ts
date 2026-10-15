@@ -188,8 +188,6 @@ export const mapCoreDatabaseModuleError = (
         return "invalid_request";
       case "not_found":
         return "resource_not_found";
-      case "unauthorized":
-        return "authorization_denied";
       case "revision_conflict":
       case "generation_conflict":
       case "head_conflict":
@@ -963,7 +961,6 @@ const mapCoreDatabaseRecord = (
   lifecycle: databaseLifecycle(record.lifecycle),
   defaultViewId:
     record.default_view_id == null ? null : parseDatabaseViewId(record.default_view_id),
-  accessRevision: record.access_revision,
   metadataRevision: record.metadata_revision,
   createdAt: record.created_at,
   updatedAt: record.updated_at,
@@ -1338,8 +1335,8 @@ const hydrateCoreReadValue = async (
         valueRevision: value.value.value_revision,
         totalCount: value.value.total_count,
         targets: value.value.targets.items.map((target) =>
-          target.kind === "restricted"
-            ? { kind: "restricted" as const, edgeId: target.edge_id }
+          target.kind === "unavailable"
+            ? { kind: "unavailable" as const, edgeId: target.edge_id }
             : {
                 kind: "visible" as const,
                 edgeId: target.edge_id,
@@ -1391,7 +1388,7 @@ export const createCoreDatabaseModuleAdapter = (
   const assertBoundProject = (projectId: string): DatabaseModuleErrorV2 | null => {
     if (projectId === input.projectId) return null;
     return {
-      code: "authorization_denied",
+      code: "identity_conflict",
       message: "Database request escaped its bound Project",
       retryable: false,
     };
@@ -1413,7 +1410,6 @@ export const createCoreDatabaseModuleAdapter = (
           libraryId: input.libraryId,
           storeEpoch: snapshot.store_epoch,
           commitSeq: snapshot.commit_head,
-          authorization: snapshot.authorization ?? null,
           value,
         },
       });
@@ -1503,11 +1499,10 @@ export const createCoreLibraryDatabaseModuleAdapter = (
       return parseLibraryDatabaseModuleReadResultV2({
         ok: true,
         value: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: input.libraryId,
           storeEpoch: snapshot.store_epoch,
           commitSeq: snapshot.commit_head,
-          authorization: snapshot.authorization ?? null,
           value: await hydrateCoreReadValue(input.client, snapshot.value, input.requestOptions),
         },
       });
@@ -1544,7 +1539,7 @@ export const createCoreLibraryDatabaseModuleAdapter = (
         ok: true,
         localCommit: rendererLocalCommitApply(committed),
         value: {
-          accessContext: { kind: "library" },
+          routingContext: { kind: "library" },
           libraryId: input.libraryId,
           storeEpoch,
           ...coreReceiptEvidence(committed, operationKinds),

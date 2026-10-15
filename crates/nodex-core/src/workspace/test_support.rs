@@ -1,8 +1,6 @@
 use std::fs;
 
-use nodex_core_contracts::library::{
-    LibraryAccess, LibraryIntent, LibraryResourceTarget, LibraryWriteParent,
-};
+use nodex_core_contracts::library::{LibraryIntent, LibraryWriteParent};
 use nodex_core_contracts::workspace::{
     ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
     ProjectWorkspaceThreadPatch,
@@ -133,11 +131,7 @@ pub(super) fn create_project(
     );
 }
 
-pub(super) fn create_page_with_project_access(
-    workspace: &TestWorkspace,
-    page_id: &str,
-    project_id: &str,
-) {
+pub(super) fn create_library_page(workspace: &TestWorkspace, page_id: &str, _project_id: &str) {
     let library = LibraryModule::new("profile-1", "library-1", &workspace.kernel);
     let mut library_context = context();
     library_context.project_id = None;
@@ -157,23 +151,6 @@ pub(super) fn create_page_with_project_access(
             },
         )
         .expect("create Page");
-    library
-        .apply(
-            &library_context,
-            ModuleApplyRequest {
-                contract_version: LIBRARY_CONTRACT_VERSION,
-                operation_id: format!("grant-{project_id}-{page_id}"),
-                store_epoch: StoreEpoch("epoch-1".to_owned()),
-                intent: LibraryIntent::GrantProjectAccess {
-                    project_id: project_id.to_owned(),
-                    target: LibraryResourceTarget::Page {
-                        page_id: page_id.to_owned(),
-                    },
-                    access: LibraryAccess::ReadWrite,
-                },
-            },
-        )
-        .expect("grant Project Page access");
 }
 
 pub(super) fn create_session_thread(

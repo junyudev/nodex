@@ -14,7 +14,6 @@ import type { CodexGeneratedThreadMetadata } from "../codex/thread-title-generat
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexStructuredThreadTitle } from "./CodexStructuredThreadTitle";
 import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
-import { CodexThreadTitleAppTools } from "./CodexThreadTitleAppTools";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 
 export interface CodexAutoThreadTitleInput {
@@ -51,14 +50,12 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexStructuredThreadTitle
   | CodexThreadDescriptionPersistence
-  | CodexThreadTitleAppTools
   | CodexThreadTitlePersistence
   | Scope.Scope
 > = Effect.gen(function* () {
   const attachments = yield* CodexAttachments;
   const structuredTitle = yield* CodexStructuredThreadTitle;
   const descriptions = yield* CodexThreadDescriptionPersistence;
-  const appTools = yield* CodexThreadTitleAppTools;
   const titles = yield* CodexThreadTitlePersistence;
   const ownerScope = yield* Scope.Scope;
 
@@ -99,12 +96,6 @@ export const make: Effect.Effect<
         return;
       }
 
-      const readOnlyAppToolAllowlist = yield* appTools.discover({
-        hostId: input.hostId,
-        threadId: input.threadId,
-        prompt: generationPrompt,
-      });
-
       const restoreProvisionalTitle = titles.set({
         threadId: input.threadId,
         name: provisionalTitle,
@@ -116,7 +107,6 @@ export const make: Effect.Effect<
         hostId: input.hostId,
         prompt: generationPrompt,
         cwd: input.cwd,
-        readOnlyAppToolAllowlist,
         ...(input.serviceName?.trim() ? { serviceName: input.serviceName.trim() } : {}),
       });
 

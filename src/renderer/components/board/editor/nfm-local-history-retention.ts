@@ -1,5 +1,5 @@
 import type * as Y from "yjs";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
 import type { LibraryModuleApplyRequest } from "../../../../shared/library-module";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { applyLibraryModule } from "../../../lib/api";
@@ -8,7 +8,7 @@ import { registerDocumentHistoryRetention } from "../../../lib/document-history-
 import type { NfmTextHistoryJournal } from "./nfm-text-history-journal";
 
 interface RetentionScope {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly source: {
     readonly documentId: string;
     readonly generation: number;
@@ -19,7 +19,7 @@ interface RetentionOptions {
   readonly scope: () => RetentionScope;
   readonly apply?: typeof applyLibraryModule;
   readonly release?: (
-    access: ContentAccessContext,
+    access: ContentRoutingContext,
     request: LibraryModuleApplyRequest,
   ) => Promise<void>;
   readonly onError: (error: unknown) => void;
@@ -37,7 +37,7 @@ export class NfmLocalHistoryRetention {
   private disposed = false;
   private task: Promise<void> | undefined;
   private pending:
-    | { readonly access: ContentAccessContext; readonly request: LibraryModuleApplyRequest }
+    | { readonly access: ContentRoutingContext; readonly request: LibraryModuleApplyRequest }
     | undefined;
   private closeTask: Promise<void> | undefined;
   private readonly unregister: () => void;
@@ -60,7 +60,7 @@ export class NfmLocalHistoryRetention {
   };
 
   private request(closed: boolean) {
-    const { accessContext, source } = this.options.scope();
+    const { routingContext, source } = this.options.scope();
     const blockIds = closed ? [] : this.journal.retainedBlockIds();
     const request: LibraryModuleApplyRequest = {
       operationId: createUuidV7(),
@@ -81,7 +81,7 @@ export class NfmLocalHistoryRetention {
         },
       },
     };
-    return { access: accessContext, request };
+    return { access: routingContext, request };
   }
 
   readonly flush = (): Promise<void> => {

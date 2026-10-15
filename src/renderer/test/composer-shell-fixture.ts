@@ -384,17 +384,23 @@ function buildBackgroundConversation(): {
     statusActiveFlags: [],
     requests: [
       {
-        type: "approval",
-        requestId: "approval_fixture_active",
-        kind: "command",
+        type: "userInput",
+        requestId: "question_fixture_active",
         projectId: FIXTURE_PROJECT_ID,
         threadId: FIXTURE_THREAD_ID,
         turnId: "turn_fixture_streaming",
         itemId: "exec_fixture_streaming",
-        reason: "Foreground thread wants to run the semantic checks.",
-        command: "bun run lint",
-        cwd: FIXTURE_WORKSPACE_PATH,
+        isBlocking: true,
         createdAt: 26_000,
+        questions: [
+          {
+            id: "next",
+            header: "Next",
+            question: "Foreground thread wants to run the semantic checks.",
+            options: [],
+            isOther: false,
+          },
+        ],
       },
     ],
     turns: buildStreamingConversation().turns,
@@ -471,18 +477,23 @@ function buildBackgroundConversation(): {
     ],
     requests: [
       {
-        type: "approval",
-        requestId: "approval_fixture_background",
-        kind: "command",
+        type: "userInput",
+        requestId: "question_fixture_background",
         projectId: FIXTURE_PROJECT_ID,
         threadId: backgroundThreadId,
         turnId: "turn_fixture_background",
         itemId: "background_exec_fixture",
-        reason: "Background child wants to run the isolated request-card tests.",
-        command:
-          "bun test src/renderer/features/local-conversation/view/shared/request-cards/local-conversation-request-cards.test.tsx",
-        cwd: FIXTURE_WORKSPACE_PATH,
-        createdAt: 26_500,
+        isBlocking: true,
+        createdAt: 25_000,
+        questions: [
+          {
+            id: "next",
+            header: "Next",
+            question: "Background child wants to run the isolated request-card tests.",
+            options: [],
+            isOther: false,
+          },
+        ],
       },
     ],
   });
@@ -828,19 +839,8 @@ function buildBackgroundPermissionOptionConversation(): {
     requests: [],
     canonicalRequests: buildOptionPickerRequestConversation().canonicalRequests,
   };
-  const permissionRequest = {
-    ...REQUEST_CARD_FIXTURES.permissionRequest,
-    requestId: "permission_fixture_background",
-    threadId: childId,
-    turnId: "turn_fixture_background",
-    itemId: "user_fixture_background",
-    reason: "Worker 1 needs read access to verify the generated request matrix.",
-    createdAt: 26_500,
-  };
-  const nextChildConversation = {
-    ...childConversation,
-    requests: [permissionRequest],
-  };
+
+  const nextChildConversation = childConversation;
   return {
     conversation,
     childMemberships: background.childMemberships,
@@ -926,27 +926,7 @@ export function buildComposerShellFixture(
     availableModels,
     selectedReasoningEffort,
     reasoningEffortOptions: DEFAULT_REASONING_OPTIONS,
-    permissionMode: "auto",
-    permissionState: {
-      mode: "auto",
-      effectivePreset: "auto",
-      availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxMode: "workspace-write",
-      sandbox: {
-        type: "workspaceWrite",
-        writableRoots: [FIXTURE_WORKSPACE_PATH],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      },
-      autoReviewAvailable: true,
-      configTarget: {
-        source: "user",
-        filePath: `${FIXTURE_WORKSPACE_PATH}/.codex/config.toml`,
-      },
-    },
+
     isQueueingEnabled: false,
     composerEnterBehavior: "enter",
     composerIntent: null,

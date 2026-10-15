@@ -26,7 +26,7 @@ test("unknown delivery retains the complete captured execution intent across JSO
   const message = {
     ...captured(),
     createdAt: 42,
-    submissionOptions: { serviceTier: "fast" as const, usePermissionSelection: true },
+    submissionOptions: { serviceTier: "fast" as const },
     writingBlockAdditionalContext: {
       draft: { value: "Captured draft context", kind: "untrusted" as const },
     },
@@ -47,7 +47,7 @@ test("unknown delivery retains the complete captured execution intent across JSO
   });
   expect(readCodexQueuedMessageDeliveryReceipt(restored)?.captured).toMatchObject({
     createdAt: 42,
-    submissionOptions: { serviceTier: "fast", usePermissionSelection: true },
+    submissionOptions: { serviceTier: "fast" },
     writingBlockAdditionalContext: {
       draft: { value: "Captured draft context", kind: "untrusted" },
     },

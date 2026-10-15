@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { documentSyncApplyCommandResult } from "../../../shared/block-documents/document-sync";
 import type { DocumentSyncClientTarget } from "../../document-sync-transport";
 import {
@@ -54,7 +54,7 @@ const omitProjectScope = (value: unknown): unknown => {
 
 /** Integration test support for the real renderer boundary and final Main Effect services. */
 export const makeDesktopDocumentSessionHarness = Effect.fn("DesktopDocumentSessionHarness.make")(
-  function* (client: CoreGenerationClient, scope: ContentAccessContext) {
+  function* (client: CoreGenerationClient, scope: ContentRoutingContext) {
     const access = CoreSessionAccess.of({
       handshake: Effect.succeed(client.handshake),
       use: (operation, run, options) =>

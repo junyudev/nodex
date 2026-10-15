@@ -2,9 +2,6 @@ import type { DocumentSyncRealtimeEvent } from "../../shared/block-documents/doc
 import {
   projectionMessageFromDelivery,
   projectionScopeCanReceive,
-  revocationsFromVisibilityDelta,
-  revocationMessageFromDelivery,
-  revocationScopeCanReceive,
   type AuthorizedDeliveryPacket,
   type LocalCommitApply,
 } from "../../shared/local-commit-delivery";
@@ -13,20 +10,14 @@ import {
   type ProjectionScope,
   type ProjectionStreamMessage,
 } from "../../shared/projection-stream";
-import type { ResourceRevocationMessage } from "../../shared/resource-revocation-stream";
 import {
   deliveryAddressProjectionScope,
   type AddressReset,
   type DeliveryAddress,
 } from "../../shared/recipient-delivery";
-import {
-  AuthorityFreshnessIndex,
-  rendererAuthorityFreshnessIndex,
-} from "./authority-freshness-index";
 import { mapWithConcurrency } from "./map-with-concurrency";
 
 type ProjectionListener = (message: ProjectionStreamMessage) => void;
-type RevocationListener = (message: ResourceRevocationMessage) => void;
 type DocumentListener = (event: DocumentSyncRealtimeEvent) => void;
 type Atom = AuthorizedDeliveryPacket["atoms"][number];
 type AtomListener = (packet: AuthorizedDeliveryPacket, atom: Atom) => void;
@@ -79,7 +70,7 @@ const sha256Hex = async (bytes: Uint8Array): Promise<string> => {
 const validatePacket = (packet: AuthorizedDeliveryPacket): void => {
   const identity = packet.manifest.identity;
   if (
-    packet.packet_version !== 4 ||
+    packet.packet_version !== 5 ||
     !identity.store_epoch ||
     identity.store_epoch !== identity.store_epoch.trim() ||
     !Number.isSafeInteger(identity.commit_seq) ||
@@ -90,16 +81,10 @@ const validatePacket = (packet: AuthorizedDeliveryPacket): void => {
     throw new TypeError("Authorized local commit packet identity is invalid");
   }
   if (
-    !packet.authorization_scope.library_id ||
-    packet.authorization_scope.library_id !== packet.authorization_scope.library_id.trim()
+    !packet.delivery_address.library_id ||
+    packet.delivery_address.library_id !== packet.delivery_address.library_id.trim()
   ) {
     throw new TypeError("Authorized local commit packet scope is invalid");
-  }
-  if (
-    authorizationScopeKey(packet.delivery_address) !==
-    authorizationScopeKey(packet.authorization_scope)
-  ) {
-    throw new TypeError("Authorized local commit packet address is invalid");
   }
   const atomIds = packet.atoms.map((atom) => atom.descriptor.atom_id);
   const documentOrders = packet.document_effects.map((effect) => effect.reference.effect_order);
@@ -120,7 +105,7 @@ const validatePacket = (packet: AuthorizedDeliveryPacket): void => {
 const projectionScopeFromPacket = (packet: AuthorizedDeliveryPacket): ProjectionScope | null =>
   deliveryAddressProjectionScope(packet.delivery_address);
 
-const authorizationScopeKey = (scope: AuthorizedDeliveryPacket["authorization_scope"]): string =>
+const deliveryAddressKey = (scope: AuthorizedDeliveryPacket["delivery_address"]): string =>
   scope.kind === "library"
     ? JSON.stringify(["library", scope.library_id])
     : scope.kind === "project"
@@ -168,23 +153,12 @@ const projectionDeliveryClaim = (
   fingerprint: effectHash,
 });
 
-const visibilityClaim = (
-  delta: AuthorizedDeliveryPacket["visibility_deltas"][number],
-): { readonly key: string; readonly fingerprint: string } => ({
-  key: JSON.stringify([
-    authorizationScopeKey(delta.authorization_scope),
-    "visibility",
-    delta.delta_hash,
-  ]),
-  fingerprint: JSON.stringify([delta.change, delta.roots]),
-});
-
 const atomClaim = (
   packet: AuthorizedDeliveryPacket,
   atom: Atom,
 ): { readonly key: string; readonly fingerprint: string } => ({
   key: JSON.stringify([
-    authorizationScopeKey(packet.authorization_scope),
+    deliveryAddressKey(packet.delivery_address),
     "atom",
     atom.descriptor.atom_id,
   ]),
@@ -260,10 +234,8 @@ export class RendererLocalCommitIngress {
   readonly #remembered = new Map<string, RememberedCommit>();
   readonly #rememberedAddressResets = new Map<string, string>();
   readonly #projectionListeners = new Map<string, Set<ProjectionListener>>();
-  readonly #revocationListeners = new Map<string, Set<RevocationListener>>();
   readonly #documentListeners = new Map<string, Set<DocumentListener>>();
   readonly #atomListeners = new Set<AtomListener>();
-  readonly #authorityFreshnessIndex: AuthorityFreshnessIndex | undefined;
   readonly #onListenerError: ((error: unknown) => void) | undefined;
   #inFlightAdmissions = 0;
 
@@ -272,7 +244,6 @@ export class RendererLocalCommitIngress {
       readonly maxRememberedCommits?: number;
       readonly maxInFlightAdmissions?: number;
       readonly onListenerError?: (error: unknown) => void;
-      readonly authorityFreshnessIndex?: AuthorityFreshnessIndex;
     } = {},
   ) {
     this.#maxRememberedCommits = Math.max(
@@ -284,7 +255,6 @@ export class RendererLocalCommitIngress {
       Math.floor(input.maxInFlightAdmissions ?? DEFAULT_MAX_IN_FLIGHT_ADMISSIONS),
     );
     this.#onListenerError = input.onListenerError;
-    this.#authorityFreshnessIndex = input.authorityFreshnessIndex;
   }
 
   async admitApply(apply: LocalCommitApply): Promise<RendererLocalCommitAdmission> {
@@ -318,16 +288,13 @@ export class RendererLocalCommitIngress {
       !HASH_PATTERN.test(reset.recipient_lease_id) ||
       !reset.store_epoch ||
       !Number.isSafeInteger(reset.required_commit_seq) ||
-      reset.required_commit_seq < 0 ||
-      authorizationScopeKey(reset.delivery_address) !==
-        authorizationScopeKey(reset.authorization_scope)
+      reset.required_commit_seq < 0
     ) {
       throw new TypeError("Recipient address reset is invalid");
     }
     const fingerprint = JSON.stringify([
       reset.recipient_lease_id,
-      authorizationScopeKey(reset.delivery_address),
-      authorizationScopeKey(reset.authorization_scope),
+      deliveryAddressKey(reset.delivery_address),
       reset.store_epoch,
       reset.required_commit_seq,
       reset.reason,
@@ -341,11 +308,6 @@ export class RendererLocalCommitIngress {
       throw new Error(`Recipient address reset identity collision for ${reset.reset_id}`);
     }
     this.#touchAddressReset(reset.reset_id, fingerprint);
-    this.#authorityFreshnessIndex?.admitAddressReset({
-      deliveryAddress: reset.delivery_address,
-      storeEpoch: reset.store_epoch,
-      requiredCommitSeq: reset.required_commit_seq,
-    });
     this.#resetAddress(
       reset.delivery_address,
       {
@@ -360,10 +322,6 @@ export class RendererLocalCommitIngress {
 
   subscribeProjection(scope: ProjectionScope, listener: ProjectionListener): () => void {
     return this.#subscribe(this.#projectionListeners, projectionScopeKey(scope), listener);
-  }
-
-  subscribeRevocation(scope: ProjectionScope, listener: RevocationListener): () => void {
-    return this.#subscribe(this.#revocationListeners, projectionScopeKey(scope), listener);
   }
 
   subscribeDocument(documentId: string, listener: DocumentListener): () => void {
@@ -410,9 +368,6 @@ export class RendererLocalCommitIngress {
     // Validate every claim against an isolated draft before publishing any
     // callback. A divergent claim must reject the packet atomically instead
     // of exposing a valid prefix and poisoning later replay.
-    const novelVisibilityDeltas = packet.visibility_deltas.filter((delta) =>
-      this.#rememberClaim(state, visibilityClaim(delta)),
-    );
     const novelDocuments = preparedDocuments.filter((prepared) =>
       this.#rememberClaim(state, prepared),
     );
@@ -438,62 +393,11 @@ export class RendererLocalCommitIngress {
     const novelAtoms = packet.atoms.filter((atom) =>
       this.#rememberClaim(state, atomClaim(packet, atom)),
     );
-    const admitted =
-      novelVisibilityDeltas.length +
-      novelDocuments.length +
-      novelProjections.length +
-      novelAtoms.length;
+    const admitted = novelDocuments.length + novelProjections.length + novelAtoms.length;
 
     this.#remembered.set(commitKey, state);
     this.#touch(commitKey, state);
 
-    for (const delta of novelVisibilityDeltas) {
-      this.#authorityFreshnessIndex?.admitVisibility({
-        deliveryAddress: packet.delivery_address,
-        storeEpoch: identity.store_epoch,
-        commitSeq: identity.commit_seq,
-        change: delta.change.kind,
-        roots: delta.roots,
-      });
-    }
-
-    const conservativeReset = novelVisibilityDeltas.find(
-      (delta) => delta.change.kind === "conservative_reset",
-    );
-    if (conservativeReset) {
-      this.#resetAddress(
-        packet.delivery_address,
-        {
-          storeEpoch: identity.store_epoch,
-          commitSeq: identity.commit_seq,
-        },
-        "recipient_delivery_failed",
-      );
-      return { kind: remembered ? "enriched" : "accepted", commitKey };
-    }
-
-    // Authorization loss is admitted before any post-state content in the
-    // same packet, so stale surfaces cannot observe a later content callback.
-    for (const delta of novelVisibilityDeltas) {
-      const scope =
-        delta.authorization_scope.kind === "library"
-          ? {
-              kind: "library" as const,
-              libraryId: delta.authorization_scope.library_id,
-            }
-          : delta.authorization_scope.kind === "project"
-            ? {
-                kind: "project" as const,
-                libraryId: delta.authorization_scope.library_id,
-                projectId: delta.authorization_scope.project_id,
-              }
-            : null;
-      if (!scope) continue;
-      for (const revocation of revocationsFromVisibilityDelta(delta)) {
-        if (!revocationScopeCanReceive(scope, revocation)) continue;
-        this.#publishRevocation(scope, revocationMessageFromDelivery(packet, revocation, scope));
-      }
-    }
     for (const prepared of novelDocuments) {
       this.#publishDocument(prepared.event.documentId, prepared.event);
     }
@@ -554,12 +458,6 @@ export class RendererLocalCommitIngress {
     }
   }
 
-  #publishRevocation(scope: ProjectionScope, message: ResourceRevocationMessage): void {
-    for (const listener of this.#revocationListeners.get(projectionScopeKey(scope)) ?? []) {
-      this.#deliver(() => listener(message));
-    }
-  }
-
   #publishDocument(documentId: string, event: DocumentSyncRealtimeEvent): void {
     for (const listener of this.#documentListeners.get(documentId) ?? []) {
       this.#deliver(() => listener(event));
@@ -579,13 +477,6 @@ export class RendererLocalCommitIngress {
       scope,
       stream: floor,
       reason: reason === "store_epoch_changed" ? "store_epoch_changed" : "event_gap",
-    });
-    this.#publishRevocation(scope, {
-      version: 1,
-      kind: "reset",
-      scope,
-      stream: floor,
-      reason,
     });
   }
 
@@ -612,9 +503,7 @@ export class RendererLocalCommitIngress {
   }
 }
 
-export const rendererLocalCommitIngress = new RendererLocalCommitIngress({
-  authorityFreshnessIndex: rendererAuthorityFreshnessIndex,
-});
+export const rendererLocalCommitIngress = new RendererLocalCommitIngress();
 
 export const admitLocalCommitApply = async (
   apply: LocalCommitApply,

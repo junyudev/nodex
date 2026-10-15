@@ -65,11 +65,7 @@ function capture(
   };
   const preparation = canonicalResumePreparation(null, {
     cwd: "/workspace",
-    permissions: {
-      ...selected,
-      activePermissionProfile: null,
-      runtimeWorkspaceRoots: ["/workspace"],
-    },
+    runtimeWorkspaceRoots: ["/workspace"],
   });
   const request = buildConversationResumeRequest({
     ...options,
@@ -89,35 +85,8 @@ function capture(
   });
 }
 
-test.each(["local", "durable"])(
-  "explicit named permissions infer only server-confirmed roots on %s",
-  (hostId) => {
-    const result = resolveConversationResumePermissions(
-      response(),
-      capture(hostId, "active", { permissions: selected }),
-    );
-    expect(result.runtimeWorkspaceRoots).toEqual(["/workspace", "/selected"]);
-    expect(result.activePermissionProfile?.id).toBe("server");
-    expect(result.approvalPolicy).toBe("on-request");
-  },
-);
-
-test.each(["local", "durable"])(
-  "server-default resume uses workspace candidates instead of explicit profile roots on %s",
-  (hostId) => {
-    const context = capture(hostId, "active", {
-      permissions: selected,
-      useAppServerPermissionDefault: true,
-    });
-    expect(context.runtimeWorkspaceRootCandidates).toEqual(["/workspace"]);
-    expect(resolveConversationResumePermissions(response(), context).runtimeWorkspaceRoots).toEqual(
-      ["/workspace"],
-    );
-  },
-);
-
 test.each([
-  { status: "active" as const, roots: [] },
+  { status: "active" as const, roots: ["/workspace"] },
   { status: "idle" as const, roots: ["/workspace"] },
 ])("implicit durable resume respects the pre-request $status state", ({ status, roots }) => {
   expect(
@@ -128,20 +97,9 @@ test.each([
 
 test("preserving durable configuration disables inference and retains no prepared runtime grants", () => {
   const context = capture("durable", "idle", {
-    permissions: selected,
     preserveServerConfiguration: true,
   });
   expect(context.requestedPermissions.runtimeWorkspaceRoots).toEqual([]);
-  expect(context.runtimeWorkspaceRootCandidates).toBeNull();
-  expect(resolveConversationResumePermissions(response(), context).runtimeWorkspaceRoots).toEqual(
-    [],
-  );
-});
-
-test("an explicitly sent legacy sandbox does not infer profile roots", () => {
-  const context = capture("local", "idle", {
-    permissions: { ...selected, activePermissionProfile: null },
-  });
   expect(context.runtimeWorkspaceRootCandidates).toBeNull();
   expect(resolveConversationResumePermissions(response(), context).runtimeWorkspaceRoots).toEqual(
     [],
@@ -212,15 +170,6 @@ test("inferred roots use exact path equivalence without granting descendants or 
   expect(result.runtimeWorkspaceRoots).toEqual(["C:\\Repo\\Shared", "/Linux/Case"]);
 });
 
-test("preparation captures permission evidence before caller mutations", () => {
-  const permissions = { ...structuredClone(selected) };
-  const context = capture("local", "idle", { permissions });
-  permissions.runtimeWorkspaceRoots = ["/changed"];
-  permissions.activePermissionProfile = null;
-  expect(context.requestedPermissions).toEqual(selected);
-  expect(context.runtimeWorkspaceRootCandidates).toEqual(selected.runtimeWorkspaceRoots);
-});
-
 test("projectless resume keeps empty runtime roots when the old cwd has no reusable workspace", () => {
   const thread = { ...buildAgentActivityV2CorpusThread([]), cwd: "/projectless-old" };
   const base = createCodexCanonicalHydratedConversationState(thread, {
@@ -248,25 +197,12 @@ test("projectless resume keeps empty runtime roots when the old cwd has no reusa
   const preparation = canonicalResumePreparation(state, {
     cwd: "/projectless-old",
     metadataCwd: "/projectless-old",
-    permissions: {
-      activePermissionProfile: null,
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: [],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      },
-      runtimeWorkspaceRoots: [],
-    },
+    runtimeWorkspaceRoots: [],
   });
 
   expect(preparation.overrides.cwd).toBe("/projectless-old");
-  expect(preparation.permissions.runtimeWorkspaceRoots).toEqual([]);
+  expect(preparation.overrides.runtimeWorkspaceRoots).toEqual(["/projectless-old"]);
   expect(preparation.resumeWorkspaceRoots).toEqual(["/projectless-old"]);
-  expect(preparation.permissionWorkspaceRoots).toEqual([]);
 });
 
 test("projectless resume prefers the workspace browser root over an obsolete cwd", () => {
@@ -296,25 +232,12 @@ test("projectless resume prefers the workspace browser root over an obsolete cwd
   const preparation = canonicalResumePreparation(state, {
     cwd: "/projectless-old",
     metadataCwd: "/projectless-old",
-    permissions: {
-      activePermissionProfile: null,
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: [],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      },
-      runtimeWorkspaceRoots: [],
-    },
+    runtimeWorkspaceRoots: [],
   });
 
   expect(preparation.overrides.cwd).toBe("/workspace/browser");
-  expect(preparation.permissions.runtimeWorkspaceRoots).toEqual(["/workspace/browser"]);
+  expect(preparation.overrides.runtimeWorkspaceRoots).toEqual(["/workspace/browser"]);
   expect(preparation.resumeWorkspaceRoots).toEqual(["/workspace/browser"]);
-  expect(preparation.permissionWorkspaceRoots).toEqual(["/workspace/browser"]);
 });
 
 test("an applied workspace stays authoritative while a projectless move is still pending", () => {
@@ -346,19 +269,7 @@ test("an applied workspace stays authoritative while a projectless move is still
     cwd: "/new-projectless",
     metadataCwd: "/new-projectless",
     resumeWorkspaceRoots: ["/new-projectless"],
-    permissions: {
-      activePermissionProfile: null,
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: ["/old-project"],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      },
-      runtimeWorkspaceRoots: ["/old-project"],
-    },
+    runtimeWorkspaceRoots: ["/old-project"],
     appliedWorkspace: {
       cwd: "/old-project",
       runtimeWorkspaceRoots: ["/old-project"],
@@ -367,7 +278,7 @@ test("an applied workspace stays authoritative while a projectless move is still
 
   expect(preparation.overrides.cwd).toBe("/old-project");
   expect(preparation.resumeWorkspaceRoots).toEqual(["/old-project"]);
-  expect(preparation.permissionWorkspaceRoots).toEqual(["/old-project"]);
+  expect(preparation.overrides.runtimeWorkspaceRoots).toEqual(["/old-project"]);
 });
 
 test("resume refreshes resident Turn fields while keeping profile grants, output and presentation overlays separate", () => {

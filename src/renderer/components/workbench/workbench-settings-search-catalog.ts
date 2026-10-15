@@ -209,7 +209,6 @@ export const SETTINGS_SEARCH_PANELS = {
         title: "Notifications",
         entries: [
           entry("Turn completion notifications", "Set when agent alerts you that it's finished.", [
-            "Enable permission notifications",
             "Enable question notifications",
             "Show alerts when notification permissions are required",
             "Show alerts when input is needed to continue",

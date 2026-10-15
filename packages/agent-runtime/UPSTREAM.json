@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/pingdotgg/t3code",
+  "revision": "5753207d",
+  "scope": "V2 Agent Runtime, provider adapters, dependency closure and replay verification",
+  "license": "MIT"
+}

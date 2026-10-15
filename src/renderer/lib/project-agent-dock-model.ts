@@ -2,14 +2,22 @@ import type { ProjectSessionSummary } from "../../shared/types";
 import type { CodexPendingWorktreeEntry } from "../../shared/codex-pending-worktree";
 import type { WorkbenchAgentDockState } from "../../shared/workbench-scene";
 import { sortProjectSessionSummariesForSidebar } from "./project-session-query-cache";
+import type { SessionLiveIndicator } from "./session-execution";
 
 export type ProjectAgentDockAttention = "none" | "activity" | "request";
-export type ProjectAgentDockChatIndicator = "idle" | "running" | "unread" | "needs-attention";
+export type ProjectAgentDockChatIndicator =
+  | "idle"
+  | "running"
+  | "background"
+  | "unread"
+  | "needs-attention";
 
 export interface ProjectAgentDockTargetRow {
   readonly id: string;
   readonly kind: "new" | "session";
   readonly sessionId: string | null;
+  /** Present for Runtime-bound Sessions, whose live status comes from Session activity. */
+  readonly runtimeSessionId: string | null;
   readonly label: string;
   readonly preview: string | null;
   readonly selected: boolean;
@@ -108,12 +116,22 @@ function indicatorForSession(session: ProjectSessionSummary): ProjectAgentDockCh
   return "idle";
 }
 
-function attentionForIndicator(
+export function attentionForIndicator(
   indicator: ProjectAgentDockChatIndicator,
 ): ProjectAgentDockAttention {
   if (indicator === "needs-attention") return "request";
-  if (indicator === "running" || indicator === "unread") return "activity";
+  if (indicator === "running" || indicator === "background" || indicator === "unread")
+    return "activity";
   return "none";
+}
+
+/** Runtime activity overrides the Core-derived indicator; idle Runtime chats keep unread state. */
+export function resolveProjectAgentDockLiveIndicator(
+  row: Pick<ProjectAgentDockTargetRow, "indicator" | "runtimeSessionId">,
+  live: SessionLiveIndicator | null,
+): ProjectAgentDockChatIndicator {
+  if (!row.runtimeSessionId || !live) return row.indicator;
+  return live === "waiting" ? "needs-attention" : live;
 }
 
 function sessionRow(
@@ -125,6 +143,7 @@ function sessionRow(
     id: `session:${session.id}`,
     kind: "session",
     sessionId: session.id,
+    runtimeSessionId: session.executionRef ? session.id : null,
     label: session.displayTitle || session.noThreadFallbackTitle || "New chat",
     preview: session.thread?.threadPreview.trim() || null,
     selected: session.id === selectedSessionId,
@@ -138,6 +157,7 @@ function newChatRow(selected: boolean): ProjectAgentDockTargetRow {
     id: "new",
     kind: "new",
     sessionId: null,
+    runtimeSessionId: null,
     label: "New chat",
     preview: null,
     selected,

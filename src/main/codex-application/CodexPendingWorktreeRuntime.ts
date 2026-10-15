@@ -25,7 +25,7 @@ import {
   canCreateCodexPendingWorktreeSetupRepair,
   CODEX_PENDING_WORKTREE_SETUP_REPAIR_LABEL,
 } from "../../shared/codex-pending-worktree";
-import type { CodexAgentMode } from "../../shared/types";
+
 import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
 import { expandCodexDynamicCreateConfigProfile } from "../codex/codex-dynamic-create-config";
 import { allocateCodexPendingWorktreeRequest } from "../codex/codex-pending-worktree-request";
@@ -83,7 +83,6 @@ export class CodexPendingWorktreeRuntime extends Context.Service<
     readonly createSetupRepair: (
       hostId: string,
       pendingWorktreeId: string,
-      agentMode: CodexAgentMode,
     ) => Effect.Effect<CodexPendingWorktreeCreateResult, CodexPendingWorktreeRuntimeError>;
     readonly retry: (pendingWorktreeId: string) => Effect.Effect<void>;
     readonly workLocally: (
@@ -592,7 +591,6 @@ export const make: Effect.Effect<
   const createSetupRepair = Effect.fn("CodexPendingWorktreeRuntime.createSetupRepair")(function* (
     hostId: string,
     pendingWorktreeId: string,
-    agentMode: CodexAgentMode,
   ) {
     const entry = state.entriesById.get(pendingWorktreeId);
     if (!entry || entry.hostId !== hostId || !canCreateCodexPendingWorktreeSetupRepair(entry)) {
@@ -634,8 +632,7 @@ export const make: Effect.Effect<
         cwd: entry.sourceWorkspaceRoot,
         fileAttachments: [],
         addedFiles: [],
-        agentMode,
-        shouldSendPermissionOverrides: true,
+
         model: null,
         serviceTier: null,
         reasoningEffort: null,

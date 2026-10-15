@@ -195,67 +195,82 @@ describe("Database View Block drop command", () => {
     }
   });
 
-  test("the View reverses each authoritative opposite without resubmitting the drop", async () => {
-    const unregister = source();
-    const history = createDatabaseViewMutationHistory("view-1");
-    mocks.transferBlocks.mockResolvedValue(success("promotion"));
-    mocks.applyLibraryModule.mockImplementation(async (_access, request) => ({
-      ok: true,
-      value: {
-        structuralEdit: {
-          documentCommits,
-          history: {
-            recipeOperationId: `inverse:${request.operation.token.recipeOperationId}`,
-            recipeHash: "recipe:inverse",
-            storeEpoch: "epoch-1",
+  test.each(["project-1", null])(
+    "the View in route %s reverses each authoritative opposite without resubmitting the drop",
+    async (projectId) => {
+      const unregister = source();
+      const history = createDatabaseViewMutationHistory("view-1");
+      mocks.transferBlocks.mockResolvedValue({
+        ...success("promotion"),
+        value: { ...success("promotion").value, projectId },
+      });
+      mocks.applyLibraryModule.mockImplementation(async (_access, request) => ({
+        ok: true,
+        value: {
+          structuralEdit: {
+            documentCommits,
+            history: {
+              recipeOperationId: `inverse:${request.operation.token.recipeOperationId}`,
+              recipeHash: "recipe:inverse",
+              storeEpoch: "epoch-1",
+            },
           },
         },
-      },
-    }));
-    try {
-      expect(await commitDatabaseViewBlockDrop(inputFor(history))).toBe(true);
-      for (const direction of ["undo", "redo", "undo"] as const) {
-        expect((await history.request(direction).result).status).toBe("committed");
-      }
-      expect(
-        mocks.applyLibraryModule.mock.calls.map(([access, request]) => ({
-          access,
-          token: request.operation.token.recipeOperationId,
-        })),
-      ).toEqual([
-        { access: { kind: "project", projectId: "project-1" }, token: "promotion" },
-        { access: { kind: "project", projectId: "project-1" }, token: "inverse:promotion" },
-        { access: { kind: "project", projectId: "project-1" }, token: "inverse:inverse:promotion" },
-      ]);
-      expect(mocks.transferBlocks).toHaveBeenCalledTimes(1);
-      expect(mocks.undoBlockTransfer).not.toHaveBeenCalled();
-      expect(mocks.control).not.toHaveBeenCalled();
-      history.close();
-      await vi.waitFor(() =>
-        expect(mocks.control).toHaveBeenCalledWith(
-          "editor-history:release",
-          { kind: "project", projectId: "project-1" },
-          expect.objectContaining({
-            operation: {
-              kind: "apply_structural_edit",
-              command: {
-                kind: "release_history",
-                tokens: [
-                  {
-                    recipeOperationId: "inverse:inverse:inverse:promotion",
-                    recipeHash: "recipe:inverse",
-                    storeEpoch: "epoch-1",
-                  },
-                ],
+      }));
+      try {
+        expect(await commitDatabaseViewBlockDrop({ ...inputFor(history), projectId })).toBe(true);
+        for (const direction of ["undo", "redo", "undo"] as const) {
+          expect((await history.request(direction).result).status).toBe("committed");
+        }
+        expect(
+          mocks.applyLibraryModule.mock.calls.map(([access, request]) => ({
+            access,
+            token: request.operation.token.recipeOperationId,
+          })),
+        ).toEqual([
+          {
+            access: projectId === null ? { kind: "library" } : { kind: "project", projectId },
+            token: "promotion",
+          },
+          {
+            access: projectId === null ? { kind: "library" } : { kind: "project", projectId },
+            token: "inverse:promotion",
+          },
+          {
+            access: projectId === null ? { kind: "library" } : { kind: "project", projectId },
+            token: "inverse:inverse:promotion",
+          },
+        ]);
+        expect(mocks.transferBlocks).toHaveBeenCalledTimes(1);
+        expect(mocks.undoBlockTransfer).not.toHaveBeenCalled();
+        expect(mocks.control).not.toHaveBeenCalled();
+        history.close();
+        await vi.waitFor(() =>
+          expect(mocks.control).toHaveBeenCalledWith(
+            "editor-history:release",
+            projectId === null ? { kind: "library" } : { kind: "project", projectId },
+            expect.objectContaining({
+              operation: {
+                kind: "apply_structural_edit",
+                command: {
+                  kind: "release_history",
+                  tokens: [
+                    {
+                      recipeOperationId: "inverse:inverse:inverse:promotion",
+                      recipeHash: "recipe:inverse",
+                      storeEpoch: "epoch-1",
+                    },
+                  ],
+                },
               },
-            },
-          }),
-        ),
-      );
-    } finally {
-      unregister();
-    }
-  });
+            }),
+          ),
+        );
+      } finally {
+        unregister();
+      }
+    },
+  );
 
   test("each Undo and Redo waits for pending local Document saves before replacing addresses", async () => {
     let completeSave = () => {};

@@ -1,13 +1,11 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { AgentConversationSnapshot } from "../../shared/agent-conversation";
-import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { CodexReadThreadHistory } from "../codex-application/CodexReadThreadHistory";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { make, readAcpHistoryPage, type SessionHistoryInput } from "./SessionObservation";
+import { make, type SessionHistoryInput } from "./SessionObservation";
 
 const input: SessionHistoryInput = {
   sessionId: "session:a",
@@ -54,7 +52,6 @@ const snapshot = (
 const setup = (options: {
   read: CoreModules["Service"]["workspace"]["read"];
   codexRead?: CodexReadThreadHistory["Service"]["read"];
-  acpRead?: AgentBackendApplication["Service"]["readAgentSession"];
   directoryRead?: CodexThreadDirectory["Service"]["resolve"];
 }) =>
   make.pipe(
@@ -65,9 +62,6 @@ const setup = (options: {
     Effect.provideService(CodexReadThreadHistory, {
       read: options.codexRead ?? (() => Effect.die("Codex history must not be read")),
     }),
-    Effect.provideService(AgentBackendApplication, {
-      readAgentSession: options.acpRead ?? (() => Effect.die("ACP history must not be read")),
-    } as never),
   );
 
 it.effect(
@@ -122,83 +116,13 @@ it.effect("distinguishes empty drafts from unloaded ACP history without creating
     });
     const acp = yield* setup({
       read: () => Effect.succeed(snapshot("acp")),
-      acpRead: () => Effect.succeed(null),
     });
     assert.deepStrictEqual((yield* acp.read(input, provenance)).history, {
       availability: "unavailable",
       reason: "backend_not_loaded",
     });
-    const loaded = yield* setup({
-      read: () => Effect.succeed(snapshot("acp")),
-      acpRead: () =>
-        Effect.succeed({
-          snapshot: {
-            backend: "acp",
-            threadId: "thread:a",
-            sessionId: "acp:a",
-            revision: 1,
-            status: "idle",
-            error: null,
-            turns: [],
-          },
-        } as never),
-    });
-    const loadedResult = yield* loaded.read(input, provenance);
-    assert.strictEqual(loadedResult.backend, "acp");
-    assert.deepInclude(loadedResult.history, { availability: "available", coverage: "retained" });
   }),
 );
-
-it("bounds ACP pages and outputs and rejects cursors after snapshot changes", () => {
-  const acp: AgentConversationSnapshot = {
-    backend: "acp",
-    threadId: "thread:a",
-    sessionId: "acp:a",
-    status: "idle",
-    error: null,
-    revision: 4,
-    turns: [1, 2].map((sequence) => ({
-      sequence,
-      clientUserMessageId: null,
-      promptText: "Long prompt text",
-      stopReason: "end_turn",
-      updates: [
-        {
-          kind: "tool-call",
-          key: "tool",
-          toolCallId: "tool",
-          title: "Read",
-          name: null,
-          toolKind: "read",
-          status: "completed",
-          detail: "Long output text",
-          locations: [],
-        },
-      ],
-    })),
-  };
-  const first = readAcpHistoryPage(acp, input)!;
-  assert.deepStrictEqual(
-    first.turns.map((turn) => turn.sequence),
-    [2],
-  );
-  assert.strictEqual(first.turns[0]?.prompt, "Long pr…");
-  assert.deepStrictEqual(first.turns[0]?.items, [
-    { kind: "tool-call", id: "tool", title: "Read", status: "completed" },
-  ]);
-  const cursor = first.page.nextCursor!;
-  const older = readAcpHistoryPage(acp, { ...input, cursor, includeOutputs: true })!;
-  assert.deepStrictEqual(
-    older.turns.map((turn) => turn.sequence),
-    [1],
-  );
-  assert.deepStrictEqual(older.turns[0]?.items, [
-    { kind: "tool-call", id: "tool", title: "Read", status: "completed", output: "Long ou…" },
-  ]);
-  assert.strictEqual(older.page.nextCursor, null);
-  assert.strictEqual(readAcpHistoryPage({ ...acp, revision: 5 }, { ...input, cursor }), null);
-  assert.strictEqual(readAcpHistoryPage(acp, { ...input, cursor: "acp:other:4:1" }), null);
-});
 
 it.effect(
   "lists discovery metadata without reading any transcript and preserves inherited placement",
@@ -254,7 +178,7 @@ it.effect(
 );
 
 it.effect(
-  "inspection distinguishes subsequent completed turns without reading history and reports unloaded ACP",
+  "inspection distinguishes completed turns and uses durable native metadata without opening a backend",
   () =>
     Effect.gen(function* () {
       let turnId = "turn:first";
@@ -281,10 +205,10 @@ it.effect(
       assert.strictEqual(second.cursor, stable.cursor);
       const acp = yield* setup({
         read: () => Effect.succeed(snapshot("acp")),
-        acpRead: () => Effect.succeed(null),
       });
-      const unavailable = yield* acp.inspect(input.sessionId, provenance);
-      assert.strictEqual(unavailable.disposition, "unavailable");
+      const historical = yield* acp.inspect(input.sessionId, provenance);
+      assert.strictEqual(historical.status, "idle");
+      assert.strictEqual(historical.disposition, "complete");
       const draft = yield* setup({ read: () => Effect.succeed(snapshot(null)) });
       assert.strictEqual(
         (yield* draft.inspect(input.sessionId, provenance)).disposition,

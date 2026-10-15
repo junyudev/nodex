@@ -41,7 +41,6 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 export interface DatabaseListPropertyRuntime {
-  readonly disabled: boolean;
   readonly isPending: (pageId: string, propertyId: string) => boolean;
   readonly errorFor: (pageId: string, propertyId: string) => string | null;
   readonly options: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
@@ -110,7 +109,7 @@ export const createDatabaseListPropertyEditorBinding = (
     property,
     value: current?.value,
     revision: current?.revision ?? 0,
-    disabled: runtime.disabled,
+    disabled: property.lifecycle !== "active",
     pending: runtime.isPending(pageId, property.propertyId),
     error: runtime.errorFor(pageId, property.propertyId),
     options: runtime.options[property.propertyId] ?? [],
@@ -161,14 +160,12 @@ function DatabaseListAssigneeEditor({
   label,
   value,
   revision,
-  disabled,
   pending,
   onChange,
 }: {
   readonly label: string;
   readonly value: string;
   readonly revision: number;
-  readonly disabled: boolean;
   readonly pending: boolean;
   readonly onChange: (value: string | null) => void;
 }) {
@@ -184,13 +181,13 @@ function DatabaseListAssigneeEditor({
     <NodexPopover
       open={open}
       onOpenChange={(next) => {
-        if (next && (disabled || pending)) return;
+        if (next && pending) return;
         setDraft(value);
         setOpen(next);
       }}
     >
       <NodexTooltip tooltipContent={value}>
-        <NodexPopoverTrigger disabled={disabled || pending}>
+        <NodexPopoverTrigger disabled={pending}>
           <button
             type="button"
             aria-label={`Edit ${label}: ${value}`}
@@ -206,7 +203,7 @@ function DatabaseListAssigneeEditor({
           type="text"
           aria-label={`${label} value`}
           value={draft}
-          disabled={disabled || pending}
+          disabled={pending}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
           onKeyDown={(event) => {
@@ -243,7 +240,6 @@ function PropertyEditor({
           label={property.name}
           value={current.value}
           revision={current.revision}
-          disabled={runtime.disabled}
           pending={pending}
           onChange={(value) => binding.onChange(value)}
         />

@@ -8,8 +8,6 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { CodexApprovalResponse } from "../../shared/codex-approval-response";
-import { getCodexApprovalRequestMethod } from "../../shared/codex-approval";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalOptionPickerResponse,
@@ -17,11 +15,9 @@ import type {
   CodexCanonicalSetupContextPickerResponse,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
-  reduceCodexConversationApprovalResponse,
   reduceCodexConversationMcpElicitationResponse,
   reduceCodexConversationOnboardingInputResponse,
   reduceCodexConversationOptionPickerResponse,
-  reduceCodexConversationPermissionResponse,
   reduceCodexConversationSetupCodexStepResponse,
   reduceCodexConversationSetupContextPickerResponse,
   reduceCodexConversationUserInputResponse,
@@ -37,7 +33,6 @@ import { normalizeCodexMcpServerElicitationResponse } from "../../shared/codex-m
 import type {
   CodexMcpServerElicitationAction,
   CodexMcpServerElicitationResponse,
-  CodexPermissionRequestResponse,
 } from "../../shared/types";
 import { buildCodexAppDynamicToolSuccess } from "../codex/codex-app-meta-thread-tools";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
@@ -53,15 +48,9 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 export class CodexServerRequestResponseProjectionError extends Data.TaggedError(
   "CodexServerRequestResponseProjectionError",
 )<{
-  readonly operation: "respond-follower-approval" | "transaction";
+  readonly operation: "transaction";
   readonly cause: unknown;
 }> {}
-
-export interface CodexApprovalResponseInput {
-  readonly threadId: string;
-  readonly requestId: RequestId;
-  readonly response: CodexApprovalResponse;
-}
 
 export interface CodexUserInputResponseInput {
   readonly threadId: string;
@@ -73,12 +62,6 @@ export interface CodexMcpElicitationResponseInput {
   readonly threadId: string;
   readonly requestId: RequestId;
   readonly response: CodexMcpServerElicitationAction | CodexMcpServerElicitationResponse;
-}
-
-export interface CodexPermissionResponseInput {
-  readonly threadId: string;
-  readonly requestId: RequestId;
-  readonly response: CodexPermissionRequestResponse;
 }
 
 export interface CodexOptionPickerResponseInput {
@@ -103,17 +86,11 @@ export interface CodexServerRequestResponsesService {
   readonly native: (
     input: CodexNativeUserResponseInput,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
-  readonly approval: (
-    input: CodexApprovalResponseInput,
-  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly userInput: (
     input: CodexUserInputResponseInput,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly mcpElicitation: (
     input: CodexMcpElicitationResponseInput,
-  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
-  readonly permission: (
-    input: CodexPermissionResponseInput,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly optionPicker: (
     input: CodexOptionPickerResponseInput,
@@ -219,27 +196,6 @@ export const make: Effect.Effect<
           : Effect.void,
       ),
     );
-  const publishResolved = (
-    event:
-      | {
-          readonly type: "approval";
-          readonly requestId: RequestId;
-          readonly decision: CodexApprovalResponse["decision"];
-        }
-      | { readonly type: "user-input"; readonly requestId: RequestId },
-  ): void => {
-    if (event.type === "approval") {
-      events.publish({
-        kind: "codex",
-        value: { type: "approvalResolved", requestId: event.requestId, decision: event.decision },
-      });
-      return;
-    }
-    events.publish({
-      kind: "codex",
-      value: { type: "userInputResolved", requestId: event.requestId },
-    });
-  };
   const native: CodexServerRequestResponsesService["native"] = (input) =>
     sync(() => {
       const sameConnection = (entry: {
@@ -253,27 +209,6 @@ export const make: Effect.Effect<
       const matches = (entry: { readonly occurrenceToken: number }) =>
         entry.occurrenceToken === input.occurrenceToken;
       switch (input.method) {
-        case "item/commandExecution/requestApproval":
-        case "item/fileChange/requestApproval": {
-          const first = inbox.find("approval", input.requestId, sameConnection);
-          const kind =
-            input.method === "item/commandExecution/requestApproval" ? "command" : "file";
-          if (!first || !matches(first) || first.request.kind !== kind) return false;
-          const selected = inbox.takeAll("approval", input.requestId, sameConnection);
-          selected.forEach((entry, index) =>
-            inbox.complete(
-              entry,
-              index === 0 ? input.response : CodexAppServerNoResponse,
-              index === 0 ? input.trace : undefined,
-            ),
-          );
-          publishResolved({
-            type: "approval",
-            requestId: input.requestId,
-            decision: input.response.decision,
-          });
-          break;
-        }
         case "item/tool/requestUserInput": {
           const first = inbox.find("user-input", input.requestId, sameConnection);
           if (!first || !matches(first)) return false;
@@ -293,21 +228,10 @@ export const make: Effect.Effect<
               index === 0 ? input.trace : undefined,
             ),
           );
-          publishResolved({ type: "user-input", requestId: input.requestId });
-          break;
-        }
-        case "item/permissions/requestApproval": {
-          const first = inbox.find("permission", input.requestId, sameConnection);
-          if (!first || !matches(first)) return false;
-          inbox
-            .takeAll("permission", input.requestId, sameConnection)
-            .forEach((entry, index) =>
-              inbox.complete(
-                entry,
-                index === 0 ? input.response : CodexAppServerNoResponse,
-                index === 0 ? input.trace : undefined,
-              ),
-            );
+          events.publish({
+            kind: "codex",
+            value: { type: "userInputResolved", requestId: input.requestId },
+          });
           break;
         }
         case "mcpServer/elicitation/request": {
@@ -339,94 +263,12 @@ export const make: Effect.Effect<
             );
           break;
         }
+        default:
+          return false;
       }
       inbox.abandonIdentity(input.threadId, input.requestId, input);
       return true;
     });
-
-  const approvalInTransaction = (input: CodexApprovalResponseInput) =>
-    sync(() => {
-      const pending = inbox.find(
-        "approval",
-        input.requestId,
-        (candidate) =>
-          candidate.threadId === input.threadId && candidate.request.kind === input.response.kind,
-      );
-      if (!pending) return null;
-      const conversation = aggregate(input.threadId);
-      const before = conversation?.readCanonicalState();
-      if (!conversation || !before) return null;
-      const lifecycle = reduceCodexConversationApprovalResponse(
-        before,
-        input.requestId,
-        getCodexApprovalRequestMethod(input.response.kind),
-      );
-      return lifecycle.selectedRequests.length === 0 ? null : { before, conversation, lifecycle };
-    }).pipe(
-      Effect.flatMap((prepared) => {
-        if (!prepared) return Effect.succeed(false);
-        const follower = prepared.conversation.readStreamRole() === "follower";
-        const respondFollower = follower
-          ? gateway
-              .requestRawForThread(
-                input.threadId,
-                input.response.kind === "command"
-                  ? "thread-follower-command-approval-decision"
-                  : "thread-follower-file-approval-decision",
-                {
-                  conversationId: input.threadId,
-                  requestId: input.requestId,
-                  decision: input.response.decision,
-                },
-              )
-              .pipe(
-                Effect.asVoid,
-                Effect.mapError(
-                  (cause) =>
-                    new CodexServerRequestResponseProjectionError({
-                      operation: "respond-follower-approval",
-                      cause,
-                    }),
-                ),
-              )
-          : Effect.void;
-        return respondFollower.pipe(
-          Effect.andThen(
-            sync(() => {
-              const selected = inbox.takeAll(
-                "approval",
-                input.requestId,
-                (candidate) => candidate.threadId === input.threadId,
-              );
-              for (const [index, entry] of selected.entries()) {
-                inbox.complete(
-                  entry,
-                  follower || index > 0
-                    ? CodexAppServerNoResponse
-                    : { decision: input.response.decision },
-                );
-              }
-              inbox.abandonIdentity(input.threadId, input.requestId);
-              publishResolved({
-                type: "approval",
-                requestId: input.requestId,
-                decision: input.response.decision,
-              });
-            }),
-          ),
-          Effect.andThen(
-            commit(input.threadId, {
-              kind: "canonical",
-              before: prepared.before,
-              lifecycle: prepared.lifecycle,
-            }),
-          ),
-          Effect.as(true),
-        );
-      }),
-    );
-  const approval: CodexServerRequestResponsesService["approval"] = (input) =>
-    runSerial(input.threadId, approvalInTransaction(input));
 
   const userInputInTransaction = (
     input: CodexUserInputResponseInput,
@@ -517,7 +359,10 @@ export const make: Effect.Effect<
             }
           }
           inbox.abandonIdentity(input.threadId, input.requestId, prepared.pending);
-          publishResolved({ type: "user-input", requestId: input.requestId });
+          events.publish({
+            kind: "codex",
+            value: { type: "userInputResolved", requestId: input.requestId },
+          });
         }).pipe(
           Effect.andThen(
             commit(input.threadId, {
@@ -597,48 +442,6 @@ export const make: Effect.Effect<
     );
   const mcpElicitation: CodexServerRequestResponsesService["mcpElicitation"] = (input) =>
     runSerial(input.threadId, mcpElicitationInTransaction(input));
-
-  const permissionInTransaction = (input: CodexPermissionResponseInput) =>
-    syncAtCurrentTime((observedAtMs) => {
-      const conversation = aggregate(input.threadId);
-      const before = conversation?.readCanonicalState();
-      if (!conversation || !before) return null;
-      const pending = inbox.find(
-        "permission",
-        input.requestId,
-        (candidate) => candidate.threadId === input.threadId,
-      );
-      if (!pending) return null;
-      const lifecycle = reduceCodexConversationPermissionResponse(
-        before,
-        input.requestId,
-        input.response,
-        { now: () => observedAtMs },
-      );
-      if (lifecycle.selectedRequests.length === 0) return null;
-      const selected = inbox.takeAll(
-        "permission",
-        input.requestId,
-        (candidate) => candidate.threadId === input.threadId,
-      );
-      for (const [index, entry] of selected.entries()) {
-        inbox.complete(entry, index === 0 ? input.response : CodexAppServerNoResponse);
-      }
-      inbox.abandonIdentity(input.threadId, input.requestId);
-      return { before, lifecycle };
-    }).pipe(
-      Effect.flatMap((prepared) =>
-        prepared
-          ? commit(input.threadId, {
-              kind: "canonical",
-              before: prepared.before,
-              lifecycle: prepared.lifecycle,
-            }).pipe(Effect.as(true))
-          : Effect.succeed(false),
-      ),
-    );
-  const permission: CodexServerRequestResponsesService["permission"] = (input) =>
-    runSerial(input.threadId, permissionInTransaction(input));
 
   const storedPickerInTransaction = (
     input:
@@ -787,24 +590,6 @@ export const make: Effect.Effect<
           requests,
           (request) => {
             switch (request.method) {
-              case "item/commandExecution/requestApproval":
-                return approvalInTransaction({
-                  threadId,
-                  requestId: request.id,
-                  response: { kind: "command", decision: "decline" },
-                }).pipe(Effect.asVoid);
-              case "item/fileChange/requestApproval":
-                return approvalInTransaction({
-                  threadId,
-                  requestId: request.id,
-                  response: { kind: "file", decision: "decline" },
-                }).pipe(Effect.asVoid);
-              case "item/permissions/requestApproval":
-                return permissionInTransaction({
-                  threadId,
-                  requestId: request.id,
-                  response: { permissions: {}, scope: "turn" },
-                }).pipe(Effect.asVoid);
               case "item/tool/requestUserInput":
                 return userInputInTransaction({
                   threadId,
@@ -895,10 +680,8 @@ export const make: Effect.Effect<
 
   return CodexServerRequestResponses.of({
     native,
-    approval,
     userInput,
     mcpElicitation,
-    permission,
     optionPicker,
     setupContextPicker,
     setupCodexStep,

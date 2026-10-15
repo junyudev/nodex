@@ -5,19 +5,16 @@ use serde_json::Value;
 
 use crate::agent::{
     AgentExecutionAuthorization, AgentOperationPreparation, AgentPreparedExecution,
-    AgentResourceAccessOverlay, AgentResourceAccessPlan, AgentResourceGrantSpec,
-    AgentResourceIntent, AgentTurnProvenance,
 };
 use crate::database::{
     DatabaseGroupScope, DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
     DatabasePageLayout, DatabasePropertyDescriptor, DatabaseViewLayout,
     DatabaseViewPreferencesOverrideInput,
 };
-use crate::document::{DocumentHeadRevision, OwnedDocumentAccessContext};
-use crate::workspace::{ProjectAppearance, ProjectLifecycle};
+use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 53;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 55;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -538,7 +535,6 @@ pub enum LibraryTaskShorthandPreservedReason {
     RichTextBoundary,
     TargetPropertyConflict,
     TargetSchemaIncompatible,
-    TagSchemaPermissionRequired,
     TagOptionLimit,
 }
 
@@ -874,13 +870,6 @@ pub enum LibraryRead {
         store_epoch: String,
         intent: LibraryBlockTransferLogicalIntent,
     },
-    ResourceProjectAccess {
-        target: LibraryResourceTarget,
-    },
-    FilterProjectionImpactForProject {
-        project_id: String,
-        impact: crate::ProjectionImpact,
-    },
     Children {
         parent: LibraryNavigationParent,
         cursor: Option<String>,
@@ -948,7 +937,7 @@ pub enum LibraryRead {
     },
     AgentSurfaceDescription {
         authorization: Box<AgentExecutionAuthorization>,
-        displayed_access_context: OwnedDocumentAccessContext,
+        displayed_routing_context: ContentRoutingContext,
         target: LibraryAgentSurfaceTarget,
     },
     AgentSearch {
@@ -991,6 +980,7 @@ pub enum LibraryRead {
         limit: Option<u32>,
     },
     ProjectPageSearch {
+        /// Explicit query filter; an empty list searches the current Library.
         project_ids: Vec<String>,
         query: String,
         filters: Option<LibraryProjectPageSearchFilters>,
@@ -1019,12 +1009,6 @@ pub enum LibraryRead {
         page_id: String,
         before: Option<LibraryPageHistoryCursor>,
         limit: Option<u32>,
-    },
-    PlanAgentResourceAccess {
-        provenance: Box<AgentTurnProvenance>,
-        call_id: String,
-        intents: Vec<AgentResourceIntent>,
-        task_access: Option<Box<AgentResourceAccessOverlay>>,
     },
     PrepareAgentPageCopy {
         operation_id: String,
@@ -1268,7 +1252,7 @@ pub enum LibraryPageOwnershipPath {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageLocation {
     pub page_id: String,
-    pub access_project_id: String,
+    pub project_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1276,7 +1260,7 @@ pub struct LibraryViewLocation {
     pub view_id: String,
     pub data_source_id: String,
     pub database_id: String,
-    pub access_project_id: String,
+    pub project_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1609,12 +1593,6 @@ pub struct LibraryPageMembership {
     pub created_at: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LibraryPageAccessContext {
-    Library,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryPageDataSourceContext {
@@ -1639,7 +1617,6 @@ pub struct LibraryPageDetail {
     pub document: LibraryPageDocumentDescriptor,
     pub intrinsic_properties: Vec<LibraryPageIntrinsicProperty>,
     pub data_source_context: LibraryPageDataSourceContext,
-    pub access_context: LibraryPageAccessContext,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -1661,7 +1638,6 @@ pub struct LibraryPageContent {
     pub preview: String,
     pub references: Vec<LibraryContentReference>,
     pub asset_refs: Vec<LibraryContentAssetReference>,
-    pub access_context: LibraryPageAccessContext,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1791,7 +1767,6 @@ pub struct LibraryFileUsagePage {
     pub items: Vec<LibraryFileUsage>,
     pub next_cursor: Option<String>,
     pub has_more: bool,
-    pub can_write: bool,
     pub can_trash: bool,
     pub can_restore: bool,
     pub can_purge: bool,
@@ -1820,7 +1795,6 @@ pub struct LibraryPageFileItem {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageFileInventory {
-    pub can_write: bool,
     pub page_id: String,
     pub revision: i64,
     pub body_usage_revision: i64,
@@ -2004,7 +1978,7 @@ pub struct ProjectedIdentityV1 {
 pub struct ProjectedRelationSummaryV1 {
     pub targets: Vec<ProjectedIdentityV1>,
     pub total_count: i64,
-    pub restricted_count: i64,
+    pub unavailable_count: i64,
     pub has_more: bool,
 }
 
@@ -2171,7 +2145,7 @@ pub struct LibrarySearchSnapshotManifest {
     pub version: u32,
     pub projection_version: u32,
     pub library_id: String,
-    pub access_project_id: String,
+    pub project_id: Option<String>,
     pub store_epoch: String,
     pub commit_head: i64,
     pub scope: LibrarySearchSnapshotScope,
@@ -2193,7 +2167,7 @@ pub struct LibrarySearchSnapshotRelease {
     pub released: bool,
 }
 
-/// A semantic content target, independent of the renderer's current access context.
+/// A semantic content target, independent of the renderer's current routing context.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LibraryAgentSurfaceTarget {
@@ -2220,13 +2194,13 @@ pub enum LibraryAgentSurfaceViewTarget {
 pub struct LibraryAgentSurfaceMetadata {
     pub title: String,
     pub library_id: String,
-    /// Display context never contributes an Agent grant.
-    pub displayed_access_context: OwnedDocumentAccessContext,
+    /// Presentation context for resolving the selected surface.
+    pub displayed_routing_context: ContentRoutingContext,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LibraryAgentAuthorizedSurface {
+pub enum LibraryAgentSurface {
     Page {
         page_id: String,
         #[serde(flatten)]
@@ -2247,24 +2221,14 @@ pub enum LibraryAgentAuthorizedSurface {
     },
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LibraryAgentSurfaceRestriction {
-    ConsentRequired,
-    AccessDenied,
-    Unavailable,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum LibraryAgentSurfaceDescription {
-    Authorized {
+    Available {
         #[serde(flatten)]
-        surface: LibraryAgentAuthorizedSurface,
+        surface: LibraryAgentSurface,
     },
-    Restricted {
-        reason: LibraryAgentSurfaceRestriction,
-    },
+    Unavailable,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -2449,7 +2413,8 @@ pub enum LibraryPageWorkflowStatus {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryProjectPageSearchHit {
-    pub project_id: String,
+    /// Optional Project association for presentation, independent of caller routing.
+    pub project_id: Option<String>,
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
@@ -2494,7 +2459,7 @@ pub struct LibraryPageSearchMetadataDocument {
     pub location_label: String,
     pub updated_at: String,
     pub properties: Vec<LibraryPageSearchMetadataProperty>,
-    pub authorized_project_ids: Vec<String>,
+    pub project_ids: Vec<String>,
     pub data_source_ids: Vec<String>,
 }
 
@@ -2820,12 +2785,6 @@ pub enum LibraryReadValue {
         library_id: String,
         commit_seq: i64,
     },
-    ResourceProjectAccess {
-        value: Box<LibraryResourceProjectAccess>,
-    },
-    ProjectionImpact {
-        impact: crate::ProjectionImpact,
-    },
     Children {
         parent: LibraryNavigationParent,
         items: Vec<LibraryNavigationNode>,
@@ -2950,9 +2909,6 @@ pub enum LibraryReadValue {
     },
     PageHistory {
         value: Box<LibraryPageHistoryPage>,
-    },
-    AgentResourceAccessPlan {
-        value: Box<AgentResourceAccessPlan>,
     },
     AgentPageCopyPreparation {
         value: Box<LibraryAgentPageCopyPreparation>,
@@ -3104,19 +3060,6 @@ pub enum LibraryIntent {
         database_intents: Vec<DatabaseIntent>,
         intrinsic_mutation: Box<LibraryBlockPropertyMutation>,
     },
-    GrantProjectAccess {
-        project_id: String,
-        target: LibraryResourceTarget,
-        access: LibraryAccess,
-    },
-    SetProjectAccess {
-        target: LibraryResourceTarget,
-        changes: Vec<LibraryProjectAccessChange>,
-    },
-    PersistAgentProjectResourceGrants {
-        provenance: Box<AgentTurnProvenance>,
-        grants: Vec<AgentResourceGrantSpec>,
-    },
     ExecutePreparedAgentPageCopy {
         authorization: Box<AgentPreparedExecution>,
         request: Box<LibraryAgentPageCopyRequest>,
@@ -3144,63 +3087,6 @@ pub enum LibraryIntent {
     UndoPageRelocation {
         token: LibraryBlockTransferUndoToken,
     },
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LibraryAccess {
-    Read,
-    ReadWrite,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryProjectDirectGrant {
-    pub access: LibraryAccess,
-    pub revision: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LibraryInheritedProjectAccessSource {
-    PrimaryDatabase {
-        database_id: String,
-        database_name: String,
-        access: LibraryAccess,
-    },
-    AncestorPage {
-        page_id: String,
-        page_title: String,
-        access: LibraryAccess,
-    },
-    DatabaseGrant {
-        database_id: String,
-        database_name: String,
-        access: LibraryAccess,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryProjectAccessRow {
-    pub project_id: String,
-    pub project_name: String,
-    pub appearance: ProjectAppearance,
-    pub lifecycle: ProjectLifecycle,
-    pub direct_grant: Option<LibraryProjectDirectGrant>,
-    pub inherited_sources: Vec<LibraryInheritedProjectAccessSource>,
-    pub effective_access: Option<LibraryAccess>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryResourceProjectAccess {
-    pub target: LibraryResourceTarget,
-    pub projects: Vec<LibraryProjectAccessRow>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryProjectAccessChange {
-    pub project_id: String,
-    pub access: Option<LibraryAccess>,
-    pub expected_revision: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

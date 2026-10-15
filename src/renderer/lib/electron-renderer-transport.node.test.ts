@@ -20,7 +20,7 @@ test("scoped atom observers share a live audience, recover after reset, and rele
     createCoreLocalCommitFixture({
       commitSeq,
       storeEpoch: "epoch-atom-observers",
-      authorizationScope: { kind: "library", library_id: libraryId },
+      deliveryAddress: { kind: "library", library_id: libraryId },
       payload: {
         module: "owned_document",
         library_id: libraryId,
@@ -43,7 +43,6 @@ test("scoped atom observers share a live audience, recover after reset, and rele
       reset_id: "c".repeat(64),
       recipient_lease_id: "d".repeat(64),
       delivery_address: address,
-      authorization_scope: address,
       store_epoch: "epoch-atom-observers",
       required_commit_seq: 3,
       reason: "ack_timeout",

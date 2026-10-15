@@ -50,7 +50,6 @@ class FakeSource {
 function setup(
   settings: ThreadNotificationSettings = {
     turnMode: "unfocused",
-    permissionsEnabled: true,
     questionsEnabled: true,
   },
 ) {
@@ -118,7 +117,7 @@ describe("Codex thread notification handler", () => {
     expect(runtime.shown).toHaveLength(0);
     emit(runtime, "failed");
     expect(runtime.shown).toHaveLength(1);
-    const disabled = setup({ turnMode: "off", permissionsEnabled: true, questionsEnabled: true });
+    const disabled = setup({ turnMode: "off", questionsEnabled: true });
     emit(disabled, "failed");
     expect(disabled.shown).toHaveLength(0);
   });
@@ -162,44 +161,17 @@ describe("Codex thread notification handler", () => {
     expect(runtime.shown).toHaveLength(1);
   });
 
-  test("suppresses every child family and keeps permission approval open-only", () => {
+  test("suppresses child question notifications", () => {
     const runtime = setup();
-    const child = conversation({ parentThreadId: "parent" });
-    runtime.source.eventListener?.({
-      type: "approval-requested",
-      hostId: "local",
-      conversation: child,
-      requestId: "child-approval",
-      turnId: "turn-child",
-      approvalKind: "commandExecution",
-      reason: null,
-    });
     runtime.source.eventListener?.({
       type: "user-input-requested",
       hostId: "local",
-      conversation: child,
+      conversation: conversation({ parentThreadId: "parent" }),
       requestId: "child-question",
       turnId: "turn-child",
       questionCount: 1,
     });
     expect(runtime.shown).toHaveLength(0);
-
-    runtime.source.eventListener?.({
-      type: "approval-requested",
-      hostId: "remote-a",
-      conversation: conversation(),
-      requestId: 73,
-      turnId: "turn-root",
-      approvalKind: "permissionRequest",
-      reason: "Need network",
-    });
-    expect(runtime.shown[0]).toMatchObject({
-      id: "approval-remote-a-73",
-      title: "Permission approval",
-      body: "Need network",
-      hostId: "remote-a",
-    });
-    expect(runtime.shown[0]?.actions).toBeUndefined();
   });
 
   test("suppresses foreground-presented requests and precisely dismisses resolved IDs", () => {
@@ -222,14 +194,6 @@ describe("Codex thread notification handler", () => {
       requestId: "q-1",
     });
     expect(runtime.dismissed).toEqual([
-      {
-        occurrenceId: buildCodexRequestNotificationOccurrenceId(
-          "approval",
-          "local",
-          "thread-1",
-          "q-1",
-        ),
-      },
       {
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
           "question",
@@ -301,5 +265,30 @@ describe("Codex thread notification handler", () => {
       questionId: "question",
     });
     expect(runtime.dismissed).toContainEqual({ notificationId: runtime.shown[0]!.id });
+  });
+
+  test("routes a Runtime conversation through its product Session", () => {
+    const runtime = setup();
+    runtime.source.eventListener?.({
+      type: "turn-completed",
+      hostId: "local",
+      conversation: conversation({
+        conversationId: "nodex:thread:root",
+        runtimeSessionId: "session:a/b",
+      }),
+      turnId: "run-1",
+      status: "completed",
+      lastAgentMessage: "Delegated result is ready",
+      heartbeatAssistantMessage: null,
+      automationNotificationDecision: null,
+      hasPendingContinuation: false,
+    });
+    expect(runtime.shown).toMatchObject([
+      {
+        conversationId: "nodex:thread:root",
+        navigationPath: "session:session%3Aa%2Fb/thread:nodex%3Athread%3Aroot",
+        activateTabId: null,
+      },
+    ]);
   });
 });

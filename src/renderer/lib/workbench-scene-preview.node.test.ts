@@ -23,7 +23,7 @@ describe("Workbench Scene preview projection", () => {
       kind: "page_stage",
       titleSnapshot: "Page One",
       config: {
-        accessContext: { kind: "project", projectId: "project:one" },
+        routingContext: { kind: "project", projectId: "project:one" },
         pageId: "page:one",
       },
       stateKey: 0,

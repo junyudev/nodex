@@ -12,7 +12,7 @@ export function HistoryPanel(props: Omit<HistoryPanelProps, "fileAuthority">) {
           ? {
               libraryId: metadata.data.libraryId,
               storeEpoch: metadata.data.storeEpoch,
-              contentAccessContext: { kind: "project", projectId: props.projectId },
+              contentRoutingContext: { kind: "project", projectId: props.projectId },
             }
           : null
       }

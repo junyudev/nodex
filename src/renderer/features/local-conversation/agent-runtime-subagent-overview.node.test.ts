@@ -1,0 +1,161 @@
+import { describe, expect, it } from "vite-plus/test";
+import type {
+  AgentSubagentOverview,
+  AgentSubagentOverviewItem,
+} from "@nodex/agent-runtime/contracts";
+import {
+  appendAgentRuntimeOverviewPage,
+  applyAgentRuntimeOverviewTask,
+  projectAgentRuntimeSubagent,
+  projectAgentRuntimeSubagentOverview,
+  type AgentRuntimeTaskRecord,
+} from "./agent-runtime-subagent-overview";
+
+const task: AgentSubagentOverviewItem = {
+  id: "task",
+  threadId: "root",
+  runId: "parent-run",
+  parentNodeId: "node",
+  origin: "app_owned",
+  driver: "codex",
+  providerInstanceId: "codex",
+  providerThreadId: null,
+  childThreadId: "child",
+  childRunId: "child-run",
+  title: "Review",
+  model: "model",
+  status: "running",
+  startedAt: "2026-10-13T20:00:00Z",
+  completedAt: null,
+  updatedAt: "2026-10-13T20:00:05Z",
+  resultAvailable: false,
+};
+const page = (items: readonly AgentSubagentOverviewItem[], nextCursor: string | null = null) => ({
+  items,
+  nextCursor,
+  hasMore: nextCursor !== null,
+});
+
+describe("Runtime subagent overview", () => {
+  it("opens app-owned children while native observation IDs cannot acquire Thread controls", () => {
+    expect(projectAgentRuntimeSubagent(task)).toMatchObject({
+      threadId: "child",
+      parentThreadId: "root",
+      canOpen: true,
+      canInteract: true,
+    });
+    expect(
+      projectAgentRuntimeSubagent({ ...task, origin: "provider_native", childThreadId: null }),
+    ).toMatchObject({ threadId: "task", canOpen: false, canInteract: false });
+    expect(projectAgentRuntimeSubagent({ ...task, origin: "provider_native" })).toMatchObject({
+      threadId: "child",
+      canOpen: true,
+      canInteract: false,
+    });
+  });
+  it("reports an incomplete window without inventing a total or retaining task bodies", () => {
+    const view = projectAgentRuntimeSubagentOverview("root", {
+      active: page([task], "after-task"),
+      terminal: page([]),
+    });
+    expect(view).toMatchObject({
+      completeness: "incomplete",
+      active: { knownCount: 1, totalCount: null, continuation: "after-task" },
+    });
+    expect(view.active.rows[0]).toMatchObject({ objective: null, status: "active" });
+  });
+  it("deduplicates explicit page receipts and preserves the other section", () => {
+    const previous: AgentSubagentOverview = {
+      active: page([task], "after-task"),
+      terminal: page([{ ...task, id: "done", childThreadId: "done-child", status: "completed" }]),
+    };
+    const next: AgentSubagentOverview = {
+      active: page([task, { ...task, id: "next", childThreadId: "next-child" }]),
+      terminal: page([]),
+    };
+    const merged = appendAgentRuntimeOverviewPage(previous, next, "active");
+    expect(merged.active.items.map((item) => item.id)).toEqual(["task", "next"]);
+    expect(merged.active).toMatchObject({ nextCursor: null, hasMore: false });
+    expect(merged.terminal).toEqual(previous.terminal);
+    expect(previous.active.items).toEqual([task]);
+  });
+
+  it("stops any live subagent through its real owner and never a settled one", () => {
+    expect(projectAgentRuntimeSubagent(task)).toMatchObject({ canOpen: true, canStop: true });
+    expect(
+      projectAgentRuntimeSubagent({ ...task, origin: "provider_native", childThreadId: null }),
+    ).toMatchObject({ canOpen: false, canStop: true });
+    expect(
+      projectAgentRuntimeSubagent({
+        ...task,
+        origin: "provider_native",
+        childThreadId: null,
+        runId: null,
+      }),
+    ).toMatchObject({ canStop: false });
+    expect(projectAgentRuntimeSubagent({ ...task, status: "interrupted" })).toMatchObject({
+      canStop: false,
+      statusSummary: "Stopped",
+    });
+  });
+
+  it("names the Agent and model that run each subagent", () => {
+    const view = projectAgentRuntimeSubagentOverview(
+      "root",
+      { active: page([task]), terminal: page([]) },
+      (item) => `${item.providerInstanceId} · ${item.model}`,
+    );
+    expect(view.active.rows[0]?.agentLabel).toBe("codex · model");
+  });
+});
+
+describe("Runtime subagent overview events", () => {
+  const record = (overrides: Partial<AgentRuntimeTaskRecord> = {}): AgentRuntimeTaskRecord => ({
+    ...task,
+    createdBy: "agent",
+    nativeTaskRef: null,
+    prompt: "",
+    result: null,
+    ...overrides,
+  });
+
+  it("moves a settled subagent to Done in place, keeping metadata only events cannot report", () => {
+    const loaded: AgentSubagentOverview = {
+      active: page([task]),
+      terminal: page([{ ...task, id: "old", childThreadId: "old-child", status: "completed" }]),
+    };
+    const settled = applyAgentRuntimeOverviewTask(
+      loaded,
+      record({ status: "interrupted", updatedAt: "2026-10-13T20:01:00Z" }),
+    );
+    expect(settled.active.items).toEqual([]);
+    expect(settled.terminal.items.map((item) => [item.id, item.status, item.childRunId])).toEqual([
+      ["task", "interrupted", "child-run"],
+      ["old", "completed", "child-run"],
+    ]);
+  });
+
+  it("ignores an older report and leaves unloaded pages to explicit paging", () => {
+    const loaded: AgentSubagentOverview = {
+      active: page([task], "after-task"),
+      terminal: page([]),
+    };
+    expect(
+      applyAgentRuntimeOverviewTask(
+        loaded,
+        record({ status: "completed", updatedAt: "2026-10-13T19:00:00Z" }),
+      ),
+    ).toBe(loaded);
+    const older = applyAgentRuntimeOverviewTask(
+      loaded,
+      record({ id: "older", updatedAt: "2026-10-13T19:00:00Z" }),
+    );
+    expect(older.active.items.map((item) => item.id)).toEqual(["task"]);
+    const newer = applyAgentRuntimeOverviewTask(
+      loaded,
+      record({ id: "newer", childThreadId: "newer-child", updatedAt: "2026-10-13T21:00:00Z" }),
+    );
+    expect(newer.active.items.map((item) => item.id)).toEqual(["newer", "task"]);
+    expect(newer.active.nextCursor).toBe("after-task");
+  });
+});

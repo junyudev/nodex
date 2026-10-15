@@ -2,7 +2,6 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import type { DatabaseViewReadModel } from "../../../shared/database-views";
-import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../../shared/testing/authorized-read-stamp-example";
 import type { DatabasePageSummary } from "@/lib/types";
 import { BlockDisclosureStateStore } from "@/lib/block-disclosure-state";
 import { ReferenceSurfaceActivationBudget } from "@/lib/reference-surface-state";
@@ -34,7 +33,6 @@ describe("DatabaseViewReferenceSurface", () => {
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 1,
-      authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
       dataSourceId: "data-source:test",
       view: {
         id: "library-view",
@@ -54,7 +52,7 @@ describe("DatabaseViewReferenceSurface", () => {
         referenceKey="library-view"
         displayHint=""
         model={model}
-        accessContext={{ kind: "library" }}
+        routingContext={{ kind: "library" }}
         onOpenPage={(input) => {
           opened.push(input);
         }}
@@ -65,7 +63,7 @@ describe("DatabaseViewReferenceSurface", () => {
 
     expect(opened).toEqual([
       {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         pageId: "card-a",
         titleSnapshot: "Card A",
       },
@@ -78,7 +76,6 @@ describe("DatabaseViewReferenceSurface", () => {
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 1,
-      authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
       dataSourceId: "data-source:test",
       view: {
         id: "cycle-view",
@@ -122,7 +119,6 @@ describe("DatabaseViewReferenceSurface", () => {
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 1,
-      authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
       dataSourceId: "data-source:test",
       view: {
         id: "view-1",
@@ -152,9 +148,9 @@ describe("DatabaseViewReferenceSurface", () => {
         disclosureStore={disclosureStore}
         activationBudget={activationBudget}
         visibilityOverride
-        renderDocument={({ accessContext, card }) => (
+        renderDocument={({ routingContext, card }) => (
           <div data-testid="database-row-document">
-            {accessContext.kind === "project" ? accessContext.projectId : "library"}:{card.id}
+            {routingContext.kind === "project" ? routingContext.projectId : "library"}:{card.id}
           </div>
         )}
       />,
@@ -201,7 +197,6 @@ describe("DatabaseViewReferenceSurface", () => {
       libraryId: "library:test",
       storeEpoch: "epoch:test",
       commitSeq: 1,
-      authorization: AUTHORIZED_READ_STAMP_EXAMPLE,
       dataSourceId: "data-source:test",
       view: {
         id: "focus-view",

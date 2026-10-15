@@ -1,6 +1,13 @@
 # ADR 0017: Library owns Pages and Databases while Projects receive resource grants
 
-- Status: Accepted
+Current contract: the authenticated current Profile has full Library content
+access. Project routes execution and presentation; grants, consent overlays and
+permission inheritance are removed. The owning current contracts are
+[Agent Interface Behavior](../product-specs/agent-interface-behavior.md) and
+[Security](../SECURITY.md). Ownership and immutable-history decisions below
+remain applicable; resource permission rules do not.
+
+- Status: Partially superseded
 - Date: 2026-07-16
 - Owners: Nodex maintainers
 - Supersedes in part: ADR 0001 and ADR 0003

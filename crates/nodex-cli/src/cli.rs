@@ -22,7 +22,7 @@ pub struct Cli {
         value_name = "ID"
     )]
     pub expect_profile: Option<String>,
-    /// Select the access Project by ID or unique name; otherwise use the host or working-directory context.
+    /// Select the Project context by ID or unique name; otherwise use the host or working-directory context.
     #[arg(
         long,
         global = true,
@@ -386,7 +386,7 @@ pub struct FileImportArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileReadArgs {
-    /// Library File ID; requires direct File access in this Project.
+    /// Library File ID; belongs to the current Profile.
     pub file_id: String,
     /// Retained content version to read; omitted reads the current head.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
@@ -475,7 +475,7 @@ pub enum PageFileCommand {
     Read(PageFileReadArgs),
     /// Import at a path; --replace-entry replaces only this Page relation.
     Put(PageFilePutArgs),
-    /// Add a path for an existing independently authorized File.
+    /// Add a path for an existing Library File.
     Add(PageFilePathArgs),
     /// Rename this Page's virtual path.
     RenamePath(PageFilePathArgs),

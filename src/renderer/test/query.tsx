@@ -3,7 +3,6 @@ import { useState, type ReactNode } from "react";
 import { NODEX_QUERY_DEFAULT_OPTIONS } from "@/lib/query-client";
 import { ProjectionInvalidationProvider } from "@/lib/projection-invalidation-context";
 import { ProjectionInvalidationRegistry } from "@/lib/projection-invalidation-registry";
-import { ResourceAuthorityQueryCacheBridge } from "@/lib/resource-authority-query-cache";
 
 export function createTestQueryClient(): QueryClient {
   return new QueryClient({
@@ -34,13 +33,11 @@ export function TestQueryProvider({
     () =>
       new ProjectionInvalidationRegistry({
         subscribeProjection: () => () => {},
-        subscribeRevocations: () => () => {},
       }),
   );
   return (
     <QueryClientProvider client={client}>
       <ProjectionInvalidationProvider registry={providedProjectionRegistry ?? projectionRegistry}>
-        <ResourceAuthorityQueryCacheBridge />
         {children}
       </ProjectionInvalidationProvider>
     </QueryClientProvider>

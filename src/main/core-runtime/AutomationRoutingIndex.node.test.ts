@@ -22,7 +22,8 @@ const definition = (input: {
   kind: "heartbeat",
   status: "ACTIVE",
   target_session_id: input.targetSessionId,
-  target_thread_id: "backend-attachment",
+  project_id: null,
+  notification_policy: null,
   name: input.automationId,
   prompt: "Check for updates",
   rrule: "FREQ=HOURLY",
@@ -41,14 +42,15 @@ const definition = (input: {
 
 const run = (input: {
   readonly automationId: string;
-  readonly threadId: string;
+  readonly runId: string;
 }): AutomationRoutingRun => ({
-  thread_id: input.threadId,
+  run_id: input.runId,
+  session_id: "session:admitted",
   automation_id: input.automationId,
   run_revision: 1,
   status: "IN_PROGRESS",
   read_at_ms: null,
-  thread_title: null,
+  session_title: null,
   source_cwd: null,
   inbox_title: null,
   inbox_summary: null,
@@ -60,7 +62,7 @@ const run = (input: {
 });
 
 const snapshot = (value: AutomationReadSnapshot["value"]): AutomationReadSnapshot => ({
-  contract_version: 3,
+  contract_version: 9,
   store_epoch: "epoch:test",
   commit_head: 1,
   value,
@@ -99,11 +101,11 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
       let phase: "initial" | "stale" = "initial";
       const committedDefinition = definition({
         automationId: "heartbeat:new",
-        targetSessionId: "thread:new-heartbeat",
+        targetSessionId: "session:new-heartbeat",
       });
       const committedRun = run({
         automationId: "heartbeat:new",
-        threadId: "thread:new-run",
+        runId: "run:new",
       });
 
       const read = (request: AutomationRead): Effect.Effect<AutomationReadSnapshot> =>
@@ -125,12 +127,10 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
                 ? definitionsSnapshot([
                     definition({
                       automationId: "heartbeat:old",
-                      targetSessionId: "thread:old-heartbeat",
+                      targetSessionId: "session:old-heartbeat",
                     }),
                   ])
-                : runsSnapshot([
-                    run({ automationId: "heartbeat:old", threadId: "thread:old-run" }),
-                  ]),
+                : runsSnapshot([run({ automationId: "heartbeat:old", runId: "run:old" })]),
             );
           }
           if (staleReads < 2) {
@@ -156,10 +156,10 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
 
       yield* routing.synchronize;
       assert.strictEqual(
-        routing.activeHeartbeatAutomationId("thread:old-heartbeat"),
+        routing.activeHeartbeatAutomationId("session:old-heartbeat"),
         "heartbeat:old",
       );
-      assert.strictEqual(routing.runAutomationId("thread:old-run"), "heartbeat:old");
+      assert.strictEqual(routing.runAutomationId("run:old"), "heartbeat:old");
 
       phase = "stale";
       const rebuilding = yield* Effect.forkChild(routing.synchronize);
@@ -173,11 +173,17 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
       yield* Fiber.join(rebuilding);
 
       assert.strictEqual(
-        routing.activeHeartbeatAutomationId("thread:new-heartbeat"),
+        routing.activeHeartbeatAutomationId("session:new-heartbeat"),
         "heartbeat:new",
       );
-      assert.strictEqual(routing.runAutomationId("thread:new-run"), "heartbeat:new");
+      assert.strictEqual(routing.runAutomationId("run:new"), "heartbeat:new");
       assert.strictEqual(reads, 8);
+      routing.commit({ runs: { removeRunIds: ["run:new"] } });
+      assert.strictEqual(routing.runAutomationId("run:new"), null);
+      assert.strictEqual(
+        routing.activeHeartbeatAutomationId("session:new-heartbeat"),
+        "heartbeat:new",
+      );
     }),
   ),
 );

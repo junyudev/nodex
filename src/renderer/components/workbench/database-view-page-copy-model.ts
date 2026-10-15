@@ -16,7 +16,7 @@ export type DatabaseViewPageCopyRequest =
     }
   | {
       readonly kind: "materialized-markdown";
-      readonly accessContext: DatabaseViewPageTarget["accessContext"];
+      readonly routingContext: DatabaseViewPageTarget["routingContext"];
       readonly pageId: string;
       readonly successMessage: string;
       readonly failureMessage: string;
@@ -67,7 +67,7 @@ export function resolveDatabaseViewPageCopyRequest(input: {
   }
   return {
     kind: "materialized-markdown",
-    accessContext: page.accessContext,
+    routingContext: page.routingContext,
     pageId: page.pageId,
     successMessage: "Copied content as Markdown",
     failureMessage: "Failed to copy content",

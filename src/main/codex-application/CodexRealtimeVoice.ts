@@ -23,6 +23,11 @@ import {
   type CodexAppModelContextAttachment,
 } from "../../shared/codex-untrusted-app-input";
 import type { ConversationTextRole } from "@nodex/codex-app-server-protocol";
+import type {
+  ClientRequestParamsByMethod,
+  ClientRequestResponsesByMethod,
+} from "@nodex/effect-codex-app-server/rpc";
+import type { RuntimeVoiceCapture } from "./CodexRuntimeNative";
 import type { TurnCompletedNotification } from "@nodex/codex-app-server-protocol/v2";
 import { CodexMedia } from "./CodexMedia";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
@@ -62,7 +67,8 @@ interface VoiceAttempt {
   readonly clientId: string;
   readonly webContentsId: number;
   readonly capabilities: CodexAppServerCapabilitySnapshot;
-  readonly entity: ConversationEntityState;
+  readonly entity: ConversationEntityState | null;
+  readonly runtime: RuntimeVoiceCapture | null;
   readonly executionEpoch: number;
   readonly policy: CodexPreparedRealtimeVoicePolicy;
   readonly scope: Scope.Closeable;
@@ -171,8 +177,30 @@ export const make = Effect.gen(function* () {
     current === attempt &&
     attempt.webContentsId === webContentsId &&
     clients.getClientIdForWebContentsId(webContentsId) === attempt.clientId &&
-    conversations.current(attempt.grant.threadId) === attempt.entity &&
-    attempt.entity.readCanonicalState()?.hostId === attempt.grant.hostId;
+    (attempt.runtime
+      ? attempt.runtime.active()
+      : conversations.current(attempt.grant.threadId) === attempt.entity &&
+        attempt.entity?.readCanonicalState()?.hostId === attempt.grant.hostId);
+  type VoiceMethod =
+    | "thread/realtime/start"
+    | "thread/realtime/stop"
+    | "thread/realtime/appendText"
+    | "thread/realtime/appendSpeech"
+    | "thread/inject_items";
+  const nativeRequest = <M extends VoiceMethod>(
+    attempt: VoiceAttempt,
+    method: M,
+    params: ClientRequestParamsByMethod[M],
+  ): Effect.Effect<ClientRequestResponsesByMethod[M], unknown> =>
+    attempt.runtime
+      ? attempt.runtime.request(method, params)
+      : gateway.requestOnHost(
+          attempt.grant.hostId,
+          method,
+          params,
+          codexGatewayGenerationFence(attempt.capabilities),
+        );
+  let observeRuntime: CodexRealtimeVoice["Service"]["observeNative"] = () => Effect.void;
   const emit = (attempt: VoiceAttempt, event: CodexRealtimeVoiceEvent): void => {
     if (current === attempt)
       clients.sendCriticalToClient(attempt.clientId, "codex:realtime-voice:event", event);
@@ -217,12 +245,17 @@ export const make = Effect.gen(function* () {
     attempt: VoiceAttempt,
   ) {
     if (!owns(attempt)) return yield* changed();
-    if (!(yield* capabilities.isCurrent(attempt.capabilities).pipe(Effect.mapError(failure))))
+    if (
+      !(yield* (
+        attempt.runtime ? attempt.runtime.current : capabilities.isCurrent(attempt.capabilities)
+      ).pipe(Effect.mapError(failure)))
+    )
       return yield* changed();
     yield* policy.assertCurrent(attempt.policy).pipe(Effect.mapError(() => changed()));
     if (
       !owns(attempt) ||
-      (yield* conversations.executionEpoch(attempt.grant.threadId)) !== attempt.executionEpoch
+      (!attempt.runtime &&
+        (yield* conversations.executionEpoch(attempt.grant.threadId)) !== attempt.executionEpoch)
     )
       return yield* changed();
   });
@@ -298,7 +331,7 @@ export const make = Effect.gen(function* () {
   yield* Effect.acquireRelease(
     Effect.sync(() =>
       conversations.subscribeRetired((threadId, generation) => {
-        if (current?.entity.threadId === threadId && current.entity.generation === generation)
+        if (current?.entity?.threadId === threadId && current.entity.generation === generation)
           terminate(current);
       }),
     ),
@@ -332,14 +365,6 @@ export const make = Effect.gen(function* () {
         message: "Voice is already active",
       });
     }
-    const entity = conversations.current(target.threadId);
-    const nativeHost = entity?.readCanonicalState()?.hostId;
-    if (!entity || nativeHost !== target.hostId || entity.readResumeState() !== "resumed")
-      return yield* new CodexRealtimeVoiceError({
-        reason: "unavailable",
-        message: "Restore this chat before starting voice",
-      });
-    const captured = yield* capabilities.forHost(target.hostId).pipe(Effect.mapError(failure));
     const prepared = yield* policy.prepare(target).pipe(
       Effect.mapError(
         (cause) =>
@@ -350,159 +375,191 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    if (prepared.hostId !== target.hostId || prepared.threadId !== target.threadId)
-      return yield* changed();
-    const catalog = yield* gateway
-      .requestOnHost(
-        target.hostId,
-        "thread/realtime/listVoices",
-        {},
-        codexGatewayGenerationFence(captured),
+    const capturedRuntime = prepared.runtime;
+    return yield* Effect.gen(function* () {
+      const runtime = prepared.runtime ?? null;
+      const entity = runtime ? null : conversations.current(target.threadId);
+      if (
+        !runtime &&
+        (!entity ||
+          entity.readCanonicalState()?.hostId !== target.hostId ||
+          entity.readResumeState() !== "resumed")
       )
-      .pipe(Effect.mapError(failure));
-    const preferred =
-      prepared.productPolicy.accountId !== null && prepared.productPolicy.userId !== null
-        ? yield* media.readRealtimeVoicePreference({
-            accountId: prepared.productPolicy.accountId,
-            userId: prepared.productPolicy.userId,
-          })
-        : null;
-    const selectedVoice = resolveSupportedRealtimeVoice(catalog.voices, preferred);
-    if (selectedVoice === null)
-      return yield* new CodexRealtimeVoiceError({
-        reason: "unavailable",
-        message: "No supported voice is available",
-      });
-    const policyWithVoice = {
-      ...prepared,
-      nativeStart: { ...prepared.nativeStart, voice: selectedVoice },
-    };
-    const executionEpoch = yield* conversations.executionEpoch(target.threadId);
-    const settings = yield* dictation.readSettings.pipe(Effect.mapError(failure));
-    const label = yield* dictation.readMicrophoneRouteHint.pipe(Effect.mapError(failure));
-    if (
-      !accepting ||
-      clients.getClientIdForWebContentsId(webContentsId) !== clientId ||
-      conversations.current(target.threadId) !== entity
-    )
-      return yield* changed();
-    const grant: CodexRealtimeVoiceGrant = {
-      ...target,
-      claimId: createUuidV7(),
-      realtimeSessionId: createUuidV7(),
-      microphoneInputDeviceId: settings.microphoneInputDeviceId,
-      builtInMicrophoneLabelHint: label,
-      bufferInputWhileConnecting: prepared.bufferInputWhileConnecting,
-    };
-    return yield* Effect.acquireUseRelease(
-      Effect.gen(function* () {
-        const scope = yield* Scope.fork(lifetime, "sequential");
-        const startGate = yield* Semaphore.make(1);
-        const closed = yield* Deferred.make<void>();
-        const attempt: VoiceAttempt = {
-          grant,
-          scope,
-          startGate,
-          startFiber: null,
-          clientId,
-          webContentsId,
-          capabilities: captured,
-          entity,
-          executionEpoch,
-          policy: policyWithVoice,
-          evidence: {
-            requestAccepted: false,
-            started: false,
-            connected: false,
-            initialized: false,
-          },
-          startIssued: false,
-          nativeStopped: false,
-          stopping: false,
-          terminated: false,
-          closing: false,
-          closed,
-          microphoneInputDeviceId: grant.microphoneInputDeviceId,
-          snapshot: {
-            ...target,
-            claimId: grant.claimId,
-            realtimeSessionId: grant.realtimeSessionId,
-            phase: "starting",
-            microphoneMuted: false,
-            outputMuted: false,
-            revision: 0,
-          },
-        };
-        current = attempt;
-        invalidateAvailability();
-        const nativeLease = entity.retainNativeExecution({
-          hostId: captured.hostId,
-          generation: captured.generation,
+        return yield* new CodexRealtimeVoiceError({
+          reason: "unavailable",
+          message: "Restore this chat before starting voice",
         });
-        yield* Scope.addFinalizer(
-          scope,
-          Effect.sync(() => {
-            nativeLease[Symbol.dispose]();
-          }).pipe(
-            Effect.andThen(
-              Effect.suspend(() =>
-                attempt.startIssued && !attempt.nativeStopped
-                  ? gateway
-                      .requestOnHost(
-                        attempt.grant.hostId,
-                        "thread/realtime/stop",
-                        { threadId: attempt.grant.threadId },
-                        codexGatewayGenerationFence(attempt.capabilities),
-                      )
-                      .pipe(
+      const captured = prepared.capabilities;
+      const catalog = runtime
+        ? { voices: runtime.capture.voices }
+        : yield* gateway
+            .requestOnHost(
+              target.hostId,
+              "thread/realtime/listVoices",
+              {},
+              codexGatewayGenerationFence(captured),
+            )
+            .pipe(Effect.mapError(failure));
+      const preferred =
+        prepared.productPolicy.accountId !== null && prepared.productPolicy.userId !== null
+          ? yield* media.readRealtimeVoicePreference({
+              accountId: prepared.productPolicy.accountId,
+              userId: prepared.productPolicy.userId,
+            })
+          : null;
+      const selectedVoice = resolveSupportedRealtimeVoice(catalog.voices, preferred);
+      if (selectedVoice === null)
+        return yield* new CodexRealtimeVoiceError({
+          reason: "unavailable",
+          message: "No supported voice is available",
+        });
+      const policyWithVoice = {
+        ...prepared,
+        nativeStart: { ...prepared.nativeStart, voice: selectedVoice },
+      };
+      const executionEpoch = runtime ? 0 : yield* conversations.executionEpoch(target.threadId);
+      const settings = yield* dictation.readSettings.pipe(Effect.mapError(failure));
+      const label = yield* dictation.readMicrophoneRouteHint.pipe(Effect.mapError(failure));
+      if (
+        !accepting ||
+        clients.getClientIdForWebContentsId(webContentsId) !== clientId ||
+        (!runtime && conversations.current(target.threadId) !== entity)
+      )
+        return yield* changed();
+      const grant: CodexRealtimeVoiceGrant = {
+        ...target,
+        claimId: runtime?.claimId ?? createUuidV7(),
+        realtimeSessionId: runtime?.claimId ?? createUuidV7(),
+        microphoneInputDeviceId: settings.microphoneInputDeviceId,
+        builtInMicrophoneLabelHint: label,
+        bufferInputWhileConnecting: prepared.bufferInputWhileConnecting,
+      };
+      return yield* Effect.acquireUseRelease(
+        Effect.gen(function* () {
+          const scope = yield* Scope.fork(lifetime, "sequential");
+          const startGate = yield* Semaphore.make(1);
+          const closed = yield* Deferred.make<void>();
+          const attempt: VoiceAttempt = {
+            grant,
+            scope,
+            startGate,
+            startFiber: null,
+            clientId,
+            webContentsId,
+            capabilities: captured,
+            entity,
+            runtime,
+            executionEpoch,
+            policy: policyWithVoice,
+            evidence: {
+              requestAccepted: false,
+              started: false,
+              connected: false,
+              initialized: false,
+            },
+            startIssued: false,
+            nativeStopped: false,
+            stopping: false,
+            terminated: false,
+            closing: false,
+            closed,
+            microphoneInputDeviceId: grant.microphoneInputDeviceId,
+            snapshot: {
+              ...target,
+              claimId: grant.claimId,
+              realtimeSessionId: grant.realtimeSessionId,
+              phase: "starting",
+              microphoneMuted: false,
+              outputMuted: false,
+              revision: 0,
+            },
+          };
+          current = attempt;
+          invalidateAvailability();
+          const nativeLease = entity?.retainNativeExecution({
+            hostId: captured.hostId,
+            generation: captured.generation,
+          });
+          yield* Scope.addFinalizer(
+            scope,
+            Effect.sync(() => {
+              nativeLease?.[Symbol.dispose]();
+            }).pipe(
+              Effect.andThen(
+                Effect.suspend(() =>
+                  attempt.startIssued && !attempt.nativeStopped
+                    ? nativeRequest(attempt, "thread/realtime/stop", {
+                        threadId: attempt.grant.threadId,
+                      }).pipe(
                         Effect.catch(() =>
                           Effect.logWarning("Voice transport cleanup did not complete"),
                         ),
                         Effect.asVoid,
                       )
-                  : Effect.void,
+                    : Effect.void,
+                ),
               ),
+              Effect.ensuring(runtime?.release ?? Effect.void),
+              Effect.ensuring(microphoneRelease(attempt)),
+              Effect.asVoid,
             ),
-            Effect.ensuring(microphoneRelease(attempt)),
-            Effect.asVoid,
-          ),
-        );
-        yield* gateway.connectionChanges(captured.hostId).pipe(
-          Stream.runForEach((connection) =>
-            Effect.sync(() => {
-              if (connection.kind !== "ready" || connection.generation !== captured.generation)
-                terminate(attempt);
-            }),
-          ),
-          Effect.forkIn(scope, { startImmediately: true }),
-        );
-        return attempt;
-      }),
-      (attempt) =>
-        Effect.gen(function* () {
-          yield* assertCurrent(attempt);
-          const acquired = yield* dictation.acquireVoiceMicrophone({
-            webContentsId,
-            sessionId: grant.claimId,
-          });
-          if (!acquired)
-            return yield* new CodexRealtimeVoiceError({
-              reason: "busy",
-              message: "The microphone is in use",
-            });
-          yield* assertCurrent(attempt);
-          publish(attempt);
-          return grant;
+          );
+          if (runtime) {
+            yield* runtime.notifications.pipe(
+              Stream.runForEach((notification) => {
+                if (notification.type === "native.voice.closed")
+                  return Effect.sync(() => terminate(attempt));
+                if (notification.type !== "native.voice.event") return Effect.void;
+                return observeRuntime({ hostId: target.hostId, generation: captured.generation }, {
+                  ...notification.notification,
+                  params: {
+                    ...(notification.notification.params as object),
+                    threadId: target.threadId,
+                  },
+                } as VoiceObservation);
+              }),
+              Effect.ensuring(Effect.sync(() => terminate(attempt))),
+              Effect.forkIn(scope, { startImmediately: true }),
+            );
+          } else {
+            yield* gateway.connectionChanges(captured.hostId).pipe(
+              Stream.runForEach((connection) =>
+                Effect.sync(() => {
+                  if (connection.kind !== "ready" || connection.generation !== captured.generation)
+                    terminate(attempt);
+                }),
+              ),
+              Effect.forkIn(scope, { startImmediately: true }),
+            );
+          }
+          return attempt;
         }),
-      (attempt, exit) => (Exit.isFailure(exit) ? close(attempt) : Effect.void),
-    );
+        (attempt) =>
+          Effect.gen(function* () {
+            yield* assertCurrent(attempt);
+            const acquired = yield* dictation.acquireVoiceMicrophone({
+              webContentsId,
+              sessionId: grant.claimId,
+            });
+            if (!acquired)
+              return yield* new CodexRealtimeVoiceError({
+                reason: "busy",
+                message: "The microphone is in use",
+              });
+            yield* assertCurrent(attempt);
+            publish(attempt);
+            return grant;
+          }),
+        (attempt, exit) => (Exit.isFailure(exit) ? close(attempt) : Effect.void),
+      );
+    }).pipe(Effect.onError(() => capturedRuntime?.release ?? Effect.void));
   });
 
   function microphoneRelease(attempt: VoiceAttempt): Effect.Effect<boolean> {
     return dictation.releaseMicrophone(attempt.webContentsId, attempt.grant.claimId);
   }
 
-  return CodexRealtimeVoice.of({
+  const service = CodexRealtimeVoice.of({
     readSession: () => current?.snapshot ?? null,
     prepare: (webContentsId, target) => admission.withPermit(prepare(webContentsId, target)),
     start: Effect.fn("CodexRealtimeVoice.start")(function* (webContentsId, claimId, sdp) {
@@ -510,7 +567,17 @@ export const make = Effect.gen(function* () {
       const request = Effect.gen(function* () {
         yield* assertCurrent(attempt);
         if (attempt.stopping) return yield* changed();
-        yield* conversations
+        const execution = attempt.runtime
+          ? {
+              admitExecution: (
+                _threadId: string,
+                _source: unknown,
+                operation: Effect.Effect<void, unknown>,
+                _epoch: number,
+              ) => assertCurrent(attempt).pipe(Effect.andThen(operation)),
+            }
+          : conversations;
+        yield* execution
           .admitExecution(
             attempt.grant.threadId,
             { hostId: attempt.capabilities.hostId, generation: attempt.capabilities.generation },
@@ -518,23 +585,32 @@ export const make = Effect.gen(function* () {
               yield* assertCurrent(attempt);
               if (attempt.stopping) return yield* changed();
               const initialItems = buildRealtimeVoiceInitialItems(
-                residentConversationTurns(attempt.entity.readCanonicalState()),
+                attempt.runtime
+                  ? ([
+                      {
+                        items: attempt.runtime.capture.history.map((message, index) =>
+                          message.role === "user"
+                            ? {
+                                type: "userMessage",
+                                id: `voice:${index}`,
+                                content: [{ type: "text", text: message.text }],
+                              }
+                            : { type: "agentMessage", id: `voice:${index}`, text: message.text },
+                        ),
+                      },
+                    ] as never)
+                  : residentConversationTurns(attempt.entity!.readCanonicalState()),
                 attempt.policy.productPolicy.config,
                 attempt.policy.nativeStart.version,
               );
               attempt.startIssued = true;
-              yield* gateway.requestOnHost(
-                attempt.grant.hostId,
-                "thread/realtime/start",
-                {
-                  ...attempt.policy.nativeStart,
-                  ...(initialItems.length > 0 ? { initialItems } : {}),
-                  threadId: attempt.grant.threadId,
-                  realtimeSessionId: attempt.grant.realtimeSessionId,
-                  transport: { type: "webrtc", sdp },
-                },
-                codexGatewayGenerationFence(attempt.capabilities),
-              );
+              yield* nativeRequest(attempt, "thread/realtime/start", {
+                ...attempt.policy.nativeStart,
+                ...(initialItems.length > 0 ? { initialItems } : {}),
+                threadId: attempt.grant.threadId,
+                realtimeSessionId: attempt.grant.realtimeSessionId,
+                transport: { type: "webrtc", sdp },
+              });
             }),
             attempt.executionEpoch,
           )
@@ -568,8 +644,9 @@ export const make = Effect.gen(function* () {
       )
         return;
       if (
-        !(yield* capabilities
-          .isCurrent(attempt.capabilities)
+        !(yield* (
+          attempt.runtime ? attempt.runtime.current : capabilities.isCurrent(attempt.capabilities)
+        )
           .pipe(Effect.mapError(failure))
           .pipe(Effect.orElseSucceed(() => false))) ||
         !owns(attempt) ||
@@ -609,50 +686,45 @@ export const make = Effect.gen(function* () {
       attempt.snapshot = { ...attempt.snapshot, phase: "stopping" };
       publish(attempt);
       if (!attempt.startIssued) return;
-      return yield* gateway
-        .requestOnHost(
-          attempt.grant.hostId,
-          "thread/realtime/stop",
-          { threadId: attempt.grant.threadId },
-          codexGatewayGenerationFence(attempt.capabilities),
-        )
-        .pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              attempt.nativeStopped = true;
-            }),
-          ),
-          Effect.asVoid,
-          Effect.mapError(failure),
-          Effect.tapError((error) =>
-            Effect.gen(function* () {
-              const cause = error.cause;
-              const missing =
-                Schema.is(CodexRuntimeError)(cause) &&
-                cause.hostId === attempt.capabilities.hostId &&
-                cause.generation === attempt.capabilities.generation &&
-                isCodexThreadLifecycleAlreadyAppliedRequestError(cause, {
-                  method: "thread/realtime/stop",
-                  threadId: attempt.grant.threadId,
-                });
-              if (missing) attempt.nativeStopped = true;
-              if (!owns(attempt)) return;
-              if (missing) {
-                terminate(attempt);
-                return;
-              }
-              const valid = yield* assertCurrent(attempt).pipe(Effect.result);
-              if (valid._tag === "Failure") {
-                terminate(attempt);
-                return;
-              }
-              attempt.stopping = false;
-              attempt.snapshot = { ...attempt.snapshot, phase: previous };
-              publish(attempt);
-              activate(attempt);
-            }),
-          ),
-        );
+      return yield* nativeRequest(attempt, "thread/realtime/stop", {
+        threadId: attempt.grant.threadId,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            attempt.nativeStopped = true;
+          }),
+        ),
+        Effect.asVoid,
+        Effect.mapError(failure),
+        Effect.tapError((error) =>
+          Effect.gen(function* () {
+            const cause = error.cause;
+            const missing =
+              Schema.is(CodexRuntimeError)(cause) &&
+              cause.hostId === attempt.capabilities.hostId &&
+              cause.generation === attempt.capabilities.generation &&
+              isCodexThreadLifecycleAlreadyAppliedRequestError(cause, {
+                method: "thread/realtime/stop",
+                threadId: attempt.grant.threadId,
+              });
+            if (missing) attempt.nativeStopped = true;
+            if (!owns(attempt)) return;
+            if (missing) {
+              terminate(attempt);
+              return;
+            }
+            const valid = yield* assertCurrent(attempt).pipe(Effect.result);
+            if (valid._tag === "Failure") {
+              terminate(attempt);
+              return;
+            }
+            attempt.stopping = false;
+            attempt.snapshot = { ...attempt.snapshot, phase: previous };
+            publish(attempt);
+            activate(attempt);
+          }),
+        ),
+      );
     }),
     release: (webContentsId, claimId) =>
       Effect.suspend(() =>
@@ -664,18 +736,11 @@ export const make = Effect.gen(function* () {
       function* (webContentsId, claimId, role, text) {
         const attempt = yield* resolve(webContentsId, claimId);
         yield* assertCurrent(attempt);
-        yield* gateway
-          .requestOnHost(
-            attempt.grant.hostId,
-            "thread/realtime/appendText",
-            {
-              threadId: attempt.grant.threadId,
-              role,
-              text,
-            },
-            codexGatewayGenerationFence(attempt.capabilities),
-          )
-          .pipe(Effect.mapError(failure));
+        yield* nativeRequest(attempt, "thread/realtime/appendText", {
+          threadId: attempt.grant.threadId,
+          role,
+          text,
+        }).pipe(Effect.mapError(failure));
         yield* assertCurrent(attempt);
       },
     ),
@@ -683,14 +748,10 @@ export const make = Effect.gen(function* () {
       function* (webContentsId, claimId, text) {
         const attempt = yield* resolve(webContentsId, claimId);
         yield* assertCurrent(attempt);
-        yield* gateway
-          .requestOnHost(
-            attempt.grant.hostId,
-            "thread/realtime/appendSpeech",
-            { threadId: attempt.grant.threadId, text },
-            codexGatewayGenerationFence(attempt.capabilities),
-          )
-          .pipe(Effect.mapError(failure));
+        yield* nativeRequest(attempt, "thread/realtime/appendSpeech", {
+          threadId: attempt.grant.threadId,
+          text,
+        }).pipe(Effect.mapError(failure));
         yield* assertCurrent(attempt);
       },
     ),
@@ -708,21 +769,16 @@ export const make = Effect.gen(function* () {
           catch: failure,
         });
         if (items.length === 0) return;
-        yield* gateway
-          .requestOnHost(
-            attempt.grant.hostId,
-            "thread/inject_items",
-            {
-              threadId: attempt.grant.threadId,
-              items,
-            },
-            codexGatewayGenerationFence(attempt.capabilities),
-          )
-          .pipe(Effect.mapError(failure));
+        yield* nativeRequest(attempt, "thread/inject_items", {
+          threadId: attempt.grant.threadId,
+          items,
+        }).pipe(Effect.mapError(failure));
         yield* assertCurrent(attempt);
       },
     ),
   });
+  observeRuntime = service.observeNative;
+  return service;
 });
 
 export const live = Layer.effect(CodexRealtimeVoice, make);

@@ -141,12 +141,12 @@ For empty queries, Core returns suggestions ordered by:
 
 ### Projection lifecycle
 
-- SQLite remains the durable source of Page metadata, Properties, body-search rows, and authorization roots.
+- SQLite remains the durable source of Page metadata, Properties, body-search rows, and resource lifecycle.
 - Core may reuse a derived in-memory Page-search projection only while both Store epoch and commit head still match the read snapshot. The first read after a committed change rebuilds it before answering.
-- Core publishes a read-only metadata bootstrap fenced by Store epoch, commit head, and Project authorization scope. Library change events refresh affected Pages or replace the snapshot; an epoch/scope change revokes it before further synchronous reads.
+- Core publishes a read-only metadata bootstrap fenced by Profile/Store identity, commit head and the exact query. Library change events refresh affected Pages or replace the snapshot; an identity or query change invalidates it before further synchronous reads.
 - The renderer prewarms this projection, queries it synchronously on every live input, and debounces only complete Core enrichment. It does not persist the projection or implement matching/ranking in TypeScript.
 - Root mode requests at most `12` Page results; focused Page mode requests at most `60`.
-- Filter facets come from the same authorized Core projection as search results.
+- Filter facets come from the same current Core projection as search results.
 
 ## Page Result Presentation
 

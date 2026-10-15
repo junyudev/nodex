@@ -12,7 +12,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 35;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 37;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -37,19 +37,13 @@ pub enum ProjectWorkspaceRead {
         project_ids: Vec<String>,
     },
     PageChatActivitySummaries {
-        page_access_project_id: String,
         page_ids: Vec<String>,
     },
     PageChatWindow {
-        page_access_project_id: String,
         page_id: String,
         include_archived: Option<bool>,
         window: CollectionWindowRequest,
     },
-    ProjectPermissionMode {
-        project_id: String,
-    },
-    ProjectlessPermissionMode,
     SessionWindow {
         archived: bool,
         window: CollectionWindowRequest,
@@ -85,6 +79,43 @@ pub enum ProjectWorkspaceRead {
     },
     Session {
         session_id: String,
+    },
+    /// The external runtime identity reserved for one Session; execution remains runtime-owned.
+    AgentRuntimeSessionBinding {
+        session_id: String,
+    },
+    /// Resolves one root execution identity through the unique binding index.
+    AgentRuntimeSessionBindingByExecution {
+        runtime_id: String,
+        runtime_thread_id: String,
+    },
+    /// Bounded execution placement metadata, including archived Sessions and Projects.
+    AgentRuntimeSessionBindingWindow {
+        runtime_id: String,
+        project_id: Option<String>,
+        window: CollectionWindowRequest,
+    },
+    /// Host-owned durable cleanup after a product Session has been deleted.
+    AgentRuntimeExecutionCleanupWindow {
+        runtime_id: String,
+        window: CollectionWindowRequest,
+    },
+    AgentRuntimeTurnAuthority {
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+    },
+    /// An authenticated native connection with no causal Run evidence.
+    AgentRuntimeNativeSessionAuthority {
+        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
+    },
+    /// Active execution leases for bounded Host lifecycle reconciliation.
+    AgentRuntimeAdmissionWindow {
+        runtime_id: String,
+        lease_id: String,
+        window: CollectionWindowRequest,
+    },
+    /// Authenticates current Turn credentials before creating a new execution root.
+    AgentAuthority {
+        provenance: crate::agent::AgentTurnProvenance,
     },
     AgentSession {
         provenance: crate::agent::AgentTurnProvenance,
@@ -193,12 +224,6 @@ pub enum ProjectWorkspaceReadValue {
     PageChatWindow {
         chats: CollectionWindow<ProjectWorkspacePageChatItem>,
     },
-    ProjectPermissionMode {
-        mode: Option<CodexPermissionMode>,
-    },
-    ProjectlessPermissionMode {
-        mode: Option<CodexPermissionMode>,
-    },
     SessionWindow {
         sessions: CollectionWindow<ProjectWorkspaceSessionListingItem>,
     },
@@ -226,6 +251,27 @@ pub enum ProjectWorkspaceReadValue {
     },
     Session {
         session: ProjectWorkspaceSessionSummary,
+    },
+    AgentRuntimeSessionBinding {
+        binding: Option<ProjectWorkspaceAgentRuntimeSessionBinding>,
+    },
+    AgentRuntimeSessionBindingWindow {
+        bindings: CollectionWindow<ProjectWorkspaceAgentRuntimeSessionBinding>,
+    },
+    AgentRuntimeExecutionCleanupWindow {
+        cleanups: CollectionWindow<ProjectWorkspaceAgentRuntimeExecutionCleanup>,
+    },
+    AgentRuntimeTurnAuthority {
+        resolution: ProjectWorkspaceTurnAuthorityResolution,
+    },
+    AgentRuntimeNativeSessionAuthority {
+        resolution: ProjectWorkspaceTurnAuthorityResolution,
+    },
+    AgentRuntimeAdmissionWindow {
+        admissions: CollectionWindow<ProjectWorkspaceAgentRuntimeAdmission>,
+    },
+    AgentAuthority {
+        resolution: ProjectWorkspaceTurnAuthorityResolution,
     },
     AgentSession {
         session: ProjectWorkspaceSessionSummary,
@@ -473,16 +519,9 @@ pub struct ProjectWorkspaceThreadMoveMetadataPatch {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceThreadMoveProjectAccessGrant {
-    pub expected_target_binding_revision: i64,
-    pub missing_source_roots: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceExecutionContext {
     pub thread: ProjectWorkspaceThread,
     pub project: Option<ProjectWorkspaceProject>,
-    pub permission_mode: Option<CodexPermissionMode>,
     pub workspace_state: Option<ProjectWorkspaceThreadWorkspaceState>,
 }
 
@@ -792,40 +831,10 @@ pub struct ProjectWorkspaceSubagentOverview {
     pub projection_revision: i64,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum CodexPermissionMode {
-    Auto,
-    GuardianApprovals,
-    FullAccess,
-    Custom,
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceDynamicToolCatalog {
     pub namespace: String,
     pub toolset_revision: i64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceTurnCoordinate {
-    pub thread_id: String,
-    pub turn_id: String,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceTurnAuthorityScope {
-    Project,
-    Library,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ProjectWorkspaceTurnAuthoritySource {
-    ProjectTurn,
-    BuiltinFullAccess,
-    InheritedBuiltinFullAccess,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -836,18 +845,14 @@ pub struct ProjectWorkspaceTurnAuthority {
     pub actor_project_id: Option<String>,
     pub library_id: String,
     pub store_epoch: String,
-    pub scope: ProjectWorkspaceTurnAuthorityScope,
-    pub source: ProjectWorkspaceTurnAuthoritySource,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceTurnAuthorityResolution {
     pub authority: Option<ProjectWorkspaceTurnAuthority>,
     pub persisted: bool,
-    /// Immutable execution constraint, independent of resource scope.
-    pub read_only: bool,
-    /// Present only for persisted authority and stable across process restarts.
-    pub frozen_at_ms: Option<i64>,
+    /// Stable admission timestamp; execution identity carries no content permissions.
+    pub admitted_at_ms: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1145,12 +1150,15 @@ pub struct ProjectWorkspaceProjectActivitySummary {
 pub struct ProjectWorkspacePageChatActivitySummary {
     pub page_id: String,
     pub related_count: u32,
+    /// Native thread status only; Runtime-bound Sessions report live status outside Core.
     pub working_count: u32,
     pub waiting_on_approval_count: u32,
     pub waiting_on_user_input_count: u32,
     pub error_count: u32,
     pub unread_count: u32,
     pub sole_session_id: Option<String>,
+    /// The most recently updated linked Runtime-bound Sessions, bounded, for live status.
+    pub runtime_session_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1159,7 +1167,11 @@ pub struct ProjectWorkspacePageChatItem {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub display_title: String,
+    /// The native Thread, or the Runtime root Thread of a Runtime-bound Session.
     pub thread_id: Option<String>,
+    /// Present for Runtime-bound Sessions; their status comes from execution, not `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub thread_preview: String,
     pub status: Option<ProjectWorkspaceThreadStatus>,
     pub thread_archived: bool,
@@ -1196,8 +1208,81 @@ pub struct ProjectWorkspaceSessionSummary {
     pub archived_at: Option<String>,
     pub unread: bool,
     pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Immutable execution coordinates; presentation and execution state come from the runtime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionExecutionRef {
+    pub runtime_id: String,
+    pub thread_id: String,
+}
+
+/// A stable Session-to-runtime link, without provider, Run, or transcript projections.
+/// The host retries an interrupted launch with the same request and Thread identities.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeSessionBinding {
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub runtime_id: String,
+    pub runtime_thread_id: String,
+    pub launch_request_id: String,
+    pub bound_at: String,
+}
+
+/// Deleting a Session retains only the exact execution identity needed for idempotent cleanup.
+/// It is never a tool credential or a live Session binding.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeExecutionCleanup {
+    pub cleanup_id: String,
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub runtime_id: String,
+    pub runtime_thread_id: String,
+    pub created_at: String,
+}
+
+/// Persistent engine and execution identity plus one Host-authenticated credential lifetime.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeTurnIdentity {
+    pub runtime_id: String,
+    pub thread_id: String,
+    pub run_id: String,
+    pub lease_id: String,
+}
+
+/// Native source captured by the authenticated Host, independent of foreground completion.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeNativeSource {
+    pub provider_session_id: String,
+    pub native_generation: u32,
+}
+
+/// Exact native connection lifetime for calls that supply no causal Run metadata.
+/// Incarnations are unique within a runtime and can never be recycled after retirement.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeNativeSessionIdentity {
+    pub runtime_id: String,
+    pub thread_id: String,
+    pub lease_id: String,
+    pub provider_session_id: String,
+    pub native_generation: u32,
+    pub incarnation_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ProjectWorkspaceAgentRuntimeAdmission {
+    Run {
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
+    },
+    NativeSession {
+        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1206,7 +1291,7 @@ pub struct ProjectWorkspaceTaskSummary {
     pub thread: Option<ProjectWorkspaceTaskThreadSummary>,
 }
 
-/// Profile-wide Session discovery metadata; transcript access is authorized separately.
+/// Profile-wide Session discovery metadata; conversation history uses the same Profile identity.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceSessionListingItem {
     pub task: ProjectWorkspaceTaskSummary,
@@ -1305,7 +1390,7 @@ pub enum ProjectWorkspaceIntent {
     ClearIdentityThreadReadState {
         identity_key: String,
     },
-    /// A Turn-authorized application command. Core admits only organization intents.
+    /// An application command retaining its authenticated execution provenance.
     AgentCommand {
         provenance: Box<crate::agent::AgentTurnProvenance>,
         #[schema(no_recursion)]
@@ -1413,20 +1498,17 @@ pub enum ProjectWorkspaceIntent {
         title: String,
         initial_page_ids: Vec<String>,
     },
-    /// Reserves one host launch with Session creation. Only a fresh receipt admits execution;
-    /// replay must reconcile the Session binding without launching another backend Thread.
-    AdmitSessionLaunch {
+    /// Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.
+    /// Core does not execute the launch or persist the external Thread's mutable state.
+    CreateAgentRuntimeSession {
         session_id: String,
+        replacement_default_session_id: String,
         project_id: Option<String>,
         title: String,
-        launch_request_hash: String,
-    },
-    /// Reserves one message dispatch to an exact existing Session binding.
-    /// A duplicate receipt must never dispatch the message again.
-    AdmitSessionMessage {
-        session_id: String,
-        thread_id: String,
-        message_request_hash: String,
+        initial_page_ids: Vec<String>,
+        runtime_id: String,
+        runtime_thread_id: String,
+        launch_request_id: String,
     },
     /// Reserves one handoff of an exact existing Session binding.
     /// Replays observe the retained operation and never toggle the location again.
@@ -1434,13 +1516,6 @@ pub enum ProjectWorkspaceIntent {
         session_id: String,
         thread_id: String,
         handoff_request_hash: String,
-    },
-    /// Reserves the destination Session for one fork of an authorized source binding.
-    AdmitSessionFork {
-        source_session_id: String,
-        source_thread_id: String,
-        session_id: String,
-        fork_request_hash: String,
     },
     CreateSessionInSidebarSection {
         session_id: String,
@@ -1592,8 +1667,6 @@ pub enum ProjectWorkspaceIntent {
         workspace_transition: Option<ProjectWorkspaceThreadWorkspaceTransition>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         runtime_workspace_roots: Option<Vec<String>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        project_access_grant: Option<ProjectWorkspaceThreadMoveProjectAccessGrant>,
     },
     CommitThreadWorkspaceTransition {
         thread_id: String,
@@ -1616,25 +1689,52 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         roots: Vec<String>,
     },
-    FreezeTurnAuthority {
+    AdmitTurnAuthority {
         thread_id: String,
         turn_id: String,
         root_thread_id: String,
         actor_project_id: Option<String>,
-        source: ProjectWorkspaceTurnAuthoritySource,
-        read_only: bool,
-        inherited_from: Option<ProjectWorkspaceTurnCoordinate>,
+    },
+    /// Host binds authenticated runtime execution identity to one Session.
+    /// Read the resolution after every apply: receipt replay never reactivates revoked authority.
+    AdmitAgentRuntimeTurnAuthority {
+        session_id: String,
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
+        parent: Option<ProjectWorkspaceAgentRuntimeTurnIdentity>,
+    },
+    RevokeAgentRuntimeTurnAuthority {
+        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
+    },
+    /// Host binds the exact native connection to its product Session, without inventing a Run.
+    AdmitAgentRuntimeNativeSessionAuthority {
+        session_id: String,
+        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
+    },
+    RevokeAgentRuntimeNativeSessionAuthority {
+        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
+    },
+    /// Retires every captured Run and native-session actor for one physical native source.
+    RevokeAgentRuntimeNativeSourceAuthorities {
+        runtime_id: String,
+        lease_id: String,
+        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
+    },
+    /// Revokes outstanding credentials when an engine connection is replaced or stopped.
+    RevokeAgentRuntimeAuthorities {
+        runtime_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lease_id: Option<String>,
+    },
+    /// Host acknowledges execution settlement only for the exact durable cleanup identity.
+    AcknowledgeAgentRuntimeExecutionCleanup {
+        cleanup_id: String,
+        runtime_id: String,
+        runtime_thread_id: String,
     },
     UpsertBackgroundProcess {
         process: ProjectWorkspaceBackgroundProcess,
         preserve_started_at: Option<bool>,
-    },
-    SetProjectPermissionMode {
-        project_id: String,
-        mode: CodexPermissionMode,
-    },
-    SetProjectlessPermissionMode {
-        mode: CodexPermissionMode,
     },
     MutateSession {
         session_id: String,
@@ -1747,11 +1847,9 @@ pub enum ProjectSessionIntent {
     },
     LinkPage {
         page_id: String,
-        page_access_project_id: String,
     },
     UnlinkPage {
         page_id: String,
-        page_access_project_id: String,
     },
 }
 
@@ -1943,7 +2041,6 @@ mod tests {
             placement,
             metadata,
             runtime_workspace_roots,
-            project_access_grant,
             ..
         } = intent
         else {
@@ -1969,7 +2066,6 @@ mod tests {
         );
         assert_eq!(metadata.projectless_output_directory, None);
         assert_eq!(runtime_workspace_roots, None);
-        assert_eq!(project_access_grant, None);
 
         let after = serde_json::to_value(ProjectWorkspaceThreadPlacement::After {
             thread_id: "thread-2".to_owned(),

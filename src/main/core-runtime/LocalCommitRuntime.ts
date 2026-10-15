@@ -17,7 +17,7 @@ import type {
 } from "../core-client/types";
 
 export type LocalCommitIngress = "projection_live" | "tailer";
-export type LocalCommitLaneKind = "document" | "projection" | "visibility" | "notification";
+export type LocalCommitLaneKind = "document" | "projection" | "notification";
 export type LocalCommitStreamResetReason = "event_gap" | "reconnect" | "store_epoch_changed";
 
 export type LocalCommitAdmission =
@@ -51,11 +51,6 @@ export interface LocalCommitRuntimeOptions {
   readonly onNotification: (
     packet: CoreAuthorizedDeliveryPacket,
     atom: CoreAuthorizedDeliveryAtom,
-    ingress: LocalCommitIngress,
-  ) => Effect.Effect<void, LocalCommitRuntimeError>;
-  readonly onVisibility: (
-    packet: CoreAuthorizedDeliveryPacket,
-    delta: CoreAuthorizedDeliveryPacket["visibility_deltas"][number],
     ingress: LocalCommitIngress,
   ) => Effect.Effect<void, LocalCommitRuntimeError>;
   readonly onError?: (failure: LocalCommitDeliveryError) => Effect.Effect<void>;
@@ -172,7 +167,6 @@ interface AdmissionAnalysis {
 const emptyLanes = (): DeliveryLanes => ({
   document: new Map(),
   projection: new Map(),
-  visibility: new Map(),
   notification: new Map(),
 });
 
@@ -190,11 +184,9 @@ const initialState: LocalCommitState = {
 const runtimeError = (operation: string, cause: unknown): LocalCommitRuntimeError =>
   new LocalCommitRuntimeError({ operation, cause });
 
-const validateAuthorizationScope = (
-  scope: CoreAuthorizedDeliveryPacket["authorization_scope"],
-): void => {
+const validateDeliveryAddress = (scope: CoreAuthorizedDeliveryPacket["delivery_address"]): void => {
   if (!scope.library_id || scope.library_id.trim() !== scope.library_id) {
-    throw new Error("Delivery authorization Library is invalid");
+    throw new Error("Delivery address Library is invalid");
   }
   if (
     (scope.kind === "project" || scope.kind === "document") &&
@@ -202,19 +194,17 @@ const validateAuthorizationScope = (
     scope.project_id !== undefined &&
     (!scope.project_id || scope.project_id.trim() !== scope.project_id)
   ) {
-    throw new Error("Delivery authorization Project is invalid");
+    throw new Error("Delivery address Project is invalid");
   }
   if (
     scope.kind === "document" &&
     (!scope.document_id || scope.document_id.trim() !== scope.document_id)
   ) {
-    throw new Error("Delivery authorization Document is invalid");
+    throw new Error("Delivery address Document is invalid");
   }
 };
 
-const authorizationScopeKey = (
-  scope: CoreAuthorizedDeliveryPacket["authorization_scope"],
-): string => {
+const deliveryAddressKey = (scope: CoreAuthorizedDeliveryPacket["delivery_address"]): string => {
   if (scope.kind === "library") return JSON.stringify(["library", scope.library_id]);
   if (scope.kind === "project") {
     return JSON.stringify(["project", scope.library_id, scope.project_id]);
@@ -228,9 +218,9 @@ const authorizationScopeKey = (
 };
 
 const scopedClaimKey = (
-  scope: CoreAuthorizedDeliveryPacket["authorization_scope"],
+  scope: CoreAuthorizedDeliveryPacket["delivery_address"],
   claim: string,
-): string => `${authorizationScopeKey(scope)}:${claim}`;
+): string => `${deliveryAddressKey(scope)}:${claim}`;
 
 const sameValues = <Value>(actual: readonly Value[], expected: readonly Value[]): boolean =>
   actual.length === expected.length && actual.every((value, index) => value === expected[index]);
@@ -285,17 +275,8 @@ const identityOf = (packet: CoreAuthorizedDeliveryPacket) => {
   ) {
     throw new Error("Authorized delivery packet manifest header is invalid");
   }
-  validateAuthorizationScope(packet.authorization_scope);
-  validateAuthorizationScope(packet.delivery_address);
-  if (
-    authorizationScopeKey(packet.authorization_scope) !==
-    authorizationScopeKey(packet.delivery_address)
-  ) {
-    throw new Error("Delivery address and authorization scope diverge");
-  }
-  for (const delta of packet.visibility_deltas) {
-    validateAuthorizationScope(delta.authorization_scope);
-  }
+  validateDeliveryAddress(packet.delivery_address);
+  validateDeliveryAddress(packet.delivery_address);
   validateCoverage(packet);
   return {
     key: `${identity.store_epoch}:${identity.commit_seq}`,
@@ -309,7 +290,7 @@ const resourceClaims = (packet: CoreAuthorizedDeliveryPacket): readonly Resource
   for (const atom of packet.atoms) {
     const descriptor = atom.descriptor;
     claims.push({
-      key: scopedClaimKey(packet.authorization_scope, `notification:atom:${descriptor.atom_id}`),
+      key: scopedClaimKey(packet.delivery_address, `notification:atom:${descriptor.atom_id}`),
       fingerprint: `${descriptor.kind}:${descriptor.payload_hash}`,
     });
     if (atom.payload.module === "owned_document") {
@@ -343,12 +324,6 @@ const resourceClaims = (packet: CoreAuthorizedDeliveryPacket): readonly Resource
     claims.push({
       key: `projection:${effect.scope.canonical_key}:${effect.result_revision}`,
       fingerprint: effect.effect_hash,
-    });
-  }
-  for (const delta of packet.visibility_deltas) {
-    claims.push({
-      key: scopedClaimKey(delta.authorization_scope, `visibility:${delta.delta_hash}`),
-      fingerprint: JSON.stringify([delta.change, delta.roots]),
     });
   }
   return claims;
@@ -408,7 +383,6 @@ const cloneLanes = (
 ): Record<LocalCommitLaneKind, Map<string, DeliveryLane>> => ({
   document: new Map(lanes.document),
   projection: new Map(lanes.projection),
-  visibility: new Map(lanes.visibility),
   notification: new Map(lanes.notification),
 });
 
@@ -421,15 +395,8 @@ const analyzeAdmission = (
   if (identity.storeEpoch !== options.expectedStoreEpoch) {
     throw new Error(`Commit belongs to another Store epoch: ${identity.key}`);
   }
-  if (packet.authorization_scope.library_id !== options.expectedLibraryId) {
+  if (packet.delivery_address.library_id !== options.expectedLibraryId) {
     throw new Error("Commit delivery belongs to another Library");
-  }
-  if (
-    packet.visibility_deltas.some(
-      (delta) => delta.authorization_scope.library_id !== options.expectedLibraryId,
-    )
-  ) {
-    throw new Error("Commit visibility delta belongs to another Library");
   }
 
   const rememberedCommit = state.remembered.get(identity.key);
@@ -472,21 +439,6 @@ const deliveryTasks = (
   options: LocalCommitRuntimeOptions,
 ): readonly DeliveryTask[] => {
   const tasks: DeliveryTask[] = [];
-  for (const delta of packet.visibility_deltas) {
-    const scopeKey = authorizationScopeKey(delta.authorization_scope);
-    const claim = admittedByKey.get(
-      scopedClaimKey(delta.authorization_scope, `visibility:${delta.delta_hash}`),
-    );
-    if (!claim) continue;
-    tasks.push({
-      claims: [claim],
-      commitKey,
-      kind: "visibility",
-      laneKey: JSON.stringify([scopeKey, delta.delta_hash]),
-      packet,
-      work: options.onVisibility(packet, delta, ingress),
-    });
-  }
   for (const delivery of documentDeliveries(packet, admittedByKey)) {
     tasks.push({
       claims: delivery.claims,
@@ -512,9 +464,9 @@ const deliveryTasks = (
     });
   }
   for (const atom of packet.atoms) {
-    const scopeKey = authorizationScopeKey(packet.authorization_scope);
+    const scopeKey = deliveryAddressKey(packet.delivery_address);
     const claim = admittedByKey.get(
-      scopedClaimKey(packet.authorization_scope, `notification:atom:${atom.descriptor.atom_id}`),
+      scopedClaimKey(packet.delivery_address, `notification:atom:${atom.descriptor.atom_id}`),
     );
     if (!claim) continue;
     tasks.push({
@@ -851,7 +803,6 @@ export const make = (
           activeLanes: {
             document: current.lanes.document.size,
             projection: current.lanes.projection.size,
-            visibility: current.lanes.visibility.size,
             notification: current.lanes.notification.size,
           },
           pendingDeliveries: current.pendingDeliveries,

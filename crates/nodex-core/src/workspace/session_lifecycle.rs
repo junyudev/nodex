@@ -31,25 +31,15 @@ pub(super) fn create_session(
     initial_page_ids: &[String],
     sidebar_section_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_id("session_id", session_id)?;
-    if let Some(project_id) = project_id {
-        validate_id("project_id", project_id)?;
-        require_project(connection, library_id, project_id, true)?;
-    }
-    super::page_chat::validate_initial_page_ids(
+    let now = prepare_session(
         connection,
         library_id,
+        session_id,
         project_id,
+        title,
         initial_page_ids,
+        sidebar_section_id,
     )?;
-    let title = normalize_session_title(title)?;
-    let now = insert_session_records(connection, session_id, project_id, &title, false)?;
-    super::page_chat::insert_initial_page_links(connection, session_id, initial_page_ids, &now)?;
-    if let Some(section_id) = sidebar_section_id {
-        super::sidebar_section::place_created_session(
-            connection, library_id, section_id, session_id, &now,
-        )?;
-    }
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -65,6 +55,32 @@ pub(super) fn create_session(
         project_id,
         now,
     )
+}
+
+pub(super) fn prepare_session(
+    connection: &Connection,
+    library_id: &str,
+    session_id: &str,
+    project_id: Option<&str>,
+    title: &str,
+    initial_page_ids: &[String],
+    sidebar_section_id: Option<&str>,
+) -> Result<String, StoreError> {
+    validate_id("session_id", session_id)?;
+    if let Some(project_id) = project_id {
+        validate_id("project_id", project_id)?;
+        require_project(connection, library_id, project_id, true)?;
+    }
+    super::page_chat::validate_initial_page_ids(connection, library_id, initial_page_ids)?;
+    let title = normalize_session_title(title)?;
+    let now = insert_session_records(connection, session_id, project_id, &title, false)?;
+    super::page_chat::insert_initial_page_links(connection, session_id, initial_page_ids, &now)?;
+    if let Some(section_id) = sidebar_section_id {
+        super::sidebar_section::place_created_session(
+            connection, library_id, section_id, session_id, &now,
+        )?;
+    }
+    Ok(now)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -197,6 +213,14 @@ pub(super) fn delete_session(
     if let Some(thread_id) = &authority.thread_id {
         super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
     }
+    super::agent_runtime_cleanup::enqueue(
+        connection,
+        library_id,
+        operation_id,
+        session_id,
+        authority.project_id.as_deref(),
+    )?;
+    super::agent_runtime_native_session::retire_session(connection, session_id)?;
     let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during deletion"));
@@ -432,7 +456,7 @@ fn read_ordered_session_ids(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn finish_lifecycle_mutation(
+pub(super) fn finish_lifecycle_mutation(
     connection: &Connection,
     _library_id: &str,
     context: &BoundModuleContext,

@@ -24,16 +24,16 @@ import {
   type PortableCanvasScene,
 } from "../../shared/block-documents";
 import {
-  contentAccessContextKey,
-  type ContentAccessContext,
-  type ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  contentRoutingContextKey,
+  type ContentRoutingContext,
+  type ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 import type { CanvasSceneOutbox } from "./canvas-scene-outbox";
 import { waitForDocumentOperation } from "./document-wait";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 export interface CanvasSceneSyncAdapter {
   subscribe: (
-    request: Pick<CanvasSceneSyncRequest, "accessContext" | "documentId" | "clientSessionId">,
+    request: Pick<CanvasSceneSyncRequest, "routingContext" | "documentId" | "clientSessionId">,
     listener: (event: CanvasSceneRealtimeEvent) => void,
     presenceListener?: (event: CanvasPresenceRealtimeEvent) => void,
   ) => () => void;
@@ -79,7 +79,7 @@ export interface CanvasSceneProviderStatus {
 
 export type CanvasSceneProviderScheduler = (callback: () => void, delayMs: number) => () => void;
 
-export interface CanvasSceneProviderOptions extends ContentAccessIdentity {
+export interface CanvasSceneProviderOptions extends ContentRoutingIdentity {
   readonly documentId: string;
   readonly clientSessionId: string;
   readonly expectedStoreEpoch?: string;
@@ -207,8 +207,8 @@ const invalidResponseError = (message: string): CanvasSceneMutationError => ({
   resetRequired: false,
 });
 
-const sameAccessContext = (left: ContentAccessContext, right: ContentAccessContext): boolean =>
-  contentAccessContextKey(left) === contentAccessContextKey(right);
+const sameRoutingContext = (left: ContentRoutingContext, right: ContentRoutingContext): boolean =>
+  contentRoutingContextKey(left) === contentRoutingContextKey(right);
 
 const sameValue = (left: unknown, right: unknown): boolean =>
   canonicalStringifyCanvasScene(left) === canonicalStringifyCanvasScene(right);
@@ -379,7 +379,7 @@ export class CanvasSceneProvider {
     }
     try {
       return await this.options.adapter.publishPresence({
-        accessContext: this.options.accessContext,
+        routingContext: this.options.routingContext,
         clientSessionId,
         publication: canonicalizeCanvasPresencePublication({
           engine: "canvas_scene",
@@ -563,7 +563,7 @@ export class CanvasSceneProvider {
     if (!this.unsubscribeRealtime) {
       this.unsubscribeRealtime = this.options.adapter.subscribe(
         {
-          accessContext: this.options.accessContext,
+          routingContext: this.options.routingContext,
           documentId: this.options.documentId,
           clientSessionId: this.options.clientSessionId,
         },
@@ -580,13 +580,13 @@ export class CanvasSceneProvider {
       return;
     }
     const recovered = await this.options.outbox.list(
-      this.options.accessContext,
+      this.options.routingContext,
       this.options.documentId,
     );
     if (
       recovered.some(
         (intent) =>
-          !sameAccessContext(intent.accessContext, this.options.accessContext) ||
+          !sameRoutingContext(intent.routingContext, this.options.routingContext) ||
           intent.storeEpoch !== this.storeEpoch ||
           intent.generation !== this.generation,
       )
@@ -625,7 +625,7 @@ export class CanvasSceneProvider {
     try {
       result = await this.options.adapter.sync({
         syncRequestId,
-        accessContext: this.options.accessContext,
+        routingContext: this.options.routingContext,
         documentId: this.options.documentId,
         clientSessionId: this.options.clientSessionId,
         ...(this.storeEpoch ? { knownStoreEpoch: this.storeEpoch } : {}),
@@ -662,7 +662,7 @@ export class CanvasSceneProvider {
     }
     if (
       response.libraryId !== this.options.libraryId ||
-      !sameAccessContext(response.accessContext, this.options.accessContext) ||
+      !sameRoutingContext(response.routingContext, this.options.routingContext) ||
       response.documentId !== this.options.documentId
     ) {
       this.enterFatal("Canvas sync response crossed its Library, access, or Document boundary");
@@ -810,7 +810,7 @@ export class CanvasSceneProvider {
   private createIntent(pending: PendingObservation): CanvasSceneMutationIntent {
     return canonicalizeCanvasSceneMutationIntent({
       mutationId: this.createMutationId(),
-      accessContext: this.options.accessContext,
+      routingContext: this.options.routingContext,
       documentId: this.options.documentId,
       storeEpoch: this.storeEpoch,
       generation: this.generation,
@@ -912,7 +912,7 @@ export class CanvasSceneProvider {
     }
     if (
       result.value.libraryId !== this.options.libraryId ||
-      !sameAccessContext(result.value.accessContext, current.intent.accessContext) ||
+      !sameRoutingContext(result.value.routingContext, current.intent.routingContext) ||
       result.value.documentId !== current.intent.documentId ||
       result.value.storeEpoch !== current.intent.storeEpoch ||
       result.value.generation !== current.intent.generation ||
@@ -931,7 +931,7 @@ export class CanvasSceneProvider {
     }
     try {
       await this.options.outbox.remove(
-        current.intent.accessContext,
+        current.intent.routingContext,
         current.intent.documentId,
         current.intent.mutationId,
       );
@@ -998,7 +998,7 @@ export class CanvasSceneProvider {
     if (this.closed || (this.error && !this.error.retryable)) return;
     if (
       event.libraryId !== this.options.libraryId ||
-      !sameAccessContext(event.accessContext, this.options.accessContext) ||
+      !sameRoutingContext(event.routingContext, this.options.routingContext) ||
       event.documentId !== this.options.documentId
     ) {
       this.enterFatal("Canvas realtime event crossed its Library, access, or Document boundary");
@@ -1059,7 +1059,7 @@ export class CanvasSceneProvider {
       event.type === "canvas_presence_snapshot" ? event.generation : event.presence.generation;
     if (
       event.libraryId !== this.options.libraryId ||
-      !sameAccessContext(event.accessContext, this.options.accessContext) ||
+      !sameRoutingContext(event.routingContext, this.options.routingContext) ||
       documentId !== this.options.documentId
     ) {
       return;
@@ -1174,7 +1174,7 @@ export class CanvasSceneProvider {
       if (current) await this.options.outbox.put(current.intent);
       if (pending) await this.options.outbox.put(this.createIntent(pending));
       const retained = await this.options.outbox.list(
-        this.options.accessContext,
+        this.options.routingContext,
         this.options.documentId,
       );
       for (const intent of retained)
@@ -1202,17 +1202,17 @@ export class CanvasSceneProvider {
       : this.persistDurable();
 
   exportRecovery = async (): Promise<string> => {
-    if (this.error?.code === "access_scope_mismatch")
+    if (this.error?.code === "invalid_session")
       throw new Error("Canvas access is required to export recovery");
     const options = { deadlineAt: Date.now() + 2000 };
     const [quarantined, active] = await Promise.all([
       waitForDocumentOperation(
         () =>
-          this.options.outbox.listQuarantined(this.options.accessContext, this.options.documentId),
+          this.options.outbox.listQuarantined(this.options.routingContext, this.options.documentId),
         options,
       ).catch(() => []),
       waitForDocumentOperation(
-        () => this.options.outbox.list(this.options.accessContext, this.options.documentId),
+        () => this.options.outbox.list(this.options.routingContext, this.options.documentId),
         options,
       ).catch(() => []),
     ]);

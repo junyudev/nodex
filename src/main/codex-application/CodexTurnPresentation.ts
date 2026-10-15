@@ -44,6 +44,13 @@ export interface CodexTurnPresentationLaunch extends CodexTurnPresentationClaim 
   readonly sequence: number;
 }
 
+export interface RuntimePresentationSource {
+  readonly runtimeId: string;
+  readonly runtimeGeneration: string;
+  readonly providerSessionId: string;
+  readonly nativeGeneration: number;
+}
+
 type EntryState =
   | { readonly kind: "captured" }
   | { readonly kind: "claimed"; readonly submissionId: string }
@@ -62,6 +69,8 @@ interface PresentationEntry {
   state: EntryState;
   queued: boolean;
   readonly withoutTicket: boolean;
+  runtimeSource: RuntimePresentationSource | null;
+  runtimeEditRequestId: string | null;
 }
 
 export class CodexTurnPresentation extends Context.Service<
@@ -76,6 +85,19 @@ export class CodexTurnPresentation extends Context.Service<
       target: CodexTurnPresentationTarget,
       submissionId: string,
     ) => Effect.Effect<CodexTurnPresentationClaim | undefined, CodexTurnPresentationError>;
+    /** Stable Session messages can retry an uncertain engine receipt without recapturing origin. */
+    readonly admitRuntimeMessage: (
+      ticket: CodexTurnPresentationTicket | undefined,
+      target: CodexTurnPresentationTarget,
+      threadId: string,
+      messageId: string,
+    ) => Effect.Effect<CodexTurnPresentationLaunch | null, CodexTurnPresentationError>;
+    readonly replaceQueuedRuntimeMessage: (
+      ticket: CodexTurnPresentationTicket | undefined,
+      threadId: string,
+      messageId: string,
+      editRequestId: string,
+    ) => Effect.Effect<CodexTurnPresentationLaunch | null, CodexTurnPresentationError>;
     readonly begin: (
       claim: CodexTurnPresentationClaim | undefined,
       threadId: string,
@@ -91,6 +113,14 @@ export class CodexTurnPresentation extends Context.Service<
       turnId: string,
       clientUserMessageId: string | null,
     ) => Effect.Effect<void, CodexTurnPresentationError>;
+    readonly observeRuntimeMessage: (
+      threadId: string,
+      runId: string,
+      messageId: string | null,
+      source: RuntimePresentationSource,
+    ) => Effect.Effect<void, CodexTurnPresentationError>;
+    readonly finishRuntimeSource: (source: RuntimePresentationSource) => void;
+    readonly finishRuntimeLease: (runtimeId: string, runtimeGeneration: string) => void;
     readonly abort: (launch: CodexTurnPresentationLaunch | null) => void;
     readonly releaseClaim: (claim: CodexTurnPresentationClaim | undefined) => void;
     /** Resumes a deferred launch only through its original target and logical submission identity. */
@@ -200,6 +230,8 @@ export const make: Effect.Effect<
       state: { kind: "captured" },
       queued: false,
       withoutTicket: false,
+      runtimeSource: null,
+      runtimeEditRequestId: null,
     });
     retainedBytes += byteLength;
     return { ticketId };
@@ -266,6 +298,8 @@ export const make: Effect.Effect<
       state: { kind: "admitted", launch },
       queued: false,
       withoutTicket: true,
+      runtimeSource: null,
+      runtimeEditRequestId: null,
     });
     return launch;
   };
@@ -360,6 +394,34 @@ export const make: Effect.Effect<
     yield* bind(candidates[0]!, turnId);
   });
 
+  const finish = (threadId: string, turnId: string) => {
+    const key = turnKey(threadId, turnId);
+    boundTurns.delete(key);
+    finishedTurns.add(key);
+    if (finishedTurns.size > 256) finishedTurns.delete(finishedTurns.values().next().value!);
+    for (const [ticketId, entry] of entries) {
+      if (
+        entry.state.kind !== "bound" ||
+        entry.state.launch.threadId !== threadId ||
+        entry.state.turnId !== turnId
+      )
+        continue;
+      finishedLaunches.set(entry.state.launch.launchId, turnId);
+      removeEntry(ticketId);
+    }
+    while (finishedLaunches.size > 256) {
+      const oldest = finishedLaunches.keys().next().value;
+      if (oldest) finishedLaunches.delete(oldest);
+    }
+  };
+  const finishMatchingRuntime = (matches: (source: RuntimePresentationSource) => boolean) => {
+    for (const entry of entries.values()) {
+      if (entry.state.kind !== "bound" || !entry.runtimeSource || !matches(entry.runtimeSource))
+        continue;
+      finish(entry.state.launch.threadId, entry.state.turnId);
+    }
+  };
+
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
       open = false;
@@ -393,9 +455,117 @@ export const make: Effect.Effect<
   return CodexTurnPresentation.of({
     capture,
     claim,
+    admitRuntimeMessage: Effect.fn("CodexTurnPresentation.admitRuntimeMessage")(
+      function* (ticket, target, threadId, messageId) {
+        if (!ticket) return null;
+        const entry = entries.get(ticket.ticketId);
+        if (entry && !sameTarget(entry.target, target))
+          return yield* failure(
+            "target_mismatch",
+            "Submission presentation targets a different Conversation or Session",
+          );
+        const admitted = [...entries.values()].flatMap((candidate) =>
+          (candidate.state.kind === "admitted" || candidate.state.kind === "bound") &&
+          candidate.state.launch.threadId === threadId &&
+          candidate.state.launch.submissionId === messageId
+            ? [candidate.state.launch]
+            : [],
+        );
+        if (admitted.length > 1)
+          return yield* failure("in_flight", "This message has ambiguous submission origins");
+        const original = admitted[0];
+        if (original) {
+          if (original.threadId !== threadId)
+            return yield* failure(
+              "submission_mismatch",
+              "Submission presentation belongs to another Conversation",
+            );
+          if (entry?.state.kind === "captured" && original.ticketId !== ticket.ticketId)
+            removeEntry(ticket.ticketId);
+          return original;
+        }
+        if (entry?.state.kind === "admitted" || entry?.state.kind === "bound") {
+          const launch = entry.state.launch;
+          if (launch.threadId !== threadId || launch.submissionId !== messageId)
+            return yield* failure(
+              "submission_mismatch",
+              "Submission presentation belongs to another client message",
+            );
+          return launch;
+        }
+        const claimed = yield* claim(ticket, target, messageId);
+        if (!claimed) return null;
+        return yield* begin(claimed, threadId, messageId);
+      },
+    ),
+    replaceQueuedRuntimeMessage: Effect.fn("CodexTurnPresentation.replaceQueuedRuntimeMessage")(
+      function* (ticket, threadId, messageId, editRequestId) {
+        if (!ticket) return null;
+        const candidates = [...entries.entries()].filter(
+          ([, entry]) =>
+            (entry.state.kind === "admitted" || entry.state.kind === "bound") &&
+            entry.state.launch.threadId === threadId &&
+            entry.state.launch.submissionId === messageId,
+        );
+        const retry = candidates.find(
+          ([, entry]) => entry.runtimeEditRequestId === editRequestId,
+        )?.[1];
+        if (retry && (retry.state.kind === "admitted" || retry.state.kind === "bound")) {
+          const recaptured = entries.get(ticket.ticketId);
+          if (recaptured?.state.kind === "captured") removeEntry(ticket.ticketId);
+          return retry.state.launch;
+        }
+        if (candidates.some(([, entry]) => entry.runtimeSource !== null)) return null;
+        const target = { kind: "thread", threadId } as const;
+        const claimed = yield* claim(ticket, target, messageId);
+        if (!claimed) return null;
+        const launch = yield* begin(claimed, threadId, messageId);
+        if (!launch) return null;
+        const replacement = entries.get(launch.ticketId);
+        if (replacement) replacement.runtimeEditRequestId = editRequestId;
+        for (const [originalTicketId] of candidates)
+          if (originalTicketId !== launch.ticketId) removeEntry(originalTicketId);
+        return launch;
+      },
+    ),
     begin,
     bind,
     observeUserMessage,
+    observeRuntimeMessage: Effect.fn("CodexTurnPresentation.observeRuntimeMessage")(
+      function* (threadId, runId, messageId, source) {
+        if (!messageId) return;
+        yield* observeUserMessage(threadId, runId, messageId);
+        const ticketId = boundTurns.get(turnKey(threadId, runId));
+        const entry = ticketId ? entries.get(ticketId) : undefined;
+        if (!entry || entry.state.kind !== "bound" || entry.state.launch.submissionId !== messageId)
+          return;
+        if (
+          entry.runtimeSource &&
+          (entry.runtimeSource.runtimeId !== source.runtimeId ||
+            entry.runtimeSource.runtimeGeneration !== source.runtimeGeneration ||
+            entry.runtimeSource.providerSessionId !== source.providerSessionId ||
+            entry.runtimeSource.nativeGeneration !== source.nativeGeneration)
+        )
+          return yield* failure(
+            "turn_mismatch",
+            "Submission presentation belongs to another native source",
+          );
+        entry.runtimeSource = { ...source };
+      },
+    ),
+    finishRuntimeSource: (source) =>
+      finishMatchingRuntime(
+        (current) =>
+          current.runtimeId === source.runtimeId &&
+          current.runtimeGeneration === source.runtimeGeneration &&
+          current.providerSessionId === source.providerSessionId &&
+          current.nativeGeneration === source.nativeGeneration,
+      ),
+    finishRuntimeLease: (runtimeId, runtimeGeneration) =>
+      finishMatchingRuntime(
+        (current) =>
+          current.runtimeId === runtimeId && current.runtimeGeneration === runtimeGeneration,
+      ),
     abort: (launch) => {
       if (!launch) return;
       const entry = entries.get(launch.ticketId);
@@ -443,25 +613,6 @@ export const make: Effect.Effect<
       const entry = ticketId ? entries.get(ticketId) : undefined;
       return entry?.state.kind === "bound" ? structuredClone(entry.anchor) : null;
     },
-    finish: (threadId, turnId) => {
-      const key = turnKey(threadId, turnId);
-      boundTurns.delete(key);
-      finishedTurns.add(key);
-      if (finishedTurns.size > 256) finishedTurns.delete(finishedTurns.values().next().value!);
-      for (const [ticketId, entry] of entries) {
-        if (
-          entry.state.kind !== "bound" ||
-          entry.state.launch.threadId !== threadId ||
-          entry.state.turnId !== turnId
-        )
-          continue;
-        finishedLaunches.set(entry.state.launch.launchId, turnId);
-        removeEntry(ticketId);
-      }
-      while (finishedLaunches.size > 256) {
-        const oldest = finishedLaunches.keys().next().value;
-        if (oldest) finishedLaunches.delete(oldest);
-      }
-    },
+    finish,
   });
 });

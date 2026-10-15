@@ -128,10 +128,7 @@ pub(super) fn mutate_session(
             &authority,
             thread_id,
         ),
-        ProjectSessionIntent::LinkPage {
-            page_id,
-            page_access_project_id,
-        } => super::page_chat::link_page(
+        ProjectSessionIntent::LinkPage { page_id } => super::page_chat::link_page(
             connection,
             library_id,
             context,
@@ -141,12 +138,8 @@ pub(super) fn mutate_session(
             session_id,
             &authority,
             page_id,
-            page_access_project_id,
         ),
-        ProjectSessionIntent::UnlinkPage {
-            page_id,
-            page_access_project_id,
-        } => super::page_chat::unlink_page(
+        ProjectSessionIntent::UnlinkPage { page_id } => super::page_chat::unlink_page(
             connection,
             library_id,
             context,
@@ -156,7 +149,6 @@ pub(super) fn mutate_session(
             session_id,
             &authority,
             page_id,
-            page_access_project_id,
         ),
     }
 }
@@ -362,6 +354,10 @@ fn set_session_archived(
     authority: &SessionAuthority,
     archived: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    if archived {
+        super::agent_runtime_native_session::retire_session(connection, session_id)?;
+        connection.execute("UPDATE nodex_agent_runtime_turn_admissions SET active=0 WHERE session_id=?1 AND active=1",[session_id])?;
+    }
     let now = sqlite_now(connection)?;
     let changed = if archived {
         connection.execute(
@@ -441,6 +437,13 @@ fn link_thread(
     >,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
+    if super::agent_runtime_binding::is_runtime_bound(connection, session_id)? {
+        return Err(StoreError::new(
+            StoreErrorCode::Conflict,
+            "Session execution belongs to Agent Runtime",
+            false,
+        ));
+    }
     if let Some(project_id) = expected_project_id {
         validate_id("expected_project_id", project_id)?;
     }

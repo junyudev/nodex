@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type {
   WorkbenchAgentRequestBody,
   WorkbenchWindowReference,
@@ -9,24 +9,23 @@ import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentatio
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
-import { WorkbenchContentAccess } from "./WorkbenchContentAccess";
+import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { make } from "./SessionPresentationAppTools";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
+import { createHostedAppToolCaller } from "./AppToolCaller";
 
 const windowA = { windowSessionId: "window-a", rendererGeneration: "generation-a" };
 const windowB = { windowSessionId: "window-b", rendererGeneration: "generation-b" };
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "caller-thread",
   turnId: "turn",
   rootThreadId: "caller-thread",
   actorProjectId: "project-a",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  scope: "project",
-  source: "project_turn",
-  readOnly: false,
+  admittedAtMs: 1,
 };
 const context = (
   name: string,
@@ -62,6 +61,8 @@ const fixture = (
     stale?: boolean;
     targetProject?: string | null;
     cwd?: string;
+    runtimeBound?: boolean;
+    presentation?: CodexTurnPresentation["Service"];
   } = {},
 ) => {
   const requests: Array<{ window: WorkbenchWindowReference; body: WorkbenchAgentRequestBody }> = [];
@@ -79,16 +80,23 @@ const fixture = (
         Effect.succeed({
           id,
           projectId: options.targetProject === undefined ? "project-a" : options.targetProject,
-          thread: { threadId: "target-thread" },
+          thread: options.runtimeBound ? null : { threadId: "target-thread" },
+          executionRef: options.runtimeBound
+            ? { runtimeId: "engine", threadId: "engine-thread" }
+            : null,
         }),
       getProject: () => Effect.succeed({ primaryWorkspaceRoot: "/workspace", sources: [] }),
     } as never),
-    Effect.provideService(CodexTurnPresentation, {
-      read: () =>
-        options.noAnchor
-          ? null
-          : { ...windowA, ...(options.stale ? { rendererGeneration: "old" } : {}) },
-    } as never),
+    Effect.provideService(
+      CodexTurnPresentation,
+      options.presentation ??
+        ({
+          read: () =>
+            options.noAnchor
+              ? null
+              : { ...windowA, ...(options.stale ? { rendererGeneration: "old" } : {}) },
+        } as never),
+    ),
     Effect.provideService(TerminalSessions, {
       listSnapshotsForOwners: () => Effect.succeed([]),
     } as never),
@@ -96,8 +104,8 @@ const fixture = (
       request: () =>
         Effect.succeed({ isGitRepository: true, root: "/workspace", errorMessage: null }),
     } as never),
-    Effect.provideService(WorkbenchContentAccess, {
-      describe: () => Effect.succeed({ status: "authorized", title: "Authorized Page" }),
+    Effect.provideService(WorkbenchContentRouting, {
+      describe: () => Effect.succeed({ status: "available", title: "Authorized Page" }),
     } as never),
     Effect.provideService(WorkbenchAgentBridge, {
       registered: () => [windowB, windowA],
@@ -133,6 +141,82 @@ const fixture = (
   return { build, requests };
 };
 
+it.effect("opens in the Runtime submission window using its exact engine Run coordinates", () =>
+  Effect.gen(function* () {
+    const subject = fixture({
+      presentation: {
+        read: (threadId: string, runId: string) =>
+          threadId === "engine-thread" && runId === "engine-run" ? windowA : null,
+      } as never,
+    });
+    const execute = yield* subject.build;
+    const leased = { ...authority, threadId: "runtime:lease", turnId: "runtime-run:lease" };
+    const caller = createHostedAppToolCaller({
+      backend: "codex",
+      authority: leased,
+      callId: "call",
+      generation: 1,
+      isActive: () => true,
+      capture: Effect.succeed(leased),
+      sessionContext: {
+        sessionId: "caller-session",
+        projectId: "project-a",
+        runtimeId: "runtime",
+        rootThreadId: "engine-thread",
+        threadId: "engine-thread",
+        runId: "engine-run",
+        cwd: "/workspace",
+      },
+    });
+    const request = context("open_in_nodex", { target: { kind: "page", pageId: "page" } });
+    const result = yield* execute({ ...request, invocation: { ...request.invocation, caller } });
+    assert.equal(result.structuredContent?.status, "queued");
+    assert.isTrue(subject.requests.every((request) => request.window === windowA));
+  }),
+);
+
+it.effect(
+  "opens review for a Runtime-bound Session from verified metadata without a legacy Thread",
+  () =>
+    Effect.gen(function* () {
+      const subject = fixture({ runtimeBound: true });
+      const reads: unknown[] = [];
+      const execute = yield* subject.build.pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          inspect: (target: unknown) =>
+            Effect.sync(() => {
+              reads.push(target);
+              return {
+                sessionId: "target",
+                projectId: "project-a",
+                runtimeId: "engine",
+                rootThreadId: "engine-thread",
+                threadId: "engine-thread",
+                thread: { worktreePath: "/workspace" },
+              };
+            }),
+        } as never),
+      );
+      const result = yield* execute(
+        context("open_in_nodex", {
+          sessionId: "target",
+          window: windowB,
+          target: { kind: "review", view: "branch" },
+        }),
+      );
+      assert.strictEqual(result.structuredContent?.status, "queued");
+      assert.deepEqual(reads, [{ sessionId: "target" }]);
+      const body = subject.requests.at(-1)!.body;
+      assert.strictEqual(body.kind, "command");
+      if (body.kind !== "command" || body.envelope.command.kind !== "open_surface") return;
+      assert.deepEqual(body.envelope.command.reveal, {
+        kind: "review",
+        threadId: "engine-thread",
+        view: "branch",
+      });
+    }),
+);
+
 it.effect(
   "opens in the calling Session and submission window even when another window is listed first",
   () =>
@@ -167,8 +251,7 @@ it.effect(
           {
             authority: {
               ...authority,
-              scope: "library",
-              source: "builtin_full_access",
+
               actorProjectId: null,
             },
           },
@@ -213,43 +296,29 @@ it.effect(
     }),
 );
 
-it.effect(
-  "checks Project access, Plan Mode and current Turn before issuing presentation changes",
-  () =>
-    Effect.gen(function* () {
-      const foreign = fixture({ targetProject: "other-project" });
-      const executeForeign = yield* foreign.build;
-      assert.deepEqual(
-        (yield* executeForeign(context("navigate_to_session", { sessionId: "target" })))
-          .structuredContent,
-        { error: { code: "session_unavailable" } },
-      );
-      assert.deepEqual(foreign.requests, []);
-      const subject = fixture();
-      const execute = yield* subject.build;
-      assert.deepEqual(
-        (yield* execute(
-          context(
-            "navigate_to_session",
-            { sessionId: "target" },
-            { authority: { ...authority, readOnly: true } },
-          ),
-        )).structuredContent,
-        { error: { code: "read_only_turn" } },
-      );
-      assert.deepEqual(subject.requests, []);
-      assert.deepEqual(
-        (yield* execute(
-          context(
-            "navigate_to_session",
-            { sessionId: "target" },
-            { isCurrent: Effect.succeed(false) },
-          ),
-        )).structuredContent,
-        { error: { code: "authority_unavailable" } },
-      );
-      assert.isFalse(subject.requests.some((request) => request.body.kind === "command"));
-    }),
+it.effect("cross-Project presentation is available and withdrawn execution cannot dispatch", () =>
+  Effect.gen(function* () {
+    const foreign = fixture({ targetProject: "other-project" });
+    const open = yield* foreign.build;
+    assert.equal(
+      (yield* open(context("navigate_to_session", { sessionId: "target" }))).structuredContent
+        ?.status,
+      "navigated",
+    );
+    const subject = fixture();
+    const execute = yield* subject.build;
+    assert.deepEqual(
+      (yield* execute(
+        context(
+          "navigate_to_session",
+          { sessionId: "target" },
+          { isCurrent: Effect.succeed(false) },
+        ),
+      )).structuredContent,
+      { error: { code: "authority_unavailable" } },
+    );
+    assert.isFalse(subject.requests.some((request) => request.body.kind === "command"));
+  }),
 );
 
 it.effect(

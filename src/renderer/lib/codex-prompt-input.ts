@@ -100,7 +100,6 @@ function stripPromptSideEffectsFromInline(
         ...(item.model ? { model: item.model } : {}),
         ...(item.reasoning ? { reasoning: item.reasoning } : {}),
         ...(item.speed ? { speed: item.speed } : {}),
-        ...(item.permission ? { permission: item.permission } : {}),
         ...(item.unknownAttributes?.length ? { unknownAttributes: item.unknownAttributes } : {}),
       });
       continue;

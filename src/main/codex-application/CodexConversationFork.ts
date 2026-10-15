@@ -148,6 +148,21 @@ export const make: Effect.Effect<
     if (!sourceThreadId) {
       return yield* error("admit", input.sourceThreadId, new Error("Fork source is required"));
     }
+    const hostId = source.durable.executionHostId;
+    if (
+      !hostId ||
+      hostId.trim() !== hostId ||
+      hostId === gateway.localHostId ||
+      capability.hostId !== hostId
+    ) {
+      return yield* error(
+        "admit",
+        sourceThreadId,
+        new Error(
+          "Local imported history has no native execution owner; fork an Agent Runtime Session",
+        ),
+      );
+    }
     if (requestedLastTurnId != null && !lastTurnId) {
       return yield* error("admit", sourceThreadId, new Error("Fork turn is required"));
     }

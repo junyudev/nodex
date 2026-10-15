@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { committedLocalCommit } from "../../shared/testing/local-commit";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 import { CoreModuleResponseError } from "./core-client";
 import { createCoreDocumentSyncAdapter as createCoreDocumentSyncAdapterBase } from "./document-sync-adapter";
 import { FakeCoreClient } from "./testing/fake-core-client";
@@ -19,27 +18,12 @@ const descriptorSnapshot = () => ({
   contract_version: 1 as const,
   store_epoch: "epoch:test",
   commit_head: 4,
-  authorization: authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "document",
-      library_id: "library:test",
-      project_id: "project:one",
-      document_id: "document:one",
-    },
-    subject: { kind: "page", page_id: "page:one" },
-    storeEpoch: "epoch:test",
-    commitSeq: 4,
-    authorizationDependencies: [
-      { kind: "document", document_id: "document:one" },
-      { kind: "page", page_id: "page:one" },
-    ],
-  }),
   value: {
     kind: "descriptor" as const,
     descriptor: {
-      version: 3,
+      version: 4,
       libraryId: "library:test",
-      accessContext: { kind: "project" as const, projectId: "project:one" },
+      routingContext: { kind: "project" as const, projectId: "project:one" },
       ownerBlockId: "page:one",
       ownerType: "page",
       ownerLifecycle: "active" as const,
@@ -119,7 +103,7 @@ describe("Core Document sync adapter", () => {
       }),
     ).resolves.toMatchObject({
       libraryId: "library:test",
-      accessContext: { kind: "project", projectId: "project:one" },
+      routingContext: { kind: "project", projectId: "project:one" },
       ownerBlockId: "page:one",
       documentId: "document:one",
       headSeq: 2,
@@ -153,7 +137,7 @@ describe("Core Document sync adapter", () => {
       ok: true,
       value: {
         libraryId: "library:test",
-        accessContext: { kind: "project", projectId: "project:one" },
+        routingContext: { kind: "project", projectId: "project:one" },
         ownerBlockId: "page:one",
         documentId: "document:one",
       },

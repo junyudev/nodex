@@ -47,7 +47,7 @@ const EASE_OUT = [0.2, 0, 0, 1] as const;
 export interface InboxRouteProps {
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
-  readonly onOpenThread: (threadId: string) => void;
+  readonly onOpenSession: (sessionId: string) => void;
   readonly onOpenPage: (pageId: string) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
@@ -211,7 +211,7 @@ function streamEntries(items: readonly InboxItem[], nowMs: number): readonly Str
 export function InboxRoute({
   projects,
   focusComposerToken,
-  onOpenThread,
+  onOpenSession,
   onOpenPage,
   onOpenDatabase,
   onOpenSettings,
@@ -292,7 +292,7 @@ export function InboxRoute({
       preview: items.length === 1 ? (items[0]?.body ?? null) : null,
     });
   const openTarget = (target: InboxOutcomeTarget) =>
-    target.kind === "thread" ? onOpenThread(target.threadId) : onOpenDatabase(target.databaseId);
+    target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
 
   const renderMessage = (item: InboxItem) => {
     const proposal = item.proposal;
@@ -333,7 +333,7 @@ export function InboxRoute({
             selected={selected.has(item.pageId)}
             selectionActive={selected.size > 0}
             onToggleSelected={() => toggleSelected(item.pageId)}
-            onOpenSource={onOpenThread}
+            onOpenSource={onOpenSession}
             strip={triage.strip}
             actions={triage.actions}
           />

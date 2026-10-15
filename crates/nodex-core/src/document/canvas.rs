@@ -5,7 +5,7 @@ use std::path::Path;
 
 use nodex_core_contracts::{
     ProjectionImpact,
-    document::{CanvasCompactionStats, OwnedDocumentAccessContext},
+    document::{CanvasCompactionStats, ContentRoutingContext},
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value, json};
@@ -1311,7 +1311,7 @@ pub(crate) fn persist_canvas_mutation(
     commit_context: Option<&CommitContext>,
     authority: &DocumentAuthorityRow,
     actor_project_id: Option<&str>,
-    access_context: &OwnedDocumentAccessContext,
+    routing_context: &ContentRoutingContext,
     store_epoch: &str,
     operation_id: &str,
     base_head_seq: i64,
@@ -1413,7 +1413,7 @@ pub(crate) fn persist_canvas_mutation(
     let mut result = json!({
         "mutationId": operation_id,
         "libraryId": authority.head.library_id,
-        "accessContext": access_context,
+        "routingContext": routing_context,
         "documentId": authority.head.id,
         "storeEpoch": store_epoch,
         "generation": authority.head.generation,
@@ -1469,7 +1469,7 @@ pub(crate) fn persist_prepared_canvas_mutation(
     commit_context: Option<&CommitContext>,
     authority: &DocumentAuthorityRow,
     actor_project_id: Option<&str>,
-    access_context: &OwnedDocumentAccessContext,
+    routing_context: &ContentRoutingContext,
     store_epoch: &str,
     operation_id: &str,
     base_head_seq: i64,
@@ -1578,7 +1578,7 @@ pub(crate) fn persist_prepared_canvas_mutation(
     let mut result = json!({
         "mutationId": operation_id,
         "libraryId": authority.head.library_id,
-        "accessContext": access_context,
+        "routingContext": routing_context,
         "documentId": authority.head.id,
         "storeEpoch": store_epoch,
         "generation": authority.head.generation,

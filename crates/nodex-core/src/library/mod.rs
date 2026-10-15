@@ -1,22 +1,17 @@
-use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nodex_core_contracts::library::{
-    LibraryCommitValue, LibraryEvent, LibraryEventKind, LibraryIntent, LibraryRead,
-    LibraryReadValue, LibraryReceipt, LibraryResourceTarget,
+    LibraryCommitValue, LibraryIntent, LibraryRead, LibraryReadValue, LibraryReceipt,
 };
 use nodex_core_contracts::{
-    BoundModuleContext, CORE_EVENT_VERSION, CommittedCoreModuleEvent, CoreError, CoreErrorCode,
-    CoreErrorRecovery, CoreModuleEventPayload, LIBRARY_CONTRACT_VERSION, ModuleApplyRequest,
-    ModuleMutationReceipt, ModuleReadRequest, ModuleReadSnapshot, ProjectionImpact, StoreEpoch,
+    BoundModuleContext, CommittedCoreModuleEvent, CoreError, CoreErrorCode, CoreErrorRecovery,
+    LIBRARY_CONTRACT_VERSION, ModuleApplyRequest, ModuleReadRequest, ModuleReadSnapshot,
+    StoreEpoch,
 };
 use rusqlite::OptionalExtension;
 
 use crate::infrastructure::agent_operations::PreparedAgentOperationRegistry;
-use crate::infrastructure::module_receipts::DurableModuleContext;
-use crate::infrastructure::projection_impact::impact_for_payload;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use crate::infrastructure::store::SqliteStoreKernel;
 use crate::infrastructure::writer::{StoreReaders, StoreWriter};
@@ -33,7 +28,6 @@ pub(crate) use file_restore::{
     publish as publish_file_restore,
 };
 mod files;
-pub(crate) use file_access::file_grant_authorization_proof;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
 mod agent_surface;
 mod file_blobs;
@@ -43,32 +37,9 @@ mod page_file_entry_mutation;
 mod page_file_inventory;
 mod page_projection;
 mod page_search;
-mod projection_authorization;
 pub(crate) mod query;
-mod read_authorization;
-mod resource_access;
 mod search_match;
 mod search_snapshot;
-
-pub(crate) fn require_trusted_library_authority(
-    context: &BoundModuleContext,
-) -> Result<(), StoreError> {
-    if context.project_id.is_none()
-        && matches!(
-            context.adapter,
-            nodex_core_contracts::AdapterKind::ElectronHost
-                | nodex_core_contracts::AdapterKind::NativeCli
-                | nodex_core_contracts::AdapterKind::Test
-        )
-    {
-        return Ok(());
-    }
-    Err(StoreError::new(
-        StoreErrorCode::Unauthorized,
-        "Project access can only be managed from trusted Library authority",
-        false,
-    ))
-}
 
 #[derive(Clone, Debug)]
 pub struct LibraryApplyOutcome {
@@ -110,24 +81,10 @@ impl LibrarySearchSnapshotLeaseRegistry {
     }
 }
 
-#[derive(Clone)]
-struct AppliedOperation {
-    fingerprint: Vec<u8>,
-    committed: crate::ModuleWriterResult<LibraryCommitValue, LibraryReceipt>,
-}
-
-#[derive(Default)]
-struct LibraryState {
-    commit_head: i64,
-    operations: HashMap<String, AppliedOperation>,
-    grants: BTreeMap<(String, String), String>,
-}
-
 pub struct LibraryModule {
     profile_id: String,
     library_id: String,
     store_epoch: StoreEpoch,
-    state: Mutex<LibraryState>,
     readers: Option<StoreReaders>,
     writer: Option<StoreWriter>,
     assets_root: Option<PathBuf>,
@@ -148,7 +105,6 @@ impl LibraryModule {
             profile_id,
             library_id,
             store_epoch,
-            state: Mutex::new(LibraryState::default()),
             readers: None,
             writer: None,
             assets_root: None,
@@ -181,7 +137,6 @@ impl LibraryModule {
             profile_id: profile_id.into(),
             library_id: library_id.into(),
             store_epoch: StoreEpoch(String::new()),
-            state: Mutex::new(LibraryState::default()),
             readers: Some(kernel.readers()),
             writer: Some(kernel.writer()),
             assets_root: Some(profile_home.join("assets")),
@@ -250,7 +205,6 @@ impl LibraryModule {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     store_epoch: StoreEpoch(current_store_epoch),
                     commit_head: current_commit_seq,
-                    authorization: None,
                     value: LibraryReadValue::SearchSnapshotLease {
                         value: Box::new(value),
                     },
@@ -297,7 +251,6 @@ impl LibraryModule {
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head: commit_seq,
-                authorization: None,
                 value: LibraryReadValue::SearchSnapshotLease {
                     value: Box::new(value),
                 },
@@ -330,7 +283,6 @@ impl LibraryModule {
                 contract_version: LIBRARY_CONTRACT_VERSION,
                 store_epoch: StoreEpoch(store_epoch),
                 commit_head: commit_seq,
-                authorization: None,
                 value: LibraryReadValue::SearchSnapshotRelease { value },
             });
         }
@@ -448,7 +400,7 @@ impl LibraryModule {
                         })?;
                     let commit_seq = navigation::commit_head(&transaction)?;
                     let read = request.read;
-                    let stamp_read = read.clone();
+                    let _stamp_read = read.clone();
                     let value = match read {
                         LibraryRead::Metadata => LibraryReadValue::Metadata {
                             profile_id,
@@ -461,7 +413,6 @@ impl LibraryModule {
                                     &transaction,
                                     &library_id,
                                     &store_epoch,
-                                    &context,
                                     &tokens,
                                 )?,
                             }
@@ -481,27 +432,6 @@ impl LibraryModule {
                                 &intent,
                             )?),
                         },
-                        LibraryRead::ResourceProjectAccess { target } => {
-                            LibraryReadValue::ResourceProjectAccess {
-                                value: Box::new(resource_access::read(
-                                    &transaction,
-                                    &library_id,
-                                    &context,
-                                    target,
-                                )?),
-                            }
-                        }
-                        LibraryRead::FilterProjectionImpactForProject { project_id, impact } => {
-                            LibraryReadValue::ProjectionImpact {
-                                impact: projection_authorization::filter_for_project(
-                                    &transaction,
-                                    &library_id,
-                                    &context,
-                                    &project_id,
-                                    impact,
-                                )?,
-                            }
-                        }
                         LibraryRead::PageLifecyclePreflight { page_id } => {
                             LibraryReadValue::PageLifecyclePreflight {
                                 value: Box::new(page_lifecycle::read_preflight(
@@ -512,22 +442,6 @@ impl LibraryModule {
                                 )?),
                             }
                         }
-                        LibraryRead::PlanAgentResourceAccess {
-                            provenance,
-                            call_id,
-                            intents,
-                            task_access,
-                        } => LibraryReadValue::AgentResourceAccessPlan {
-                            value: Box::new(agent_authorization::plan(
-                                &transaction,
-                                &context,
-                                &library_id,
-                                &provenance,
-                                &call_id,
-                                &intents,
-                                task_access.as_deref(),
-                            )?),
-                        },
                         read => navigation::read(
                             &transaction,
                             &library_id,
@@ -538,32 +452,23 @@ impl LibraryModule {
                             read,
                         )?,
                     };
-                    let authorization = read_authorization::issue(
-                        &transaction,
-                        &context,
-                        &store_epoch,
-                        commit_seq,
-                        &stamp_read,
-                        &value,
-                    )?;
+
                     transaction.commit()?;
                     Ok(ModuleReadSnapshot {
                         contract_version: LIBRARY_CONTRACT_VERSION,
                         store_epoch: StoreEpoch(store_epoch),
                         commit_head: commit_seq,
-                        authorization,
                         value,
                     })
                 })
                 .map_err(core_error);
         }
 
-        let state = self.state.lock().expect("Library tracer mutex poisoned");
         let value = match request.read {
             LibraryRead::Metadata => LibraryReadValue::Metadata {
                 profile_id: self.profile_id.clone(),
                 library_id: self.library_id.clone(),
-                commit_seq: state.commit_head,
+                commit_seq: 0,
             },
             _ => {
                 return Err(invalid_input(
@@ -575,8 +480,7 @@ impl LibraryModule {
         Ok(ModuleReadSnapshot {
             contract_version: LIBRARY_CONTRACT_VERSION,
             store_epoch: self.store_epoch.clone(),
-            commit_head: state.commit_head,
-            authorization: None,
+            commit_head: 0,
             value,
         })
     }
@@ -736,166 +640,7 @@ impl LibraryModule {
             )
             .map_err(core_error);
         }
-        if request.store_epoch != self.store_epoch {
-            return Err(CoreError {
-                code: CoreErrorCode::StaleStoreEpoch,
-                message: "Library mutation targets a stale store generation".to_owned(),
-                retryable: true,
-                recovery: CoreErrorRecovery::CurrentStoreEpoch {
-                    store_epoch: self.store_epoch.clone(),
-                },
-            });
-        }
-
-        let (project_id, target, access) = match &request.intent {
-            LibraryIntent::GrantProjectAccess {
-                project_id,
-                target,
-                access,
-            } => (
-                project_id.clone(),
-                target.clone(),
-                match access {
-                    nodex_core_contracts::library::LibraryAccess::Read => "read".to_owned(),
-                    nodex_core_contracts::library::LibraryAccess::ReadWrite => {
-                        "read_write".to_owned()
-                    }
-                },
-            ),
-            _ => {
-                return Err(invalid_input(
-                    "the Milestone 1 tracer supports grant_project_access only",
-                ));
-            }
-        };
-        let fingerprint = serde_json::to_vec(&(
-            DurableModuleContext::from(context),
-            request.contract_version,
-            &request.store_epoch,
-            &request.intent,
-        ))
-        .map_err(|_| invalid_input("Library mutation cannot be fingerprinted"))?;
-        let mut state = self.state.lock().expect("Library tracer mutex poisoned");
-
-        if let Some(applied) = state.operations.get(&request.operation_id) {
-            if applied.fingerprint != fingerprint {
-                return Err(CoreError {
-                    code: CoreErrorCode::IdempotencyKeyReused,
-                    message: "operation_id was already used for a different Library intent"
-                        .to_owned(),
-                    retryable: false,
-                    recovery: CoreErrorRecovery::None,
-                });
-            }
-            let mut committed = applied.committed.clone();
-            committed.receipt.mutation.duplicate = true;
-            return Ok(LibraryApplyOutcome {
-                committed,
-                event: None,
-            });
-        }
-
-        state.commit_head += 1;
-        let event_sequence = state.commit_head;
-        let resource_id = resource_id(&target);
-        let previous_access = state
-            .grants
-            .insert((project_id, resource_id.clone()), access.clone());
-        let did_mutate = previous_access.as_ref() != Some(&access);
-        let (affected_page_ids, affected_database_ids) = match &target {
-            LibraryResourceTarget::Page { page_id } => (vec![page_id.clone()], Vec::new()),
-            LibraryResourceTarget::Database { database_id } => {
-                (Vec::new(), vec![database_id.clone()])
-            }
-            LibraryResourceTarget::Canvas { .. } | LibraryResourceTarget::File { .. } => {
-                (Vec::new(), Vec::new())
-            }
-        };
-        let committed_at = unix_timestamp_millis();
-        let receipt = LibraryReceipt {
-            mutation: ModuleMutationReceipt {
-                operation_id: request.operation_id.clone(),
-                duplicate: false,
-            },
-            operation_kind: "grant_project_access".to_owned(),
-            did_mutate,
-            created_target: None,
-            affected_parent_keys: Vec::new(),
-            affected_page_ids: affected_page_ids.clone(),
-            affected_database_ids: affected_database_ids.clone(),
-            affected_view_ids: Vec::new(),
-            committed_revisions: BTreeMap::new(),
-            commit_seq: event_sequence,
-            committed_at: committed_at.clone(),
-        };
-        let commit_seq = event_sequence;
-        let committed = crate::ModuleWriterResult {
-            value: LibraryCommitValue {
-                page_file_entries: Vec::new(),
-                file_mutation: Default::default(),
-                affected_resource_ids: vec![resource_id],
-                page_create: None,
-                page_copy: None,
-                canvas_mutation: None,
-                block_transfer: None,
-                block_transfer_undo: None,
-                page_relocation_undo: None,
-                structural_edit: None,
-                page_lifecycle: None,
-                block_property_mutation: None,
-                agent_page_copy: None,
-                agent_create_pages: None,
-                agent_move_pages: None,
-            },
-            receipt,
-            commit_seq,
-            event_sequence,
-            store_epoch: self.store_epoch.clone(),
-        };
-        let event_payload = CoreModuleEventPayload::Library(LibraryEvent {
-            file_revisions: Default::default(),
-            kind: LibraryEventKind::LibraryChanged,
-            page_ids: affected_page_ids,
-            database_ids: affected_database_ids,
-            view_ids: Vec::new(),
-            parent_keys: Vec::new(),
-            page_file_manifest_invalidations: BTreeMap::new(),
-            page_file_body_usage_revisions: BTreeMap::new(),
-            page_file_content_invalidations: BTreeMap::new(),
-        });
-        let projection_impact = match target {
-            LibraryResourceTarget::Page { .. } => {
-                impact_for_payload(&event_payload).map_err(core_error)?
-            }
-            // The in-memory adapter has no Database/Data Source/View catalog from
-            // which to enumerate the complete projection closure. Broad invalidation
-            // is the only truthful impact for this test authority.
-            LibraryResourceTarget::Database { .. } => ProjectionImpact::All,
-            LibraryResourceTarget::Canvas { .. } | LibraryResourceTarget::File { .. } => {
-                ProjectionImpact::All
-            }
-        };
-        let event = CommittedCoreModuleEvent {
-            event_version: CORE_EVENT_VERSION,
-            sequence: event_sequence,
-            store_epoch: self.store_epoch.clone(),
-            operation_id: Some(request.operation_id.clone()),
-            committed_at,
-            projection_impact,
-            payload: event_payload,
-        };
-        state.operations.insert(
-            request.operation_id,
-            AppliedOperation {
-                fingerprint,
-                committed: committed.clone(),
-            },
-        );
-
-        Ok(LibraryApplyOutcome {
-            committed,
-            event: Some(event),
-        })
+        Err(invalid_input("The Library tracer has no durable writer"))
     }
 
     pub fn invalidate_prepared_agent_operations(&self) -> Result<(), CoreError> {
@@ -1149,35 +894,15 @@ fn core_error(error: StoreError) -> CoreError {
     }
 }
 
-fn resource_id(target: &LibraryResourceTarget) -> String {
-    match target {
-        LibraryResourceTarget::Page { page_id } => page_id.clone(),
-        LibraryResourceTarget::Database { database_id } => database_id.clone(),
-        LibraryResourceTarget::Canvas { canvas_id } => canvas_id.clone(),
-        LibraryResourceTarget::File { file_id } => file_id.clone(),
-    }
-}
-
-fn unix_timestamp_millis() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     mod agent_surface;
     mod effective_view_query;
     mod manual_order;
     mod projectless_agent_authority;
     mod query;
-    use nodex_core_contracts::agent::{
-        AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAccess,
-        AgentProjectResourceAction, AgentResourceAccessPlan, AgentResourceGrantRoot,
-        AgentResourceGrantSpec, AgentResourceIntent, AgentTurnProvenance,
-    };
+    use nodex_core_contracts::agent::{AgentExecutionAuthorization, AgentTurnProvenance};
     use nodex_core_contracts::collection::CollectionWindowRequest;
     use nodex_core_contracts::database::{
         DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
@@ -1194,7 +919,6 @@ mod tests {
         DocumentOptionalValue, OwnedDocumentIntent,
     };
     use nodex_core_contracts::library::{
-        LibraryAccess, LibraryAgentSearchResult, LibraryAgentSearchScope, LibraryAgentSearchTarget,
         LibraryBlockLocation, LibraryBlockPropertyFieldMutation, LibraryBlockPropertyMutation,
         LibraryBlockPropertyMutationErrorCode, LibraryBlockPropertyMutationOutcome,
         LibraryBlockTransferDataSourcePlacement, LibraryBlockTransferDocumentHead,
@@ -1205,18 +929,15 @@ mod tests {
         LibraryPageLifecycleViewPlacement, LibraryPagePrepareKind, LibraryPageProjectionFileKind,
         LibraryPageReferenceMatchSource, LibraryPageRelocationDestinationScope,
         LibraryPageSearchMatch, LibraryPageSearchTagMode, LibraryPageWorkflowStatus,
-        LibraryPageWriteDestination, LibraryProjectAccessChange, LibraryProjectPageSearchFilters,
-        LibraryWriteParent,
+        LibraryPageWriteDestination, LibraryProjectPageSearchFilters, LibraryWriteParent,
     };
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
-        ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
-        ProjectWorkspaceTurnAuthoritySource,
+        ProjectWorkspaceTurnAuthority,
     };
     use nodex_core_contracts::{
         AdapterKind, DATABASE_CONTRACT_VERSION, DeliveryAtomKind, LibraryId, LocalProjectionPatch,
         LocalProjectionScope, OWNED_DOCUMENT_CONTRACT_VERSION, ProfileId, ProjectId,
-        RevokedResourceKind,
     };
     use rusqlite::params;
     use sha2::{Digest, Sha256};
@@ -1271,21 +992,6 @@ mod tests {
             .expect("Page move preparation ETag")
     }
 
-    fn request(operation_id: &str, page_id: &str) -> ModuleApplyRequest<LibraryIntent> {
-        ModuleApplyRequest {
-            contract_version: LIBRARY_CONTRACT_VERSION,
-            operation_id: operation_id.to_owned(),
-            store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::GrantProjectAccess {
-                project_id: "project-1".to_owned(),
-                target: LibraryResourceTarget::Page {
-                    page_id: page_id.to_owned(),
-                },
-                access: LibraryAccess::Read,
-            },
-        }
-    }
-
     fn transfer_request(
         operation_id: &str,
         intent: LibraryBlockTransferLogicalIntent,
@@ -1327,621 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn tracer_replays_an_exact_retry_after_reconnecting() {
-        let module = LibraryModule::tracer(
-            "profile-1".to_owned(),
-            "library-1".to_owned(),
-            StoreEpoch("epoch-1".to_owned()),
-        );
-
-        let first = module.apply(&context(), request("operation-1", "page-1"));
-        let mut reconnected = context();
-        reconnected.connection_id = "connection-2".to_owned();
-        let replay = module.apply(&reconnected, request("operation-1", "page-1"));
-
-        let first = first.expect("first apply succeeds");
-        let replay = replay.expect("exact retry succeeds");
-        assert!(first.event.is_some());
-        assert!(replay.event.is_none());
-        assert!(!first.committed.receipt.mutation.duplicate);
-        assert!(replay.committed.receipt.mutation.duplicate);
-        assert_eq!(
-            first.committed.event_sequence,
-            replay.committed.event_sequence
-        );
-    }
-
-    #[test]
-    fn tracer_rejects_same_operation_id_with_different_intent() {
-        let module = LibraryModule::tracer(
-            "profile-1".to_owned(),
-            "library-1".to_owned(),
-            StoreEpoch("epoch-1".to_owned()),
-        );
-        module
-            .apply(&context(), request("operation-1", "page-1"))
-            .expect("first apply succeeds");
-
-        let error = module
-            .apply(&context(), request("operation-1", "page-2"))
-            .expect_err("different retry fails");
-
-        assert_eq!(error.code, CoreErrorCode::IdempotencyKeyReused);
-    }
-
-    #[test]
-    fn plans_and_persists_agent_project_resource_consent_from_exact_turn_authority() {
-        const NOW: &str = "2026-07-20T09:20:00.000Z";
-        let directory = tempdir().expect("Profile");
-        let home = directory.path().canonicalize().expect("absolute Profile");
-        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
-        kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO profiles(id, created_at, updated_at) \
-                         VALUES ('profile-1', ?1, ?1)",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO libraries(id, profile_id, created_at, updated_at) \
-                         VALUES ('library-1', 'profile-1', ?1, ?1)",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO block_store_metadata(id, store_epoch, created_at, updated_at) \
-                         VALUES (1, 'epoch-1', ?1, ?1)",
-                        [NOW],
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("seed authority identity");
-        let context = BoundModuleContext {
-            editor_history_owner: None,
-            profile_id: ProfileId("profile-1".to_owned()),
-            library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project:default".to_owned())),
-            connection_id: "connection:agent-resource".to_owned(),
-            adapter: AdapterKind::Test,
-        };
-        let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &kernel)
-            .expect("Workspace module");
-        workspace.seed_rootless_default_project_for_test();
-        workspace
-            .apply(
-                &context,
-                ModuleApplyRequest {
-                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    operation_id: "agent-thread".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::UpsertThread {
-                        thread_id: "thread:agent".to_owned(),
-                        patch: Box::new(ProjectWorkspaceThreadPatch {
-                            project_id: Some(Some("project:default".to_owned())),
-                            thread_name: Some(Some("Agent".to_owned())),
-                            created_at: Some(100),
-                            updated_at: Some(100),
-                            linked_at: Some(NOW.to_owned()),
-                            ..ProjectWorkspaceThreadPatch::default()
-                        }),
-                    },
-                },
-            )
-            .expect("persist Agent Thread");
-        workspace
-            .apply(
-                &context,
-                ModuleApplyRequest {
-                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    operation_id: "agent-turn-authority".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
-                        thread_id: "thread:agent".to_owned(),
-                        turn_id: "turn:agent".to_owned(),
-                        root_thread_id: "thread:agent".to_owned(),
-                        actor_project_id: Some("project:default".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
-                    },
-                },
-            )
-            .expect("freeze Agent Turn authority");
-        let module = LibraryModule::new("profile-1", "library-1", &kernel);
-        let mut trusted_library_context = context.clone();
-        trusted_library_context.project_id = None;
-        module
-            .apply(
-                &trusted_library_context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "agent-target-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePage {
-                        page_id: "page:agent-target".to_owned(),
-                        document_id: "document:agent-target".to_owned(),
-                        title: "Agent target".to_owned(),
-                        parent: LibraryWriteParent::Library { before: None },
-                    },
-                },
-            )
-            .expect("create ungranted target Page");
-        let provenance = AgentTurnProvenance {
-            profile_id: "profile-1".to_owned(),
-            authority: ProjectWorkspaceTurnAuthority {
-                thread_id: "thread:agent".to_owned(),
-                turn_id: "turn:agent".to_owned(),
-                root_thread_id: "thread:agent".to_owned(),
-                actor_project_id: Some("project:default".to_owned()),
-                library_id: "library-1".to_owned(),
-                store_epoch: "epoch-1".to_owned(),
-                scope: ProjectWorkspaceTurnAuthorityScope::Project,
-                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-            },
-        };
-        let plan_request = ModuleReadRequest {
-            contract_version: LIBRARY_CONTRACT_VERSION,
-            read: LibraryRead::PlanAgentResourceAccess {
-                provenance: Box::new(provenance.clone()),
-                call_id: "call:agent".to_owned(),
-                intents: vec![AgentResourceIntent {
-                    target: AgentAuthorizationTarget::Page {
-                        page_id: "page:agent-target".to_owned(),
-                    },
-                    action: AgentProjectResourceAction::Write,
-                }],
-                task_access: None,
-            },
-        };
-        let LibraryReadValue::AgentResourceAccessPlan { value } = module
-            .read(&context, plan_request.clone())
-            .expect("plan Project resource consent")
-            .value
-        else {
-            panic!("Agent resource plan");
-        };
-        let AgentResourceAccessPlan::ConsentRequired { requirements, .. } = *value else {
-            panic!("missing resource requires consent");
-        };
-        assert_eq!(requirements.len(), 1);
-        assert_eq!(
-            requirements[0].grant,
-            AgentResourceGrantSpec {
-                root: AgentResourceGrantRoot::Page {
-                    page_id: "page:agent-target".to_owned(),
-                },
-                access: AgentProjectResourceAccess::ReadWrite,
-                library_actions: Vec::new(),
-            }
-        );
-
-        let grant_request = ModuleApplyRequest {
-            contract_version: LIBRARY_CONTRACT_VERSION,
-            operation_id: "agent-persist-grant".to_owned(),
-            store_epoch: StoreEpoch("epoch-1".to_owned()),
-            intent: LibraryIntent::PersistAgentProjectResourceGrants {
-                provenance: Box::new(provenance.clone()),
-                grants: requirements
-                    .into_iter()
-                    .map(|requirement| requirement.grant)
-                    .collect(),
-            },
-        };
-        let committed = module
-            .apply(&context, grant_request.clone())
-            .expect("persist Project grant");
-        let replay = module
-            .apply(&context, grant_request)
-            .expect("replay Project grant persistence");
-        assert_eq!(
-            committed.committed.receipt.operation_kind,
-            "persist_agent_project_resource_grants"
-        );
-        assert!(replay.committed.receipt.mutation.duplicate);
-
-        workspace
-            .apply(
-                &context,
-                ModuleApplyRequest {
-                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
-                    operation_id: "agent-read-only-turn".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        thread_id: "thread:agent".to_owned(),
-                        turn_id: "turn:read-only".to_owned(),
-                        root_thread_id: "thread:agent".to_owned(),
-                        actor_project_id: Some("project:default".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        read_only: true,
-                        inherited_from: None,
-                    },
-                },
-            )
-            .expect("freeze read-only Turn");
-        let mut read_only_provenance = provenance.clone();
-        read_only_provenance.authority.turn_id = "turn:read-only".to_owned();
-        let mut read_only_plan = plan_request.clone();
-        if let LibraryRead::PlanAgentResourceAccess { provenance, .. } = &mut read_only_plan.read {
-            **provenance = read_only_provenance.clone();
-        }
-        let LibraryReadValue::AgentResourceAccessPlan { value } = module
-            .read(&context, read_only_plan)
-            .expect("read-only resource plan")
-            .value
-        else {
-            panic!("resource plan")
-        };
-        assert!(matches!(
-            *value,
-            AgentResourceAccessPlan::Denied {
-                reason: nodex_core_contracts::agent::AgentResourceAuthorizationReason::TurnReadOnly,
-                ..
-            }
-        ));
-        let read_only_context = context.clone();
-        kernel
-            .readers()
-            .read_default(move |connection| {
-                let authorization = AgentExecutionAuthorization {
-                    provenance: read_only_provenance,
-                    call_id: "call:read-only".to_owned(),
-                    resource_access: None,
-                };
-                let target = AgentAuthorizationTarget::Page {
-                    page_id: "page:agent-target".to_owned(),
-                };
-                super::agent_authorization::authorize_execution(
-                    connection,
-                    &read_only_context,
-                    "library-1",
-                    &authorization,
-                    &target,
-                    AgentProjectResourceAction::Read,
-                )?;
-                let rejected = super::agent_authorization::authorize_execution(
-                    connection,
-                    &read_only_context,
-                    "library-1",
-                    &authorization,
-                    &target,
-                    AgentProjectResourceAction::Write,
-                )
-                .expect_err("Page grant cannot elevate read-only Turn");
-                assert_eq!(
-                    rejected.code,
-                    crate::infrastructure::sqlite::StoreErrorCode::Unauthorized
-                );
-                Ok(())
-            })
-            .expect("read-only execution boundary");
-
-        let LibraryReadValue::AgentResourceAccessPlan { value } = module
-            .read(&context, plan_request)
-            .expect("replan persisted Project grant")
-            .value
-        else {
-            panic!("Agent resource plan");
-        };
-        assert!(matches!(*value, AgentResourceAccessPlan::Authorized { .. }));
-
-        module
-            .apply(
-                &context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "agent-target-child".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePage {
-                        page_id: "page:agent-target-child".to_owned(),
-                        document_id: "document:agent-target-child".to_owned(),
-                        title: "Target child".to_owned(),
-                        parent: LibraryWriteParent::Page {
-                            page_id: "page:agent-target".to_owned(),
-                            expected_document_generation: 1,
-                            expected_document_head_seq: 1,
-                            before: None,
-                            insertion: None,
-                        },
-                    },
-                },
-            )
-            .expect("create recursively granted child Page");
-        module
-            .apply(
-                &trusted_library_context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "agent-foreign-target".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePage {
-                        page_id: "page:foreign-target".to_owned(),
-                        document_id: "document:foreign-target".to_owned(),
-                        title: "Foreign target".to_owned(),
-                        parent: LibraryWriteParent::Library { before: None },
-                    },
-                },
-            )
-            .expect("create ungranted search decoy");
-        kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |transaction| {
-                    transaction.execute(
-                        "INSERT INTO blocks(\
-                           id, library_id, type, lifecycle, placement_revision, \
-                           metadata_revision, created_at, updated_at\
-                         ) VALUES (\
-                           'database:agent-key', 'library-1', 'database', 'active', \
-                           1, 1, ?1, ?1\
-                         )",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO database_containers(\
-                           block_id, library_id, name, lifecycle, created_at, updated_at\
-                         ) VALUES (\
-                           'database:agent-key', 'library-1', 'Agent keys', 'active', ?1, ?1\
-                         )",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO data_sources(\
-                           id, library_id, home_database_block_id, name, schema_key, lifecycle, \
-                           rank_key, created_at, updated_at\
-                         ) VALUES (\
-                           'source:agent-key', 'library-1', 'database:agent-key', 'Agent keys', \
-                           'nodex.database', 'active', 'a', ?1, ?1\
-                         )",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO data_source_page_memberships(\
-                           id, data_source_id, page_block_id, revision, created_at, removed_at\
-                         ) VALUES (\
-                           'membership:agent-key-history', 'source:agent-key', \
-                           'page:agent-target', 1, ?1, ?1\
-                         )",
-                        [NOW],
-                    )?;
-                    crate::database::create_page_key_namespace(
-                        transaction,
-                        "library-1",
-                        "database:agent-key",
-                        Some("LAB"),
-                        "Agent keys",
-                        NOW,
-                    )?;
-                    crate::database::ensure_database_page_key(
-                        transaction,
-                        "library-1",
-                        "database:agent-key",
-                        "page:agent-target",
-                        NOW,
-                    )?;
-                    Ok(())
-                })
-            })
-            .expect("seed historical Agent Page key");
-        let authorization = AgentExecutionAuthorization {
-            provenance: provenance.clone(),
-            call_id: "call:search-first".to_owned(),
-            resource_access: None,
-        };
-        let search = |authorization: AgentExecutionAuthorization, cursor: Option<String>| {
-            module.read(
-                &context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::AgentSearch {
-                        authorization: Box::new(authorization),
-                        query: "target".to_owned(),
-                        target: LibraryAgentSearchTarget::Pages,
-                        scope: LibraryAgentSearchScope::Library,
-                        block_types: None,
-                        include_archived: false,
-                        cursor,
-                        limit: Some(1),
-                    },
-                },
-            )
-        };
-        let first = search(authorization.clone(), None).expect("first Agent search page");
-        let LibraryReadValue::AgentSearch {
-            items: first_items,
-            next_cursor: Some(search_cursor),
-            has_more: true,
-        } = first.value
-        else {
-            panic!("first Agent search page");
-        };
-        assert_eq!(first_items.len(), 1);
-        assert!(matches!(
-            &first_items[0],
-            LibraryAgentSearchResult::Page { id, .. }
-                if id == "page:agent-target"
-        ));
-
-        let second = search(
-            AgentExecutionAuthorization {
-                call_id: "call:search-next".to_owned(),
-                ..authorization.clone()
-            },
-            Some(search_cursor.clone()),
-        )
-        .expect("continue Agent search with a new tool call");
-        let LibraryReadValue::AgentSearch {
-            items: second_items,
-            next_cursor: None,
-            has_more: false,
-        } = second.value
-        else {
-            panic!("second Agent search page");
-        };
-        assert!(matches!(
-            &second_items[0],
-            LibraryAgentSearchResult::Page { id, .. }
-                if id == "page:agent-target-child"
-        ));
-
-        let fuzzy = module
-            .read(
-                &context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::AgentSearch {
-                        authorization: Box::new(authorization.clone()),
-                        query: "targat".to_owned(),
-                        target: LibraryAgentSearchTarget::Pages,
-                        scope: LibraryAgentSearchScope::Page {
-                            page_id: "page:agent-target".to_owned(),
-                        },
-                        block_types: None,
-                        include_archived: false,
-                        cursor: None,
-                        limit: Some(10),
-                    },
-                },
-            )
-            .expect("fuzzy Agent Page search");
-        let LibraryReadValue::AgentSearch { items, .. } = fuzzy.value else {
-            panic!("fuzzy Agent Page search");
-        };
-        assert!(matches!(
-            &items[..],
-            [LibraryAgentSearchResult::Page { id, matches, .. }]
-                if id == "page:agent-target"
-                    && matches.iter().any(|evidence| matches!(
-                        evidence,
-                        nodex_core_contracts::library::LibraryAgentPageSearchMatch::Title {
-                            quality: nodex_core_contracts::library::LibraryAgentSearchMatchQuality::Fuzzy,
-                            ..
-                        }
-                    ))
-        ));
-
-        let explicit_missing_key = module
-            .read(
-                &context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::AgentSearch {
-                        authorization: Box::new(authorization.clone()),
-                        query: "#target".to_owned(),
-                        target: LibraryAgentSearchTarget::Pages,
-                        scope: LibraryAgentSearchScope::Library,
-                        block_types: None,
-                        include_archived: false,
-                        cursor: None,
-                        limit: Some(10),
-                    },
-                },
-            )
-            .expect("explicit missing Page-key Agent search");
-        let LibraryReadValue::AgentSearch { items, .. } = explicit_missing_key.value else {
-            panic!("explicit missing Page-key Agent search");
-        };
-        assert!(items.is_empty());
-
-        let exact_key = module
-            .read(
-                &context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::AgentSearch {
-                        authorization: Box::new(authorization.clone()),
-                        query: "#lab-1".to_owned(),
-                        target: LibraryAgentSearchTarget::Pages,
-                        scope: LibraryAgentSearchScope::Library,
-                        block_types: None,
-                        include_archived: false,
-                        cursor: None,
-                        limit: Some(10),
-                    },
-                },
-            )
-            .expect("exact historical Page-key Agent search");
-        let LibraryReadValue::AgentSearch { items, .. } = exact_key.value else {
-            panic!("exact Page-key Agent search");
-        };
-        assert!(matches!(
-            &items[..],
-            [LibraryAgentSearchResult::Page {
-                id,
-                page_key: None,
-                matches,
-                ..
-            }] if id == "page:agent-target"
-                && matches == &[nodex_core_contracts::library::LibraryAgentPageSearchMatch::PageKey {
-                    quality: nodex_core_contracts::library::LibraryAgentSearchMatchQuality::Exact,
-                    page_key: "LAB-1".to_owned(),
-                    is_current: false,
-                }]
-        ));
-
-        let blocks = module
-            .read(
-                &context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::AgentSearch {
-                        authorization: Box::new(authorization.clone()),
-                        query: "target".to_owned(),
-                        target: LibraryAgentSearchTarget::Blocks,
-                        scope: LibraryAgentSearchScope::Library,
-                        block_types: None,
-                        include_archived: false,
-                        cursor: None,
-                        limit: Some(10),
-                    },
-                },
-            )
-            .expect("Agent Block search");
-        let LibraryReadValue::AgentSearch { items, .. } = blocks.value else {
-            panic!("Agent Block search");
-        };
-        assert_eq!(items.len(), 2);
-        assert!(items.iter().all(|item| matches!(
-            item,
-            LibraryAgentSearchResult::Block { owner_page_id, .. }
-                if owner_page_id != "page:foreign-target"
-        )));
-
-        module
-            .apply(
-                &context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "agent-search-stale-event".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::CreatePage {
-                        page_id: "page:search-event".to_owned(),
-                        document_id: "document:search-event".to_owned(),
-                        title: "Search event".to_owned(),
-                        parent: LibraryWriteParent::Library { before: None },
-                    },
-                },
-            )
-            .expect("advance Library event head");
-        let continued = search(authorization, Some(search_cursor))
-            .expect("Agent search cursor survives concurrent Library writes");
-        let LibraryReadValue::AgentSearch {
-            items: continued_items,
-            ..
-        } = continued.value
-        else {
-            panic!("continued Agent search page");
-        };
-        assert!(matches!(
-            &continued_items[0],
-            LibraryAgentSearchResult::Page { id, .. }
-                if id == "page:agent-target-child"
-        ));
-    }
-
-    #[test]
-    fn persistent_page_lifecycle_transitions_and_library_move_are_atomic_and_replayable() {
+    fn library_page_lifecycle_without_project_is_atomic_and_replayable() {
         const NOW: &str = "2026-07-20T06:40:00.000Z";
         const PAGE_A: &str = "page:lifecycle-a";
         const PAGE_B: &str = "page:lifecycle-b";
@@ -1949,7 +1041,7 @@ mod tests {
             editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
+            project_id: None,
             connection_id: "connection:page-lifecycle".to_owned(),
             adapter: AdapterKind::Test,
         };
@@ -1967,11 +1059,6 @@ mod tests {
                     transaction.execute(
                         "INSERT INTO libraries(id, profile_id, created_at, updated_at) \
                          VALUES ('library-1', 'profile-1', ?1, ?1)",
-                        [NOW],
-                    )?;
-                    transaction.execute(
-                        "INSERT INTO projects(id, library_id, name, created, updated) \
-                         VALUES ('project-1', 'library-1', 'Lifecycle', ?1, ?1)",
                         [NOW],
                     )?;
                     transaction.execute(
@@ -2005,6 +1092,25 @@ mod tests {
                 )
                 .expect("create Page");
         }
+
+        let LibraryReadValue::PageLifecyclePreflight { value } = module
+            .read(
+                &persistent_context,
+                ModuleReadRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    read: LibraryRead::PageLifecyclePreflight {
+                        page_id: PAGE_A.to_owned(),
+                    },
+                },
+            )
+            .expect("Library lifecycle preflight")
+            .value
+        else {
+            panic!("Library lifecycle preflight variant")
+        };
+        assert!(value.default_view.is_null());
+        assert!(value.tags_property.is_null());
+        assert_eq!(value.page.expect("Page metadata").metadata_revision, 1);
 
         let archive_request = ModuleApplyRequest {
             contract_version: LIBRARY_CONTRACT_VERSION,
@@ -2220,10 +1326,50 @@ mod tests {
             )
             .expect_err("stale lifecycle write");
         assert_eq!(stale.code, CoreErrorCode::RevisionConflict);
+        let duplicate_request = ModuleApplyRequest {
+            contract_version: LIBRARY_CONTRACT_VERSION,
+            operation_id: "lifecycle:duplicate-b-without-project".to_owned(),
+            store_epoch: StoreEpoch("epoch-1".to_owned()),
+            intent: LibraryIntent::DuplicatePage {
+                source_page_id: PAGE_B.to_owned(),
+                destination: nodex_core_contracts::library::LibraryPageWriteDestination::Library {
+                    at: None,
+                },
+            },
+        };
+        let duplicate = module
+            .apply(&persistent_context, duplicate_request.clone())
+            .expect("duplicate into explicit Library destination without Project");
+        let copied = duplicate
+            .committed
+            .value
+            .page_copy
+            .expect("Page copy receipt");
+        assert_eq!(copied.source_page_id, PAGE_B);
+        assert_ne!(copied.page_id, PAGE_B);
+        let replay = module
+            .apply(&persistent_context, duplicate_request)
+            .expect("replay exact duplicate");
+        assert!(replay.committed.receipt.mutation.duplicate);
+        assert_eq!(
+            replay
+                .committed
+                .value
+                .page_copy
+                .expect("replayed copy receipt")
+                .page_id,
+            copied.page_id
+        );
     }
 
     #[test]
     fn persistent_page_lifecycle_create_commits_document_database_and_projection_authority_once() {
+        for project_id in [Some(ProjectId("project-1".to_owned())), None] {
+            assert_persistent_page_create(project_id);
+        }
+    }
+
+    fn assert_persistent_page_create(project_id: Option<ProjectId>) {
         const NOW: &str = "2026-07-20T08:10:00.000Z";
         const DATABASE: &str = "019b1000-0000-7000-8000-000000000001";
         const SOURCE: &str = "019b1000-0000-7000-8000-000000000002";
@@ -2234,7 +1380,7 @@ mod tests {
             editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
+            project_id,
             connection_id: "connection:page-lifecycle-create".to_owned(),
             adapter: AdapterKind::Test,
         };
@@ -2893,16 +2039,7 @@ mod tests {
                         "UPDATE projects SET database_block_id = ?1 WHERE id = 'project-1'",
                         [DATABASE],
                     )?;
-                    transaction.execute(
-                        "INSERT INTO project_resource_grants( \
-                           id, project_id, library_id, root_kind, root_id, access, recursive, \
-                           revision, lifecycle, created_at, updated_at \
-                         ) VALUES ('grant:root-page', 'project-1', 'library-1', 'page', ?1, \
-                           'read_write', 1, 1, 'active', ?3, ?3), \
-                                  ('grant:primary-canvas', 'project-1', 'library-1', 'canvas', ?2, \
-                           'read_write', 1, 1, 'active', ?3, ?3)",
-                        params![ROOT_PAGE, PRIMARY_CANVAS, NOW],
-                    )?;
+
                     Ok(())
                 })
             })
@@ -2994,7 +2131,6 @@ mod tests {
         assert_eq!(value.document_id, ROOT_DOCUMENT);
         assert_eq!(value.document_generation, 1);
         assert_eq!(value.document_head_seq, 1);
-        assert!(destination.authorization.is_some());
         kernel
             .writer()
             .call(|connection| {
@@ -3181,7 +2317,7 @@ mod tests {
             panic!("Project Page search");
         };
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].project_id, "project-1");
+        assert_eq!(items[0].project_id.as_deref(), Some("project-1"));
         assert_eq!(items[0].page_id, ROW_PAGE);
         assert_eq!(items[0].title, "Say hi");
         assert_eq!(items[0].status, Some(LibraryPageWorkflowStatus::Triage));
@@ -3210,21 +2346,8 @@ mod tests {
         };
         assert_eq!(metadata.len(), 1);
         assert_eq!(metadata[0].page_id, ROW_PAGE);
-        assert_eq!(metadata[0].authorized_project_ids, ["project-1"]);
+        assert_eq!(metadata[0].project_ids, ["project-1"]);
         assert_eq!(metadata[0].data_source_ids, [SOURCE]);
-        let metadata_error = module
-            .read(
-                &persistent_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearchMetadata {
-                        project_ids: vec!["project-1".to_owned()],
-                        page_ids: None,
-                    },
-                },
-            )
-            .expect_err("Project-bound clients cannot claim metadata search authority");
-        assert_eq!(metadata_error.code, CoreErrorCode::Unauthorized);
         let LibraryReadValue::ProjectPageSearch { items } = module
             .read(
                 &root_context,
@@ -3339,117 +2462,6 @@ mod tests {
             panic!("explicit missing Project Page-key search");
         };
         assert!(items.is_empty());
-        let project_search_error = module
-            .read(
-                &persistent_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
-                        query: "say hi".to_owned(),
-                        filters: None,
-                        preferred_project_id: None,
-                        recent_page_ids: Vec::new(),
-                        limit: None,
-                    },
-                },
-            )
-            .expect_err("Project-bound clients cannot claim multi-Project search");
-        assert_eq!(project_search_error.code, CoreErrorCode::Unauthorized);
-        let mut native_context = persistent_context.clone();
-        native_context.adapter = AdapterKind::NativeCli;
-        let native_search = |project_ids: Vec<String>| ModuleReadRequest {
-            contract_version: LIBRARY_CONTRACT_VERSION,
-            read: LibraryRead::ProjectPageSearch {
-                project_ids,
-                query: "say hi".to_owned(),
-                filters: None,
-                preferred_project_id: None,
-                recent_page_ids: Vec::new(),
-                limit: None,
-            },
-        };
-        let native = module
-            .read(&native_context, native_search(vec!["project-1".to_owned()]))
-            .expect("native search stays within its selected Project");
-        assert!(matches!(
-            native.value,
-            LibraryReadValue::ProjectPageSearch { .. }
-        ));
-        let cross_project = module
-            .read(
-                &native_context,
-                native_search(vec!["project-1".to_owned(), "project-2".to_owned()]),
-            )
-            .expect_err("native cannot expand Project search authority");
-        assert_eq!(cross_project.code, CoreErrorCode::Unauthorized);
-        let mut untrusted_root_context = context();
-        untrusted_root_context.adapter = AdapterKind::Agent;
-        let untrusted_target_error = module
-            .read(
-                &untrusted_root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageTarget {
-                        page_id: ROOT_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Agent clients cannot claim trusted Page target authority");
-        assert_eq!(untrusted_target_error.code, CoreErrorCode::Unauthorized);
-        let untrusted_path_error = module
-            .read(
-                &untrusted_root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageOwnershipPath {
-                        page_id: ROOT_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Agent clients cannot claim trusted Page path authority");
-        assert_eq!(untrusted_path_error.code, CoreErrorCode::Unauthorized);
-        let untrusted_search_error = module
-            .read(
-                &untrusted_root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ProjectPageSearch {
-                        project_ids: vec!["project-1".to_owned()],
-                        query: "say hi".to_owned(),
-                        filters: None,
-                        preferred_project_id: None,
-                        recent_page_ids: Vec::new(),
-                        limit: None,
-                    },
-                },
-            )
-            .expect_err("Agent clients cannot claim trusted Project Page search");
-        assert_eq!(untrusted_search_error.code, CoreErrorCode::Unauthorized);
-        let untrusted_content_error = module
-            .read(
-                &untrusted_root_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageContent {
-                        page_id: ROOT_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Agent root clients cannot bypass Page authorization");
-        assert_eq!(untrusted_content_error.code, CoreErrorCode::Unauthorized);
-        let LibraryReadValue::Path { nodes, .. } = read(LibraryRead::Path {
-            target: nodex_core_contracts::library::LibraryRouteTarget::Page {
-                page_id: ROW_PAGE.to_owned(),
-            },
-        }) else {
-            panic!("path");
-        };
-        assert!(matches!(
-            nodes.as_slice(),
-            [nodex_core_contracts::library::LibraryNavigationNode::Database { database_id, .. }]
-                if database_id == DATABASE
-        ));
         let LibraryReadValue::PageLocation { value } = module
             .read(
                 &context(),
@@ -3466,8 +2478,8 @@ mod tests {
             panic!("Page location");
         };
         assert_eq!(
-            value.expect("active Page location").access_project_id,
-            "project-1"
+            value.expect("active Page location").project_id,
+            Some("project-1".to_owned())
         );
         let LibraryReadValue::ViewLocation { value } = module
             .read(
@@ -3490,7 +2502,7 @@ mod tests {
                 view_id: VIEW.to_owned(),
                 data_source_id: SOURCE.to_owned(),
                 database_id: DATABASE.to_owned(),
-                access_project_id: "project-1".to_owned(),
+                project_id: Some("project-1".to_owned()),
             }
         );
         let LibraryReadValue::ViewLocation { value } = module
@@ -3647,31 +2659,6 @@ mod tests {
             3
         );
         assert!(restored_page.restore_evidence.is_none());
-        let location_error = module
-            .read(
-                &persistent_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageLocation {
-                        page_id: ROW_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Project clients cannot perform global Page lookup");
-        assert_eq!(location_error.code, CoreErrorCode::Unauthorized);
-        let view_location_error = module
-            .read(
-                &persistent_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::ViewLocation {
-                        view_id: VIEW.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Project clients cannot perform global View lookup");
-        assert_eq!(view_location_error.code, CoreErrorCode::Unauthorized);
-
         const INTERMEDIATE_PAGE: &str = "page:intermediate";
         const INTERMEDIATE_DOCUMENT: &str = "document:intermediate";
         const NESTED_PAGE: &str = "page:nested";
@@ -3863,518 +2850,6 @@ mod tests {
         assert_eq!(ancestors.len(), 2);
         assert_eq!(ancestors[0].page_id, ROOT_PAGE);
         assert_eq!(ancestors[1].page_id, INTERMEDIATE_PAGE);
-        let project_two_context = BoundModuleContext {
-            editor_history_owner: None,
-            project_id: Some(ProjectId("project-2".to_owned())),
-            connection_id: "connection:reference-project".to_owned(),
-            ..persistent_context.clone()
-        };
-        let LibraryReadValue::PageKeyTarget { value } = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageKeyTarget {
-                        page_key: "RND-1".to_owned(),
-                    },
-                },
-            )
-            .expect("unauthorized Page key is non-oracular")
-            .value
-        else {
-            panic!("Page-key target");
-        };
-        assert_eq!(
-            value,
-            nodex_core_contracts::library::LibraryPageKeyTarget::NotFound,
-        );
-        let LibraryReadValue::PageTarget { value } = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageTarget {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("unauthorized target resolves without disclosure")
-            .value
-        else {
-            panic!("Page target");
-        };
-        assert!(matches!(
-            value.as_deref(),
-            Some(nodex_core_contracts::library::LibraryPageTarget::Missing { target_page_id })
-                if target_page_id == NESTED_PAGE
-        ));
-        let detail_error = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageDetail {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect_err("Project Page detail enforces recursive grants");
-        assert_eq!(detail_error.code, CoreErrorCode::NotFound);
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "grant:nested-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-2".to_owned(),
-                        target: LibraryResourceTarget::Page {
-                            page_id: NESTED_PAGE.to_owned(),
-                        },
-                        access: LibraryAccess::Read,
-                    },
-                },
-            )
-            .expect("grant nested Page");
-        let authorized_target = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageTarget {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("authorized Page target");
-        let stamp = authorized_target
-            .authorization
-            .as_ref()
-            .expect("Core-issued Page target authorization stamp");
-        assert_eq!(stamp.covered_commit_seq, authorized_target.commit_head);
-        assert_eq!(stamp.store_epoch, authorized_target.store_epoch);
-        assert_eq!(
-            stamp.delivery_address,
-            nodex_core_contracts::events::DeliveryAddress::Project {
-                library_id: "library-1".to_owned(),
-                project_id: "project-2".to_owned(),
-            }
-        );
-        assert_eq!(
-            stamp.authorization_dependencies,
-            vec![nodex_core_contracts::events::ResourceKey::Page {
-                page_id: NESTED_PAGE.to_owned(),
-            }]
-        );
-        assert_eq!(stamp.stamp_hash.len(), 64);
-        let LibraryReadValue::PageTarget { value } = authorized_target.value else {
-            panic!("Page target");
-        };
-        assert!(matches!(
-            value.as_deref(),
-            Some(nodex_core_contracts::library::LibraryPageTarget::Available {
-                target_page_id,
-                ..
-            }) if target_page_id == NESTED_PAGE
-        ));
-        let LibraryReadValue::PageOwnershipPath { value } = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageOwnershipPath {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("direct grant ownership path")
-            .value
-        else {
-            panic!("Page ownership path");
-        };
-        let Some(nodex_core_contracts::library::LibraryPageOwnershipPath::Available {
-            ancestors,
-            ..
-        }) = value.as_deref()
-        else {
-            panic!("available Page ownership path");
-        };
-        assert!(ancestors.is_empty());
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "grant:root-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-2".to_owned(),
-                        target: LibraryResourceTarget::Page {
-                            page_id: ROOT_PAGE.to_owned(),
-                        },
-                        access: LibraryAccess::Read,
-                    },
-                },
-            )
-            .expect("grant root Page");
-        let overlapping_stamp = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageDetail {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("overlapping grants authorize nested Page detail")
-            .authorization
-            .expect("overlapping-grant Page detail stamp");
-        assert_eq!(overlapping_stamp.authorization_dependencies.len(), 3);
-        for page_id in [NESTED_PAGE, INTERMEDIATE_PAGE, ROOT_PAGE] {
-            assert!(overlapping_stamp.authorization_dependencies.contains(
-                &nodex_core_contracts::events::ResourceKey::Page {
-                    page_id: page_id.to_owned(),
-                },
-            ));
-        }
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke:nested-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: NESTED_PAGE.to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-2".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .expect("revoke nested direct grant");
-        let ancestor_authorized_detail = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageDetail {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("ancestor grant authorizes nested Page detail");
-        let ancestor_stamp = ancestor_authorized_detail
-            .authorization
-            .expect("ancestor-authorized Page detail stamp");
-        let LibraryReadValue::PageOwnershipPath { value } = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageOwnershipPath {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("visible ownership path")
-            .value
-        else {
-            panic!("Page ownership path");
-        };
-        let Some(nodex_core_contracts::library::LibraryPageOwnershipPath::Available {
-            ancestors,
-            ..
-        }) = value.as_deref()
-        else {
-            panic!("available Page ownership path");
-        };
-        assert_eq!(ancestors.len(), 2);
-        assert_eq!(ancestors[0].page_id, ROOT_PAGE);
-        assert_eq!(ancestors[1].page_id, INTERMEDIATE_PAGE);
-        let granted_intermediate = module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "grant:intermediate-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-2".to_owned(),
-                        target: LibraryResourceTarget::Page {
-                            page_id: INTERMEDIATE_PAGE.to_owned(),
-                        },
-                        access: LibraryAccess::Read,
-                    },
-                },
-            )
-            .expect("grant overlapping intermediate Page access");
-        let overlapping_path_grant_roots = kernel
-            .readers()
-            .read_default(|connection| {
-                connection
-                    .prepare(
-                        "SELECT roots_json FROM local_commit_visibility_deltas \
-                         WHERE commit_seq = ?1 AND delta_kind = 'grant' \
-                         ORDER BY scope_key, delta_hash",
-                    )?
-                    .query_map([granted_intermediate.committed.receipt.commit_seq], |row| {
-                        row.get::<_, String>(0)
-                    })?
-                    .collect::<rusqlite::Result<Vec<_>>>()
-                    .map_err(StoreError::from)
-            })
-            .expect("read overlapping-path grant visibility roots");
-        assert!(overlapping_path_grant_roots.iter().any(|encoded| {
-            serde_json::from_str::<Vec<nodex_core_contracts::events::ResourceKey>>(encoded)
-                .expect("visibility roots")
-                .iter()
-                .any(|root| {
-                    root == &nodex_core_contracts::events::ResourceKey::Page {
-                        page_id: INTERMEDIATE_PAGE.to_owned(),
-                    } && ancestor_stamp.authorization_dependencies.contains(root)
-                })
-        }));
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke:intermediate-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: INTERMEDIATE_PAGE.to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-2".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .expect("remove overlapping intermediate Page access");
-        let moved_intermediate = module
-            .apply(
-                &persistent_context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "move:intermediate-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::MovePage {
-                        page_id: INTERMEDIATE_PAGE.to_owned(),
-                        destination: LibraryPageWriteDestination::Library { at: None },
-                        expected_etag: prepare_page_move_etag(
-                            &module,
-                            &persistent_context,
-                            INTERMEDIATE_PAGE,
-                        ),
-                    },
-                },
-            )
-            .expect("move intermediate Page outside the granted ownership path");
-        let moved_intermediate_manifest = kernel
-            .readers()
-            .read_default(|connection| {
-                local_commit::read_manifest(
-                    connection,
-                    moved_intermediate.committed.receipt.commit_seq,
-                )
-            })
-            .expect("read intermediate-move Manifest");
-        assert!(
-            moved_intermediate_manifest
-                .revocations
-                .iter()
-                .any(|revocation| {
-                    revocation.resource_kind == RevokedResourceKind::Page
-                        && revocation.resource_id == INTERMEDIATE_PAGE
-                })
-        );
-        assert!(
-            moved_intermediate_manifest
-                .revocations
-                .iter()
-                .any(|revocation| {
-                    revocation.resource_kind == RevokedResourceKind::Page
-                        && ancestor_stamp.authorization_dependencies.contains(
-                            &nodex_core_contracts::events::ResourceKey::Page {
-                                page_id: revocation.resource_id.clone(),
-                            },
-                        )
-                })
-        );
-        let moved_intermediate_delta_roots = kernel
-            .readers()
-            .read_default(|connection| {
-                connection
-                    .prepare(
-                        "SELECT roots_json FROM local_commit_visibility_deltas \
-                         WHERE commit_seq = ?1 AND delta_kind = 'revoke' \
-                         ORDER BY scope_key, delta_hash",
-                    )?
-                    .query_map([moved_intermediate.committed.receipt.commit_seq], |row| {
-                        row.get::<_, String>(0)
-                    })?
-                    .collect::<rusqlite::Result<Vec<_>>>()
-                    .map_err(StoreError::from)
-            })
-            .expect("read intermediate-move visibility roots");
-        assert!(moved_intermediate_delta_roots.iter().any(|encoded| {
-            serde_json::from_str::<Vec<nodex_core_contracts::events::ResourceKey>>(encoded)
-                .expect("visibility roots")
-                .contains(&nodex_core_contracts::events::ResourceKey::Project {
-                    project_id: "project-2".to_owned(),
-                })
-        }));
-        let revoked_ancestor = module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke:root-reference-page".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Page {
-                            page_id: ROOT_PAGE.to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-2".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .expect("revoke ancestor grant");
-        let ancestor_manifest = kernel
-            .readers()
-            .read_default(|connection| {
-                local_commit::read_manifest(
-                    connection,
-                    revoked_ancestor.committed.receipt.commit_seq,
-                )
-            })
-            .expect("read ancestor-revoke Manifest");
-        assert!(ancestor_manifest.revocations.iter().any(|revocation| {
-            revocation.resource_kind == RevokedResourceKind::Page
-                && revocation.resource_id == ROOT_PAGE
-        }));
-        assert!(ancestor_manifest.revocations.iter().any(|revocation| {
-            revocation.resource_kind == RevokedResourceKind::Page
-                && ancestor_stamp.authorization_dependencies.contains(
-                    &nodex_core_contracts::events::ResourceKey::Page {
-                        page_id: revocation.resource_id.clone(),
-                    },
-                )
-        }));
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "grant:reference-database".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-2".to_owned(),
-                        target: LibraryResourceTarget::Database {
-                            database_id: DATABASE.to_owned(),
-                        },
-                        access: LibraryAccess::Read,
-                    },
-                },
-            )
-            .expect("grant reference Database");
-        let membership_stamp = module
-            .read(
-                &project_two_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageDetail {
-                        page_id: ROW_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("Database grant authorizes member Page detail")
-            .authorization
-            .expect("Database-authorized Page detail stamp");
-        assert!(membership_stamp.authorization_dependencies.contains(
-            &nodex_core_contracts::events::ResourceKey::Page {
-                page_id: ROW_PAGE.to_owned(),
-            },
-        ));
-        assert!(membership_stamp.authorization_dependencies.contains(
-            &nodex_core_contracts::events::ResourceKey::Database {
-                database_id: DATABASE.to_owned(),
-            },
-        ));
-        let revoked_database = module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "revoke:reference-database".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::Database {
-                            database_id: DATABASE.to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: "project-2".to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .expect("revoke reference Database");
-        let database_manifest = kernel
-            .readers()
-            .read_default(|connection| {
-                local_commit::read_manifest(
-                    connection,
-                    revoked_database.committed.receipt.commit_seq,
-                )
-            })
-            .expect("read Database-revoke Manifest");
-        assert!(database_manifest.revocations.iter().any(|revocation| {
-            revocation.resource_kind == RevokedResourceKind::Database
-                && membership_stamp.authorization_dependencies.contains(
-                    &nodex_core_contracts::events::ResourceKey::Database {
-                        database_id: revocation.resource_id.clone(),
-                    },
-                )
-        }));
-        let missing_project_context = BoundModuleContext {
-            editor_history_owner: None,
-            project_id: Some(ProjectId("project:missing".to_owned())),
-            connection_id: "connection:missing-project".to_owned(),
-            ..persistent_context.clone()
-        };
-        let LibraryReadValue::PageTarget { value } = module
-            .read(
-                &missing_project_context,
-                ModuleReadRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    read: LibraryRead::PageTarget {
-                        page_id: NESTED_PAGE.to_owned(),
-                    },
-                },
-            )
-            .expect("missing Project scope")
-            .value
-        else {
-            panic!("Page target");
-        };
-        assert!(value.is_none());
-
         let LibraryReadValue::Children { next_cursor, .. } = read(LibraryRead::Children {
             parent: LibraryNavigationParent::Library,
             cursor: None,
@@ -4421,7 +2896,7 @@ mod tests {
         else {
             panic!("paged roots continuation");
         };
-        assert_eq!(items.len(), 2);
+        assert_eq!(items.len(), 1);
         assert_eq!(next_cursor, None);
         assert!(!has_more);
 
@@ -5136,6 +3611,14 @@ mod tests {
 
     #[test]
     fn native_block_transfer_moves_copies_and_replays_document_subtrees() {
+        for project_id in [Some("project-1"), None] {
+            native_block_transfer_moves_copies_and_replays_document_subtrees_for_route(project_id);
+        }
+    }
+
+    fn native_block_transfer_moves_copies_and_replays_document_subtrees_for_route(
+        project_id: Option<&str>,
+    ) {
         const NOW: &str = "2026-07-19T23:30:00.000Z";
         const SOURCE_PAGE: &str = "018f0000-0000-7000-8000-000000000101";
         const TARGET_PAGE: &str = "018f0000-0000-7000-8000-000000000102";
@@ -5145,7 +3628,7 @@ mod tests {
             editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
+            project_id: project_id.map(|id| ProjectId(id.to_owned())),
             connection_id: "connection:block-transfer".to_owned(),
             adapter: AdapterKind::Test,
         };
@@ -5380,7 +3863,7 @@ mod tests {
     }
 
     #[test]
-    fn granted_pages_authorize_block_transfers_without_changing_library_ownership() {
+    fn cross_project_block_transfers_preserve_library_ownership() {
         const NOW: &str = "2026-07-20T00:10:00.000Z";
         const LOCAL_SOURCE_PAGE: &str = "018f0000-0000-7000-8000-000000000201";
         const FOREIGN_SOURCE_PAGE: &str = "018f0000-0000-7000-8000-000000000202";
@@ -5508,13 +3991,6 @@ mod tests {
             },
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
-        let denied = module
-            .apply(
-                &local_context,
-                transfer_request("copy-without-source-grant", copy_from_foreign.clone()),
-            )
-            .expect_err("foreign source requires a grant");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
         let copy_foreign_page = LibraryBlockTransferLogicalIntent {
             actor: serde_json::json!({ "kind": "test" }),
             mode: LibraryBlockTransferMode::Copy,
@@ -5529,43 +4005,6 @@ mod tests {
             },
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
-        let denied = module
-            .apply(
-                &local_context,
-                transfer_request("copy-page-without-source-grant", copy_foreign_page.clone()),
-            )
-            .expect_err("foreign Page copy requires a read grant");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
-
-        let grant = |operation_id: &str, page_id: &str, access: LibraryAccess| {
-            module.apply(
-                &foreign_context,
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: operation_id.to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-1".to_owned(),
-                        target: LibraryResourceTarget::Page {
-                            page_id: page_id.to_owned(),
-                        },
-                        access,
-                    },
-                },
-            )
-        };
-        grant(
-            "grant-foreign-source-read",
-            FOREIGN_SOURCE_PAGE,
-            LibraryAccess::Read,
-        )
-        .expect("grant source read access");
-        grant(
-            "grant-foreign-target-write",
-            FOREIGN_TARGET_PAGE,
-            LibraryAccess::ReadWrite,
-        )
-        .expect("grant target write access");
 
         let copied_page = module
             .apply(
@@ -5626,19 +4065,6 @@ mod tests {
             },
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
-        let denied = module
-            .apply(
-                &local_context,
-                transfer_request("move-with-read-source-grant", move_foreign.clone()),
-            )
-            .expect_err("Move requires source write access");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
-        grant(
-            "grant-foreign-source-write",
-            FOREIGN_SOURCE_PAGE,
-            LibraryAccess::ReadWrite,
-        )
-        .expect("upgrade source write access");
         module
             .apply(
                 &local_context,
@@ -5750,6 +4176,14 @@ mod tests {
 
     #[test]
     fn library_target_promotes_and_wraps_document_roots_atomically() {
+        for project_id in [Some("project-1"), None] {
+            library_target_promotes_and_wraps_document_roots_atomically_for_route(project_id);
+        }
+    }
+
+    fn library_target_promotes_and_wraps_document_roots_atomically_for_route(
+        project_id: Option<&str>,
+    ) {
         const NOW: &str = "2026-07-20T00:45:00.000Z";
         const PROMOTE_PAGE: &str = "018f0000-0000-7000-8000-000000000301";
         const WRAP_PAGE: &str = "018f0000-0000-7000-8000-000000000302";
@@ -5776,7 +4210,7 @@ mod tests {
             editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
+            project_id: project_id.map(|id| ProjectId(id.to_owned())),
             connection_id: "connection:page-transformation".to_owned(),
             adapter: AdapterKind::Test,
         };
@@ -5884,16 +4318,7 @@ mod tests {
                      VALUES ('project-shared', 'library-1', 'Shared reader', ?1, ?1)",
                     [NOW],
                 )?;
-                connection.execute(
-                    "INSERT INTO project_resource_grants(
-                       id, project_id, library_id, root_kind, root_id, access,
-                       recursive, revision, lifecycle, created_at, updated_at
-                     ) VALUES (
-                       'grant-shared-database', 'project-shared', 'library-1',
-                       'database', ?1, 'read', 1, 1, 'active', ?2, ?2
-                     )",
-                    params![DATABASE, NOW],
-                )?;
+
                 Ok(())
             })
             .expect("bind primary Database and shared audience");
@@ -8953,7 +7378,7 @@ mod tests {
     }
 
     #[test]
-    fn page_reference_candidates_and_backlinks_respect_project_authority() {
+    fn page_reference_candidates_and_backlinks_span_the_profile_library() {
         let directory = tempdir().expect("Profile");
         let home = directory.path().canonicalize().expect("absolute Profile");
         let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
@@ -9205,7 +7630,7 @@ mod tests {
                 .iter()
                 .all(|item| item.match_source == LibraryPageReferenceMatchSource::Recent)
         );
-        assert!(!items.iter().any(|item| item.page_id == "page:foreign"));
+        assert!(items.iter().any(|item| item.page_id == "page:foreign"));
         assert_eq!(
             items
                 .iter()
@@ -9278,39 +7703,36 @@ mod tests {
         else {
             panic!("Page backlink snapshot");
         };
-        assert_eq!(total, 1);
-        assert_eq!(source_page_count, 1);
+        assert_eq!(total, 2);
+        assert_eq!(source_page_count, 2);
         assert!(!has_more);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].source_page_id, "page:local");
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|item| item.source_page_id == "page:local"));
+        assert!(
+            items
+                .iter()
+                .any(|item| item.source_page_id == "page:foreign")
+        );
     }
 }
-pub(crate) mod agent_authorization;
+pub(crate) mod agent_execution;
 mod agent_page_create;
 mod agent_page_move;
 mod agent_page_write;
 mod agent_search;
 mod block_transfer;
 pub use block_transfer::BlockTransferMetrics;
-mod authorization;
 mod canvas_mutation;
 mod content;
 pub(crate) mod cursor;
 mod history;
-pub(crate) use authorization::{
-    canvas_grant_authorization_proof, canvas_lifecycle_grant_authorization_proof,
-    page_grant_ownership_proof,
-};
 pub(crate) use history::{
-    page_read_authorization_roots, require_canvas_lifecycle_read_access,
-    require_canvas_read_access, require_canvas_write_access, require_page_read_access,
-    require_page_write_access,
+    require_canvas_lifecycle_read_access, require_canvas_read_access, require_canvas_write_access,
+    require_page_read_access, require_page_write_access,
 };
 pub(crate) use page_copy::{OccurrencePageCloneInput, clone_page_for_occurrence};
 mod mutation;
-pub(crate) use mutation::{
-    insert_creator_resource_grant, insert_library_placement, require_project_in_library,
-};
+pub(crate) use mutation::{insert_library_placement, require_project_in_library};
 mod navigation;
 mod page_copy;
 pub(crate) mod page_genesis;

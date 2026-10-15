@@ -9,7 +9,7 @@ import {
   type OwnedDocumentDescriptor,
   type LibraryAccessedDocumentDescriptor,
 } from "./contracts";
-import type { ContentAccessContext } from "../content-access-context";
+import type { ContentRoutingContext } from "../content-routing-context";
 import {
   MAX_DOCUMENT_AWARENESS_UPDATE_BYTES,
   type DocumentAwarenessPublishRequest,
@@ -35,7 +35,6 @@ import {
 } from "./http-wire";
 import { parseAuthorizedDeliveryPacket as parseAuthorizedDeliveryPacketValue } from "../authorized-delivery-packet";
 import type { components } from "@nodex/core-protocol";
-import { parseAuthorizedReadStamp } from "../authorized-read-stamp";
 
 export const DOCUMENT_HTTP_CONTENT_TYPE = "application/vnd.nodex.document-sync.v3+octet-stream";
 const DOCUMENT_SYNC_ERROR_CODES = new Set<DocumentSyncCommandError["code"]>([
@@ -43,7 +42,8 @@ const DOCUMENT_SYNC_ERROR_CODES = new Set<DocumentSyncCommandError["code"]>([
   "request_cancelled",
   "request_timeout",
   "service_busy",
-  "unauthorized",
+  "authentication_failed",
+  "invalid_session",
   "store_not_initialized",
   "store_epoch_mismatch",
   "document_not_found",
@@ -155,7 +155,7 @@ interface CanvasSyncResponseMetadata {
   readonly kind: "up_to_date" | "snapshot";
   readonly syncRequestId: string;
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -173,9 +173,9 @@ type EncodedOwnedDocumentSyncEngine =
     };
 
 interface EncodedOwnedDocumentDescriptor {
-  readonly version: 3;
+  readonly version: 4;
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly ownerBlockId: string;
   readonly ownerType: string;
   readonly ownerLifecycle: OwnedDocumentDescriptor["ownerLifecycle"];
@@ -186,7 +186,6 @@ interface EncodedOwnedDocumentDescriptor {
   readonly schemaKey: string;
   readonly schemaVersion: number;
   readonly readiness: DocumentReadiness;
-  readonly authorization: OwnedDocumentDescriptor["authorization"];
   readonly sync: EncodedOwnedDocumentSyncEngine;
 }
 
@@ -537,7 +536,7 @@ const parseCanvasSyncResponseMetadata = (value: unknown): CanvasSyncResponseMeta
       "kind",
       "syncRequestId",
       "libraryId",
-      "accessContext",
+      "routingContext",
       "documentId",
       "storeEpoch",
       "generation",
@@ -552,7 +551,7 @@ const parseCanvasSyncResponseMetadata = (value: unknown): CanvasSyncResponseMeta
     kind: readEnum(record, "kind", ["up_to_date", "snapshot"] as const),
     syncRequestId: readString(record, "syncRequestId"),
     libraryId: readString(record, "libraryId"),
-    accessContext: parseOwnedDocumentAccessContext(record.accessContext),
+    routingContext: parseContentRoutingContext(record.routingContext),
     documentId: readString(record, "documentId"),
     storeEpoch: readString(record, "storeEpoch"),
     generation: readInteger(record, "generation", 1),
@@ -576,7 +575,7 @@ const parseOwnedDocumentSyncEngine = (value: unknown): EncodedOwnedDocumentSyncE
   return { kind, stateVector };
 };
 
-const parseOwnedDocumentAccessContext = (value: unknown): ContentAccessContext => {
+const parseContentRoutingContext = (value: unknown): ContentRoutingContext => {
   const record = readRecord(value);
   if (record.kind === "library") {
     assertExactKeys(record, ["kind"], "Owned Document access context");
@@ -596,7 +595,7 @@ const parseOwnedDocumentDescriptor = (value: unknown): EncodedOwnedDocumentDescr
     [
       "version",
       "libraryId",
-      "accessContext",
+      "routingContext",
       "ownerBlockId",
       "ownerType",
       "ownerLifecycle",
@@ -607,18 +606,17 @@ const parseOwnedDocumentDescriptor = (value: unknown): EncodedOwnedDocumentDescr
       "schemaKey",
       "schemaVersion",
       "readiness",
-      "authorization",
       "sync",
     ],
     "Owned Document descriptor",
   );
-  if (record.version !== 3) {
+  if (record.version !== 4) {
     throw new DocumentHttpWireError("Unsupported Owned Document descriptor version");
   }
   return {
-    version: 3,
+    version: 4,
     libraryId: readString(record, "libraryId"),
-    accessContext: parseOwnedDocumentAccessContext(record.accessContext),
+    routingContext: parseContentRoutingContext(record.routingContext),
     ownerBlockId: readString(record, "ownerBlockId"),
     ownerType: readString(record, "ownerType"),
     ownerLifecycle: readEnum(record, "ownerLifecycle", ["active", "archived", "deleted"] as const),
@@ -629,8 +627,6 @@ const parseOwnedDocumentDescriptor = (value: unknown): EncodedOwnedDocumentDescr
     schemaKey: readString(record, "schemaKey"),
     schemaVersion: readInteger(record, "schemaVersion", 1),
     readiness: readEnum(record, "readiness", ["pending_genesis", "ready", "failed"] as const),
-    authorization:
-      record.authorization === null ? null : parseAuthorizedReadStamp(record.authorization),
     sync: parseOwnedDocumentSyncEngine(record.sync),
   };
 };
@@ -644,9 +640,9 @@ export const encodeOwnedDocumentDescriptorHttp = (descriptor: OwnedDocumentDescr
         }
       : { kind: "canvas_scene" };
   return JSON.stringify({
-    version: 3,
+    version: 4,
     libraryId: descriptor.libraryId,
-    accessContext: descriptor.accessContext,
+    routingContext: descriptor.routingContext,
     ownerBlockId: descriptor.ownerBlockId,
     ownerType: descriptor.ownerType,
     ownerLifecycle: descriptor.ownerLifecycle,
@@ -657,7 +653,6 @@ export const encodeOwnedDocumentDescriptorHttp = (descriptor: OwnedDocumentDescr
     schemaKey: descriptor.schemaKey,
     schemaVersion: descriptor.schemaVersion,
     readiness: descriptor.readiness,
-    authorization: descriptor.authorization ?? null,
     sync,
   } satisfies EncodedOwnedDocumentDescriptor);
 };
@@ -684,7 +679,7 @@ export const decodeOwnedDocumentDescriptorHttp = (serialized: string): OwnedDocu
       : { kind: "canvas_scene" as const };
   return {
     libraryId: descriptor.libraryId,
-    accessContext: descriptor.accessContext,
+    routingContext: descriptor.routingContext,
     ownerBlockId: descriptor.ownerBlockId,
     ownerType: descriptor.ownerType,
     ownerLifecycle: descriptor.ownerLifecycle,
@@ -695,7 +690,6 @@ export const decodeOwnedDocumentDescriptorHttp = (serialized: string): OwnedDocu
     schemaKey: descriptor.schemaKey,
     schemaVersion: descriptor.schemaVersion,
     readiness: descriptor.readiness,
-    authorization: descriptor.authorization ?? null,
     sync,
   };
 };
@@ -708,10 +702,10 @@ export const decodeLibraryAccessedDocumentDescriptorHttp = (
   serialized: string,
 ): LibraryAccessedDocumentDescriptor => {
   const descriptor = decodeOwnedDocumentDescriptorHttp(serialized);
-  if (descriptor.accessContext.kind !== "library") {
+  if (descriptor.routingContext.kind !== "library") {
     throw new DocumentHttpWireError("Library-accessed Document context must be library");
   }
-  return { ...descriptor, accessContext: descriptor.accessContext };
+  return { ...descriptor, routingContext: descriptor.routingContext };
 };
 
 export const encodeDocumentSyncHttpRequest = (request: DocumentSyncRequest): Uint8Array =>
@@ -802,13 +796,13 @@ export const encodeCanvasSceneSyncHttpRequest = (request: CanvasSceneSyncRequest
 
 export const decodeCanvasSceneSyncHttpRequest = (
   routeDocumentId: string,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   bytes: Uint8Array,
 ): CanvasSceneSyncRequest => {
   const envelope = decodeDocumentHttpEnvelope(bytes, parseCanvasSyncRequestMetadata, 0);
   return {
     syncRequestId: envelope.metadata.syncRequestId,
-    accessContext,
+    routingContext,
     documentId: assertRouteDocument(routeDocumentId),
     clientSessionId: envelope.metadata.clientSessionId,
     ...(envelope.metadata.knownStoreEpoch === undefined
@@ -845,7 +839,7 @@ export const encodeCanvasSceneSyncHttpResponse = (
       kind: response.kind,
       syncRequestId: response.syncRequestId,
       libraryId: response.libraryId,
-      accessContext: response.accessContext,
+      routingContext: response.routingContext,
       documentId: response.documentId,
       storeEpoch: response.storeEpoch,
       generation: response.generation,
@@ -865,7 +859,7 @@ export const decodeCanvasSceneSyncHttpResponse = (bytes: Uint8Array): CanvasScen
   const common = {
     syncRequestId: envelope.metadata.syncRequestId,
     libraryId: envelope.metadata.libraryId,
-    accessContext: envelope.metadata.accessContext,
+    routingContext: envelope.metadata.routingContext,
     documentId: envelope.metadata.documentId,
     storeEpoch: envelope.metadata.storeEpoch,
     generation: envelope.metadata.generation,
@@ -1100,8 +1094,7 @@ export const decodeDocumentRealtimeSseEvent = (serialized: string): DocumentSync
       reason !== "history-compacted" &&
       reason !== "transport-reconnected" &&
       reason !== "resource-integrity-failure" &&
-      reason !== "identity-boundary-changed" &&
-      reason !== "access-revoked"
+      reason !== "identity-boundary-changed"
     ) {
       throw new DocumentHttpWireError("Document resync reason is invalid");
     }

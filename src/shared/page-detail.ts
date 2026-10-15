@@ -9,7 +9,6 @@ import type {
   DataSourcePropertyRecordV2,
   DataSourceRecordV2,
 } from "./database-module-v2";
-import { parseAuthorizedReadStamp, type AuthorizedReadStamp } from "./authorized-read-stamp";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
@@ -49,7 +48,6 @@ export interface PageDetail {
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp;
   readonly page: Page;
   readonly document: {
     readonly readiness: "pending_genesis" | "ready" | "failed";
@@ -65,7 +63,6 @@ export type PageDetailErrorCode =
   | "store_not_initialized"
   | "project_not_found"
   | "page_not_found"
-  | "authorization_denied"
   | "page_detail_corrupt"
   | "unknown";
 
@@ -79,9 +76,7 @@ export type PageDetailResult =
   | { readonly ok: true; readonly value: PageDetail }
   | { readonly ok: false; readonly error: PageDetailError };
 
-export interface LibraryPageDetail extends Omit<PageDetail, "projectId"> {
-  readonly accessContext: { readonly kind: "library" };
-}
+export type LibraryPageDetail = Omit<PageDetail, "projectId">;
 
 export type LibraryPageDetailResult =
   | { readonly ok: true; readonly value: LibraryPageDetail }
@@ -184,7 +179,6 @@ const parseDatabase = (value: unknown, libraryId: string): DatabaseContainerReco
     "name",
     "lifecycle",
     "defaultViewId",
-    "accessRevision",
     "metadataRevision",
     "createdAt",
     "updatedAt",
@@ -209,7 +203,6 @@ const parseDatabase = (value: unknown, libraryId: string): DatabaseContainerReco
             "pageDetail.database.defaultViewId",
             parseDatabaseViewId,
           ),
-    accessRevision: revision(value.accessRevision, "pageDetail.database.accessRevision"),
     metadataRevision: revision(value.metadataRevision, "pageDetail.database.metadataRevision"),
     createdAt: boundedText(value.createdAt, "pageDetail.database.createdAt"),
     updatedAt: boundedText(value.updatedAt, "pageDetail.database.updatedAt"),
@@ -596,15 +589,6 @@ const parsePageDetailBody = (
     schemaVersion: revision(detail.document.schemaVersion, "pageDetail.document.schemaVersion"),
   };
   const commitSeq = revision(detail.commitSeq, "pageDetail.commitSeq");
-  const authorization = parseAuthorizedReadStamp(detail.authorization, libraryId);
-  if (
-    authorization.store_epoch !== storeEpoch ||
-    authorization.covered_commit_seq !== commitSeq ||
-    authorization.subject.kind !== "page" ||
-    authorization.subject.page_id !== page.pageId
-  ) {
-    throw new PageDetailContractError("Page Detail authorization stamp diverges");
-  }
   const intrinsicProperties: PageIntrinsicProperty[] = [];
   for (const [index, property] of detail.intrinsicProperties.entries()) {
     if (!isRecord(property)) {
@@ -649,7 +633,6 @@ const parsePageDetailBody = (
     libraryId,
     storeEpoch,
     commitSeq,
-    authorization,
     page,
     document,
     intrinsicProperties,
@@ -662,7 +645,6 @@ const errorCodes = new Set<PageDetailErrorCode>([
   "store_not_initialized",
   "project_not_found",
   "page_not_found",
-  "authorization_denied",
   "page_detail_corrupt",
   "unknown",
 ]);
@@ -702,7 +684,6 @@ export const parsePageDetailResult = (value: unknown): PageDetailResult => {
     "libraryId",
     "storeEpoch",
     "commitSeq",
-    "authorization",
     "page",
     "document",
     "intrinsicProperties",
@@ -735,28 +716,18 @@ export const parseLibraryPageDetailResult = (value: unknown): LibraryPageDetailR
   exactKeys(value, "libraryPageDetailResult", ["ok", "value"]);
   const detail = value.value;
   exactKeys(detail, "libraryPageDetail", [
-    "accessContext",
     "libraryId",
     "storeEpoch",
     "commitSeq",
-    "authorization",
     "page",
     "document",
     "intrinsicProperties",
     "dataSourceContext",
   ]);
-  if (!isRecord(detail.accessContext)) {
-    throw new PageDetailContractError("Library Page Detail access context is invalid");
-  }
-  exactKeys(detail.accessContext, "libraryPageDetail.accessContext", ["kind"]);
-  if (detail.accessContext.kind !== "library") {
-    throw new PageDetailContractError("Library Page Detail access context must be library");
-  }
   return {
     ok: true,
     value: {
       ...parsePageDetailBody(detail),
-      accessContext: { kind: "library" },
     },
   };
 };

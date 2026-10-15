@@ -10,7 +10,12 @@ import { describe, expect, test } from "vite-plus/test";
 import { MainConfig, testLayer } from "../../app/MainConfig";
 import { requiredNativeExecutable } from "../../../../scripts/testing/native-artifacts";
 import { withCoreScenario } from "../../../../scripts/scenarios/harness/core-scenario-harness";
-import { buildNodexCliBootstrap, type NodexCliTaskContext } from "./NodexCliBootstrap";
+import {
+  buildAgentRuntimeCliContext,
+  buildNodexCliBootstrap,
+  type NodexCliTaskContext,
+} from "./NodexCliBootstrap";
+import type { NodexAgentTurnContext } from "../../../shared/nodex-agent-authority";
 import {
   nodexCliShellLaunchArgs,
   nodexCliShellPaths,
@@ -25,22 +30,75 @@ const task: NodexCliTaskContext = {
   threadId: "thread-a",
   hostId: "local",
   projectId: "project",
-  verifiedBuiltinFullAccess: true,
-  planMode: false,
-  sandboxPolicy: { type: "dangerFullAccess" },
 };
 const identity = { profileId: "profile:test", libraryId: "library:test", storeEpoch: "epoch:test" };
 const config = Effect.runSync(MainConfig.pipe(Effect.provide(testLayer())));
 
 describe("Nodex per-Turn CLI connection", () => {
+  test("routes provider-neutral shell work through the exact build, Profile and Project", async () => {
+    const root = await mkdtemp(join(tmpdir(), "nodex runtime ' "));
+    try {
+      const bin = join(root, "bin");
+      const skill = join(root, ".generated/official-agent-skills/skills/nodex");
+      await mkdir(bin, { recursive: true });
+      await mkdir(skill, { recursive: true });
+      await symlink(requiredNativeExecutable("cli"), join(bin, "nodex"));
+      await symlink(resolve("agent-skills/nodex/SKILL.md"), join(skill, "SKILL.md"));
+      await withCoreScenario({ scenarioId: "library/files" }, async (current) => {
+        const selected = {
+          ...config,
+          projectRootPath: root,
+          nodexHome: current.profile.nodexHome,
+          environment: { NODEX_CORE_EXECUTABLE: join(bin, "nodex-core") },
+        };
+        const authority: NodexAgentTurnContext = {
+          threadId: "engine:thread",
+          turnId: "run:turn",
+          rootThreadId: "session:root",
+          libraryId: current.runtime.identity.libraryId,
+          storeEpoch: current.runtime.identity.storeEpoch,
+          admittedAtMs: 1,
+
+          actorProjectId: current.manifest.projectId,
+        };
+        const context = await Effect.runPromise(
+          buildAgentRuntimeCliContext(selected, current.runtime.identity, authority),
+        );
+        expect(context).not.toBeNull();
+        const command = context!
+          .split("For shell content work, use ")[1]!
+          .split(" followed by the command")[0]!;
+        const result = await exec("/bin/sh", ["-c", `${command} --json context`], {
+          cwd: tmpdir(),
+          env: { PATH: "/usr/bin:/bin", NODEX_HOME: join(root, "wrong-profile") },
+        });
+        const actual = JSON.parse(result.stdout).result;
+        expect(actual.profile.id).toBe(current.runtime.identity.profileId);
+        expect(actual.project.id).toBe(current.manifest.projectId);
+        const projectless = await Effect.runPromise(
+          buildAgentRuntimeCliContext(selected, current.runtime.identity, {
+            ...authority,
+            actorProjectId: null,
+          }),
+        );
+        expect(projectless).not.toBeNull();
+        expect(
+          await Effect.runPromise(
+            buildAgentRuntimeCliContext(
+              { ...selected, platform: "win32" },
+              current.runtime.identity,
+              authority,
+            ),
+          ),
+        ).toBeNull();
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
   test("withholds the connection outside verified local execution and when artifacts are missing", async () => {
     for (const [override, reason] of [
       [{ hostId: "remote" }, "remote execution host"],
-      [{ projectId: null }, "no Project"],
-      [{ planMode: true }, "Plan Mode"],
-      [{ verifiedBuiltinFullAccess: false }, "Full access"],
-      [{ sandboxPolicy: { type: "readOnly" } }, "runtime sandbox"],
-      [{ sandboxPolicy: undefined }, "runtime sandbox"],
       [{}, "unavailable"],
     ] as const) {
       const result = await Effect.runPromise(
@@ -158,21 +216,21 @@ describe("Nodex per-Turn CLI connection", () => {
             buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
               ...task,
               threadId: "spawned-child",
-              planMode: true,
+              projectId: otherProject.id,
             }),
           );
-          await expect(runContext("spawned-child", task.threadId)).rejects.toMatchObject({
-            stderr: expect.stringContaining("unavailable"),
-          });
+          expect(
+            JSON.parse((await runContext("spawned-child", task.threadId)).stdout).result.project.id,
+          ).toBe(otherProject.id);
           await Effect.runPromise(
             buildNodexCliBootstrap(firstConfig, first.runtime.identity, {
               ...task,
-              planMode: true,
+              projectId: first.manifest.projectId,
             }),
           );
-          await expect(runContext(task.threadId)).rejects.toMatchObject({
-            stderr: expect.stringContaining("unavailable"),
-          });
+          expect(JSON.parse((await runContext(task.threadId)).stdout).result.project.id).toBe(
+            first.manifest.projectId,
+          );
           expect(JSON.parse((await runContext("thread-b")).stdout).result.project.id).toBe(
             otherProject.id,
           );

@@ -642,15 +642,11 @@ export class NodexYProvider {
     if (event.kind === "resync-required") {
       if (
         event.reason === "resource-integrity-failure" ||
-        event.reason === "identity-boundary-changed" ||
-        event.reason === "access-revoked"
+        event.reason === "identity-boundary-changed"
       ) {
         this.enterReset({
-          code: event.reason === "access-revoked" ? "unauthorized" : "recovery_required",
-          message:
-            event.reason === "access-revoked"
-              ? `Access to Document ${this.documentId} was revoked`
-              : `Document ${this.documentId} crossed a local identity or integrity boundary`,
+          code: "recovery_required",
+          message: `Document ${this.documentId} crossed a local identity or integrity boundary`,
           retryable: false,
           resetRequired: true,
         });
@@ -1345,7 +1341,7 @@ export class NodexYProvider {
   };
 
   exportRecovery = async (): Promise<string> => {
-    if (this.terminalError?.code === "unauthorized")
+    if (this.terminalError?.code === "invalid_session")
       throw new Error("Document access is required to export recovery");
     const boundary = {
       documentId: this.documentId,

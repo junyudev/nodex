@@ -1,0 +1,358 @@
+import { assert, it } from "@effect/vitest";
+import {
+  EventId,
+  MessageId,
+  NodeId,
+  type OrchestrationV2AppThread,
+  type OrchestrationV2Run,
+  type OrchestrationV2Subagent,
+  ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderThreadId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import { readRootActivity } from "./ExecutionActivity.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import {
+  explainExecutedSql,
+  fullHistoryScans,
+  historyWideReads,
+  seedUndecodableHistory,
+} from "./testkit/HistoryPressure.ts";
+
+const layer = ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory));
+const providerInstanceId = ProviderInstanceId.make("codex");
+const driver = ProviderDriverKind.make("codex");
+const modelSelection = { instanceId: providerInstanceId, model: "gpt-5.4" };
+
+const fixture = Effect.gen(function* () {
+  const store = yield* ProjectionStore.ProjectionStoreV2;
+  const now = yield* DateTime.now;
+  let event = 0;
+  const apply = (input: Record<string, unknown>) =>
+    store.apply({
+      id: EventId.make(`event:activity:${(event += 1)}`),
+      occurredAt: now,
+      ...input,
+    } as never);
+  const thread = Effect.fnUntraced(function* (id: string, parent?: ThreadId) {
+    const threadId = ThreadId.make(id);
+    const root = parent === undefined ? threadId : ThreadId.make(`root:${parent.split(":")[1]}`);
+    const payload: OrchestrationV2AppThread = {
+      createdBy: "user",
+      creationSource: "web",
+      id: threadId,
+      projectId: ProjectId.make("project:activity"),
+      title: id,
+      providerInstanceId,
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      activeProviderThreadId: null,
+      lineage:
+        parent === undefined
+          ? { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId }
+          : { parentThreadId: parent, relationshipToParent: "subagent", rootThreadId: root },
+      forkedFrom: null,
+      createdAt: now,
+      updatedAt: now,
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      lastVisitedAt: null,
+      deletedAt: null,
+    };
+    yield* apply({ type: "thread.created", threadId, payload });
+    return threadId;
+  });
+  const run = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    status: OrchestrationV2Run["status"],
+    overrides: Partial<OrchestrationV2Run> = {},
+  ) {
+    const ordinal = overrides.ordinal ?? 1;
+    const runId = RunId.make(`run:${threadId}:${ordinal}`);
+    const payload: OrchestrationV2Run = {
+      id: runId,
+      threadId,
+      ordinal,
+      providerInstanceId,
+      modelSelection,
+      providerThreadId: null,
+      userMessageId: MessageId.make(`message:${runId}`),
+      rootNodeId: NodeId.make(`node:${runId}`),
+      activeAttemptId: null,
+      status,
+      requestedAt: now,
+      startedAt: now,
+      completedAt: status === "running" ? null : now,
+      checkpointId: null,
+      contextHandoffId: null,
+      ...overrides,
+    };
+    yield* apply({ type: "run.updated", threadId, runId, payload });
+    return payload;
+  });
+  const task = Effect.fnUntraced(function* (
+    parent: OrchestrationV2Run,
+    id: string,
+    overrides: Partial<OrchestrationV2Subagent> = {},
+  ) {
+    const payload: OrchestrationV2Subagent = {
+      id: NodeId.make(id),
+      threadId: parent.threadId,
+      runId: parent.id,
+      parentNodeId: parent.rootNodeId!,
+      origin: "app_owned",
+      createdBy: "agent",
+      driver,
+      providerInstanceId,
+      providerThreadId: null,
+      childThreadId: null,
+      nativeTaskRef: null,
+      prompt: "Check the build.",
+      title: null,
+      model: null,
+      status: "running",
+      result: null,
+      startedAt: now,
+      completedAt: null,
+      updatedAt: now,
+      ...overrides,
+    };
+    yield* apply({
+      type: "subagent.updated",
+      threadId: parent.threadId,
+      runId: parent.id,
+      nodeId: payload.id,
+      payload,
+    });
+    return payload;
+  });
+  const request = (threadId: ThreadId, id: string, status: "pending" | "resolved") =>
+    apply({
+      type: "runtime-request.updated",
+      threadId,
+      payload: {
+        id: RuntimeRequestId.make(id),
+        nodeId: NodeId.make(`node:${id}`),
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind: "user_input",
+        status,
+        responseCapability: { type: "message" },
+        createdAt: now,
+        resolvedAt: status === "pending" ? null : now,
+      },
+    });
+  const roster = (threadId: ThreadId, tasks: number) =>
+    apply({
+      type: "provider-thread.updated",
+      threadId,
+      driver,
+      providerInstanceId,
+      payload: {
+        id: ProviderThreadId.make(`provider-thread:${threadId}`),
+        appThreadId: threadId,
+        ownerNodeId: null,
+        driver,
+        providerInstanceId,
+        providerSessionId: null,
+        nativeThreadRef: null,
+        nativeConversationHeadRef: null,
+        status: "idle",
+        firstRunOrdinal: null,
+        lastRunOrdinal: null,
+        handoffIds: [],
+        forkedFrom: null,
+        createdAt: now,
+        updatedAt: now,
+        pendingBackgroundTasks: Array.from({ length: tasks }, (_, index) => ({
+          taskId: `background-${index}`,
+          description: "Still running",
+          kind: "command" as const,
+        })),
+      },
+    });
+  return { thread, run, task, request, roster, now };
+});
+
+const activity = (rootThreadIds?: ReadonlyArray<string>) =>
+  readRootActivity(rootThreadIds === undefined ? {} : { rootThreadIds }).pipe(
+    Effect.map((page) =>
+      Object.fromEntries(
+        page.items.map((item) => [
+          item.rootThreadId,
+          {
+            status: item.status,
+            activeRunId: item.activeRunId,
+            pendingRequestCount: item.pendingRequestCount,
+            activeTaskCount: item.activeTaskCount,
+            resumesAutomatically: item.resumesAutomatically,
+          },
+        ]),
+      ),
+    ),
+  );
+
+it.effect("reports running, waiting and background roots and rolls descendants up", () =>
+  Effect.gen(function* () {
+    const { thread, run, task, request, roster } = yield* fixture;
+    const running = yield* thread("root:running");
+    const runningRun = yield* run(running, "running");
+    const waiting = yield* thread("root:waiting");
+    yield* run(waiting, "running");
+    yield* request(waiting, "request:question", "pending");
+    yield* request(waiting, "request:answered", "resolved");
+    // The parent turn ended while its delegated child keeps working in its own Thread.
+    const parent = yield* thread("root:background");
+    const parentRun = yield* run(parent, "completed");
+    const child = yield* thread("child:background", parent);
+    yield* task(parentRun, "task:background", { childThreadId: child, completionWake: "always" });
+    yield* run(child, "running");
+    const nativeRoster = yield* thread("root:roster");
+    yield* run(nativeRoster, "completed");
+    yield* roster(nativeRoster, 2);
+    const idle = yield* thread("root:idle");
+    yield* run(idle, "completed");
+
+    assert.deepEqual(yield* activity(), {
+      "root:background": {
+        // The child's active Run counts as running work in the root's tree.
+        status: "running",
+        activeRunId: null,
+        pendingRequestCount: 0,
+        activeTaskCount: 1,
+        resumesAutomatically: true,
+      },
+      "root:roster": {
+        status: "background",
+        activeRunId: null,
+        pendingRequestCount: 0,
+        activeTaskCount: 2,
+        resumesAutomatically: false,
+      },
+      "root:running": {
+        status: "running",
+        activeRunId: runningRun.id,
+        pendingRequestCount: 0,
+        activeTaskCount: 0,
+        resumesAutomatically: false,
+      },
+      "root:waiting": {
+        status: "waiting",
+        activeRunId: RunId.make("run:root:waiting:1"),
+        pendingRequestCount: 1,
+        activeTaskCount: 0,
+        resumesAutomatically: false,
+      },
+    });
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("keeps a finished parent in the background until its delegated result wakes it", () =>
+  Effect.gen(function* () {
+    const { thread, run, task } = yield* fixture;
+    const parent = yield* thread("root:wake");
+    const parentRun = yield* run(parent, "completed");
+    const child = yield* thread("child:wake", parent);
+    // A wait-mode child returns through its blocking call and never wakes the parent.
+    const waited = yield* task(parentRun, "task:waited", {
+      childThreadId: yield* thread("child:waited", parent),
+      completionWake: "settled_only",
+    });
+    assert.isFalse((yield* activity(["root:wake"]))["root:wake"]?.resumesAutomatically);
+    yield* task(parentRun, "task:waited", { ...waited, status: "completed", result: "done" });
+
+    const live = yield* task(parentRun, "task:wake", {
+      childThreadId: child,
+      completionWake: "always",
+    });
+    assert.deepEqual((yield* activity(["root:wake"]))["root:wake"], {
+      status: "background",
+      activeRunId: null,
+      pendingRequestCount: 0,
+      activeTaskCount: 1,
+      resumesAutomatically: true,
+    });
+
+    // The finished child's result is claimed for an open delivery: the root still resumes.
+    yield* task(parentRun, "task:wake", {
+      ...live,
+      status: "completed",
+      completionDelivery: { state: "claimed", observedByRunId: null },
+    });
+    yield* run(parent, "completed", {
+      ...parentRun,
+      delegatedCompletion: {
+        disposition: "open",
+        nextGeneration: 2,
+        delivery: { generation: 1, messageId: MessageId.make("message:wake"), taskIds: [live.id] },
+      },
+    });
+    assert.isTrue((yield* activity(["root:wake"]))["root:wake"]?.resumesAutomatically);
+
+    // Once delivered and the cohort settles, the root is idle and absent.
+    yield* task(parentRun, "task:wake", {
+      ...live,
+      status: "completed",
+      completionDelivery: { state: "delivered", observedByRunId: null },
+    });
+    yield* run(parent, "completed", {
+      ...parentRun,
+      delegatedCompletion: { disposition: "open", nextGeneration: 2, delivery: null },
+    });
+    assert.deepEqual(yield* activity(["root:wake"]), {});
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("pages non-idle roots by cursor", () =>
+  Effect.gen(function* () {
+    const { thread, run } = yield* fixture;
+    for (const name of ["a", "b", "c"]) yield* run(yield* thread(`root:${name}`), "running");
+    const first = yield* readRootActivity({ limit: 2 });
+    assert.deepEqual(
+      first.items.map((item) => item.rootThreadId),
+      ["root:a", "root:b"],
+    );
+    const second = yield* readRootActivity({ limit: 2, cursor: first.nextCursor! });
+    assert.deepEqual(
+      second.items.map((item) => item.rootThreadId),
+      ["root:c"],
+    );
+    assert.isNull(second.nextCursor);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("reads activity from live-state indexes only at 10,000 historical Runs", () =>
+  Effect.gen(function* () {
+    const { thread, run, now } = yield* fixture;
+    const settled = yield* thread("root:history");
+    yield* seedUndecodableHistory({ threadId: settled, at: DateTime.formatIso(now) });
+    const live = yield* thread("root:live");
+    yield* run(live, "running", { ordinal: 1 });
+    const page = yield* explainExecutedSql(readRootActivity({}));
+    const point = yield* explainExecutedSql(readRootActivity({ rootThreadIds: ["root:live"] }));
+    assert.deepEqual(
+      page.result.items.map((item) => item.rootThreadId),
+      ["root:live"],
+    );
+    assert.deepEqual(
+      point.result.items.map((item) => item.rootThreadId),
+      ["root:live"],
+    );
+    for (const { plan } of [...page.plans, ...point.plans])
+      assert.deepEqual(fullHistoryScans(plan, ["facts", "rooted"]), []);
+    assert.deepEqual(historyWideReads([...page.plans, ...point.plans]), []);
+  }).pipe(Effect.provide(layer)),
+);

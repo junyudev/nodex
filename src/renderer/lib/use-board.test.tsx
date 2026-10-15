@@ -233,11 +233,9 @@ describe("useBoard createPage result", () => {
     expect(testState.applyRemoteCard).not.toHaveBeenCalled();
   });
 
-  test("returns the selected View read-only reason before mutation", async () => {
+  test("keeps mutation unavailable until the selected View is loaded", async () => {
     testState.snapshot = {
-      databaseView: {
-        readOnlyReason: "Grouping is not writable",
-      },
+      databaseView: null,
     };
     const { result } = renderHook(() =>
       useBoard({
@@ -255,9 +253,11 @@ describe("useBoard createPage result", () => {
 
     expect(createResult).toEqual({
       status: "error",
-      error: "Grouping is not writable",
+      error: "The selected Database View is not ready for writes",
     });
-    expect(testState.setError).toHaveBeenCalledWith("Grouping is not writable");
+    expect(testState.setError).toHaveBeenCalledWith(
+      "The selected Database View is not ready for writes",
+    );
   });
 
   test("routes a resolved occurrence rejection through optimistic rollback", async () => {
@@ -386,7 +386,7 @@ describe("useBoard createPage result", () => {
   test("threads the Database receipt commit floor through a Page drag", async () => {
     testState.snapshot = {
       databaseView: {
-        accessContext: { kind: "project", projectId: "project-test" },
+        routingContext: { kind: "project", projectId: "project-test" },
         libraryId: "library-test",
         storeEpoch: "epoch-test",
         commitSeq: 3,

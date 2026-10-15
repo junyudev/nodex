@@ -96,7 +96,7 @@ function fixture() {
   };
   const model = {
     libraryId: "library-a",
-    accessContext: { kind: "project" as const, projectId: "project-a" },
+    routingContext: { kind: "project" as const, projectId: "project-a" },
     databaseId: parseDatabaseId("database-a"),
     dataSourceId,
     databaseViewId: parseDatabaseViewId("view-a"),

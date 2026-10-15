@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { ProjectSessionSummary } from "../../shared/types";
 import {
+  attentionForIndicator,
   buildProjectAgentDockModel,
   buildProjectAgentDockPendingWorktreeModel,
+  resolveProjectAgentDockLiveIndicator,
   resolveProjectAgentDockPendingWorktree,
   type ProjectAgentDockPendingWorktreeEntry,
 } from "./project-agent-dock-model";
@@ -219,5 +221,35 @@ describe("Project Agent Dock pending worktree projection", () => {
       composerBlockedReason: "Resolve the failed worktree setup before starting this chat again",
       attention: "request",
     });
+  });
+
+  test("reads Runtime chats' live status from Session activity, not a native thread", () => {
+    const model = buildProjectAgentDockModel({
+      projectId: "project-1",
+      dock: { binding: { kind: "session", sessionId: "runtime" }, newDraftId: "draft-1" },
+      summaries: [
+        session("runtime", {
+          unread: true,
+          executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
+        }),
+        session("draft"),
+      ],
+      exactSelectedSession: null,
+      collectionState: { kind: "ready", refreshError: null },
+      hasMore: false,
+      query: "",
+    });
+    const runtimeRow = model.rows.find((row) => row.sessionId === "runtime")!;
+    const draftRow = model.rows.find((row) => row.sessionId === "draft")!;
+    expect(runtimeRow).toMatchObject({ runtimeSessionId: "runtime", indicator: "unread" });
+    expect(draftRow.runtimeSessionId).toBeNull();
+    expect(
+      (["running", "waiting", "background", null] as const).map((live) =>
+        resolveProjectAgentDockLiveIndicator(runtimeRow, live),
+      ),
+    ).toEqual(["running", "needs-attention", "background", "unread"]);
+    // Activity never reaches a Session without a Runtime binding.
+    expect(resolveProjectAgentDockLiveIndicator(draftRow, "running")).toBe("idle");
+    expect(attentionForIndicator("background")).toBe("activity");
   });
 });

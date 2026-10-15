@@ -126,7 +126,7 @@ response fences; the event stream is not a second projection cache.
 
 A title/body commit updates its exact materialization and durable impact in one
 transaction, including every affected View and the final Document head. Live
-and restart replay produce equal Core events. Library, authorized Project,
+and restart replay produce equal Core events. Library, Project-routed,
 Electron, and browser streams carry the same cursor/impact contract; Project
 streams contain no unauthorized identity. With an old Database View read held
 in flight, a later Page commit followed by release of that old response still

@@ -16,7 +16,6 @@ import type { CodexConversationSnapshot } from "../../shared/types";
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
 import { conversationFixture } from "./conversation-test-fixture";
 import { createCodexCanonicalWorkspacePermissionContext } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { make } from "./CodexConversationResumeRuntime";
 import {
   CodexThreadDirectory,
@@ -87,18 +86,6 @@ const build = Effect.fn("CodexConversationResumeRuntimeTest.build")(function* (
         ),
     }),
     Effect.provideService(CodexConversationRelationships, relationships),
-    Effect.provideService(
-      CodexFreshThreadLaunchRuntime,
-      CodexFreshThreadLaunchRuntime.of({
-        prepare: () => Effect.die("unused native preparation"),
-        register: () => undefined,
-        reservation: () => null,
-        adopt: () => Effect.die("unused"),
-        start: () => Effect.die("unused"),
-        releaseRenderer: () => undefined,
-        clear: () => undefined,
-      }),
-    ),
     Effect.provideService(CodexThreadDirectory, directory),
     Effect.provideService(ConversationEntityMap, conversations),
     Effect.provideService(Scope.Scope, scope),
@@ -202,7 +189,7 @@ it.effect(
         const requestedOptions: unknown[] = [];
         const options = {
           serviceTier: "priority",
-          useAppServerPermissionDefault: true,
+
           preserveServerConfiguration: false,
         };
         const { runtime } = yield* build(scope, () => Effect.succeed(null), undefined, {

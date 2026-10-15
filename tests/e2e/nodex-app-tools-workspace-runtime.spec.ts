@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -13,7 +14,7 @@ import {
   requireRecord,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -50,10 +51,10 @@ test("native workspace dependency paths generate and reopen document artifacts",
               expect(tool).not.toBeNull();
               return responses.stream([
                 responses.created(callId),
-                responses.customToolCall(
+                nativeAppToolCall(
                   callId,
                   tool!.name,
-                  "text(await tools.mcp__nodex_app__load_workspace_dependencies({}));",
+                  "text(await app.load_workspace_dependencies({}));",
                   tool!.namespace,
                 ),
                 responses.completed(callId),
@@ -133,7 +134,11 @@ test("native workspace dependency paths generate and reopen document artifacts",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "DEPENDENCIES");
         await waitForFinalMarker(page, "DEPENDENCIES_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: draft.projectSessionId, threadId },
+          60_000,
+        );
       } finally {
         await harness.close();
       }

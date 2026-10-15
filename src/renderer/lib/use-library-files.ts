@@ -1,7 +1,6 @@
 import { hashKey, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   LibraryFile,
   LibraryFilePage,
@@ -18,47 +17,28 @@ import { readLibraryModule } from "./api";
 import { invalidateExactQuery } from "./query-invalidation";
 import { queryKeys } from "./query-keys";
 import { useProjectionRegistration } from "./projection-invalidation-context";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
 import { useLibraryMetadata } from "./use-library-navigation";
 
 const PAGE_SIZE = 50;
 
-interface AuthorizedSnapshot<Value> {
+interface ReadSnapshot<Value> {
   readonly value: Value;
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly commitSeq: number;
-  readonly authorization: AuthorizedReadStamp | null;
 }
 
-const resolveFileQueryAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const candidate = data as {
-    readonly authorization?: AuthorizedReadStamp | null;
-    readonly pages?: readonly AuthorizedSnapshot<unknown>[];
-  } | null;
-  const authorizations = [
-    ...(candidate?.authorization ? [candidate.authorization] : []),
-    ...(candidate?.pages ?? []).flatMap((page) => (page.authorization ? [page.authorization] : [])),
-  ];
-  return authorizations.length > 0 ? { authorizations } : null;
-};
-
-const fileQueryMeta = resourceAuthorityQueryMeta(resolveFileQueryAuthority);
-
 const projectionScope = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   libraryId: string | null,
 ): ProjectionScope | null => {
   if (!libraryId) return null;
-  return accessContext.kind === "library"
+  return routingContext.kind === "library"
     ? { kind: "library", libraryId }
-    : { kind: "project", libraryId, projectId: accessContext.projectId };
+    : { kind: "project", libraryId, projectId: routingContext.projectId };
 };
 
-const snapshotCursor = (snapshot: AuthorizedSnapshot<unknown> | undefined) =>
+const snapshotCursor = (snapshot: ReadSnapshot<unknown> | undefined) =>
   snapshot ? { storeEpoch: snapshot.storeEpoch, commitSeq: snapshot.commitSeq } : null;
 
 type FileReadKind =
@@ -81,25 +61,21 @@ type FileReadPayload<Kind extends FileReadKind> = Kind extends "resolved_page_fi
           : LibraryFileVersionPage;
 
 const requireFileRead = async <Kind extends FileReadKind>(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   read: Parameters<typeof readLibraryModule>[1]["read"],
   kind: Kind,
-): Promise<AuthorizedSnapshot<FileReadPayload<Kind>>> => {
-  const result = await readLibraryModule(accessContext, { read });
+): Promise<ReadSnapshot<FileReadPayload<Kind>>> => {
+  const result = await readLibraryModule(routingContext, { read });
   if (!result.ok) throw new Error(result.error.message || "Couldn’t read Files");
   if (result.value.value.kind !== kind) {
     throw new Error(`Library read returned ${result.value.value.kind}, expected ${kind}`);
   }
-  return await admitResourceAuthorityQuery(
-    {
-      value: result.value.value.value as FileReadPayload<Kind>,
-      libraryId: result.value.libraryId,
-      storeEpoch: result.value.storeEpoch,
-      commitSeq: result.value.commitSeq,
-      authorization: result.value.authorization,
-    },
-    resolveFileQueryAuthority,
-  );
+  return {
+    value: result.value.value.value as FileReadPayload<Kind>,
+    libraryId: result.value.libraryId,
+    storeEpoch: result.value.storeEpoch,
+    commitSeq: result.value.commitSeq,
+  };
 };
 
 export interface PageFilesReadModel {
@@ -113,7 +89,7 @@ export interface PageFilesReadModel {
 }
 
 const mergeInventory = (
-  pages: readonly AuthorizedSnapshot<LibraryPageFileInventory>[] | undefined,
+  pages: readonly ReadSnapshot<LibraryPageFileInventory>[] | undefined,
 ): LibraryPageFileInventory | null => {
   const first = pages?.[0];
   if (!first) return null;
@@ -121,20 +97,20 @@ const mergeInventory = (
 };
 
 export function usePageFiles(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   pageId: string,
   options: { readonly query?: string; readonly enabled?: boolean } = {},
 ): PageFilesReadModel {
   const queryClient = useQueryClient();
   const normalizedQuery = options.query?.trim() ?? "";
-  const queryKey = queryKeys.library.pageFilesWindow(accessContext, pageId, normalizedQuery);
+  const queryKey = queryKeys.library.pageFilesWindow(routingContext, pageId, normalizedQuery);
   const library = useLibraryMetadata(pageId.length > 0);
   const query = useInfiniteQuery({
     queryKey,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       requireFileRead(
-        accessContext,
+        routingContext,
         {
           mode: "page_file_inventory",
           page_id: pageId,
@@ -148,11 +124,10 @@ export function usePageFiles(
     enabled: (options.enabled ?? true) && pageId.length > 0,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: fileQueryMeta,
   });
   const latest = query.data?.pages.at(-1);
   const scope = projectionScope(
-    accessContext,
+    routingContext,
     library.data?.libraryId ?? latest?.libraryId ?? null,
   );
   useProjectionRegistration(
@@ -197,7 +172,7 @@ export interface LibraryFileCatalogReadModel {
 }
 
 export function useLibraryFileCatalog(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   options: {
     readonly lifecycle: "live" | "trashed";
     readonly usage: LibraryFileUsageFilter;
@@ -208,7 +183,7 @@ export function useLibraryFileCatalog(
   const queryClient = useQueryClient();
   const normalizedQuery = options.query?.trim() ?? "";
   const queryKey = queryKeys.libraryFiles.catalog(
-    accessContext,
+    routingContext,
     options.lifecycle,
     options.usage,
     normalizedQuery,
@@ -219,7 +194,7 @@ export function useLibraryFileCatalog(
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       requireFileRead(
-        accessContext,
+        routingContext,
         {
           mode: "files",
           lifecycle: options.lifecycle,
@@ -234,11 +209,10 @@ export function useLibraryFileCatalog(
     enabled: options.enabled ?? true,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: fileQueryMeta,
   });
   const latest = query.data?.pages.at(-1);
   const scope = projectionScope(
-    accessContext,
+    routingContext,
     library.data?.libraryId ?? latest?.libraryId ?? null,
   );
   useProjectionRegistration(
@@ -276,7 +250,6 @@ export function useLibraryFileCatalog(
 export interface LibraryFileDetailReadModel {
   readonly usages: readonly LibraryFileUsage[];
   readonly versions: readonly LibraryFileVersion[];
-  readonly canWrite: boolean;
   readonly canTrash: boolean;
   readonly canRestore: boolean;
   readonly canPurge: boolean;
@@ -291,19 +264,19 @@ export interface LibraryFileDetailReadModel {
 }
 
 export function useLibraryFileDetail(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   fileId: string | null,
 ): LibraryFileDetailReadModel {
   const queryClient = useQueryClient();
-  const usagesKey = queryKeys.libraryFiles.usages(accessContext, fileId ?? "");
-  const versionsKey = queryKeys.libraryFiles.versions(accessContext, fileId ?? "");
+  const usagesKey = queryKeys.libraryFiles.usages(routingContext, fileId ?? "");
+  const versionsKey = queryKeys.libraryFiles.versions(routingContext, fileId ?? "");
   const library = useLibraryMetadata(Boolean(fileId));
   const usages = useInfiniteQuery({
     queryKey: usagesKey,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       requireFileRead(
-        accessContext,
+        routingContext,
         {
           mode: "file_usages",
           file_id: fileId!,
@@ -315,14 +288,13 @@ export function useLibraryFileDetail(
     getNextPageParam: (page) => page.value.next_cursor ?? undefined,
     enabled: Boolean(fileId),
     staleTime: 5_000,
-    meta: fileQueryMeta,
   });
   const versions = useInfiniteQuery({
     queryKey: versionsKey,
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       requireFileRead(
-        accessContext,
+        routingContext,
         {
           mode: "file_versions",
           file_id: fileId!,
@@ -334,16 +306,12 @@ export function useLibraryFileDetail(
     getNextPageParam: (page) => page.value.next_cursor ?? undefined,
     enabled: Boolean(fileId),
     staleTime: 5_000,
-    meta: fileQueryMeta,
   });
   const scope = projectionScope(
-    accessContext,
+    routingContext,
     library.data?.libraryId ?? usages.data?.pages.at(-1)?.libraryId ?? null,
   );
-  const registration = (
-    queryKey: readonly unknown[],
-    latest: AuthorizedSnapshot<unknown> | undefined,
-  ) =>
+  const registration = (queryKey: readonly unknown[], latest: ReadSnapshot<unknown> | undefined) =>
     scope && fileId
       ? {
           scope,
@@ -372,7 +340,6 @@ export function useLibraryFileDetail(
   return {
     usages: usages.data?.pages.flatMap((page) => page.value.items) ?? [],
     versions: versions.data?.pages.flatMap((page) => page.value.items) ?? [],
-    canWrite: capabilities?.can_write ?? false,
     canTrash: capabilities?.can_trash ?? false,
     canRestore: capabilities?.can_restore ?? false,
     canPurge: capabilities?.can_purge ?? false,
@@ -397,17 +364,16 @@ export function useLibraryFileDetail(
 }
 
 /** Selected identity is independent of catalog pagination and filters. */
-export function useLibraryFile(accessContext: ContentAccessContext, fileId: string | null) {
+export function useLibraryFile(routingContext: ContentRoutingContext, fileId: string | null) {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.libraryFiles.file(accessContext, fileId ?? "");
+  const queryKey = queryKeys.libraryFiles.file(routingContext, fileId ?? "");
   const query = useQuery({
     queryKey,
-    queryFn: () => requireFileRead(accessContext, { mode: "file", file_id: fileId! }, "file"),
+    queryFn: () => requireFileRead(routingContext, { mode: "file", file_id: fileId! }, "file"),
     enabled: Boolean(fileId),
     retry: false,
-    meta: fileQueryMeta,
   });
-  const scope = projectionScope(accessContext, query.data?.libraryId ?? null);
+  const scope = projectionScope(routingContext, query.data?.libraryId ?? null);
   useProjectionRegistration(
     scope && fileId
       ? {
@@ -428,17 +394,17 @@ export function useLibraryFile(accessContext: ContentAccessContext, fileId: stri
 }
 
 export function usePageFile(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   pageId: string,
   fileId: string | null,
 ) {
   const queryClient = useQueryClient();
-  const queryKey = ["libraryFiles", "pageFile", accessContext, pageId, fileId] as const;
+  const queryKey = ["libraryFiles", "pageFile", routingContext, pageId, fileId] as const;
   const query = useQuery({
     queryKey,
     queryFn: () =>
       requireFileRead(
-        accessContext,
+        routingContext,
         {
           mode: "resolve_page_file",
           page_id: pageId,
@@ -448,9 +414,8 @@ export function usePageFile(
       ),
     enabled: Boolean(fileId),
     retry: false,
-    meta: fileQueryMeta,
   });
-  const scope = projectionScope(accessContext, query.data?.libraryId ?? null);
+  const scope = projectionScope(routingContext, query.data?.libraryId ?? null);
   useProjectionRegistration(
     scope && fileId
       ? {

@@ -9,9 +9,9 @@ import { embeddedEditorSelectionContextAttributes } from "@/lib/editor-selection
 import { useProjects } from "@/lib/use-projects";
 import { resolveReferencedProjectContext } from "@/lib/referenced-project-context";
 import {
-  libraryContentAccess,
-  projectIdFromContentAccessContext,
-} from "../../../../shared/content-access-context";
+  libraryContentRoute,
+  projectIdFromContentRoutingContext,
+} from "../../../../shared/content-routing-context";
 import { NfmEditor } from "./nfm-editor";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
 
@@ -34,15 +34,15 @@ export function EmbeddedReferencedPageDocument({
   isActive,
   hostRuntime,
 }: EmbeddedReferencedPageDocumentProps) {
-  const contentAccessContext = hostRuntime?.contentAccessContext ?? libraryContentAccess;
-  const executionProjectId = projectIdFromContentAccessContext(contentAccessContext);
+  const contentRoutingContext = hostRuntime?.contentRoutingContext ?? libraryContentRoute;
+  const executionProjectId = projectIdFromContentRoutingContext(contentRoutingContext);
   const { projects } = useProjects();
   const targetProject = resolveReferencedProjectContext(executionProjectId ?? "", projects);
   const targetLibraryId =
     projects.find((project) => project.id === executionProjectId)?.libraryId ??
     projects[0]?.libraryId;
   return (
-    <OwnedBlockDocumentBoundary accessContext={contentAccessContext} ownerBlockId={card.id}>
+    <OwnedBlockDocumentBoundary routingContext={contentRoutingContext} ownerBlockId={card.id}>
       {(model, controls) => {
         if (model.status === "loading") {
           return (
@@ -100,7 +100,7 @@ export function EmbeddedReferencedPageDocument({
                   />
                 </div>
                 <NfmEditor
-                  contentAccessContext={contentAccessContext}
+                  contentRoutingContext={contentRoutingContext}
                   projectName={targetProject.projectName}
                   projectWorkspacePath={targetProject.projectWorkspacePath}
                   source={{

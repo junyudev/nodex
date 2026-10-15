@@ -62,6 +62,12 @@ import type {
   ProjectUpdateInput,
 } from "@/lib/types";
 import { useProjectAppearanceMutation } from "@/lib/use-project-appearance-mutation";
+import { useRuntimeSessionLiveState } from "@/lib/use-session-execution";
+import {
+  projectSidebarThreadRowLiveView,
+  type SidebarThreadRowLiveView,
+} from "@/lib/sidebar-thread-row-live-view";
+import { runtimeSessionTarget, SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
 import { cn } from "@/lib/utils";
 import {
   workspaceProjectCommands,
@@ -84,6 +90,14 @@ import { suggestStableWorktreeProjectName } from "./stable-worktree-production";
 import { ProjectArchiveChatsDialog, runProjectThreadBatches } from "./project-archive-chats-dialog";
 import { ProjectEditDialog } from "./project-edit-dialog";
 import { ProjectHoverCard } from "./project-hover-card";
+import {
+  mergeRuntimeProjectActivity,
+  type ProjectRuntimeSessionFacts,
+} from "./project-hover-card-model";
+import {
+  useAgentRuntimeActivities,
+  type AgentRuntimeActivityStore,
+} from "@/lib/agent-runtime-session-activity";
 import { ProjectMarker } from "./project-marker";
 import { ProjectRemoveDialog } from "./project-remove-dialog";
 import {
@@ -801,9 +815,12 @@ export const CodexProjectActionsMenu = forwardRef<
   );
 });
 
+const NO_RUNTIME_SESSIONS: readonly ProjectRuntimeSessionFacts[] = [];
+
 function CodexProjectHoverCardContent({
   project,
-  activity,
+  activity: coreActivity,
+  runtimeSessions,
   onUpdateProject,
   onArchiveProject,
   onSetProjectPinned,
@@ -811,11 +828,19 @@ function CodexProjectHoverCardContent({
 }: {
   project: Project;
   activity: ProjectActivitySummary | null | undefined;
+  /** Loaded Runtime-bound Sessions of this Project; their live status comes from activity. */
+  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
   onUpdateProject: (projectId: string, updates: ProjectUpdateInput) => Promise<Project | null>;
   onArchiveProject: (projectId: string) => Promise<ProjectLifecycleMutationResult>;
   onSetProjectPinned?: (projectId: string, input: ProjectPinnedInput) => Promise<Project | null>;
   onRequestClose: () => void;
 }) {
+  // The hover card mounts only while open, so the aggregate subscription is short-lived.
+  const activity = mergeRuntimeProjectActivity(
+    coreActivity,
+    runtimeSessions,
+    useAgentRuntimeActivities(),
+  );
   const appHandle = useScopeHandle(appScope);
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
   const repositoryIdentityQuery = useQuery({
@@ -938,6 +963,7 @@ export interface CodexProjectRowDndCapability {
 export function CodexProjectRow({
   project,
   activity,
+  runtimeSessions = NO_RUNTIME_SESSIONS,
   active,
   expanded,
   animateChildren = true,
@@ -964,6 +990,7 @@ export function CodexProjectRow({
 }: {
   project: Project;
   activity?: ProjectActivitySummary | null;
+  runtimeSessions?: readonly ProjectRuntimeSessionFacts[];
   active: boolean;
   expanded: boolean;
   animateChildren?: boolean;
@@ -1143,6 +1170,7 @@ export function CodexProjectRow({
           <CodexProjectHoverCardContent
             project={project}
             activity={activity}
+            runtimeSessions={runtimeSessions}
             onUpdateProject={onUpdateProject}
             onArchiveProject={onArchiveProject}
             onSetProjectPinned={onSetProjectPinned}
@@ -1571,24 +1599,12 @@ function CodexSidebarThreadRunLocationGlyph({
   );
 }
 
-export function CodexSidebarThreadRow({
-  item,
-  active,
-  grouped = false,
-  contextMenuOpen = false,
-  archivePending = false,
-  hoverCardProjectLabel,
-  hoverCardBranchName,
-  hoverCardOpen,
-  onHoverCardOpenChange,
-  onSelect,
-  onPreview,
-  onArchive,
-  onOpenContextMenu,
-  onRenameFromTitleDoubleClick,
-  onTogglePinned,
-}: {
+type CodexSidebarThreadRowProps = {
   item: CodexSidebarThreadItem;
+  /** Runtime-bound rows read live status and location from their execution owner. */
+  runtime?: { readonly sessionId: string; readonly rootThreadId: string } | null;
+  /** Live Session activity; tests inject an isolated store. */
+  activityStore?: AgentRuntimeActivityStore;
   active: boolean;
   /** Grouped rows are nested under a Project; root lanes and Sections stay edge-aligned. */
   grouped?: boolean;
@@ -1607,14 +1623,62 @@ export function CodexSidebarThreadRow({
     event: MouseEvent<HTMLElement>,
   ) => void;
   onTogglePinned?: (item: CodexSidebarThreadItem) => void | Promise<void>;
-}) {
+};
+
+export function CodexSidebarThreadRow(props: CodexSidebarThreadRowProps) {
+  return props.runtime ? (
+    <RuntimeCodexSidebarThreadRow {...props} runtime={props.runtime} />
+  ) : (
+    <CodexSidebarThreadRowView
+      {...props}
+      live={projectSidebarThreadRowLiveView(props.item, null)}
+    />
+  );
+}
+
+/** A Runtime row subscribes only to its own Session's activity and cached location. */
+function RuntimeCodexSidebarThreadRow(
+  props: CodexSidebarThreadRowProps & {
+    runtime: NonNullable<CodexSidebarThreadRowProps["runtime"]>;
+  },
+) {
+  const state = useRuntimeSessionLiveState(props.runtime, props.activityStore);
+  return (
+    <CodexSidebarThreadRowView
+      {...props}
+      live={projectSidebarThreadRowLiveView(props.item, {
+        indicator: state.activity?.status ?? null,
+        location: state.location,
+      })}
+    />
+  );
+}
+
+function CodexSidebarThreadRowView({
+  live,
+  active,
+  grouped = false,
+  contextMenuOpen = false,
+  archivePending = false,
+  hoverCardProjectLabel,
+  hoverCardBranchName,
+  hoverCardOpen,
+  onHoverCardOpenChange,
+  onSelect,
+  onPreview,
+  onArchive,
+  onOpenContextMenu,
+  onRenameFromTitleDoubleClick,
+  onTogglePinned,
+}: CodexSidebarThreadRowProps & { live: SidebarThreadRowLiveView }) {
+  const item = live.item;
   const canOpenContextMenu = !item.disabled && Boolean(onOpenContextMenu);
   const showArchiveAction = !item.disabled && Boolean(onArchive);
   const showPinSlot = !item.disabled && Boolean(onTogglePinned);
   const pinButtonLabel = item.pinned ? "Unpin chat" : "Pin chat";
   const title = item.title;
   const archiveDisabled = item.disabled || archivePending;
-  const running = item.statusType === "active";
+  const { running, background, needsAttention } = live;
   const showRestingPinnedButton = showPinSlot && item.pinned;
   const showRailPinSlot = showPinSlot && !showRestingPinnedButton;
   const showActionRail = showRailPinSlot || showArchiveAction;
@@ -1713,10 +1777,10 @@ export function CodexSidebarThreadRow({
           {grouped ? (
             <div className="w-4 shrink-0">
               <div className="relative flex items-center justify-center">
-                {item.unread || item.needsAttention ? (
+                {item.unread || needsAttention ? (
                   <span
                     className="size-1.5 rounded-full bg-token-charts-blue"
-                    aria-label={item.needsAttention ? "Needs attention" : "Unread"}
+                    aria-label={needsAttention ? "Needs attention" : "Unread"}
                   />
                 ) : null}
               </div>
@@ -1754,7 +1818,7 @@ export function CodexSidebarThreadRow({
                 showRestingPinnedButton && showArchiveAction && contextMenuOpen && "pr-7",
               )}
             >
-              {!grouped && (item.unread || item.needsAttention) ? (
+              {!grouped && (item.unread || needsAttention) ? (
                 <span
                   className={cn(
                     "relative flex size-5 shrink-0 items-center justify-center",
@@ -1762,7 +1826,7 @@ export function CodexSidebarThreadRow({
                       "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
                     contextMenuOpen && "hidden",
                   )}
-                  aria-label={item.needsAttention ? "Needs attention" : "Unread"}
+                  aria-label={needsAttention ? "Needs attention" : "Unread"}
                   data-app-action-sidebar-thread-unread-indicator=""
                 >
                   <span className="size-1.5 rounded-full bg-token-charts-blue" />
@@ -1796,6 +1860,21 @@ export function CodexSidebarThreadRow({
                   data-app-action-sidebar-thread-running-indicator=""
                 >
                   <ActivitySpinnerIcon className="icon-xs shrink-0" animationDurationMs={2_000} />
+                </span>
+              ) : null}
+              {background ? (
+                <span
+                  role="img"
+                  aria-label={SESSION_LIVE_INDICATOR_LABELS.background}
+                  className={cn(
+                    "relative -mr-1 flex size-5 shrink-0 items-center justify-center text-token-description-foreground/70",
+                    showActionRail &&
+                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
+                    contextMenuOpen && "hidden",
+                  )}
+                  data-app-action-sidebar-thread-background-indicator=""
+                >
+                  <ActivitySpinnerIcon className="icon-xs shrink-0" animationDurationMs={5_000} />
                 </span>
               ) : null}
             </div>
@@ -1953,6 +2032,7 @@ export function CodexThreadRow({
   return (
     <CodexSidebarThreadRow
       item={item}
+      runtime={runtimeSessionTarget(session)}
       active={active}
       grouped={grouped}
       contextMenuOpen={contextMenuOpen}

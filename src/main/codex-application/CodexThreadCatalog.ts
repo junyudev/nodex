@@ -7,7 +7,6 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import { randomUUID } from "node:crypto";
 import {
   CodexSidebarThreadMoveInputSchema,
   readCodexSidebarThreadContainerLocation,
@@ -15,8 +14,6 @@ import {
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
-import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
-import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -26,7 +23,6 @@ import type {
   CommandPaletteThreadSearchInput,
   CommandPaletteThreadSearchResult,
   CommandPaletteThreadSummary,
-  Project,
   ProjectSession,
 } from "../../shared/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -35,13 +31,6 @@ import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/Code
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import {
-  appendMissingCodexProjectMoveSources,
-  listMissingCodexProjectMoveSources,
-  resolveCodexProjectlessThreadWorkspaceMove,
-  resolveCodexProjectThreadWorkspaceMove,
-} from "../codex/codex-sidebar-thread-move";
-import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { readCodexLinkedRootSession } from "./CodexLinkedRootSession";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
@@ -275,14 +264,38 @@ export const make = (
       const seen = new Set<string>();
       const add = (tasks: CoreTaskWindow): void => {
         for (const task of tasks.items) {
-          if (summaries.length >= 100 || !task.thread || task.thread.parent_thread_id) continue;
-          if (task.thread.backend_binding.kind !== "codex") continue;
-          if (task.session.archived || task.thread.archived || seen.has(task.thread.thread_id)) {
+          if (summaries.length >= 100 || task.session.archived) continue;
+          // Runtime-bound Sessions are chats too; their status and location live in execution.
+          const runtimeRoot = task.thread ? null : task.session.execution_ref?.thread_id;
+          if (runtimeRoot) {
+            if (seen.has(runtimeRoot)) continue;
+            seen.add(runtimeRoot);
+            summaries.push({
+              threadId: runtimeRoot,
+              sessionId: task.session.id,
+              projectId: task.session.project_id ?? null,
+              projectName: task.session.project_id
+                ? (projectNames.get(task.session.project_id) ?? null)
+                : null,
+              title: task.session.display_title,
+              preview: "",
+              cwd: null,
+              gitBranch: null,
+              projectless: task.session.project_id == null,
+              pinned: task.session.pinned,
+              pinnedOrder: task.session.pinned_order ?? null,
+              statusType: "notLoaded",
+              statusActiveFlags: [],
+              createdAt: Date.parse(task.session.created_at) || 0,
+              updatedAt: Date.parse(task.session.updated_at) || 0,
+            });
             continue;
           }
+          if (!task.thread || task.thread.parent_thread_id) continue;
+          if (task.thread.backend_binding.kind !== "codex") continue;
+          if (task.thread.archived || seen.has(task.thread.thread_id)) continue;
           seen.add(task.thread.thread_id);
           summaries.push({
-            backendBinding: CODEX_AGENT_BACKEND_BINDING,
             threadId: task.thread.thread_id,
             sessionId: task.session.id,
             projectId: task.session.project_id ?? null,
@@ -373,19 +386,6 @@ export const make = (
           new Error(`Unsupported sidebar target: ${input.targetContainerId}`),
         );
       }
-      if (
-        input.projectAccessGrant &&
-        input.projectAccessGrant.targetProjectId !== target.projectId
-      ) {
-        return yield* error("move", new Error("Project access grant does not match its target"));
-      }
-      if (input.projectAccessGrant && target.projectId === current.projectId) {
-        return yield* error(
-          "move",
-          new Error("Project access grant requires a cross-Project move"),
-        );
-      }
-
       const projects = yield* readProjects();
       const sourceProject = current.projectId
         ? (projects.find((project) => project.id === current.projectId) ?? null)
@@ -399,88 +399,7 @@ export const make = (
       if (target.projectId && !targetProject) {
         return yield* error("move", new Error(`Project not found: ${target.projectId}`));
       }
-      const missingSources = listMissingCodexProjectMoveSources(sourceProject, targetProject);
-      let targetForMove: Project | null = targetProject;
-      let projectAccessGrant:
-        | {
-            readonly expected_target_binding_revision: number;
-            readonly missing_source_roots: readonly string[];
-          }
-        | undefined;
-      if (missingSources.length > 0) {
-        if (!targetProject || !target.projectId) {
-          return yield* error("move", new Error("Target Project is unavailable"));
-        }
-        const grant = input.projectAccessGrant;
-        const matches =
-          grant?.targetProjectId === target.projectId &&
-          grant.expectedBindingRevision === targetProject.bindingRevision &&
-          grant.missingProjectSources.length === missingSources.length &&
-          grant.missingProjectSources.every((root, index) => root === missingSources[index]);
-        if (!matches) {
-          return {
-            status: "confirmation-required" as const,
-            reason: "target-project-needs-source-access" as const,
-            threadId: input.threadId,
-            targetProjectId: target.projectId,
-            targetBindingRevision: targetProject.bindingRevision,
-            missingProjectSources: missingSources,
-            targetProjectName: targetProject.name,
-          };
-        }
-        targetForMove = appendMissingCodexProjectMoveSources(targetProject, missingSources);
-        projectAccessGrant = {
-          expected_target_binding_revision: targetProject.bindingRevision,
-          missing_source_roots: missingSources,
-        };
-      }
-
-      const currentWorkspace = {
-        cwd: current.cwd,
-        managedWorktreePath: current.managedWorktreePath,
-        projectlessOutputDirectory: current.projectlessOutputDirectory,
-        projectlessWorkspaceBrowserRoot: current.projectlessWorkspaceBrowserRoot,
-      };
-      const workspaceMove =
-        current.projectId === target.projectId
-          ? {
-              next: currentWorkspace,
-              runtimeWorkspaceRoots: [...currentRaw.writable_roots],
-            }
-          : targetForMove
-            ? yield* Effect.tryPromise({
-                try: () =>
-                  resolveCodexProjectThreadWorkspaceMove({
-                    current: currentWorkspace,
-                    targetProject: targetForMove,
-                    threadTitle: resolveCodexElectronDisplayThreadTitle({
-                      threadName: current.threadName,
-                      threadPreview: current.threadPreview,
-                      fallback: input.threadId,
-                    }),
-                    createProjectlessWorkspace: (workspaceInput) =>
-                      createCodexProjectlessWorkspace(workspaceInput),
-                  }),
-                catch: (cause) => error("move", cause),
-              })
-            : resolveCodexProjectlessThreadWorkspaceMove({
-                current: currentWorkspace,
-                persistedRuntimeWorkspaceRoots: currentRaw.writable_roots,
-              });
       const operationId = createOperationId("thread-catalog.move");
-      const crossProject = current.projectId !== target.projectId;
-      const pendingWorkspace = targetForMove
-        ? workspaceMove.next.cwd
-          ? {
-              project_sources: targetForMove.sources.map((source) => source.root),
-              cwd: workspaceMove.next.cwd,
-              runtime_workspace_roots: [...workspaceMove.runtimeWorkspaceRoots],
-            }
-          : null
-        : null;
-      if (crossProject && targetForMove && pendingWorkspace === null) {
-        return yield* error("move", new Error("Target Project has no executable workspace"));
-      }
       const applied = yield* core.workspace.apply({
         operationId,
         intent: {
@@ -496,15 +415,6 @@ export const make = (
               : { kind: "project", project_id: target.projectId },
           placement: placement(input),
           metadata: {},
-          ...(crossProject
-            ? {
-                workspace_transition: {
-                  revision: randomUUID(),
-                  pending: pendingWorkspace,
-                },
-              }
-            : {}),
-          ...(projectAccessGrant ? { project_access_grant: projectAccessGrant } : {}),
         },
       });
       if (source.pinned || target.pinned) {
@@ -666,6 +576,7 @@ export const make = (
             let cursor: string | null = null;
             let retainedBytes = 0;
             const limit = normalizeSearchLimit(input.limit);
+            yield* gateway.awaitReady(gateway.localHostId);
             const connection = yield* gateway.connection(gateway.localHostId);
             if (connection.kind !== "ready") {
               return yield* error(
@@ -760,7 +671,6 @@ export const make = (
                 const status = parseThreadStatus(thread.status);
                 const result: CommandPaletteThreadSearchResult = {
                   thread: {
-                    backendBinding: CODEX_AGENT_BACKEND_BINDING,
                     threadId: thread.id,
                     sessionId: linked?.id ?? persisted?.sessionId ?? null,
                     projectId,

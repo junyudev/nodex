@@ -40,7 +40,6 @@ const READ_ERRORS: &[&str] = &[
     "PROJECT_AMBIGUOUS",
     "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
-    "SCOPE_UNAUTHORIZED",
     "CORE_UNAVAILABLE",
     "PROTOCOL_INCOMPATIBLE",
 ];
@@ -49,7 +48,6 @@ const WRITE_ERRORS: &[&str] = &[
     "PROJECT_AMBIGUOUS",
     "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
-    "SCOPE_UNAUTHORIZED",
     "ETAG_CONFLICT",
     "IDEMPOTENCY_KEY_REUSED",
     "CORE_UNAVAILABLE",
@@ -60,7 +58,6 @@ const FILE_ERRORS: &[&str] = &[
     "PROJECT_AMBIGUOUS",
     "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
-    "SCOPE_UNAUTHORIZED",
     "ETAG_CONFLICT",
     "INVALID_INPUT",
     "IDEMPOTENCY_KEY_REUSED",
@@ -74,7 +71,6 @@ const OPEN_ERRORS: &[&str] = &[
     "PROJECT_AMBIGUOUS",
     "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
-    "SCOPE_UNAUTHORIZED",
     "CORE_UNAVAILABLE",
     "PROTOCOL_INCOMPATIBLE",
     "OPEN_FAILED",
@@ -290,7 +286,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "tree",
         effect: CommandEffect::Read,
         validators: &[],
-        result: "authorized_page_tree",
+        result: "page_tree",
         errors: READ_ERRORS,
         example: "nodex --json tree database",
         example_argv: &["--json", "tree", "database"],
@@ -338,11 +334,10 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "rg",
         effect: CommandEffect::Read,
         validators: &[],
-        result: "ripgrep_matches_over_authorized_snapshot",
+        result: "ripgrep_matches_over_snapshot",
         errors: &[
             "PROFILE_MISMATCH",
             "SCOPE_NOT_FOUND",
-            "SCOPE_UNAUTHORIZED",
             "MATERIALIZATION_STALE",
             "SNAPSHOT_EXPIRED",
             "RG_ARGUMENT_UNSUPPORTED",
@@ -354,7 +349,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["open", "page"],
         capability: "open",
         effect: CommandEffect::Open,
-        validators: &["project_authorization"],
+        validators: &["profile_identity"],
         result: "canonical_resource_open",
         errors: OPEN_ERRORS,
         example: "nodex --json open page page-id --print",
@@ -364,7 +359,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["open", "view"],
         capability: "open",
         effect: CommandEffect::Open,
-        validators: &["project_authorization"],
+        validators: &["profile_identity"],
         result: "canonical_resource_open",
         errors: OPEN_ERRORS,
         example: "nodex --json open view view-id --print",
@@ -531,7 +526,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["file", "import"],
         capability: "files",
         effect: CommandEffect::Write,
-        validators: &["project_authorization", "bounded_bytes", "idempotency_key"],
+        validators: &["bounded_bytes", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
         example: "nodex --json file import --from ./api.md --name api.md --idempotency-key file-import-1",
@@ -551,11 +546,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["file", "read"],
         capability: "files",
         effect: CommandEffect::Read,
-        validators: &[
-            "project_authorization",
-            "direct_file_access",
-            "exact_version",
-        ],
+        validators: &["profile_identity", "direct_file_access", "exact_version"],
         result: "file_bytes_or_download_receipt",
         errors: READ_ERRORS,
         example: "nodex --json file read file-id --version 1 --output ./api.md",
@@ -574,7 +565,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["file", "rename"],
         capability: "files",
         effect: CommandEffect::Write,
-        validators: &["project_authorization", "file_revision", "idempotency_key"],
+        validators: &["file_revision", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
         example: "nodex --json file rename file-id --if-revision 1 --name reference.md --idempotency-key file-rename-1",
@@ -596,7 +587,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "files",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "file_revision",
             "file_head",
             "bounded_bytes",
@@ -624,7 +615,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["file", "fork"],
         capability: "files",
         effect: CommandEffect::Write,
-        validators: &["project_authorization", "exact_version", "idempotency_key"],
+        validators: &["exact_version", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
         example: "nodex --json file fork file-id --version 1 --name copy.md --idempotency-key file-fork-1",
@@ -646,7 +637,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "files",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "file_revision",
             "file_head",
             "exact_version",
@@ -675,7 +666,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "files",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "file_revision",
             "current_usage_guard",
             "idempotency_key",
@@ -698,7 +689,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["file", "untrash"],
         capability: "files",
         effect: CommandEffect::Write,
-        validators: &["project_authorization", "file_revision", "idempotency_key"],
+        validators: &["file_revision", "idempotency_key"],
         result: "file_mutation_receipt",
         errors: FILE_ERRORS,
         example: "nodex --json file untrash file-id --if-revision 2 --idempotency-key file-untrash-1",
@@ -718,7 +709,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "files",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "file_revision",
             "retention_guard",
             "idempotency_key",
@@ -742,7 +733,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Read,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "explicit_selector",
             "current_page_access",
         ],
@@ -766,7 +757,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "portable_path",
             "bounded_bytes",
             "manifest_revision",
@@ -796,7 +787,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "direct_file_access",
             "portable_path",
             "manifest_revision",
@@ -826,7 +817,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "portable_path",
             "manifest_revision",
             "idempotency_key",
@@ -854,11 +845,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["page", "file", "remove"],
         capability: "pageFiles",
         effect: CommandEffect::Write,
-        validators: &[
-            "project_authorization",
-            "manifest_revision",
-            "idempotency_key",
-        ],
+        validators: &["profile_identity", "manifest_revision", "idempotency_key"],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
         example: "nodex --json page file remove page-id --file-id file-id --if-manifest 1 --idempotency-key page-file-remove-1",
@@ -881,7 +868,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "manifest_revision",
             "bounded_bytes",
             "idempotency_key",
@@ -910,7 +897,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "portable_path",
             "source_manifest_revision",
             "target_manifest_revision",
@@ -944,7 +931,7 @@ const COMMANDS: &[CommandMetadata] = &[
         capability: "pageFiles",
         effect: CommandEffect::Write,
         validators: &[
-            "project_authorization",
+            "profile_identity",
             "portable_path",
             "source_manifest_revision",
             "target_manifest_revision",
@@ -1426,7 +1413,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
     let mut semantics = match path {
         ["sql", "schema"] => vec![
             "Without RELATION, returns a compact catalog. Describe one relation or bound Source for full column and identity contracts.",
-            "--database is a discovery hint; pages always means all authorized active Pages.",
+            "--database is a discovery hint; pages always means all active Pages in the current Library.",
         ],
         ["sql", "query"] => vec![
             "One read-only query sees one observation. Results are complete or the query fails its budget; snapshot is an observation identity, not a write condition or resumable session.",
@@ -1660,7 +1647,7 @@ fn group_semantics(path: &[&str]) -> Vec<&'static str> {
     match path {
         [] => RECOMMENDED_ROUTES.iter().copied().chain([
             "Read or attach a Page File: nodex page file --help. Manage shared Library Files: nodex file --help.",
-            "Use known commands directly. Read nodex context when the current Project is unknown; --project selects a different access context.",
+            "Use known commands directly. Read nodex context when the current Project is unknown; --project selects a different routing context.",
             "Read nodex COMMAND --help for usage and examples, --json COMMAND --help for a structured guide, and COMMAND --help-schema input for JSON payload shapes.",
         ]).collect(),
         ["page"] => vec![
@@ -1682,7 +1669,7 @@ fn group_semantics(path: &[&str]) -> Vec<&'static str> {
         ],
         ["page", "file"] => vec![
             "Logical paths belong to this Page. Discover entries with the page_files SQL relation and read pages.file_manifest_revision before changing entries.",
-            "put imports a File; add links an existing authorized File. remove detaches the entry while retaining its File and body uses. replace-entry changes only this Page relation.",
+            "put imports a File; add links an existing live Library File. remove detaches the entry while retaining its File and body uses. replace-entry changes only this Page relation.",
         ],
         ["sql"] => vec![
             "Prefer query for filtering, joins, aggregation or reading several Pages. Select the needed bodies, metadata and validators together. Use read for a single known Page body.",
@@ -1783,7 +1770,7 @@ fn schema_selection(arguments: &[OsString]) -> Result<Option<crate::cli::HelpSch
 fn default_scope(path: &[&str]) -> &'static str {
     match path {
         ["sql", _] => {
-            "The selected Project's authorized resources. Source wide tables require --bind; --database only hints schema discovery."
+            "The current Profile Library's resources. Source wide tables require --bind; --database only hints schema discovery."
         }
         ["data-source", "configure"] => {
             "The unique active Data Source in the selected Database when omitted; multiple candidates require an explicit selector."

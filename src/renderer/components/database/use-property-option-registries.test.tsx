@@ -54,7 +54,7 @@ describe("usePropertyOptionRegistries", () => {
       });
     const hook = renderHook(() =>
       usePropertyOptionRegistries({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         properties: [property],
       }),
     );
@@ -108,7 +108,7 @@ describe("usePropertyOptionRegistries", () => {
     const hook = renderHook(
       ({ currentProperty }) =>
         usePropertyOptionRegistries({
-          accessContext: { kind: "project", projectId: "project-1" },
+          routingContext: { kind: "project", projectId: "project-1" },
           properties: [currentProperty],
         }),
       { initialProps: { currentProperty: property } },
@@ -146,7 +146,7 @@ describe("usePropertyOptionRegistries", () => {
 
     const hook = renderHook(() =>
       usePropertyOptionRegistries({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         properties: [property],
         requiredOptionIds: { [property.propertyId]: ["o_CCCCCCCC"] },
       }),
@@ -185,7 +185,7 @@ describe("usePropertyOptionRegistries", () => {
 
     const hook = renderHook(() =>
       usePropertyOptionRegistries({
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         properties: [statusProperty],
       }),
     );

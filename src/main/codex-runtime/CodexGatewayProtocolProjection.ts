@@ -6,6 +6,7 @@ import type { ThreadResumeParams } from "@nodex/codex-app-server-protocol/v2/Thr
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/ThreadResumeResponse";
 import type { ThreadItemsListResponse } from "@nodex/codex-app-server-protocol/v2/ThreadItemsListResponse";
+import type { ThreadSettingsUpdateParams } from "@nodex/codex-app-server-protocol/v2/ThreadSettingsUpdateParams";
 
 export type CodexGatewayThreadReadThread = ClientRequestResponsesByMethod["thread/read"]["thread"];
 
@@ -41,3 +42,8 @@ export const projectCodexGatewayThreadConfig = (
   config: NonNullable<ClientRequestParamsByMethod["thread/start"]["config"]>,
 ): NonNullable<ThreadResumeParams["config"]> =>
   config as unknown as NonNullable<ThreadResumeParams["config"]>;
+
+/** Decoded settings use the same generated grammar with readonly JSON arrays. */
+export const projectCodexGatewayThreadSettingsUpdateParams = (
+  params: ClientRequestParamsByMethod["thread/settings/update"],
+): ThreadSettingsUpdateParams => params as unknown as ThreadSettingsUpdateParams;

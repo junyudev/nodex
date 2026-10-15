@@ -9,8 +9,7 @@ import { residentConversationTurns } from "./codex-turn-mutation";
 export interface CanonicalEditOptions {
   readonly turnId: string;
   readonly message: string;
-  readonly agentMode?: unknown;
-  readonly shouldSendPermissionOverrides?: boolean;
+
   readonly serviceTier?: TurnStartParams["serviceTier"];
   readonly additionalContext?: TurnStartParams["additionalContext"];
   readonly writingBlockContextPrepared?: boolean;
@@ -19,34 +18,13 @@ export interface CanonicalEditClient {
   readonly getConversation: (id: string) => CodexCanonicalConversationState | undefined;
   readonly awaitSettings: (id: string) => Promise<void>;
   readonly supportsRevert: () => boolean;
-  readonly readPermissionOverrides: (
-    id: string,
-    state: CodexCanonicalConversationState,
-    options: CanonicalEditOptions,
-  ) => Promise<
-    | ((
-        cwd: string | undefined,
-      ) => Pick<
-        TurnStartParams,
-        | "approvalPolicy"
-        | "approvalsReviewer"
-        | "sandboxPolicy"
-        | "permissions"
-        | "runtimeWorkspaceRoots"
-      > | null)
-    | null
-  >;
   readonly revert: (id: string, beforeTurnId: string) => Promise<ThreadRevertResponse>;
   readonly applyRevert: (
     id: string,
     response: ThreadRevertResponse,
     turns: readonly CodexCanonicalTurnState[],
   ) => void;
-  readonly start: (
-    request: TurnStartParams,
-    original: CodexCanonicalTurnState,
-    inheritPermissionDefaults: boolean | undefined,
-  ) => Promise<unknown>;
+  readonly start: (request: TurnStartParams, original: CodexCanonicalTurnState) => Promise<unknown>;
 }
 
 export function replaceCanonicalEditedPrompt(original: string, message: string): string {
@@ -101,25 +79,19 @@ export async function editCanonicalLastUserTurn(
     throw new Error("Only the most recent message can be edited.");
   if (removed.some((turn) => turn.status === "inProgress"))
     throw new Error("Cannot edit a message while a turn is in progress.");
-  const permissionFactory = options.shouldSendPermissionOverrides
-    ? await client.readPermissionOverrides(id, state, options)
-    : null;
   const response = await client.revert(id, original.turnId);
   const { thread } = response;
   client.applyRevert(id, response, removed);
   const cwd = thread.cwd || state.cwd || undefined;
-  const permissions = permissionFactory?.(cwd) ?? null;
   await client.start(
     {
       threadId: id,
       turnTrigger: "edit_user_message",
       input,
       cwd,
-      ...permissions,
       serviceTier: options.serviceTier,
       additionalContext: options.additionalContext,
     },
     original,
-    permissions == null ? true : undefined,
   );
 }

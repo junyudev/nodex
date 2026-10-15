@@ -416,7 +416,7 @@ for (const scenario of [
         });
         assert.strictEqual(result.outcome, "ready");
         assert.strictEqual(result.fidelity, scenario.attach ? "attachedSparse" : "residentSparse");
-        assert.strictEqual(result.canInteract, interactive);
+        assert.strictEqual(result.canInteract, true);
         assert.strictEqual(
           result.checkpoint,
           JSON.stringify([8, canonical!.turnHistory!.history.generation, 13]),

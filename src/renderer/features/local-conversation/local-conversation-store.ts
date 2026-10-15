@@ -136,10 +136,7 @@ import {
   editCanonicalLastUserTurn,
   type CanonicalEditOptions,
 } from "../../../shared/codex-conversation-state/codex-owner-edit";
-import {
-  canonicalPermissionsForMode,
-  nativePermissionRequestFields,
-} from "../../../shared/codex-conversation-state/codex-native-permissions";
+
 import { mutateCodexCanonicalRevert } from "../../../shared/codex-conversation-state/codex-revert-state";
 import {
   selectCodexVisualizationPassiveContextKey,
@@ -161,6 +158,7 @@ import { mutateCodexBackgroundTerminalCleanup } from "../../../shared/codex-conv
 import {
   updateCanonicalThreadSettings,
   type CanonicalThreadSettingsPatch,
+  type CanonicalThreadSettingsControlPatch,
   type CanonicalThreadSettingsCondition,
 } from "../../../shared/codex-conversation-state/codex-thread-settings-update";
 import {
@@ -292,10 +290,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
-import {
-  NODEX_AGENT_AUTHORIZATION_RENDERER_METHOD,
-  NODEX_AGENT_AUTHORIZATION_TIMEOUT_MS,
-} from "../../../shared/nodex-agent-tools";
+
 import type {
   FeedbackUploadParams,
   ThreadBackgroundTerminal,
@@ -321,7 +316,6 @@ import { normalizeCodexServiceTier } from "../../../shared/codex-service-tier";
 import type {
   CodexAccountSnapshot,
   CodexApprovalRequest,
-  CodexApprovalResponse,
   CodexSubagentOverviewReadInput,
   CodexSubagentOverviewWindow,
   CodexSelectedSubagentHydrateInput,
@@ -354,17 +348,10 @@ import type {
   CodexModelOption,
   CodexPendingSteer,
   CodexPreparedPrompt,
-  CodexPermissionMode,
-  CodexPermissionRequestResponse,
   CodexPersonality,
-  CodexPermissionState,
   CodexProtocolRequestId,
   CodexQueuedFollowUp,
   CodexUserInputRequest,
-  CodexRendererClientRequestMessage,
-  CodexRendererClientResponseMessage,
-  NodexAgentAuthorizationRequest,
-  NodexAgentAuthorizationResponse,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexSteerTurnInput,
@@ -375,8 +362,6 @@ import type {
   CodexServiceTier,
   CodexSharedObject,
   CodexThreadSettings,
-  CodexThreadStartForSessionInput,
-  CodexThreadStartForSessionResult,
   CodexThreadSummary,
   CodexThreadSummaryWindow,
   CodexTurnStartOptions,
@@ -440,10 +425,8 @@ import {
 } from "../../../shared/codex-conversation-state/codex-command-output-queue";
 import {
   mutateCodexCanonicalPlanImplementationCompletion,
-  mutateCodexConversationApprovalResponse,
   mutateCodexConversationUserInputResponse,
   mutateCodexConversationMcpElicitationResponse,
-  mutateCodexConversationPermissionResponse,
   mutateCodexConversationOnboardingInputResponse,
   mutateCodexConversationOptionPickerResponse,
   mutateCodexConversationSetupCodexStepResponse,
@@ -454,7 +437,6 @@ import {
   type CodexServerRequestRawState,
 } from "../../../shared/codex-conversation-state/codex-server-request-lifecycle";
 import { type CodexThreadMetadataEffect } from "../../../shared/codex-conversation-state/codex-thread-metadata";
-import { getCodexApprovalKindForRequestMethod } from "../../../shared/codex-approval";
 import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import {
   normalizeCodexManualThreadTitle,
@@ -474,11 +456,7 @@ import {
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { terminalSessionStore } from "../../lib/terminal-session-store";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
-import {
-  runConversationOperation,
-  subscribeCodexEvents,
-  subscribeCodexRendererClientRequests,
-} from "./local-conversation-deps";
+import { runConversationOperation, subscribeCodexEvents } from "./local-conversation-deps";
 import {
   subscribeCodexAppServerMessage,
   type CodexClientStatusChangedEvent,
@@ -513,20 +491,7 @@ const EMPTY_QUEUED_FOLLOW_UPS: CodexQueuedFollowUp[] = [];
 const EMPTY_BACKGROUND_TERMINAL_ROWS: CodexBackgroundTerminalRow[] = [];
 const EMPTY_CHILD_MEMBERSHIPS: CodexConversationChildMembership[] = [];
 const EMPTY_STATUS_ACTIVE_FLAGS: CodexConversationSnapshot["statusActiveFlags"] = [];
-const DEFAULT_PERMISSION_STATE: CodexPermissionState = {
-  mode: "custom",
-  effectivePreset: "custom",
-  availableModes: ["auto", "guardian-approvals", "full-access", "custom"],
-  approvalPolicy: null,
-  approvalsReviewer: "user",
-  sandboxMode: null,
-  sandbox: null,
-  autoReviewAvailable: false,
-  configTarget: {
-    source: "none",
-    filePath: null,
-  },
-};
+
 const EMPTY_CONVERSATION_SUMMARY_FIELDS = {
   threadId: null,
   projectId: null,
@@ -659,7 +624,7 @@ interface QueuedConversationResumeInput {
   readonly serviceTier?: CodexServiceTier;
   readonly reasoningEffort: null;
   readonly workspaceRoots: readonly string[];
-  readonly useAppServerPermissionDefault: boolean;
+
   readonly collaborationMode:
     | import("@nodex/codex-app-server-protocol/v2/TurnStartParams").TurnStartParams["collaborationMode"]
     | null;
@@ -2077,27 +2042,6 @@ function isConversationStreaming(conversation: CodexConversationSnapshot): boole
   return conversation.turns.some((turn) => turn.status === "inProgress");
 }
 
-function resolveProjectPermissionMode(
-  permissionStateByScope: ReadonlyMap<string | null, CodexPermissionState>,
-  projectId: string | null,
-): CodexPermissionMode {
-  return permissionStateByScope.get(projectId)?.mode ?? DEFAULT_PERMISSION_STATE.mode;
-}
-
-function resolveProjectPermissionState(
-  permissionStateByScope: ReadonlyMap<string | null, CodexPermissionState>,
-  projectId: string | null,
-): CodexPermissionState {
-  return permissionStateByScope.get(projectId) ?? DEFAULT_PERMISSION_STATE;
-}
-
-function arePermissionStatesEqual(
-  left: CodexPermissionState,
-  right: CodexPermissionState,
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function normalizeSelectedSubagentInput(
   input: CodexSelectedSubagentHydrateInput,
 ): CodexSelectedSubagentHydrateInput {
@@ -2272,11 +2216,7 @@ export class CodexAppServerManager {
     }
   >();
   private readonly composerIntentsByThread = new Map<string, CodexComposerIntent>();
-  private readonly permissionStateByScope = new Map<string | null, CodexPermissionState>();
-  private readonly permissionStateLoadsInFlightByScope = new Map<
-    string | null,
-    Promise<CodexPermissionState>
-  >();
+
   private readonly threadStartProgressByTarget = new Map<string, CodexThreadStartProgressState>();
   private readonly threadTitlesById = new Map<string, string>();
   private readonly recentConversationIds: string[] = [];
@@ -2308,16 +2248,6 @@ export class CodexAppServerManager {
   });
   private readonly terminalInputBuffers = new CodexTerminalInteractionAccumulator();
   private readonly nativeAppServer: RendererNativeAppServer;
-  private readonly pendingNodexAgentAuthorizations = new Map<
-    string,
-    {
-      readonly threadId: string;
-      readonly turnId: string;
-      readonly request: NodexAgentAuthorizationRequest;
-      readonly timeout: ReturnType<typeof setTimeout>;
-      readonly resolve: (response: NodexAgentAuthorizationResponse) => void;
-    }
-  >();
 
   private readonly connectionCallbacks = new Set<StoreListener>();
   private readonly accountCallbacks = new Set<StoreListener>();
@@ -2741,7 +2671,7 @@ export class CodexAppServerManager {
           const resumed = await this.requestThreadStreamResume(resume.conversationId, {
             source: automatic ? "executor" : "view",
             serviceTier: resume.serviceTier,
-            useAppServerPermissionDefault: resume.useAppServerPermissionDefault,
+
             workspaceRoots: resume.workspaceRoots,
             collaborationMode: resume.collaborationMode,
           });
@@ -3091,7 +3021,6 @@ export class CodexAppServerManager {
           effect,
         } satisfies CodexNativeAutoResponseInput);
       if (effect.type === "dispatchDynamicToolCall") {
-        const projectId = this.conversationsById.get(threadId)?.projectId ?? null;
         const serviceTier = readCodexServiceTier();
         void runConversationOperation(
           "codex:dynamic-tool-call:respond",
@@ -3099,8 +3028,7 @@ export class CodexAppServerManager {
           event.request.id,
           {
             nativeOccurrence: event,
-            permissionMode:
-              this.permissionStateByScope.get(projectId)?.mode ?? DEFAULT_PERMISSION_STATE.mode,
+
             serviceTierSelector:
               serviceTier === "fast" ? { type: "custom", serviceTier } : { type: "standard" },
           },
@@ -3139,39 +3067,6 @@ export class CodexAppServerManager {
         );
       lifetime.assertCurrent();
       return { method: operation.method, result: { applied: true } };
-    }
-    if (request.method === "thread-follower-command-approval-decision") {
-      const params =
-        request.params as ConversationFollowerParams["thread-follower-command-approval-decision"];
-      this.assertOwnerForConversation(params.conversationId);
-      await this.respondApprovalAsOwner(
-        params.requestId,
-        { kind: "command", decision: params.decision },
-        params.conversationId,
-      );
-      return { method: request.method, result: { ok: true } };
-    }
-    if (request.method === "thread-follower-file-approval-decision") {
-      const params =
-        request.params as ConversationFollowerParams["thread-follower-file-approval-decision"];
-      this.assertOwnerForConversation(params.conversationId);
-      await this.respondApprovalAsOwner(
-        params.requestId,
-        { kind: "file", decision: params.decision },
-        params.conversationId,
-      );
-      return { method: request.method, result: { ok: true } };
-    }
-    if (request.method === "thread-follower-permissions-request-approval-response") {
-      const params =
-        request.params as ConversationFollowerParams["thread-follower-permissions-request-approval-response"];
-      this.assertOwnerForConversation(params.conversationId);
-      await this.respondPermissionRequestAsOwner(
-        params.requestId,
-        params.response,
-        params.conversationId,
-      );
-      return { method: request.method, result: { ok: true } };
     }
     if (request.method === "thread-follower-submit-user-input") {
       const params =
@@ -3266,9 +3161,8 @@ export class CodexAppServerManager {
         request.params as ConversationFollowerParams["thread-follower-update-thread-settings"];
       const applied = await this.updateNativeThreadSettingsAsOwner(
         params.conversationId,
-        params.threadSettings as CanonicalThreadSettingsPatch,
+        params.threadSettings as CanonicalThreadSettingsControlPatch,
         params.condition as CanonicalThreadSettingsCondition | undefined,
-        params.activeTurnId,
       );
       return { method: request.method, result: { applied } };
     }
@@ -3617,10 +3511,8 @@ export class CodexAppServerManager {
     }
 
     this.bootstrapStarted = true;
-    void this.bootstrapAccountAndConnection();
+    void this.bootstrapConnection();
     void this.bootstrapDictationState();
-    void this.bootstrapAvailableModels();
-    void this.bootstrapPermissionModes();
   }
 
   stop(): void {
@@ -3660,7 +3552,7 @@ export class CodexAppServerManager {
     this.nativeGenerationByThread.clear();
     this.threadsById.clear();
     this.asyncQuestions.clear();
-    this.cancelPendingNodexAgentAuthorizations();
+
     this.conversationActivity.clear();
     this.foregroundConversations.clear();
     this.ownerTextDeltaQueue.dispose();
@@ -3730,14 +3622,6 @@ export class CodexAppServerManager {
 
   readComposerIntent(threadId: string): CodexComposerIntent | null {
     return this.composerIntentsByThread.get(threadId) ?? null;
-  }
-
-  readPermissionMode(projectId: string | null): CodexPermissionMode {
-    return resolveProjectPermissionMode(this.permissionStateByScope, projectId);
-  }
-
-  readPermissionState(projectId: string | null): CodexPermissionState {
-    return resolveProjectPermissionState(this.permissionStateByScope, projectId);
   }
 
   readThreadStartProgress(
@@ -3964,6 +3848,16 @@ export class CodexAppServerManager {
     const models = await readNativeModelCatalog(this.nativeAppServer);
     this.setAvailableModels(models);
     return models;
+  }
+
+  /** Account demand is explicit; observing Runtime Sessions never opens this native endpoint. */
+  async loadAccount(): Promise<CodexAccountSnapshot> {
+    const account = await runConversationOperation("codex:account:read");
+    this.handleSharedObjectUpdated({
+      hostId: this.hostId,
+      object: { objectType: "account", objectId: "account", value: account },
+    });
+    return account;
   }
 
   async loadDictationState(): Promise<CodexDictationStateSnapshot> {
@@ -4409,13 +4303,7 @@ export class CodexAppServerManager {
       cwd: workspace.context.cwd ?? null,
       metadataCwd: metadata?.cwd ?? null,
       resumeWorkspaceRoots: workspaceRoots,
-      permissions: {
-        approvalPolicy: workspace.context.approvalPolicy,
-        approvalsReviewer: workspace.context.approvalsReviewer,
-        sandboxPolicy: workspace.context.sandboxPolicy,
-        activePermissionProfile: workspace.context.activePermissionProfile,
-        runtimeWorkspaceRoots: workspace.context.runtimeWorkspaceRoots,
-      },
+      runtimeWorkspaceRoots: workspace.context.runtimeWorkspaceRoots,
     });
     const preparationPromise = runConversationOperation(
       "codex:thread:resume:prepare",
@@ -4423,8 +4311,6 @@ export class CodexAppServerManager {
       metadata,
       preparation.overrides,
       {
-        permissions: options.permissions,
-        useAppServerPermissionDefault: options.useAppServerPermissionDefault,
         preserveServerConfiguration: options.preserveServerConfiguration,
         serviceTier: options.serviceTier,
         workspaceRoots: options.workspaceRoots,
@@ -5427,251 +5313,9 @@ export class CodexAppServerManager {
     };
   }
 
-  async startThreadForSession(
-    input: CodexThreadStartForSessionInput & {
-      collaborationMode?: CodexCollaborationModeKind;
-      model?: string;
-      reasoningEffort?: CodexThreadSettings["reasoningEffort"];
-    },
-  ): Promise<CodexThreadStartForSessionResult> {
-    const runInTarget = input.runInTarget ?? "localProject";
-    const reportsDirectThreadProgress = runInTarget !== "newWorktree";
-    const progressTargetKey = getThreadStartProgressTargetKey(input.projectId, input.sessionId);
-    if (reportsDirectThreadProgress) {
-      this.applyThreadStartProgress({
-        launchId: input.firstSubmission.launchId,
-        projectId: input.projectId,
-        sessionId: input.sessionId,
-        runInTarget,
-        threadId: null,
-        phase: "startingThread",
-        message: "Sending message…",
-        clearOutput: true,
-        updatedAt: Date.now(),
-      });
-    }
-
-    try {
-      await this.loadPermissionState(input.projectId);
-      const launchInput = {
-        ...input,
-        executionHostId: input.executionHostId ?? this.hostId,
-        permissionMode: this.readPermissionMode(input.projectId),
-      };
-      const result =
-        runInTarget === "newWorktree"
-          ? await runConversationOperation("codex:thread:start-for-session", launchInput)
-          : await this.startNativeSessionThread(launchInput);
-
-      if (result.kind === "started") {
-        if (result.freshLaunch) {
-          if (
-            result.freshLaunch.launchId !== input.firstSubmission.launchId ||
-            result.freshLaunch.clientUserMessageId !== input.firstSubmission.clientUserMessageId
-          ) {
-            throw new Error("Fresh Thread launch identity did not match its admitted submission");
-          }
-          await this.adoptFreshThreadLaunch(input.projectId, input.sessionId, result.freshLaunch);
-        } else {
-          await this.requestThreadStreamSnapshot(result.detail.threadId).catch(() => null);
-        }
-      }
-      return result;
-    } catch (error) {
-      if (!reportsDirectThreadProgress) throw error;
-      const currentProgress = this.threadStartProgressByTarget.get(progressTargetKey);
-      if (currentProgress?.phase !== "failed") {
-        this.applyThreadStartProgress({
-          launchId: input.firstSubmission.launchId,
-          projectId: input.projectId,
-          sessionId: input.sessionId,
-          runInTarget,
-          threadId: currentProgress?.threadId ?? null,
-          phase: "failed",
-          message: "Message could not be sent.",
-          updatedAt: Date.now(),
-        });
-      }
-      throw error;
-    }
-  }
-
-  private async startNativeSessionThread(
-    input: CodexThreadStartForSessionInput,
-  ): Promise<CodexThreadStartForSessionResult> {
-    const clientUserMessageId = input.firstSubmission.clientUserMessageId;
-    codexTurnFirstResponseTracker.markThreadCreationStarted(clientUserMessageId, "regular");
-    await this.refreshNativeHostContext();
-    const hostContext = this.nativeHostContext;
-    let prepared: import("../../../shared/codex-native-thread-start").CodexNativeSessionLaunchPreparation;
-    try {
-      prepared = await runConversationOperation("codex:thread:native-session:prepare", input);
-    } catch (error) {
-      codexTurnFirstResponseTracker.fail(clientUserMessageId, "submit_preparation_failed");
-      throw error;
-    }
-    try {
-      if (
-        this.destroyed ||
-        this.nativeHostContext !== hostContext ||
-        prepared.generation !== hostContext?.generation
-      )
-        throw new Error("Starting conversation manager retired during preparation");
-      codexTurnFirstResponseTracker.markThreadInputsReady(clientUserMessageId);
-      codexTurnFirstResponseTracker.markRequestDispatched(clientUserMessageId, "thread/start");
-      const response = await this.nativeAppServer.executeSessionThread(prepared, {
-        clientUserMessageId,
-        trace: codexTurnFirstResponseTracker.getTrace(clientUserMessageId),
-      });
-      if (
-        this.destroyed ||
-        prepared.hostId !== this.hostId ||
-        this.nativeHostContext !== hostContext
-      )
-        throw new Error("Starting conversation manager retired");
-      codexTurnFirstResponseTracker.bindConversation(clientUserMessageId, response.thread.id);
-      codexTurnFirstResponseTracker.markThreadCreated(clientUserMessageId);
-      this.nativeGenerationByThread.set(response.thread.id, prepared.generation);
-      this.streamState.setRole(response.thread.id, { role: "owner" });
-      this.installNativeThreadResponse(response, "resumed");
-      this.streamState.broadcastSnapshot(response.thread.id);
-      const accepted = await runConversationOperation(
-        "codex:thread:native-session:accept",
-        prepared.receiptId,
-      );
-      if (this.destroyed || this.nativeHostContext !== hostContext)
-        throw new Error("Starting conversation manager retired during acceptance");
-      if (accepted.kind === "started") this.applyThreadSummary(accepted.detail);
-      return accepted;
-    } finally {
-      await runConversationOperation("codex:thread:native-session:release", prepared.receiptId);
-    }
-  }
-
-  private async adoptFreshThreadLaunch(
-    projectId: string | null,
-    sessionId: string,
-    launch: NonNullable<
-      Extract<
-        CodexThreadStartForSessionResult,
-        {
-          kind: "started";
-        }
-      >["freshLaunch"]
-    >,
-  ): Promise<void> {
-    await this.refreshNativeHostContext();
-    const hostContext = this.nativeHostContext;
-    sessionFirstSubmissionOwner.update(launch.launchId, {
-      threadId: launch.threadId,
-      phase: "adoptingOwner",
-    });
-    this.setConversationAttachmentState(launch.threadId, {
-      status: "attaching",
-    });
-    try {
-      const result = await runConversationOperation(
-        "codex:thread:fresh-owner:adopt",
-        launch.threadId,
-        launch.launchId,
-      );
-      if (
-        result.hostId !== this.hostId ||
-        result.response.thread.id !== launch.threadId ||
-        this.nativeHostContext !== hostContext ||
-        result.generation !== hostContext?.generation ||
-        this.destroyed
-      )
-        throw new Error("Fresh thread response belongs to a retired owner");
-      this.nativeGenerationByThread.set(launch.threadId, result.generation);
-      this.streamState.setRole(launch.threadId, { role: "owner" });
-      this.installNativeThreadResponse(result.response, "resumed");
-      this.streamState.broadcastSnapshot(launch.threadId);
-      this.setConversationAttachmentState(launch.threadId, {
-        status: "attached",
-      });
-    } catch (error) {
-      sessionFirstSubmissionOwner.fail(launch.launchId, {
-        stage: "adoptingOwner",
-        message: error instanceof Error ? error.message : "Message could not be sent.",
-      });
-      this.streamState.setRole(launch.threadId, null);
-      this.setConversationAttachmentState(
-        launch.threadId,
-        makeLocalConversationAttachmentFailure(error),
-      );
-      throw error;
-    }
-
-    try {
-      const operation = await runConversationOperation(
-        "codex:turn:native-fresh:prepare",
-        launch.threadId,
-        launch.launchId,
-      );
-      const prepared = await this.inspectOwnerTurnStart(operation);
-      if (this.destroyed || this.nativeHostContext !== hostContext)
-        throw new Error("Fresh turn preparation belongs to a retired owner");
-      // The transaction commits and synchronously notifies the optimistic turn
-      // before returning this transport-completion promise.
-      const firstTurnCompletion = this.executeOwnerOptimisticTurnTransaction({
-        threadId: launch.threadId,
-        clientUserMessageId: launch.clientUserMessageId,
-        canonicalParams: prepared.params,
-        execution: prepared,
-        turnContext: operation.context,
-        request: (submission) =>
-          this.executePreparedNativeTurn(operation, prepared.request, submission, (options) =>
-            this.nativeAppServer.executeFreshTurn(
-              launch.threadId,
-              launch.launchId,
-              prepared.request,
-              options,
-            ),
-          ),
-        onOptimisticCommitted: () => {
-          this.commitRendererFreshLaunchReady(
-            launch.launchId,
-            projectId,
-            sessionId,
-            launch.threadId,
-          );
-        },
-        optimisticNotifyMode: "sync",
-      });
-      await firstTurnCompletion;
-    } catch (error) {
-      sessionFirstSubmissionOwner.fail(launch.launchId, {
-        stage: "startingTurn",
-        message: error instanceof Error ? error.message : "Message could not be sent.",
-      });
-      const current = this.readThreadStartProgress(projectId, sessionId);
-      if (current?.phase !== "failed") {
-        this.applyThreadStartProgress({
-          launchId: launch.launchId,
-          projectId,
-          sessionId,
-          runInTarget: current?.runInTarget ?? "localProject",
-          threadId: launch.threadId,
-          phase: "failed",
-          message: "Message could not be sent.",
-          updatedAt: Date.now(),
-        });
-      }
-      throw error;
-    } finally {
-      await runConversationOperation("codex:turn:native:release", launch.clientUserMessageId);
-    }
-  }
-
   async startSideChat(input: CodexSideChatStartInput): Promise<CodexSideChatStartResult> {
-    const parent =
-      this.readConversation(input.parentThreadId) ?? this.readThreadSummary(input.parentThreadId);
-    const projectId = parent?.projectId ?? null;
-    await this.loadPermissionState(projectId);
     const result = (await runConversationOperation("codex:thread:side-chat:start", {
       ...input,
-      permissionMode: input.permissionMode ?? this.readPermissionMode(projectId),
     })) as CodexSideChatStartResult;
     const conversation = materializeOwnerCanonicalConversationSnapshot(result.conversation);
     this.applyConversationSnapshot(result.threadId, conversation);
@@ -6363,7 +6007,7 @@ export class CodexAppServerManager {
       : null;
     const current = this.historyClient.getConversation(threadId);
     if (!current) throw new Error("Conversation document unavailable");
-    const nativePatch: CanonicalThreadSettingsPatch = {
+    const nativePatch: CanonicalThreadSettingsControlPatch = {
       ...(profile
         ? {
             model: profile.modelId,
@@ -6427,9 +6071,8 @@ export class CodexAppServerManager {
 
   private updateNativeThreadSettingsAsOwner(
     id: string,
-    patch: CanonicalThreadSettingsPatch,
+    patch: CanonicalThreadSettingsControlPatch,
     condition?: CanonicalThreadSettingsCondition,
-    activeTurnId?: string | null,
   ): Promise<boolean> {
     const revision = this.nativeHostContextRevision;
     const previous = this.settingsUpdates.get(id) ?? Promise.resolve(true);
@@ -6467,19 +6110,10 @@ export class CodexAppServerManager {
               isCodexNativeMethodUnsupported(error, "thread/settings/update"),
             updateThread: (params) =>
               this.nativeAppServer.request("thread/settings/update", params),
-            updateTurnReviewer: (threadId, turnId, approvalsReviewer) =>
-              this.nativeAppServer.request("turn/settings/update", {
-                threadId,
-                turnId,
-                approvalsReviewer,
-              }),
-            supportsTurnReviewer: () =>
-              this.nativeHostContext?.supportsTurnApprovalsReviewer === true,
           },
           id,
           patch,
           condition,
-          activeTurnId,
         );
       });
     this.settingsUpdates.set(id, pending);
@@ -6747,14 +6381,13 @@ export class CodexAppServerManager {
     if (workspaceRoots === undefined || !workspaceRoots.every((root) => root.length > 0)) {
       return { status: "paused" as const, reason: "workspace-unavailable" };
     }
-    const usePermissionSelection = message.submissionOptions?.usePermissionSelection ?? false;
     const resume: QueuedConversationResumeInput = {
       conversationId,
       model: null,
       serviceTier: message.submissionOptions?.serviceTier,
       reasoningEffort: null,
       workspaceRoots: [...workspaceRoots],
-      useAppServerPermissionDefault: usePermissionSelection,
+
       collaborationMode: message.submissionOptions?.collaborationMode ?? null,
     };
     if (needsResume) {
@@ -6762,7 +6395,7 @@ export class CodexAppServerManager {
         source,
         model: resume.model,
         serviceTier: resume.serviceTier,
-        useAppServerPermissionDefault: resume.useAppServerPermissionDefault,
+
         workspaceRoots: resume.workspaceRoots,
         collaborationMode: resume.collaborationMode,
       });
@@ -6781,7 +6414,7 @@ export class CodexAppServerManager {
       mode,
       {
         runtimeWorkspaceRoots: workspaceRoots,
-        usePermissionSelection,
+
         ...(clientUserMessageId ? { clientUserMessageId } : {}),
         ...(serverQueuedSubmission ? { serverQueuedSubmission } : {}),
       },
@@ -7267,27 +6900,6 @@ export class CodexAppServerManager {
           await this.settingsUpdates.get(id);
         },
         supportsRevert: () => this.nativeHostContext?.supportsThreadRevert === true,
-        readPermissionOverrides: async (_id, state, edit) => {
-          const response = await this.nativeAppServer.request("config/read", {
-            includeLayers: false,
-            cwd: state.cwd ?? null,
-          });
-          return (cwd) => {
-            const resolved = canonicalPermissionsForMode(
-              edit.agentMode,
-              cwd === undefined ? [] : [cwd],
-              response.config as import("@nodex/codex-app-server-protocol/v2/ConfigReadResponse").ConfigReadResponse["config"],
-            );
-            if (!resolved) return null;
-            const profile =
-              state.latestThreadSettings?.activePermissionProfile === undefined
-                ? state.currentPermissions?.activePermissionProfile
-                : state.latestThreadSettings.activePermissionProfile;
-            return nativePermissionRequestFields(
-              profile === undefined ? resolved : { ...resolved, activePermissionProfile: profile },
-            );
-          };
-        },
         revert: async (_id, beforeTurnId) => {
           const response = await this.nativeAppServer.request("thread/revert", {
             threadId: id,
@@ -7306,7 +6918,7 @@ export class CodexAppServerManager {
           );
           this.acceptPendingArtifactHistory(id);
         },
-        start: async (request, original, inheritPermissionDefaults) => {
+        start: async (request, original) => {
           const clientUserMessageId = createOwnerClientUserMessageId();
           const prompt = await prepareCodexPrompt(options.message, undefined, {
             resolveImageInput: resolveOwnerPromptImageInput,
@@ -7322,7 +6934,7 @@ export class CodexAppServerManager {
             sourceContext: {
               attachments: original.params.attachments,
               commentAttachments: original.params.commentAttachments,
-              useAppServerPermissionDefault: inheritPermissionDefaults,
+
               writingBlockContextPrepared: options.writingBlockContextPrepared,
               mcpAppModelContextAttachments: original.mcpAppModelContextAttachments,
             },
@@ -7869,7 +7481,7 @@ export class CodexAppServerManager {
       }
       assertCurrent();
       if (expectedTurnId == null)
-        void this.declineOwnerRequestsBeforeInterrupt(threadId).catch((error) =>
+        void this.dismissOwnerQuestionsBeforeInterrupt(threadId).catch((error) =>
           console.warn("Failed to decline interrupted requests", error),
         );
       interruptedTurnId = await interruptCanonicalConversationTurn(
@@ -7960,32 +7572,11 @@ export class CodexAppServerManager {
     }
   }
 
-  private async declineOwnerRequestsBeforeInterrupt(threadId: string): Promise<void> {
+  private async dismissOwnerQuestionsBeforeInterrupt(threadId: string): Promise<void> {
     const requests = [...(this.conversationsById.get(threadId)?.canonicalRequests ?? [])];
     await Promise.all(
       requests.map(async (request) => {
         switch (request.method) {
-          case "item/commandExecution/requestApproval":
-          case "item/fileChange/requestApproval":
-            await this.respondApprovalAsOwner(
-              request.id,
-              {
-                kind: getCodexApprovalKindForRequestMethod(request.method),
-                decision: "decline",
-              },
-              threadId,
-            );
-            break;
-          case "item/permissions/requestApproval":
-            await this.respondPermissionRequestAsOwner(
-              request.id,
-              {
-                permissions: {},
-                scope: "turn",
-              },
-              threadId,
-            );
-            break;
           case "item/tool/requestUserInput":
             await this.respondUserInputAsOwner(request.id, {}, threadId);
             break;
@@ -8029,30 +7620,15 @@ export class CodexAppServerManager {
     if (role?.role !== "follower") return false;
     const common = { conversationId, requestId: response.requestId };
     const request =
-      response.method === "item/commandExecution/requestApproval"
-        ? conversationFollowerRequest("thread-follower-command-approval-decision", {
+      response.method === "item/tool/requestUserInput"
+        ? conversationFollowerRequest("thread-follower-submit-user-input", {
             ...common,
-            decision: response.response.decision,
+            response: response.response,
           })
-        : response.method === "item/fileChange/requestApproval"
-          ? conversationFollowerRequest("thread-follower-file-approval-decision", {
-              ...common,
-              decision: response.response.decision,
-            })
-          : response.method === "item/tool/requestUserInput"
-            ? conversationFollowerRequest("thread-follower-submit-user-input", {
-                ...common,
-                response: response.response,
-              })
-            : response.method === "item/permissions/requestApproval"
-              ? conversationFollowerRequest(
-                  "thread-follower-permissions-request-approval-response",
-                  { ...common, response: response.response },
-                )
-              : conversationFollowerRequest(
-                  "thread-follower-submit-mcp-server-elicitation-response",
-                  { ...common, response: response.response },
-                );
+        : conversationFollowerRequest("thread-follower-submit-mcp-server-elicitation-response", {
+            ...common,
+            response: response.response,
+          });
     try {
       const result = await (
         await getConversationCoordinationHost()
@@ -8145,59 +7721,6 @@ export class CodexAppServerManager {
       this.applyCanonicalDocument(receipt.after, { patches: receipt.patches });
     if (receipt.patches.length) this.streamState.broadcastPatches(conversationId, receipt.patches);
     return { accepted: await result };
-  }
-
-  async respondApproval(
-    requestId: CodexProtocolRequestId,
-    response: CodexApprovalResponse,
-    conversationId?: string | null,
-  ): Promise<boolean> {
-    const followerConversationId = this.findOwnerRoutedConversationIdForRequestResponse(
-      requestId,
-      conversationId,
-    );
-    if (followerConversationId) {
-      return await this.sendNativeUserResponseToOwner(
-        followerConversationId,
-        response.kind === "command"
-          ? {
-              method: "item/commandExecution/requestApproval",
-              requestId,
-              response: { decision: response.decision },
-            }
-          : {
-              method: "item/fileChange/requestApproval",
-              requestId,
-              response: { decision: response.decision },
-            },
-      );
-    }
-
-    return (await this.respondApprovalAsOwner(requestId, response, conversationId)).accepted;
-  }
-
-  private async respondApprovalAsOwner(
-    requestId: CodexProtocolRequestId,
-    response: CodexApprovalResponse,
-    requestedConversationId?: string | null,
-  ): Promise<OwnerServerRequestReplyResult> {
-    const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
-    if (!conversationId) return { accepted: false };
-    const native: CodexNativeUserResponse =
-      response.kind === "command"
-        ? {
-            method: "item/commandExecution/requestApproval",
-            requestId,
-            response: { decision: response.decision },
-          }
-        : {
-            method: "item/fileChange/requestApproval",
-            requestId,
-            response: { decision: response.decision },
-          };
-    return this.commitNativeUserResponse(conversationId, native, (draft) =>
-      mutateCodexConversationApprovalResponse(draft, requestId, native.method),
-    );
   }
 
   async respondUserInput(
@@ -8299,119 +7822,6 @@ export class CodexAppServerManager {
     );
   }
 
-  async respondPermissionRequest(
-    requestId: CodexProtocolRequestId,
-    response: CodexPermissionRequestResponse,
-    conversationId?: string | null,
-  ): Promise<boolean> {
-    const followerConversationId = this.findOwnerRoutedConversationIdForRequestResponse(
-      requestId,
-      conversationId,
-    );
-    if (followerConversationId) {
-      return await this.sendNativeUserResponseToOwner(followerConversationId, {
-        method: "item/permissions/requestApproval",
-        requestId,
-        response,
-      });
-    }
-
-    return (await this.respondPermissionRequestAsOwner(requestId, response, conversationId))
-      .accepted;
-  }
-
-  requestNodexAgentAuthorization(
-    request: NodexAgentAuthorizationRequest,
-  ): Promise<NodexAgentAuthorizationResponse> {
-    const conversation = this.conversationsById.get(request.threadId);
-    if (
-      !conversation ||
-      conversation.projectId !== request.projectId ||
-      conversation.threadId !== request.threadId
-    ) {
-      return Promise.reject(new Error("Nodex authorization requires the visible bound task"));
-    }
-    if (this.pendingNodexAgentAuthorizations.has(request.requestId)) {
-      return Promise.reject(new Error("Nodex authorization occurrence is already pending"));
-    }
-    return new Promise<NodexAgentAuthorizationResponse>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        void this.respondNodexAgentAuthorization(
-          request.requestId,
-          { decision: "deny" },
-          request.threadId,
-        );
-      }, NODEX_AGENT_AUTHORIZATION_TIMEOUT_MS);
-      this.pendingNodexAgentAuthorizations.set(request.requestId, {
-        threadId: request.threadId,
-        turnId: request.turnId,
-        request,
-        timeout,
-        resolve,
-      });
-      try {
-        this.applyConversationSnapshot(request.threadId, conversation);
-      } catch (error) {
-        this.pendingNodexAgentAuthorizations.delete(request.requestId);
-        clearTimeout(timeout);
-        reject(error);
-      }
-    });
-  }
-
-  async respondNodexAgentAuthorization(
-    requestId: string,
-    response: NodexAgentAuthorizationResponse,
-    conversationId?: string | null,
-  ): Promise<boolean> {
-    const pending = this.pendingNodexAgentAuthorizations.get(requestId);
-    if (!pending) return false;
-    if (conversationId && conversationId !== pending.threadId) return false;
-    if (
-      response.decision !== "allow_once" &&
-      response.decision !== "allow_task" &&
-      response.decision !== "allow_project" &&
-      response.decision !== "deny"
-    ) {
-      return false;
-    }
-    this.pendingNodexAgentAuthorizations.delete(requestId);
-    clearTimeout(pending.timeout);
-    const conversation = this.conversationsById.get(pending.threadId);
-    if (conversation) this.applyConversationSnapshot(pending.threadId, conversation);
-    pending.resolve(response);
-    return true;
-  }
-
-  cancelPendingNodexAgentAuthorizations(): void {
-    const affectedThreadIds = new Set<string>();
-    for (const pending of this.pendingNodexAgentAuthorizations.values()) {
-      clearTimeout(pending.timeout);
-      affectedThreadIds.add(pending.threadId);
-      pending.resolve({ decision: "deny" });
-    }
-    this.pendingNodexAgentAuthorizations.clear();
-    for (const threadId of affectedThreadIds) {
-      const conversation = this.conversationsById.get(threadId);
-      if (conversation) this.applyConversationSnapshot(threadId, conversation);
-    }
-  }
-
-  private async respondPermissionRequestAsOwner(
-    requestId: CodexProtocolRequestId,
-    response: CodexPermissionRequestResponse,
-    requestedConversationId?: string | null,
-  ): Promise<OwnerServerRequestReplyResult> {
-    const conversationId = this.findConversationIdForRequest(requestId, requestedConversationId);
-    if (!conversationId) return { accepted: false };
-    return this.commitNativeUserResponse(
-      conversationId,
-      { method: "item/permissions/requestApproval", requestId, response },
-      (draft) =>
-        mutateCodexConversationPermissionResponse(draft, requestId, response, { now: Date.now }),
-    );
-  }
-
   async respondSetupCodexStep(
     conversationId: string,
     requestId: CodexProtocolRequestId,
@@ -8481,20 +7891,6 @@ export class CodexAppServerManager {
       );
     }
     return { accepted: false };
-  }
-
-  async setPermissionMode(projectId: string | null, mode: CodexPermissionMode): Promise<void> {
-    const current = this.permissionStateByScope.get(projectId);
-    if (current?.mode === mode) {
-      return;
-    }
-
-    const nextState = (await runConversationOperation(
-      "codex:permission:mode:set",
-      projectId,
-      mode,
-    )) as CodexPermissionState;
-    this.applyPermissionState(projectId, nextState);
   }
 
   receiveReadStateSnapshot(unreadIds: readonly string[] | null): void {
@@ -8592,7 +7988,7 @@ export class CodexAppServerManager {
     for (const owner of this.pendingArtifactRecoveries.values()) owner.dispose();
     this.pendingArtifactRecoveries.clear();
     this.streamRecovery.dispose();
-    this.cancelPendingNodexAgentAuthorizations();
+
     this.connection = INITIAL_CONNECTION;
     this.account = null;
     this.dictationState = DEFAULT_CODEX_DICTATION_STATE;
@@ -8617,8 +8013,7 @@ export class CodexAppServerManager {
     this.streamState.resetAfterReconnect();
     this.followerMembershipByConversationId.clear();
     this.composerIntentsByThread.clear();
-    this.permissionStateByScope.clear();
-    this.permissionStateLoadsInFlightByScope.clear();
+
     this.threadStartProgressByTarget.clear();
     this.threadTitlesById.clear();
     this.threadsById.clear();
@@ -8638,23 +8033,7 @@ export class CodexAppServerManager {
     this.stop();
   }
 
-  private async bootstrapAccountAndConnection(): Promise<void> {
-    try {
-      const account = (await runConversationOperation(
-        "codex:account:read",
-      )) as CodexAccountSnapshot;
-      this.handleSharedObjectUpdated({
-        hostId: this.hostId,
-        object: {
-          objectType: "account",
-          objectId: "account",
-          value: account,
-        },
-      });
-    } catch {
-      // host messages stay authoritative if bootstrap fails
-    }
-
+  private async bootstrapConnection(): Promise<void> {
     try {
       const connection = (await runConversationOperation(
         "codex:connection:status",
@@ -8679,51 +8058,6 @@ export class CodexAppServerManager {
     } catch {
       this.setDictationState(DEFAULT_CODEX_DICTATION_STATE);
     }
-  }
-
-  private async bootstrapAvailableModels(): Promise<void> {
-    try {
-      await this.loadAvailableModels();
-    } catch {
-      this.setAvailableModels([]);
-    }
-  }
-
-  private async bootstrapPermissionModes(): Promise<void> {
-    // Permission state is loaded lazily per permission scope from the main process.
-  }
-
-  async loadPermissionState(projectId: string | null): Promise<CodexPermissionState> {
-    const inFlight = this.permissionStateLoadsInFlightByScope.get(projectId);
-    if (inFlight) {
-      return await inFlight;
-    }
-
-    const loadPromise = (async () => {
-      const nextState = (await runConversationOperation(
-        "codex:permission:state:get",
-        projectId,
-      )) as CodexPermissionState;
-      this.applyPermissionState(projectId, nextState);
-      return nextState;
-    })();
-    this.permissionStateLoadsInFlightByScope.set(projectId, loadPromise);
-
-    try {
-      return await loadPromise;
-    } finally {
-      this.permissionStateLoadsInFlightByScope.delete(projectId);
-    }
-  }
-
-  private applyPermissionState(projectId: string | null, nextState: CodexPermissionState): void {
-    const current = this.permissionStateByScope.get(projectId);
-    if (current && arePermissionStatesEqual(current, nextState)) {
-      return;
-    }
-
-    this.permissionStateByScope.set(projectId, nextState);
-    this.notifyControlCallbacks();
   }
 
   private setAvailableModels(models: CodexModelOption[]): void {
@@ -9016,32 +8350,6 @@ export class CodexAppServerManager {
     this.notifyControlCallbacks();
   }
 
-  private commitRendererFreshLaunchReady(
-    launchId: string,
-    projectId: string | null,
-    sessionId: string,
-    threadId: string,
-  ): void {
-    const targetKey = getThreadStartProgressTargetKey(projectId, sessionId);
-    const current = this.threadStartProgressByTarget.get(targetKey);
-    if (!current || current.launchId !== launchId) return;
-
-    const firstSubmission = sessionFirstSubmissionOwner
-      .getSnapshot()
-      .submissions.find((submission) => submission.launchId === launchId);
-    if (firstSubmission) {
-      codexTurnFirstResponseTracker.markNewThreadNavigationDispatched(
-        firstSubmission.clientUserMessageId,
-      );
-    }
-    this.threadStartProgressByTarget.set(targetKey, {
-      ...current,
-      threadId,
-      phase: "ready",
-    });
-    this.notifyControlCallbacks("sync");
-  }
-
   private withCachedThreadTitle(thread: CodexThreadSummary): CodexThreadSummary {
     const projectedTitle = projectCodexMarkdownLabel(thread.threadName);
     if (projectedTitle) {
@@ -9163,12 +8471,6 @@ export class CodexAppServerManager {
     const pendingResume = this.resumeInFlightByThreadId.get(normalizedThreadId);
     this.resumeInFlightByThreadId.delete(normalizedThreadId);
     pendingResume?.cancel();
-    for (const [requestId, pending] of this.pendingNodexAgentAuthorizations) {
-      if (pending.threadId !== normalizedThreadId) continue;
-      this.pendingNodexAgentAuthorizations.delete(requestId);
-      clearTimeout(pending.timeout);
-      pending.resolve({ decision: "deny" });
-    }
 
     this.threadsById.delete(normalizedThreadId);
     const changedProjectIds = new Set<string>();
@@ -9236,27 +8538,6 @@ export class CodexAppServerManager {
     void this.loadThreads(projectId).catch(() => {});
   }
 
-  private withNodexAgentAuthorizationPresentationOverlays(
-    conversation: CodexConversationSnapshot,
-  ): CodexConversationSnapshot {
-    const canonicalRequests = conversation.requests.filter(
-      (request) => request.type !== "nodexAgentAuthorization",
-    );
-    const presentationRequests = [...this.pendingNodexAgentAuthorizations.values()]
-      .filter((pending) => pending.threadId === conversation.threadId)
-      .map((pending) => pending.request);
-    if (
-      canonicalRequests.length === conversation.requests.length &&
-      presentationRequests.length === 0
-    ) {
-      return conversation;
-    }
-    return {
-      ...conversation,
-      requests: [...canonicalRequests, ...presentationRequests],
-    };
-  }
-
   private schedulePassiveHistoryRelease(threadId: string): void {
     this.retention.notificationHandled(threadId);
   }
@@ -9289,20 +8570,8 @@ export class CodexAppServerManager {
         ? { ...withSideConversation, hasUnreadTurn: this.savedReadState.has(threadId) }
         : withSideConversation,
     );
-    const terminalTurnIds = new Set(
-      normalizedConversation.turns
-        .filter((turn) => turn.turnId !== null && turn.status !== "inProgress")
-        .map((turn) => turn.turnId),
-    );
-    for (const [requestId, pending] of this.pendingNodexAgentAuthorizations) {
-      if (pending.threadId !== threadId || !terminalTurnIds.has(pending.turnId)) continue;
-      this.pendingNodexAgentAuthorizations.delete(requestId);
-      clearTimeout(pending.timeout);
-      pending.resolve({ decision: "deny" });
-    }
-    const nextConversation = this.withCachedConversationTitle(
-      this.withNodexAgentAuthorizationPresentationOverlays(normalizedConversation),
-    );
+
+    const nextConversation = this.withCachedConversationTitle(normalizedConversation);
     const currentConversation = this.conversationsById.get(threadId);
     if (currentConversation === nextConversation) {
       return;
@@ -9631,104 +8900,6 @@ function getLocalConversationManagerForConversation(
   );
 }
 
-let rendererClientRequestBridgeRefCount = 0;
-let unsubscribeRendererClientRequests: (() => void) | null = null;
-let rendererClientRequestManager: CodexAppServerManager | null = null;
-
-function isNodexAgentAuthorizationRequest(value: unknown): value is NodexAgentAuthorizationRequest {
-  if (typeof value !== "object" || value === null) return false;
-  const request = value as Partial<NodexAgentAuthorizationRequest>;
-  const preview = request.preview;
-  if (typeof preview !== "object" || preview === null) return false;
-  if (
-    typeof preview.title !== "string" ||
-    typeof preview.summary !== "string" ||
-    !Array.isArray(preview.details) ||
-    !preview.details.every(
-      (detail) =>
-        typeof detail === "object" &&
-        detail !== null &&
-        typeof detail.label === "string" &&
-        typeof detail.value === "string",
-    ) ||
-    (preview.nfmPreview !== undefined && typeof preview.nfmPreview !== "string") ||
-    (preview.markdownPreview !== undefined && typeof preview.markdownPreview !== "string")
-  ) {
-    return false;
-  }
-  return (
-    request.type === "nodexAgentAuthorization" &&
-    typeof request.requestId === "string" &&
-    typeof request.threadId === "string" &&
-    typeof request.turnId === "string" &&
-    typeof request.itemId === "string" &&
-    typeof request.projectId === "string" &&
-    (request.tool === "create" ||
-      request.tool === "edit_document" ||
-      request.tool === "transfer_blocks" ||
-      request.tool === "edit_database" ||
-      request.tool === "create_pages" ||
-      request.tool === "update_page" ||
-      request.tool === "advanced_update_page" ||
-      request.tool === "move_pages" ||
-      request.tool === "duplicate_page") &&
-    (request.effect === "write" || request.effect === "destructive") &&
-    typeof request.createdAt === "number" &&
-    Number.isFinite(request.createdAt)
-  );
-}
-
-async function buildRendererClientResponse(
-  manager: CodexAppServerManager,
-  message: CodexRendererClientRequestMessage,
-): Promise<CodexRendererClientResponseMessage> {
-  try {
-    if (message.method !== NODEX_AGENT_AUTHORIZATION_RENDERER_METHOD)
-      throw new Error(`Unsupported renderer client request method ${message.method}`);
-    if (!isNodexAgentAuthorizationRequest(message.params))
-      throw new Error("Invalid Nodex authorization request");
-    return {
-      type: "success",
-      requestId: message.requestId,
-      result: await manager.requestNodexAgentAuthorization(message.params),
-    };
-  } catch (error) {
-    return {
-      type: "error",
-      requestId: message.requestId,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-function startLocalConversationRendererClientRequestBridge(
-  manager: CodexAppServerManager,
-): () => void {
-  rendererClientRequestBridgeRefCount += 1;
-  rendererClientRequestManager = manager;
-  if (!unsubscribeRendererClientRequests) {
-    unsubscribeRendererClientRequests = subscribeCodexRendererClientRequests((message) => {
-      const activeManager = rendererClientRequestManager;
-      if (!activeManager) return;
-
-      void (async () => {
-        const response = await buildRendererClientResponse(activeManager, message);
-        await runConversationOperation("codex:renderer-client:response", response);
-      })();
-    });
-  }
-
-  return () => {
-    rendererClientRequestBridgeRefCount = Math.max(0, rendererClientRequestBridgeRefCount - 1);
-    if (rendererClientRequestBridgeRefCount > 0) return;
-
-    rendererClientRequestManager?.cancelPendingNodexAgentAuthorizations();
-    rendererClientRequestManager = null;
-    unsubscribeRendererClientRequests?.();
-    unsubscribeRendererClientRequests = null;
-  };
-}
-
 let readStateConnection: ReturnType<typeof connectRendererThreadReadState> | undefined;
 let readStateConnectionConsumers = 0;
 function startThreadReadStateConnection(registry: CodexAppServerManagerRegistry): () => void {
@@ -9755,25 +8926,27 @@ export function LocalConversationProvider({
   children: ReactNode;
   hostId?: string;
 }) {
-  const registry = codexAppServerRegistry;
-  const manager = useMemo(() => registry.getForHostId(hostId), [hostId, registry]);
+  const manager = useMemo(() => codexAppServerRegistry.getForHostId(hostId), [hostId]);
 
   useEffect(() => {
     const stopCoordination = retainConversationCoordination();
-    const stopReadState = startThreadReadStateConnection(registry);
+    const stopReadState = startThreadReadStateConnection(codexAppServerRegistry);
     const stopHostBridge = startLocalConversationHostBridge();
-    const stopRendererClientRequestBridge =
-      startLocalConversationRendererClientRequestBridge(manager);
+
     manager.start();
     return () => {
       stopReadState();
       stopCoordination();
-      stopRendererClientRequestBridge();
+
       stopHostBridge();
     };
-  }, [manager, registry]);
+  }, [manager]);
 
-  return createElement(CodexAppServerRegistryContext.Provider, { value: registry }, children);
+  return createElement(
+    CodexAppServerRegistryContext.Provider,
+    { value: codexAppServerRegistry },
+    children,
+  );
 }
 
 export function useCodexAppServerRegistry(): CodexAppServerManagerRegistry {
@@ -10102,10 +9275,7 @@ export function readLocalConversation(
 
 export function __resetLocalConversationStoreForTests(): void {
   codexAppServerRegistry.resetForTests();
-  rendererClientRequestBridgeRefCount = 0;
-  rendererClientRequestManager = null;
-  unsubscribeRendererClientRequests?.();
-  unsubscribeRendererClientRequests = null;
+
   __resetLocalConversationHostBridgeForTests();
   __resetCodexAppServerMessageBusForTests();
 }
@@ -10432,32 +9602,6 @@ export function useCodexDictationState(): CodexDictationStateSnapshot {
   );
 }
 
-export function useCodexPermissionMode(projectId: string | null): CodexPermissionMode {
-  return useCodexPermissionState(projectId).mode;
-}
-
-export function useCodexPermissionState(projectId: string | null): CodexPermissionState {
-  const manager = useDefaultCodexAppServerManager();
-  return useCodexPermissionStateForManager(manager, projectId);
-}
-
-function useCodexPermissionStateForManager(
-  manager: CodexAppServerManager,
-  projectId: string | null,
-): CodexPermissionState {
-  useEffect(() => {
-    void manager.loadPermissionState(projectId).catch(() => {
-      // main-process authority will retry on the next interaction
-    });
-  }, [manager, projectId]);
-
-  return useExternalSelector(
-    (listener) => manager.subscribeControl(listener),
-    () => manager.readPermissionState(projectId),
-    arePermissionStatesEqual,
-  );
-}
-
 export function useCodexLastHostError(): CodexHostErrorState | null {
   return useManagerControlSelection((manager) => manager.readLastHostError());
 }
@@ -10501,7 +9645,6 @@ type CodexFollowUpOptions = Pick<
 };
 
 export function useCodexAppServerControl(
-  activeProjectId: string | null,
   activeConversationId: string | null = null,
   preferredHostId?: string | null,
 ) {
@@ -10513,8 +9656,7 @@ export function useCodexAppServerControl(
   );
   const workbenchOwner = useWorkbenchWindowOwner();
   const availableModels = useCodexAvailableModelsForManager(manager);
-  const permissionState = useCodexPermissionStateForManager(manager, activeProjectId);
-  const permissionMode = permissionState.mode;
+
   const { settings: storedThreadSettings, updateSettings: updateStoredThreadSettings } =
     useCodexThreadSettings();
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
@@ -10607,54 +9749,6 @@ export function useCodexAppServerControl(
     [workbenchOwner],
   );
 
-  const startThreadForSession = useCallback(
-    async (
-      input: CodexThreadStartForSessionInput & {
-        collaborationMode?: CodexCollaborationModeKind;
-      },
-      submittedPresentation?: WorkbenchSubmitPresentation,
-    ) => {
-      const presentationTicket = await captureCodexTurnPresentation(
-        workbenchOwner,
-        {
-          kind: "session",
-          sessionId: input.sessionId,
-          launchId: input.firstSubmission.launchId,
-        },
-        submittedPresentation,
-      );
-      const resolvedSettings = resolveCodexThreadSettings(storedThreadSettings, availableModels);
-      const requestSettings = resolveCodexDraftRequestSettings(input, resolvedSettings);
-      const effectiveServiceTier = resolveCodexRequestServiceTier(
-        input,
-        serviceTierSettings.serviceTier,
-      );
-      const launchManager = input.executionHostId
-        ? registry.getForHostId(input.executionHostId)
-        : manager;
-      const result = await launchManager.startThreadForSession({
-        ...input,
-        presentationTicket,
-        ...requestSettings,
-        ...buildCodexServiceTierRequestOverride(effectiveServiceTier),
-        executionProfile: input.executionProfile ?? executionProfile ?? undefined,
-      });
-      if (result.kind === "started" && input.projectId !== null) {
-        await launchManager.loadThreads(input.projectId);
-      }
-      return result;
-    },
-    [
-      availableModels,
-      executionProfile,
-      manager,
-      registry,
-      serviceTierSettings.serviceTier,
-      storedThreadSettings,
-      workbenchOwner,
-    ],
-  );
-
   const startSideChat = useCallback(
     async (input: CodexSideChatStartInput, submittedPresentation?: WorkbenchSubmitPresentation) => {
       const clientUserMessageId = createOwnerClientUserMessageId();
@@ -10735,11 +9829,9 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      const resolvedProjectId = opts?.projectId ?? activeProjectId;
       const targetManager = managerForConversation(threadId);
-      await targetManager.loadPermissionState(resolvedProjectId);
+
       const turnOpts: CodexTurnStartOptions = {
-        permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode,
         ...(opts?.untrustedAppMessage ? { untrustedAppMessage: opts.untrustedAppMessage } : {}),
         model: opts?.model,
@@ -10755,7 +9847,7 @@ export function useCodexAppServerControl(
         submissionIdentity,
       );
     },
-    [activeProjectId, managerForConversation, workbenchOwner],
+    [managerForConversation, workbenchOwner],
   );
 
   const resumeInterruptedTurn = useCallback(
@@ -10774,23 +9866,15 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      const resolvedProjectId = opts?.projectId ?? activeProjectId;
       const targetManager = managerForConversation(threadId);
-      await targetManager.loadPermissionState(resolvedProjectId);
-      return await targetManager.resumeInterruptedTurn(
-        threadId,
-        {
-          permissionMode: targetManager.readPermissionMode(resolvedProjectId),
-        },
-        presentationTicket,
-      );
+
+      return await targetManager.resumeInterruptedTurn(threadId, {}, presentationTicket);
     },
-    [activeProjectId, managerForConversation, workbenchOwner],
+    [managerForConversation, workbenchOwner],
   );
 
   const prepareFollowUpInput = useCallback(
     async (
-      targetManager: CodexAppServerManager,
       threadId: string,
       opts?: CodexFollowUpOptions,
       submittedPresentation?: WorkbenchSubmitPresentation,
@@ -10803,10 +9887,7 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      const resolvedProjectId = opts?.projectId === undefined ? activeProjectId : opts.projectId;
-      await targetManager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
-        permissionMode: targetManager.readPermissionMode(resolvedProjectId),
         collaborationMode: opts?.collaborationMode ?? undefined,
         ...(opts?.untrustedAppMessage ? { untrustedAppMessage: opts.untrustedAppMessage } : {}),
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
@@ -10814,7 +9895,7 @@ export function useCodexAppServerControl(
       };
       return { options: turnOpts, presentationTicket };
     },
-    [activeProjectId, workbenchOwner],
+    [workbenchOwner],
   );
   const enqueueQueuedFollowUp = useCallback(
     async (
@@ -10824,12 +9905,7 @@ export function useCodexAppServerControl(
       submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
       const targetManager = managerForConversation(threadId);
-      const prepared = await prepareFollowUpInput(
-        targetManager,
-        threadId,
-        opts,
-        submittedPresentation,
-      );
+      const prepared = await prepareFollowUpInput(threadId, opts, submittedPresentation);
       await targetManager.enqueueQueuedFollowUp(
         threadId,
         prompt,
@@ -10851,7 +9927,7 @@ export function useCodexAppServerControl(
         ? registry.getForHostId(hostId)
         : managerForConversation(threadId);
       await targetManager.sendCapturedFollowUp(threadId, prompt, () =>
-        prepareFollowUpInput(targetManager, threadId, opts, submittedPresentation),
+        prepareFollowUpInput(threadId, opts, submittedPresentation),
       );
     },
     [managerForConversation, preferredHostId, prepareFollowUpInput, registry],
@@ -11079,19 +10155,6 @@ export function useCodexAppServerControl(
       managerForConversation(threadId).interruptTurn(threadId, turnId),
     [managerForConversation],
   );
-  const respondApproval = useCallback(
-    async (
-      requestId: CodexProtocolRequestId,
-      response: CodexApprovalResponse,
-      conversationId?: string | null,
-    ) =>
-      (conversationId ? managerForConversation(conversationId) : manager).respondApproval(
-        requestId,
-        response,
-        conversationId,
-      ),
-    [manager, managerForConversation],
-  );
   const respondUserInput = useCallback(
     async (
       requestId: CodexProtocolRequestId,
@@ -11116,31 +10179,6 @@ export function useCodexAppServerControl(
         response,
         conversationId,
       ),
-    [manager, managerForConversation],
-  );
-  const respondPermissionRequest = useCallback(
-    async (
-      requestId: CodexProtocolRequestId,
-      response: CodexPermissionRequestResponse,
-      conversationId?: string | null,
-    ) =>
-      (conversationId ? managerForConversation(conversationId) : manager).respondPermissionRequest(
-        requestId,
-        response,
-        conversationId,
-      ),
-    [manager, managerForConversation],
-  );
-  const respondNodexAgentAuthorization = useCallback(
-    async (
-      requestId: string,
-      response: NodexAgentAuthorizationResponse,
-      conversationId?: string | null,
-    ) =>
-      (conversationId
-        ? managerForConversation(conversationId)
-        : manager
-      ).respondNodexAgentAuthorization(requestId, response, conversationId),
     [manager, managerForConversation],
   );
   const respondOptionPicker = useCallback(
@@ -11169,11 +10207,7 @@ export function useCodexAppServerControl(
       ),
     [managerForConversation],
   );
-  const setPermissionMode = useCallback(
-    async (projectId: string | null, mode: CodexPermissionMode) =>
-      manager.setPermissionMode(projectId, mode),
-    [manager],
-  );
+
   const setThreadModel = useCallback(
     (model: string) => {
       const normalizedModel = normalizeThreadSettingsModel(model);
@@ -11206,8 +10240,7 @@ export function useCodexAppServerControl(
     executionProfile,
     threadSettings,
     reasoningEffortOptions,
-    permissionState,
-    permissionMode,
+
     loadThreads,
     loadModels,
     listCollaborationModes,
@@ -11216,7 +10249,6 @@ export function useCodexAppServerControl(
     hydrateSelectedSubagent,
     refreshSelectedSubagentAuthority,
     captureSubmissionPresentation,
-    startThreadForSession,
     startSideChat,
     discardSideChat,
     setThreadName,
@@ -11258,14 +10290,12 @@ export function useCodexAppServerControl(
     markConversationAsUnread,
     steerTurn,
     interruptTurn,
-    respondApproval,
     respondUserInput,
     respondMcpElicitation,
-    respondPermissionRequest,
-    respondNodexAgentAuthorization,
+
     respondOptionPicker,
     respondSetupCodexStep,
-    setPermissionMode,
+
     setThreadModel,
     setThreadReasoningEffort,
     setDefaultServiceTier,

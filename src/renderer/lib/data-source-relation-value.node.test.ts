@@ -16,13 +16,13 @@ const relationValue = {
         membership_state: "active_in_target_source",
       },
     ],
-    restricted_count: 1,
+    unavailable_count: 1,
     has_more: true,
   },
 };
 
 describe("Relation value preview", () => {
-  test("projects complete visible targets without inventing restricted identities", () => {
+  test("projects complete visible targets without inventing unavailable identities", () => {
     expect(readRelationValuePreview(relationValue)).toEqual({
       valueRevision: 4,
       totalCount: 2,
@@ -36,13 +36,13 @@ describe("Relation value preview", () => {
           membershipState: "active_in_target_source",
         },
       ],
-      restrictedCount: 1,
+      unavailableCount: 1,
       hasMore: true,
     });
     expect(
       readRelationValuePreview({
         kind: "relation",
-        value: { ...relationValue.value, targets: [{ kind: "restricted", page_id: "leak" }] },
+        value: { ...relationValue.value, targets: [{ kind: "unavailable", page_id: "leak" }] },
       }),
     ).toBeNull();
   });
@@ -63,7 +63,7 @@ describe("Relation value preview", () => {
     expect(
       readRelationValuePreview({
         kind: "relation",
-        value: { ...relationValue.value, restricted_count: 3 },
+        value: { ...relationValue.value, unavailable_count: 3 },
       }),
     ).toBeNull();
     expect(

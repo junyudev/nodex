@@ -88,12 +88,6 @@ CREATE TABLE codex_thread_dynamic_tool_catalogs (
       CHECK (length(trim(namespace)) > 0),
       CHECK (toolset_revision > 0)
     ) WITHOUT ROWID;
-CREATE TABLE codex_project_permission_mode_selections (
-      project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-      mode TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      CHECK (mode IN ('auto', 'guardian-approvals', 'full-access', 'custom'))
-    ) WITHOUT ROWID;
 CREATE TABLE nodex_agent_token_keys (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       key_material BLOB NOT NULL CHECK (length(key_material) = 32)
@@ -139,60 +133,44 @@ CREATE TABLE nodex_agent_call_receipts (
       CHECK (status IN ('prepared', 'committed'))
     ) WITHOUT ROWID;
 CREATE TABLE nodex_agent_turn_authorities (
-      thread_id TEXT NOT NULL,
-      turn_id TEXT NOT NULL,
-      root_thread_id TEXT NOT NULL,
-      actor_project_id TEXT,
-      library_id TEXT NOT NULL,
-      profile_id TEXT NOT NULL,
-      store_epoch TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      source TEXT NOT NULL,
-      permission_profile_id TEXT,
-      authority_fingerprint TEXT NOT NULL,
-      provenance_version INTEGER NOT NULL,
-      created_at TEXT NOT NULL,
-      read_only INTEGER NOT NULL DEFAULT 1 CHECK (read_only IN (0, 1)),
-      PRIMARY KEY (thread_id, turn_id),
-      CHECK (length(trim(thread_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(turn_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(root_thread_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(actor_project_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(library_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(profile_id)) BETWEEN 1 AND 512),
-      CHECK (length(trim(store_epoch)) BETWEEN 1 AND 512),
-      CHECK (scope IN ('project', 'library')),
-      CHECK (actor_project_id IS NOT NULL OR scope = 'library'),
-      CHECK ((scope = 'project' AND source = 'project_turn') OR
-        (scope = 'library' AND source IN ('builtin_full_access', 'inherited_builtin_full_access'))),
-      CHECK (source IN (
-        'project_turn',
-        'builtin_full_access',
-        'inherited_builtin_full_access'
-      )),
-      CHECK (
-        (scope = 'library' AND permission_profile_id = ':danger-full-access')
-        OR (scope = 'project' AND permission_profile_id IS NULL)
-      ),
-      CHECK (length(authority_fingerprint) = 64),
-      CHECK (provenance_version = 1)
-    ) WITHOUT ROWID;
-CREATE TABLE codex_automation_runs (
-	      thread_id TEXT PRIMARY KEY,
-	      automation_id TEXT NOT NULL,
-	      status TEXT NOT NULL,
-	      read_at INTEGER,
-	      thread_title TEXT,
-	      source_cwd TEXT,
-	      inbox_title TEXT,
-	      inbox_summary TEXT,
-	      archived_user_message TEXT,
-	      archived_assistant_message TEXT,
-	      archived_reason TEXT,
-	      created_at INTEGER NOT NULL,
-	      updated_at INTEGER NOT NULL, run_revision INTEGER NOT NULL DEFAULT 1 CHECK (run_revision >= 1),
-	      CHECK (status IN ('IN_PROGRESS', 'PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED'))
-	    ) WITHOUT ROWID;
+  thread_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL,
+  root_thread_id TEXT NOT NULL,
+  library_id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  store_epoch TEXT NOT NULL,
+  authority_fingerprint TEXT NOT NULL CHECK (length(authority_fingerprint) = 64),
+  provenance_version INTEGER NOT NULL CHECK (provenance_version = 2),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (thread_id, turn_id),
+  CHECK (length(trim(thread_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(turn_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(root_thread_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(library_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(profile_id)) BETWEEN 1 AND 512),
+  CHECK (length(trim(store_epoch)) BETWEEN 1 AND 512)
+) WITHOUT ROWID;
+CREATE TABLE core_automation_runs (
+  run_id TEXT PRIMARY KEY,
+  automation_id TEXT NOT NULL,
+  session_id TEXT,
+  status TEXT NOT NULL,
+  read_at INTEGER,
+  session_title TEXT,
+  source_cwd TEXT,
+  inbox_title TEXT,
+  inbox_summary TEXT,
+  archived_user_message TEXT,
+  archived_assistant_message TEXT,
+  archived_reason TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  run_revision INTEGER NOT NULL DEFAULT 1 CHECK (run_revision >= 1),
+  admission_hash TEXT NOT NULL CHECK (length(admission_hash) = 64 AND admission_hash NOT GLOB '*[^0-9a-f]*'),
+  CHECK (length(run_id) BETWEEN 1 AND 512 AND run_id = trim(run_id)),
+  CHECK (session_id IS NULL OR (length(session_id) BETWEEN 1 AND 512 AND session_id = trim(session_id))),
+  CHECK (status IN ('IN_PROGRESS', 'PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED'))
+) WITHOUT ROWID, STRICT;
 CREATE TABLE codex_background_processes (
       process_record_id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL,
@@ -615,7 +593,6 @@ CREATE TABLE database_containers (
       name TEXT NOT NULL,
       lifecycle TEXT NOT NULL DEFAULT 'active',
       default_view_id TEXT,
-      access_revision INTEGER NOT NULL DEFAULT 1 CHECK (access_revision >= 1),
       metadata_revision INTEGER NOT NULL DEFAULT 1 CHECK (metadata_revision >= 1),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -752,8 +729,9 @@ CREATE TABLE core_automation_runtime_metadata (
 ) STRICT;
 CREATE TABLE core_automation_leases (
   lease_id TEXT PRIMARY KEY,
-  automation_id TEXT NOT NULL REFERENCES codex_scheduled_automations(automation_id)
-    ON DELETE CASCADE,
+  automation_id TEXT NOT NULL REFERENCES codex_scheduled_automations(automation_id) ON DELETE CASCADE,
+  dispatch_id TEXT NOT NULL CHECK (length(dispatch_id) BETWEEN 1 AND 512 AND dispatch_id = trim(dispatch_id)),
+  definition_revision INTEGER NOT NULL CHECK (definition_revision >= 1),
   scheduled_for_ms INTEGER NOT NULL CHECK (scheduled_for_ms >= 0),
   attempt INTEGER NOT NULL CHECK (attempt BETWEEN 1 AND 4294967295),
   status TEXT NOT NULL CHECK (status IN ('claimed', 'completed', 'failed', 'cancelled')),
@@ -762,15 +740,12 @@ CREATE TABLE core_automation_leases (
   settled_at_ms INTEGER,
   retry_at_ms INTEGER,
   reason_code TEXT,
-  UNIQUE (automation_id, scheduled_for_ms, attempt),
+  UNIQUE (dispatch_id, attempt),
   CHECK (length(lease_id) BETWEEN 1 AND 512),
   CHECK (settled_at_ms IS NULL OR settled_at_ms >= claimed_at_ms),
   CHECK (retry_at_ms IS NULL OR retry_at_ms >= 0),
   CHECK (reason_code IS NULL OR length(reason_code) BETWEEN 1 AND 128),
-  CHECK (
-    (status = 'claimed' AND settled_at_ms IS NULL)
-    OR (status <> 'claimed' AND settled_at_ms IS NOT NULL)
-  )
+  CHECK ((status = 'claimed' AND settled_at_ms IS NULL) OR (status <> 'claimed' AND settled_at_ms IS NOT NULL))
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE "codex_scheduled_automations" (
            automation_id TEXT PRIMARY KEY,
@@ -1044,6 +1019,173 @@ CREATE TABLE project_session_threads (
   thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
   linked_at TEXT NOT NULL
 ) WITHOUT ROWID;
+CREATE INDEX idx_project_sessions_project_identity ON project_sessions(project_id,id);
+CREATE TABLE project_session_execution_bindings (
+  session_id TEXT PRIMARY KEY REFERENCES project_sessions(id) ON DELETE CASCADE,
+  runtime_id TEXT NOT NULL,
+  runtime_thread_id TEXT NOT NULL,
+  launch_request_id TEXT NOT NULL,
+  bound_at TEXT NOT NULL,
+  UNIQUE (runtime_id, runtime_thread_id),
+  UNIQUE (runtime_id, launch_request_id),
+  CHECK (length(session_id) BETWEEN 1 AND 512),
+  CHECK (length(runtime_id) BETWEEN 1 AND 512 AND runtime_id = trim(runtime_id)),
+  CHECK (length(runtime_thread_id) BETWEEN 1 AND 512 AND runtime_thread_id = trim(runtime_thread_id)),
+  CHECK (length(launch_request_id) BETWEEN 1 AND 512 AND launch_request_id = trim(launch_request_id)),
+  CHECK (length(bound_at) > 0)
+) WITHOUT ROWID, STRICT;
+
+CREATE TRIGGER project_session_execution_binding_insert_guard
+BEFORE INSERT ON project_session_execution_bindings
+WHEN EXISTS (SELECT 1 FROM project_session_threads WHERE session_id = NEW.session_id)
+  OR EXISTS (SELECT 1 FROM project_sessions WHERE id = NEW.session_id AND is_default_draft = 1)
+BEGIN
+  SELECT RAISE(ABORT, 'Session already has execution ownership or is a default draft');
+END;
+
+CREATE TABLE nodex_agent_runtime_turn_admissions (
+  admission_sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  runtime_id TEXT NOT NULL,
+  runtime_thread_id TEXT NOT NULL,
+  runtime_run_id TEXT NOT NULL,
+  runtime_lease_id TEXT NOT NULL,
+  authority_thread_id TEXT NOT NULL,
+  authority_turn_id TEXT NOT NULL,
+  session_id TEXT NOT NULL REFERENCES project_session_execution_bindings(session_id) ON DELETE CASCADE,
+  parent_runtime_thread_id TEXT,
+  parent_runtime_run_id TEXT,
+  parent_runtime_lease_id TEXT,
+  active INTEGER NOT NULL CHECK (active IN (0, 1)),
+  native_provider_session_id TEXT,
+  native_generation INTEGER,
+  CHECK ((native_provider_session_id IS NULL) = (native_generation IS NULL)),
+  CHECK (native_provider_session_id IS NULL OR (length(native_provider_session_id) BETWEEN 1 AND 512 AND native_provider_session_id = trim(native_provider_session_id))),
+  CHECK (native_generation IS NULL OR native_generation BETWEEN 1 AND 4294967295),
+  CHECK (active = 0 OR native_provider_session_id IS NOT NULL),
+  UNIQUE (runtime_id, runtime_thread_id, runtime_run_id, runtime_lease_id),
+  UNIQUE (authority_thread_id, authority_turn_id),
+  FOREIGN KEY (authority_thread_id, authority_turn_id)
+    REFERENCES nodex_agent_turn_authorities(thread_id, turn_id),
+  CHECK (length(runtime_id) BETWEEN 1 AND 512 AND runtime_id = trim(runtime_id)),
+  CHECK (length(runtime_thread_id) BETWEEN 1 AND 512 AND runtime_thread_id = trim(runtime_thread_id)),
+  CHECK (length(runtime_run_id) BETWEEN 1 AND 512 AND runtime_run_id = trim(runtime_run_id)),
+  CHECK (length(runtime_lease_id) BETWEEN 1 AND 512 AND runtime_lease_id = trim(runtime_lease_id)),
+  CHECK (length(authority_thread_id) BETWEEN 1 AND 512),
+  CHECK (length(authority_turn_id) BETWEEN 1 AND 512),
+  CHECK ((parent_runtime_thread_id IS NULL) = (parent_runtime_run_id IS NULL)),
+  CHECK ((parent_runtime_thread_id IS NULL) = (parent_runtime_lease_id IS NULL))
+) STRICT;
+
+CREATE INDEX nodex_agent_runtime_parent_admissions
+ON nodex_agent_runtime_turn_admissions(runtime_id, runtime_thread_id, runtime_run_id, admission_sequence DESC);
+
+CREATE INDEX nodex_agent_runtime_active_admissions
+ON nodex_agent_runtime_turn_admissions(runtime_id, runtime_lease_id) WHERE active = 1;
+
+CREATE INDEX nodex_agent_runtime_active_turn_authorities
+ON nodex_agent_runtime_turn_admissions(runtime_id, runtime_lease_id, authority_turn_id) WHERE active = 1;
+
+CREATE INDEX nodex_agent_runtime_active_native_source_admissions
+ON nodex_agent_runtime_turn_admissions(runtime_id, runtime_lease_id, native_provider_session_id, native_generation) WHERE active = 1;
+
+CREATE TRIGGER nodex_agent_runtime_turn_admission_update_guard
+BEFORE UPDATE ON nodex_agent_runtime_turn_admissions
+WHEN NEW.admission_sequence <> OLD.admission_sequence
+  OR NEW.runtime_id <> OLD.runtime_id
+  OR NEW.runtime_thread_id <> OLD.runtime_thread_id
+  OR NEW.runtime_run_id <> OLD.runtime_run_id
+  OR NEW.runtime_lease_id <> OLD.runtime_lease_id
+  OR NEW.authority_thread_id <> OLD.authority_thread_id
+  OR NEW.authority_turn_id <> OLD.authority_turn_id
+  OR NEW.session_id <> OLD.session_id
+  OR NEW.parent_runtime_thread_id IS NOT OLD.parent_runtime_thread_id
+  OR NEW.parent_runtime_run_id IS NOT OLD.parent_runtime_run_id
+  OR NEW.parent_runtime_lease_id IS NOT OLD.parent_runtime_lease_id
+  OR NEW.native_provider_session_id IS NOT OLD.native_provider_session_id
+  OR NEW.native_generation IS NOT OLD.native_generation
+  OR NEW.active > OLD.active
+BEGIN
+  SELECT RAISE(ABORT, 'Runtime Turn admission is immutable and cannot be reactivated');
+END;
+
+CREATE TABLE nodex_agent_runtime_native_session_admissions (
+  runtime_id TEXT NOT NULL,
+  runtime_thread_id TEXT NOT NULL,
+  runtime_lease_id TEXT NOT NULL,
+  provider_session_id TEXT NOT NULL,
+  native_generation INTEGER NOT NULL CHECK (native_generation BETWEEN 1 AND 4294967295),
+  incarnation_id TEXT NOT NULL,
+  authority_thread_id TEXT NOT NULL,
+  authority_turn_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  active INTEGER NOT NULL CHECK (active IN (0, 1)),
+  PRIMARY KEY (runtime_id, incarnation_id),
+  UNIQUE (authority_thread_id, authority_turn_id),
+  FOREIGN KEY (authority_thread_id, authority_turn_id)
+    REFERENCES nodex_agent_turn_authorities(thread_id, turn_id),
+  CHECK (length(runtime_id) BETWEEN 1 AND 512 AND runtime_id = trim(runtime_id)),
+  CHECK (length(runtime_thread_id) BETWEEN 1 AND 512 AND runtime_thread_id = trim(runtime_thread_id)),
+  CHECK (length(runtime_lease_id) BETWEEN 1 AND 512 AND runtime_lease_id = trim(runtime_lease_id)),
+  CHECK (length(provider_session_id) BETWEEN 1 AND 512 AND provider_session_id = trim(provider_session_id)),
+  CHECK (length(incarnation_id) BETWEEN 1 AND 512 AND incarnation_id = trim(incarnation_id)),
+  CHECK (length(session_id) BETWEEN 1 AND 512),
+  CHECK (length(authority_thread_id) BETWEEN 1 AND 512),
+  CHECK (length(authority_turn_id) BETWEEN 1 AND 512)
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX nodex_agent_runtime_native_session_admissions_session
+ON nodex_agent_runtime_native_session_admissions(session_id) WHERE active = 1;
+
+CREATE INDEX nodex_agent_runtime_active_native_session_admissions
+ON nodex_agent_runtime_native_session_admissions(runtime_id, runtime_lease_id, incarnation_id) WHERE active = 1;
+
+CREATE INDEX nodex_agent_runtime_active_native_session_source_admissions
+ON nodex_agent_runtime_native_session_admissions(runtime_id, runtime_lease_id, provider_session_id, native_generation) WHERE active = 1;
+
+CREATE TRIGGER nodex_agent_runtime_native_session_admission_update_guard
+BEFORE UPDATE ON nodex_agent_runtime_native_session_admissions
+WHEN NEW.runtime_id <> OLD.runtime_id
+  OR NEW.runtime_thread_id <> OLD.runtime_thread_id
+  OR NEW.runtime_lease_id <> OLD.runtime_lease_id
+  OR NEW.provider_session_id <> OLD.provider_session_id
+  OR NEW.native_generation <> OLD.native_generation
+  OR NEW.incarnation_id <> OLD.incarnation_id
+  OR NEW.authority_thread_id <> OLD.authority_thread_id
+  OR NEW.authority_turn_id <> OLD.authority_turn_id
+  OR NEW.session_id <> OLD.session_id
+  OR NEW.active > OLD.active
+BEGIN
+  SELECT RAISE(ABORT, 'Native Session admission is immutable and cannot be reactivated');
+END;
+
+CREATE TRIGGER project_session_execution_binding_update_guard
+BEFORE UPDATE ON project_session_execution_bindings
+BEGIN
+  SELECT RAISE(ABORT, 'Agent Runtime Session binding is immutable');
+END;
+
+CREATE TRIGGER project_session_native_binding_insert_guard
+BEFORE INSERT ON project_session_threads
+WHEN EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id = NEW.session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Session execution belongs to Agent Runtime');
+END;
+
+CREATE TRIGGER project_session_native_binding_update_guard
+BEFORE UPDATE ON project_session_threads
+WHEN EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id = NEW.session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Session execution belongs to Agent Runtime');
+END;
+
+CREATE TRIGGER project_session_execution_draft_update_guard
+BEFORE UPDATE OF is_default_draft ON project_sessions
+WHEN NEW.is_default_draft = 1
+  AND EXISTS (SELECT 1 FROM project_session_execution_bindings WHERE session_id = OLD.id)
+BEGIN
+  SELECT RAISE(ABORT, 'A running Session cannot become a default draft');
+END;
+
 CREATE TABLE project_session_pages (
   session_id TEXT NOT NULL REFERENCES project_sessions(id) ON DELETE CASCADE,
   page_id TEXT NOT NULL REFERENCES pages(block_id) ON DELETE CASCADE,
@@ -1169,13 +1311,6 @@ BEGIN
     ('sidebar:projects', NEW.id, 'projects', NULL, 3000000000000, 1, 'active', NULL, NEW.created_at, NEW.created_at),
     ('sidebar:chats', NEW.id, 'chats', NULL, 4000000000000, 1, 'active', NULL, NEW.created_at, NEW.created_at);
 END;
-CREATE TABLE codex_projectless_permission_mode_selection (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  mode TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CHECK (mode IN ('auto', 'guardian-approvals', 'full-access', 'custom')),
-  CHECK (length(updated_at) > 0)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE "local_commits" (
   commit_seq INTEGER PRIMARY KEY AUTOINCREMENT,
   store_epoch TEXT NOT NULL,
@@ -1331,29 +1466,6 @@ CREATE TABLE module_receipt_retention_metadata (
     'automation', 'store_administration'
   )),
   CHECK (length(operation_id) BETWEEN 1 AND 512)
-) WITHOUT ROWID, STRICT;
-CREATE TABLE local_commit_revocations (
-  store_epoch TEXT NOT NULL,
-  commit_seq INTEGER NOT NULL,
-  scope_key TEXT NOT NULL,
-  authorization_scope_json TEXT NOT NULL,
-  resource_kind TEXT NOT NULL,
-  resource_id TEXT NOT NULL,
-  reason TEXT NOT NULL,
-  PRIMARY KEY (
-    store_epoch, commit_seq, scope_key, resource_kind, resource_id
-  ),
-  FOREIGN KEY (store_epoch, commit_seq)
-    REFERENCES local_commits(store_epoch, commit_seq) ON DELETE CASCADE,
-  CHECK (length(store_epoch) BETWEEN 1 AND 512),
-  CHECK (length(scope_key) BETWEEN 1 AND 1600),
-  CHECK (
-    json_valid(authorization_scope_json)
-    AND json_type(authorization_scope_json) = 'object'
-  ),
-  CHECK (resource_kind IN ('page', 'document', 'database', 'data_source', 'view', 'canvas', 'file')),
-  CHECK (length(resource_id) BETWEEN 1 AND 512),
-  CHECK (reason IN ('ownership_moved', 'access_revoked', 'archived', 'deleted'))
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE local_commit_delivery_atoms (
   store_epoch TEXT NOT NULL,
@@ -1517,53 +1629,6 @@ CREATE TABLE local_commit_library_effects (
   CHECK (length(operation_id) BETWEEN 1 AND 512),
   CHECK (json_valid(payload_json) AND json_type(payload_json) = 'object'),
   CHECK (length(payload_hash) = 64 AND payload_hash NOT GLOB '*[^0-9a-f]*')
-) WITHOUT ROWID, STRICT;
-CREATE TABLE local_commit_visibility_context (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  mode TEXT NOT NULL CHECK (mode IN ('active', 'overlay', 'maintenance')),
-  store_epoch TEXT,
-  commit_seq INTEGER,
-  CHECK (
-    (mode IN ('active', 'overlay') AND store_epoch IS NOT NULL AND commit_seq IS NOT NULL)
-    OR (mode = 'maintenance' AND store_epoch IS NULL AND commit_seq IS NULL)
-  ),
-  FOREIGN KEY (store_epoch, commit_seq)
-    REFERENCES local_commits(store_epoch, commit_seq) ON DELETE CASCADE
-) STRICT;
-CREATE TABLE local_commit_visibility_dirty_facts (
-  fact_seq INTEGER PRIMARY KEY AUTOINCREMENT,
-  store_epoch TEXT NOT NULL,
-  commit_seq INTEGER NOT NULL,
-  relation_kind TEXT NOT NULL,
-  operation TEXT NOT NULL CHECK (operation IN ('insert', 'update', 'delete')),
-  old_row_json TEXT,
-  new_row_json TEXT,
-  consumed INTEGER NOT NULL DEFAULT 0 CHECK (consumed IN (0, 1)),
-  FOREIGN KEY (store_epoch, commit_seq)
-    REFERENCES local_commits(store_epoch, commit_seq) ON DELETE CASCADE,
-  CHECK (length(relation_kind) BETWEEN 1 AND 128),
-  CHECK (old_row_json IS NULL OR json_valid(old_row_json)),
-  CHECK (new_row_json IS NULL OR json_valid(new_row_json)),
-  CHECK (
-    (operation = 'insert' AND old_row_json IS NULL AND new_row_json IS NOT NULL)
-    OR (operation = 'update' AND old_row_json IS NOT NULL AND new_row_json IS NOT NULL)
-    OR (operation = 'delete' AND old_row_json IS NOT NULL AND new_row_json IS NULL)
-  )
-) STRICT;
-CREATE TABLE local_commit_visibility_deltas (
-  store_epoch TEXT NOT NULL,
-  commit_seq INTEGER NOT NULL,
-  scope_key TEXT NOT NULL,
-  authorization_scope_json TEXT NOT NULL,
-  delta_kind TEXT NOT NULL CHECK (delta_kind IN ('grant', 'revoke', 'conservative_reset')),
-  roots_json TEXT NOT NULL,
-  delta_hash TEXT NOT NULL,
-  PRIMARY KEY (store_epoch, commit_seq, scope_key, delta_hash),
-  FOREIGN KEY (store_epoch, commit_seq)
-    REFERENCES local_commits(store_epoch, commit_seq) ON DELETE CASCADE,
-  CHECK (json_valid(authorization_scope_json) AND json_type(authorization_scope_json) = 'object'),
-  CHECK (json_valid(roots_json) AND json_type(roots_json) = 'array'),
-  CHECK (length(delta_hash) = 64 AND delta_hash NOT GLOB '*[^0-9a-f]*')
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE local_commit_sealed_projection_effects (
   store_epoch TEXT NOT NULL,
@@ -2285,23 +2350,6 @@ CREATE TABLE "block_relocation_members" (
     REFERENCES blocks(id, library_id) ON DELETE RESTRICT,
   CHECK (final_placement_revision = source_placement_revision + 1)
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE "project_resource_grants" (
-  id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
-  root_kind TEXT NOT NULL,
-  root_id TEXT NOT NULL,
-  access TEXT NOT NULL,
-  recursive INTEGER NOT NULL DEFAULT 1 CHECK ((root_kind = 'file' AND recursive = 0) OR (root_kind <> 'file' AND recursive = 1)),
-  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
-  lifecycle TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (project_id, root_kind, root_id),
-  CHECK (root_kind IN ('page', 'database', 'canvas', 'file')),
-  CHECK (access IN ('read', 'read_write')),
-  CHECK (lifecycle IN ('active', 'revoked'))
-) WITHOUT ROWID, STRICT;
 CREATE TABLE document_block_tombstones ( block_id TEXT PRIMARY KEY REFERENCES blocks(id) ON DELETE CASCADE, library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE, document_generation INTEGER NOT NULL CHECK (document_generation >= 1), deletion_head_seq INTEGER NOT NULL CHECK (deletion_head_seq >= 1), placement_revision INTEGER NOT NULL CHECK (placement_revision >= 2), deleted_at TEXT NOT NULL, CHECK (length(block_id) BETWEEN 1 AND 512), CHECK (length(library_id) BETWEEN 1 AND 512), CHECK (length(document_id) BETWEEN 1 AND 512), CHECK (length(deleted_at) > 0) ) WITHOUT ROWID, STRICT;
 CREATE TABLE local_commit_relocation_obligations ( store_epoch TEXT NOT NULL, commit_seq INTEGER NOT NULL, block_id TEXT NOT NULL REFERENCES blocks(id) ON DELETE RESTRICT, source_document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE RESTRICT, PRIMARY KEY (store_epoch, commit_seq, block_id), FOREIGN KEY (store_epoch, commit_seq) REFERENCES local_commits(store_epoch, commit_seq) ON DELETE CASCADE, CHECK (length(store_epoch) BETWEEN 1 AND 512), CHECK (length(block_id) BETWEEN 1 AND 512), CHECK (length(source_document_id) BETWEEN 1 AND 512) ) WITHOUT ROWID, STRICT;
 CREATE TABLE page_key_namespaces (
@@ -2553,10 +2601,8 @@ CREATE INDEX idx_structural_history_recipes_state
   ON structural_history_recipes(library_id, state, created_at);
 CREATE INDEX idx_project_sources_project_order
       ON project_sources(project_id, "order", created);
-CREATE INDEX idx_codex_automation_runs_automation_status_created
-	      ON codex_automation_runs(automation_id, status, created_at DESC);
-CREATE INDEX idx_codex_automation_runs_unread
-	      ON codex_automation_runs(read_at, status, updated_at);
+
+
 CREATE INDEX idx_codex_background_processes_thread_updated
       ON codex_background_processes(thread_id, updated_at_ms DESC, process_record_id);
 CREATE INDEX idx_codex_pinned_threads_order
@@ -2722,8 +2768,6 @@ CREATE INDEX idx_data_source_relation_edges_target
   );
 CREATE INDEX idx_local_commit_library_effects_library
   ON local_commit_library_effects(library_id, commit_seq);
-CREATE INDEX idx_local_commit_visibility_dirty_facts_commit
-  ON local_commit_visibility_dirty_facts(store_epoch, commit_seq, fact_seq);
 CREATE INDEX idx_local_commit_documents_commit_order
   ON local_commit_documents(store_epoch, commit_seq, document_order);
 CREATE INDEX idx_projection_scope_heads_commit
@@ -2835,8 +2879,6 @@ CREATE INDEX idx_block_relocation_members_roots
   ON block_relocation_members(relocation_id, tree_ordinal) WHERE is_root = 1;
 CREATE UNIQUE INDEX idx_document_block_index_single_host
   ON document_block_index(block_id);
-CREATE INDEX idx_project_resource_grants_active
-  ON project_resource_grants(project_id, lifecycle, root_kind, root_id);
 CREATE INDEX idx_document_block_tombstones_document ON document_block_tombstones(document_id, deletion_head_seq, block_id);
 CREATE UNIQUE INDEX idx_database_containers_block_library
   ON database_containers(block_id, library_id);
@@ -3220,216 +3262,6 @@ WHEN NEW.value_type <> 'relation'
 BEGIN
   SELECT RAISE(ABORT, 'Relation Property type is immutable');
 END;
-CREATE TRIGGER "visibility_dirty_projects_insert"
-BEFORE INSERT ON "projects"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'projects', 'insert', NULL, json_object('id', NEW."id", 'name', NEW."name", 'description', NEW."description", 'created', NEW."created", 'updated', NEW."updated", 'library_id', NEW."library_id", 'database_block_id', NEW."database_block_id", 'lifecycle', NEW."lifecycle", 'binding_revision', NEW."binding_revision", 'appearance_color', NEW."appearance_color", 'appearance_marker_kind', NEW."appearance_marker_kind", 'appearance_marker_value', NEW."appearance_marker_value")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_projects_update"
-BEFORE UPDATE OF "library_id", "database_block_id", "lifecycle" ON "projects"
-WHEN (1) AND (OLD."library_id" IS NOT NEW."library_id" OR OLD."database_block_id" IS NOT NEW."database_block_id" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'projects', 'update', json_object('id', OLD."id", 'name', OLD."name", 'description', OLD."description", 'created', OLD."created", 'updated', OLD."updated", 'library_id', OLD."library_id", 'database_block_id', OLD."database_block_id", 'lifecycle', OLD."lifecycle", 'binding_revision', OLD."binding_revision", 'appearance_color', OLD."appearance_color", 'appearance_marker_kind', OLD."appearance_marker_kind", 'appearance_marker_value', OLD."appearance_marker_value"), json_object('id', NEW."id", 'name', NEW."name", 'description', NEW."description", 'created', NEW."created", 'updated', NEW."updated", 'library_id', NEW."library_id", 'database_block_id', NEW."database_block_id", 'lifecycle', NEW."lifecycle", 'binding_revision', NEW."binding_revision", 'appearance_color', NEW."appearance_color", 'appearance_marker_kind', NEW."appearance_marker_kind", 'appearance_marker_value', NEW."appearance_marker_value")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_projects_delete"
-BEFORE DELETE ON "projects"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'projects', 'delete', json_object('id', OLD."id", 'name', OLD."name", 'description', OLD."description", 'created', OLD."created", 'updated', OLD."updated", 'library_id', OLD."library_id", 'database_block_id', OLD."database_block_id", 'lifecycle', OLD."lifecycle", 'binding_revision', OLD."binding_revision", 'appearance_color', OLD."appearance_color", 'appearance_marker_kind', OLD."appearance_marker_kind", 'appearance_marker_value', OLD."appearance_marker_value"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_project_database_bindings_insert"
-BEFORE INSERT ON "project_database_bindings"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_database_bindings', 'insert', NULL, json_object('project_id', NEW."project_id", 'library_id', NEW."library_id", 'database_block_id', NEW."database_block_id", 'lifecycle', NEW."lifecycle", 'revision', NEW."revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_project_database_bindings_update"
-BEFORE UPDATE OF "project_id", "library_id", "database_block_id", "lifecycle" ON "project_database_bindings"
-WHEN (1) AND (OLD."project_id" IS NOT NEW."project_id" OR OLD."library_id" IS NOT NEW."library_id" OR OLD."database_block_id" IS NOT NEW."database_block_id" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_database_bindings', 'update', json_object('project_id', OLD."project_id", 'library_id', OLD."library_id", 'database_block_id', OLD."database_block_id", 'lifecycle', OLD."lifecycle", 'revision', OLD."revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('project_id', NEW."project_id", 'library_id', NEW."library_id", 'database_block_id', NEW."database_block_id", 'lifecycle', NEW."lifecycle", 'revision', NEW."revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_project_database_bindings_delete"
-BEFORE DELETE ON "project_database_bindings"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_database_bindings', 'delete', json_object('project_id', OLD."project_id", 'library_id', OLD."library_id", 'database_block_id', OLD."database_block_id", 'lifecycle', OLD."lifecycle", 'revision', OLD."revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_database_containers_insert"
-BEFORE INSERT ON "database_containers"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_containers', 'insert', NULL, json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'name', NEW."name", 'lifecycle', NEW."lifecycle", 'default_view_id', NEW."default_view_id", 'access_revision', NEW."access_revision", 'metadata_revision', NEW."metadata_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_database_containers_update"
-BEFORE UPDATE OF "block_id", "library_id", "lifecycle" ON "database_containers"
-WHEN (1) AND (OLD."block_id" IS NOT NEW."block_id" OR OLD."library_id" IS NOT NEW."library_id" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_containers', 'update', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'name', OLD."name", 'lifecycle', OLD."lifecycle", 'default_view_id', OLD."default_view_id", 'access_revision', OLD."access_revision", 'metadata_revision', OLD."metadata_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'name', NEW."name", 'lifecycle', NEW."lifecycle", 'default_view_id', NEW."default_view_id", 'access_revision', NEW."access_revision", 'metadata_revision', NEW."metadata_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_database_containers_delete"
-BEFORE DELETE ON "database_containers"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_containers', 'delete', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'name', OLD."name", 'lifecycle', OLD."lifecycle", 'default_view_id', OLD."default_view_id", 'access_revision', OLD."access_revision", 'metadata_revision', OLD."metadata_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_sources_insert"
-BEFORE INSERT ON "data_sources"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_sources', 'insert', NULL, json_object('id', NEW."id", 'library_id', NEW."library_id", 'home_database_block_id', NEW."home_database_block_id", 'name', NEW."name", 'schema_key', NEW."schema_key", 'schema_revision', NEW."schema_revision", 'lifecycle', NEW."lifecycle", 'rank_key', NEW."rank_key", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_sources_update"
-BEFORE UPDATE OF "id", "library_id", "home_database_block_id", "lifecycle" ON "data_sources"
-WHEN (1) AND (OLD."id" IS NOT NEW."id" OR OLD."library_id" IS NOT NEW."library_id" OR OLD."home_database_block_id" IS NOT NEW."home_database_block_id" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_sources', 'update', json_object('id', OLD."id", 'library_id', OLD."library_id", 'home_database_block_id', OLD."home_database_block_id", 'name', OLD."name", 'schema_key', OLD."schema_key", 'schema_revision', OLD."schema_revision", 'lifecycle', OLD."lifecycle", 'rank_key', OLD."rank_key", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'library_id', NEW."library_id", 'home_database_block_id', NEW."home_database_block_id", 'name', NEW."name", 'schema_key', NEW."schema_key", 'schema_revision', NEW."schema_revision", 'lifecycle', NEW."lifecycle", 'rank_key', NEW."rank_key", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_sources_delete"
-BEFORE DELETE ON "data_sources"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_sources', 'delete', json_object('id', OLD."id", 'library_id', OLD."library_id", 'home_database_block_id', OLD."home_database_block_id", 'name', OLD."name", 'schema_key', OLD."schema_key", 'schema_revision', OLD."schema_revision", 'lifecycle', OLD."lifecycle", 'rank_key', OLD."rank_key", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_canvas_owners_insert"
-BEFORE INSERT ON "canvas_owners"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'canvas_owners', 'insert', NULL, json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_canvas_owners_update"
-BEFORE UPDATE OF "block_id", "library_id" ON "canvas_owners"
-WHEN (1) AND (OLD."block_id" IS NOT NEW."block_id" OR OLD."library_id" IS NOT NEW."library_id")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'canvas_owners', 'update', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_canvas_owners_delete"
-BEFORE DELETE ON "canvas_owners"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'canvas_owners', 'delete', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
 CREATE TRIGGER database_containers_default_view_is_owned_insert
 BEFORE INSERT ON database_containers
 WHEN NEW.default_view_id IS NOT NULL
@@ -3500,90 +3332,6 @@ WHEN NOT EXISTS (
 )
 BEGIN
   SELECT RAISE(ABORT, 'Database View position requires active Source membership');
-END;
-CREATE TRIGGER "visibility_dirty_database_views_insert"
-BEFORE INSERT ON "database_views"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_views', 'insert', NULL, json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'layout', NEW."layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_database_views_update"
-BEFORE UPDATE OF "id", "database_block_id", "data_source_id", "lifecycle" ON "database_views"
-WHEN (1) AND (OLD."id" IS NOT NEW."id" OR OLD."database_block_id" IS NOT NEW."database_block_id" OR OLD."data_source_id" IS NOT NEW."data_source_id" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_views', 'update', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'layout', OLD."layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'database_block_id', NEW."database_block_id", 'data_source_id', NEW."data_source_id", 'name', NEW."name", 'layout', NEW."layout", 'config_json', NEW."config_json", 'revision', NEW."revision", 'rank_key', NEW."rank_key", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_database_views_delete"
-BEFORE DELETE ON "database_views"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'database_views', 'delete', json_object('id', OLD."id", 'database_block_id', OLD."database_block_id", 'data_source_id', OLD."data_source_id", 'name', OLD."name", 'layout', OLD."layout", 'config_json', OLD."config_json", 'revision', OLD."revision", 'rank_key', OLD."rank_key", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_source_page_memberships_insert"
-BEFORE INSERT ON "data_source_page_memberships"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_source_page_memberships', 'insert', NULL, json_object('id', NEW."id", 'data_source_id', NEW."data_source_id", 'page_block_id', NEW."page_block_id", 'revision', NEW."revision", 'created_at', NEW."created_at", 'removed_at', NEW."removed_at", 'completed_at', NEW."completed_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_source_page_memberships_update"
-BEFORE UPDATE OF "id", "data_source_id", "page_block_id", "removed_at" ON "data_source_page_memberships"
-WHEN (1) AND (OLD."id" IS NOT NEW."id" OR OLD."data_source_id" IS NOT NEW."data_source_id" OR OLD."page_block_id" IS NOT NEW."page_block_id" OR OLD."removed_at" IS NOT NEW."removed_at")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_source_page_memberships', 'update', json_object('id', OLD."id", 'data_source_id', OLD."data_source_id", 'page_block_id', OLD."page_block_id", 'revision', OLD."revision", 'created_at', OLD."created_at", 'removed_at', OLD."removed_at", 'completed_at', OLD."completed_at"), json_object('id', NEW."id", 'data_source_id', NEW."data_source_id", 'page_block_id', NEW."page_block_id", 'revision', NEW."revision", 'created_at', NEW."created_at", 'removed_at', NEW."removed_at", 'completed_at', NEW."completed_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_data_source_page_memberships_delete"
-BEFORE DELETE ON "data_source_page_memberships"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'data_source_page_memberships', 'delete', json_object('id', OLD."id", 'data_source_id', OLD."data_source_id", 'page_block_id', OLD."page_block_id", 'revision', OLD."revision", 'created_at', OLD."created_at", 'removed_at', OLD."removed_at", 'completed_at', OLD."completed_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
 END;
 CREATE TRIGGER data_source_relation_edge_rank_validate_insert
         BEFORE INSERT ON data_source_relation_edges
@@ -4490,279 +4238,6 @@ CREATE TRIGGER document_versions_validate_insert
         ) BEGIN
           SELECT RAISE(ABORT, 'Document version source is not a current ready Document');
         END;
-CREATE TRIGGER "visibility_dirty_blocks_insert"
-BEFORE INSERT ON "blocks"
-WHEN NEW.type IN ('page', 'database', 'canvas')
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'blocks', 'insert', NULL, json_object('id', NEW."id", 'library_id', NEW."library_id", 'type', NEW."type", 'lifecycle', NEW."lifecycle", 'placement_revision', NEW."placement_revision", 'metadata_revision', NEW."metadata_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_blocks_update"
-BEFORE UPDATE OF "library_id", "type", "lifecycle" ON "blocks"
-WHEN (OLD.type IN ('page', 'database', 'canvas') OR NEW.type IN ('page', 'database', 'canvas')) AND (OLD."library_id" IS NOT NEW."library_id" OR OLD."type" IS NOT NEW."type" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'blocks', 'update', json_object('id', OLD."id", 'library_id', OLD."library_id", 'type', OLD."type", 'lifecycle', OLD."lifecycle", 'placement_revision', OLD."placement_revision", 'metadata_revision', OLD."metadata_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'library_id', NEW."library_id", 'type', NEW."type", 'lifecycle', NEW."lifecycle", 'placement_revision', NEW."placement_revision", 'metadata_revision', NEW."metadata_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_blocks_delete"
-BEFORE DELETE ON "blocks"
-WHEN OLD.type IN ('page', 'database', 'canvas')
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'blocks', 'delete', json_object('id', OLD."id", 'library_id', OLD."library_id", 'type', OLD."type", 'lifecycle', OLD."lifecycle", 'placement_revision', OLD."placement_revision", 'metadata_revision', OLD."metadata_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_documents_insert"
-BEFORE INSERT ON "documents"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'documents', 'insert', NULL, json_object('id', NEW."id", 'library_id', NEW."library_id", 'generation', NEW."generation", 'head_seq', NEW."head_seq", 'schema_key', NEW."schema_key", 'schema_version', NEW."schema_version", 'state_vector', CASE WHEN NEW."state_vector" IS NULL THEN NULL ELSE hex(NEW."state_vector") END, 'state_hash', NEW."state_hash", 'readiness', NEW."readiness", 'authority', NEW."authority", 'genesis_source_revision', NEW."genesis_source_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at", 'sync_engine', NEW."sync_engine")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_documents_update"
-BEFORE UPDATE OF "library_id", "readiness" ON "documents"
-WHEN (1) AND (OLD."library_id" IS NOT NEW."library_id" OR OLD."readiness" IS NOT NEW."readiness")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'documents', 'update', json_object('id', OLD."id", 'library_id', OLD."library_id", 'generation', OLD."generation", 'head_seq', OLD."head_seq", 'schema_key', OLD."schema_key", 'schema_version', OLD."schema_version", 'state_vector', CASE WHEN OLD."state_vector" IS NULL THEN NULL ELSE hex(OLD."state_vector") END, 'state_hash', OLD."state_hash", 'readiness', OLD."readiness", 'authority', OLD."authority", 'genesis_source_revision', OLD."genesis_source_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at", 'sync_engine', OLD."sync_engine"), json_object('id', NEW."id", 'library_id', NEW."library_id", 'generation', NEW."generation", 'head_seq', NEW."head_seq", 'schema_key', NEW."schema_key", 'schema_version', NEW."schema_version", 'state_vector', CASE WHEN NEW."state_vector" IS NULL THEN NULL ELSE hex(NEW."state_vector") END, 'state_hash', NEW."state_hash", 'readiness', NEW."readiness", 'authority', NEW."authority", 'genesis_source_revision', NEW."genesis_source_revision", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at", 'sync_engine', NEW."sync_engine")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_documents_delete"
-BEFORE DELETE ON "documents"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'documents', 'delete', json_object('id', OLD."id", 'library_id', OLD."library_id", 'generation', OLD."generation", 'head_seq', OLD."head_seq", 'schema_key', OLD."schema_key", 'schema_version', OLD."schema_version", 'state_vector', CASE WHEN OLD."state_vector" IS NULL THEN NULL ELSE hex(OLD."state_vector") END, 'state_hash', OLD."state_hash", 'readiness', OLD."readiness", 'authority', OLD."authority", 'genesis_source_revision', OLD."genesis_source_revision", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at", 'sync_engine', OLD."sync_engine"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_block_documents_insert"
-BEFORE INSERT ON "block_documents"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'block_documents', 'insert', NULL, json_object('block_id', NEW."block_id", 'document_id', NEW."document_id", 'library_id', NEW."library_id", 'created_at', NEW."created_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_block_documents_update"
-BEFORE UPDATE OF "block_id", "document_id", "library_id" ON "block_documents"
-WHEN (1) AND (OLD."block_id" IS NOT NEW."block_id" OR OLD."document_id" IS NOT NEW."document_id" OR OLD."library_id" IS NOT NEW."library_id")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'block_documents', 'update', json_object('block_id', OLD."block_id", 'document_id', OLD."document_id", 'library_id', OLD."library_id", 'created_at', OLD."created_at"), json_object('block_id', NEW."block_id", 'document_id', NEW."document_id", 'library_id', NEW."library_id", 'created_at', NEW."created_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_block_documents_delete"
-BEFORE DELETE ON "block_documents"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'block_documents', 'delete', json_object('block_id', OLD."block_id", 'document_id', OLD."document_id", 'library_id', OLD."library_id", 'created_at', OLD."created_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_pages_insert"
-BEFORE INSERT ON "pages"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'pages', 'insert', NULL, json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'document_id', NEW."document_id", 'parent_kind', NEW."parent_kind", 'parent_id', NEW."parent_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_pages_update"
-BEFORE UPDATE OF "block_id", "library_id", "document_id", "parent_kind", "parent_id" ON "pages"
-WHEN (1) AND (OLD."block_id" IS NOT NEW."block_id" OR OLD."library_id" IS NOT NEW."library_id" OR OLD."document_id" IS NOT NEW."document_id" OR OLD."parent_kind" IS NOT NEW."parent_kind" OR OLD."parent_id" IS NOT NEW."parent_id")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'pages', 'update', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'document_id', OLD."document_id", 'parent_kind', OLD."parent_kind", 'parent_id', OLD."parent_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('block_id', NEW."block_id", 'library_id', NEW."library_id", 'document_id', NEW."document_id", 'parent_kind', NEW."parent_kind", 'parent_id', NEW."parent_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_pages_delete"
-BEFORE DELETE ON "pages"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'pages', 'delete', json_object('block_id', OLD."block_id", 'library_id', OLD."library_id", 'document_id', OLD."document_id", 'parent_kind', OLD."parent_kind", 'parent_id', OLD."parent_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER project_resource_grants_validate_active_root_insert
-BEFORE INSERT ON project_resource_grants
-WHEN NEW.lifecycle = 'active' AND (
-  NOT EXISTS (
-    SELECT 1 FROM projects project
-    WHERE project.id = NEW.project_id AND project.library_id = NEW.library_id
-  ) OR (NEW.root_kind = 'file' AND NOT EXISTS (
-    SELECT 1 FROM library_files file
-    WHERE file.file_id = NEW.root_id AND file.library_id = NEW.library_id
-  )) OR (NEW.root_kind <> 'file' AND NOT EXISTS (
-    SELECT 1 FROM blocks block
-    WHERE block.id = NEW.root_id AND block.library_id = NEW.library_id
-      AND block.type = NEW.root_kind
-  )) OR (
-    NEW.root_kind = 'canvas' AND EXISTS (
-      SELECT 1 FROM blocks block
-      WHERE block.id = NEW.root_id AND block.lifecycle <> 'deleted'
-    ) AND (
-      NOT EXISTS (
-        SELECT 1 FROM library_block_placements placement
-        WHERE placement.block_id = NEW.root_id AND placement.library_id = NEW.library_id
-      ) OR EXISTS (
-        SELECT 1 FROM document_block_index containing
-        WHERE containing.block_id = NEW.root_id
-      )
-    )
-  )
-)
-BEGIN
-  SELECT RAISE(ABORT, 'Active Project resource grant requires a matching Library root');
-END;
-CREATE TRIGGER project_resource_grants_validate_active_root_update
-BEFORE UPDATE OF project_id, library_id, root_kind, root_id, lifecycle
-ON project_resource_grants
-WHEN NEW.lifecycle = 'active' AND (
-  NOT EXISTS (
-    SELECT 1 FROM projects project
-    WHERE project.id = NEW.project_id AND project.library_id = NEW.library_id
-  ) OR (NEW.root_kind = 'file' AND NOT EXISTS (
-    SELECT 1 FROM library_files file
-    WHERE file.file_id = NEW.root_id AND file.library_id = NEW.library_id
-  )) OR (NEW.root_kind <> 'file' AND NOT EXISTS (
-    SELECT 1 FROM blocks block
-    WHERE block.id = NEW.root_id AND block.library_id = NEW.library_id
-      AND block.type = NEW.root_kind
-  )) OR (
-    NEW.root_kind = 'canvas' AND EXISTS (
-      SELECT 1 FROM blocks block
-      WHERE block.id = NEW.root_id AND block.lifecycle <> 'deleted'
-    ) AND (
-      NOT EXISTS (
-        SELECT 1 FROM library_block_placements placement
-        WHERE placement.block_id = NEW.root_id AND placement.library_id = NEW.library_id
-      ) OR EXISTS (
-        SELECT 1 FROM document_block_index containing
-        WHERE containing.block_id = NEW.root_id
-      )
-    )
-  )
-)
-BEGIN
-  SELECT RAISE(ABORT, 'Active Project resource grant requires a matching Library root');
-END;
-CREATE TRIGGER "visibility_dirty_project_resource_grants_insert"
-BEFORE INSERT ON "project_resource_grants"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_resource_grants', 'insert', NULL, json_object('id', NEW."id", 'project_id', NEW."project_id", 'library_id', NEW."library_id", 'root_kind', NEW."root_kind", 'root_id', NEW."root_id", 'access', NEW."access", 'recursive', NEW."recursive", 'revision', NEW."revision", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_project_resource_grants_update"
-BEFORE UPDATE OF "project_id", "library_id", "root_kind", "root_id", "access", "recursive", "lifecycle" ON "project_resource_grants"
-WHEN (1) AND (OLD."project_id" IS NOT NEW."project_id" OR OLD."library_id" IS NOT NEW."library_id" OR OLD."root_kind" IS NOT NEW."root_kind" OR OLD."root_id" IS NOT NEW."root_id" OR OLD."access" IS NOT NEW."access" OR OLD."recursive" IS NOT NEW."recursive" OR OLD."lifecycle" IS NOT NEW."lifecycle")
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_resource_grants', 'update', json_object('id', OLD."id", 'project_id', OLD."project_id", 'library_id', OLD."library_id", 'root_kind', OLD."root_kind", 'root_id', OLD."root_id", 'access', OLD."access", 'recursive', OLD."recursive", 'revision', OLD."revision", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), json_object('id', NEW."id", 'project_id', NEW."project_id", 'library_id', NEW."library_id", 'root_kind', NEW."root_kind", 'root_id', NEW."root_id", 'access', NEW."access", 'recursive', NEW."recursive", 'revision', NEW."revision", 'lifecycle', NEW."lifecycle", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-CREATE TRIGGER "visibility_dirty_project_resource_grants_delete"
-BEFORE DELETE ON "project_resource_grants"
-WHEN 1
-BEGIN
-SELECT CASE WHEN NOT EXISTS (
-SELECT 1 FROM local_commit_visibility_context
-WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-INSERT INTO local_commit_visibility_dirty_facts(
-store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-)
-SELECT store_epoch, commit_seq, 'project_resource_grants', 'delete', json_object('id', OLD."id", 'project_id', OLD."project_id", 'library_id', OLD."library_id", 'root_kind', OLD."root_kind", 'root_id', OLD."root_id", 'access', OLD."access", 'recursive', OLD."recursive", 'revision', OLD."revision", 'lifecycle', OLD."lifecycle", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
 CREATE TRIGGER document_block_tombstones_validate_insert
 BEFORE INSERT ON document_block_tombstones BEGIN
   SELECT CASE WHEN NOT EXISTS (
@@ -5036,6 +4511,7 @@ CREATE TABLE inbox_entries (
   current_proposal_id TEXT CHECK (current_proposal_id IS NULL OR length(current_proposal_id) BETWEEN 1 AND 512),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   updated_at TEXT NOT NULL,
+  source_budget_key TEXT,
   UNIQUE (library_id, seq),
   CHECK (source_kind = 'agent' OR (source_session_id IS NULL AND source_thread_id IS NULL AND source_turn_id IS NULL)),
   CHECK (source_kind <> 'user' OR (source_project_id IS NULL AND source_label IS NULL)),
@@ -5043,8 +4519,8 @@ CREATE TABLE inbox_entries (
   CHECK (suggestion_state = 'failed' OR suggestion_error IS NULL)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_inbox_entries_suggestion ON inbox_entries(library_id, suggestion_state, seq);
-CREATE INDEX idx_inbox_entries_source_turn ON inbox_entries(source_thread_id, source_turn_id)
-  WHERE source_turn_id IS NOT NULL;
+CREATE INDEX idx_inbox_entries_source_budget ON inbox_entries(library_id, source_budget_key)
+  WHERE source_budget_key IS NOT NULL;
 CREATE TABLE inbox_proposals (
   proposal_id TEXT PRIMARY KEY,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -5083,7 +4559,7 @@ CREATE TABLE block_erasure_requests (
   CHECK (length(requested_at) > 0)
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 177;
+PRAGMA user_version = 181;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -5161,34 +4637,6 @@ CREATE TABLE document_recovery_block_roots (
     PRIMARY KEY (library_id, draft_id, block_id),
     FOREIGN KEY (library_id, draft_id) REFERENCES document_recovery_drafts(library_id, draft_id) ON DELETE CASCADE
 ) WITHOUT ROWID;
-
-CREATE TRIGGER visibility_dirty_library_files_insert
-BEFORE INSERT ON library_files
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM local_commit_visibility_context
-    WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-  ) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-  INSERT INTO local_commit_visibility_dirty_facts(
-    store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-  )
-  SELECT store_epoch, commit_seq, 'library_files', 'insert', NULL, json_object('file_id', NEW."file_id", 'library_id', NEW."library_id", 'default_name', NEW."default_name", 'head_version', NEW."head_version", 'revision', NEW."revision", 'lifecycle', NEW."lifecycle", 'created_by_actor_id', NEW."created_by_actor_id", 'created_by_turn_id', NEW."created_by_turn_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
-  FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
-
-CREATE TRIGGER visibility_dirty_library_files_delete
-BEFORE DELETE ON library_files
-BEGIN
-  SELECT CASE WHEN NOT EXISTS (
-    SELECT 1 FROM local_commit_visibility_context
-    WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
-  ) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
-  INSERT INTO local_commit_visibility_dirty_facts(
-    store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
-  )
-  SELECT store_epoch, commit_seq, 'library_files', 'delete', json_object('file_id', OLD."file_id", 'library_id', OLD."library_id", 'default_name', OLD."default_name", 'head_version', OLD."head_version", 'revision', OLD."revision", 'lifecycle', OLD."lifecycle", 'created_by_actor_id', OLD."created_by_actor_id", 'created_by_turn_id', OLD."created_by_turn_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
-  FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
-END;
 
 CREATE TABLE database_view_order_state (
   view_id TEXT PRIMARY KEY REFERENCES database_views(id) ON DELETE CASCADE,
@@ -5420,3 +4868,41 @@ END;
 CREATE UNIQUE INDEX thread_backend_sessions_native_identity
   ON thread_backend_sessions(backend_kind, native_home, backend_session_id)
   WHERE native_home IS NOT NULL;
+
+CREATE INDEX core_automation_runs_definition_status_created
+  ON core_automation_runs(automation_id, status, created_at DESC);
+
+CREATE INDEX core_automation_runs_unread ON core_automation_runs(read_at, status, updated_at);
+
+CREATE INDEX core_automation_runs_session_created
+  ON core_automation_runs(session_id, created_at DESC, run_id);
+
+CREATE TRIGGER core_automation_run_identity_guard
+BEFORE UPDATE ON core_automation_runs
+WHEN NEW.run_id <> OLD.run_id OR NEW.automation_id <> OLD.automation_id
+  OR NEW.admission_hash <> OLD.admission_hash
+  OR (OLD.session_id IS NOT NULL AND NEW.session_id IS NOT OLD.session_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Automation Run admission and Session binding are immutable');
+END;
+
+
+CREATE INDEX core_automation_leases_retry
+  ON core_automation_leases(automation_id, definition_revision, retry_at_ms, status, claimed_at_ms DESC, attempt DESC);
+CREATE INDEX core_automation_leases_expiry
+  ON core_automation_leases(automation_id, definition_revision, scheduled_for_ms, status, reason_code, claimed_at_ms DESC, attempt DESC);
+
+CREATE TABLE nodex_agent_runtime_execution_cleanups (
+  cleanup_id TEXT PRIMARY KEY,
+  library_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  project_id TEXT,
+  runtime_id TEXT NOT NULL,
+  runtime_thread_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  acknowledged_at TEXT,
+  UNIQUE (runtime_id, runtime_thread_id)
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX nodex_agent_runtime_execution_cleanups_runtime
+  ON nodex_agent_runtime_execution_cleanups(runtime_id, library_id, cleanup_id);

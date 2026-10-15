@@ -1,4 +1,4 @@
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { DataSourcePageRowV2 } from "../../shared/database-module-v2";
 import { databaseViewGesturePreferencesOverride } from "../../shared/database-view-presentation";
 import type { EffectiveDatabaseView } from "../../shared/database-kernel";
@@ -75,8 +75,8 @@ export function captureWorkbenchViewContent(
     !snapshot ||
     readers.get(owner)?.get(readerKey(input)) !== entry ||
     owner.resolveDatabaseView(input.sceneOwner, surface) !== snapshot.databaseViewId ||
-    contentAccessContextKey(snapshot.accessContext) !==
-      contentAccessContextKey(surface.config.accessContext)
+    contentRoutingContextKey(snapshot.routingContext) !==
+      contentRoutingContextKey(surface.config.routingContext)
   )
     return { status: "surface_unavailable" };
   if (
@@ -130,7 +130,7 @@ export function createWorkbenchViewSnapshot(input: {
   readonly model: Pick<
     DatabaseViewRenderModel,
     | "libraryId"
-    | "accessContext"
+    | "routingContext"
     | "databaseId"
     | "dataSourceId"
     | "databaseViewId"
@@ -166,7 +166,7 @@ export function createWorkbenchViewSnapshot(input: {
     capturedAt: new Date().toISOString(),
     layout: input.effective.layout,
     libraryId: model.libraryId,
-    accessContext: model.accessContext,
+    routingContext: model.routingContext,
     databaseId: model.databaseId,
     dataSourceId: model.dataSourceId,
     databaseViewId: model.databaseViewId,

@@ -1163,7 +1163,6 @@ describe("protocol-backed canonical conversation state", () => {
       ...sandboxParams,
       permissions: "fixture-profile",
       runtimeWorkspaceRoots: ["/workspace/project"],
-      useAppServerPermissionDefault: false,
     } satisfies CodexCanonicalTurnParams;
 
     const profileState = createCodexCanonicalConversationState(thread, {

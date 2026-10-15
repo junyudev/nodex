@@ -4,7 +4,7 @@ import type {
   DataSourcePropertyRecordV2,
   DatabaseModuleReadResultV2,
 } from "../../shared/database-module-v2";
-import type { DatabaseViewAccessContext } from "./database-view-render-model";
+import type { DatabaseViewRoutingContext } from "./database-view-render-model";
 import { readDatabaseModule, readLibraryDatabaseModule } from "./api";
 
 const assertOptionWindow = (
@@ -24,7 +24,7 @@ export interface PropertyOptionWindow {
 }
 
 export const readPropertyOptionWindow = async (
-  accessContext: DatabaseViewAccessContext,
+  routingContext: DatabaseViewRoutingContext,
   property: DataSourcePropertyRecordV2,
   after: string | null,
 ): Promise<PropertyOptionWindow> => {
@@ -41,12 +41,12 @@ export const readPropertyOptionWindow = async (
     window: { after, first: 100 },
   };
   const result =
-    accessContext.kind === "library"
+    routingContext.kind === "library"
       ? await readLibraryDatabaseModule({
           read,
         })
-      : await readDatabaseModule(accessContext.projectId, {
-          projectId: accessContext.projectId,
+      : await readDatabaseModule(routingContext.projectId, {
+          projectId: routingContext.projectId,
           read,
         });
   return assertOptionWindow(result);
@@ -68,7 +68,7 @@ export const propertyOptionWindowMatchesProjection = (
   expectedProjectionRevision === null || expectedProjectionRevision === actualProjectionRevision;
 
 export const readPropertyOptionRegistry = async (
-  accessContext: DatabaseViewAccessContext,
+  routingContext: DatabaseViewRoutingContext,
   property: DataSourcePropertyRecordV2,
 ): Promise<readonly DatabasePropertyOption[]> => {
   if (property.valueType !== "select" && property.valueType !== "multi_select") {
@@ -86,7 +86,7 @@ export const readPropertyOptionRegistry = async (
     const seenCursors = new Set<string>();
     let shouldRestart = false;
     do {
-      const page = await readPropertyOptionWindow(accessContext, property, after);
+      const page = await readPropertyOptionWindow(routingContext, property, after);
       totalPageCount += 1;
       if (!propertyOptionWindowMatchesProjection(projectionRevision, page.projectionRevision)) {
         restartCount += 1;

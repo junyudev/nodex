@@ -24,7 +24,6 @@ import {
   type DatabaseViewReadModel,
   type ReadDatabaseViewReferenceInput,
 } from "./database-views";
-import type { AuthorizedReadStamp } from "./authorized-read-stamp";
 import { stableStringifyDatabaseJson } from "./database-kernel";
 import { toDatabasePageSummary } from "./page-summary";
 import { WORKFLOW_STATUS_COLUMNS, isWorkflowStatus } from "./workflow-status";
@@ -639,7 +638,6 @@ export const projectDatabaseViewReference = (
     readonly libraryId: string;
     readonly storeEpoch: string;
     readonly commitSeq: number;
-    readonly authorization: AuthorizedReadStamp;
   },
 ): DatabaseViewReadModel => {
   const summaries = projectDatabasePageSummaries(query);
@@ -649,7 +647,7 @@ export const projectDatabaseViewReference = (
     view: {
       id: query.view.viewId,
       databaseBlockId: query.view.databaseId,
-      projectId: input.accessContext.kind === "project" ? input.accessContext.projectId : null,
+      projectId: input.routingContext.kind === "project" ? input.routingContext.projectId : null,
       name: query.view.name,
       layout: query.view.layout,
       config: JSON.parse(stableStringifyDatabaseJson(query.view.config)) as Readonly<

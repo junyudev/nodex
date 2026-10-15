@@ -16,7 +16,6 @@ import type { CodexTurnPresentationTicket } from "../../shared/nodex-app-tools/t
 import type {
   CodexCollaborationModeKind,
   CodexPromptInput,
-  CodexPermissionMode,
   CodexQueuedFollowUp,
   CodexQueuedFollowUpPause,
   CodexServiceTier,
@@ -33,7 +32,7 @@ import {
   type CodexQueuedMessage,
   type CodexQueuedMessageState,
 } from "../../shared/codex-queued-message";
-import type { CodexPermissionSelection } from "../../shared/codex-permission-selection";
+
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
@@ -88,12 +87,8 @@ export interface CodexQueuedFollowUpEnqueueInput {
   readonly pause?: CodexQueuedFollowUpPause | null;
   readonly promptInput?: CodexPromptInput;
   readonly summary?: CodexQueuedFollowUp["summary"];
-  readonly permissionMode?: CodexPermissionMode;
+
   readonly workspaceRoots?: readonly string[];
-  readonly permissionSelection?: CodexPermissionSelection;
-  readonly permissionProfileId?: string;
-  readonly usePermissionSelection?: boolean;
-  readonly shouldSendPermissionOverrides?: boolean;
 }
 
 export class CodexQueuedFollowUps extends Context.Service<
@@ -568,12 +563,6 @@ export const make = Effect.gen(function* () {
           collaborationMode,
           serviceTier: input.serviceTier,
           summary: input.summary,
-          agentMode: input.permissionMode,
-          permissionSelection: input.permissionSelection,
-          permissionProfileId: input.permissionProfileId,
-          usePermissionSelection: input.usePermissionSelection,
-          shouldSendPermissionOverrides:
-            input.shouldSendPermissionOverrides ?? input.permissionMode !== undefined,
         },
         ...(input.pause ? { pausedReason: input.pause.reason } : {}),
       };

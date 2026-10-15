@@ -230,24 +230,6 @@ export async function createConvergencePage(
   }
   expect(createdTarget.kind).toBe("page");
   expect(requireString(createdTarget.pageId, `${title} Page id`)).toBe(pageId);
-  await requireIpcValue<Record<string, unknown>>(
-    await invokeIpc(
-      page,
-      "library-module:apply",
-      { kind: "library" },
-      {
-        operationId: createUuidV7(),
-        storeEpoch: project.storeEpoch,
-        operation: {
-          kind: "grant_project_access",
-          projectId: project.projectId,
-          target: { kind: "page", pageId },
-          access: "read_write",
-        },
-      },
-    ),
-    `Grant ${title}`,
-  );
   return { pageId, documentId };
 }
 

@@ -217,9 +217,10 @@ describe("buildComposerShellModel", () => {
         role: "backgroundChild",
         pendingRequest: {
           request: {
-            type: "approval",
-            requestId: `approve-${threadId}`,
-            kind: "file",
+            type: "userInput",
+            requestId: `question-${threadId}`,
+            questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+            isBlocking: true,
             projectId: "project_1",
             threadId,
             turnId: "turn",
@@ -230,11 +231,11 @@ describe("buildComposerShellModel", () => {
             threadId,
             turnId: "turn",
             itemId: "change",
-            type: "fileChange",
-            kind: "fileChange",
+            type: "userInputResponse",
+            kind: "userInputResponse",
             createdAt: 10,
             updatedAt: 10,
-            rawItem: { changes: [] },
+            rawItem: { questions: [] },
           },
         },
       }) satisfies CodexConversationChildMembership;
@@ -343,7 +344,7 @@ describe("buildComposerShellModel", () => {
     ).toBeNull();
   });
 
-  test("merges queue rows, background terminals, active request, and first child approval", () => {
+  test("merges queue rows, background terminals, active request, and first child question", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot({
         turns: [
@@ -434,9 +435,10 @@ describe("buildComposerShellModel", () => {
           ],
           requests: [
             {
-              type: "approval",
-              requestId: "approval_background",
-              kind: "command",
+              type: "userInput",
+              requestId: "question_background",
+              questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+              isBlocking: true,
               projectId: "project_1",
               threadId: "thread_2",
               turnId: "turn_2",
@@ -450,7 +452,7 @@ describe("buildComposerShellModel", () => {
     });
 
     expect(model.activeRequest?.request.requestId).toBe("user_input_active");
-    expect(model.backgroundRequest?.request.requestId).toBe("approval_background");
+    expect(model.backgroundRequest?.request.requestId).toBe("question_background");
     expect(model.pendingSteerRows.length).toBe(0);
     expect(model.queuedFollowUpRows.length).toBe(1);
     expect(model.queuedFollowUpRows[0]?.displayText).toBe("Run validation next.");
@@ -515,7 +517,7 @@ describe("buildComposerShellModel", () => {
     });
   });
 
-  test("stacks child permission before a canonical active option request", () => {
+  test("stacks a child question before a canonical active option request", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot({
         turns: [
@@ -562,44 +564,28 @@ describe("buildComposerShellModel", () => {
           ],
           requests: [
             {
-              type: "permissionRequest",
-              requestId: "child-permission",
+              type: "userInput",
+              requestId: "child-question",
               projectId: "project_1",
               threadId: "thread_child",
               turnId: "turn_child",
-              itemId: "child-permission-item",
-              reason: "Allow child access",
-              cwd: "/tmp/project",
-              permissions: { network: null, fileSystem: null },
-              completed: false,
-              response: null,
+              itemId: "child-question-item",
+              questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+              isBlocking: true,
               createdAt: 1,
-            },
-          ],
-          canonicalRequests: [
-            {
-              id: "child-option",
-              method: "item/tool/requestOptionPicker",
-              params: {
-                threadId: "thread_child",
-                turnId: "turn_child",
-                question: "Private child question",
-                options: [{ label: "Wait" }],
-              },
             },
           ],
         }),
       },
     });
 
-    expect(model.backgroundRequest?.request.type).toBe("permissionRequest");
+    expect(model.backgroundRequest?.request.type).toBe("userInput");
     expect(model.activeRequest?.request.type).toBe("optionPicker");
     expect(model.showRequestCards).toBe(true);
     expect(model.showComposer).toBe(false);
-    expect(model.showApprovalMode).toBe(true);
   });
 
-  test("keeps child approval selection in membership order", () => {
+  test("keeps child question selection in membership order", () => {
     const model = buildComposerShellModel({
       conversation: buildConversationSnapshot(),
       childMemberships: [
@@ -630,9 +616,10 @@ describe("buildComposerShellModel", () => {
           ],
           requests: [
             {
-              type: "approval",
-              requestId: "approval_b",
-              kind: "command",
+              type: "userInput",
+              requestId: "question_b",
+              questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+              isBlocking: true,
               projectId: "project_1",
               threadId: "thread_b",
               turnId: "turn_b",
@@ -654,9 +641,10 @@ describe("buildComposerShellModel", () => {
           ],
           requests: [
             {
-              type: "approval",
-              requestId: "approval_a",
-              kind: "command",
+              type: "userInput",
+              requestId: "question_a",
+              questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+              isBlocking: true,
               projectId: "project_1",
               threadId: "thread_a",
               turnId: "turn_a",
@@ -668,7 +656,7 @@ describe("buildComposerShellModel", () => {
       },
     });
 
-    expect(model.backgroundRequest?.request.requestId).toBe("approval_b");
+    expect(model.backgroundRequest?.request.requestId).toBe("question_b");
   });
 
   test("builds reference-style background subagent row metadata", () => {
@@ -1126,4 +1114,67 @@ describe("buildComposerShellModel", () => {
 
     expect(model.backgroundAgentRows[0]?.status).toBe("done");
   });
+});
+
+test.each([
+  { type: "approval" as const, kind: "command" as const },
+  {
+    type: "permissionRequest" as const,
+    permissions: { network: { enabled: true }, fileSystem: null },
+    completed: false,
+    cwd: "/tmp/project",
+    reason: null,
+    response: null,
+  },
+])("native $type metadata preserves composing and cannot displace a Session question", (native) => {
+  const observed = {
+    ...native,
+    requestId: "native-execution-permission",
+    projectId: "project_1",
+    threadId: "thread_1",
+    turnId: "native-turn",
+    itemId: "native-item",
+    createdAt: 1,
+  };
+  const parent = buildConversationSnapshot({ requests: [observed] });
+  const clear = buildComposerShellModel({
+    conversation: parent,
+    primaryRequest: observed,
+    knownConversationsById: {},
+  });
+  expect(clear.activeRequest).toBeNull();
+  expect(clear.showRequestCards).toBe(false);
+  expect(clear.showComposer).toBe(true);
+
+  const question = {
+    type: "userInput" as const,
+    requestId: "session-question",
+    projectId: "project_1",
+    threadId: "thread_child",
+    turnId: null,
+    itemId: "question-item",
+    questions: [{ id: "q", header: "Choice", question: "Continue?", isOther: false }],
+    isBlocking: true,
+    createdAt: 2,
+  };
+  const withQuestion = buildComposerShellModel({
+    conversation: parent,
+    primaryRequest: observed,
+    childMemberships: [
+      {
+        threadId: "thread_child",
+        parentThreadId: "thread_1",
+        role: "childApproval",
+        actorName: "Worker",
+        pendingRequest: { request: { ...observed, threadId: "thread_child" }, requestItem: null },
+      },
+    ],
+    knownConversationsById: {
+      thread_child: buildConversationSnapshot({ threadId: "thread_child", requests: [question] }),
+    },
+  });
+  expect(withQuestion.activeRequest).toBeNull();
+  expect(withQuestion.backgroundRequest?.request).toBe(question);
+  expect(withQuestion.backgroundRequest?.conversationId).toBe("thread_child");
+  expect(withQuestion.showRequestCards).toBe(true);
 });

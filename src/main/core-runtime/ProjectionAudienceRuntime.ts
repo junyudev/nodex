@@ -20,7 +20,6 @@ import {
   type AddressResetReason,
   type AuthorizedRecipientLease,
   type DeliveryAddress,
-  type DeliveryAuthorizationScope,
   type RecipientAdmissionResult,
   type RecipientDeliveryEnvelope,
 } from "../../shared/recipient-delivery";
@@ -194,8 +193,7 @@ const runtimeError = (operation: string, cause: unknown): ProjectionAudienceRunt
 const digest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-const identityKey = (value: DeliveryAddress | DeliveryAuthorizationScope): string =>
-  JSON.stringify(value);
+const identityKey = (value: DeliveryAddress): string => JSON.stringify(value);
 
 const subscriptionKey = (senderId: number, address: DeliveryAddress): string =>
   `${senderId}:${deliveryAddressKey(address)}`;
@@ -220,7 +218,6 @@ const packetDeliveryId = (
     "recipient-packet-v2",
     lease.lease_id,
     lease.delivery_address,
-    lease.authorization_scope,
     packet.manifest.identity.store_epoch,
     packet.manifest.identity.manifest_hash,
     packet.packet_hash,
@@ -242,16 +239,14 @@ const validAddress = (address: DeliveryAddress): boolean => {
 };
 
 const validLease = (lease: AuthorizedRecipientLease): boolean =>
-  HASH_PATTERN.test(lease.lease_id) &&
-  identityKey(lease.delivery_address) === identityKey(lease.authorization_scope);
+  HASH_PATTERN.test(lease.lease_id) && validAddress(lease.delivery_address);
 
 const validPacketForLease = (
   lease: AuthorizedRecipientLease,
   packet: AuthorizedDeliveryPacket,
 ): boolean =>
-  packet.packet_version === 4 &&
-  identityKey(packet.delivery_address) === identityKey(lease.delivery_address) &&
-  identityKey(packet.authorization_scope) === identityKey(lease.authorization_scope);
+  packet.packet_version === 5 &&
+  identityKey(packet.delivery_address) === identityKey(lease.delivery_address);
 
 const isAdmission = (value: unknown): value is RecipientAdmissionResult => {
   if (typeof value !== "object" || value === null) return false;
@@ -577,7 +572,6 @@ export const make = (
             "address-reset-v1",
             lease.lease_id,
             lease.delivery_address,
-            lease.authorization_scope,
             floor.storeEpoch,
             floor.commitSeq,
             subscription.resetReason,
@@ -585,7 +579,6 @@ export const make = (
           store_epoch: floor.storeEpoch,
           recipient_lease_id: lease.lease_id,
           delivery_address: lease.delivery_address,
-          authorization_scope: lease.authorization_scope,
           required_commit_seq: floor.commitSeq,
           reason: subscription.resetReason,
         };
@@ -594,7 +587,6 @@ export const make = (
           deliveryId: reset.reset_id,
           recipientLeaseId: lease.lease_id,
           deliveryAddress: lease.delivery_address,
-          authorizationScope: lease.authorization_scope,
           payload: { kind: "reset", reset },
         };
         const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, true);
@@ -635,7 +627,6 @@ export const make = (
           deliveryId: packetDeliveryId(lease, packet),
           recipientLeaseId: lease.lease_id,
           deliveryAddress: lease.delivery_address,
-          authorizationScope: lease.authorization_scope,
           payload: { kind: "packet", packet },
         };
         const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, false);

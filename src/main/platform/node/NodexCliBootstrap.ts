@@ -4,21 +4,18 @@ import { access, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import type { SandboxPolicy } from "@nodex/codex-app-server-protocol/v2/SandboxPolicy";
 import type { AdditionalContextEntry } from "@nodex/codex-app-server-protocol/v2/AdditionalContextEntry";
 import type { CoreAuthorityIdentity } from "../../core-runtime/CoreAuthority";
 import type { MainConfigValue } from "../../app/MainConfig";
 import { resolveCoreExecutable } from "../../core-client/core-launcher";
 import { nodexCliBootstrapPrompt } from "./NodexCliBootstrapPrompt";
 import { bindNodexCliShell, shellQuote as quote, unbindNodexCliShell } from "./NodexCliShell";
+import type { NodexAgentTurnContext } from "../../../shared/nodex-agent-authority";
 
 export interface NodexCliTaskContext {
   readonly threadId: string;
   readonly hostId: string;
   readonly projectId: string | null;
-  readonly verifiedBuiltinFullAccess: boolean;
-  readonly planMode: boolean;
-  readonly sandboxPolicy: Pick<SandboxPolicy, "type"> | null | undefined;
 }
 
 class BootstrapUnavailable extends Data.TaggedError("NodexCliBootstrapUnavailable")<{
@@ -42,6 +39,30 @@ export const nodexCliPaths = (config: MainConfigValue) => ({
     : join(config.projectRootPath, ".generated/official-agent-skills/skills/nodex/SKILL.md"),
 });
 
+/** Provider-neutral context selects the exact Profile without relying on a native shell snapshot. */
+export const buildAgentRuntimeCliContext = (
+  config: MainConfigValue,
+  identity: CoreAuthorityIdentity,
+  authority: NodexAgentTurnContext,
+): Effect.Effect<string | null> => {
+  if (config.platform === "win32") return Effect.succeed(null);
+  const projectId = authority.actorProjectId;
+  return Effect.tryPromise({
+    try: async () => {
+      const paths = nodexCliPaths(config);
+      await Promise.all([
+        access(paths.executable, constants.X_OK),
+        access(paths.skill, constants.R_OK),
+      ]);
+      if (!(await stat(paths.executable)).isFile() || !(await stat(paths.skill)).isFile())
+        return null;
+      const command = `NODEX_HOME=${quote(config.nodexHome)} ${quote(paths.executable)} --expect-profile ${quote(identity.profileId)}${projectId ? ` --project ${quote(projectId)}` : ""}`;
+      return `For shell content work, use ${command} followed by the command, including after changing directories. Read the bundled Skill at ${quote(paths.skill)}. This CLI selects the current build, Profile.`;
+    },
+    catch: (cause) => new BootstrapUnavailable({ cause }),
+  }).pipe(Effect.catch(() => Effect.succeed(null)));
+};
+
 /** Recomputed for each Turn, including resumed tasks; context is never process-global authority. */
 export const buildNodexCliBootstrap = (
   config: MainConfigValue,
@@ -50,7 +71,7 @@ export const buildNodexCliBootstrap = (
 ): Effect.Effect<AdditionalContextEntry, BootstrapUnavailable> => {
   const unavailableContext = (reason: string): AdditionalContextEntry => ({
     kind: "application",
-    value: `Nodex CLI connection: unavailable (${reason}). Do not reuse a previous Turn's Nodex connection instructions or change permissions, Profile, or Project to bypass this limitation.`,
+    value: `Nodex CLI connection: unavailable (${reason}).`,
   });
   const unavailable = (reason: string) =>
     Effect.tryPromise({
@@ -61,12 +82,6 @@ export const buildNodexCliBootstrap = (
       catch: (cause) => new BootstrapUnavailable({ cause }),
     });
   if (task.hostId !== "local") return unavailable("remote execution host");
-  if (!task.projectId) return unavailable("no Project is bound to this task");
-  if (task.planMode) return unavailable("Plan Mode");
-  if (!task.verifiedBuiltinFullAccess)
-    return unavailable("requires the selected built-in Full access mode");
-  if (task.sandboxPolicy?.type !== "dangerFullAccess")
-    return unavailable("the runtime sandbox is not Full access");
   if (config.platform === "win32")
     return unavailable("this shell bootstrap is not supported on Windows");
   const projectId = task.projectId;
@@ -89,7 +104,7 @@ export const buildNodexCliBootstrap = (
         kind: "application" as const,
         value: nodexCliBootstrapPrompt
           .replace(/\{\{(project|skill)\}\}/g, (_, field: string) =>
-            field === "project" ? quote(projectId) : quote(paths.skill),
+            field === "project" ? (projectId ? quote(projectId) : "none") : quote(paths.skill),
           )
           .trim(),
       };

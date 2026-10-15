@@ -18,6 +18,146 @@ const setup = Effect.gen(function* () {
   return { scope, presentation, ticket };
 });
 
+it.effect(
+  "acknowledged queued edits replace only their unstarted message origin and retain exact edit retries",
+  () =>
+    Effect.gen(function* () {
+      const { scope, presentation, ticket } = yield* setup;
+      yield* presentation.admitRuntimeMessage(ticket, target, target.threadId, "queued-message");
+      const edit = yield* presentation.capture(11, {
+        target,
+        presentation: { ...testSubmitPresentation, presentationRevision: 9 },
+      });
+      const accepted = yield* presentation.replaceQueuedRuntimeMessage(
+        edit,
+        target.threadId,
+        "queued-message",
+        "edit-one",
+      );
+      const retried = yield* presentation.capture(11, {
+        target,
+        presentation: { ...testSubmitPresentation, presentationRevision: 10 },
+      });
+      assert.deepEqual(
+        yield* presentation.replaceQueuedRuntimeMessage(
+          retried,
+          target.threadId,
+          "queued-message",
+          "edit-one",
+        ),
+        accepted,
+      );
+      const source = {
+        runtimeId: "runtime",
+        runtimeGeneration: "lease",
+        providerSessionId: "native",
+        nativeGeneration: 1,
+      };
+      yield* presentation.observeRuntimeMessage(
+        target.threadId,
+        "run-queued",
+        "queued-message",
+        source,
+      );
+      assert.equal(presentation.read(target.threadId, "run-queued")?.presentationRevision, 9);
+      const late = yield* presentation.capture(11, {
+        target,
+        presentation: { ...testSubmitPresentation, presentationRevision: 11 },
+      });
+      assert.isNull(
+        yield* presentation.replaceQueuedRuntimeMessage(
+          late,
+          target.threadId,
+          "queued-message",
+          "edit-two",
+        ),
+      );
+      assert.equal(presentation.read(target.threadId, "run-queued")?.presentationRevision, 9);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "retains an exact Session message origin through engine retries and later foreground messages",
+  () =>
+    Effect.gen(function* () {
+      const { scope, presentation } = yield* setup;
+      const sessionTarget = {
+        kind: "session",
+        sessionId: "product-session",
+        launchId: "stable-launch",
+      } as const;
+      const ticket = yield* presentation.capture(11, {
+        target: sessionTarget,
+        presentation: testSubmitPresentation,
+      });
+      const first = yield* presentation.admitRuntimeMessage(
+        ticket,
+        sessionTarget,
+        "engine-root",
+        "message-a",
+      );
+      assert.deepEqual(
+        yield* presentation.admitRuntimeMessage(ticket, sessionTarget, "engine-root", "message-a"),
+        first,
+      );
+      assert.equal(
+        (yield* presentation
+          .admitRuntimeMessage(ticket, sessionTarget, "other-thread", "message-a")
+          .pipe(Effect.flip)).reason,
+        "submission_mismatch",
+      );
+      const source = {
+        runtimeId: "runtime",
+        runtimeGeneration: "lease",
+        providerSessionId: "native-a",
+        nativeGeneration: 1,
+      };
+      yield* presentation.observeRuntimeMessage("engine-root", "run-a", "message-a", source);
+      const nextTarget = { kind: "thread", threadId: "engine-root" } as const;
+      const nextTicket = yield* presentation.capture(11, {
+        target: nextTarget,
+        presentation: { ...testSubmitPresentation, presentationRevision: 9 },
+      });
+      yield* presentation.admitRuntimeMessage(nextTicket, nextTarget, "engine-root", "message-b");
+      yield* presentation.observeRuntimeMessage("engine-root", "run-b", "message-b", {
+        ...source,
+        providerSessionId: "native-b",
+      });
+      assert.equal(presentation.read("engine-root", "run-a")?.presentationRevision, 7);
+      assert.equal(presentation.read("engine-root", "run-b")?.presentationRevision, 9);
+      const recaptured = yield* presentation.capture(11, {
+        target: sessionTarget,
+        presentation: { ...testSubmitPresentation, presentationRevision: 10 },
+      });
+      assert.deepEqual(
+        yield* presentation.admitRuntimeMessage(
+          recaptured,
+          sessionTarget,
+          "engine-root",
+          "message-a",
+        ),
+        first,
+      );
+      assert.equal(presentation.read("engine-root", "run-a")?.presentationRevision, 7);
+      assert.isNull(presentation.read("engine-root", "unknown-run"));
+      assert.deepEqual(
+        yield* presentation.admitRuntimeMessage(ticket, sessionTarget, "engine-root", "message-a"),
+        first,
+      );
+      presentation.finishRuntimeSource({ ...source, nativeGeneration: 2 });
+      assert.equal(presentation.read("engine-root", "run-a")?.presentationRevision, 7);
+      presentation.finishRuntimeSource(source);
+      assert.isNull(presentation.read("engine-root", "run-a"));
+      assert.equal(presentation.read("engine-root", "run-b")?.presentationRevision, 9);
+      presentation.finishRuntimeLease("runtime", "old-lease");
+      assert.equal(presentation.read("engine-root", "run-b")?.presentationRevision, 9);
+      presentation.finishRuntimeLease("runtime", "lease");
+      assert.isNull(presentation.read("engine-root", "run-b"));
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
 it.effect("stamps the submitting window and binds exact client identity before the response", () =>
   Effect.gen(function* () {
     const { scope, presentation, ticket } = yield* setup;
@@ -173,7 +313,7 @@ it.effect(
           kind: "page_stage" as const,
           titleSnapshot: "Original page",
           config: {
-            accessContext: { kind: "project" as const, projectId: "project-a" },
+            routingContext: { kind: "project" as const, projectId: "project-a" },
             pageId: "page-a",
           },
         },

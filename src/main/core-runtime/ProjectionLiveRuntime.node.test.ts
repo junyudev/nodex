@@ -43,7 +43,6 @@ const barrierFor = (
         .padStart(64, "a")
         .slice(-64),
       delivery_address: address,
-      authorization_scope: address,
     };
   }),
 });

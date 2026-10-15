@@ -2,7 +2,6 @@ import { describe, expect, test } from "vite-plus/test";
 import { conversationFixture, turnFixture } from "./conversation-test-fixture";
 import { produce } from "immer";
 import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
-import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type {
   CodexCanonicalConversationState,
   CodexConversationSnapshot,
@@ -92,8 +91,8 @@ describe("CodexConversationRelationshipsProjection", () => {
     expect(extractCodexConversationRelationshipThreadIds(state)).toEqual(["child-b", "child-a"]);
   });
 
-  test("projects canonical order, approval role, friendly metadata, and archive filtering", () => {
-    const childWithApproval = conversation("child-b", {
+  test("projects canonical order, pending question role, friendly metadata, and archive filtering", () => {
+    const childWithQuestion = conversation("child-b", {
       source: { parentThreadId: "parent" },
       threadName: "Scout",
       agentNickname: "@Scout",
@@ -110,13 +109,14 @@ describe("CodexConversationRelationshipsProjection", () => {
       ],
       requests: [
         {
-          type: "approval",
+          type: "userInput",
           requestId: "approval-1",
-          kind: "command",
           projectId: "project-1",
           threadId: "child-b",
           turnId: "turn-1",
           itemId: "item-1",
+          isBlocking: true,
+          questions: [],
           createdAt: 4,
         },
       ],
@@ -132,7 +132,7 @@ describe("CodexConversationRelationshipsProjection", () => {
         },
         {
           thread: durableChild("child-b", { createdAt: 2 }),
-          conversation: childWithApproval,
+          conversation: childWithQuestion,
           canonicalState: null,
         },
         {
@@ -159,7 +159,7 @@ describe("CodexConversationRelationshipsProjection", () => {
     });
   });
 
-  test("reads inline membership and approvals from resident islands while durable archive state wins", () => {
+  test("reads inline membership and questions from resident islands while durable archive state wins", () => {
     const parent = produce(
       conversationFixture("parent", [
         {
@@ -194,13 +194,14 @@ describe("CodexConversationRelationshipsProjection", () => {
       threadName: "Old title",
       requests: [
         {
-          type: "approval",
-          kind: "command",
+          type: "userInput",
           requestId: "old",
           projectId: "project-1",
           threadId: "child",
           turnId: "child-turn",
           itemId: "command",
+          isBlocking: true,
+          questions: [],
           createdAt: 1,
         },
       ],
@@ -223,14 +224,14 @@ describe("CodexConversationRelationshipsProjection", () => {
         requests: [
           {
             id: 9,
-            method: "item/commandExecution/requestApproval",
+            method: "item/tool/requestUserInput",
             params: {
               threadId: "child",
               turnId: "child-turn",
               itemId: "command",
-              kind: "command",
-              environmentId: null,
-              startedAtMs: 3,
+              isBlocking: true,
+              autoResolutionMs: null,
+              questions: [],
             },
           },
         ],
@@ -290,45 +291,22 @@ describe("CodexConversationRelationshipsProjection", () => {
     ]);
   });
 
-  test.each(
-    ["legacy", "resident", "overlay"].flatMap((storage) =>
-      [false, true].map((hasChanges) => ({ storage, hasChanges })),
-    ),
-  )(
-    "uses the file approval visibility contract for $storage changes=$hasChanges",
-    ({ storage, hasChanges }) => {
-      const changes: Extract<ThreadItem, { type: "fileChange" }>["changes"] = hasChanges
-        ? [
-            {
-              path: "/repo/file.txt",
-              kind: { type: "update", move_path: null },
-              diff: "@@ -1 +1 @@\n-before\n+after\n",
-            },
-          ]
-        : [];
+  test.each(["legacy", "resident", "overlay"])(
+    "keeps a child question visible from %s metadata without projecting item bodies",
+    (storage) => {
       const initial: CodexCanonicalConversationState = {
-        ...conversationFixture("child", [
-          {
-            ...turnFixture("child-turn", "inProgress"),
-            items: [
-              {
-                type: "fileChange",
-                id: "file",
-                status: "inProgress",
-                changes,
-              },
-            ],
-          },
-        ]),
+        ...conversationFixture("child", [turnFixture("child-turn", "inProgress")]),
         requests: [
           {
-            id: "file-approval",
-            method: "item/fileChange/requestApproval",
+            id: "child-question",
+            method: "item/tool/requestUserInput",
             params: {
               threadId: "child",
               turnId: "child-turn",
-              itemId: "file",
-              startedAtMs: 5,
+              itemId: "question",
+              isBlocking: true,
+              autoResolutionMs: null,
+              questions: [],
             },
           },
         ],
@@ -346,16 +324,9 @@ describe("CodexConversationRelationshipsProjection", () => {
         canonicalChildThreadIds: ["child"],
         children: [{ thread: durableChild("child"), canonicalState, conversation: null }],
       });
-      expect(projected[0]?.role).toBe(hasChanges ? "childApproval" : "backgroundChild");
-      if (!hasChanges) {
-        expect(projected[0]?.pendingRequest).toBeNull();
-        return;
-      }
-      expect(projected[0]?.pendingRequest?.request.requestId).toBe("file-approval");
-      expect(projected[0]?.pendingRequest?.requestItem?.itemId).toBe("file");
-      expect(
-        Object.keys(projected[0]?.pendingRequest?.requestItem?.fileChange?.changes ?? {}),
-      ).toEqual(["/repo/file.txt"]);
+      expect(projected[0]?.role).toBe("childApproval");
+      expect(projected[0]?.pendingRequest?.request.requestId).toBe("child-question");
+      expect(projected[0]?.pendingRequest?.requestItem).toBeNull();
     },
   );
 });

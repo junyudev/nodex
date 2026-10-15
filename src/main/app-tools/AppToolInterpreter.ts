@@ -23,16 +23,14 @@ import { make as makeDependencyTools } from "./WorkspaceDependencyAppTools";
 import { make as makePluginTools } from "./PluginAppTools";
 import { make as makeWorkspaceTools } from "./WorkspaceAppTools";
 import { make as makeSessionTools } from "./SessionAppTools";
-import { make as makeSessionLaunchTools } from "./SessionLaunchAppTools";
-import { make as makeSessionForkTools } from "./SessionForkAppTools";
-import { make as makeSessionMessageTools } from "./SessionMessageAppTools";
 import { make as makeInboxTools } from "./InboxAppTools";
+import { make as makeSessionCommands } from "./RuntimeSessionCommands";
 import { make as makeAutomationTools } from "./AutomationAppTools";
 import { make as makeWorkbenchTools } from "./WorkbenchAppTools";
 import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";
 import { workbenchControlSchemas } from "../../shared/nodex-app-tools/workbench-control-schemas";
 import { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
-import { isNativeAppTool, nativeAppToolCatalog } from "./NativeAppToolSession";
+import { isNativeAppTool, nativeAppToolCatalog } from "./HostedAppToolCatalog";
 import { captureAppToolAuthority } from "./AppToolCaller";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { isNativeAgentBackendKind } from "../../shared/agent-backend";
@@ -49,10 +47,8 @@ export const make = Effect.gen(function* () {
   const pluginTools = yield* makePluginTools;
   const workspaceTools = yield* makeWorkspaceTools;
   const sessionTools = yield* makeSessionTools;
-  const sessionLaunchTools = yield* makeSessionLaunchTools;
-  const sessionMessageTools = yield* makeSessionMessageTools;
   const inboxTools = yield* makeInboxTools;
-  const sessionForkTools = yield* makeSessionForkTools;
+  const sessionCommands = yield* makeSessionCommands;
   const sessionHandoffTools = yield* makeSessionHandoffTools;
   const handoffStatusTools = yield* makeHandoffStatusTools;
   const automationTools = yield* makeAutomationTools;
@@ -112,25 +108,28 @@ export const make = Effect.gen(function* () {
     if (input.name === "automation_update") return yield* automationTools(input);
     if (input.name === "handoff_session") return yield* sessionHandoffTools(input);
     if (input.name === "get_handoff_status") return yield* handoffStatusTools(input);
-    if (input.name === "create_session") return yield* sessionLaunchTools(input);
-    if (input.name === "fork_session") return yield* sessionForkTools(input);
-    if (input.name === "send_message_to_session") return yield* sessionMessageTools(input);
     if (input.name === "send_to_inbox") return yield* inboxTools(input);
+    if (
+      input.name === "create_session" ||
+      input.name === "fork_session" ||
+      input.name === "send_message_to_session"
+    )
+      return yield* sessionCommands(input);
     if (input.name === "get_app_capabilities")
       return success({
         backend: input.caller.backend ?? "codex",
         transport: "native_mcp",
         hostId: input.caller.hostId,
         tools: (native ? nativeAppToolCatalog : appToolCatalog).map((tool) => tool.name),
-        sessionContext: native ? "authorized_session_history" : "authorized_workbench_observation",
-        contentAccess: "project_sql",
+        sessionContext: native ? "session_history" : "workbench_observation",
+        contentAccess: "profile_sql",
         workbenchControl: native ? "unavailable" : "revision_fenced_commands",
         publicSharing: "unavailable",
         pullRequestAttachment: "unavailable",
         ...(native
           ? {
-              applicationToolLifetime: "foreground_without_background_tasks",
-              backgroundApplicationTools: "unavailable",
+              applicationToolLifetime: "native_connection",
+              backgroundApplicationTools: "available",
             }
           : {}),
         cloudTasks: "unavailable",

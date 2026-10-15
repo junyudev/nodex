@@ -16,7 +16,7 @@ import {
 } from "./library-file-commands";
 
 const authority = {
-  contentAccessContext: { kind: "project", projectId: "project-1" },
+  contentRoutingContext: { kind: "project", projectId: "project-1" },
   storeEpoch: "epoch-1",
 } as const;
 
@@ -96,7 +96,7 @@ describe("Library File commands", () => {
 
     await removePageEntry(authority, "page-1", 12, "file-1");
 
-    expect(api.applyLibraryModule).toHaveBeenCalledWith(authority.contentAccessContext, {
+    expect(api.applyLibraryModule).toHaveBeenCalledWith(authority.contentRoutingContext, {
       operationId: expect.any(String),
       storeEpoch: "epoch-1",
       operation: {

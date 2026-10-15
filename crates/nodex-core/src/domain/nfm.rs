@@ -65,7 +65,6 @@ pub enum NfmInlineContent {
         model: Option<String>,
         reasoning: Option<String>,
         speed: Option<String>,
-        permission: Option<String>,
         raw_attributes: Option<String>,
     },
     ThreadMention {
@@ -613,7 +612,6 @@ fn append_agent_config(item: &Map<String, Value>, output: &mut Vec<NfmInlineCont
         model: props.and_then(|props| map_non_empty_string(props, "model")),
         reasoning: props.and_then(|props| map_non_empty_string(props, "reasoning")),
         speed: props.and_then(|props| map_non_empty_string(props, "speed")),
-        permission: props.and_then(|props| map_non_empty_string(props, "permission")),
         raw_attributes: props.and_then(|props| map_non_empty_string(props, "rawAttributes")),
     });
 }
@@ -1325,7 +1323,6 @@ fn serialize_inline_item(item: &NfmInlineContent) -> String {
             model,
             reasoning,
             speed,
-            permission,
             raw_attributes,
         } => {
             let attrs = [
@@ -1334,7 +1331,6 @@ fn serialize_inline_item(item: &NfmInlineContent) -> String {
                 ("model", model),
                 ("reasoning", reasoning),
                 ("speed", speed),
-                ("permission", permission),
             ]
             .into_iter()
             .filter_map(|(name, value)| {
@@ -2167,10 +2163,6 @@ impl<'a> InlineParser<'a> {
                     .cloned(),
                 speed: attrs
                     .get("speed")
-                    .filter(|value| !value.is_empty())
-                    .cloned(),
-                permission: attrs
-                    .get("permission")
                     .filter(|value| !value.is_empty())
                     .cloned(),
                 raw_attributes: (!raw.trim().is_empty()).then(|| raw.trim_start().to_owned()),

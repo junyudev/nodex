@@ -1,0 +1,61 @@
+{
+  "name": "@nodex/agent-runtime",
+  "version": "0.3.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "./src/nodex/entry.ts",
+    "./src/testUtils/*.setup.ts"
+  ],
+  "exports": {
+    "./contracts": "./src/nodex/contracts.ts",
+    "./orchestration/*": "./src/orchestration-v2/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc-rs --noEmit",
+    "test": "vp test run --config vite.config.ts",
+    "start": "node --import tsx src/nodex/entry.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.276",
+    "@effect/platform-node": "4.0.3",
+    "@effect/vitest": "4.0.3",
+    "@ff-labs/fff-node": "0.11.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@nodex/codex-app-server-protocol": "workspace:*",
+    "@opencode-ai/sdk": "1.15.13",
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/provider-acp": "workspace:*",
+    "@t3tools/provider-acp-registry": "workspace:*",
+    "@t3tools/provider-core": "workspace:*",
+    "@t3tools/provider-opencode": "workspace:*",
+    "@t3tools/provider-testing": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "@t3tools/source-control-azure-devops": "workspace:*",
+    "@t3tools/source-control-bitbucket": "workspace:*",
+    "@t3tools/source-control-core": "workspace:*",
+    "@t3tools/source-control-forgejo": "workspace:*",
+    "@t3tools/source-control-gitcafe": "workspace:*",
+    "@t3tools/source-control-github": "workspace:*",
+    "@t3tools/source-control-gitlab": "workspace:*",
+    "@t3tools/source-control-testing": "workspace:*",
+    "@types/node": "24.13.3",
+    "effect": "4.0.3",
+    "effect-acp": "workspace:*",
+    "effect-codex-app-server": "workspace:*",
+    "jose": "6.2.2",
+    "proper-lockfile": "4.1.2",
+    "stream-chain": "4.2.5",
+    "stream-json": "3.6.0",
+    "vite-plus": "1.1.0",
+    "yaml": "2.9.0",
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "@types/proper-lockfile": "4.1.4",
+    "@types/yauzl": "3.4.0",
+    "tsc-rs": "0.5.0",
+    "tsx": "4.23.0"
+  }
+}

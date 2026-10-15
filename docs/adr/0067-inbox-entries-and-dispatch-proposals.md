@@ -9,7 +9,7 @@ Users often have a thought, a todo, or a question while agents are working. They
 should not have to choose a Project or a chat before writing it down. Capture
 must be durable even when no model is available. Advice about where a message
 belongs must never become execution on its own, and agents need a safe way to
-leave follow-ups for the user without reaching into anything else.
+leave follow-ups for the user without selecting another chat.
 
 ## Decision
 
@@ -33,13 +33,21 @@ Kind and triage state describe inbox handling, not Page content, so they are not
 Data Source Properties. Placing the records in Workspace lets one confirmation
 create a Session in the same transaction that records the dispatch.
 
-Authority is split by role:
+Inbox workflow ownership is split by role:
 
 - **Desktop Host:** reads and triages the Inbox, records suggestions, confirms
   dispatches, and delivers confirmed work.
-- **Agent Turns and the command line:** may only append. Core derives the source
-  label and Project from the frozen Turn authority or the bound connection, never
-  from the caller. Agent Turns are capped at a few messages each.
+- **Agents and the command line:** use append-only Inbox interfaces. Core derives
+  the source label and Project from the verified execution source or bound
+  connection, never from caller-supplied labels. A proven Run has a five-message
+  budget. A native source without causal Run evidence retains its Session, leaves
+  Run null, and has an independent five-message budget for that native connection.
+  Receipt replay does not consume the budget again.
+
+The backing messages remain ordinary Pages with full Profile content access.
+Project placement, parent-child lineage, background execution and planning mode
+do not restrict their content operations. Inbox confirmation is a dispatch workflow,
+not a resource permission request.
 
 A suggestion is advice. The suggestion Agent receives only message text and a
 bounded routing context, and it has no tools. Main validates every target

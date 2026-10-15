@@ -74,11 +74,10 @@ const automationDefinition = (
   id,
   definitionRevision: 1,
   projectId: null,
-  targetSessionId: null,
+  targetSessionId: kind === "heartbeat" ? "session-follow-up" : null,
   notificationPolicy: null,
   kind,
   status: "ACTIVE",
-  targetThreadId: kind === "heartbeat" ? "thread-follow-up" : null,
   name: id,
   prompt: "Run.",
   rrule: "FREQ=MINUTELY;INTERVAL=5",
@@ -97,6 +96,8 @@ const automationDefinition = (
 
 const automationClaim = (id: string) => ({
   leaseId: `lease:${id}`,
+  dispatchId: `dispatch:${id}`,
+  definitionRevision: 1,
   scheduledFor: 100,
   attempt: 1,
   expiresAt: 200,
@@ -133,8 +134,8 @@ const defaultAutomation = (input?: {
       settleInterrupted: Effect.succeed({ archivedPendingCount: 0, pendingReviewCount: 0 }),
       get: () => Effect.die("unused"),
       begin: () => Effect.die("unused"),
-      replacePendingThread: () => Effect.die("unused"),
-      setThreadTitle: () => Effect.die("unused"),
+      bindSession: () => Effect.die("unused"),
+      setSessionTitle: () => Effect.die("unused"),
       completeForReview: () => Effect.die("unused"),
       setInboxItem: () => Effect.die("unused"),
       accept: () => Effect.die("unused"),
@@ -191,6 +192,7 @@ const defaultAdministration = (): StoreAdministration["Service"] =>
         label: null,
         includesAssets: true,
         dbBytes: 100,
+        executionBytes: 0,
         assetsBytes: 20,
         totalBytes: 120,
       }),
@@ -675,23 +677,12 @@ it.effect("projects heartbeat state with a TestClock-owned freshness deadline", 
     assert.isFalse(contexts[0]?.heartbeat?.automationsEnabled ?? true);
 
     yield* harness.scheduled.setHeartbeatThreadRendererState({
-      threadId: "thread-follow-up",
+      sessionId: "session-follow-up",
       rendererClientId: "renderer-owner",
       streamRole: "owner",
       isEligible: true,
       reason: null,
       collaborationMode: "plan",
-      permissions: {
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/repo/project"],
-          networkAccess: false,
-          excludeTmpdirEnvVar: false,
-          excludeSlashTmp: false,
-        },
-      },
     });
     yield* harness.scheduled.setHeartbeatAutomationsEnabled(true);
     yield* waitUntil("enabled heartbeat context", () => contexts.length >= 2);
@@ -699,7 +690,6 @@ it.effect("projects heartbeat state with a TestClock-owned freshness deadline", 
     assert.isTrue(enabled?.automationsEnabled ?? false);
     assert.isTrue(enabled?.rendererState?.isEligible ?? false);
     assert.strictEqual(enabled?.collaborationMode, "plan");
-    assert.strictEqual(enabled?.permissions?.approvalPolicy, "on-request");
 
     const beforeExpiryTick = contexts.length;
     yield* TestClock.adjust("121 seconds");

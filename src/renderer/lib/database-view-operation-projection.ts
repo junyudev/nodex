@@ -6,7 +6,7 @@ import type {
   DataSourcePageRowV2,
 } from "../../shared/database-module-v2";
 import { databaseViewPrimaryManualOrderDirection } from "../../shared/database-view-presentation";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import {
   buildDatabaseViewColumns,
   type DatabaseViewRenderModel,
@@ -229,8 +229,8 @@ export const compileDatabaseViewOperationProjection = (
       if (
         canonical.storeEpoch !== model.storeEpoch ||
         canonical.libraryId !== model.libraryId ||
-        contentAccessContextKey(canonical.accessContext) !==
-          contentAccessContextKey(model.accessContext) ||
+        contentRoutingContextKey(canonical.routingContext) !==
+          contentRoutingContextKey(model.routingContext) ||
         canonical.databaseId !== model.databaseId ||
         canonical.databaseViewId !== model.databaseViewId ||
         canonical.dataSourceId !== model.dataSourceId ||

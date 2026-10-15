@@ -8,11 +8,11 @@ export interface DocumentSyncClientTarget {
   removeListener(event: "destroyed", listener: () => void): unknown;
 }
 
-export const documentSyncUnauthorized = <Value>(): DocumentSyncCommandResult<Value> => ({
+export const documentSyncInvalidSession = <Value>(): DocumentSyncCommandResult<Value> => ({
   ok: false,
   error: {
-    code: "unauthorized",
-    message: "Document sync is restricted to the subscribed application window",
+    code: "invalid_session",
+    message: "Document sync requires an active subscription for this client session",
     retryable: false,
     resetRequired: false,
   },

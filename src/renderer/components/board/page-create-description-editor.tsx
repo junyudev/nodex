@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { libraryContentAccess } from "../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../shared/content-routing-context";
 import type { PageCreateDescriptionDraft } from "@/lib/page-create-draft";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
 import { NfmEditor, type NfmEditorBoundaryHandle } from "./editor/nfm-editor";
@@ -17,7 +17,7 @@ export function PageCreateDescriptionEditor({
 }: PageCreateDescriptionEditorProps) {
   return (
     <NfmEditor
-      contentAccessContext={libraryContentAccess}
+      contentRoutingContext={libraryContentRoute}
       isActivePanelTab={false}
       placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
       className="min-h-[inherit] [&_.bn-block-content]:!px-0"

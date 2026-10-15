@@ -131,6 +131,19 @@ describe("isInboxItemHandled", () => {
 });
 
 describe("describeInboxOutcome", () => {
+  it("keeps a newly dispatched Session navigable before its Thread exists", () => {
+    expect(
+      describeInboxOutcome(
+        item({
+          proposal: proposal({
+            state: "dispatching",
+            chat: { ...chat, threadId: null },
+          }),
+        }),
+      ).open,
+    ).toEqual({ kind: "session", sessionId: "session:1" });
+  });
+
   it("names where a handled message went and how to get back to it", () => {
     expect(
       describeInboxOutcome(item({ proposal: proposal({ state: "completed", chat }) })),
@@ -138,7 +151,7 @@ describe("describeInboxOutcome", () => {
       icon: "chat",
       label: "Started “Homepage positioning”",
       status: { label: "New reply", tone: "attention" },
-      open: { kind: "thread", threadId: "thread:1" },
+      open: { kind: "session", sessionId: "session:1" },
       canReturn: false,
     });
     expect(
@@ -209,7 +222,16 @@ describe("describeInboxAction", () => {
         ...busy,
         status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
       }),
-    ).toEqual({ label: "Needs approval", tone: "attention" });
+    ).toEqual({ label: "Waiting", tone: "working" });
+    expect(
+      describeInboxChatStatus({
+        ...busy,
+        status: {
+          statusType: "active",
+          activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
+        },
+      }),
+    ).toEqual({ label: "Needs input", tone: "attention" });
   });
 });
 

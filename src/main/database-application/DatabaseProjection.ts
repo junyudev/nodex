@@ -147,9 +147,6 @@ export const projectDatabaseViewWindow = <ProjectScope extends string | null>(in
   if (input.snapshot.value.kind !== "view_window") {
     throw new Error("Database Core returned a non-window View snapshot");
   }
-  if (!input.snapshot.authorization) {
-    throw new Error("Database View read omitted canonical authorization");
-  }
   const value = input.snapshot.value.value;
   const view = requireDescriptor(input.view, "view");
   const database = requireDescriptor(input.database, "database");
@@ -170,7 +167,6 @@ export const projectDatabaseViewWindow = <ProjectScope extends string | null>(in
     viewId: value.view_id,
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
-    authorization: input.snapshot.authorization,
     projection: projectionCoordinate(value.projection),
     nextCursor: value.rows.next_cursor ?? null,
     rows,
@@ -201,9 +197,6 @@ export const projectDatabaseListWindow = <ProjectScope extends string | null>(in
   if (input.snapshot.value.kind !== "list_window") {
     throw new Error("Database Core returned a non-List View snapshot");
   }
-  if (!input.snapshot.authorization) {
-    throw new Error("Database List read omitted canonical authorization");
-  }
   const value = input.snapshot.value.value;
   const dataSource = requireDescriptor(input.dataSource, "data_source");
   const dataSourceId = parseDataSourceId(value.data_source_id);
@@ -216,7 +209,6 @@ export const projectDatabaseListWindow = <ProjectScope extends string | null>(in
     viewId: value.view_id,
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
-    authorization: input.snapshot.authorization,
     projection: projectionCoordinate(value.projection),
     nextCursor: value.rows.next_cursor ?? null,
     rows: value.rows.items.map((row) => {
@@ -278,9 +270,6 @@ export const projectDatabaseViewGroups = <ProjectScope extends string | null>(in
   if (input.snapshot.value.kind !== "view_groups") {
     throw new Error("Database Core returned a non-groups View snapshot");
   }
-  if (!input.snapshot.authorization) {
-    throw new Error("Database View groups read omitted canonical authorization");
-  }
   const value = input.snapshot.value.value;
   return {
     projectId: input.projectId,
@@ -290,7 +279,6 @@ export const projectDatabaseViewGroups = <ProjectScope extends string | null>(in
     viewId: value.view_id,
     storeEpoch: input.snapshot.store_epoch,
     commitSeq: input.snapshot.commit_head,
-    authorization: input.snapshot.authorization,
     projection: projectionCoordinate(value.projection),
     grouped: value.grouped,
     subgrouped: value.subgrouped,
@@ -314,7 +302,6 @@ export const projectDatabaseViewReferenceModel = (
     libraryId: window.libraryId,
     storeEpoch: window.storeEpoch,
     commitSeq: window.commitSeq,
-    authorization: window.authorization,
   });
 
 export const viewDescriptorReads = (snapshot: DatabaseReadSnapshot) => {

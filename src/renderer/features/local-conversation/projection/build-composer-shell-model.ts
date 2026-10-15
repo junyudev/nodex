@@ -25,6 +25,7 @@ import {
   selectPrimaryBackgroundConversationRequest,
   selectPrimaryConversationRequest,
 } from "../conversation-request-helpers";
+import { isInteractiveConversationRequest } from "../../../../shared/codex-conversation-request";
 import { buildBackgroundSubagentRows } from "./background-subagent-row-model";
 
 interface ExplicitBuildComposerShellModelInput {
@@ -105,10 +106,11 @@ function resolveBackgroundRequest(
     const childConversation = knownConversationsById[row.conversationId];
     const pending = membershipsById.get(row.conversationId)?.pendingRequest;
     const request =
-      pending !== undefined
+      pending !== undefined &&
+      (pending === null || isInteractiveConversationRequest(pending.request))
         ? (pending?.request ?? null)
         : selectPrimaryBackgroundConversationRequest(childConversation ?? null);
-    if (!request) {
+    if (!isInteractiveConversationRequest(request)) {
       continue;
     }
 
@@ -121,7 +123,7 @@ function resolveBackgroundRequest(
           ? row.displayName
           : "Agent",
       requestItem:
-        pending !== undefined
+        pending?.request === request
           ? (pending?.requestItem ?? null)
           : resolveRequestItem(childConversation?.turns ?? [], request),
     };
@@ -154,12 +156,13 @@ export function buildComposerShellModel(
       backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
-      showApprovalMode: false,
     };
   }
 
   const activeRequest =
-    normalized.primaryRequest !== undefined
+    normalized.primaryRequest !== undefined &&
+    (normalized.primaryRequest === null ||
+      isInteractiveConversationRequest(normalized.primaryRequest))
       ? normalized.primaryRequest
       : selectPrimaryConversationRequest({
           threadId: normalized.threadId,
@@ -182,13 +185,9 @@ export function buildComposerShellModel(
   );
 
   const showRequestCards = activeRequest !== null || backgroundRequest !== null;
-  const showApprovalMode =
-    activeRequest?.type === "approval" ||
-    activeRequest?.type === "permissionRequest" ||
-    backgroundRequest !== null;
 
   return {
-    activeRequest: activeRequest
+    activeRequest: isInteractiveConversationRequest(activeRequest)
       ? {
           request: activeRequest,
           conversationId: normalized.threadId,
@@ -202,6 +201,8 @@ export function buildComposerShellModel(
     queuedFollowUpStatus: queuedFollowUpProjection.status,
     queuedFollowUpLedgerRevision: queuedFollowUpProjection.ledgerRevision,
     queuedFollowUpError: queuedFollowUpProjection.error,
+    queuedFollowUpHasNextPage: queuedFollowUpProjection.hasNextPage,
+    queuedFollowUpHasPreviousPage: queuedFollowUpProjection.hasPreviousPage,
     hasInterruptedQueuedFollowUps: queuedFollowUpProjection.entries.some(
       (entry) => entry.pause?.kind === "interrupted",
     ),
@@ -209,6 +210,5 @@ export function buildComposerShellModel(
     backgroundTerminalRows: normalized.backgroundTerminalRows,
     showRequestCards,
     showComposer: !showRequestCards,
-    showApprovalMode,
   };
 }

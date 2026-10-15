@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 26;
+pub const DATABASE_CONTRACT_VERSION: u32 = 27;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -808,7 +808,7 @@ pub struct DatabaseContainerRecord {
     pub name: String,
     pub lifecycle: String,
     pub default_view_id: Option<String>,
-    pub access_revision: i64,
+
     pub metadata_revision: i64,
     pub created_at: String,
     pub updated_at: String,
@@ -1040,7 +1040,7 @@ pub enum DatabaseRelationTargetItem {
         lifecycle: String,
         membership_state: String,
     },
-    Restricted {
+    Unavailable {
         edge_id: String,
     },
 }
@@ -1057,7 +1057,7 @@ pub struct DatabaseRelationValuePreview {
     pub value_revision: i64,
     pub total_count: i64,
     pub targets: Vec<DatabaseRelationTargetItem>,
-    pub restricted_count: i64,
+    pub unavailable_count: i64,
     pub has_more: bool,
 }
 
@@ -1707,7 +1707,7 @@ pub struct DatabaseEvent {
     pub data_source_ids: Vec<String>,
     pub page_ids: Vec<String>,
     pub view_ids: Vec<String>,
-    /// Profile-owned deltas are routed through View authorization but do not
+    /// Profile-owned deltas are routed through View identity but do not
     /// invalidate shared Database/View projections.
     #[serde(default)]
     pub personal_view_changes: Vec<DatabasePersonalViewChange>,

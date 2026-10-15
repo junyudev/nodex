@@ -1,797 +1,396 @@
-import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
-import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
-import { resolveCodexPermissionState } from "../codex/codex-permission-resolver";
-import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
-import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { assert, it } from "@effect/vitest";
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import * as Scope from "effect/Scope";
-import { describe, expect, test } from "vite-plus/test";
-import type { CodexScheduledAutomation, CodexTranscriptEntry } from "../../shared/types";
-import { testLayer as mainConfigLayer } from "../app/MainConfig";
-import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
-import { CodexGitProbe } from "../codex-application/CodexGitProbe";
-import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
-import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
-import { CodexPermissions } from "../codex-application/CodexPermissions";
-import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
-import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
-import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
-import { transparentThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime.test-support";
-import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
-import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
-import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
-import { ComposerCatalog } from "../codex-application/ComposerCatalog";
-import { CodexConversations } from "../codex-application/CodexConversations";
-import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
-import { ManagedWorktreeRetentionRuntime } from "../codex-application/ManagedWorktreeRetentionRuntime";
-import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
-import {
-  CodexAppServerCapabilities,
-  type CodexAppServerCapabilitySnapshot,
-} from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexGateway } from "../codex-runtime/CodexGateway";
-import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
-import { CodexScheduledAutomationRetryError } from "../host-runtime/ScheduledAutomationPolicy";
+import * as Stream from "effect/Stream";
+import type { AgentRuntimeLaunch, AgentRuntimeMessage } from "../../shared/agent-runtime-api";
+import type { CodexScheduledAutomation, CodexAutomationRun } from "../../shared/types";
+import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AutomationApplication } from "./AutomationApplication";
-import {
-  AutomationExecution,
-  live,
-  resolveAutomationArchiveMessagesFromTranscript,
-} from "./AutomationExecution";
+import { AutomationExecution, live } from "./AutomationExecution";
 
-const entry = (
-  itemId: string,
-  kind: "userMessage" | "assistantMessage",
-  input: Partial<CodexTranscriptEntry>,
-): CodexTranscriptEntry =>
-  ({
-    threadId: "thread-automation",
-    turnId: "turn-automation",
-    itemId,
-    type: kind,
-    kind,
-    source: "live",
-    createdAt: 1,
-    ...input,
-  }) as CodexTranscriptEntry;
-
-const capability = {
-  hostId: "local",
-  generation: 1,
-  userAgent: "codex-app-server/0.145.0-alpha.15",
-  version: "0.145.0-alpha.15",
-  nativeAppTools: true,
-  flags: {
-    turnApprovalsReviewer: false,
-
-    turnToolOutput: false,
-    forkLastTurnId: true,
-    paginatedFork: false,
-    paginatedHistory: true,
-    searchOccurrences: true,
-    ephemeralFork: false,
-    multiAgentV2Protocol: false,
-    threadTimeline: false,
-    threadItemAnchors: false,
-    experimentalPredictionForkMode: false,
-    mcpApplicationNetworkPolicy: false,
-    sideConversation: false,
-    subagentAncestorFilter: false,
-    threadRevert: false,
-    threadQueue: false,
-  },
-} satisfies CodexAppServerCapabilitySnapshot;
-
-const capabilities = CodexAppServerCapabilities.of({
-  forHost: () => Effect.succeed(capability),
-  forThread: () => Effect.succeed(capability),
-  isCurrent: () => Effect.succeed(true),
-});
-
-const buildExecutionContext = (
-  scope: Scope.Scope,
-  input: {
-    readonly automation?: AutomationApplication["Service"];
-    readonly capabilities?: CodexAppServerCapabilities["Service"];
-    readonly composer?: ComposerCatalog["Service"];
-    readonly conversations?: CodexConversations["Service"];
-    readonly desktopTools?: DesktopToolRuntime["Service"];
-    readonly directory?: CodexThreadDirectory["Service"];
-    readonly gateway?: CodexGateway["Service"];
-    readonly git?: CodexGitProbe["Service"];
-    readonly permissions?: CodexPermissions["Service"];
-    readonly turns?: CodexTurnCommands["Service"];
-    readonly titles?: CodexThreadTitlePersistence["Service"];
-    readonly historyPages?: CodexHistoryPageAdapter["Service"];
-    readonly managers?: CodexMainConversationManagers["Service"];
-    readonly workspace?: ProjectWorkspace["Service"];
-  } = {},
-) =>
-  Layer.buildWithScope(
-    live({ runtimeStateHome: "/tmp/nodex-test" }).pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          Layer.succeed(
-            AutomationApplication,
-            input.automation ?? ({} as AutomationApplication["Service"]),
-          ),
-          Layer.succeed(CodexApplicationEventHub, {
-            publish: () => undefined,
-          } as unknown as CodexApplicationEventHub["Service"]),
-          Layer.succeed(CodexAppServerCapabilities, input.capabilities ?? capabilities),
-          Layer.succeed(
-            CodexGateway,
-            input.gateway ?? ({ localHostId: "local" } as CodexGateway["Service"]),
-          ),
-          Layer.succeed(CodexGitProbe, input.git ?? ({} as CodexGitProbe["Service"])),
-          Layer.succeed(
-            CodexHeartbeatTurnCompletion,
-            {} as CodexHeartbeatTurnCompletion["Service"],
-          ),
-          Layer.succeed(
-            CodexHistoryPageAdapter,
-            input.historyPages ?? ({} as CodexHistoryPageAdapter["Service"]),
-          ),
-          Layer.succeed(CodexPermissions, input.permissions ?? ({} as CodexPermissions["Service"])),
-          Layer.succeed(
-            CodexMainConversationManagers,
-            input.managers ??
-              ({ role: () => null } as unknown as CodexMainConversationManagers["Service"]),
-          ),
-          Layer.succeed(
-            CodexThreadDirectory,
-            input.directory ?? ({} as CodexThreadDirectory["Service"]),
-          ),
-          Layer.succeed(ThreadCreationRuntime, transparentThreadCreationRuntime),
-          Layer.succeed(
-            CodexThreadTitlePersistence,
-            input.titles ?? ({} as CodexThreadTitlePersistence["Service"]),
-          ),
-          Layer.succeed(CodexTurnAuthority, {} as CodexTurnAuthority["Service"]),
-          Layer.succeed(CodexTurnCommands, input.turns ?? ({} as CodexTurnCommands["Service"])),
-          Layer.succeed(ComposerCatalog, input.composer ?? ({} as ComposerCatalog["Service"])),
-          Layer.succeed(
-            CodexConversations,
-            input.conversations ?? ({} as CodexConversations["Service"]),
-          ),
-          Layer.succeed(
-            DesktopToolRuntime,
-            input.desktopTools ?? ({} as DesktopToolRuntime["Service"]),
-          ),
-          Layer.succeed(ExecutionHostRuntime, {} as ExecutionHostRuntime["Service"]),
-          mainConfigLayer(),
-          Layer.succeed(CoreAuthority, {
-            identity: {
-              profileId: "profile:test",
-              libraryId: "library:test",
-              storeEpoch: "epoch:test",
-            },
-          } as CoreAuthority["Service"]),
-          Layer.succeed(
-            ManagedWorktreeRetentionRuntime,
-            {} as ManagedWorktreeRetentionRuntime["Service"],
-          ),
-          Layer.succeed(ManagedWorktreeRuntime, {} as ManagedWorktreeRuntime["Service"]),
-          Layer.succeed(ProjectWorkspace, {
-            getProjectSession: () =>
-              Effect.succeed({ archived: false, thread: { threadId: "thread-heartbeat" } }),
-            getThread: (threadId: string) =>
-              Effect.succeed({
-                threadId,
-                backendBinding: { kind: "codex" },
-              } as never),
-            ...input.workspace,
-          } as unknown as ProjectWorkspace["Service"]),
-        ),
-      ),
-    ),
-    scope,
-  );
-
-describe("Automation archive projection", () => {
-  test("captures the latest semantic exchange and removes app-only directives", () => {
-    const messages = resolveAutomationArchiveMessagesFromTranscript([
-      entry("user-old", "userMessage", { markdownText: "old request" }),
-      entry("assistant-old", "assistantMessage", { markdownText: "old response" }),
-      entry("user-latest", "userMessage", {
-        markdownText: "fallback text",
-        rawItem: {
-          content: [
-            { type: "text", text: "latest request" },
-            { type: "skill", name: "research", path: "/skills/research" },
-          ],
-        },
-      }),
-      entry("assistant-latest", "assistantMessage", {
-        markdownText: "latest response\n::automation-result{status=complete}",
-      }),
-    ]);
-
-    expect(messages).toEqual({
-      archivedUserMessage: "latest request\nskill: research (/skills/research)",
-      archivedAssistantMessage: "latest response",
-    });
-  });
-});
-
-it.effect(
-  "run-now revalidates its definition after runtime readiness and rejects a changed target",
-  () =>
-    Effect.gen(function* () {
-      let gatewayReady = 0;
-      const scope = yield* Scope.make();
-      const definition = {
-        id: "automation-run-now",
-        definitionRevision: 1,
-        projectId: null,
-        targetSessionId: null,
-        notificationPolicy: null,
-        kind: "cron",
-        status: "ACTIVE",
-        targetThreadId: null,
-        name: "Run now",
-        prompt: "Run.",
-        rrule: "FREQ=DAILY",
-        model: null,
-        reasoningEffort: null,
-        serviceTier: null,
-        backendBinding: { kind: "codex" },
-        cwds: [],
-        executionEnvironment: "local",
-        localEnvironmentConfigPath: null,
-        nextRunAt: null,
-        lastRunAt: null,
-        createdAt: 1,
-        updatedAt: 1,
-      } as const;
-      const context = yield* buildExecutionContext(scope, {
-        automation: {
-          definitions: {
-            get: () => Effect.succeed(definition),
-            getForExecution: () =>
-              Effect.sync(() => {
-                assert.strictEqual(gatewayReady, 1);
-                return { ...definition, definitionRevision: 2 };
-              }),
-          },
-        } as unknown as AutomationApplication["Service"],
-        gateway: {
-          localHostId: "local",
-          awaitReady: () =>
-            Effect.sync(() => {
-              gatewayReady += 1;
-            }),
-        } as unknown as CodexGateway["Service"],
-      });
-
-      const exit = yield* Effect.exit(
-        Context.get(context, AutomationExecution).runNow({ id: definition.id }),
-      );
-      assert.isTrue(Exit.isFailure(exit));
-      assert.match(String(exit), /Automation changed before execution/);
-      assert.strictEqual(gatewayReady, 1);
-      yield* Scope.close(scope, Exit.void);
-    }),
-);
-
-const heartbeatDefinition = {
-  id: "automation-heartbeat",
+const definition: CodexScheduledAutomation = {
+  id: "report",
   definitionRevision: 1,
-  projectId: null,
-  targetSessionId: "session-heartbeat",
-  notificationPolicy: null,
-  kind: "heartbeat",
+  kind: "cron",
   status: "ACTIVE",
-  targetThreadId: "obsolete-backend",
-  name: "Heartbeat",
-  prompt: "Continue.",
-  rrule: "FREQ=MINUTELY",
-  model: null,
+  projectId: "project",
+  targetSessionId: null,
+  notificationPolicy: null,
+  name: "Report",
+  prompt: "Build a report",
+  rrule: "FREQ=DAILY",
+  model: "model",
   reasoningEffort: null,
   serviceTier: null,
   backendBinding: { kind: "codex" },
-  cwds: [],
+  cwds: ["/workspace"],
   executionEnvironment: "local",
   localEnvironmentConfigPath: null,
-  nextRunAt: null,
+  nextRunAt: 1,
   lastRunAt: null,
   createdAt: 1,
   updatedAt: 1,
-} as const satisfies CodexScheduledAutomation;
-
-it.effect("starts cron runs with the native catalog and no dynamic registration", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const definition: CodexScheduledAutomation = {
-      ...heartbeatDefinition,
-      id: "automation-cron",
-      kind: "cron",
-      projectId: "project-a",
-      targetSessionId: null,
-      targetThreadId: null,
-      cwds: ["/workspace"],
-    };
-    const starts: ClientRequestParamsByMethod["thread/start"][] = [];
-    const accepted: string[] = [];
-    const context = yield* buildExecutionContext(scope, {
-      automation: {
-        definitions: { getForExecution: () => Effect.succeed(definition) },
-        runs: {
-          begin: () => Effect.succeed(false),
-          replacePendingThread: () => Effect.succeed(true),
-          setThreadTitle: () => Effect.void,
-        },
-      } as unknown as AutomationApplication["Service"],
-      composer: { listModels: Effect.succeed([]) } as unknown as ComposerCatalog["Service"],
-      desktopTools: {
-        threadConfig: () =>
-          Effect.succeed({ "mcp_servers.node_repl": { command: "/runtime/node" } }),
-      } as unknown as DesktopToolRuntime["Service"],
-      git: { readPath: () => Effect.succeed(null) } as unknown as CodexGitProbe["Service"],
-      permissions: {
-        resolveAutomation: () =>
-          Effect.succeed(
-            resolveCodexPermissionState({
-              config: { sandbox_mode: "workspace-write", approval_policy: "on-request" } as never,
-              origins: {},
-              requirements: null,
-              defaultUserConfigPath: "/runtime/config.toml",
-              workspaceRoots: ["/workspace"],
-            }),
-          ),
-      } as unknown as CodexPermissions["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () => Effect.void,
-        requestLocal: (_method: string, params: ClientRequestParamsByMethod["thread/start"]) =>
-          Effect.sync(() => {
-            assert.strictEqual(_method, "thread/start");
-            starts.push(params);
-            return { thread: { id: "thread-cron", cwd: "/workspace" }, cwd: "/workspace" };
-          }),
-      } as unknown as CodexGateway["Service"],
-      directory: {
-        acceptStandaloneStart: () => Effect.succeed({ durable: { threadId: "thread-cron" } }),
-      } as unknown as CodexThreadDirectory["Service"],
-      titles: { set: () => Effect.void } as unknown as CodexThreadTitlePersistence["Service"],
-      turns: {
-        startAutomation: (threadId: string) => Effect.sync(() => accepted.push(threadId)),
-      } as unknown as CodexTurnCommands["Service"],
-    });
-
-    yield* Context.get(context, AutomationExecution).executeClaimed(definition, {
-      now: 1_000_000,
-      reason: "scheduled",
-    });
-
-    assert.strictEqual(starts.length, 1);
-    assert.deepEqual(starts[0]?.dynamicTools, []);
-    assert.deepEqual(
-      starts[0]?.config?.["mcp_servers.nodex_app.enabled_tools"],
-      appToolCatalog.map((tool) => tool.name),
-    );
-    assert.deepEqual(accepted, ["thread-cron"]);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-const heartbeatContext = {
-  now: 1_000_000,
-  reason: "scheduled",
-  leaseId: "lease-heartbeat",
-  heartbeat: {
-    automationsEnabled: true,
-    rendererState: {
-      rendererClientId: "renderer-owner",
-      isEligible: true,
-      reason: null,
-      updatedAtMs: 1_000_000,
-    },
-    collaborationMode: {
-      mode: "default",
-      settings: {
-        model: "",
-        reasoning_effort: null,
-        developer_instructions: null,
-      },
-    },
-    permissions: { approvalPolicy: "never" },
-  },
-} as const;
-
-it.effect("rejects unsupported Automation backends during preparation and execution", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    let modelReads = 0;
-    let gatewayReady = 0;
-    const context = yield* buildExecutionContext(scope, {
-      composer: {
-        listModels: Effect.sync(() => {
-          modelReads += 1;
-          return [];
-        }),
-      } as unknown as ComposerCatalog["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () =>
-          Effect.sync(() => {
-            gatewayReady += 1;
-          }),
-      } as unknown as CodexGateway["Service"],
-    });
-    const execution = Context.get(context, AutomationExecution);
-    const backendBinding = {
-      kind: "acp",
-      agentDefinitionId: "claude-agent-acp",
-      instanceConfigId: "claude:default",
-    } as const;
-
-    const preparationError = yield* Effect.flip(
-      execution.prepareDefinition({
-        kind: "cron",
-        name: "Unsupported",
-        prompt: "Do not run.",
-        backendBinding,
-      }),
-    );
-    assert.strictEqual(preparationError.operation, "prepare-definition");
-    assert.match(
-      String(preparationError.cause),
-      /cannot execute automations|Native automation runtime is unavailable/,
-    );
-    assert.strictEqual(modelReads, 0);
-
-    const executionError = yield* Effect.flip(
-      execution.executeClaimed({ ...heartbeatDefinition, backendBinding }, heartbeatContext),
-    );
-    assert.strictEqual(executionError.operation, "execute");
-    assert.match(
-      String(executionError.cause),
-      /cannot execute automations|Native automation runtime is unavailable/,
-    );
-    assert.strictEqual(gatewayReady, 0);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("rejects an ACP-owned heartbeat target before any Codex runtime access", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    let gatewayReady = 0;
-    let directoryReads = 0;
-    let modelReads = 0;
-    const context = yield* buildExecutionContext(scope, {
-      composer: {
-        listModels: Effect.sync(() => {
-          modelReads += 1;
-          return [];
-        }),
-      } as unknown as ComposerCatalog["Service"],
-      directory: {
-        resolve: () =>
-          Effect.sync(() => {
-            directoryReads += 1;
-            return heartbeatDirectoryEntry;
-          }),
-      } as unknown as CodexThreadDirectory["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () =>
-          Effect.sync(() => {
-            gatewayReady += 1;
-          }),
-      } as unknown as CodexGateway["Service"],
-      workspace: {
-        getThread: (threadId: string) =>
-          Effect.succeed({
-            threadId,
-            backendBinding: {
-              kind: "acp",
-              agentDefinitionId: "claude-agent-acp",
-              instanceConfigId: "claude:default",
-            },
-          } as never),
-      } as unknown as ProjectWorkspace["Service"],
-    });
-    const execution = Context.get(context, AutomationExecution);
-
-    const preparationError = yield* Effect.flip(
-      execution.prepareDefinition({
-        kind: "heartbeat",
-        targetThreadId: heartbeatDefinition.targetThreadId,
-        name: "Foreign target",
-        prompt: "Do not run.",
-      }),
-    );
-    assert.strictEqual(preparationError.operation, "prepare-definition");
-    assert.match(String(preparationError.cause), /not owned by the Codex Agent Backend/);
-
-    const executionError = yield* Effect.flip(
-      execution.executeClaimed(heartbeatDefinition, heartbeatContext),
-    );
-    assert.strictEqual(executionError.operation, "execute");
-    assert.match(String(executionError.cause), /not owned by the Codex Agent Backend/);
-    assert.strictEqual(modelReads, 0);
-    assert.strictEqual(gatewayReady, 0);
-    assert.strictEqual(directoryReads, 0);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-const heartbeatDirectoryEntry = {
-  durable: {
-    threadId: "thread-heartbeat",
-    executionHostId: "local",
-    projectId: null,
-    cwd: "/tmp/heartbeat",
-    statusType: "notLoaded",
-    statusActiveFlags: [],
-    updatedAt: 1,
-    executionProfile: null,
-  },
-} as never;
-
-it.effect("rejects heartbeat eligibility when its renderer is no longer the peer owner", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    let streamRole: ConversationStreamRole | null = null;
-    const queriedRoles: Array<readonly [string, string]> = [];
-    const methods: string[] = [];
-    const context = yield* buildExecutionContext(scope, {
-      directory: {
-        resolve: () => Effect.succeed(heartbeatDirectoryEntry),
-        observeMetadata: () => Effect.succeed(heartbeatDirectoryEntry),
-      } as unknown as CodexThreadDirectory["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () => Effect.void,
-        requestOnHost: (_hostId: string, method: string) =>
-          Effect.sync(() => {
-            methods.push(method);
-            return { thread: { id: "thread-heartbeat", path: "/tmp/rollout.jsonl" } };
-          }),
-      } as unknown as CodexGateway["Service"],
-      managers: {
-        role: (hostId: string, threadId: string) => {
-          queriedRoles.push([hostId, threadId]);
-          return streamRole;
-        },
-      } as unknown as CodexMainConversationManagers["Service"],
-    });
-    const roles: Array<ConversationStreamRole | null> = [
-      null,
-      { role: "owner" },
-      { role: "follower", ownerClientId: "replacement-renderer" },
-    ];
-    for (const role of roles) {
-      streamRole = role;
-      const failure = yield* Effect.flip(
-        Context.get(context, AutomationExecution).executeClaimed(
-          heartbeatDefinition,
-          heartbeatContext,
-        ),
-      );
-      assert.instanceOf(failure.cause, CodexScheduledAutomationRetryError);
-      if (!(failure.cause instanceof CodexScheduledAutomationRetryError)) continue;
-      assert.strictEqual(failure.cause.reasonCode, "renderer_owner_lease_stale");
-    }
-    assert.deepEqual(methods, ["thread/read", "thread/read", "thread/read"]);
-    assert.deepEqual(
-      queriedRoles,
-      roles.map(() => ["local", "thread-heartbeat"]),
-    );
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("does not observe heartbeat metadata returned by a replaced host generation", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    let current = true;
-    let observed = 0;
-    const methods: string[] = [];
-    const scheduling: unknown[] = [];
-    const requests: unknown[] = [];
-    const context = yield* buildExecutionContext(scope, {
-      capabilities: CodexAppServerCapabilities.of({
-        forHost: () => Effect.succeed(capability),
-        forThread: () => Effect.succeed(capability),
-        isCurrent: () => Effect.sync(() => current),
-      }),
-      directory: {
-        resolve: () => Effect.succeed(heartbeatDirectoryEntry),
-        observeMetadata: () =>
-          Effect.sync(() => {
-            observed += 1;
-            return heartbeatDirectoryEntry;
-          }),
-      } as unknown as CodexThreadDirectory["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () => Effect.void,
-        requestOnHost: (_hostId: string, method: string, _params: unknown, options?: unknown) =>
-          Effect.sync(() => {
-            requests.push(_params);
-            methods.push(method);
-            scheduling.push(options);
-            current = false;
-            return { thread: { id: "thread-heartbeat", path: "/tmp/rollout.jsonl" } };
-          }) as never,
-      } as unknown as CodexGateway["Service"],
-    });
-
-    const exit = yield* Effect.exit(
-      Context.get(context, AutomationExecution).executeClaimed(
-        heartbeatDefinition,
-        heartbeatContext,
-      ),
-    );
-
-    assert.isTrue(Exit.isFailure(exit));
-    assert.deepStrictEqual(methods, ["thread/read"]);
-    assert.deepStrictEqual(requests, [{ threadId: "thread-heartbeat", includeTurns: false }]);
-    assert.deepStrictEqual(scheduling, [{ expectedHostId: "local", expectedGeneration: 1 }]);
-    assert.strictEqual(observed, 0);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("does not accept heartbeat resume metadata from a replaced host generation", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    let current = true;
-    let acceptedResumes = 0;
-    const methods: string[] = [];
-    const scheduling: unknown[] = [];
-    const context = yield* buildExecutionContext(scope, {
-      capabilities: CodexAppServerCapabilities.of({
-        forHost: () => Effect.succeed(capability),
-        forThread: () => Effect.succeed(capability),
-        isCurrent: () => Effect.sync(() => current),
-      }),
-      desktopTools: {
-        threadConfig: () => Effect.succeed(null),
-      } as unknown as DesktopToolRuntime["Service"],
-      directory: {
-        resolve: () => Effect.succeed(heartbeatDirectoryEntry),
-        observeMetadata: () => Effect.succeed(heartbeatDirectoryEntry),
-        acceptResumeResult: () =>
-          Effect.sync(() => {
-            acceptedResumes += 1;
-            return heartbeatDirectoryEntry;
-          }),
-      } as unknown as CodexThreadDirectory["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () => Effect.void,
-        requestOnHost: (_hostId: string, method: string, _params: unknown, options?: unknown) =>
-          Effect.sync(() => {
-            methods.push(method);
-            scheduling.push(options);
-            if (method === "thread/resume") {
-              const resume = _params as ClientRequestParamsByMethod["thread/resume"];
-              assert.isNull(resume.model);
-              assert.isNull(resume.serviceTier);
-              assert.isUndefined(resume.config?.model_reasoning_effort);
-              assert.deepEqual(
-                resume.config?.["mcp_servers.nodex_app.enabled_tools"],
-                appToolCatalog.map((tool) => tool.name),
-              );
-              current = false;
-            }
-            return method === "thread/read"
-              ? { thread: { id: "thread-heartbeat", path: "/tmp/rollout.jsonl" } }
-              : { thread: { id: "thread-heartbeat" } };
-          }) as never,
-      } as unknown as CodexGateway["Service"],
-      managers: {
-        role: () => ({ role: "follower", ownerClientId: "renderer-owner" }),
-      } as unknown as CodexMainConversationManagers["Service"],
-    });
-
-    const exit = yield* Effect.exit(
-      Context.get(context, AutomationExecution).executeClaimed(
-        heartbeatDefinition,
-        heartbeatContext,
-      ),
-    );
-
-    assert.isTrue(Exit.isFailure(exit));
-    assert.deepStrictEqual(methods, ["thread/read", "thread/resume"]);
-    assert.deepStrictEqual(scheduling, [
-      { expectedHostId: "local", expectedGeneration: 1 },
-      { expectedHostId: "local", expectedGeneration: 1 },
-    ]);
-    assert.strictEqual(acceptedResumes, 0);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("fills a missing local Automation archive side through bounded history", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const itemLimits: number[] = [];
-    const context = yield* buildExecutionContext(scope, {
-      conversations: {
-        read: () =>
-          ({
-            snapshot: {
-              turns: [
-                {
-                  items: [
-                    entry("assistant-local", "assistantMessage", {
-                      markdownText: "latest local response",
-                    }),
-                  ],
-                },
-              ],
-            },
-          }) as unknown as ReturnType<CodexConversations["Service"]["read"]>,
-      } as unknown as CodexConversations["Service"],
-      historyPages: CodexHistoryPageAdapter.of({
-        loadTurnPage: () =>
-          Effect.succeed({
-            turns: [
+};
+const context = {
+  now: 1000,
+  reason: "scheduled" as const,
+  leaseId: "physical:one",
+  dispatchId: "dispatch:one",
+  definitionRevision: 1,
+};
+const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "codex" }) => {
+  const state = {
+    definition: { ...definition, backendBinding: binding },
+    failLaunch: false,
+    changed: false,
+    busy: false,
+    denyMessage: false,
+    failedOutcome: false,
+  };
+  const runs = new Map<string, CodexAutomationRun>();
+  const launches: AgentRuntimeLaunch[] = [];
+  const physical = new Set<string>();
+  const completions: string[] = [];
+  const stops: string[] = [];
+  const messages: AgentRuntimeMessage[] = [];
+  const layer = live({ runtimeStateHome: "/runtime" }).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(AutomationApplication, {
+          definitions: {
+            getForExecution: () =>
+              Effect.succeed(
+                state.changed ? { ...state.definition, definitionRevision: 2 } : state.definition,
+              ),
+            get: () => Effect.succeed(state.definition),
+            dispatchNow: () => Effect.succeed(state.definition),
+          },
+          runs: {
+            begin: (input: {
+              runId: string;
+              automationId: string;
+              sessionTitle: string;
+              sourceCwd: string | null;
+            }) =>
+              Effect.sync(() => {
+                const previous = runs.get(input.runId);
+                if (previous) {
+                  if (previous.sessionId === null && previous.archivedReason === "auto")
+                    runs.set(input.runId, {
+                      ...previous,
+                      status: "IN_PROGRESS",
+                      archivedReason: null,
+                    });
+                  return true;
+                }
+                runs.set(input.runId, {
+                  runId: input.runId,
+                  sessionId: null,
+                  sessionTitle: input.sessionTitle,
+                  automationId: input.automationId,
+                  status: "IN_PROGRESS",
+                  sourceCwd: input.sourceCwd,
+                  readAt: null,
+                  inboxTitle: null,
+                  inboxSummary: null,
+                  archivedUserMessage: null,
+                  archivedAssistantMessage: null,
+                  archivedReason: null,
+                  createdAt: 50,
+                  updatedAt: 50,
+                });
+                return true;
+              }),
+            get: (id: string) => Effect.succeed(runs.get(id) ?? null),
+            bindSession: ({ runId, sessionId }: { runId: string; sessionId: string }) =>
+              Effect.sync(() => {
+                runs.set(runId, { ...runs.get(runId)!, sessionId });
+                return true;
+              }),
+            completeForReview: ({ runId, inboxSummary }: { runId: string; inboxSummary: string }) =>
+              Effect.sync(() => {
+                runs.set(runId, { ...runs.get(runId)!, status: "PENDING_REVIEW", inboxSummary });
+                completions.push(runId);
+                return true;
+              }),
+            archive: ({ runId }: { runId: string }) =>
+              Effect.sync(() => {
+                runs.set(runId, {
+                  ...runs.get(runId)!,
+                  status: "ARCHIVED",
+                  archivedReason: "auto",
+                });
+                return true;
+              }),
+          },
+        } as unknown as AutomationApplication["Service"]),
+        Layer.succeed(AgentRuntimeApplication, {
+          catalog: () =>
+            Effect.succeed([
               {
-                rootTurnId: null,
-                id: "turn-latest",
-                items: [],
-                itemsView: "notLoaded",
-                status: "completed",
-                error: null,
-                startedAt: null,
-                completedAt: null,
-                durationMs: null,
+                instanceId: agentRuntimeProviderId(binding),
+                enabled: true,
+                installed: true,
+                status: "ready",
+                models: [{ slug: "model", capabilities: { optionDescriptors: [] } }],
               },
-            ],
-            nextCursor: null,
-            backwardsCursor: null,
-            itemsPaginationByTurnId: {},
-            itemSegmentsByTurnId: {},
-            loadedItemCount: 0,
-          }),
-        loadTurnItemsPage: (input) =>
-          Effect.sync(() => {
-            itemLimits.push(input.limit ?? 0);
-            return {
-              items: [
-                {
-                  type: "userMessage",
-                  id: "user-latest",
-                  clientId: null,
-                  content: [{ type: "text", text: "latest request", text_elements: [] }],
-                },
-                {
-                  questions: null,
-                  type: "agentMessage",
-                  id: "assistant-latest",
-                  text: "older history response",
-                  phase: null,
-                  memoryCitation: null,
-                  delivery: null,
-                },
-              ],
-              nextCursor: null,
-              backwardsCursor: null,
-              approximateBytes: 4_096,
-            };
-          }),
-      }),
-    });
+            ]),
+          inspect: () =>
+            Effect.succeed({
+              thread: {
+                providerInstanceId: agentRuntimeProviderId(binding),
+                archivedAt: null,
+                updatedAt: "1970-01-01T00:00:00Z",
+                activeRunId: state.busy ? "other-run" : null,
+                pendingRuntimeRequest: null,
+              },
+            }),
+          queueMessage: ({ message }: { message: AgentRuntimeMessage }) =>
+            Effect.gen(function* () {
+              if (state.denyMessage)
+                return yield* Effect.fail(new Error("Read-only Turn cannot dispatch"));
+              messages.push(message);
+              physical.add(message.messageId);
+              return { sequence: 1 };
+            }),
+          launch: (input: AgentRuntimeLaunch) =>
+            Effect.gen(function* () {
+              launches.push(input);
+              if (state.failLaunch)
+                return yield* Effect.fail(new Error("Admission refused before native execution"));
+              physical.add(input.message.messageId);
+              return {
+                sessionId: input.sessionId,
+                projectId: input.projectId,
+                threadId: "engine-root",
+              };
+            }),
+          runOutcome: ({ messageId }: { messageId: string }) =>
+            Effect.succeed(
+              physical.has(messageId)
+                ? {
+                    runId: `engine:${messageId}`,
+                    status: state.failedOutcome ? "failed" : "completed",
+                    completedAt: "2026-10-14T00:00:00Z",
+                    finalAssistantItemId: "result",
+                  }
+                : null,
+            ),
+          item: () =>
+            Effect.succeed({ type: "assistant_message", id: "result", text: "Completed report" }),
+          stop: ({ runId }: { runId: string }) =>
+            Effect.sync(() => {
+              stops.push(runId);
+              return { stopped: true };
+            }),
+        } as unknown as AgentRuntimeApplication["Service"]),
+        Layer.succeed(AgentRuntimeSupervisor, {
+          get: () =>
+            Effect.succeed({
+              subscribeExecutionNotifications: Effect.succeed(Stream.never),
+              terminated: Effect.never,
+            }),
+        } as unknown as AgentRuntimeSupervisor["Service"]),
+        Layer.succeed(ProjectWorkspace, {
+          getProjectSession: () =>
+            Effect.succeed({
+              id: "heartbeat-session",
+              projectId: "project",
+              archived: false,
+              executionRef: { runtimeId: "runtime", threadId: "root" },
+            }),
+        } as unknown as ProjectWorkspace["Service"]),
+      ),
+    ),
+  );
+  return { state, runs, launches, physical, completions, stops, messages, layer };
+};
+it.effect.each([
+  { kind: "codex" as const },
+  { kind: "claude" as const, instanceConfigId: "named" },
+])(
+  "$kind: scheduled execution binds a product Session and observes its exact submitted message",
+  (binding) => {
+    const fixture = setup(binding);
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      yield* execution.executeClaimed(fixture.state.definition, context);
+      assert.equal(fixture.launches.length, 1);
+      const launch = fixture.launches[0]!;
+      const run = [...fixture.runs.values()][0]!;
+      assert.equal(run.sessionId, launch.sessionId);
+      assert.equal(launch.modelSelection.instanceId, agentRuntimeProviderId(binding));
+      assert.equal(launch.acceptedAt, 50);
+      assert.equal(run.status, "PENDING_REVIEW");
+      assert.equal(run.inboxSummary, "Completed report");
+      assert.equal(fixture.physical.size, 1);
+      assert.equal(fixture.stops.length, 0);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
 
-    const messages = yield* Context.get(context, AutomationExecution).resolveArchiveMessages(
-      "thread-automation",
+it.effect(
+  "heartbeat physical lease retry observes its original message despite later busy or disabled state",
+  () => {
+    const fixture = setup();
+    fixture.state.definition = {
+      ...fixture.state.definition,
+      kind: "heartbeat",
+      targetSessionId: "heartbeat-session",
+      cwds: [],
+    };
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      const heartbeat = {
+        ...context,
+        now: 1_000_000_000,
+        heartbeat: {
+          automationsEnabled: true,
+          rendererState: {
+            rendererClientId: "renderer",
+            isEligible: true,
+            reason: null,
+            updatedAtMs: 1000,
+          },
+          collaborationMode: null,
+        },
+      };
+      yield* execution.executeClaimed(fixture.state.definition, heartbeat);
+      fixture.state.busy = true;
+      yield* execution.executeClaimed(fixture.state.definition, {
+        ...heartbeat,
+        now: 9000,
+        leaseId: "physical:replacement",
+        heartbeat: { ...heartbeat.heartbeat, automationsEnabled: false },
+      });
+      assert.equal(fixture.messages.length, 1);
+      assert.equal(fixture.physical.size, 1);
+      assert.equal(fixture.launches.length, 0);
+      assert.equal(fixture.runs.size, 0);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect("heartbeat eligibility and current read-only authority refuse a fresh execution", () => {
+  const fixture = setup();
+  fixture.state.definition = {
+    ...fixture.state.definition,
+    kind: "heartbeat",
+    targetSessionId: "heartbeat-session",
+    cwds: [],
+  };
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    const heartbeat = {
+      ...context,
+      now: 1_000_000_000,
+      heartbeat: {
+        automationsEnabled: true,
+        rendererState: {
+          rendererClientId: "renderer",
+          isEligible: true,
+          reason: null,
+          updatedAtMs: 1000,
+        },
+        collaborationMode: null,
+      },
+    };
+    fixture.state.busy = true;
+    assert.equal(
+      (yield* execution.executeClaimed(fixture.state.definition, heartbeat).pipe(Effect.result))
+        ._tag,
+      "Failure",
     );
-    assert.deepStrictEqual(messages, {
-      archivedUserMessage: "latest request",
-      archivedAssistantMessage: "latest local response",
-    });
-    assert.deepStrictEqual(itemLimits, [100]);
-    yield* Scope.close(scope, Exit.void);
-  }),
+    fixture.state.busy = false;
+    fixture.state.denyMessage = true;
+    assert.equal(
+      (yield* execution.executeClaimed(fixture.state.definition, heartbeat).pipe(Effect.result))
+        ._tag,
+      "Failure",
+    );
+    assert.equal(fixture.messages.length, 0);
+    assert.equal(fixture.physical.size, 0);
+  }).pipe(Effect.provide(fixture.layer));
+});
+
+it.effect(
+  "failed native execution archives its stable Run without accepting a successful review",
+  () => {
+    const fixture = setup();
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      fixture.state.failedOutcome = true;
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      assert.equal(fixture.completions.length, 0);
+      assert.equal([...fixture.runs.values()][0]!.status, "ARCHIVED");
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+it.effect(
+  "physical lease retry and restart reuse durable Run, Session, message and accepted time",
+  () => {
+    const fixture = setup();
+    fixture.state.failLaunch = true;
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      assert.equal(fixture.physical.size, 0);
+      assert.equal([...fixture.runs.values()][0]!.sessionId, null);
+      fixture.state.failLaunch = false;
+      yield* execution.executeClaimed(fixture.state.definition, {
+        ...context,
+        now: 5000,
+        leaseId: "physical:replacement",
+      });
+      yield* execution.executeClaimed(fixture.state.definition, {
+        ...context,
+        now: 9000,
+        leaseId: "physical:third",
+      });
+      assert.equal(fixture.launches.length, 2);
+      assert.deepEqual(fixture.launches[1], fixture.launches[0]);
+      assert.equal(fixture.physical.size, 1);
+      assert.equal(fixture.completions.length, 1);
+      assert.equal(fixture.runs.size, 1);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+it.effect(
+  "stale Definition and missing logical dispatch identity admit no execution or Run record",
+  () => {
+    const fixture = setup();
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      fixture.state.changed = true;
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      fixture.state.changed = false;
+      assert.equal(
+        (yield* execution
+          .executeClaimed(fixture.state.definition, {
+            now: 1,
+            reason: "scheduled",
+            leaseId: "physical",
+          })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.runs.size, 0);
+      assert.equal(fixture.physical.size, 0);
+    }).pipe(Effect.provide(fixture.layer));
+  },
 );

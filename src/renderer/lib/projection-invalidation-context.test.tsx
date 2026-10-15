@@ -81,7 +81,6 @@ describe("useProjectionRegistration", () => {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
-      subscribeRevocations: () => () => undefined,
     });
     const releaseKeeper = registry.register({
       scope,
@@ -120,7 +119,6 @@ describe("useProjectionRegistration", () => {
     );
     const registry = new ProjectionInvalidationRegistry({
       subscribeProjection,
-      subscribeRevocations: () => () => undefined,
     });
     const invalidate = vi.fn();
     const tree = (pageId: string) => (

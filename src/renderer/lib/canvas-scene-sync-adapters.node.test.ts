@@ -19,12 +19,12 @@ test("malformed Canvas subscription ACKs terminate instead of opening an endless
     invoke: async () => ({ ok: true, value: {} }),
     on: () => () => undefined,
   } as unknown as ElectronRendererBridge;
-  const accessContext = { kind: "library" } as const;
+  const routingContext = { kind: "library" } as const;
   const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
     libraryId: "library-1",
-    accessContext,
+    routingContext,
   });
-  const request = { accessContext, documentId: "canvas-1", clientSessionId: "client-1" };
+  const request = { routingContext, documentId: "canvas-1", clientSessionId: "client-1" };
   const release = adapter.subscribe(request, () => undefined);
   try {
     await expect(adapter.sync({ ...request, syncRequestId: "sync-1" })).resolves.toMatchObject({
@@ -34,12 +34,12 @@ test("malformed Canvas subscription ACKs terminate instead of opening an endless
     await expect(
       adapter.sync({
         ...request,
-        accessContext: { kind: "project", projectId: "foreign" },
+        routingContext: { kind: "project", projectId: "foreign" },
         syncRequestId: "sync-2",
       }),
     ).resolves.toMatchObject({
       ok: false,
-      error: { code: "access_scope_mismatch", retryable: false },
+      error: { code: "invalid_session", retryable: false },
     });
   } finally {
     release();
@@ -63,7 +63,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
             kind: "snapshot",
             syncRequestId: request.syncRequestId,
             libraryId: "library-1",
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             documentId: request.documentId,
             storeEpoch: "store-1",
             generation: 1,
@@ -83,14 +83,14 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
       return () => listeners.delete(listener);
     },
   } as unknown as ElectronRendererBridge;
-  const accessContext = { kind: "project", projectId: "project-1" } as const;
+  const routingContext = { kind: "project", projectId: "project-1" } as const;
   const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
     libraryId: "library-1",
-    accessContext,
+    routingContext,
   });
   const unsubscribe = adapter.subscribe(
     {
-      accessContext,
+      routingContext,
       documentId: "canvas-1",
       clientSessionId: "client-1",
     },
@@ -99,7 +99,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
   );
   const result = await adapter.sync({
     syncRequestId: "sync-1",
-    accessContext,
+    routingContext,
     documentId: "canvas-1",
     clientSessionId: "client-1",
   });
@@ -109,7 +109,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
     listener({
       type: "canvas_presence_snapshot",
       libraryId: "library-1",
-      accessContext,
+      routingContext,
       documentId: "canvas-1",
       generation: 1,
       presences: [],
@@ -120,7 +120,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
     listener({
       type: "canvas_presence_snapshot",
       libraryId: "library-foreign",
-      accessContext,
+      routingContext,
       documentId: "canvas-1",
       generation: 1,
       presences: [],
@@ -129,7 +129,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
   expect(presenceEvents).toHaveLength(1);
   await expect(
     adapter.publishPresence?.({
-      accessContext,
+      routingContext,
       clientSessionId: "client-1",
       publication: {
         engine: "canvas_scene",
@@ -146,7 +146,7 @@ test("Electron Canvas adapter awaits subscription and carries presence", async (
 
 test("Electron Canvas routes semantic mutations through typed LocalCommit admission", async () => {
   const calls: Array<{ readonly channel: string; readonly request: unknown }> = [];
-  const accessContext = { kind: "project", projectId: "project-1" } as const;
+  const routingContext = { kind: "project", projectId: "project-1" } as const;
   const bridge = {
     invoke: async (channel: string, request: unknown) => {
       calls.push({ channel, request });
@@ -160,7 +160,7 @@ test("Electron Canvas routes semantic mutations through typed LocalCommit admiss
           value: {
             mutationId: "mutation-1",
             libraryId: "library-1",
-            accessContext,
+            routingContext,
             documentId: "canvas-1",
             storeEpoch: "store-1",
             generation: 1,
@@ -184,11 +184,11 @@ test("Electron Canvas routes semantic mutations through typed LocalCommit admiss
   } as unknown as ElectronRendererBridge;
   const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
     libraryId: "library-1",
-    accessContext,
+    routingContext,
   });
   const unsubscribe = adapter.subscribe(
     {
-      accessContext,
+      routingContext,
       documentId: "canvas-1",
       clientSessionId: "client-1",
     },
@@ -198,7 +198,7 @@ test("Electron Canvas routes semantic mutations through typed LocalCommit admiss
   await expect(
     adapter.applyMutation({
       mutationId: "mutation-1",
-      accessContext,
+      routingContext,
       documentId: "canvas-1",
       storeEpoch: "store-1",
       generation: 1,
@@ -238,7 +238,7 @@ test("Electron Canvas keeps a revived exact session ahead of stale teardown", as
             kind: "snapshot",
             syncRequestId: request.syncRequestId,
             libraryId: "library-1",
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             documentId: request.documentId,
             storeEpoch: "store-1",
             generation: 1,
@@ -252,13 +252,13 @@ test("Electron Canvas keeps a revived exact session ahead of stale teardown", as
     },
     on: () => () => undefined,
   } as unknown as ElectronRendererBridge;
-  const accessContext = { kind: "project", projectId: "project-1" } as const;
+  const routingContext = { kind: "project", projectId: "project-1" } as const;
   const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
     libraryId: "library-1",
-    accessContext,
+    routingContext,
   });
   const request = {
-    accessContext,
+    routingContext,
     documentId: "canvas-1",
     clientSessionId: "client-1",
   } as const;
@@ -300,12 +300,12 @@ test.each(["opening", "open"])(
       },
       on: () => () => undefined,
     } as unknown as ElectronRendererBridge;
-    const accessContext = { kind: "library" } as const;
+    const routingContext = { kind: "library" } as const;
     const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
       libraryId: "library-1",
-      accessContext,
+      routingContext,
     });
-    const request = { accessContext, documentId: "canvas-1", clientSessionId: "client-1" };
+    const request = { routingContext, documentId: "canvas-1", clientSessionId: "client-1" };
     const release = adapter.subscribe(request, () => undefined);
     if (phase === "open") {
       complete({ ok: true, value: { subscribed: true } });
@@ -325,7 +325,7 @@ test.each(["opening", "open"])(
         fileAdditions: {},
       }),
       adapter.publishPresence!({
-        accessContext,
+        routingContext,
         clientSessionId: request.clientSessionId,
         publication: {
           engine: "canvas_scene",

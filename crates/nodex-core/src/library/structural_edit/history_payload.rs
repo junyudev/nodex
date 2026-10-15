@@ -465,8 +465,7 @@ mod tests {
             store_epoch: "epoch".into(),
             recipe_hash: hash,
         };
-        let error =
-            read_history_payload(&connection, "library", None, "epoch", &token).unwrap_err();
+        let error = read_history_payload(&connection, "library", "epoch", &token).unwrap_err();
         assert_eq!(error.code, StoreErrorCode::RevisionConflict);
     }
 

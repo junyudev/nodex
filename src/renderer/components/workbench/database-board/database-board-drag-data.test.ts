@@ -38,7 +38,7 @@ const row = (
 
 const rows = [row("page-a", "p1-high", "build"), row("page-b", "p3-low", "review")];
 const model = {
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   libraryId: "library-1",
   databaseViewId: parseDatabaseViewId("view-board"),
   databaseId,
@@ -48,9 +48,7 @@ const model = {
   viewName: "Priority",
   storeEpoch: "epoch-1",
   commitSeq: 1,
-  authorization: null,
   columns: [],
-  readOnlyReason: null,
   query: {
     rows: rows.map((candidate, index) => ({
       pageKey: candidate.pageKey,
@@ -107,7 +105,7 @@ describe("database Board card drag data", () => {
   test("does not expose a Project-bound editor transfer from Library context", () => {
     expect(
       buildDatabaseViewPageDragData({
-        model: { ...model, accessContext: { kind: "library" } },
+        model: { ...model, routingContext: { kind: "library" } },
         row: rows[0]!,
         allRows: rows,
         selectedPageIds: new Set(),

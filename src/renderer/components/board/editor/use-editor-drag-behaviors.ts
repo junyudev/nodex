@@ -19,7 +19,7 @@ interface UseEditorDragBehaviorsOptions {
   containerRef: RefObject<HTMLElement | null>;
   crossSurface?: {
     readonly surfaceId: string;
-    readonly projectId: string;
+    readonly projectId: string | null;
     readonly documentId: string;
     readonly storeEpoch: string;
     readonly blockTransferDrop: BlockTransferDropBoundary;

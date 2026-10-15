@@ -20,7 +20,7 @@ export const databasePromotionReadIdentity = (
 ): string =>
   stableStringifyDatabaseJson({
     libraryId: model.libraryId,
-    accessContext: model.accessContext,
+    routingContext: model.routingContext,
     storeEpoch: model.storeEpoch,
     databaseId: model.databaseId,
     dataSourceId: model.dataSourceId,

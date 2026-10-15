@@ -1,5 +1,9 @@
 import { useEffect } from "react";
 import { hashKey, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import {
+  projectIdFromContentRoutingContext,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 import type { PageTargetReadModel } from "../../shared/page-targets";
 import type { PageOwnershipPathReadModel } from "../../shared/page-ownership-paths";
 import type { DatabaseViewReadModel } from "../../shared/database-views";
@@ -12,15 +16,6 @@ import { useProjectionRegistration } from "./projection-invalidation-context";
 import type { ProjectionDependencies } from "./projection-invalidation-registry";
 import type { ProjectionCursor, ProjectionScope } from "../../shared/projection-stream";
 import { useLibraryMetadata } from "./use-library-navigation";
-import {
-  projectIdFromContentAccessContext,
-  type ContentAccessContext,
-} from "../../shared/content-access-context";
-import type { AuthorizedReadStamp } from "../../shared/authorized-read-stamp";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "./resource-authority-query-cache";
 
 export interface ReferenceQueryResult<T> {
   readonly data: T | null;
@@ -33,45 +28,32 @@ const toError = (error: unknown): Error | null => {
   return error instanceof Error ? error : new Error(String(error));
 };
 
-const resolveReferenceAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const authorization = (
-    data as {
-      readonly authorization?: AuthorizedReadStamp | null;
-    } | null
-  )?.authorization;
-  return authorization ? { authorizations: [authorization] } : null;
-};
-
 const pageOwnershipPathChangeSubscriptions = createProjectEventSubscriptionHub({
   subscribeToProject: (projectId, listener) =>
     resolveRendererTransport().subscribePageOwnershipPathChanges(projectId, listener),
 });
 
-const pageTargetQueryOptions = (accessContext: ContentAccessContext, targetBlockId: string) => {
+const pageTargetQueryOptions = (routingContext: ContentRoutingContext, targetBlockId: string) => {
   return {
-    queryKey: queryKeys.pageTargets.byId(accessContext, targetBlockId),
+    queryKey: queryKeys.pageTargets.byId(routingContext, targetBlockId),
     queryFn: async () =>
-      admitResourceAuthorityQuery(
-        await resolvePageTarget({
-          accessContext,
-          targetPageId: targetBlockId,
-        }),
-        resolveReferenceAuthority,
-      ),
+      await resolvePageTarget({
+        routingContext,
+        targetPageId: targetBlockId,
+      }),
     enabled: targetBlockId.length > 0,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: resourceAuthorityQueryMeta(resolveReferenceAuthority),
   };
 };
 
 export const readCachedPageTargetReadModel = (
   queryClient: Pick<QueryClient, "getQueryData">,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   targetPageId: string,
 ): PageTargetReadModel | null =>
   queryClient.getQueryData<PageTargetReadModel>(
-    queryKeys.pageTargets.byId(accessContext, targetPageId),
+    queryKeys.pageTargets.byId(routingContext, targetPageId),
   ) ?? null;
 
 const useProjectionQueryRefresh = (input: {
@@ -107,23 +89,23 @@ const useProjectionQueryRefresh = (input: {
 };
 
 export const usePageTargetReadModel = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   targetBlockId: string,
 ): ReferenceQueryResult<PageTargetReadModel> => {
   const enabled = targetBlockId.length > 0;
   const library = useLibraryMetadata(enabled);
-  const query = useQuery(pageTargetQueryOptions(accessContext, targetBlockId));
+  const query = useQuery(pageTargetQueryOptions(routingContext, targetBlockId));
   const libraryId = library.data?.libraryId ?? query.data?.libraryId ?? null;
-  const queryKey = queryKeys.pageTargets.byId(accessContext, targetBlockId);
+  const queryKey = queryKeys.pageTargets.byId(routingContext, targetBlockId);
   useProjectionQueryRefresh({
     scope:
       enabled && libraryId
-        ? accessContext.kind === "library"
+        ? routingContext.kind === "library"
           ? { kind: "library", libraryId }
           : {
               kind: "project",
               libraryId,
-              projectId: accessContext.projectId,
+              projectId: routingContext.projectId,
             }
         : null,
     dependencies: { pageIds: [targetBlockId] },
@@ -140,25 +122,20 @@ export const usePageTargetReadModel = (
 };
 
 export const usePageOwnershipPathReadModel = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   targetPageId: string,
 ): ReferenceQueryResult<PageOwnershipPathReadModel> => {
   const queryClient = useQueryClient();
   const enabled = targetPageId.length > 0;
-  const projectId = projectIdFromContentAccessContext(accessContext);
+  const projectId = projectIdFromContentRoutingContext(routingContext);
   const library = useLibraryMetadata(enabled);
-  const queryKey = queryKeys.pageOwnershipPaths.byPage(accessContext, targetPageId);
+  const queryKey = queryKeys.pageOwnershipPaths.byPage(routingContext, targetPageId);
   const query = useQuery({
     queryKey,
-    queryFn: async () =>
-      admitResourceAuthorityQuery(
-        await resolvePageOwnershipPath({ accessContext, targetPageId }),
-        resolveReferenceAuthority,
-      ),
+    queryFn: async () => await resolvePageOwnershipPath({ routingContext, targetPageId }),
     enabled,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: resourceAuthorityQueryMeta(resolveReferenceAuthority),
   });
   const libraryId = library.data?.libraryId ?? query.data?.libraryId ?? null;
   const observedPageIds =
@@ -168,12 +145,12 @@ export const usePageOwnershipPathReadModel = (
   useProjectionQueryRefresh({
     scope:
       enabled && libraryId
-        ? accessContext.kind === "library"
+        ? routingContext.kind === "library"
           ? { kind: "library", libraryId }
           : {
               kind: "project",
               libraryId,
-              projectId: accessContext.projectId,
+              projectId: routingContext.projectId,
             }
         : null,
     dependencies: { pageIds: observedPageIds },
@@ -203,43 +180,39 @@ export const usePageOwnershipPathReadModel = (
 };
 
 export const useDatabaseViewReadModel = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   databaseViewId: string,
   hostBlockId?: string,
 ): ReferenceQueryResult<DatabaseViewReadModel> => {
   const enabled = databaseViewId.length > 0;
   const library = useLibraryMetadata(enabled);
   const queryKey = queryKeys.blockReferences.databaseView(
-    accessContext,
+    routingContext,
     databaseViewId,
     hostBlockId,
   );
   const { data, error, status } = useQuery({
     queryKey,
     queryFn: async () =>
-      admitResourceAuthorityQuery(
-        await readDatabaseViewReference({
-          accessContext,
-          databaseViewId,
-          ...(hostBlockId ? { hostBlockId } : {}),
-        }),
-        resolveReferenceAuthority,
-      ),
+      await readDatabaseViewReference({
+        routingContext,
+        databaseViewId,
+        ...(hostBlockId ? { hostBlockId } : {}),
+      }),
     enabled,
     staleTime: 5_000,
     refetchOnWindowFocus: true,
-    meta: resourceAuthorityQueryMeta(resolveReferenceAuthority),
   });
   const libraryId = library.data?.libraryId ?? data?.libraryId ?? null;
   useProjectionQueryRefresh({
     scope:
       enabled && libraryId
-        ? accessContext.kind === "library"
+        ? routingContext.kind === "library"
           ? { kind: "library", libraryId }
           : {
               kind: "project",
               libraryId,
-              projectId: accessContext.projectId,
+              projectId: routingContext.projectId,
             }
         : null,
     dependencies: {

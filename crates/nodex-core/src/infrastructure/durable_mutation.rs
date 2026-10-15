@@ -8,9 +8,7 @@
 
 use std::marker::PhantomData;
 
-use nodex_core_contracts::events::{
-    CommitManifest, DeliveryAuthorizationScope, RevokedResourceKind,
-};
+use nodex_core_contracts::events::CommitManifest;
 use nodex_core_contracts::{ApplyResponse, BoundModuleContext, ModuleName, StoreObservation};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
@@ -21,7 +19,6 @@ use super::module_receipts::{
     NewModuleReceipt, StoredModuleReceipt, insert_module_receipt, read_module_receipt,
 };
 use super::sqlite::{StoreError, StoreErrorCode};
-use super::visibility_delta_journal::VisibilityDeltaJournal;
 
 #[derive(Clone, Copy)]
 pub(crate) struct OperationIdentity<'a> {
@@ -69,18 +66,6 @@ pub(crate) struct DurableMutationScope<'connection> {
     connection: &'connection Connection,
     context: CommitContext,
     module: ModuleName,
-    visibility_journal: VisibilityDeltaJournal,
-}
-
-/// A resource that was visible through one exact authorization scope before a
-/// mutation began. The transaction-owned visibility journal derives these
-/// observations mechanically from raw authority-table facts; domain writers
-/// consume them only when compiling projection audience evidence.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct AuthorizedResourceObservation {
-    pub authorization_scope: DeliveryAuthorizationScope,
-    pub resource_kind: RevokedResourceKind,
-    pub resource_id: String,
 }
 
 impl<'connection> DurableMutationScope<'connection> {
@@ -102,13 +87,6 @@ impl<'connection> DurableMutationScope<'connection> {
 
     pub(crate) fn committed_at(&self) -> &str {
         self.context.committed_at()
-    }
-
-    pub(crate) fn authorization_before(
-        &self,
-    ) -> Result<Vec<AuthorizedResourceObservation>, StoreError> {
-        self.visibility_journal
-            .authorization_before(self.connection, &self.context)
     }
 
     pub(crate) fn seal<T>(&self, outcome: T, receipt: ReceiptMetadata<'_>) -> SealedOutcome<T> {
@@ -235,12 +213,10 @@ where
         identity.intent_hash,
         identity.committed_at,
     )?;
-    let visibility_journal = VisibilityDeltaJournal::begin(connection, &context)?;
     let scope = DurableMutationScope {
         connection,
         context,
         module: identity.module,
-        visibility_journal,
     };
     let sealed = apply(&scope)?;
     if sealed.module != identity.module {
@@ -278,9 +254,6 @@ where
                     committed_at: &sealed.receipt.committed_at,
                 },
             )?;
-            scope
-                .visibility_journal
-                .finalize(connection, &scope.context)?;
             let commit_seq = local_commit::seal(connection, &scope.context)?;
             let manifest = local_commit::read_manifest(connection, commit_seq)?;
             Ok(CommitResult::Committed {
@@ -289,9 +262,6 @@ where
             })
         }
         Disposition::NoOp => {
-            scope
-                .visibility_journal
-                .finish_no_op(connection, &scope.context)?;
             local_commit::abandon(connection, &scope.context)?;
             insert_module_receipt(
                 connection,
@@ -332,8 +302,6 @@ pub(crate) fn record_no_op<T: Serialize>(
         identity.intent_hash,
         identity.committed_at,
     )?;
-    let visibility_journal = VisibilityDeltaJournal::begin(connection, &context)?;
-    visibility_journal.finish_no_op(connection, &context)?;
     local_commit::abandon(connection, &context)?;
     let encoded = serde_json::to_value(outcome)
         .map_err(|_| internal("Durable mutation no-op outcome could not be encoded"))?;

@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { CodexRateLimitResetInput } from "./types";
-import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
+import { defineRendererCommand, invokePlainCommand } from "./renderer-command";
+import { useDefaultCodexAppServerManager } from "../features/local-conversation/local-conversation-store";
 
 const consumeRateLimitResetCommand = defineRendererCommand({
   key: "codex.account.consume_rate_limit_reset",
@@ -35,9 +36,10 @@ const logoutCommand = defineRendererCommand({
 });
 
 export function useCodexAccountActions() {
+  const manager = useDefaultCodexAppServerManager();
   const refreshAccount = useCallback(async () => {
-    return invokeRendererQuery("codex:account:read");
-  }, []);
+    return manager.loadAccount();
+  }, [manager]);
 
   const consumeRateLimitReset = useCallback(async (input: CodexRateLimitResetInput) => {
     return invokePlainCommand(consumeRateLimitResetCommand, input);

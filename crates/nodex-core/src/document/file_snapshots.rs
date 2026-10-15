@@ -13,7 +13,7 @@ pub(crate) fn resolve_target(
     version_id: &str,
     file_id: &str,
 ) -> Result<FileSnapshotTarget, StoreError> {
-    super::require_owned_document_read_access(connection, context, document_id)?;
+    super::require_owned_document_for_live_read(connection, context, document_id)?;
     let authority = super::read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Document File source lost its Document"))?;
     let version = super::history::get_document_version(connection, &authority, version_id)?

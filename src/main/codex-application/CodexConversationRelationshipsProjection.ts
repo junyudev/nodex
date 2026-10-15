@@ -1,8 +1,6 @@
 import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { selectPrimaryBackgroundConversationRequest } from "../../shared/codex-conversation-request";
 import type { CodexConversationRequestContext } from "../../shared/codex-conversation-request-context";
-import { projectCodexBackgroundRequest } from "../../shared/codex-background-request-projection";
-import { projectCodexCanonicalTurnItemViews } from "../../shared/codex-canonical-item-projector";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
 import { isRawCodexSubagentThreadIdLabel } from "../../shared/codex-subagent-display";
 import type {
@@ -111,53 +109,33 @@ export const projectCodexConversationRelationshipThread = (
   };
 };
 
-/** Projects only pending-request Turns and their file-change rows, without hydrating a transcript. */
+/** Pending questions need only original Turn metadata, never child transcript bodies. */
 const backgroundRequestContext = (
   child: CodexConversationRelationshipChild,
 ): CodexConversationRequestContext | null => {
   const state = child.canonicalState;
   if (!state) return child.conversation;
-  const projectId = child.thread.projectId;
-  const requests = [
-    ...(child.conversation?.requests.filter(
-      (request) => request.type === "nodexAgentAuthorization",
-    ) ?? []),
-    ...state.requests.flatMap((request) => {
-      const projected = projectCodexBackgroundRequest({ projectId }, request);
-      return projected?.threadId === state.id ? [projected] : [];
-    }),
-  ];
-  const turnIds = new Set(requests.map((request) => request.turnId));
-  const fileItemIds = new Set(
-    requests.flatMap((request) =>
-      request.type === "approval" && request.kind === "file" ? [request.itemId] : [],
+  const turnIds = new Set(
+    state.requests.flatMap((request) =>
+      "turnId" in request.params && typeof request.params.turnId === "string"
+        ? [request.params.turnId]
+        : [],
     ),
   );
   return {
-    projectId,
+    projectId: child.thread.projectId,
     threadId: state.id,
-    requests,
+    requests: [],
     canonicalRequests: [...state.requests],
     turns: conversationTurnsWithOverlay(state)
       .filter((turn) => turn.turnId !== null && turnIds.has(turn.turnId))
-      .map((turn) => {
-        const items = projectCodexCanonicalTurnItemViews({
-          threadId: state.id,
-          turnId: turn.turnId,
-          turnStatus: turn.status,
-          items: turn.items.filter(
-            (item) => item.type === "fileChange" && fileItemIds.has(item.id),
-          ),
-          observedAtMs: state.updatedAt,
-        }).map(({ normalizedKind, ...view }) => ({ ...view, kind: normalizedKind }));
-        return {
-          threadId: state.id,
-          turnId: turn.turnId,
-          status: turn.status,
-          itemIds: items.map((item) => item.itemId),
-          items,
-        };
-      }),
+      .map((turn) => ({
+        threadId: state.id,
+        turnId: turn.turnId,
+        status: turn.status,
+        itemIds: [],
+        items: [],
+      })),
   };
 };
 

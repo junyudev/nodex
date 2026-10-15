@@ -12,9 +12,7 @@ use crate::database::{
     PageCopyDataSourceDestination, PageCopyPositionAnchor, PageCopyValueDraft,
     PageCopyViewPlacement, copy_relation_edges, current_page_key_for_page,
     ensure_database_page_key, place_copied_page_in_data_source,
-    place_copied_page_in_data_source_prevalidated, synchronize_membership_completion_timestamp,
-    validate_page_copy_data_source_destination,
-    validate_page_copy_data_source_destination_prevalidated,
+    synchronize_membership_completion_timestamp, validate_page_copy_data_source_destination,
 };
 use crate::document::{
     BlockDocumentSchema, DocumentMaterialization, DocumentPlacementEvidence, PersistYjsGenesis,
@@ -32,9 +30,8 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use super::LibraryApplyOutcome;
 use super::mutation::{
     MutationEffects, ParentDocumentWriteContext, ensure_default_page_intrinsic_properties,
-    insert_creator_resource_grant, insert_library_placement, insert_page_read_model,
-    library_commit_result, persist_parent_insert, refresh_page_intrinsic_projection,
-    resolve_write_parent, seal_mutation, sqlite_now,
+    insert_library_placement, insert_page_read_model, library_commit_result, persist_parent_insert,
+    refresh_page_intrinsic_projection, seal_mutation, sqlite_now,
 };
 
 const MAX_COPY_BLOCKS: usize = 10_000;
@@ -263,7 +260,6 @@ pub(super) fn copy_page(
                 expected_document_head_seq,
                 destination,
                 PageCopyParentDocumentMode::Commit,
-                false,
                 assets_root,
                 &now,
             )?;
@@ -326,7 +322,6 @@ pub(super) fn execute_page_copy(
     expected_document_head_seq: i64,
     destination: &LibraryPageCopyDestination,
     parent_document_mode: PageCopyParentDocumentMode,
-    access_prevalidated: bool,
     assets_root: &Path,
     committed_at: &str,
 ) -> Result<PageCopyExecution, StoreError> {
@@ -334,16 +329,7 @@ pub(super) fn execute_page_copy(
         .project_id
         .as_ref()
         .map(|project_id| project_id.0.as_str());
-    if !access_prevalidated {
-        let requesting_project_id = requesting_project_id
-            .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?;
-        super::history::require_page_read_access(
-            connection,
-            library_id,
-            requesting_project_id,
-            source_page_id,
-        )?;
-    }
+
     let source = connection
         .query_row(
             "SELECT block.lifecycle, block.placement_revision, COALESCE(( \
@@ -390,22 +376,12 @@ pub(super) fn execute_page_copy(
 
     let parent = write_parent(destination)?;
     let data_source_destination = data_source_destination(destination);
-    let mut resolved_parent = if access_prevalidated {
-        super::mutation::resolve_write_parent_prevalidated(
-            connection,
-            library_id,
-            requesting_project_id,
-            &parent,
-        )?
-    } else {
-        resolve_write_parent(
-            connection,
-            library_id,
-            requesting_project_id
-                .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?,
-            &parent,
-        )?
-    };
+    let mut resolved_parent = super::mutation::resolve_write_parent(
+        connection,
+        library_id,
+        requesting_project_id,
+        &parent,
+    )?;
     if matches!(parent_document_mode, PageCopyParentDocumentMode::Defer)
         && resolved_parent.document.is_none()
     {
@@ -414,24 +390,13 @@ pub(super) fn execute_page_copy(
         ));
     }
     if let Some(destination) = &data_source_destination {
-        if access_prevalidated {
-            validate_page_copy_data_source_destination_prevalidated(
-                connection,
-                library_id,
-                requesting_project_id,
-                &destination.data_source_id,
-                destination.expected_data_source_revision,
-            )?
-        } else {
-            validate_page_copy_data_source_destination(
-                connection,
-                library_id,
-                requesting_project_id
-                    .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?,
-                &destination.data_source_id,
-                destination.expected_data_source_revision,
-            )?
-        }
+        validate_page_copy_data_source_destination(
+            connection,
+            library_id,
+            requesting_project_id,
+            &destination.data_source_id,
+            destination.expected_data_source_revision,
+        )?;
         resolved_parent.parent_key = format!("data_source:{}", destination.data_source_id);
     }
     let plan = build_copy_plan(
@@ -464,16 +429,6 @@ pub(super) fn execute_page_copy(
         &parent,
         &now,
     )?;
-    if matches!(parent, LibraryWriteParent::Library { .. }) {
-        insert_creator_resource_grant(
-            connection,
-            requesting_project_id,
-            library_id,
-            "page",
-            &target_page_id,
-            &now,
-        )?;
-    }
 
     let source_to_target_page_ids = plan
         .documents
@@ -506,29 +461,15 @@ pub(super) fn execute_page_copy(
     let data_source_placement = data_source_destination
         .as_ref()
         .map(|destination| {
-            if access_prevalidated {
-                place_copied_page_in_data_source_prevalidated(
-                    connection,
-                    library_id,
-                    requesting_project_id,
-                    source_page_id,
-                    &target_page_id,
-                    destination,
-                    &now,
-                )
-            } else {
-                place_copied_page_in_data_source(
-                    connection,
-                    library_id,
-                    requesting_project_id.ok_or_else(|| {
-                        unauthorized("Project Page copy requires an actor Project")
-                    })?,
-                    source_page_id,
-                    &target_page_id,
-                    destination,
-                    &now,
-                )
-            }
+            place_copied_page_in_data_source(
+                connection,
+                library_id,
+                requesting_project_id,
+                source_page_id,
+                &target_page_id,
+                destination,
+                &now,
+            )
         })
         .transpose()?;
     let parent_commit = resolved_parent
@@ -539,7 +480,6 @@ pub(super) fn execute_page_copy(
             persist_parent_insert(
                 connection,
                 ParentDocumentWriteContext {
-                    context,
                     actor_project_id: requesting_project_id,
                     store_epoch,
                     operation_id,
@@ -758,7 +698,7 @@ pub(crate) fn clone_page_for_occurrence(
         parent_key: format!("library:{library_id}"),
         page_id: None,
         actor_project_id: input.actor_project_id.map(str::to_owned),
-        creator_project_id: input.actor_project_id.map(str::to_owned),
+
         document: None,
         before_block_id: None,
     };
@@ -1047,7 +987,7 @@ fn persist_copy_documents(
             .map(|unit| unit.block_id.clone())
             .collect::<Vec<_>>();
         let full_state = prepared.engine.full_state_v1();
-        let authorized_file_ids = materialization.file_ids();
+
         let update_id = format!(
             "library-page-copy:{}:{}",
             sha256(operation_id.as_bytes()),
@@ -1056,7 +996,6 @@ fn persist_copy_documents(
         let persisted = persist_yjs_genesis_with_local_commit(
             connection,
             PersistYjsGenesis {
-                file_access_context: None,
                 authority: &target_authority,
                 actor_project_id,
                 materialization: &prepared.materialization,
@@ -1068,8 +1007,7 @@ fn persist_copy_documents(
                 store_epoch,
                 operation_id: &update_id,
                 placement: DocumentPlacementEvidence::STRUCTURAL
-                    .with_genesis(&placement_genesis_block_ids)
-                    .with_authorized_file_ids(&authorized_file_ids),
+                    .with_genesis(&placement_genesis_block_ids),
                 emit_event: false,
             },
             commit_context,
@@ -1650,10 +1588,6 @@ fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
 }
 
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
-}
-
 fn not_found(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::NotFound, message, false)
 }
@@ -1678,22 +1612,19 @@ fn internal(message: impl Into<String>) -> StoreError {
 mod tests {
     use nodex_core_contracts::agent::{
         AgentExecutionAuthorization, AgentOperationPreparationState, AgentPreparedExecution,
-        AgentProjectResourceAccess, AgentProjectResourceAction, AgentResourceAccessOverlay,
-        AgentResourceAccessOverlayKind, AgentResourceAccessOverlayScope, AgentResourceGrantRoot,
-        AgentResourceGrantSpec, AgentTurnProvenance,
+        AgentTurnProvenance,
     };
     use nodex_core_contracts::document::OwnedDocumentIntent;
     use nodex_core_contracts::library::{
-        LibraryAccess, LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest,
-        LibraryAgentMovePagesRequest, LibraryAgentPageCopyRequest, LibraryAgentPageDestination,
-        LibraryCanvasDestination, LibraryIntent, LibraryNavigationNode, LibraryNavigationParent,
-        LibraryPageCopyDestination, LibraryPageCopyValue, LibraryPageCopyViewPlacement,
-        LibraryRead, LibraryReadValue, LibraryResourceTarget, LibraryWriteParent,
+        LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentMovePagesRequest,
+        LibraryAgentPageCopyRequest, LibraryAgentPageDestination, LibraryCanvasDestination,
+        LibraryIntent, LibraryNavigationNode, LibraryNavigationParent, LibraryPageCopyDestination,
+        LibraryPageCopyValue, LibraryPageCopyViewPlacement, LibraryRead, LibraryReadValue,
+        LibraryWriteParent,
     };
     use nodex_core_contracts::workspace::{
         PROJECT_WORKSPACE_CONTRACT_VERSION, ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch,
-        ProjectWorkspaceTurnAuthority, ProjectWorkspaceTurnAuthorityScope,
-        ProjectWorkspaceTurnAuthoritySource,
+        ProjectWorkspaceTurnAuthority,
     };
     use nodex_core_contracts::{
         AdapterKind, BoundModuleContext, CoreErrorCode, LIBRARY_CONTRACT_VERSION, LibraryId,
@@ -1789,10 +1720,7 @@ mod tests {
             .expect("create Page");
     }
 
-    fn agent_move_authorization(
-        kernel: &SqliteStoreKernel,
-        granted_page_ids: &[&str],
-    ) -> AgentExecutionAuthorization {
+    fn agent_move_authorization(kernel: &SqliteStoreKernel) -> AgentExecutionAuthorization {
         let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", kernel)
             .expect("Workspace module");
         workspace
@@ -1823,14 +1751,11 @@ mod tests {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     operation_id: "operation:freeze-agent-move-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: "thread:agent-move".to_owned(),
                         turn_id: "turn:agent-move".to_owned(),
                         root_thread_id: "thread:agent-move".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
                     },
                 },
             )
@@ -1842,8 +1767,6 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
-            scope: ProjectWorkspaceTurnAuthorityScope::Project,
-            source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
         };
         AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
@@ -1851,28 +1774,6 @@ mod tests {
                 authority: turn.clone(),
             },
             call_id: "call:agent-move".to_owned(),
-            resource_access: Some(AgentResourceAccessOverlay {
-                kind: AgentResourceAccessOverlayKind::Consent,
-                scope: AgentResourceAccessOverlayScope::Call,
-                thread_id: Some(turn.thread_id.clone()),
-                turn_id: Some(turn.turn_id.clone()),
-                call_id: Some("call:agent-move".to_owned()),
-                root_thread_id: turn.root_thread_id,
-                actor_project_id: turn.actor_project_id.expect("Project consent fixture"),
-                library_id: turn.library_id,
-                store_epoch: turn.store_epoch,
-                grants: granted_page_ids
-                    .iter()
-                    .map(|page_id| AgentResourceGrantSpec {
-                        root: AgentResourceGrantRoot::Page {
-                            page_id: (*page_id).to_owned(),
-                        },
-                        access: AgentProjectResourceAccess::ReadWrite,
-                        library_actions: Vec::new(),
-                    })
-                    .collect(),
-                persist_resulting_page_grants: false,
-            }),
         }
     }
 
@@ -2045,14 +1946,11 @@ mod tests {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     operation_id: "operation:freeze-agent-copy-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: "thread:agent-copy".to_owned(),
                         turn_id: "turn:agent-copy".to_owned(),
                         root_thread_id: "thread:agent-copy".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
                     },
                 },
             )
@@ -2065,8 +1963,6 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
-            scope: ProjectWorkspaceTurnAuthorityScope::Project,
-            source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
         };
         let authorization = AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
@@ -2074,37 +1970,6 @@ mod tests {
                 authority: authority.clone(),
             },
             call_id: "call:agent-copy".to_owned(),
-            resource_access: Some(AgentResourceAccessOverlay {
-                kind: AgentResourceAccessOverlayKind::Consent,
-                scope: AgentResourceAccessOverlayScope::Call,
-                thread_id: Some(authority.thread_id.clone()),
-                turn_id: Some(authority.turn_id.clone()),
-                call_id: Some("call:agent-copy".to_owned()),
-                root_thread_id: authority.root_thread_id.clone(),
-                actor_project_id: authority
-                    .actor_project_id
-                    .clone()
-                    .expect("Project consent fixture"),
-                library_id: authority.library_id.clone(),
-                store_epoch: authority.store_epoch.clone(),
-                grants: vec![
-                    AgentResourceGrantSpec {
-                        root: AgentResourceGrantRoot::Page {
-                            page_id: "page:agent-source".to_owned(),
-                        },
-                        access: AgentProjectResourceAccess::Read,
-                        library_actions: Vec::new(),
-                    },
-                    AgentResourceGrantSpec {
-                        root: AgentResourceGrantRoot::Page {
-                            page_id: "page:agent-target".to_owned(),
-                        },
-                        access: AgentProjectResourceAccess::ReadWrite,
-                        library_actions: Vec::new(),
-                    },
-                ],
-                persist_resulting_page_grants: false,
-            }),
         };
         let copy = LibraryAgentPageCopyRequest {
             source_page_id: "page:agent-source".to_owned(),
@@ -2328,14 +2193,11 @@ mod tests {
                     contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                     operation_id: "operation:freeze-agent-create-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
-                        read_only: false,
+                    intent: ProjectWorkspaceIntent::AdmitTurnAuthority {
                         thread_id: "thread:agent-create".to_owned(),
                         turn_id: "turn:agent-create".to_owned(),
                         root_thread_id: "thread:agent-create".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
-                        inherited_from: None,
                     },
                 },
             )
@@ -2347,8 +2209,6 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
-            scope: ProjectWorkspaceTurnAuthorityScope::Project,
-            source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
         };
         let authorization = AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
@@ -2356,28 +2216,6 @@ mod tests {
                 authority: turn.clone(),
             },
             call_id: "call:agent-create".to_owned(),
-            resource_access: Some(AgentResourceAccessOverlay {
-                kind: AgentResourceAccessOverlayKind::Consent,
-                scope: AgentResourceAccessOverlayScope::Call,
-                thread_id: Some(turn.thread_id.clone()),
-                turn_id: Some(turn.turn_id.clone()),
-                call_id: Some("call:agent-create".to_owned()),
-                root_thread_id: turn.root_thread_id.clone(),
-                actor_project_id: turn
-                    .actor_project_id
-                    .clone()
-                    .expect("Project consent fixture"),
-                library_id: turn.library_id.clone(),
-                store_epoch: turn.store_epoch.clone(),
-                grants: vec![AgentResourceGrantSpec {
-                    root: AgentResourceGrantRoot::Page {
-                        page_id: "page:agent-create-target".to_owned(),
-                    },
-                    access: AgentProjectResourceAccess::ReadWrite,
-                    library_actions: Vec::new(),
-                }],
-                persist_resulting_page_grants: false,
-            }),
         };
         let create = LibraryAgentCreatePagesRequest {
             destination: LibraryAgentPageDestination::Page {
@@ -2606,14 +2444,7 @@ mod tests {
                 LibraryWriteParent::Library { before: None },
             );
         }
-        let authorization = agent_move_authorization(
-            &kernel,
-            &[
-                "page:agent-move-target",
-                "page:agent-move-first",
-                "page:agent-move-second",
-            ],
-        );
+        let authorization = agent_move_authorization(&kernel);
         let request = LibraryAgentMovePagesRequest {
             page_ids: vec![
                 "page:agent-move-second".to_owned(),
@@ -2841,14 +2672,7 @@ mod tests {
                 },
             );
         }
-        let authorization = agent_move_authorization(
-            &kernel,
-            &[
-                "page:agent-batch-child-a",
-                "page:agent-batch-child-b",
-                "page:agent-batch-target",
-            ],
-        );
+        let authorization = agent_move_authorization(&kernel);
         let request = LibraryAgentMovePagesRequest {
             page_ids: vec![
                 "page:agent-batch-child-b".to_owned(),
@@ -2955,7 +2779,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_page_move_preserves_library_owned_closure_in_call_granted_page() {
+    fn agent_page_move_preserves_library_owned_closure_in_target_page() {
         let (_directory, kernel) = seeded_kernel();
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         create_page(
@@ -3007,13 +2831,7 @@ mod tests {
                 },
             )
             .expect("create cross-Project target Page");
-        let authorization = agent_move_authorization(
-            &kernel,
-            &[
-                "page:agent-cross-project-source",
-                "page:agent-cross-project-target",
-            ],
-        );
+        let authorization = agent_move_authorization(&kernel);
         let request = LibraryAgentMovePagesRequest {
             page_ids: vec!["page:agent-cross-project-source".to_owned()],
             destination: LibraryAgentPageDestination::Page {
@@ -3164,31 +2982,8 @@ mod tests {
                 Ok(())
             })
             .expect("bind target Database");
-        let mut authorization = agent_move_authorization(&kernel, &["page:agent-storage-source"]);
-        authorization
-            .resource_access
-            .as_mut()
-            .expect("Agent storage overlay")
-            .grants
-            .push(AgentResourceGrantSpec {
-                root: AgentResourceGrantRoot::Database {
-                    database_id: "018f0000-0000-7000-8000-000000000501".to_owned(),
-                },
-                access: AgentProjectResourceAccess::ReadWrite,
-                library_actions: Vec::new(),
-            });
-        authorization
-            .resource_access
-            .as_mut()
-            .expect("Agent storage overlay")
-            .grants
-            .push(AgentResourceGrantSpec {
-                root: AgentResourceGrantRoot::Library {
-                    library_id: "library-1".to_owned(),
-                },
-                access: AgentProjectResourceAccess::ReadWrite,
-                library_actions: vec![AgentProjectResourceAction::CreateChild],
-            });
+        let mut authorization = agent_move_authorization(&kernel);
+
         execute_agent_move(
             &module,
             authorization.clone(),
@@ -3242,11 +3037,7 @@ mod tests {
             .expect("verify foreign Data Source storage");
 
         authorization.call_id = "call:agent-move-library".to_owned();
-        authorization
-            .resource_access
-            .as_mut()
-            .expect("Agent Library overlay")
-            .call_id = Some("call:agent-move-library".to_owned());
+
         execute_agent_move(
             &module,
             authorization,
@@ -3334,25 +3125,8 @@ mod tests {
                 LibraryWriteParent::Library { before: None },
             );
         }
-        let mut authorization = agent_move_authorization(
-            &kernel,
-            &[
-                "page:agent-database-move-first",
-                "page:agent-database-move-second",
-            ],
-        );
-        authorization
-            .resource_access
-            .as_mut()
-            .expect("move overlay")
-            .grants
-            .push(AgentResourceGrantSpec {
-                root: AgentResourceGrantRoot::Database {
-                    database_id: "018f0000-0000-7000-8000-000000000101".to_owned(),
-                },
-                access: AgentProjectResourceAccess::ReadWrite,
-                library_actions: Vec::new(),
-            });
+        let authorization = agent_move_authorization(&kernel);
+
         let request = LibraryAgentMovePagesRequest {
             page_ids: vec![
                 "page:agent-database-move-second".to_owned(),
@@ -4028,7 +3802,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_library_owned_closure_into_granted_data_source() {
+    fn copies_library_owned_closure_into_another_projects_data_source() {
         let (_directory, kernel) = seeded_kernel();
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         create_page(
@@ -4092,23 +3866,6 @@ mod tests {
                 Ok(())
             })
             .expect("bind target Project Database");
-        module
-            .apply(
-                &context_for("project-2"),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "operation:grant-project-1-target".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-1".to_owned(),
-                        target: LibraryResourceTarget::Database {
-                            database_id: "018f0000-0000-7000-8000-000000000301".to_owned(),
-                        },
-                        access: LibraryAccess::ReadWrite,
-                    },
-                },
-            )
-            .expect("grant target Database write access");
 
         let copied = module
             .apply(
@@ -4124,7 +3881,7 @@ mod tests {
                     },
                 ),
             )
-            .expect("copy into granted Data Source");
+            .expect("copy into target Data Source");
         let result = copied
             .committed
             .value
@@ -4141,11 +3898,7 @@ mod tests {
                     "SELECT root.library_id, membership.data_source_id, \
                        root_page.parent_kind, root_page.parent_id, root_document.library_id, \
                        child.library_id, child_entry.document_id, child_page.parent_id, \
-                       child_document.library_id, source.library_id, \
-                       (SELECT count(*) FROM project_resource_grants \
-                         WHERE project_id = 'project-1' AND root_kind = 'database' \
-                           AND root_id = '018f0000-0000-7000-8000-000000000301' \
-                           AND access = 'read_write' AND lifecycle = 'active') \
+                       child_document.library_id, source.library_id \
                      FROM blocks root JOIN pages root_page ON root_page.block_id = root.id \
                      JOIN data_source_page_memberships membership \
                        ON membership.page_block_id = root.id AND membership.removed_at IS NULL \
@@ -4174,7 +3927,6 @@ mod tests {
                             row.get::<_, String>(7)?,
                             row.get::<_, String>(8)?,
                             row.get::<_, String>(9)?,
-                            row.get::<_, i64>(10)?,
                         ))
                     },
                 )?;
@@ -4191,7 +3943,6 @@ mod tests {
                         result.page_id.clone(),
                         "library-1".to_owned(),
                         "library-1".to_owned(),
-                        1,
                     )
                 );
                 Ok(())
@@ -4200,7 +3951,7 @@ mod tests {
     }
 
     #[test]
-    fn page_destination_requires_write_grant_without_changing_library_ownership() {
+    fn page_copy_preserves_library_ownership_across_project_routes() {
         let (_directory, kernel) = seeded_kernel();
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         create_page(
@@ -4238,47 +3989,11 @@ mod tests {
                 },
             )
             .expect("create target Project Page");
-        let grant = |operation_id: &str, access| {
-            module.apply(
-                &context_for("project-2"),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: operation_id.to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: LibraryIntent::GrantProjectAccess {
-                        project_id: "project-1".to_owned(),
-                        target: LibraryResourceTarget::Page {
-                            page_id: "page:target".to_owned(),
-                        },
-                        access,
-                    },
-                },
-            )
-        };
-        grant("operation:grant-target-read", LibraryAccess::Read).expect("grant Page read access");
-        let denied = module
-            .apply(
-                &context(),
-                copy_request(
-                    "operation:copy-with-read-grant",
-                    1,
-                    LibraryPageCopyDestination::Page {
-                        page_id: "page:target".to_owned(),
-                        expected_document_generation: 1,
-                        expected_document_head_seq: 1,
-                        before: None,
-                    },
-                ),
-            )
-            .expect_err("read grant cannot write target Page");
-        assert_eq!(denied.code, CoreErrorCode::NotFound);
-        grant("operation:grant-target-write", LibraryAccess::ReadWrite)
-            .expect("upgrade Page write access");
         let copied = module
             .apply(
                 &context(),
                 copy_request(
-                    "operation:copy-with-write-grant",
+                    "operation:copy-across-project-routes",
                     1,
                     LibraryPageCopyDestination::Page {
                         page_id: "page:target".to_owned(),
@@ -4288,7 +4003,7 @@ mod tests {
                     },
                 ),
             )
-            .expect("write grant copies into target Page");
+            .expect("copy into target Page");
         let result = copied
             .committed
             .value
@@ -4303,7 +4018,7 @@ mod tests {
                        document.library_id, target.head_seq, \
                        (SELECT count(*) FROM core_module_receipts \
                          WHERE module_name = 'library' \
-                           AND operation_id = 'operation:copy-with-read-grant') \
+                           AND operation_id = 'operation:copy-across-project-routes') \
                      FROM blocks copied \
                      JOIN document_block_index entry ON entry.block_id = copied.id \
                      JOIN documents document ON document.id = ?2 \
@@ -4327,12 +4042,12 @@ mod tests {
                         "document:target".to_owned(),
                         "library-1".to_owned(),
                         2,
-                        0,
+                        1,
                     )
                 );
                 Ok(())
             })
-            .expect("Page grant copy evidence");
+            .expect("cross-Project Page copy evidence");
     }
 
     #[test]

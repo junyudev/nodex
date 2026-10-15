@@ -227,9 +227,9 @@ describe("useWorkbenchCommandIngress", () => {
     const port = makePort();
     result.current.register(port);
     const invocation = {
-      notificationId: "approval-local-request-1",
-      actionId: "approve",
-      actionType: "approve",
+      notificationId: "question-local-request-1",
+      actionId: "reply",
+      actionType: "reply",
       hostId: "local",
       conversationId: "thread-1",
       navigationPath: "thread:thread-1",

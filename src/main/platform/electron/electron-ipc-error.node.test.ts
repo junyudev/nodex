@@ -6,9 +6,9 @@ describe("Electron IPC error projection", () => {
     const cause = {
       _tag: "CodexIpcError",
       message: "CodexIpcError",
-      operation: "codex:thread:start-for-session",
+      operation: "agent-runtime:command",
       cause: {
-        message: "CodexSessionThreadLaunchError",
+        message: "AgentRuntimeApplicationError",
         cause: new Error("Agent runtime substituted the requested execution profile"),
       },
     };

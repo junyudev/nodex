@@ -12,7 +12,6 @@ import {
   DownloadIcon,
   EditIcon,
   FileIcon,
-  ProjectAccessIcon,
   PlusIcon,
   ReplaceIcon,
   UndoIcon,
@@ -35,9 +34,9 @@ import {
   useFileReadSnapshot,
 } from "@/components/board/editor/file-runtime";
 import {
-  libraryContentAccess,
-  type ContentAccessContext,
-} from "../../../shared/content-access-context";
+  libraryContentRoute,
+  type ContentRoutingContext,
+} from "../../../shared/content-routing-context";
 import type { LibraryFile, LibraryPageFileEntryReceipt } from "../../../shared/library-files";
 import { fileSource } from "../../../shared/file-resources";
 import {
@@ -49,9 +48,7 @@ import {
   renameFile,
   replaceFileContent,
 } from "@/lib/library-file-commands";
-import { appScope, useScopeHandle } from "@/lib/maitai";
 import type { ModalCloseProps } from "@/lib/modal-registry";
-import { openModal } from "@/lib/modal-registry";
 import { queryKeys } from "@/lib/query-keys";
 import {
   useLibraryFile,
@@ -60,7 +57,6 @@ import {
 } from "@/lib/use-library-files";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import { readPageFileInventoryPage, saveAuthorizedFile } from "@/lib/library-file-resources";
-import { LibraryResourceAccessModal } from "./library-resource-action-modals";
 import { cn } from "@/lib/utils";
 import { useFileLocationNavigator } from "@/lib/file-location-navigation";
 
@@ -71,7 +67,7 @@ export interface LibraryFilesPageTarget {
 }
 
 export interface LibraryFilesDialogProps extends ModalCloseProps {
-  readonly accessContext?: ContentAccessContext;
+  readonly routingContext?: ContentRoutingContext;
   readonly pageTarget?: LibraryFilesPageTarget;
   readonly initialFileId?: string;
 }
@@ -96,7 +92,7 @@ export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
   if (snapshot.contentError || snapshot.metadataError) {
     return (
       <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-token-description-foreground">
-        This File is no longer available in the current access context.
+        This File is no longer available.
       </div>
     );
   }
@@ -152,7 +148,7 @@ export function LibraryFilesDialog(props: LibraryFilesDialogProps) {
   return (
     <LibraryFilesDialogContent
       key={JSON.stringify([
-        props.accessContext ?? libraryContentAccess,
+        props.routingContext ?? libraryContentRoute,
         props.initialFileId ?? null,
         props.pageTarget?.pageId ?? null,
       ])}
@@ -162,12 +158,11 @@ export function LibraryFilesDialog(props: LibraryFilesDialogProps) {
 }
 
 function LibraryFilesDialogContent({
-  accessContext = libraryContentAccess,
+  routingContext = libraryContentRoute,
   pageTarget,
   initialFileId,
   onClose,
 }: LibraryFilesDialogProps) {
-  const appHandle = useScopeHandle(appScope);
   const openLocation = useFileLocationNavigator();
   const queryClient = useQueryClient();
   const metadata = useLibraryMetadata();
@@ -187,15 +182,15 @@ function LibraryFilesDialogContent({
   );
   const importInputRef = useRef<HTMLInputElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
-  const catalog = useLibraryFileCatalog(accessContext, {
+  const catalog = useLibraryFileCatalog(routingContext, {
     lifecycle: filter === "trash" ? "trashed" : "live",
     usage: filter === "unused" ? "unused" : "all",
     query,
   });
-  const identity = useLibraryFile(accessContext, selectedFileId);
+  const identity = useLibraryFile(routingContext, selectedFileId);
   const selected = identity.file;
   const detail = useLibraryFileDetail(
-    accessContext,
+    routingContext,
     pageTarget ? null : (selected?.file_id ?? null),
   );
   const previewVersion = selectedVersion ?? selected?.head_version ?? null;
@@ -215,7 +210,7 @@ function LibraryFilesDialogContent({
 
   const authority = metadata.data
     ? {
-        contentAccessContext: accessContext,
+        contentRoutingContext: routingContext,
         libraryId: metadata.data.libraryId,
         storeEpoch: metadata.data.storeEpoch,
       }
@@ -239,7 +234,7 @@ function LibraryFilesDialogContent({
         const current = await identity.refresh();
         if (current) setNameRevision(current.revision);
         if (pageTarget) {
-          const inventory = await readPageFileInventoryPage(accessContext, pageTarget.pageId, {
+          const inventory = await readPageFileInventoryPage(routingContext, pageTarget.pageId, {
             limit: 1,
           });
           setPageManifestRevision(inventory.revision);
@@ -463,7 +458,7 @@ function LibraryFilesDialogContent({
                     {identity.loading
                       ? "Loading File…"
                       : identity.error
-                        ? "This File is unavailable or requires direct File access. Open its Page to preview or save it."
+                        ? "This File is no longer available."
                         : "Select a File"}
                   </span>
                 </div>
@@ -490,7 +485,7 @@ function LibraryFilesDialogContent({
                       ) : (
                         <button
                           type="button"
-                          disabled={Boolean(pageTarget) || mutating || !detail.canWrite}
+                          disabled={Boolean(pageTarget) || mutating}
                           className="group flex max-w-full items-center gap-1 text-left"
                           onClick={() => {
                             setName(selected.default_name);
@@ -501,9 +496,7 @@ function LibraryFilesDialogContent({
                           <span className="truncate text-base font-medium text-token-text-primary">
                             {selected.default_name}
                           </span>
-                          {detail.canWrite ? (
-                            <EditIcon className="size-3 opacity-0 group-hover:opacity-60" />
-                          ) : null}
+                          <EditIcon className="size-3 opacity-0 group-hover:opacity-60" />
                         </button>
                       )}
                       <FileDetailsMetadata
@@ -539,11 +532,6 @@ function LibraryFilesDialogContent({
                       {selected.head_version}.
                     </p>
                   ) : null}
-                  {!pageTarget && !detail.loading && !detail.error && !detail.canWrite ? (
-                    <p className="px-4 pb-2 text-xs text-token-description-foreground">
-                      Read-only File. Save or make an independent copy to work with this content.
-                    </p>
-                  ) : null}
                   {authority && previewVersion !== null ? (
                     <FileReadBoundary
                       authority={{
@@ -566,7 +554,6 @@ function LibraryFilesDialogContent({
                           </p>
                           {!detail.loading &&
                           !detail.error &&
-                          detail.canWrite &&
                           (selected.lifecycle === "live" ? !detail.canTrash : !detail.canPurge) ? (
                             <p>
                               {selected.lifecycle === "live"
@@ -587,7 +574,7 @@ function LibraryFilesDialogContent({
                         disabled={mutating}
                         onClick={() => void saveSelected()}
                       />
-                      {selected.lifecycle === "live" && detail.canWrite ? (
+                      {selected.lifecycle === "live" ? (
                         <NodexIconButton
                           icon={ReplaceIcon}
                           ariaLabel="Update shared content…"
@@ -608,18 +595,6 @@ function LibraryFilesDialogContent({
                               });
                               setSelectedFileId(copy.file_id);
                             }, "Independent copy created")
-                          }
-                        />
-                      ) : null}
-                      {accessContext.kind === "library" ? (
-                        <NodexIconButton
-                          icon={ProjectAccessIcon}
-                          ariaLabel="Project access"
-                          onClick={() =>
-                            openModal(appHandle, LibraryResourceAccessModal, {
-                              target: { kind: "file", fileId: selected.file_id },
-                              title: selected.default_name,
-                            })
                           }
                         />
                       ) : null}

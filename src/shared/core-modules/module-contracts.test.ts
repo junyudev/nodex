@@ -13,8 +13,9 @@ interface ProbeRead {
 }
 
 interface ProbeIntent {
-  readonly kind: "grant_project_access";
+  readonly kind: "rename_project";
   readonly projectId: string;
+  readonly name: string;
 }
 
 type ProbeReadRequest = ModuleReadRequest<ProbeRead>;
@@ -54,7 +55,7 @@ describe("deep Core Module contract", () => {
     const applyRequest: ProbeApplyRequest = {
       operationId: "operation-1",
       storeEpoch: "epoch-1",
-      intent: { kind: "grant_project_access", projectId: "project-1" },
+      intent: { kind: "rename_project", projectId: "project-1", name: "Project" },
     };
 
     expect(await adapters[0]?.read(readRequest)).toEqual({

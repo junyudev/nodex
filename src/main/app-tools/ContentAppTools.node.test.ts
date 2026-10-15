@@ -1,23 +1,20 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { NodexAgentApplication } from "../nodex-agent-application/NodexAgentApplication";
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make } from "./ContentAppTools";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "thread",
   turnId: "turn",
   rootThreadId: "thread",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: 1,
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: 1,
 };
 const input: AppToolInvocation = {
   name: "get_context",
@@ -32,10 +29,10 @@ const input: AppToolInvocation = {
   },
 };
 const output = {
-  data: { project: null, access: { read: "allowed", write: "consent_required", domains: [] } },
+  data: { libraryId: "library", project: null },
 };
 
-it.effect("uses frozen native-call authority and validates the semantic result", () =>
+it.effect("uses captured native-call identity and validates the semantic result", () =>
   Effect.gen(function* () {
     let reads = 0;
     let stale = false;
@@ -48,13 +45,9 @@ it.effect("uses frozen native-call authority and validates the semantic result",
       Effect.provideService(NodexAppToolAuthority, {
         bind: (binding) =>
           Effect.gen(function* () {
-            assert.strictEqual(binding.callId, "call");
             assert.strictEqual(yield* binding.isCurrent, true);
             return {
               authority: binding.authority,
-              access: { read: "allowed" as const, write: "consent_required" as const, domains: [] },
-              authorize: () => Effect.succeed("unavailable" as const),
-              resolveResourceAccess: () => Effect.die("unexpected resource request"),
             };
           }),
       }),

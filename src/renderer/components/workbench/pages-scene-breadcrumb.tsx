@@ -48,16 +48,16 @@ export function libraryTargetForPagesSurface(
 ): LibraryRouteTarget | null {
   if (!surface) return null;
   if (surface.kind === "page_stage") {
-    return surface.config.accessContext.kind === "library"
+    return surface.config.routingContext.kind === "library"
       ? { kind: "page", pageId: surface.config.pageId }
       : null;
   }
   if (surface.kind === "canvas_stage") {
-    return surface.config.accessContext.kind === "library"
+    return surface.config.routingContext.kind === "library"
       ? { kind: "canvas", canvasId: surface.config.canvasBlockId }
       : null;
   }
-  if (surface.kind !== "db_view" || surface.config.accessContext.kind !== "library") {
+  if (surface.kind !== "db_view" || surface.config.routingContext.kind !== "library") {
     return null;
   }
   if (surface.config.target.kind === "database-default") {

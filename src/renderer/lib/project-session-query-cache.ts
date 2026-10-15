@@ -3,6 +3,7 @@ import type { ProjectSessionsChangeEvent } from "../../shared/ipc-api";
 import type { ProjectSession, ProjectSessionSummary, ProjectSessionSummaryWindow } from "./types";
 import { projectSessionDetailQueryOptions } from "./query-options";
 import { queryKeys } from "./query-keys";
+import { invokeRendererQuery } from "./renderer-command";
 
 export { preferNewestProjectSessionSummaryWindow } from "./project-session-summary-window";
 
@@ -79,6 +80,7 @@ export function projectSessionToSummary(session: ProjectSession): ProjectSession
     archivedAt: session.archivedAt,
     unread: session.unread,
     thread: session.thread,
+    executionRef: session.executionRef ?? null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   };
@@ -176,6 +178,18 @@ export async function prefetchProjectSessionDetail(
 ): Promise<ProjectSession | null> {
   if (sessionId.trim().length === 0) return null;
   return await queryClient.fetchQuery(projectSessionDetailQueryOptions(sessionId));
+}
+
+/** Execution routing needs current binding metadata, independent of a cached draft read. */
+export async function readCurrentProjectSessionDetail(
+  sessionId: string,
+): Promise<ProjectSession | null> {
+  if (!sessionId.trim()) return null;
+  const session = (await invokeRendererQuery(
+    "project-sessions:get",
+    sessionId,
+  )) as ProjectSession | null;
+  return session;
 }
 
 export async function invalidateProjectSessionScope(

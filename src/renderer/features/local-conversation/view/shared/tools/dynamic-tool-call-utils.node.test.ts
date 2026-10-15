@@ -140,7 +140,7 @@ describe("dynamic tool registry", () => {
       },
     });
     const entry = getDynamicToolRegistryEntry(call);
-    const state = resolveAutomationUpdateRenderState(call, "thread-current");
+    const state = resolveAutomationUpdateRenderState(call);
 
     expect(entry?.rendererKind ?? "").toBe("automationUpdate");
     expect(isDynamicToolStandaloneInConversation(call)).toBe(false);
@@ -227,6 +227,31 @@ describe("dynamic tool registry", () => {
     expect(
       Object.prototype.hasOwnProperty.call(state?.updateInput ?? {}, "localEnvironmentConfigPath"),
     ).toBe(false);
+  });
+
+  test("accepts a Heartbeat proposal only with its resolved Session target", () => {
+    const argumentsBase = {
+      mode: "suggested_create",
+      kind: "heartbeat",
+      name: "Follow up",
+      prompt: "Check progress",
+      rrule: "FREQ=HOURLY",
+    };
+    const unresolved = resolveAutomationUpdateRenderState(
+      dynamicCall({
+        tool: "automation_update",
+        arguments: { ...argumentsBase, destination: "thread", targetThreadId: "thread:foreign" },
+      }),
+    );
+    expect(unresolved?.canAccept).toBe(false);
+    const resolved = resolveAutomationUpdateRenderState(
+      dynamicCall({
+        tool: "automation_update",
+        arguments: { ...argumentsBase, targetSessionId: "session:one" },
+      }),
+    );
+    expect(resolved?.createInput).toMatchObject({ targetSessionId: "session:one" });
+    expect(resolved?.canAccept).toBe(true);
   });
 
   test("keys completed summary parts through registry-specific keys", () => {

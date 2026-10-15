@@ -11,21 +11,16 @@ const resource = {
 } as const;
 
 describe("Sidebar Library drop semantics", () => {
-  test("separates ownership moves from Project grants", () => {
+  test("moves resources to their ownership targets", () => {
     expect(
-      resolveSidebarLibraryDropDecision(
-        resource,
-        {
-          kind: "sidebar-library-ownership-target",
-          parent: { kind: "library" },
-        },
-        null,
-      ),
+      resolveSidebarLibraryDropDecision(resource, {
+        kind: "sidebar-library-ownership-target",
+        parent: { kind: "library" },
+      }),
     ).toMatchObject({ kind: "move", parent: { kind: "library" } });
 
-    expect(resolveSidebarLibraryDropDecision(resource, undefined, "project-2")).toMatchObject({
-      kind: "grant",
-      projectId: "project-2",
+    expect(resolveSidebarLibraryDropDecision(resource, undefined)).toMatchObject({
+      kind: "reject",
     });
   });
 
@@ -42,11 +37,10 @@ describe("Sidebar Library drop semantics", () => {
             expectedDocumentHeadSeq: 2,
           },
         },
-        null,
         true,
       ),
     ).toEqual({ kind: "reject" });
-    expect(resolveSidebarLibraryDropDecision(undefined, undefined, "project-2")).toEqual({
+    expect(resolveSidebarLibraryDropDecision(undefined, undefined)).toEqual({
       kind: "reject",
     });
   });

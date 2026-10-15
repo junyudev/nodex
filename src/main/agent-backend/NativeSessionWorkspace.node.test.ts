@@ -1,18 +1,21 @@
 // @effect-diagnostics strictEffectProvide:off
-import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { NativeSessionWorkspaceInput } from "./NativeSessionWorkspace";
 import { testLayer as configLayer } from "../app/MainConfig";
-import { CodexGitProbe } from "../codex-application/CodexGitProbe";
+import { CodexGitProbe, make as makeGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import type { CodexWorktreeWorkerRequest } from "../codex/codex-worktree-worker-protocol";
 import type { WorktreeWorkerRequestOptions } from "../host-runtime/WorktreeWorkerRuntime";
 import { make, NativeSessionWorkspaceError } from "./NativeSessionWorkspace";
 import type { CodexStoredShellEnvironment } from "../codex/codex-worktree-shell-environment";
+import { setManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
 const input: NativeSessionWorkspaceInput = {
   targetId: "session",
@@ -32,23 +35,28 @@ const fixture = (
     ownerFailure?: boolean;
     environmentPath?: string;
     shellEnvironment?: CodexStoredShellEnvironment;
+    git?: CodexGitProbe["Service"];
+    managedRoot?: string;
   } = {},
 ) => {
   const events: string[] = [];
   const requests: CodexWorktreeWorkerRequest[] = [];
   const owner = make.pipe(
-    Effect.provideService(CodexGitProbe, {
-      readPath: (_cwd, args) =>
-        Effect.succeed(
-          args[0] === "branch"
-            ? "main"
-            : args[1] === "--git-path"
-              ? (options.environmentPath ?? null)
-              : "../source/.git",
-        ),
-      isNonGitWorkspace: () => Effect.succeed(false),
-      isNonGitWorkspaceOnHost: () => Effect.succeed(false),
-    }),
+    Effect.provideService(
+      CodexGitProbe,
+      options.git ?? {
+        readPath: (_cwd, args) =>
+          Effect.succeed(
+            args[0] === "branch"
+              ? "main"
+              : args[1] === "--git-path"
+                ? (options.environmentPath ?? null)
+                : "../source/.git",
+          ),
+        isNonGitWorkspace: () => Effect.succeed(false),
+        isNonGitWorkspaceOnHost: () => Effect.succeed(false),
+      },
+    ),
     Effect.provideService(ManagedWorktreeRuntime, {
       registerNewborn: () =>
         Effect.sync(() => {
@@ -76,7 +84,7 @@ const fixture = (
     Effect.provideService(ExecutionHostRuntime, {
       resolve: () =>
         Effect.succeed({
-          descriptor: { managedRoot: "/worktrees" },
+          descriptor: { managedRoot: options.managedRoot ?? "/worktrees" },
           request: (
             request: CodexWorktreeWorkerRequest,
             callbacks?: WorktreeWorkerRequestOptions,
@@ -106,6 +114,63 @@ const fixture = (
   );
   return { owner, events, requests };
 };
+
+it.effect(
+  "retained worktree reconciliation proves Git identity and refuses another execution owner",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          Effect.promise(() => mkdtemp(path.join(tmpdir(), "nodex-workspace-reconcile-"))),
+          (root) => Effect.promise(() => rm(root, { recursive: true, force: true })),
+        );
+        const source = path.join(directory, "source");
+        const managedRoot = path.join(directory, "managed");
+        const worktree = path.join(managedRoot, "261014-0101-aabbccdd");
+        const cwd = path.join(worktree, "packages", "app");
+        const run = promisify(execFile);
+        yield* Effect.promise(async () => {
+          await mkdir(source, { recursive: true });
+          await run("git", ["init", source]);
+          await run("git", [
+            "-C",
+            source,
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Initial",
+          ]);
+          await run("git", ["-C", source, "worktree", "add", "--detach", worktree]);
+          await mkdir(cwd, { recursive: true });
+        });
+        const f = fixture({ managedRoot, git: makeGitProbe({ environment: process.env }) });
+        const owner = yield* f.owner;
+        yield* owner.reconcile({ cwd: source, threadId: "unrelated" });
+        assert.deepEqual(f.events, []);
+        yield* owner.reconcile({ cwd, threadId: "durable-thread" });
+        assert.deepEqual(f.events, ["owner:durable-thread", "release"]);
+        assert.equal(f.requests.length, 0, "Reconciliation cannot allocate another workspace");
+        yield* Effect.promise(() => setManagedWorktreeOwnerThread(worktree, "another-thread"));
+        assert.equal(
+          (yield* owner.reconcile({ cwd, threadId: "durable-thread" }).pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.deepEqual(f.events, ["owner:durable-thread", "release"]);
+        yield* Effect.promise(() => setManagedWorktreeOwnerThread(worktree, "durable-thread"));
+        yield* owner.reconcile({ cwd, threadId: "durable-thread" });
+        assert.deepEqual(f.events, [
+          "owner:durable-thread",
+          "release",
+          "owner:durable-thread",
+          "release",
+        ]);
+      }),
+    ),
+);
 
 it.effect(
   "native session records and owns the managed workspace before releasing its newborn protection",

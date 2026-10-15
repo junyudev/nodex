@@ -6,7 +6,7 @@ import type {
   CodexPendingWorktreeCreateResult,
   CodexPendingWorktreeEntry,
 } from "../../../shared/codex-pending-worktree";
-import type { CodexAgentMode } from "../../../shared/types";
+
 import { render as renderDom } from "../../test/dom";
 import { StableWorktreeCreateDialog } from "./stable-worktree-create-dialog";
 import {
@@ -67,7 +67,6 @@ function makeEntry(overrides: Partial<StableWorktreeEntry> = {}): StableWorktree
 class TestStableWorktreeTransport implements StableWorktreeStatusDialogTransport {
   entries: readonly CodexPendingWorktreeEntry[];
   calls: string[] = [];
-  autoFixAgentModes: CodexAgentMode[] = [];
   listPromise: Promise<readonly CodexPendingWorktreeEntry[]> | null = null;
   autoFixPromise: Promise<CodexPendingWorktreeCreateResult> = Promise.resolve({
     pendingWorktreeId: "local:repair-1",
@@ -94,9 +93,8 @@ class TestStableWorktreeTransport implements StableWorktreeStatusDialogTransport
     this.calls.push(`cancel:${hostId}:${pendingWorktreeId}`);
   };
 
-  autoFix = async (hostId: string, pendingWorktreeId: string, agentMode: CodexAgentMode) => {
+  autoFix = async (hostId: string, pendingWorktreeId: string) => {
     this.calls.push(`auto-fix:${hostId}:${pendingWorktreeId}`);
-    this.autoFixAgentModes.push(agentMode);
     return this.autoFixPromise;
   };
 
@@ -236,7 +234,6 @@ describe("StableWorktreeStatusDialog", () => {
         onEditEnvironment={(selectedEntry) => {
           editedEntryId = selectedEntry.id;
         }}
-        agentMode="guardian-approvals"
         onOpenPendingWorktree={(clientThreadId) => {
           openedClientThreadId = clientThreadId;
         }}
@@ -272,7 +269,6 @@ describe("StableWorktreeStatusDialog", () => {
     );
     expect(closeCount).toBe(2);
     expect(openedClientThreadId).toBe("client-new-thread:repair-1");
-    expect(transport.autoFixAgentModes.join(",")).toBe("guardian-approvals");
   });
 
   test("requires the config and both worktree roots before offering Auto-fix", async () => {

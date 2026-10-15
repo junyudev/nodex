@@ -6,16 +6,11 @@ import type {
   ProjectionStreamMessage,
 } from "../../shared/projection-stream";
 import { projectionScopeKey } from "../../shared/projection-stream";
-import type {
-  ResourceRevocationDeliveryMessage,
-  ResourceRevocationMessage,
-} from "../../shared/resource-revocation-stream";
 import {
   impactMatches,
   type ProjectionInvalidationCause,
   ProjectionInvalidationRegistry,
   projectionEffectMatches,
-  revocationMatches,
 } from "./projection-invalidation-registry";
 import { INTERACTIVE_PROJECTION_REPAIR_BURST } from "./causal-projection-runtime";
 
@@ -94,33 +89,6 @@ test("history lifecycle signals do not invalidate unrelated aggregate content pr
   expect(projectionEffectMatches({ aggregate: true }, base)).toBe(true);
 });
 
-const revocationMessage = (
-  commitSeq: number,
-  resourceId = "page-1",
-): ResourceRevocationDeliveryMessage => ({
-  version: 1,
-  kind: "revocation",
-  scope,
-  stream: { storeEpoch: "epoch-1", commitSeq },
-  delivery: {
-    storeEpoch: "epoch-1",
-    commitSeq,
-    manifestHash: String(commitSeq).padStart(64, "b").slice(-64),
-    operationId: `operation-${commitSeq}`,
-    committedAt: "2026-08-06T00:00:00.000Z",
-    revocation: {
-      authorization_scope: {
-        kind: "project",
-        library_id: "library-1",
-        project_id: "project-1",
-      },
-      resource_kind: "page",
-      resource_id: resourceId,
-      reason: "access_revoked",
-    },
-  },
-});
-
 const flush = async (): Promise<void> => {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
   await Promise.resolve();
@@ -129,35 +97,23 @@ const flush = async (): Promise<void> => {
 
 const harness = (effectRepairBurst?: { readonly quietMs: number; readonly maxMs: number }) => {
   const projectionListeners = new Set<(message: ProjectionStreamMessage) => void>();
-  const revocationListeners = new Set<(message: ResourceRevocationMessage) => void>();
   const subscribeProjection = vi.fn(
     (_scope: ProjectionScope, listener: (message: ProjectionStreamMessage) => void) => {
       projectionListeners.add(listener);
       return () => projectionListeners.delete(listener);
     },
   );
-  const subscribeRevocations = vi.fn(
-    (_scope: ProjectionScope, listener: (message: ResourceRevocationMessage) => void) => {
-      revocationListeners.add(listener);
-      return () => revocationListeners.delete(listener);
-    },
-  );
+
   return {
     registry: new ProjectionInvalidationRegistry({
       subscribeProjection,
-      subscribeRevocations,
       ...(effectRepairBurst ? { effectRepairBurst } : {}),
     }),
     subscribeProjection,
-    subscribeRevocations,
-    publish(message: ProjectionStreamMessage | ResourceRevocationMessage) {
-      if (message.version === 1) {
-        for (const listener of revocationListeners) listener(message);
-        return;
-      }
+    publish(message: ProjectionStreamMessage) {
       for (const listener of projectionListeners) listener(message);
     },
-    listenerCount: () => projectionListeners.size + revocationListeners.size,
+    listenerCount: () => projectionListeners.size,
   };
 };
 
@@ -198,23 +154,6 @@ describe("ProjectionInvalidationRegistry", () => {
     expect(impactMatches({ viewIds: ["view-1"] }, value)).toBe(true);
     expect(impactMatches({ documentIds: ["document-1"] }, value)).toBe(true);
     expect(impactMatches({ pageIds: ["other"] }, value)).toBe(false);
-  });
-
-  test("matches revocations by exact resource identity", () => {
-    const revocation = revocationMessage(2).delivery.revocation;
-    expect(revocationMatches({ pageIds: ["page-1"] }, revocation)).toBe(true);
-    expect(revocationMatches({ pageIds: ["other"] }, revocation)).toBe(false);
-    expect(revocationMatches({ aggregate: true }, revocation)).toBe(true);
-    expect(
-      revocationMatches(
-        { canvasIds: ["canvas-1"] },
-        {
-          ...revocation,
-          resource_kind: "canvas",
-          resource_id: "canvas-1",
-        },
-      ),
-    ).toBe(true);
   });
 
   test("separates Database View effects from Page Detail structure", () => {
@@ -315,16 +254,9 @@ describe("ProjectionInvalidationRegistry", () => {
         },
       }),
     ).toBe(true);
-    expect(
-      revocationMatches(dependencies, {
-        ...revocationMessage(2).delivery.revocation,
-        resource_kind: "data_source",
-        resource_id: "source-1",
-      }),
-    ).toBe(true);
   });
 
-  test("shares one access subscription and reference-counts one consumer", async () => {
+  test("shares one projection subscription and reference-counts one consumer", async () => {
     const stream = harness();
     let cursor = { storeEpoch: "epoch-1", commitSeq: 0 };
     const first = vi.fn(async (message: ProjectionInvalidationCause) => {
@@ -344,7 +276,6 @@ describe("ProjectionInvalidationRegistry", () => {
     await flush();
 
     expect(stream.subscribeProjection).toHaveBeenCalledOnce();
-    expect(stream.subscribeRevocations).toHaveBeenCalledOnce();
     expect(first).toHaveBeenCalledOnce();
     expect(second).not.toHaveBeenCalled();
     releaseFirst();
@@ -383,7 +314,6 @@ describe("ProjectionInvalidationRegistry", () => {
 
   test("replays the latest scope position as a checkpoint for a new consumer", async () => {
     const stream = harness();
-    const revoke = vi.fn();
     const invalidate = vi.fn();
     stream.registry.register({
       scope,
@@ -392,19 +322,17 @@ describe("ProjectionInvalidationRegistry", () => {
       getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 1 }),
       invalidate: () => undefined,
     });
-    stream.publish(revocationMessage(2));
+    stream.publish(effectMessage(2));
 
     stream.registry.register({
       scope,
       consumerKey: "late-page",
       getDependencies: () => ({ pageIds: ["page-1"] }),
       getCursor: () => null,
-      revoke,
       invalidate,
     });
     await flush();
 
-    expect(revoke).not.toHaveBeenCalled();
     expect(invalidate).toHaveBeenCalledOnce();
     expect(invalidate.mock.calls[0]?.[0]).toMatchObject({
       kind: "checkpoint",
@@ -511,115 +439,5 @@ describe("ProjectionInvalidationRegistry", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  test("delivers a matching revocation even when the cache cursor is newer", async () => {
-    const stream = harness();
-    const invalidate = vi.fn();
-    stream.registry.register({
-      scope,
-      consumerKey: "page",
-      getDependencies: () => ({ pageIds: ["page-1"] }),
-      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 10 }),
-      invalidate,
-    });
-
-    stream.publish(revocationMessage(2));
-    await flush();
-
-    expect(invalidate).toHaveBeenCalledOnce();
-    expect(invalidate).toHaveBeenCalledWith(revocationMessage(2));
-  });
-
-  test("fences and repairs a revocation-lane reset independently", async () => {
-    const stream = harness();
-    const fence = vi.fn();
-    const invalidate = vi.fn();
-    const reset: ResourceRevocationMessage = {
-      version: 1,
-      kind: "reset",
-      scope,
-      stream: { storeEpoch: "epoch-1", commitSeq: 6 },
-      reason: "recipient_delivery_failed",
-    };
-    stream.registry.register({
-      scope,
-      consumerKey: "page",
-      getDependencies: () => ({ pageIds: ["page-1"] }),
-      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 5 }),
-      fence,
-      invalidate,
-    });
-
-    stream.publish(reset);
-    await flush();
-
-    expect(fence).toHaveBeenCalledWith(reset);
-    expect(invalidate).toHaveBeenCalledWith(reset);
-  });
-
-  test("applies every revocation synchronously while canonical repair is queued", async () => {
-    const stream = harness();
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const revoke = vi.fn();
-    const invalidate = vi.fn(async () => {
-      if (invalidate.mock.calls.length === 1) await gate;
-    });
-    stream.registry.register({
-      scope,
-      consumerKey: "board",
-      getDependencies: () => ({ aggregate: true }),
-      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 10 }),
-      revoke,
-      invalidate,
-    });
-
-    const first = revocationMessage(2, "page-1");
-    const second = revocationMessage(3, "page-2");
-    const third = revocationMessage(4, "page-3");
-    stream.publish(first);
-    await flush();
-    stream.publish(second);
-    stream.publish(third);
-
-    expect(revoke.mock.calls.map((call) => call[0])).toEqual([first, second, third]);
-    expect(invalidate).toHaveBeenCalledOnce();
-    release();
-    await flush();
-    expect(invalidate).toHaveBeenCalledTimes(2);
-    expect(invalidate).toHaveBeenLastCalledWith(third);
-  });
-
-  test("lets a later commit supersede an older revocation for queued repair", async () => {
-    const stream = harness();
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const invalidate = vi.fn(async () => {
-      if (invalidate.mock.calls.length === 1) await gate;
-    });
-    stream.registry.register({
-      scope,
-      consumerKey: "page",
-      getDependencies: () => ({ pageIds: ["page-1"] }),
-      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 0 }),
-      invalidate,
-    });
-
-    const revoked = revocationMessage(2);
-    const changedAgain = effectMessage(3);
-    stream.publish(revoked);
-    await flush();
-    stream.publish(changedAgain);
-    expect(invalidate).toHaveBeenCalledOnce();
-
-    release();
-    await flush();
-    expect(invalidate).toHaveBeenCalledTimes(2);
-    expect(invalidate).toHaveBeenLastCalledWith(changedAgain);
   });
 });

@@ -4,7 +4,7 @@ use rusqlite::Connection;
 
 use crate::database::{
     PageCopyDataSourceDestination, StagedPagePlacementRevisions, current_page_key_for_page,
-    place_staged_page_in_data_source, place_staged_page_in_data_source_prevalidated,
+    place_staged_page_in_data_source,
 };
 use crate::document::{mint_document_semantic_etags, parse_inline_markdown_title};
 use crate::infrastructure::local_commit::CommitContext;
@@ -18,7 +18,6 @@ pub(crate) struct PageGenesisInput<'a> {
     pub(crate) commit_context: &'a CommitContext,
     pub(crate) library_id: &'a str,
     pub(crate) actor_project_id: Option<&'a str>,
-    pub(crate) placement_access_project_id: Option<&'a str>,
     pub(crate) operation_id: &'a str,
     pub(crate) store_epoch: &'a str,
     pub(crate) page_id: &'a str,
@@ -68,28 +67,15 @@ pub(crate) fn create_page_in_data_source(
         metadata_revision: 1,
         parent_revision: 1,
     };
-    let placement = if let Some(requesting_project_id) = input.placement_access_project_id {
-        place_staged_page_in_data_source(
-            connection,
-            input.library_id,
-            requesting_project_id,
-            None,
-            input.page_id,
-            input.destination,
-            expected,
-            input.now,
-        )?
-    } else {
-        place_staged_page_in_data_source_prevalidated(
-            connection,
-            input.library_id,
-            input.actor_project_id,
-            input.page_id,
-            input.destination,
-            expected,
-            input.now,
-        )?
-    };
+    let placement = place_staged_page_in_data_source(
+        connection,
+        input.library_id,
+        input.actor_project_id,
+        input.page_id,
+        input.destination,
+        expected,
+        input.now,
+    )?;
     let (title_etag, body_etag) = mint_document_semantic_etags(
         connection,
         input.actor_project_id,

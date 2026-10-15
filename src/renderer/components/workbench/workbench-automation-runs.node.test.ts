@@ -18,7 +18,8 @@ function inboxItem(overrides: Partial<CodexAutomationInboxItem> = {}): CodexAuto
     archivedUserMessage: null,
     archivedReason: null,
     sourceCwd: "/Users/asc/repo/nodex",
-    threadId: "thread-run-alpha",
+    runId: "thread-run-alpha",
+    sessionId: "session-alpha",
     readAt: null,
     createdAt: 100,
     status: "PENDING_REVIEW",
@@ -31,21 +32,21 @@ describe("workbench automation previous runs", () => {
     const rows = buildWorkbenchAutomationPreviousRunRows({
       automationId: "automation-alpha",
       items: [
-        inboxItem({ id: "old", threadId: "old", createdAt: 100 }),
+        inboxItem({ id: "old", runId: "old", createdAt: 100 }),
         inboxItem({
           id: "other",
-          threadId: "other",
+          runId: "other",
           automationId: "automation-other",
           createdAt: 300,
         }),
-        inboxItem({ id: "new", threadId: "new", createdAt: 200 }),
+        inboxItem({ id: "new", runId: "new", createdAt: 200 }),
       ],
       now: 200,
     });
 
     expect(rows.length).toBe(2);
-    expect(rows[0]?.threadId).toBe("new");
-    expect(rows[1]?.threadId).toBe("old");
+    expect(rows[0]?.runId).toBe("new");
+    expect(rows[1]?.runId).toBe("old");
   });
 
   test("builds action state from run lifecycle fields", () => {
@@ -73,6 +74,20 @@ describe("workbench automation previous runs", () => {
     expect(archived.canArchive).toBe(false);
     expect(archived.canUnarchive).toBe(true);
     expect(archived.canOpen).toBe(false);
+  });
+
+  test("keeps distinct Runs in one Session actionable and permits review before a Session is bound", () => {
+    const rows = buildWorkbenchAutomationPreviousRunRows({
+      automationId: "automation-alpha",
+      items: [
+        inboxItem({ id: "run:one", runId: "run:one", sessionId: "session:one" }),
+        inboxItem({ id: "run:two", runId: "run:two", sessionId: "session:one" }),
+        inboxItem({ id: "run:unbound", runId: "run:unbound", sessionId: null }),
+      ],
+    });
+    expect(rows.map((row) => row.runId)).toEqual(["run:one", "run:two", "run:unbound"]);
+    expect(rows[0]?.sessionId).toBe(rows[1]?.sessionId);
+    expect(rows[2]).toMatchObject({ canArchive: true, canOpen: false });
   });
 
   test("formats compact labels", () => {

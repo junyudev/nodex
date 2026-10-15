@@ -27,7 +27,6 @@ const snapshot = (): DatabaseModuleReadSnapshotV2 => ({
   libraryId: "library-1",
   storeEpoch: "epoch-1",
   commitSeq: 1,
-  authorization: null,
   value: {
     kind: "query",
     value: {
@@ -37,7 +36,6 @@ const snapshot = (): DatabaseModuleReadSnapshotV2 => ({
         name: "Work",
         lifecycle: "active",
         defaultViewId: parseDatabaseViewId("view-1"),
-        accessRevision: 1,
         metadataRevision: 1,
         createdAt: timestamp,
         updatedAt: timestamp,

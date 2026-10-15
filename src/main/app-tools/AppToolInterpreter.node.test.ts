@@ -1,8 +1,6 @@
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
-import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
-import { CodexProjectSessionFork } from "../codex-application/CodexProjectSessionFork";
 import { SessionWaiter } from "./SessionWaiter";
-import { CodexSessionThreadLaunch } from "../codex-application/CodexSessionThreadLaunch";
 import { ProjectSessionCommands } from "../project-application/ProjectSessionCommands";
 import { SessionObservation } from "./SessionObservation";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -28,8 +26,8 @@ import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentatio
 import { NodexAppToolAuthority } from "./NodexAppToolAuthority";
 import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchObservation } from "./WorkbenchObservation";
-import { WorkbenchContentAccess } from "./WorkbenchContentAccess";
-import { createNativeAppToolClaimIssuer } from "./AppToolCaller";
+import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
+import { createHostedAppToolCaller } from "./AppToolCaller";
 
 const input: AppToolInvocation = {
   name: "get_session_context",
@@ -58,15 +56,13 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(NodexAppToolAuthority, {} as never),
       Effect.provideService(WorkbenchAgentBridge, {} as never),
       Effect.provideService(WorkbenchObservation, {} as never),
-      Effect.provideService(WorkbenchContentAccess, {} as never),
+      Effect.provideService(WorkbenchContentRouting, {} as never),
       Effect.provideService(CoreAuthority, {} as never),
       Effect.provideService(CodexThreadHandoffRuntime, {} as never),
       Effect.provideService(ProjectSessionCommands, {} as never),
       Effect.provideService(SessionObservation, {} as never),
       Effect.provideService(SessionWaiter, {} as never),
-      Effect.provideService(CodexSessionThreadLaunch, {} as never),
-      Effect.provideService(CodexTurnCommands, {} as never),
-      Effect.provideService(CodexProjectSessionFork, {} as never),
+      Effect.provideService(AgentRuntimeApplication, {} as never),
       Effect.provideService(CoreModules, {} as never),
       Effect.provideService(AutomationApplication, {} as never),
       Effect.provideService(CodexTurnAuthority, {} as never),
@@ -172,34 +168,33 @@ it.effect(
     Effect.gen(function* () {
       const execute = yield* interpreter();
       for (const backend of ["claude", "opencode"] as const) {
-        const issuer = createNativeAppToolClaimIssuer({
-          backend,
-          threadId: "thread",
-          hostId: "local",
-          generation: 1,
-          capture: () => Effect.succeed(true),
-        });
-        issuer.beginTurn({
+        let active = true;
+        const authority = {
           threadId: "thread",
           turnId: "turn",
           rootThreadId: "thread",
           actorProjectId: "project",
           libraryId: "library",
           storeEpoch: "epoch",
-          frozenAtMs: 1,
-          readOnly: false,
-          scope: "project",
-          source: "project_turn",
+          admittedAtMs: 1,
+        };
+        const caller = createHostedAppToolCaller({
+          backend,
+          authority,
+          callId: "call",
+          generation: 1,
+          isActive: () => active,
+          capture: Effect.succeed(authority),
         });
-        const caller = issuer.claim()!;
         const capabilityCall = { ...input, caller, name: "get_app_capabilities" };
         const result = yield* execute(capabilityCall);
         assert.deepInclude(result.structuredContent, {
           backend,
-          sessionContext: "authorized_session_history",
+          sessionContext: "session_history",
+          contentAccess: "profile_sql",
           workbenchControl: "unavailable",
-          applicationToolLifetime: "foreground_without_background_tasks",
-          backgroundApplicationTools: "unavailable",
+          applicationToolLifetime: "native_connection",
+          backgroundApplicationTools: "available",
         });
         const tools = result.structuredContent?.tools as string[];
         assert.include(tools, "query_content");
@@ -213,7 +208,7 @@ it.effect(
           (yield* execute({ ...capabilityCall, caller: { ...caller } })).structuredContent,
           { error: { code: "authority_unavailable" } },
         );
-        issuer.close();
+        active = false;
         assert.deepEqual((yield* execute(capabilityCall)).structuredContent, {
           error: { code: "call_withdrawn" },
         });

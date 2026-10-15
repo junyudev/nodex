@@ -61,9 +61,11 @@ pub(crate) use materialization::{
     derive_document_node_delta, derive_document_placement_delta,
     exact_moves_explain_document_placement,
 };
-pub(crate) use module::require_owned_document_read_access;
 pub use module::{
     CanvasSceneSyncSnapshot, DocumentCacheMetrics, OwnedDocumentApplyOutcome, OwnedDocumentModule,
+};
+pub(crate) use module::{
+    require_owned_document_for_live_delivery, require_owned_document_for_live_read,
 };
 pub(crate) use module::{resolve_recovery_canvas_file_target, resolve_recovery_file_target};
 pub use operations::{

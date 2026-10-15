@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
@@ -87,7 +87,6 @@ const preflight = (
         name: "Pages",
         lifecycle: "active",
         defaultViewId: viewId,
-        accessRevision: 1,
         metadataRevision: 1,
         createdAt: "2026-07-18T00:00:00.000Z",
         updatedAt: "2026-07-18T00:00:00.000Z",
@@ -158,7 +157,7 @@ const preflight = (
           page: { pageId: "draft-first" },
           effectiveGroupKey: "triage",
         },
-      ] as unknown as PageLifecyclePreflightSnapshotV2["value"]["defaultView"]["rows"],
+      ] as unknown as NonNullable<PageLifecyclePreflightSnapshotV2["value"]["defaultView"]>["rows"],
     },
   },
 });
@@ -439,5 +438,94 @@ describe("Page lifecycle v2 runtime", () => {
     expect(result.receipt.commitSeq).toBe(22);
     expect(result.boardProjection).toBeNull();
     expect(readAttempts).toBe(3);
+  });
+});
+
+describe("Library Page lifecycle routing", () => {
+  const libraryPreflight = (
+    lifecycle: "active" | "deleted" = "active",
+  ): PageLifecyclePreflightSnapshotV2 => ({
+    projectId: null,
+    libraryId: "library-1",
+    storeEpoch: "epoch-1",
+    commitSeq: 3,
+    value: {
+      defaultView: null,
+      tagsProperty: null,
+      reservedBlockType: null,
+      page: authority(lifecycle),
+    },
+  });
+
+  test("deletes through one immutable Library request after a lost transport response", async () => {
+    const requests: PageLifecycleMutationRequestV2[] = [];
+    const readBoardProjection = vi.fn(() =>
+      Promise.reject(new Error("Library deletion must not select a Project Board")),
+    );
+    const deletedReceipt = { ...receipt("deleted"), projectId: null };
+    const result = await executePageLifecycleIntentV2(
+      { kind: "delete", projectId: null, pageId: "page-1", operationId: "operation-1" },
+      {
+        readPreflight: async (projectId, pageId) => {
+          expect([projectId, pageId]).toEqual([null, "page-1"]);
+          return { ok: true, value: libraryPreflight() };
+        },
+        mutate: async (projectId, request) => {
+          expect(projectId).toBeNull();
+          requests.push(request);
+          if (requests.length === 1) throw new Error("Response lost after accepted commit");
+          return {
+            ok: true,
+            value: { ...deletedReceipt, duplicate: true },
+            localCommit: {
+              status: "no_op",
+              observed: { store_epoch: request.storeEpoch, commit_head: 3 },
+            },
+          };
+        },
+        readBoardProjection,
+      },
+    );
+    expect(requests).toHaveLength(2);
+    expect(readBoardProjection).not.toHaveBeenCalled();
+    expect(requests[1]).toBe(requests[0]);
+    expect(requests[0]).toMatchObject({
+      projectId: null,
+      storeEpoch: "epoch-1",
+      operation: { kind: "delete_page", expectedMetadataRevision: 7, expectedParentRevision: 9 },
+    });
+    expect(result).toEqual({
+      receipt: { ...deletedReceipt, duplicate: true },
+      boardProjection: null,
+    });
+  });
+
+  test("restores exact delete evidence without inferring a Project destination", () => {
+    const restored = compilePageLifecycleRequestV2({
+      intent: { kind: "restore", projectId: null, pageId: "page-1", operationId: "restore-1" },
+      preflight: libraryPreflight("deleted"),
+    });
+    expect(restored).toMatchObject({
+      projectId: null,
+      operation: {
+        kind: "restore_page",
+        deleteOperationId: "delete-1",
+        expectedMetadataRevision: 7,
+        expectedParentRevision: 9,
+      },
+    });
+    expect(() =>
+      compilePageLifecycleRequestV2({
+        intent: {
+          kind: "create",
+          projectId: "project-1",
+          operationId: "create-1",
+          pageId: "page-2",
+          status: "plan",
+          input: { title: "New" },
+        },
+        preflight: libraryPreflight(),
+      }),
+    ).toThrow("preflight does not match");
   });
 });

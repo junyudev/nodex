@@ -620,8 +620,8 @@ export class WindowSessionState {
       Object.values(currentScene?.panelSurfacesById ?? {}).some(
         (surface) =>
           surface.kind === "page_stage" &&
-          surface.config.accessContext.kind === "project" &&
-          surface.config.accessContext.projectId === presentation.projectId &&
+          surface.config.routingContext.kind === "project" &&
+          surface.config.routingContext.projectId === presentation.projectId &&
           surface.config.pageId === presentation.starterPageId,
       );
     if (alreadySeeded) return target;

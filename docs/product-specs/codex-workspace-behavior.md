@@ -12,18 +12,16 @@ Multi-window publication and recovery are specified in
 
 ## Chat identity and ownership
 
-Project Chats belong to durable Project Sessions and link to one app-server
-Thread. A Page may mention a Chat or send an immutable Page snapshot to it but
-never owns the Chat. The sidebar refreshes only Codex Threads already admitted
-to this Profile and discovers descendants of those Threads. Sharing a Codex
+Project Chats belong to durable Project Sessions and bind one root execution. A Page may mention a Chat or send an immutable Page snapshot to it but
+never owns the Chat. The sidebar projects only Sessions already admitted
+to this Profile; delegated Threads remain inside their root Session. Sharing a Codex
 home never adds another client's root Chats implicitly; native history enters
 Nodex through an explicit import or attachment.
 
 A Workspace-owned **Linked chat** edge may associate a Page with a durable
 Project Session. It records an explicit user action only: Open in new chat,
 Send to chat, or Page Run Section. It is many-to-many, survives Window Scene
-and optional Thread lifecycle changes, and grants neither Project nor Agent
-Page access. Ordinary Page navigation, Scenes, mentions, references, links,
+and optional Thread lifecycle changes, without changing content access. Ordinary Page navigation, Scenes, mentions, references, links,
 prompt text, and recent-Page state never infer an edge. Explicit removal is
 idempotent and removes only the relationship.
 
@@ -33,27 +31,21 @@ identity is durable and never reinterpreted from a later cwd observation.
 Moving a Chat between Projects is an explicit domain action.
 
 A Chat may move between active Projects from either sidebar drag-and-drop or
-its native context menu. The destination must cover every source folder of the
-current Project; a destination folder covers itself and nested source folders.
-When coverage is missing, Nodex asks before expanding the destination Project,
-names every folder that all Chats in that Project would gain access to, and
-makes no change when the user cancels. After confirmation, the Project source
-expansion, Chat membership, workspace metadata, and writable roots commit as one
-atomic change against the confirmed Project revision. A loaded app-server Thread
-is synchronized after that commit; an unloaded Thread adopts the persisted
-workspace when it is next resumed. Moving a Project Chat to Chats removes its
-Project membership without discarding its existing workspace or writable-root
-context.
+its context menu. The move atomically changes Session placement while retaining
+its execution reference and existing working directory. Runtime placement
+reconciliation follows that committed Session identity. Moving a Project Chat
+to Chats removes its Project membership without discarding its workspace,
+conversation or queued work. Project movement does not request folder or content
+permission.
 
 Archived, deleted, internal helper, Side chat, reviewer, and parent-linked child
 Threads do not become root sidebar Chats. If late ancestry proves that a row is
 a child agent, Nodex removes its root-Chat presentation while preserving it for
 the parent conversation.
 
-Permission mode selections belong to the current Nodex Project or projectless
-scope. Changing a mode saves that Profile preference and applies it to native
-requests without rewriting the shared Codex configuration. Explicit Codex
-configuration edits still target the selected native configuration.
+The current Profile has full Library content access. Project supplies workspace
+and presentation routing; Plan mode is a planning convention. Native configuration
+remains owned by the selected provider instance.
 
 ## Starting and resuming
 
@@ -65,7 +57,8 @@ and externally materialized threadless Sessions are ordinary Chats and are not
 eligible for this reuse.
 Creating an explicit Page-backed Chat commits the ordinary Session and bounded
 initial Page relationships in one Core transaction before Scene presentation.
-If any Page cannot be authorized, no Session or relationship is created. A
+If any Page is missing, belongs to another Library or fails lifecycle validation,
+no Session or relationship is created. A
 later Scene failure keeps the valid durable Chat and relation. Send to chat and
 Page Run Section first resolve a durable Session, then idempotently establish
 the relationship, and only then start the Thread or Turn; a Codex send failure
@@ -116,7 +109,7 @@ An archived Thread must be explicitly restored before resume.
 
 ## Projectless Chats
 
-A projectless Chat has no Project authority and receives a generated workspace
+A projectless Chat has no Project route and receives a generated workspace
 under the user's Documents/Nodex collection. It persists cwd, output-directory,
 and workspace-browser-root hints. Scratch work belongs under `work/`; user-facing
 deliverables belong under `outputs/`. A persistent fork or Side chat inherits
@@ -158,21 +151,15 @@ defined in [Thread Summary Panel Behavior](thread-summary-panel-behavior.md).
 
 ## Sidebar availability
 
-The sidebar keeps the last successful bounded Workspace snapshot while Core is
-temporarily busy. A failed refresh may therefore return that snapshot with
-stale provenance instead of replacing known Chats with an empty result. The
-next refresh remains eligible to reconcile canonical state. On a cold start,
-where no successful snapshot exists yet, a Core failure stays an explicit
-retryable failure; it is never converted into a successful empty sidebar.
+Sidebar metadata reads are bounded Core projections. A refresh never starts the local
+provider, scans its native Thread list, materializes another Session, or infers deletion
+from a partial native listing. A failed Core read remains an explicit failure; no partial
+page becomes a successful snapshot. Cached metadata is invalidated by Core Session changes.
 
-Native catalog synchronization reads metadata pages independently of resident transcripts.
-Background pages wait one second; a foreground catalog caller can promote a queued page
-without issuing it again. Bounded scan windows retain their opaque cursor when page, result,
-byte or elapsed-time budgets are spent. After a complete scan, refreshes stop below the saved
-source-update watermark and recheck the moving head against stable ID/timestamp overlap.
-Only a completed full scan can reconcile absent Core Chats; incremental reads do not infer
-deletion. Archive, restore, deletion and reconnection request full reconciliation. Temporary
-descendant metadata remains bounded while its Profile-owned ancestry is established.
+Runtime Sessions use Core Session overview for identity, title and placement, and a
+separate engine metadata owner for execution status. Explicit native history search or
+import may access its provider on demand. Registering account/catalog state or an idle
+Profile snapshot controller does not acquire a provider process.
 
 ## Browser, Computer Use, Files, and Terminal
 

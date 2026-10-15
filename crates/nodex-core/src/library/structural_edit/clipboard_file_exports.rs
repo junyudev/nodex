@@ -9,7 +9,6 @@ const MAX_EXPORT_FILES: usize = 128;
 pub(super) struct ClipboardBundlePayload {
     format_version: u32,
     pub(super) selection: OwnershipClosureSnapshot,
-    capture_project_id: Option<String>,
     file_exports: FileExports,
 }
 
@@ -33,7 +32,6 @@ struct FileBinding {
 pub(crate) struct FileExportTarget {
     pub version: i64,
     pub default_name: String,
-    pub source_document_id: String,
 }
 
 pub(super) fn capture(
@@ -51,7 +49,6 @@ pub(super) fn capture(
     ClipboardBundlePayload {
         format_version: PAYLOAD_VERSION,
         selection,
-        capture_project_id: context.project_id.as_ref().map(|id| id.0.clone()),
         file_exports,
     }
 }
@@ -102,7 +99,6 @@ pub(super) fn decode(json: &str) -> Result<ClipboardBundlePayload, StoreError> {
         return Ok(ClipboardBundlePayload {
             format_version: PAYLOAD_VERSION,
             selection,
-            capture_project_id: None,
             file_exports: FileExports::Unavailable,
         });
     }
@@ -124,12 +120,6 @@ pub(crate) fn resolve(
 ) -> Result<FileExportTarget, StoreError> {
     let epoch = crate::document::read_store_epoch(connection)?;
     let payload = read_bundle_payload(connection, &context.library_id.0, &epoch, token)?;
-    if payload.capture_project_id.as_deref() != context.project_id.as_ref().map(|id| id.0.as_str())
-    {
-        return Err(unauthorized(
-            "Clipboard File export belongs to another access scope",
-        ));
-    }
     let parent = load_parent_document(connection, &payload.selection.source.document_id)?;
     authorize_parent_access(connection, context, &parent, false)?;
     let FileExports::Complete { mut bindings } = payload.file_exports else {
@@ -141,6 +131,5 @@ pub(crate) fn resolve(
     Ok(FileExportTarget {
         version: binding.version,
         default_name: binding.default_name,
-        source_document_id: payload.selection.source.document_id,
     })
 }

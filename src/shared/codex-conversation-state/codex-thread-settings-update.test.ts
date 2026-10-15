@@ -81,6 +81,7 @@ function clientHarness() {
   let state = initial();
   let support: "unknown" | "supported" | "unsupported" = "unknown";
   const calls: string[] = [];
+  const updates: import("@nodex/codex-app-server-protocol/v2").ThreadSettingsUpdateParams[] = [];
   let send: () => Promise<unknown> = async () => undefined;
   const client: import("./codex-thread-settings-update").CanonicalThreadSettingsClient = {
     getConversation: () => state,
@@ -92,18 +93,16 @@ function clientHarness() {
       support = next;
     },
     isUnsupported: (error) => error === "unsupported",
-    updateThread: async () => {
+    updateThread: async (params) => {
       calls.push("thread");
+      updates.push(params);
       return send();
     },
-    updateTurnReviewer: async () => {
-      calls.push("turn");
-    },
-    supportsTurnReviewer: () => true,
   };
   return {
     client,
     calls,
+    updates,
     read: () => state,
     send: (next: typeof send) => {
       send = next;
@@ -111,7 +110,23 @@ function clientHarness() {
   };
 }
 
-test("a native settings notification wins the in-flight update and reviewer update follows", async () => {
+test("peer settings update only the supported native controls", async () => {
+  const f = clientHarness();
+  const peerPatch = {
+    model: "changed",
+    approvalPolicy: "on-request",
+    approvalsReviewer: "user",
+    sandboxPolicy: { type: "readOnly", networkAccess: false },
+    permissions: "readonly",
+  };
+  const { updateCanonicalThreadSettings } = await import("./codex-thread-settings-update");
+  await updateCanonicalThreadSettings(f.client, "id", peerPatch);
+  expect(f.updates).toEqual([{ threadId: "id", model: "changed" }]);
+  expect(f.read().latestModel).toBe("changed");
+  expect(f.read().latestThreadSettings).not.toHaveProperty("permissions");
+});
+
+test("a native settings notification wins the in-flight update", async () => {
   const f = clientHarness();
   f.send(async () => {
     f.client.updateConversation("id", (draft) =>
@@ -119,17 +134,9 @@ test("a native settings notification wins the in-flight update and reviewer upda
     );
   });
   const { updateCanonicalThreadSettings } = await import("./codex-thread-settings-update");
-  expect(
-    await updateCanonicalThreadSettings(
-      f.client,
-      "id",
-      { model: "request", approvalsReviewer: "user" },
-      undefined,
-      "turn",
-    ),
-  ).toBe(true);
+  expect(await updateCanonicalThreadSettings(f.client, "id", { model: "request" })).toBe(true);
   expect(f.read().latestModel).toBe("notification");
-  expect(f.calls).toEqual(["thread", "turn"]);
+  expect(f.calls).toEqual(["thread"]);
 });
 
 test("condition failure performs neither native request nor local mutation", async () => {

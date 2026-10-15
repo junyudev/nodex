@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { nativeAppToolCall } from "./support/native-app-tools";
+import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
@@ -17,11 +18,10 @@ import {
   createAgentSmokeDraft,
   invokeIpc,
   requireRecord,
-  sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
+import { waitForDraftScene } from "./support/new-chat-draft";
 
 const outputRecords = (value: unknown) =>
   collectRecords(value).flatMap((record) => {
@@ -35,7 +35,26 @@ const outputRecords = (value: unknown) =>
 const unwrap =
   'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };';
 
-test("projectless native tools preserve Library authority and Plan Mode through content and Automation operations", async () => {
+const waitForCompletedSession = async (page: Page, sessionId: string) => {
+  await expect
+    .poll(
+      async () => {
+        const conversation = requireRecord(
+          await invokeIpc(page, "agent-runtime:session:control", { sessionId }),
+          "Session control",
+        );
+        const snapshot = requireRecord(conversation.snapshot, "Session snapshot");
+        const projection = requireRecord(snapshot.projection, "Session projection");
+        return Array.isArray(projection.runs)
+          ? requireRecord(projection.runs.at(-1), "Latest Run").status
+          : null;
+      },
+      { timeout: 60_000 },
+    )
+    .toBe("completed");
+};
+
+test("projectless agents use Profile content and Automation tools in both interaction modes", async () => {
   test.setTimeout(180_000);
   const pageId = createUuidV7();
   let viewId = "";
@@ -59,46 +78,50 @@ test("projectless native tools preserve Library authority and Plan Mode through 
             const common = [
               '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 22000}',
               unwrap,
-              "text({context:unwrap(await tools.mcp__nodex_app__get_context({}))});",
-              `const fetched=unwrap(await tools.mcp__nodex_app__fetch({id:${JSON.stringify(pageId)},prepareFor:[{kind:"title"},{kind:"body"}]})); text({fetched});`,
+              "text({context:unwrap(await app.get_context({}))});",
+              `const fetched=unwrap(await app.fetch({id:${JSON.stringify(pageId)},prepareFor:[{kind:"title"},{kind:"body"}]})); text({fetched});`,
             ];
             const script =
               phase === "write"
                 ? [
                     ...common,
-                    `text({updated:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
-                    'text({created:unwrap(await tools.mcp__nodex_app__create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
-                    'text({sql:unwrap(await tools.mcp__nodex_app__query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
-                    "text({schema:unwrap(await tools.mcp__nodex_app__describe_content_schema({scope:{}}))});",
-                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await tools.mcp__nodex_app__automation_update({mode:"create",...cron})); text({automation});',
-                    'text({automationUpdated:unwrap(await tools.mcp__nodex_app__automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
-                    "const context=unwrap(await tools.mcp__nodex_app__get_session_context({})); text({session:context}); const groups=unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:context.presentation.observationId}));",
-                    `text({opened:unwrap(await tools.mcp__nodex_app__open_tab({observationId:context.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId==="right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
-                    'const current=unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); const tabs=unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:current.presentation.observationId}));',
-                    `const target=tabs.items.find(t=>t.viewId===${JSON.stringify(viewId)}); if(!target) throw new Error(JSON.stringify(tabs)); text({view:unwrap(await tools.mcp__nodex_app__query_displayed_view({observationId:current.presentation.observationId,tabId:target.tabId,propertyIds:["status"]}))});`,
+                    `text({updated:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
+                    'text({created:unwrap(await app.create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
+                    'text({sql:unwrap(await app.query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
+                    "text({schema:unwrap(await app.describe_content_schema({scope:{}}))});",
+                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await app.automation_update({mode:"create",...cron})); text({automation});',
+                    'text({automationUpdated:unwrap(await app.automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
+                    "const context=unwrap(await app.get_session_context({})); text({session:context}); const groups=unwrap(await app.list_tab_groups({observationId:context.presentation.observationId}));",
+                    `text({opened:unwrap(await app.open_tab({observationId:context.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId==="right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
+                    'const current=unwrap(await app.get_session_context({mode:"refresh"})); const tabs=unwrap(await app.list_session_tabs({observationId:current.presentation.observationId}));',
+                    `const target=tabs.items.find(t=>t.viewId===${JSON.stringify(viewId)}); if(!target) throw new Error(JSON.stringify(tabs)); text({view:unwrap(await app.query_displayed_view({observationId:current.presentation.observationId,tabId:target.tabId,propertyIds:["status"]}))});`,
                   ]
                 : [
                     ...common,
-                    `text({deniedWrite:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Forbidden Plan write"}}))});`,
-                    `text({automationRead:unwrap(await tools.mcp__nodex_app__automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
-                    `text({deniedAutomation:unwrap(await tools.mcp__nodex_app__automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
+                    `text({planWrite:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Planned content update"}}))});`,
+                    `text({automationRead:unwrap(await app.automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
+                    `text({deletedAutomation:unwrap(await app.automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
                   ];
             return responses.stream([
               responses.created(callId),
-              responses.customToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
+              nativeAppToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
               responses.completed(callId),
             ]);
           }
-          const records = outputRecords(request.toolCallOutput(callId));
+          const output = request.toolCallOutput(callId);
+          const records = outputRecords(output);
           const result = (label: string) =>
-            requireRecord(records.find((record) => record[label])?.[label], label);
+            requireRecord(
+              records.find((record) => record[label])?.[label],
+              `${label}; tool output: ${JSON.stringify(output).slice(-8_000)}`,
+            );
           expect(result("context")).toMatchObject({ data: { project: null } });
           expect(result("fetched")).toHaveProperty("data.resource");
           if (phase === "write") {
             expect(result("updated")).toHaveProperty("data");
             expect(result("created")).toHaveProperty("data.pages");
-            expect(result("sql")).toEqual({ error: { code: "project_context_required" } });
-            expect(result("schema")).toEqual({ error: { code: "project_context_required" } });
+            expect(result("sql")).toHaveProperty("rows");
+            expect(result("schema")).toHaveProperty("tables");
             expect(result("session")).toMatchObject({
               projectId: null,
               executionProjectId: null,
@@ -118,10 +141,8 @@ test("projectless native tools preserve Library authority and Plan Mode through 
             automationId = saved.id as string;
             automationRevision = saved.definitionRevision as number;
           } else {
-            expect(result("deniedWrite")).toMatchObject({
-              error: { code: "authorization_denied" },
-            });
-            expect(result("deniedAutomation")).toEqual({ error: { code: "read_only_turn" } });
+            expect(result("planWrite")).toHaveProperty("data");
+            expect(result("deletedAutomation")).not.toHaveProperty("error");
             expect(result("automationRead")).toMatchObject({
               item: { id: automationId, projectId: null },
             });
@@ -140,9 +161,10 @@ test("projectless native tools preserve Library authority and Plan Mode through 
     },
     async (model) => {
       const harness = await ElectronScenarioHarness.create({
-        label: "native-projectless-authority",
+        label: "native-projectless-content",
         cwd: process.cwd(),
         prepareAgentRuntime: false,
+        isolateHostDirectories: true,
         environment: {
           ...model.loopbackEnvironment(),
           OPENAI_API_KEY: "nodex-scripted-model-test-key",
@@ -150,15 +172,19 @@ test("projectless native tools preserve Library authority and Plan Mode through 
           NODEX_LOG_CONSOLE: "0",
         },
       });
+      const workspaceHome = join(harness.profile.runRoot, "home");
       writeFileSync(
         join(harness.profile.codexHome, "config.toml"),
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
         { mode: 0o600 },
       );
       let threadId: string | null = null;
+      let processDiagnostics = "";
       try {
         const page = await harness.launch();
-        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
+        harness.application.process().stderr?.on("data", (chunk: Buffer) => {
+          processDiagnostics = `${processDiagnostics}${chunk.toString("utf8")}`.slice(-16_000);
+        });
         const seedProject = await createAgentSmokeDraft(
           page,
           harness.profile.initialProjectsDirectory,
@@ -201,29 +227,73 @@ test("projectless native tools preserve Library authority and Plan Mode through 
             return callerSession.id;
           })
           .not.toBe("");
-        await invokeIpc(page, "codex:permission:mode:set", null, "full-access");
-        threadId = await sendAgentPrompt(page, callerSession.id, "PROJECTLESS_write");
+        const scene = await waitForDraftScene(page, callerSession.id);
+        await setAgentExecutionProfile(page);
+        const composer = scene.locator('[data-codex-composer="true"]:visible');
+        await composer.fill("PROJECTLESS_write");
+        await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+        await expect
+          .poll(async () => {
+            const session = requireRecord(
+              await invokeIpc(page, "project-sessions:get", callerSession.id),
+              "Product Session",
+            );
+            const execution =
+              session.executionRef && typeof session.executionRef === "object"
+                ? requireRecord(session.executionRef, "Execution reference")
+                : null;
+            threadId = typeof execution?.threadId === "string" ? execution.threadId : null;
+            return threadId;
+          })
+          .toBeTruthy();
+        let executionCwd = "";
+        await expect
+          .poll(async () => {
+            const control = requireRecord(
+              await invokeIpc(page, "agent-runtime:session:control", {
+                sessionId: callerSession.id,
+              }),
+              "Projectless Session control",
+            );
+            const snapshot = requireRecord(control.snapshot, "Projectless snapshot");
+            const projection = requireRecord(snapshot.projection, "Projectless projection");
+            const thread = requireRecord(projection.thread ?? {}, "Projectless Thread");
+            executionCwd = typeof thread.worktreePath === "string" ? thread.worktreePath : "";
+            return executionCwd;
+          })
+          .not.toBe("");
+        const workspacePath = relative(workspaceHome, executionCwd);
+        expect(workspacePath).not.toMatch(/^\.\.(?:[/\\]|$)/);
+        expect(isAbsolute(workspacePath)).toBe(false);
         await waitForFinalMarker(page, "PROJECTLESS_write_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
-        const composer = page.locator('[data-codex-composer="true"]:visible');
+        await waitForCompletedSession(page, callerSession.id);
         await composer.focus();
         await composer.press("Shift+Tab");
         await expect(page.getByLabel("Plan", { exact: true })).toBeVisible();
         await composer.fill("PROJECTLESS_plan");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "PROJECTLESS_plan_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
-        expect((await seed.readPage(seedProject.projectId, pageId)).title).toBe(
-          "Projectless content",
+        await waitForCompletedSession(page, callerSession.id);
+        expect((await seed.readPage(seedProject.projectId, pageId)).descriptionPreview).toContain(
+          "Planned content update",
         );
       } catch (error) {
-        const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
+        const presented = await harness.page
+          .locator("body")
+          .innerText()
+          .catch(() => "");
+        const product = callerSession.id
+          ? await invokeIpc(harness.page, "project-sessions:get", callerSession.id).catch(
               () => null,
             )
           : null;
+        const snapshot = threadId
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: callerSession.id,
+            }).catch(() => null)
+          : null;
         throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-36_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
+          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify({ product, snapshot }).slice(-36_000)}\n${presented.slice(-16_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}\n${processDiagnostics}`,
           { cause: error },
         );
       } finally {

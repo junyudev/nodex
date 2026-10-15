@@ -128,7 +128,6 @@ it.effect(
         { type: "localImage", path: "/image.png" },
       ]);
       assert.strictEqual(admitted?.request.cwd, "/returned");
-      assert.strictEqual(admitted?.context?.useAppServerPermissionDefault, true);
       assert.strictEqual(admitted?.context?.writingBlockContextPrepared, true);
       assert.strictEqual(residentConversationTurns(state).length, 0);
     }).pipe(Effect.provide(callbacks)),

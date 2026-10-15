@@ -156,7 +156,7 @@ const createDatabaseBoardPropertyEditorBinding = (
     property,
     value: current?.value,
     revision: current?.revision ?? 0,
-    disabled: props.model.readOnlyReason !== null,
+    disabled: property.lifecycle !== "active",
     pending:
       props.pendingMutationKeys.has(`value:${props.row.pageId}:${property.propertyId}`) ||
       props.pendingMutationKeys.has(`property:${property.propertyId}`),
@@ -232,7 +232,7 @@ export const createDatabaseBoardPageMenuSession = (
   const propertySource: DataSourcePagePropertyMenuSource = {
     descriptors: activeProperties.map((property) => ({
       property,
-      disabled: props.model.readOnlyReason !== null,
+      disabled: property.lifecycle !== "active",
       pending:
         props.pendingMutationKeys.has(`value:${props.row.pageId}:${property.propertyId}`) ||
         props.pendingMutationKeys.has(`property:${property.propertyId}`),
@@ -246,9 +246,9 @@ export const createDatabaseBoardPageMenuSession = (
   return {
     page: {
       libraryId: props.model.libraryId,
-      accessContext: props.model.accessContext,
+      routingContext: props.model.routingContext,
       projectId:
-        props.model.accessContext.kind === "project" ? props.model.accessContext.projectId : null,
+        props.model.routingContext.kind === "project" ? props.model.routingContext.projectId : null,
       pageId: props.row.pageId,
       pageKey: props.row.pageKey,
       titleSnapshot: props.row.title,
@@ -258,7 +258,6 @@ export const createDatabaseBoardPageMenuSession = (
     propertySource,
     groupingPropertyId: props.groupPropertyId,
     actionPort: props.pageActionPort,
-    deleteDisabled: props.model.readOnlyReason !== null,
     onReorder: (direction) => props.onMove(props.row.pageId, direction),
   };
 };
@@ -424,9 +423,9 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
         {!previewRect &&
         props.pageChatActivity &&
         props.pageActionPort?.openRelatedChat &&
-        model.accessContext.kind === "project" ? (
+        model.routingContext.kind === "project" ? (
           <PageChatActivityControl
-            pageAccessProjectId={model.accessContext.projectId}
+            pageAccessProjectId={model.routingContext.projectId}
             pageId={row.pageId}
             summary={props.pageChatActivity}
             onOpenChat={props.pageActionPort.openRelatedChat}

@@ -9,7 +9,7 @@ import {
   type HistoryCommandResolution,
 } from "@/lib/surface-history/owner";
 import { acquireContentInteractionHistory } from "@/lib/content-interaction-history";
-import { contentAccessContextKey } from "../../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../../shared/content-routing-context";
 import type {
   SurfaceHistoryDirection,
   SurfaceHistorySnapshot,
@@ -24,12 +24,12 @@ import {
 export const databaseViewHistoryScopeKey = (
   model: Pick<
     DatabaseViewRenderModel,
-    "libraryId" | "accessContext" | "storeEpoch" | "databaseViewId"
+    "libraryId" | "routingContext" | "storeEpoch" | "databaseViewId"
   >,
 ): string =>
   [
     model.libraryId,
-    contentAccessContextKey(model.accessContext),
+    contentRoutingContextKey(model.routingContext),
     model.storeEpoch,
     model.databaseViewId,
   ].join("\0");
@@ -169,7 +169,7 @@ export const createDatabaseViewMutationHistory = (
 
 type ViewHistoryModel = Pick<
   DatabaseViewRenderModel,
-  "libraryId" | "accessContext" | "storeEpoch" | "databaseViewId"
+  "libraryId" | "routingContext" | "storeEpoch" | "databaseViewId"
 >;
 
 /** Render creates only a facade; committed React lifetime owns realm admission. */

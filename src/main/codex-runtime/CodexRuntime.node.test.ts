@@ -6,6 +6,7 @@ import {
 import { makeCodexRendererRequestLifetimes } from "./CodexRendererRequestLifetimes";
 import type { CodexNativeDeliveryMessage } from "../../shared/codex-native-request-outcome";
 import { CodexHostRequestMetrics } from "./CodexHostRequestMetrics";
+import { localEndpointConfig } from "./CodexRuntimeLive";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -287,6 +288,52 @@ const endpointDependencies = Layer.mergeAll(
   requestSchedulerLive,
 );
 
+for (const raw of [false, true]) {
+  it.effect(`revokes only the exact native Turn after an acknowledged interrupt: raw=${raw}`, () =>
+    Effect.gen(function* () {
+      const local = fakeEndpoint({ hostId: "local" });
+      const endpointMap = endpointMapLive(local.config).pipe(
+        Layer.provideMerge(endpointDependencies),
+      );
+      const resolver = Layer.succeed(CodexThreadHostResolver, {
+        resolve: () => Effect.succeed("local"),
+      });
+      const context = yield* Layer.buildWithScope(
+        gatewayTestLive({ requestTimeout: "1 second" }).pipe(
+          Layer.provideMerge(Layer.mergeAll(endpointMap, resolver)),
+        ),
+        yield* Scope.Scope,
+      );
+      const gateway = Context.get(context, CodexGateway);
+      const inbox = Context.get(context, CodexApplicationRequestInbox);
+      yield* gateway.awaitReady("local");
+      const source = { hostId: "local", generation: local.attempts[0]!.generation };
+      const original = yield* inbox.captureNativeTurnSource(source, "thread", "turn-a");
+      const next = yield* inbox.captureNativeTurnSource(source, "thread", "turn-b");
+      assert.isTrue(original?.isActive());
+      assert.isTrue(next?.isActive());
+      const params = { threadId: "thread", turnId: "turn-a" };
+      if (raw) yield* gateway.requestRawOnHost("local", "turn/interrupt", params);
+      else yield* gateway.requestLocal("turn/interrupt", params);
+      assert.isFalse(original?.isActive());
+      assert.isTrue(next?.isActive());
+      assert.isNull(yield* inbox.captureNativeTurnSource(source, "thread", "turn-a"));
+      assert.isNull(
+        yield* inbox.captureNativeTurnSource({ ...source, generation: 2 }, "thread", "turn-b"),
+      );
+      assert.isTrue(
+        local.requests.some(
+          (request) =>
+            typeof request === "object" &&
+            request !== null &&
+            Reflect.get(request, "method") === "turn/interrupt" &&
+            Reflect.get(Reflect.get(request, "params"), "turnId") === "turn-a",
+        ),
+      );
+    }),
+  );
+}
+
 it.effect(
   "Profile capture waits for active work, stops gracefully, and blocks new requests until resumed",
   () =>
@@ -524,14 +571,9 @@ it.effect("rotates the physical generation when canonical application consequenc
     assert.isTrue(
       yield* inbox.failGeneration(
         {
-          kind: "notification",
-          protocol: "extension",
           hostId: "local",
           generation: 1,
           occurrenceId: "test:consequence:1",
-          occurrenceToken: 1,
-          method: "test/failure",
-          params: {},
         },
         new Error("canonical projection failed"),
       ),
@@ -810,8 +852,8 @@ it.effect("routes typed requests explicitly across local and thread execution ho
     );
     const remoteExtension = yield* gateway.requestRawForThread(
       "thread-a",
-      "thread-follower-command-approval-decision",
-      { conversationId: "thread-a", requestId: "approval-1", decision: "decline" },
+      "thread-follower-submit-user-input",
+      { conversationId: "thread-a", requestId: "question-1", response: { answers: {} } },
     );
     assert.strictEqual(localAccount.account?.type, "chatgpt");
     assert.strictEqual(remoteAccount.account?.type, "chatgpt");
@@ -1744,5 +1786,150 @@ it.effect("rejects renderer admission after terminal initialization failure", ()
     assert.isTrue(Result.isFailure(result));
     if (Result.isFailure(result)) assert.strictEqual(result.failure, failure);
     yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "local endpoint metadata and idle snapshots stay cold until one shared request owner acquires it",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fake = fakeEndpoint({ hostId: "local" });
+        const configured = localEndpointConfig({
+          local: {
+            hostId: "local",
+            command: "unused",
+            args: [],
+            env: {},
+            forceTermination: "1 second",
+            initializeTimeout: "1 second",
+            initializeParams: { clientInfo: { name: "test", version: "1" } },
+          },
+          localSessionLayer: fake.config.sessionLayer,
+        });
+        const context = yield* Layer.buildWithScope(
+          endpointLive({ ...fake.config, ...configured }).pipe(
+            Layer.provideMerge(endpointDependencies),
+          ),
+          yield* Scope.Scope,
+        );
+        const endpoint = Context.get(context, CodexEndpoint);
+        assert.equal((yield* SubscriptionRef.get(endpoint.state)).kind, "stopped");
+        assert.equal(fake.attempts.length, 0);
+        assert.equal(yield* endpoint.withProfileSnapshot(Effect.succeed("captured")), "captured");
+        yield* endpoint.reconcile({ ...fake.config, startup: "on-demand" });
+        assert.equal(fake.attempts.length, 0);
+        const sessions = yield* Effect.all([endpoint.session, endpoint.session], {
+          concurrency: "unbounded",
+        });
+        assert.equal(fake.attempts.length, 1);
+        assert.equal(sessions[0], sessions[1]);
+        assert.equal((yield* SubscriptionRef.get(endpoint.state)).kind, "ready");
+      }),
+    ),
+);
+
+it.effect(
+  "a cold Profile snapshot blocks first acquisition and never revives a closed Endpoint",
+  () =>
+    Effect.gen(function* () {
+      const fake = fakeEndpoint({ hostId: "local" });
+      const owner = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        endpointLive({ ...fake.config, startup: "on-demand" }).pipe(
+          Layer.provideMerge(endpointDependencies),
+        ),
+        owner,
+      );
+      const endpoint = Context.get(context, CodexEndpoint);
+      const captured = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const capture = yield* endpoint
+        .withProfileSnapshot(
+          Deferred.succeed(captured, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        )
+        .pipe(Effect.forkScoped);
+      yield* Deferred.await(captured);
+      const opening = yield* endpoint.session.pipe(Effect.forkScoped);
+      yield* Effect.yieldNow;
+      assert.lengthOf(fake.attempts, 0);
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(capture);
+      yield* Fiber.join(opening);
+      assert.lengthOf(fake.attempts, 1);
+      yield* Scope.close(owner, Exit.void);
+      assert.equal((yield* Effect.exit(endpoint.session))._tag, "Failure");
+      assert.equal((yield* Effect.exit(endpoint.withProfileSnapshot(Effect.void)))._tag, "Failure");
+      assert.lengthOf(fake.attempts, 1);
+    }),
+);
+
+it.effect("native gateway fixes execution policy and restricts settings to product controls", () =>
+  Effect.gen(function* () {
+    const local = fakeEndpoint({ hostId: "local", respond: false, physicalJsonl: true });
+    const endpointMap = endpointMapLive(local.config).pipe(
+      Layer.provideMerge(endpointDependencies),
+    );
+    const resolver = Layer.succeed(CodexThreadHostResolver, {
+      resolve: () => Effect.succeed("local"),
+    });
+    const context = yield* Layer.buildWithScope(
+      gatewayTestLive({ requestTimeout: "5 seconds" }).pipe(
+        Layer.provideMerge(Layer.mergeAll(endpointMap, resolver)),
+      ),
+      yield* Scope.Scope,
+    );
+    const gateway = Context.get(context, CodexGateway);
+    yield* gateway.awaitReady("local");
+    const attempt = local.attempts[0]!;
+    const decode = Schema.decodeUnknownEffect(
+      Schema.fromJsonString(
+        Schema.Struct({
+          id: Schema.String,
+          method: Schema.String,
+          params: Schema.Unknown,
+        }),
+      ),
+    );
+    const historical = {
+      threadId: "thread",
+      model: "chosen-model",
+      permissions: "historical-profile",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "guardian_subagent",
+      sandbox: "read-only",
+      sandboxPolicy: { type: "readOnly" },
+      collaborationMode: { mode: "plan", settings: { model: "chosen-model" } },
+    };
+    for (const method of ["thread/resume", "turn/start", "thread/settings/update"]) {
+      const request = yield* gateway
+        .requestRawOnHost("local", method, historical)
+        .pipe(Effect.forkScoped);
+      const wire = yield* decode(yield* Queue.take(attempt.output));
+      assert.strictEqual(wire.method, method);
+      assert.deepEqual(
+        wire.params,
+        method === "thread/settings/update"
+          ? {
+              threadId: "thread",
+              model: "chosen-model",
+              collaborationMode: historical.collaborationMode,
+            }
+          : {
+              threadId: "thread",
+              model: "chosen-model",
+              collaborationMode: historical.collaborationMode,
+              permissions: ":danger-full-access",
+              approvalPolicy: "never",
+              approvalsReviewer: "user",
+            },
+      );
+      yield* Queue.offer(
+        attempt.input,
+        encoder.encode(`${JSON.stringify({ id: wire.id, result: {} })}\n`),
+      );
+      yield* Fiber.join(request);
+    }
+    assert.strictEqual(historical.permissions, "historical-profile");
   }),
 );

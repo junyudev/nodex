@@ -21,12 +21,14 @@ import {
   GoalTargetIcon,
   HooksIcon,
   QueuePendingInfoIcon,
+  QueueSteerIcon,
 } from "@/components/shared/icons";
 import { MarkdownRenderer } from "../shared/markdown/markdown-renderer";
 import { CodexTranscriptTurnEntityContext } from "../../normalized-transcript-hooks";
 import { useConversationVisualizationContext } from "../inline-visualization-context";
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
+import { DelegatedTaskRow, RuntimeNoticeRow } from "../shared/delegated-task-row";
 import { ImageViewSurface } from "../shared/image-view-surface";
 import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
@@ -243,6 +245,10 @@ function humanizeBlockType(type: ThreadBlockModel["type"]): string {
       return "MCP tool call";
     case "multiAgentAction":
       return "Multi-agent action";
+    case "delegatedTask":
+      return "Subagent";
+    case "runtimeNotice":
+      return "Notice";
     case "webSearch":
       return "Web search";
     case "userInputResponse":
@@ -602,6 +608,36 @@ export function ThreadMultiAgentActionBlock({
   );
 }
 
+export function ThreadDelegatedTaskBlock({
+  block,
+  childMemberships,
+  onOpenThread,
+}: ThreadLeafBlockProps) {
+  const task = block.type === "delegatedTask" ? block.entry.delegatedTask : undefined;
+  if (!task) return null;
+  return (
+    <DelegatedTaskRow
+      task={task}
+      parentThreadId={block.entry.threadId}
+      membership={childMemberships?.find(
+        (membership) => membership.threadId === (task.childThreadId ?? task.taskId),
+      )}
+      onOpenThread={onOpenThread}
+    />
+  );
+}
+
+export function ThreadRuntimeNoticeBlock({ block, onOpenThread }: ThreadLeafBlockProps) {
+  if (block.type !== "runtimeNotice" || !block.entry.markdownText?.trim()) return null;
+  return (
+    <RuntimeNoticeRow
+      message={block.entry.markdownText}
+      notice={block.entry.runtimeNotice}
+      onOpenThread={onOpenThread}
+    />
+  );
+}
+
 const EMPTY_SUBAGENT_ACTIVITY_ROWS: readonly ThreadSubagentActivityInlineRowModel[] = [];
 
 function resolveSubagentActivityStatusLabel(
@@ -836,11 +872,73 @@ async function submitUserMessageEdit(
   }
 }
 
+const USER_INPUT_INTENT_LABEL = {
+  queued: { label: "Queued", tooltip: "Queued behind the active turn" },
+  steer: { label: "Steer", tooltip: "Steered the active turn" },
+  promotedToSteer: {
+    label: "Steer",
+    tooltip: "Originally queued, then promoted to steer the active turn",
+  },
+} as const;
+
+/** Who sent input the user did not type, and how it entered execution. */
+function UserMessageDeliveryMarkers({
+  entry,
+  onOpenThread,
+}: {
+  entry: ThreadLeafBlockProps["block"]["entry"];
+  onOpenThread?: ThreadLeafBlockProps["onOpenThread"];
+}) {
+  const origin = entry.userMessageOrigin;
+  const intent = entry.userInputIntent ? USER_INPUT_INTENT_LABEL[entry.userInputIntent] : null;
+  if (!origin && !intent) return null;
+  const senderThreadId = origin?.kind === "agent" ? origin.senderThreadId : null;
+  const originLabel =
+    origin?.kind === "agent"
+      ? "Sent by another agent"
+      : origin?.kind === "automation"
+        ? "Sent by automation"
+        : origin?.kind === "nodex"
+          ? "Sent by Nodex"
+          : null;
+  return (
+    <div
+      className="me-1 flex items-center justify-end gap-2 text-xs text-token-text-tertiary"
+      data-user-message-origin={origin?.kind}
+      data-user-message-intent={entry.userInputIntent}
+    >
+      {originLabel ? (
+        senderThreadId && onOpenThread ? (
+          <button
+            type="button"
+            aria-label="Open sending conversation"
+            className="cursor-interaction rounded-sm hover:text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+            onClick={() => void onOpenThread(senderThreadId)}
+          >
+            {originLabel}
+          </button>
+        ) : (
+          <span>{originLabel}</span>
+        )
+      ) : null}
+      {intent ? (
+        <NodexTooltip tooltipContent={intent.tooltip}>
+          <span className="inline-flex items-center gap-1">
+            {entry.userInputIntent === "queued" ? null : <QueueSteerIcon className="icon-2xs" />}
+            {intent.label}
+          </span>
+        </NodexTooltip>
+      ) : null}
+    </div>
+  );
+}
+
 export function UserMessageBubble({
   block,
   isSearchMatch = false,
   isActiveSearchMatch = false,
   onEditLastUserTurn,
+  onOpenThread,
   projectWorkspacePath,
   threadCwd,
   compactUserMessageActions = false,
@@ -960,6 +1058,7 @@ export function UserMessageBubble({
       data-content-search-unit-key={block.searchUnitKey}
     >
       <div className="group flex w-full flex-col items-end justify-end gap-1">
+        <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
         {isEditing ? (
           <form
             className="flex w-full flex-col gap-4 rounded-2xl bg-token-foreground/5 px-3 py-2.5"

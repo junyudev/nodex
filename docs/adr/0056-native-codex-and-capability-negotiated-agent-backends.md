@@ -1,6 +1,6 @@
 # ADR 0056: Codex stays native while external agents negotiate capabilities
 
-- Status: Accepted
+- Status: Superseded for local Session execution by [ADR 0068](0068-agent-runtime-execution-authority.md)
 - Date: 2026-09-02
 - Owners: Nodex maintainers
 - Refined by: [ADR 0065: Native Claude Code backend](0065-native-claude-code-backend.md)

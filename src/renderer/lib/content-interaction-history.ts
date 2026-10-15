@@ -1,16 +1,16 @@
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import { createInteractionHistory, type InteractionHistory } from "./surface-history/owner";
 import { contentEditIssues } from "./content-edit-issues";
 import { createContentHistoryIssueSource } from "./content-history-issues";
 
 export type ContentInteractionHistoryScope = Pick<
   OwnedDocumentDescriptor,
-  "libraryId" | "accessContext" | "storeEpoch"
+  "libraryId" | "routingContext" | "storeEpoch"
 >;
 
 export const contentInteractionHistoryScopeKey = (scope: ContentInteractionHistoryScope): string =>
-  [scope.libraryId, contentAccessContextKey(scope.accessContext), scope.storeEpoch].join("\0");
+  [scope.libraryId, contentRoutingContextKey(scope.routingContext), scope.storeEpoch].join("\0");
 
 interface RealmLease {
   readonly history: InteractionHistory;

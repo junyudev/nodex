@@ -1,5 +1,6 @@
 import type { CodexConversationItem } from "@/lib/types";
 import type { VisibleConversationTurnEntry } from "./selectors";
+import { delegatedTaskMarkdownLines } from "./delegated-task-presentation";
 
 export interface ConversationMarkdownInput {
   cwd?: string | null;
@@ -369,6 +370,12 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         `Status: ${item.status ?? "completed"}`,
         item.markdownText ?? null,
       ]);
+    case "delegatedTask":
+      return item.delegatedTask
+        ? titledLines("Subagent", delegatedTaskMarkdownLines(item.delegatedTask))
+        : null;
+    case "runtimeNotice":
+      return item.markdownText?.trim() ? escapeDetailsTags(item.markdownText) : null;
     case "multiAgentAction": {
       const receivers = Array.isArray(raw.receiverThreadIds) ? raw.receiverThreadIds.length : 0;
       return titledLines("Subagent action", [

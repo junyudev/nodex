@@ -1,45 +1,25 @@
-import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
-import type { CodexCanonicalConversationState } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CodexConversationFork, type CodexConversationForkInput } from "./CodexConversationFork";
-import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
-import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
-import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make } from "./CodexProjectSessionFork";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 const sessionId = "session-source";
 const sourceThreadId = "thread-source";
 const childThreadId = "thread-child";
 
-const canonical = {
-  turns: [
-    {
-      ...({ turnId: "turn-a", status: "completed" } satisfies Pick<
-        CodexCanonicalTurnHeader,
-        "turnId" | "status"
-      >),
-      items: [],
-      params: undefined,
-      hookRuns: [],
-    },
-  ],
-  ...{ id: sourceThreadId },
-} as unknown as CodexCanonicalConversationState;
-
-const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) => {
+const makeHarness = (
+  backendBinding: AgentBackendBinding = { kind: "codex" },
+  hostId = "remote-a",
+) => {
   const order: string[] = [];
   const directForks: CodexConversationForkInput[] = [];
-  const pendingRequests: unknown[] = [];
   const settings: unknown[] = [];
   const scene = {
     browserViewScopeId: "browser-scope",
@@ -75,24 +55,13 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
       },
     },
   } as unknown as CoreModuleClients);
-  const sourceSnapshot = {
-    threadId: sourceThreadId,
-    latestCollaborationMode: {
-      mode: "default",
-      settings: {
-        model: "gpt-test",
-        reasoning_effort: "high",
-        developer_instructions: null,
-      },
-    },
-  } as const;
   const directoryEntry = {
     fidelity: "materialized",
     durable: {
       threadId: sourceThreadId,
       sessionId,
       projectId: "project-a",
-      executionHostId: "local",
+      executionHostId: hostId,
       backendBinding,
       cwd: "/workspace",
       executionProfile: {
@@ -107,8 +76,6 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
       forkedFromId: null,
       threadName: "Source title",
     },
-    canonical,
-    snapshot: sourceSnapshot,
   } as never;
   const capability = make.pipe(
     Effect.provideService(CoreModules, core),
@@ -137,40 +104,6 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
       }),
     ),
     Effect.provideService(
-      CodexConversationProjection,
-      CodexConversationProjection.of({
-        read: () => Effect.succeed({ canonical, snapshot: sourceSnapshot }) as never,
-      } as never),
-    ),
-    Effect.provideService(
-      CodexForkSidePanelTransfer,
-      CodexForkSidePanelTransfer.of({
-        capturePending: () =>
-          Effect.sync(() => {
-            order.push("side-panel:capture");
-          }),
-        discardPending: () => Effect.void,
-      } as never),
-    ),
-    Effect.provideService(
-      CodexForkTitlePolicy,
-      CodexForkTitlePolicy.of({
-        derive: () =>
-          Effect.succeed({ sourceTitle: "Source title", childTitle: "Source title (2)" }),
-      }),
-    ),
-    Effect.provideService(
-      CodexPendingWorktreeRuntime,
-      CodexPendingWorktreeRuntime.of({
-        list: () => [],
-        create: (request: Parameters<CodexPendingWorktreeRuntime["Service"]["create"]>[0]) =>
-          Effect.sync(() => {
-            order.push("pending:create");
-            pendingRequests.push(request);
-          }),
-      } as never),
-    ),
-    Effect.provideService(
       CodexThreadDirectory,
       CodexThreadDirectory.of({
         resolve: () => Effect.succeed(directoryEntry),
@@ -187,21 +120,13 @@ const makeHarness = (backendBinding: AgentBackendBinding = { kind: "codex" }) =>
           }),
       } as never),
     ),
-    Effect.provideService(
-      ConversationEntityMap,
-      ConversationEntityMap.of({
-        registerThreadMetadata: () => {},
-        readThreadMetadata: () => null,
-        runCommand: <A, E, R>(_threadId: string, operation: Effect.Effect<A, E, R>) => operation,
-      } as never),
-    ),
   );
-  return { capability, directForks, order, pendingRequests, scene, settings };
+  return { capability, directForks, order, scene, settings };
 };
 
 it.effect("rejects an ACP Project Session before any Codex fork side effect", () =>
   Effect.gen(function* () {
-    const { capability, directForks, order, pendingRequests } = makeHarness({
+    const { capability, directForks, order } = makeHarness({
       kind: "acp",
       agentDefinitionId: "claude-agent-acp",
       instanceConfigId: "claude-local",
@@ -211,12 +136,11 @@ it.effect("rejects an ACP Project Session before any Codex fork side effect", ()
       .fork({ sessionId, input: { target: "local", turnId: "turn-a" } })
       .pipe(Effect.flip);
     assert.deepEqual(directForks, []);
-    assert.deepEqual(pendingRequests, []);
     assert.deepEqual(order, []);
   }),
 );
 
-it.effect("forks a local Project Session through the canonical direct capability", () =>
+it.effect("forks an exact remote Session through its native execution owner", () =>
   Effect.gen(function* () {
     const { capability, directForks, order, scene, settings } = makeHarness();
     const forks = yield* capability;
@@ -250,72 +174,37 @@ it.effect("forks a local Project Session through the canonical direct capability
   }),
 );
 
-it.effect("captures browser state before publishing a pending worktree fork", () =>
-  Effect.gen(function* () {
-    const { capability, order, pendingRequests, scene } = makeHarness();
-    const forks = yield* capability;
-    const result = yield* forks.fork({
-      sessionId,
-      input: {
-        target: "newWorktree",
-        localEnvironmentConfigPath: ".codex/environments/dev.toml",
-        turnId: "turn-a",
-        collaborationMode: "plan",
-      },
-      threadSource: "subagent",
-      sourceSceneContext: scene,
-    });
-
-    assert.deepEqual(order, ["side-panel:capture", "pending:create"]);
-    assert.strictEqual(pendingRequests.length, 1);
-    assert.isTrue("pendingWorktreeId" in result);
-    if (!("pendingWorktreeId" in result)) return;
-    const request = pendingRequests[0] as Record<string, unknown>;
-    assert.strictEqual(result.pendingWorktreeId, request.id);
-    assert.strictEqual(result.clientThreadId, request.clientThreadId);
-    assert.deepEqual(request, {
-      id: result.pendingWorktreeId,
-      clientThreadId: result.clientThreadId,
-      hostId: "local",
-      label: "Source title (2)",
-      initialThreadTitle: "Source title (2)",
-      sourceWorkspaceRoot: "/workspace",
-      sourceWorkspaceRoots: ["/workspace", "/shared"],
-      startingState: { type: "working-tree" },
-      localEnvironmentConfigPath: ".codex/environments/dev.toml",
-      launchMode: "fork-conversation",
-      projectAssignment: {
-        projectKind: "local",
-        projectId: "project-a",
-        path: "/workspace",
-        pendingCoreUpdate: false,
-      },
-      prompt: "Continue this task in a new worktree",
-      startConversationParamsInput: null,
-      sourceConversationId: sourceThreadId,
-      sourceCollaborationMode: {
-        mode: "plan",
-        settings: {
-          model: "gpt-test",
-          reasoning_effort: "high",
-          developer_instructions: null,
-        },
-      },
-      targetTurnId: "turn-a",
-      threadSource: "subagent",
-    });
-  }),
+it.effect(
+  "leaves a local imported history passive before any native fork or worktree publication",
+  () =>
+    Effect.gen(function* () {
+      const fixture = makeHarness({ kind: "codex" }, "local");
+      const forks = yield* fixture.capability;
+      for (const target of ["local", "newWorktree"] as const) {
+        const failure = yield* forks.fork({ sessionId, input: { target } }).pipe(Effect.flip);
+        assert.equal(failure.operation, "admit");
+      }
+      assert.deepEqual(fixture.directForks, []);
+      assert.deepEqual(fixture.order, []);
+    }),
 );
 
-it.effect("retains a reserved destination through direct and pending worktree forks", () =>
-  Effect.gen(function* () {
-    for (const target of ["local", "newWorktree"] as const) {
+it.effect(
+  "keeps the reserved destination on the exact remote owner and rejects a local worktree target",
+  () =>
+    Effect.gen(function* () {
       const fixture = makeHarness();
       const forks = yield* fixture.capability;
-      yield* forks.fork({ sessionId, destinationSessionId: "reserved-child", input: { target } });
-      if (target === "local")
-        assert.strictEqual(fixture.directForks[0]?.destinationSessionId, "reserved-child");
-      else assert.propertyVal(fixture.pendingRequests[0], "projectSessionId", "reserved-child");
-    }
-  }),
+      yield* forks.fork({
+        sessionId,
+        destinationSessionId: "reserved-child",
+        input: { target: "local" },
+      });
+      assert.equal(fixture.directForks[0]?.destinationSessionId, "reserved-child");
+      const failure = yield* forks
+        .fork({ sessionId, input: { target: "newWorktree" } })
+        .pipe(Effect.flip);
+      assert.equal(failure.operation, "admit");
+      assert.equal(fixture.directForks.length, 1);
+    }),
 );

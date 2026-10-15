@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import type { LibraryPageReferenceMatchSource } from "../../../shared/library-module";
 import type { PageSearchMatch, PageSearchTextPart } from "../../../shared/types";
 import type { WorkflowStatus } from "../../../shared/workflow-status";
@@ -6,7 +6,7 @@ import type { WorkflowStatus } from "../../../shared/workflow-status";
 export type PageReferenceIntent = "mention" | "reference_block" | "link";
 
 export interface PageReferencePickerRequest {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly hostPageId: string | null;
   readonly ancestorPageIds: readonly string[];
   readonly intent: PageReferenceIntent;

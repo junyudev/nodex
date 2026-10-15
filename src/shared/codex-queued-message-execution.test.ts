@@ -10,7 +10,7 @@ type Resume = {
   conversationId: string;
   serviceTier?: string;
   workspaceRoots?: readonly string[];
-  useAppServerPermissionDefault?: boolean;
+
   collaborationMode?: string;
 };
 type Submission = QueueSubmission<Resume, string, string>;
@@ -327,7 +327,7 @@ it("retains the prepared resume input unchanged when resume becomes necessary be
     conversationId: "thread",
     serviceTier: "fast",
     workspaceRoots: ["/captured-root"],
-    useAppServerPermissionDefault: false,
+
     collaborationMode: "plan",
   };
   f.prepare.mockImplementationOnce(async () => {

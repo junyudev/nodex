@@ -34,6 +34,7 @@ export type InboxSource =
       readonly kind: "agent";
       readonly sessionId: string | null;
       readonly threadId: string | null;
+      readonly runId: string | null;
       readonly projectId: string | null;
       readonly label: string;
     }

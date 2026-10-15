@@ -15,13 +15,13 @@ import * as CodexRendererIpc from "../ipc/handlers/CodexRendererIpc";
 import * as CodexVisualizationIpc from "../ipc/handlers/CodexVisualizationIpc";
 import * as CodexVisualizationStateIpc from "../ipc/handlers/CodexVisualizationStateIpc";
 import * as CodexConversationServiceIpc from "../ipc/handlers/CodexConversationServiceIpc";
-import * as CodexPermissionsIpc from "../ipc/handlers/CodexPermissionsIpc";
 import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettingsIpc";
 import * as ComputerUseSettingsIpc from "../ipc/handlers/ComputerUseSettingsIpc";
 import * as CoreAuthorityIpc from "../ipc/handlers/CoreAuthorityIpc";
 import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalStateIpc";
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
+import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
 import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
 import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
@@ -85,7 +85,6 @@ export const live = Layer.mergeAll(
   CodexConversationServiceIpc.live,
   CodexRendererProjectionRuntime.live,
   CodexThreadNotificationRuntime.live,
-  CodexPermissionsIpc.live,
   ApplicationWindowIpc.live(),
   BrowserProfileIpc.live,
   BrowserSidebarIpc.live,
@@ -94,6 +93,7 @@ export const live = Layer.mergeAll(
   ApplicationLocalStateIpc.live,
   ApplicationSettingsIpc.live,
   AgentBackendIpc.live,
+  AgentRuntimeIpc.live,
   NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,

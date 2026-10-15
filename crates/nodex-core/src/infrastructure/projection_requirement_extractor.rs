@@ -187,11 +187,11 @@ mod tests {
                                     "membership_state": "active"
                                 },
                                 {
-                                    "kind": "restricted",
-                                    "edge_id": "edge:restricted"
+                                    "kind": "unavailable",
+                                    "edge_id": "edge:unavailable"
                                 }
                             ],
-                            "restricted_count": 1,
+                            "unavailable_count": 1,
                             "has_more": false
                         }
                     }),

@@ -318,6 +318,7 @@ export const createDevLaunchPlan = (input: {
       pnpmScript("core:build:dev"),
       pnpmScript("stage:codex-runtime:mac:cached"),
       pnpmScript("sync:icons"),
+      pnpmScript("build:agent-runtime"),
     ],
     application: {
       command: "pnpm",

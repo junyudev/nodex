@@ -343,12 +343,14 @@ export function DbViewSessionTab({
 }) {
   if (
     tab.kind !== "db_view" ||
-    tab.config.accessContext.kind !== "project" ||
+    tab.config.routingContext.kind !== "project" ||
     tab.config.target.kind !== "database-view"
   ) {
-    throw new Error("Project Database View body requires an exact View with Project access");
+    throw new Error(
+      "Project Database View body requires an exact View with Project routing context",
+    );
   }
-  const projectId = tab.config.accessContext.projectId;
+  const projectId = tab.config.routingContext.projectId;
   const databaseViewId = tab.config.target.databaseViewId;
   const appHandle = useScopeHandle(appScope);
   const surfaceId = `database-view:${sessionId}:${tab.id}:${databaseViewId}`;
@@ -413,7 +415,7 @@ export function DbViewSessionTab({
     [databaseView],
   );
   const ruleOptionRegistries = usePropertyOptionRegistries({
-    accessContext: databaseView?.accessContext ?? { kind: "project", projectId },
+    routingContext: databaseView?.routingContext ?? { kind: "project", projectId },
     properties: databaseView?.query.properties ?? EMPTY_DATABASE_PROPERTIES,
     requiredOptionIds: ruleOptionRequirements,
   });
@@ -520,10 +522,6 @@ export function DbViewSessionTab({
       if (!isWorkflowStatus(groupKey)) return;
       if (!listPageCreateTarget) {
         toast.danger("Page creation is unavailable until the Project is loaded.");
-        return;
-      }
-      if (listPageCreateTarget.readOnlyReason) {
-        toast.danger(listPageCreateTarget.readOnlyReason);
         return;
       }
       markPageCreateTargetActive(appHandle, surfaceId, groupKey);
@@ -1091,7 +1089,7 @@ export function DbViewSessionTab({
             properties={databaseView.query.properties}
             optionRegistries={ruleOptionRegistries.options}
             onRequestPropertyOptions={ruleOptionRegistries.requestOptions}
-            accessContext={databaseView.accessContext}
+            routingContext={databaseView.routingContext}
           />
         }
         settingsRail={

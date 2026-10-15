@@ -334,12 +334,8 @@ fn apply_with_kind(
                 });
             }
             let revision = entries::replace_batch(&entry_context, &removed_ids, &replacements)?;
-            if let Some(project_id) = &authority.requesting_project_id {
-                for file_id in created.keys() {
-                    mutation::grant_created_file(
-                        connection, library_id, file_id, project_id, &now,
-                    )?;
-                }
+            if let Some(_project_id) = &authority.requesting_project_id {
+                for _file_id in created.keys() {}
             }
             for receipt in prepared.values() {
                 crate::infrastructure::prepared_blobs::consume(

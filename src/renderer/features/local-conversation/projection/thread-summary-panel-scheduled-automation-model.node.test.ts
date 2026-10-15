@@ -7,11 +7,10 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     id: "automation-1",
     definitionRevision: 1,
     projectId: null,
-    targetSessionId: null,
     notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
-    targetThreadId: "thread-1",
+    targetSessionId: "thread-1",
     name: "Daily standup",
     prompt: "Check the daily standup thread.",
     rrule: "FREQ=DAILY",
@@ -36,11 +35,11 @@ describe("thread summary scheduled automation projection", () => {
       automations: [
         automation({ id: "paused", status: "PAUSED" }),
         automation({ id: "cron", kind: "cron" }),
-        automation({ id: "wrong-thread", targetThreadId: "thread-2" }),
+        automation({ id: "wrong-thread", targetSessionId: "thread-2" }),
         automation({ id: "first-match", name: "First match" }),
         automation({ id: "second-match", name: "Second match" }),
       ],
-      conversationId: "thread-1",
+      sessionId: "thread-1",
       now: new Date(2026, 6, 8, 8, 0),
     });
 
@@ -55,9 +54,9 @@ describe("thread summary scheduled automation projection", () => {
       automations: [
         automation({ id: "paused", status: "PAUSED" }),
         automation({ id: "cron", kind: "cron" }),
-        automation({ id: "wrong-thread", targetThreadId: "thread-2" }),
+        automation({ id: "wrong-thread", targetSessionId: "thread-2" }),
       ],
-      conversationId: "thread-1",
+      sessionId: "thread-1",
       now: new Date(2026, 6, 8, 8, 0),
     });
 
@@ -67,12 +66,12 @@ describe("thread summary scheduled automation projection", () => {
   test("summarizes common heartbeat schedules and falls back for custom rules", () => {
     const weekday = buildThreadSummaryPanelScheduledAutomationRow({
       automations: [automation({ rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" })],
-      conversationId: "thread-1",
+      sessionId: "thread-1",
       now: new Date(2026, 6, 7, 8, 0),
     });
     const custom = buildThreadSummaryPanelScheduledAutomationRow({
       automations: [automation({ id: "custom", rrule: "FREQ=HOURLY", nextRunAt: null })],
-      conversationId: "thread-1",
+      sessionId: "thread-1",
       now: new Date(2026, 6, 7, 8, 0),
     });
 

@@ -19,7 +19,7 @@ export async function loadPageReferenceCandidates(
   request: PageReferencePickerRequest,
 ): Promise<PageReferenceCandidate[]> {
   const sourcePageId = resolvePageReferenceSourcePageId(request);
-  const result = await readLibraryModule(request.accessContext, {
+  const result = await readLibraryModule(request.routingContext, {
     read: {
       mode: "page_reference_candidates",
       query: request.query,
@@ -51,8 +51,8 @@ export function loadPageReferenceCandidatesSync(
   request: PageReferencePickerRequest,
 ): PageReferenceCandidate[] {
   const projectIds =
-    request.accessContext.kind === "project"
-      ? [request.accessContext.projectId]
+    request.routingContext.kind === "project"
+      ? [request.routingContext.projectId]
       : configuredPageSearchProjectIds();
   const sourcePageId = resolvePageReferenceSourcePageId(request);
   const rows = searchPageMetadataSync({

@@ -71,7 +71,12 @@ export const live = (
         new Map([
           [
             localHostId,
-            withInternalServerRequestHandler({ ...local, hostId: localHostId, kind: "local" }),
+            withInternalServerRequestHandler({
+              ...local,
+              hostId: localHostId,
+              kind: "local",
+              startup: local.startup ?? "on-demand",
+            }),
           ],
         ]),
       );

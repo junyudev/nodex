@@ -99,6 +99,13 @@ export type CodexTranscriptChange =
       readonly entries: CodexTranscriptItemSlots["entries"];
     }
   | {
+      readonly type: "item-slots-prepend";
+      readonly key: CodexTranscriptTurnKey;
+      readonly previousLength: number;
+      readonly length: number;
+      readonly entries: CodexTranscriptItemSlots["entries"];
+    }
+  | {
       readonly type: "item";
       readonly key: CodexTranscriptItemKey;
       readonly value: CodexCanonicalItem | null;

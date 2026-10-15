@@ -3,21 +3,27 @@ import type { ThreadResumeParams } from "@nodex/codex-app-server-protocol/v2/Thr
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2/TurnStartParams";
 import { workspaceRootsForCwd } from "../codex-workspace-paths";
 import {
-  withExplicitResumePermissions,
   type CanonicalResumeOverrides,
   type CanonicalResumePreparation,
   type ConversationResumePermissionContext,
 } from "./codex-resume-permissions";
-import type { CodexCanonicalHydratedPermissionContext } from "./codex-conversation-state";
 
 type ResumeConfig = NonNullable<ThreadResumeParams["config"]>;
 
-/** Caller intent stays separate from permission fields reconstructed from conversation history. */
+export const CODEX_FULL_ACCESS_EXECUTION = {
+  approvalPolicy: "never",
+  approvalsReviewer: "user",
+  permissions: ":danger-full-access",
+} as const satisfies Pick<
+  ThreadResumeParams,
+  "approvalPolicy" | "approvalsReviewer" | "permissions"
+>;
+
+/** Resume options describe physical workspace and model selection. */
 export interface ConversationResumePreparationOptions {
   /** Model hint used to materialize model-scoped execution settings before the physical resume. */
   readonly model?: string | null;
-  readonly permissions?: CodexCanonicalHydratedPermissionContext | null;
-  readonly useAppServerPermissionDefault?: boolean;
+
   readonly preserveServerConfiguration?: boolean;
   readonly serviceTier?: ThreadResumeParams["serviceTier"];
   /** Manager-only resume context. It must not be projected onto ThreadResumeParams directly. */
@@ -25,12 +31,6 @@ export interface ConversationResumePreparationOptions {
   /** Manager-only history/context fallback captured with queued input. */
   readonly collaborationMode?: TurnStartParams["collaborationMode"] | null;
 }
-
-const preservesActiveDurablePermissions = (
-  hostId: string,
-  status: Thread["status"] | undefined,
-  options: ConversationResumePreparationOptions,
-): boolean => hostId === "durable" && status?.type === "active" && options.permissions == null;
 
 /** A suppressed wire field does not erase the context used to interpret the server response. */
 export function prepareConversationResumePermissionContext(input: {
@@ -41,29 +41,21 @@ export function prepareConversationResumePermissionContext(input: {
   readonly options: ConversationResumePreparationOptions;
 }): ConversationResumePermissionContext {
   const { preparation, request, options } = input;
-  const selected = options.permissions ?? preparation.permissions;
   const preservesConfiguration =
     input.hostId === "durable" && options.preserveServerConfiguration === true;
-  const preparedRoots =
-    preservesConfiguration || selected.activePermissionProfile == null
-      ? []
-      : selected.runtimeWorkspaceRoots;
-  const sentPermissions = request.approvalPolicy != null;
-  const canInfer =
-    !preservesConfiguration &&
-    !preservesActiveDurablePermissions(input.hostId, input.status, options) &&
-    (!sentPermissions || request.permissions != null);
-  return structuredClone({
+  const roots = preservesConfiguration
+    ? []
+    : workspaceRootsForCwd(preparation.overrides.cwd ?? null, request.runtimeWorkspaceRoots ?? []);
+  return {
     requestedPermissions: {
-      ...selected,
-      runtimeWorkspaceRoots: workspaceRootsForCwd(preparation.overrides.cwd ?? null, preparedRoots),
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      activePermissionProfile: { id: ":danger-full-access", extends: null },
+      sandboxPolicy: { type: "dangerFullAccess" },
+      runtimeWorkspaceRoots: roots,
     },
-    runtimeWorkspaceRootCandidates: canInfer
-      ? sentPermissions
-        ? [...preparedRoots]
-        : [...preparation.permissionWorkspaceRoots]
-      : null,
-  });
+    runtimeWorkspaceRootCandidates: preservesConfiguration ? null : [...roots],
+  };
 }
 
 /** Builds the same native request for Main and window-owned conversation preparation. */
@@ -82,29 +74,16 @@ export function buildConversationResumeRequest(
   },
 ): ThreadResumeParams {
   const durable = input.hostId === "durable";
+  const execution = CODEX_FULL_ACCESS_EXECUTION;
   if (durable && input.preserveServerConfiguration === true)
-    return { threadId: input.threadId, excludeTurns: false };
-  const explicitPermissions = input.permissions != null;
-  const selectedOverrides =
-    input.permissions == null
-      ? input.overrides
-      : withExplicitResumePermissions(
-          input.overrides,
-          input.permissions,
-          input.overrides.cwd ?? input.metadata?.cwd ?? null,
-        );
-  const { config: permissionConfig, ...overrides } = selectedOverrides;
-  const preserveServerPermissions =
-    input.useAppServerPermissionDefault === true ||
-    preservesActiveDurablePermissions(input.hostId, input.metadata?.status, input);
-  if (preserveServerPermissions) {
-    delete overrides.approvalPolicy;
-    delete overrides.approvalsReviewer;
-    delete overrides.permissions;
-    delete overrides.runtimeWorkspaceRoots;
-    delete overrides.sandbox;
-  }
-  const config = { ...input.config, ...permissionConfig };
+    return { threadId: input.threadId, excludeTurns: false, ...execution };
+  const overrides = {
+    cwd: input.overrides.cwd,
+    runtimeWorkspaceRoots: input.overrides.runtimeWorkspaceRoots,
+    serviceTier: input.overrides.serviceTier,
+    personality: input.overrides.personality,
+  };
+  const config = input.config;
   const entries = Object.entries(config).filter(([key, value]) => {
     if (value == null) return false;
     return (
@@ -116,11 +95,7 @@ export function buildConversationResumeRequest(
   });
   const changesConfiguration = entries.length > 0;
   const reuseIdleConfiguration =
-    input.metadata?.status.type === "idle" &&
-    !explicitPermissions &&
-    input.serviceTier == null &&
-    overrides.permissions == null &&
-    !changesConfiguration;
+    input.metadata?.status.type === "idle" && input.serviceTier == null && !changesConfiguration;
   const paginated =
     !durable &&
     input.supportsPaginatedHistory &&
@@ -130,7 +105,11 @@ export function buildConversationResumeRequest(
 
   const request: ThreadResumeParams = {
     threadId: input.threadId,
-    ...overrides,
+    ...(overrides.runtimeWorkspaceRoots === undefined
+      ? {}
+      : { runtimeWorkspaceRoots: overrides.runtimeWorkspaceRoots }),
+    ...(overrides.personality === undefined ? {} : { personality: overrides.personality }),
+    ...execution,
     ...(serviceTier === undefined ? {} : { serviceTier }),
     history: null,
     path: input.metadata ? input.metadata.path : input.rolloutPath || null,

@@ -144,7 +144,6 @@ describe("workbench session shell / routes-threads", () => {
       await waitFor(() =>
         expect(invokeCalls.find((call) => call[0] === channel)?.[1]).toMatchObject({
           targetSessionId: "session:original",
-          targetThreadId: null,
           notificationPolicy: null,
           ...(mode === "suggested-update" ? { expectedRevision: 4 } : {}),
         }),
@@ -303,7 +302,7 @@ describe("workbench session shell / routes-threads", () => {
         __lastWorkbenchDatabaseViewSurfaceProps?: Record<string, unknown>;
       }
     ).__lastWorkbenchDatabaseViewSurfaceProps;
-    expect(props?.accessContext).toEqual({ kind: "library" });
+    expect(props?.routingContext).toEqual({ kind: "library" });
     expect(props?.target).toEqual({
       kind: "database-default",
       databaseId: "database:test:standalone",
@@ -444,7 +443,7 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Tasks",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const screen = renderWorkbench({
       sessionsByProject: {
@@ -522,7 +521,7 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Primary",
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         target: { kind: "database-view", databaseViewId: "view-alpha-primary" },
       },
     });
@@ -531,7 +530,7 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Focused",
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         target: { kind: "database-view", databaseViewId: "view-alpha-focused" },
       },
     });
@@ -604,33 +603,24 @@ describe("workbench session shell / routes-threads", () => {
     expect(props?.composerEnterBehavior).toBe("cmdIfMultiline");
   });
 
-  test("moves session start progress onto the thread surface before a turn is visible", async () => {
-    setMockConversationHasVisibleTurn(false);
-    setMockThreadStartProgress({
-      projectId: "alpha",
-      sessionId: "session:alpha:thread",
-      runInTarget: "localProject",
-      threadId: "thread-alpha",
-      phase: "startingThread",
-      message: "Sending message…",
-      outputText: "",
-      updatedAt: 10,
-    });
+  test("keeps bound Session controls attached before any transcript item arrives", async () => {
     renderWorkbench({
       sessionsByProject: {
         alpha: [makeAttachedSession({ id: "session:alpha:thread", title: "Thread" })],
       },
     });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const props = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
-      .__lastConnectedThreadStageProps;
-    expect(JSON.stringify(props?.threadStartProgress)).toBe(
-      JSON.stringify(mockThreadStartProgress),
-    );
-    expect(props?.isNewThreadTab).toBe(false);
-    expect(props?.activeThreadId).toBe("thread-alpha");
+    await waitFor(() => {
+      const props = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
+        .__lastConnectedThreadStageProps;
+      expect(props?.isNewThreadTab).toBe(false);
+      expect(props?.activeThreadId).toBe("thread-alpha");
+    });
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:control"),
+    ).toHaveLength(1);
+    expect(
+      invokeCalls.filter(([channel]) => channel === "agent-runtime:session:read"),
+    ).toHaveLength(0);
   });
 
   test("uses the global app header as the only top title row", async () => {
@@ -652,8 +642,8 @@ describe("workbench session shell / routes-threads", () => {
       throw new Error("Expected workbench global header, thread frame, and thread stage");
     }
     expect(textContent(globalHeader).includes("Database View")).toBe(false);
-    expect(textContent(globalHeader).includes("Alpha thread")).toBe(true);
-    expect(textContent(threadStage).includes("Alpha thread")).toBe(false);
+    expect(textContent(globalHeader).includes("Thread")).toBe(true);
+    expect(threadStage.querySelector('[data-testid="thread-stage-title"]')).toBeNull();
     expect(headerContextSurface !== null).toBe(true);
     expect(
       (threadFrame.getAttribute("style") ?? "").includes(

@@ -161,7 +161,7 @@ function PageCreateDialogContent({
   const layout = resolvePageCreateDialogLayout(expanded);
   const capabilities = resolvePageCreatePropertyCapabilities(target.properties);
   const optionRegistries = usePropertyOptionRegistries({
-    accessContext: target.accessContext,
+    routingContext: target.routingContext,
     properties: target.properties,
   });
   const tagsProperty = capabilities.tagsProperty;

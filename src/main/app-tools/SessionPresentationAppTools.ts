@@ -1,4 +1,6 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 import { sessionPresentationSchemas as schemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
@@ -12,32 +14,29 @@ import { toolFailure, toolSuccess } from "./app-tool-result";
 
 export const make = Effect.gen(function* () {
   const workspace = yield* ProjectWorkspace;
-  const presentation = yield* CodexTurnPresentation;
+  const presentation = yield* Effect.serviceOption(CodexTurnPresentation);
   const bridge = yield* WorkbenchAgentBridge;
   const resolveTarget = yield* makeTarget;
   return Effect.fn("SessionPresentationAppTools.execute")(function* (
     context: WorkbenchAppToolContext,
   ) {
     const { invocation: input, authority } = context;
-    if (authority.readOnly) return toolFailure("read_only_turn");
+
     const schema = schemas[input.name as keyof typeof schemas];
     if (!schema) return toolFailure("unknown_tool");
     const parsed = schema.safeParse(input.arguments);
     if (!parsed.success) return toolFailure("invalid_arguments");
-    const caller = yield* workspace
-      .getThread(input.caller.threadId)
-      .pipe(Effect.catch(() => Effect.succeed(null)));
+    const caller = yield* resolveAppToolCallingSession(input.caller, workspace);
     const sessionId = parsed.data.sessionId ?? caller?.sessionId;
     if (!sessionId) return toolFailure("session_unavailable");
     const session = yield* workspace
       .getProjectSession(sessionId)
       .pipe(Effect.catch(() => Effect.succeed(null)));
-    if (
-      !session ||
-      (authority.scope !== "library" && session.projectId !== authority.actorProjectId)
-    )
-      return toolFailure("session_unavailable");
-    const anchor = presentation.read(input.caller.threadId, input.caller.turnId);
+    if (!session) return toolFailure("session_unavailable");
+    const anchor =
+      Option.isSome(presentation) && caller?.runId != null
+        ? presentation.value.read(caller.threadId, caller.runId)
+        : null;
     const requestedWindow = parsed.data.window ?? anchor;
     if (!requestedWindow)
       return toolSuccess({ status: "window_required", windows: bridge.registered() });
@@ -60,7 +59,7 @@ export const make = Effect.gen(function* () {
       observed.observation?.selectedSceneOwner ?? discovery?.selectedSceneOwner ?? null;
     const operationId =
       parsed.data.operationId ??
-      createStableOperationId(`app.${input.name}`, authority.frozenAtMs, [
+      createStableOperationId(`app.${input.name}`, authority.admittedAtMs, [
         context.principal.profileId,
         input.caller.threadId,
         input.caller.turnId,
@@ -78,7 +77,6 @@ export const make = Effect.gen(function* () {
         operationId,
         authority,
         callId: input.caller.callId,
-        taskAccess: context.taskAccess,
       });
       if (!opening) return toolFailure("target_unavailable");
       command =

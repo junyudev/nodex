@@ -8,6 +8,7 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use rusqlite::{Connection, OptionalExtension, params};
+use sha2::{Digest, Sha256};
 
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
@@ -34,16 +35,16 @@ pub(super) struct RunMutationEffects {
 
 pub(super) fn read_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
 ) -> Result<Option<AutomationRun>, StoreError> {
-    validate_id("thread_id", thread_id)?;
+    validate_id("run_id", run_id)?;
     let run = connection
         .query_row(
-            "SELECT thread_id, automation_id, run_revision, status, read_at, thread_title, \
+            "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                     source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                    archived_assistant_message, archived_reason, created_at, updated_at \
-             FROM codex_automation_runs WHERE thread_id = ?1",
-            [thread_id],
+                    archived_assistant_message, archived_reason, created_at, updated_at, session_id \
+             FROM core_automation_runs WHERE run_id = ?1",
+            [run_id],
             run_from_row,
         )
         .optional()
@@ -63,8 +64,11 @@ pub(super) fn read_runs_window(
         validate_id("automation_id", automation_id)?;
     }
     let normalized = normalize_request(request)?;
-    let fingerprint =
-        cursor::query_fingerprint(&("automation_runs_v1", automation_id, include_archived))?;
+    let fingerprint = cursor::query_fingerprint(&(
+        "automation_runs_session_v2",
+        automation_id,
+        include_archived,
+    ))?;
     let subject = CollectionCursorSubject {
         kind: "automation_runs",
         library_id,
@@ -90,13 +94,13 @@ pub(super) fn read_runs_window(
         })
         .transpose()?;
     let mut statement = connection.prepare(
-        "SELECT thread_id, automation_id, run_revision, status, read_at, thread_title, \
+        "SELECT run_id, automation_id, run_revision, status, read_at, session_title, \
                 source_cwd, inbox_title, inbox_summary, archived_user_message, \
-                archived_assistant_message, archived_reason, created_at, updated_at \
-         FROM codex_automation_runs \
+                archived_assistant_message, archived_reason, created_at, updated_at, session_id \
+         FROM core_automation_runs \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status <> 'ARCHIVED') \
-           AND (?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND thread_id > ?4)) \
-         ORDER BY created_at DESC, thread_id LIMIT ?5",
+           AND (?3 IS NULL OR created_at < ?3 OR (created_at = ?3 AND run_id > ?4)) \
+         ORDER BY created_at DESC, run_id LIMIT ?5",
     )?;
     let rows = statement
         .query_map(
@@ -120,7 +124,7 @@ pub(super) fn read_runs_window(
             values: vec![KeysetValue::Integer {
                 value: item.created_at_ms,
             }],
-            stable_id: item.thread_id.clone(),
+            stable_id: item.run_id.clone(),
         },
         item,
     });
@@ -154,7 +158,7 @@ pub(super) fn read_inbox_window(
     StoreError,
 > {
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&"automation_inbox_v1")?;
+    let fingerprint = cursor::query_fingerprint(&"automation_inbox_session_v2")?;
     let subject = CollectionCursorSubject {
         kind: "automation_inbox",
         library_id,
@@ -184,21 +188,21 @@ pub(super) fn read_inbox_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "SELECT runs.automation_id, automations.name, \
-                COALESCE(automations.name, NULLIF(runs.inbox_title, ''), runs.thread_title), \
+                COALESCE(automations.name, NULLIF(runs.inbox_title, ''), runs.session_title), \
                 COALESCE(NULLIF(runs.inbox_summary, ''), runs.archived_assistant_message, \
                          runs.archived_user_message, automations.prompt), \
                 runs.archived_assistant_message, runs.archived_user_message, \
-                runs.archived_reason, runs.source_cwd, runs.thread_id, runs.read_at, \
+                runs.archived_reason, runs.source_cwd, runs.run_id, runs.read_at, \
                 runs.created_at, runs.status, \
                 CASE runs.status WHEN 'IN_PROGRESS' THEN 0 \
-                  WHEN 'PENDING_REVIEW' THEN 1 ELSE 2 END AS status_bucket \
-         FROM codex_automation_runs runs \
+                  WHEN 'PENDING_REVIEW' THEN 1 ELSE 2 END AS status_bucket, runs.session_id \
+         FROM core_automation_runs runs \
          JOIN codex_scheduled_automations automations \
            ON automations.automation_id = runs.automation_id \
          WHERE (?1 IS NULL OR status_bucket > ?1 \
            OR (status_bucket = ?1 AND runs.created_at < ?2) \
-           OR (status_bucket = ?1 AND runs.created_at = ?2 AND runs.thread_id > ?3)) \
-         ORDER BY status_bucket, runs.created_at DESC, runs.thread_id LIMIT ?4",
+           OR (status_bucket = ?1 AND runs.created_at = ?2 AND runs.run_id > ?3)) \
+         ORDER BY status_bucket, runs.created_at DESC, runs.run_id LIMIT ?4",
     )?;
     let rows = statement
         .query_map(
@@ -228,7 +232,7 @@ pub(super) fn read_inbox_window(
                         value: item.created_at_ms,
                     },
                 ],
-                stable_id: item.thread_id.clone(),
+                stable_id: item.run_id.clone(),
             },
             item,
         });
@@ -256,88 +260,90 @@ pub(super) fn apply(
 ) -> Result<RunMutationEffects, StoreError> {
     match intent {
         AutomationIntent::BeginRun {
-            thread_id,
+            run_id,
             automation_id,
-            thread_title,
+            session_id,
+            session_title,
             source_cwd,
         } => begin_run(
             connection,
-            thread_id,
+            run_id,
             automation_id,
-            thread_title.as_deref(),
+            session_id.as_deref(),
+            session_title.as_deref(),
             source_cwd.as_deref(),
         ),
-        AutomationIntent::ReplacePendingRunThread {
-            pending_thread_id,
-            thread_id,
+        AutomationIntent::BindRunSession {
+            run_id,
+            session_id,
             expected_revision,
-        } => replace_pending_thread(connection, pending_thread_id, thread_id, *expected_revision),
-        AutomationIntent::SetRunThreadTitle {
-            thread_id,
+        } => bind_run_session(connection, run_id, session_id, *expected_revision),
+        AutomationIntent::SetRunSessionTitle {
+            run_id,
             expected_revision,
-            thread_title,
-        } => set_thread_title(
+            session_title,
+        } => set_session_title(
             connection,
-            thread_id,
+            run_id,
             *expected_revision,
-            thread_title.as_deref(),
+            session_title.as_deref(),
         ),
         AutomationIntent::CompleteRunForReview {
-            thread_id,
+            run_id,
             expected_revision,
             inbox_title,
             inbox_summary,
         } => complete_for_review(
             connection,
-            thread_id,
+            run_id,
             *expected_revision,
             inbox_title.as_deref(),
             inbox_summary.as_deref(),
         ),
         AutomationIntent::SetRunInboxItem {
-            thread_id,
+            run_id,
             expected_revision,
             inbox_title,
             inbox_summary,
         } => set_inbox_item(
             connection,
-            thread_id,
+            run_id,
             *expected_revision,
             inbox_title.as_deref(),
             inbox_summary.as_deref(),
         ),
         AutomationIntent::AcceptRun {
-            thread_id,
+            run_id,
             expected_revision,
-        } => accept_run(connection, thread_id, *expected_revision),
+        } => accept_run(connection, run_id, *expected_revision),
         AutomationIntent::SetRunReadState {
-            thread_id,
+            run_id,
             expected_revision,
             read,
-        } => set_read_state(connection, thread_id, *expected_revision, *read),
+        } => set_read_state(connection, run_id, *expected_revision, *read),
         AutomationIntent::MarkAllRunsRead => mark_all_read(connection),
         AutomationIntent::ArchiveRun {
-            thread_id,
+            run_id,
             expected_revision,
             archived_user_message,
             archived_assistant_message,
             archived_reason,
         } => archive_run(
             connection,
-            thread_id,
+            run_id,
             *expected_revision,
             archived_user_message.as_deref(),
             archived_assistant_message.as_deref(),
             archived_reason.as_deref(),
         ),
         AutomationIntent::UnarchiveRun {
-            thread_id,
+            run_id,
             expected_revision,
-        } => unarchive_run(connection, thread_id, *expected_revision),
+        } => unarchive_run(connection, run_id, *expected_revision),
         AutomationIntent::DeleteRun {
-            thread_id,
+            run_id,
             expected_revision,
-        } => delete_run(connection, thread_id, *expected_revision),
+        } => delete_run(connection, run_id, *expected_revision),
         AutomationIntent::SettleInterruptedRuns => settle_interrupted(connection),
         _ => Err(internal("Automation intent is not a run mutation")),
     }
@@ -348,15 +354,15 @@ pub(super) fn delete_for_automation(
     automation_id: &str,
 ) -> Result<Vec<String>, StoreError> {
     let mut statement = connection.prepare(
-        "SELECT thread_id FROM codex_automation_runs \
-         WHERE automation_id = ?1 ORDER BY thread_id",
+        "SELECT run_id FROM core_automation_runs \
+         WHERE automation_id = ?1 ORDER BY run_id",
     )?;
     let ids = statement
         .query_map([automation_id], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     drop(statement);
     connection.execute(
-        "DELETE FROM codex_automation_runs WHERE automation_id = ?1",
+        "DELETE FROM core_automation_runs WHERE automation_id = ?1",
         [automation_id],
     )?;
     Ok(ids)
@@ -364,103 +370,138 @@ pub(super) fn delete_for_automation(
 
 fn begin_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     automation_id: &str,
-    thread_title: Option<&str>,
+    session_id: Option<&str>,
+    session_title: Option<&str>,
     source_cwd: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
-    validate_id("thread_id", thread_id)?;
+    validate_id("run_id", run_id)?;
     validate_id("automation_id", automation_id)?;
     require_definition(connection, automation_id)?;
-    if read_run(connection, thread_id)?.is_some() {
-        return Err(conflict("Automation run Thread already exists"));
-    }
-    if thread_id.starts_with("pending:") {
-        validate_pending_thread_id(thread_id)?;
-    } else {
-        require_thread(connection, thread_id)?;
-    }
-    let thread_title = normalize_text(thread_title, MAX_TITLE_BYTES, "run thread title")?;
+    let session_title = normalize_text(session_title, MAX_TITLE_BYTES, "run Session title")?;
     let source_cwd = source_cwd
         .map(|value| super::mutation::normalize_absolute_path(value, "run source cwd"))
         .transpose()?;
+    let payload = serde_json::to_vec(&(
+        run_id,
+        automation_id,
+        session_id,
+        &session_title,
+        &source_cwd,
+    ))
+    .map_err(|_| internal("Automation run admission cannot be fingerprinted"))?;
+    let request_hash = format!("{:x}", Sha256::digest(payload));
     let (now_ms, committed_at) = core_now(connection)?;
+    let existing: Option<String> = connection
+        .query_row(
+            "SELECT admission_hash FROM core_automation_runs WHERE run_id = ?1",
+            [run_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(existing) = existing {
+        if existing != request_hash {
+            return Err(StoreError::new(
+                StoreErrorCode::IdempotencyKeyReused,
+                "Automation run identity is bound to another admission",
+                false,
+            ));
+        }
+        let changed = connection.execute(
+            "UPDATE core_automation_runs SET status = 'IN_PROGRESS', archived_reason = NULL, \
+               archived_user_message = NULL, archived_assistant_message = NULL, read_at = NULL, \
+               updated_at = ?1, run_revision = run_revision + 1 \
+             WHERE run_id = ?2 AND session_id IS NULL AND status = 'ARCHIVED' AND archived_reason = 'auto'",
+            params![now_ms, run_id],
+        )?;
+        let kind = if changed == 1 {
+            "resume_run_admission"
+        } else {
+            "run_admission_unchanged"
+        };
+        return single_run_effects(connection, kind, run_id, committed_at);
+    }
+    if let Some(session_id) = session_id {
+        require_session(connection, automation_id, session_id)?;
+    }
     connection.execute(
-        "INSERT INTO codex_automation_runs(\
-           thread_id, automation_id, status, thread_title, source_cwd, created_at, updated_at, \
-           run_revision\
-         ) VALUES (?1, ?2, 'IN_PROGRESS', ?3, ?4, ?5, ?5, 1)",
-        params![thread_id, automation_id, thread_title, source_cwd, now_ms],
+        "INSERT INTO core_automation_runs(\
+           run_id, automation_id, session_id, status, session_title, source_cwd, created_at, updated_at, \
+           run_revision, admission_hash\
+         ) VALUES (?1, ?2, ?3, 'IN_PROGRESS', ?4, ?5, ?6, ?6, 1, ?7)",
+        params![run_id, automation_id, session_id, session_title, source_cwd, now_ms, request_hash],
     )?;
-    single_run_effects(connection, "begin_run", thread_id, committed_at)
+    single_run_effects(connection, "begin_run", run_id, committed_at)
 }
 
-fn replace_pending_thread(
+fn bind_run_session(
     connection: &Connection,
-    pending_thread_id: &str,
-    thread_id: &str,
+    run_id: &str,
+    session_id: &str,
     expected_revision: i64,
 ) -> Result<RunMutationEffects, StoreError> {
+    validate_id("run_id", run_id)?;
     validate_expected_revision(expected_revision)?;
-    validate_id("pending_thread_id", pending_thread_id)?;
-    validate_id("thread_id", thread_id)?;
-    validate_pending_thread_id(pending_thread_id)?;
-    if thread_id.starts_with("pending:") {
-        return Err(invalid("Automation pending Thread replacement is invalid"));
-    }
-    require_thread(connection, thread_id)?;
-    require_run_revision(connection, pending_thread_id, expected_revision)?;
-    if read_run(connection, thread_id)?.is_some() {
-        return Err(conflict("Automation run target Thread already exists"));
-    }
+    let current =
+        read_run(connection, run_id)?.ok_or_else(|| not_found("Automation run is unavailable"))?;
     let (now_ms, committed_at) = core_now(connection)?;
-    let changed = connection.execute(
-        "UPDATE codex_automation_runs SET thread_id = ?1, updated_at = ?2, \
-           run_revision = run_revision + 1 \
-         WHERE thread_id = ?3 AND run_revision = ?4 AND status = 'IN_PROGRESS'",
-        params![thread_id, now_ms, pending_thread_id, expected_revision],
-    )?;
-    if changed != 1 {
+    if let Some(bound) = current.session_id.as_deref() {
+        if bound != session_id {
+            return Err(StoreError::new(
+                StoreErrorCode::Conflict,
+                "Automation run Session binding is immutable",
+                false,
+            ));
+        }
+        if expected_revision > current.run_revision {
+            return Err(conflict("Automation run revision changed"));
+        }
+        return single_run_effects(connection, "run_binding_unchanged", run_id, committed_at);
+    }
+    if current.run_revision != expected_revision
+        || current.status != AutomationRunStatus::InProgress
+    {
         return Err(conflict("Pending Automation run changed concurrently"));
     }
-    let mut effects = single_run_effects(
+    require_session(connection, &current.automation_id, session_id)?;
+    update_one(
         connection,
-        "replace_pending_run_thread",
-        thread_id,
-        committed_at,
+        "UPDATE core_automation_runs SET session_id = ?1, updated_at = ?2, run_revision = run_revision + 1 \
+         WHERE run_id = ?3 AND run_revision = ?4 AND status = 'IN_PROGRESS' AND session_id IS NULL",
+        params![session_id, now_ms, run_id, expected_revision],
+        "Pending Automation run changed concurrently",
     )?;
-    effects.run_ids.push(pending_thread_id.to_owned());
-    effects.run_ids.sort();
-    Ok(effects)
+    single_run_effects(connection, "bind_run_session", run_id, committed_at)
 }
 
-fn set_thread_title(
+fn set_session_title(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
-    thread_title: Option<&str>,
+    session_title: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
-    require_run_revision(connection, thread_id, expected_revision)?;
-    let title = normalize_text(thread_title, MAX_TITLE_BYTES, "run thread title")?;
+    require_run_revision(connection, run_id, expected_revision)?;
+    let title = normalize_text(session_title, MAX_TITLE_BYTES, "run Session title")?;
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET thread_title = ?1, updated_at = ?2, \
-           run_revision = run_revision + 1 WHERE thread_id = ?3 AND run_revision = ?4",
-        params![title, now_ms, thread_id, expected_revision],
+        "UPDATE core_automation_runs SET session_title = ?1, updated_at = ?2, \
+           run_revision = run_revision + 1 WHERE run_id = ?3 AND run_revision = ?4",
+        params![title, now_ms, run_id, expected_revision],
         "Automation run changed concurrently",
     )?;
-    single_run_effects(connection, "set_run_thread_title", thread_id, committed_at)
+    single_run_effects(connection, "set_run_session_title", run_id, committed_at)
 }
 
 fn complete_for_review(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
     inbox_title: Option<&str>,
     inbox_summary: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
-    let current = require_run_revision(connection, thread_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     if current.status != AutomationRunStatus::InProgress {
         return Err(conflict(
             "Only an in-progress Automation run can complete for review",
@@ -471,28 +512,23 @@ fn complete_for_review(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET status = 'PENDING_REVIEW', inbox_title = ?1, \
+        "UPDATE core_automation_runs SET status = 'PENDING_REVIEW', inbox_title = ?1, \
            inbox_summary = ?2, updated_at = ?3, run_revision = run_revision + 1 \
-         WHERE thread_id = ?4 AND run_revision = ?5 AND status = 'IN_PROGRESS'",
-        params![title, summary, now_ms, thread_id, expected_revision],
+         WHERE run_id = ?4 AND run_revision = ?5 AND status = 'IN_PROGRESS'",
+        params![title, summary, now_ms, run_id, expected_revision],
         "Automation run changed before review completion",
     )?;
-    single_run_effects(
-        connection,
-        "complete_run_for_review",
-        thread_id,
-        committed_at,
-    )
+    single_run_effects(connection, "complete_run_for_review", run_id, committed_at)
 }
 
 fn set_inbox_item(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
     inbox_title: Option<&str>,
     inbox_summary: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
-    let current = require_run_revision(connection, thread_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     if current.status == AutomationRunStatus::Archived {
         return Err(conflict(
             "Archived Automation run inbox content is immutable",
@@ -503,79 +539,79 @@ fn set_inbox_item(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET inbox_title = ?1, inbox_summary = ?2, \
+        "UPDATE core_automation_runs SET inbox_title = ?1, inbox_summary = ?2, \
            status = CASE WHEN status = 'IN_PROGRESS' THEN 'PENDING_REVIEW' ELSE status END, \
            updated_at = ?3, run_revision = run_revision + 1 \
-         WHERE thread_id = ?4 AND run_revision = ?5 AND status <> 'ARCHIVED'",
-        params![title, summary, now_ms, thread_id, expected_revision],
+         WHERE run_id = ?4 AND run_revision = ?5 AND status <> 'ARCHIVED'",
+        params![title, summary, now_ms, run_id, expected_revision],
         "Automation run changed before inbox update",
     )?;
-    single_run_effects(connection, "set_run_inbox_item", thread_id, committed_at)
+    single_run_effects(connection, "set_run_inbox_item", run_id, committed_at)
 }
 
 fn accept_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
 ) -> Result<RunMutationEffects, StoreError> {
-    let current = require_run_revision(connection, thread_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     if current.status == AutomationRunStatus::Archived {
         return Err(conflict("Archived Automation run cannot be accepted"));
     }
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET status = 'ACCEPTED', updated_at = ?1, \
+        "UPDATE core_automation_runs SET status = 'ACCEPTED', updated_at = ?1, \
            run_revision = run_revision + 1 \
-         WHERE thread_id = ?2 AND run_revision = ?3 AND status <> 'ARCHIVED'",
-        params![now_ms, thread_id, expected_revision],
+         WHERE run_id = ?2 AND run_revision = ?3 AND status <> 'ARCHIVED'",
+        params![now_ms, run_id, expected_revision],
         "Automation run changed before acceptance",
     )?;
-    single_run_effects(connection, "accept_run", thread_id, committed_at)
+    single_run_effects(connection, "accept_run", run_id, committed_at)
 }
 
 fn set_read_state(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
     read: bool,
 ) -> Result<RunMutationEffects, StoreError> {
-    require_run_revision(connection, thread_id, expected_revision)?;
+    require_run_revision(connection, run_id, expected_revision)?;
     let (now_ms, committed_at) = core_now(connection)?;
     let read_at = read.then_some(now_ms);
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
-         WHERE thread_id = ?2 AND run_revision = ?3",
-        params![read_at, thread_id, expected_revision],
+        "UPDATE core_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
+         WHERE run_id = ?2 AND run_revision = ?3",
+        params![read_at, run_id, expected_revision],
         "Automation run changed before read-state update",
     )?;
-    single_run_effects(connection, "set_run_read_state", thread_id, committed_at)
+    single_run_effects(connection, "set_run_read_state", run_id, committed_at)
 }
 
 fn mark_all_read(connection: &Connection) -> Result<RunMutationEffects, StoreError> {
     let (now_ms, committed_at) = core_now(connection)?;
     let selected = select_run_ids(
         connection,
-        "SELECT thread_id FROM codex_automation_runs \
+        "SELECT run_id FROM core_automation_runs \
          WHERE read_at IS NULL AND status IN ('PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED') \
            AND updated_at <= ?1 \
-         ORDER BY updated_at, thread_id LIMIT ?2",
+         ORDER BY updated_at, run_id LIMIT ?2",
         params![
             now_ms,
             i64::try_from(MAX_BULK_RUNS).expect("bound fits i64")
         ],
     )?;
-    for thread_id in &selected {
+    for run_id in &selected {
         connection.execute(
-            "UPDATE codex_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
-             WHERE thread_id = ?2 AND read_at IS NULL",
-            params![now_ms, thread_id],
+            "UPDATE core_automation_runs SET read_at = ?1, run_revision = run_revision + 1 \
+             WHERE run_id = ?2 AND read_at IS NULL",
+            params![now_ms, run_id],
         )?;
     }
     let runs = read_selected_runs(connection, &selected)?;
     let has_more = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM codex_automation_runs \
+        "SELECT EXISTS(SELECT 1 FROM core_automation_runs \
          WHERE read_at IS NULL AND status IN ('PENDING_REVIEW', 'ACCEPTED', 'ARCHIVED') \
            AND updated_at <= ?1)",
         [now_ms],
@@ -596,13 +632,13 @@ fn mark_all_read(connection: &Connection) -> Result<RunMutationEffects, StoreErr
 
 fn archive_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
     archived_user_message: Option<&str>,
     archived_assistant_message: Option<&str>,
     archived_reason: Option<&str>,
 ) -> Result<RunMutationEffects, StoreError> {
-    require_run_revision(connection, thread_id, expected_revision)?;
+    require_run_revision(connection, run_id, expected_revision)?;
     let user_message = normalize_text(
         archived_user_message,
         MAX_ARCHIVE_MESSAGE_BYTES,
@@ -617,54 +653,54 @@ fn archive_run(
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET status = 'ARCHIVED', archived_user_message = ?1, \
+        "UPDATE core_automation_runs SET status = 'ARCHIVED', archived_user_message = ?1, \
            archived_assistant_message = ?2, archived_reason = COALESCE(archived_reason, ?3), \
            updated_at = ?4, run_revision = run_revision + 1 \
-         WHERE thread_id = ?5 AND run_revision = ?6",
+         WHERE run_id = ?5 AND run_revision = ?6",
         params![
             user_message,
             assistant_message,
             reason,
             now_ms,
-            thread_id,
+            run_id,
             expected_revision
         ],
         "Automation run changed before archive",
     )?;
-    single_run_effects(connection, "archive_run", thread_id, committed_at)
+    single_run_effects(connection, "archive_run", run_id, committed_at)
 }
 
 fn unarchive_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
 ) -> Result<RunMutationEffects, StoreError> {
-    let current = require_run_revision(connection, thread_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     if current.status != AutomationRunStatus::Archived {
         return Err(conflict("Only an archived Automation run can be restored"));
     }
     let (now_ms, committed_at) = core_now(connection)?;
     update_one(
         connection,
-        "UPDATE codex_automation_runs SET status = 'ACCEPTED', read_at = COALESCE(read_at, ?1), \
+        "UPDATE core_automation_runs SET status = 'ACCEPTED', read_at = COALESCE(read_at, ?1), \
            archived_reason = NULL, updated_at = ?1, run_revision = run_revision + 1 \
-         WHERE thread_id = ?2 AND run_revision = ?3 AND status = 'ARCHIVED'",
-        params![now_ms, thread_id, expected_revision],
+         WHERE run_id = ?2 AND run_revision = ?3 AND status = 'ARCHIVED'",
+        params![now_ms, run_id, expected_revision],
         "Automation run changed before restore",
     )?;
-    single_run_effects(connection, "unarchive_run", thread_id, committed_at)
+    single_run_effects(connection, "unarchive_run", run_id, committed_at)
 }
 
 fn delete_run(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
 ) -> Result<RunMutationEffects, StoreError> {
-    let current = require_run_revision(connection, thread_id, expected_revision)?;
+    let current = require_run_revision(connection, run_id, expected_revision)?;
     let (_, committed_at) = core_now(connection)?;
     let changed = connection.execute(
-        "DELETE FROM codex_automation_runs WHERE thread_id = ?1 AND run_revision = ?2",
-        params![thread_id, expected_revision],
+        "DELETE FROM core_automation_runs WHERE run_id = ?1 AND run_revision = ?2",
+        params![run_id, expected_revision],
     )?;
     if changed != 1 {
         return Err(conflict("Automation run changed before deletion"));
@@ -673,8 +709,8 @@ fn delete_run(
         operation_kind: "delete_run",
         automation_ids: vec![current.automation_id],
         runs: Vec::new(),
-        deleted_run_ids: vec![thread_id.to_owned()],
-        run_ids: vec![thread_id.to_owned()],
+        deleted_run_ids: vec![run_id.to_owned()],
+        run_ids: vec![run_id.to_owned()],
         bulk: None,
         committed_at,
     })
@@ -684,35 +720,40 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
     let (now_ms, committed_at) = core_now(connection)?;
     let selected = select_run_ids(
         connection,
-        "SELECT thread_id FROM codex_automation_runs WHERE status = 'IN_PROGRESS' \
-         ORDER BY created_at, thread_id LIMIT ?1",
+        "SELECT run_id FROM core_automation_runs WHERE status = 'IN_PROGRESS' \
+         ORDER BY created_at, run_id LIMIT ?1",
         [i64::try_from(MAX_BULK_RUNS).expect("bound fits i64")],
     )?;
     let mut archived_pending_count = 0_u32;
     let mut pending_review_count = 0_u32;
-    for thread_id in &selected {
-        if thread_id.starts_with("pending:") {
+    for run_id in &selected {
+        let pending = connection.query_row(
+            "SELECT session_id IS NULL FROM core_automation_runs WHERE run_id = ?1",
+            [run_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if pending {
             connection.execute(
-                "UPDATE codex_automation_runs SET status = 'ARCHIVED', \
+                "UPDATE core_automation_runs SET status = 'ARCHIVED', \
                    archived_reason = COALESCE(archived_reason, 'auto'), updated_at = ?1, \
                    run_revision = run_revision + 1 \
-                 WHERE thread_id = ?2 AND status = 'IN_PROGRESS'",
-                params![now_ms, thread_id],
+                 WHERE run_id = ?2 AND status = 'IN_PROGRESS'",
+                params![now_ms, run_id],
             )?;
             archived_pending_count += 1;
         } else {
             connection.execute(
-                "UPDATE codex_automation_runs SET status = 'PENDING_REVIEW', updated_at = ?1, \
+                "UPDATE core_automation_runs SET status = 'PENDING_REVIEW', updated_at = ?1, \
                    run_revision = run_revision + 1 \
-                 WHERE thread_id = ?2 AND status = 'IN_PROGRESS'",
-                params![now_ms, thread_id],
+                 WHERE run_id = ?2 AND status = 'IN_PROGRESS'",
+                params![now_ms, run_id],
             )?;
             pending_review_count += 1;
         }
     }
     let runs = read_selected_runs(connection, &selected)?;
     let has_more = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM codex_automation_runs WHERE status = 'IN_PROGRESS')",
+        "SELECT EXISTS(SELECT 1 FROM core_automation_runs WHERE status = 'IN_PROGRESS')",
         [],
         |row| row.get::<_, bool>(0),
     )?;
@@ -732,17 +773,17 @@ fn settle_interrupted(connection: &Connection) -> Result<RunMutationEffects, Sto
 fn single_run_effects(
     connection: &Connection,
     operation_kind: &'static str,
-    thread_id: &str,
+    run_id: &str,
     committed_at: String,
 ) -> Result<RunMutationEffects, StoreError> {
-    let run = read_run(connection, thread_id)?
+    let run = read_run(connection, run_id)?
         .ok_or_else(|| corrupt("Committed Automation run is unavailable"))?;
     Ok(RunMutationEffects {
         operation_kind,
         automation_ids: vec![run.automation_id.clone()],
         runs: vec![run],
         deleted_run_ids: Vec::new(),
-        run_ids: vec![thread_id.to_owned()],
+        run_ids: vec![run_id.to_owned()],
         bulk: None,
         committed_at,
     })
@@ -760,7 +801,7 @@ fn bulk_effects(
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect();
-    let run_ids = runs.iter().map(|run| run.thread_id.clone()).collect();
+    let run_ids = runs.iter().map(|run| run.run_id.clone()).collect();
     Ok(RunMutationEffects {
         operation_kind,
         automation_ids,
@@ -774,13 +815,13 @@ fn bulk_effects(
 
 fn require_run_revision(
     connection: &Connection,
-    thread_id: &str,
+    run_id: &str,
     expected_revision: i64,
 ) -> Result<AutomationRun, StoreError> {
-    validate_id("thread_id", thread_id)?;
+    validate_id("run_id", run_id)?;
     validate_expected_revision(expected_revision)?;
-    let run = read_run(connection, thread_id)?
-        .ok_or_else(|| not_found("Automation run is unavailable"))?;
+    let run =
+        read_run(connection, run_id)?.ok_or_else(|| not_found("Automation run is unavailable"))?;
     if run.run_revision != expected_revision {
         return Err(conflict("Automation run revision changed"));
     }
@@ -803,29 +844,67 @@ fn require_definition(connection: &Connection, automation_id: &str) -> Result<()
     }
 }
 
-fn require_thread(connection: &Connection, thread_id: &str) -> Result<(), StoreError> {
-    let exists = connection
+fn require_session(
+    connection: &Connection,
+    automation_id: &str,
+    session_id: &str,
+) -> Result<(), StoreError> {
+    validate_id("session_id", session_id)?;
+    let session = connection
         .query_row(
-            "SELECT 1 FROM codex_threads WHERE thread_id = ?1",
-            [thread_id],
-            |_| Ok(()),
+            "SELECT project_id, archived, is_default_draft FROM project_sessions WHERE id = ?1",
+            [session_id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, bool>(1)?,
+                    row.get::<_, bool>(2)?,
+                ))
+            },
         )
         .optional()?
-        .is_some();
-    if exists {
-        return Ok(());
+        .ok_or_else(|| not_found("Automation run target Session is unavailable"))?;
+    if session.1 || session.2 {
+        return Err(conflict(
+            "Automation run target Session is archived or a draft",
+        ));
     }
-    Err(not_found("Automation run target Thread is unavailable"))
+    let definition = super::read::read_definition(connection, automation_id)?
+        .ok_or_else(|| not_found("Automation definition is unavailable"))?;
+    if definition.kind == nodex_core_contracts::automation::AutomationDefinitionKind::Heartbeat {
+        if definition.target_session_id.as_deref() != Some(session_id) {
+            return Err(conflict(
+                "Automation run Session does not match its Heartbeat target",
+            ));
+        }
+    } else if definition.project_id != session.0 {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Automation run Session does not belong to its Definition Project",
+            false,
+        ));
+    }
+    if let Some(project_id) = session.0 {
+        let active = connection.query_row(
+            "SELECT lifecycle = 'active' FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !active {
+            return Err(conflict("Automation run Project is unavailable"));
+        }
+    }
+    Ok(())
 }
 
 fn read_selected_runs(
     connection: &Connection,
-    thread_ids: &[String],
+    run_ids: &[String],
 ) -> Result<Vec<AutomationRun>, StoreError> {
-    thread_ids
+    run_ids
         .iter()
-        .map(|thread_id| {
-            read_run(connection, thread_id)?
+        .map(|run_id| {
+            read_run(connection, run_id)?
                 .ok_or_else(|| corrupt("Selected Automation run disappeared"))
         })
         .collect()
@@ -846,7 +925,7 @@ fn select_run_ids<P: rusqlite::Params>(
 fn unread_counts(connection: &Connection) -> Result<AutomationRunUnreadCounts, StoreError> {
     let total = connection.query_row(
         "SELECT count(*) \
-         FROM codex_automation_runs runs \
+         FROM core_automation_runs runs \
          JOIN codex_scheduled_automations automations \
            ON automations.automation_id = runs.automation_id \
          WHERE runs.read_at IS NULL AND runs.status IN ('PENDING_REVIEW', 'ACCEPTED')",
@@ -860,12 +939,13 @@ fn unread_counts(connection: &Connection) -> Result<AutomationRunUnreadCounts, S
 
 fn run_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationRun> {
     Ok(AutomationRun {
-        thread_id: row.get(0)?,
+        run_id: row.get(0)?,
+        session_id: row.get(14)?,
         automation_id: row.get(1)?,
         run_revision: row.get(2)?,
         status: parse_status(&row.get::<_, String>(3)?).map_err(conversion)?,
         read_at_ms: row.get(4)?,
-        thread_title: row.get(5)?,
+        session_title: row.get(5)?,
         source_cwd: row.get(6)?,
         inbox_title: row.get(7)?,
         inbox_summary: row.get(8)?,
@@ -887,7 +967,8 @@ fn inbox_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationInboxIt
         archived_user_message: row.get(5)?,
         archived_reason: row.get(6)?,
         source_cwd: row.get(7)?,
-        thread_id: row.get(8)?,
+        run_id: row.get(8)?,
+        session_id: row.get(13)?,
         read_at_ms: row.get(9)?,
         created_at_ms: row.get(10)?,
         status: parse_status(&row.get::<_, String>(11)?).map_err(conversion)?,
@@ -902,8 +983,8 @@ fn validate_run(connection: &Connection, run: AutomationRun) -> Result<Automatio
     {
         return Err(corrupt("Stored Automation run is invalid"));
     }
-    validate_id("stored Automation run Thread", &run.thread_id)
-        .map_err(|_| corrupt("Stored Automation run Thread is invalid"))?;
+    validate_id("stored Automation run id", &run.run_id)
+        .map_err(|_| corrupt("Stored Automation run id is invalid"))?;
     validate_id("stored Automation id", &run.automation_id)
         .map_err(|_| corrupt("Stored Automation run definition id is invalid"))?;
     let definition_exists = connection
@@ -921,8 +1002,8 @@ fn validate_run(connection: &Connection, run: AutomationRun) -> Result<Automatio
 }
 
 fn validate_inbox_item(item: AutomationInboxItem) -> Result<AutomationInboxItem, StoreError> {
-    validate_id("stored Automation inbox Thread", &item.thread_id)
-        .map_err(|_| corrupt("Stored Automation inbox Thread is invalid"))?;
+    validate_id("stored Automation inbox Run", &item.run_id)
+        .map_err(|_| corrupt("Stored Automation inbox Run is invalid"))?;
     validate_id("stored Automation inbox definition", &item.automation_id)
         .map_err(|_| corrupt("Stored Automation inbox definition is invalid"))?;
     if item.created_at_ms < 0 || item.read_at_ms.is_some_and(|value| value < 0) {
@@ -961,13 +1042,6 @@ fn validate_expected_revision(value: i64) -> Result<(), StoreError> {
         return Ok(());
     }
     Err(invalid("expected_revision must be positive"))
-}
-
-fn validate_pending_thread_id(value: &str) -> Result<(), StoreError> {
-    let suffix = value
-        .strip_prefix("pending:")
-        .ok_or_else(|| invalid("Automation pending Thread identity is invalid"))?;
-    validate_id("pending Thread suffix", suffix)
 }
 
 fn validate_id(label: &str, value: &str) -> Result<(), StoreError> {

@@ -30,7 +30,7 @@ pub enum SqlCommand {
         #[command(flatten)]
         scope: SqlScopeArgs,
     },
-    /// Execute one read-only SQLite SELECT over complete authorized inputs.
+    /// Execute one read-only SQLite SELECT over complete current Library inputs.
     Query {
         /// One read-only SELECT statement over public Nodex relations.
         #[arg(required_unless_present = "file", conflicts_with = "file")]
@@ -106,14 +106,16 @@ pub(crate) fn execute(
     cwd: &Path,
     args: SqlArgs,
 ) -> Result<CommandOutput, CliError> {
-    let project = selected_project(client, explicit_project, cwd)?;
+    let project = explicit_project
+        .map(|_| selected_project(client, explicit_project, cwd))
+        .transpose()?;
     let raw = matches!(&args.command, SqlCommand::Query { raw: true, .. });
     let read = match args.command {
         SqlCommand::Schema { scope, relation } => {
             let mut scope = resolve_scope(scope)?;
             scope.database_id = database
                 .map(|selector| {
-                    crate::data_source::resolve_database(client, &project, Some(selector))
+                    crate::data_source::resolve_database(client, project.as_ref(), Some(selector))
                 })
                 .transpose()?;
             QueryRead::Schema { scope, relation }
@@ -123,7 +125,7 @@ pub(crate) fn execute(
         },
     };
     let snapshot = match client
-        .query_read(Some(&project.id), read)
+        .query_read(project.as_ref().map(|project| project.id.as_str()), read)
         .map_err(map_client_error)?
         .0
     {

@@ -1,7 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type { ProjectionImpact } from "../../shared/projection-stream";
 import type {
   CanvasSceneSyncRequest,
   CanvasSceneSyncResponse,
@@ -74,10 +73,6 @@ export interface CoreModuleClients {
       input: LibraryApplyInput,
       projectId?: string | null,
     ) => CoreEffect<LibraryApplyResult>;
-    readonly filterProjectionImpactForProject: (
-      projectId: string,
-      impact: ProjectionImpact,
-    ) => CoreEffect<ProjectionImpact>;
   };
   readonly database: {
     readonly read: (
@@ -195,15 +190,6 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
           access.use("library.apply", (client, signal) => client.libraryApply(input, { signal }), {
             projectId,
           }),
-        ),
-        filterProjectionImpactForProject: Effect.fn(
-          "CoreModules.library.filterProjectionImpactForProject",
-        )((projectId, impact) =>
-          access.use(
-            "library.filterProjectionImpactForProject",
-            (client) => client.filterProjectionImpactForProject(projectId, impact),
-            { projectId },
-          ),
         ),
       },
       database: {

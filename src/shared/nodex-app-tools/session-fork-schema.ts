@@ -12,7 +12,7 @@ export const sessionForkSchema = z.strictObject({
 export const sessionForkTool: Tool = {
   name: "fork_session",
   description:
-    "Fork completed conversation history into a separate visible Codex Session. Omit sessionId to fork the calling Session. Default environment shares the source directory; worktree forks prepare a managed worktree asynchronously. Returns a stable destination sessionId with attached, pending or unconfirmed state. Active, unfinished output is not copied. Send a follow-up to the child only when continuing there is authorized. Reuse operationId and identical arguments for retries; replay never forks twice. Project-scoped Turns can fork only within their Project.",
+    "Fork completed conversation history into a separate visible Agent Session. Omit sessionId to fork the calling Session. Default environment shares the source directory; worktree forks prepare a managed worktree asynchronously. Returns a stable destination sessionId with attached, pending or unconfirmed state. Active, unfinished output is not copied. Send a follow-up to the child only when continuing there is authorized. Reuse operationId and identical arguments for retries; replay never forks twice. ",
   inputSchema: z.toJSONSchema(sessionForkSchema) as Tool["inputSchema"],
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
 };

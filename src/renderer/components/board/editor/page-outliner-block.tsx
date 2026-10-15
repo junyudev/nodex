@@ -33,7 +33,7 @@ import {
   pageBlockConfig,
   pageRefBlockConfig,
 } from "../../../../shared/block-documents/blocknote-schema-config";
-import { libraryContentAccess } from "../../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../../shared/content-routing-context";
 
 import {
   moveFromEmbeddedSurfaceToHostNeighbor,
@@ -74,15 +74,15 @@ export function PageOutlinerBlock({
   visibilityOverride,
 }: PageOutlinerBlockProps) {
   const host = useBlockReferenceHostRuntime();
-  const contentAccessContext = host?.contentAccessContext ?? libraryContentAccess;
-  const reference = usePageTargetReadModel(contentAccessContext, host ? targetBlockId.trim() : "");
+  const contentRoutingContext = host?.contentRoutingContext ?? libraryContentRoute;
+  const reference = usePageTargetReadModel(contentRoutingContext, host ? targetBlockId.trim() : "");
   const target = resolvePageOutlinerTarget({
     relationship,
     targetBlockId,
     model: reference.data,
     loading: reference.loading,
     error: reference.error,
-    contentAccessContext,
+    contentRoutingContext,
     hostPageId: host?.hostPageId ?? null,
     ancestorPageIds: host?.ancestorPageIds ?? [],
   });
@@ -163,7 +163,7 @@ export function PageOutlinerBlock({
       ? {
           onOpenPage: () =>
             host.openPage?.({
-              accessContext: target.contentAccessContext,
+              routingContext: target.contentRoutingContext,
               pageId: target.page.pageId,
               titleSnapshot: plainTitle,
             }),
@@ -203,7 +203,7 @@ export function PageOutlinerBlock({
   return (
     <PageOutlinerFrame
       targetBlockId={target.targetBlockId}
-      {...(target.status === "available" ? { accessKind: target.contentAccessContext.kind } : {})}
+      {...(target.status === "available" ? { accessKind: target.contentRoutingContext.kind } : {})}
       expanded={activation.expanded}
       active={activation.active}
       sectionRef={sectionRef}

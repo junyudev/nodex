@@ -1,4 +1,4 @@
-import type { ContentAccessContext } from "./content-access-context";
+import type { ContentRoutingContext } from "./content-routing-context";
 
 export const NODEX_CLIPBOARD_ENVELOPE_META_NAME = "nodex-clipboard-envelope-v1" as const;
 export const NODEX_STRUCTURAL_CLIPBOARD_MIME =
@@ -40,7 +40,7 @@ export type NodexStructuralClipboardDescriptorV1 =
     };
 
 export interface StructuralClipboardWriteInput {
-  readonly fileExportAccess?: ContentAccessContext;
+  readonly fileExportAccess?: ContentRoutingContext;
   readonly envelope: NodexClipboardEnvelopeV1;
   readonly writeClaim: string;
   readonly html: string;

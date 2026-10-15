@@ -864,7 +864,6 @@ describe("Database Module v2 transport boundary", () => {
         libraryId: "library-1",
         storeEpoch: "epoch-1",
         commitSeq: 4,
-        authorization: null,
         value: {
           kind: "data_source",
           value: {
@@ -927,7 +926,6 @@ describe("Database Module v2 transport boundary", () => {
         libraryId: "library-1",
         storeEpoch: "epoch-1",
         commitSeq: 4,
-        authorization: null,
         value,
       },
     });
@@ -992,13 +990,12 @@ describe("Database Module v2 transport boundary", () => {
         libraryId: "library-1",
         storeEpoch: "epoch-1",
         commitSeq: 4,
-        authorization: null,
         value: {
           kind: "relation_target_window",
           value: {
             valueRevision: 3,
             totalCount: 1,
-            targets: [{ kind: "restricted", edgeId }],
+            targets: [{ kind: "unavailable", edgeId }],
             nextCursor: null,
             projectionRevision: 4,
           },
@@ -1011,7 +1008,7 @@ describe("Database Module v2 transport boundary", () => {
       value: {
         value: {
           kind: "relation_target_window",
-          value: { targets: [{ kind: "restricted", edgeId }] },
+          value: { targets: [{ kind: "unavailable", edgeId }] },
         },
       },
     });
@@ -1024,7 +1021,7 @@ describe("Database Module v2 transport boundary", () => {
             ...result.value.value,
             value: {
               ...result.value.value.value,
-              targets: [{ kind: "restricted", edgeId: "page-hidden" }],
+              targets: [{ kind: "unavailable", edgeId: "page-hidden" }],
             },
           },
         },
@@ -1041,8 +1038,8 @@ describe("Database Module v2 transport boundary", () => {
               ...result.value.value.value,
               totalCount: 2,
               targets: [
-                { kind: "restricted", edgeId },
-                { kind: "restricted", edgeId },
+                { kind: "unavailable", edgeId },
+                { kind: "unavailable", edgeId },
               ],
             },
           },
@@ -1149,11 +1146,10 @@ describe("Database Module v2 transport boundary", () => {
     const read = parseLibraryDatabaseModuleReadResultV2({
       ok: true,
       value: {
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library-1",
         storeEpoch: "epoch-1",
         commitSeq: 4,
-        authorization: null,
         value: {
           kind: "data_source",
           value: {
@@ -1165,7 +1161,7 @@ describe("Database Module v2 transport boundary", () => {
     });
     expect(read).toMatchObject({
       ok: true,
-      value: { accessContext: { kind: "library" } },
+      value: { routingContext: { kind: "library" } },
     });
     if (read.ok) expect("projectId" in read.value).toBe(false);
 
@@ -1174,7 +1170,7 @@ describe("Database Module v2 transport boundary", () => {
       localCommit: noOpLocalCommit("epoch-1", 5),
       value: {
         operationId: "operation-1",
-        accessContext: { kind: "library" },
+        routingContext: { kind: "library" },
         libraryId: "library-1",
         storeEpoch: "epoch-1",
         duplicate: false,
@@ -1191,7 +1187,7 @@ describe("Database Module v2 transport boundary", () => {
     });
     expect(apply).toMatchObject({
       ok: true,
-      value: { accessContext: { kind: "library" } },
+      value: { routingContext: { kind: "library" } },
     });
     if (apply.ok) expect("projectId" in apply.value).toBe(false);
   });

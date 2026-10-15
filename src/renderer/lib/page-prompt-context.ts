@@ -4,10 +4,10 @@ import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { parseNfm } from "@/lib/nfm";
 import { materializePageDocument } from "../../shared/block-documents/block-document-codec";
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents/contracts";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import {
-  createDocumentSyncAdapterForContentAccess,
-  prepareOwnedBlockDocumentForContentAccess,
+  createDocumentSyncAdapterForContentRouting,
+  prepareOwnedBlockDocumentForContentRouting,
 } from "./api";
 import {
   BlockDocumentSurfaceRuntime,
@@ -30,25 +30,25 @@ export interface BuildPagePromptContextInput {
 export type PageDocumentMaterialization = ReturnType<typeof materializePageDocument>;
 
 interface PageDocumentRuntimeFactoryInput {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly descriptor: OwnedDocumentDescriptor;
   readonly createRuntime?: (
     options: BlockDocumentSurfaceRuntimeOptions,
   ) => BlockDocumentSurfaceRuntime;
-  readonly createAdapter?: (accessContext: ContentAccessContext) => DocumentSyncAdapter;
+  readonly createAdapter?: (routingContext: ContentRoutingContext) => DocumentSyncAdapter;
 }
 
 /** Connects one prepared Page Document, reads its canonical content, and always closes it. */
 export async function materializePreparedPageDocument({
-  accessContext,
+  routingContext,
   descriptor,
   createRuntime,
-  createAdapter = createDocumentSyncAdapterForContentAccess,
+  createAdapter = createDocumentSyncAdapterForContentRouting,
 }: PageDocumentRuntimeFactoryInput): Promise<PageDocumentMaterialization> {
   const runtimeFactory = createRuntime ?? ((options) => new BlockDocumentSurfaceRuntime(options));
   const runtime = createPageDocumentRuntime(
     descriptor,
-    accessContext,
+    routingContext,
     runtimeFactory,
     createAdapter,
   );
@@ -63,18 +63,18 @@ export async function materializePreparedPageDocument({
 }
 
 export async function loadPageDocumentMaterialization(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly pageId: string;
   readonly createRuntime?: (
     options: BlockDocumentSurfaceRuntimeOptions,
   ) => BlockDocumentSurfaceRuntime;
-  readonly createAdapter?: (accessContext: ContentAccessContext) => DocumentSyncAdapter;
+  readonly createAdapter?: (routingContext: ContentRoutingContext) => DocumentSyncAdapter;
 }): Promise<PageDocumentMaterialization> {
   const descriptor = unwrapOwnedBlockDocumentPreparationResult(
-    await prepareOwnedBlockDocumentForContentAccess(input.accessContext, input.pageId),
+    await prepareOwnedBlockDocumentForContentRouting(input.routingContext, input.pageId),
   );
   return await materializePreparedPageDocument({
-    accessContext: input.accessContext,
+    routingContext: input.routingContext,
     descriptor,
     createRuntime: input.createRuntime,
     createAdapter: input.createAdapter,
@@ -124,11 +124,11 @@ export async function loadPagePromptContext(input: {
   readonly createRuntime?: (
     options: BlockDocumentSurfaceRuntimeOptions,
   ) => BlockDocumentSurfaceRuntime;
-  readonly createAdapter?: (accessContext: ContentAccessContext) => DocumentSyncAdapter;
+  readonly createAdapter?: (routingContext: ContentRoutingContext) => DocumentSyncAdapter;
 }): Promise<PagePromptContext> {
   const materialized = await loadPageDocumentMaterialization({
     ...input,
-    accessContext: { kind: "project", projectId: input.projectId },
+    routingContext: { kind: "project", projectId: input.projectId },
   });
   const context = buildPagePromptContext({
     projectId: input.projectId,
@@ -149,13 +149,13 @@ export async function loadPagePromptContext(input: {
 
 function createPageDocumentRuntime(
   descriptor: OwnedDocumentDescriptor,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   runtimeFactory: (options: BlockDocumentSurfaceRuntimeOptions) => BlockDocumentSurfaceRuntime,
-  createAdapter: (accessContext: ContentAccessContext) => DocumentSyncAdapter,
+  createAdapter: (routingContext: ContentRoutingContext) => DocumentSyncAdapter,
 ): BlockDocumentSurfaceRuntime {
   return runtimeFactory({
     descriptor,
-    adapter: createAdapter(accessContext),
+    adapter: createAdapter(routingContext),
     localCheckpointStore: null,
   });
 }

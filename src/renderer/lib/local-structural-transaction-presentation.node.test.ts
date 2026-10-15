@@ -11,7 +11,6 @@ describe("local structural transaction presentation", () => {
 
     store.beginDatabasePageMove({
       operationId: "move-away",
-      projectId: "project",
       storeEpoch: "epoch",
       dataSourceId: "source",
       pageIds: ["page"],
@@ -25,7 +24,7 @@ describe("local structural transaction presentation", () => {
 
   test("keeps the source Page hidden until both projections prove the committed move", () => {
     const store = new LocalStructuralTransactionPresentationStore();
-    const scope = { projectId: "project", storeEpoch: "epoch", dataSourceId: "source" };
+    const scope = { storeEpoch: "epoch", dataSourceId: "source" };
     store.beginDatabasePageMove({
       operationId: "move",
       ...scope,
@@ -51,7 +50,7 @@ describe("local structural transaction presentation", () => {
 
   test("deterministic rejection removes the predicted source projection", () => {
     const store = new LocalStructuralTransactionPresentationStore();
-    const scope = { projectId: "project", storeEpoch: "epoch", dataSourceId: "source" };
+    const scope = { storeEpoch: "epoch", dataSourceId: "source" };
     store.beginDatabasePageMove({ operationId: "move", ...scope, pageIds: ["page"] });
     store.reject("move");
     expect(store.hiddenDatabasePageIds(scope)).toEqual(new Set());

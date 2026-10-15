@@ -9,7 +9,7 @@ import {
 } from "@blocknote/core";
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
 import type { BlockDocumentSurfaceRuntime } from "./block-document-surface-runtime";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import { observeDocumentContentIssues } from "./document-content-issues";
 
 interface RetainedBlockNoteEditor {
@@ -50,7 +50,7 @@ export const makeDocumentSessionIdentity = (descriptor: OwnedDocumentDescriptor)
   [
     descriptor.storeEpoch,
     descriptor.libraryId,
-    contentAccessContextKey(descriptor.accessContext),
+    contentRoutingContextKey(descriptor.routingContext),
     descriptor.documentId,
     descriptor.generation,
     descriptor.schemaKey,

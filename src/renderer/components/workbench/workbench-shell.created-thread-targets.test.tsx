@@ -13,13 +13,13 @@ import type { ThreadStageActions } from "../../features/local-conversation/threa
 import { makeAttachedSession } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   waitForLastThreadStageActions,
-  hydrateSelectedSubagentCalls,
   invokeCalls,
-  mockInvokeImpl,
   renderWorkbench,
-  setMockInvokeImpl,
   getConnectedThreadStagePropsByThreadId,
   sideChatConversations,
+  mockInvokeImpl,
+  setMockInvokeImpl,
+  hydrateSelectedSubagentCalls,
 } from "./workbench-testkit/workbench-shell-harness";
 
 vi.mock("../../features/local-conversation/created-thread-host-hooks", async (importOriginal) => ({
@@ -30,85 +30,87 @@ vi.mock("../../features/local-conversation/created-thread-host-hooks", async (im
 }));
 
 function namedSession(id: string, title: string, threadId: string) {
-  const session = makeAttachedSession({ id, projectId: "alpha", title, threadId, tabs: [] });
-  return { ...session, thread: { ...session.thread!, threadName: title } };
+  return {
+    ...makeAttachedSession({ id, projectId: "alpha", title, threadId, tabs: [] }),
+    thread: null,
+  };
 }
 
-describe("created chat host-qualified Workbench navigation", () => {
-  test("an explicit foreign host cannot select a cached Session with the same native ID", async () => {
+function remoteSession(id: string, title: string, threadId: string) {
+  const session = makeAttachedSession({ id, projectId: "alpha", title, threadId, tabs: [] });
+  return {
+    ...session,
+    executionRef: null,
+    thread: { ...session.thread!, threadName: title, executionHostId: "remote" },
+  };
+}
+
+function childThread(threadId: string, parentThreadId: string, title: string) {
+  sideChatConversations[threadId] = {
+    threadId,
+    projectId: "alpha",
+    threadName: title,
+    statusType: "idle",
+    source: { parentThreadId },
+    turns: [],
+    requests: [],
+  };
+}
+
+function headerTitle(view: ReturnType<typeof renderWorkbench>) {
+  return within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
+    .textContent;
+}
+
+function inspections() {
+  return invokeCalls.filter(([channel]) => channel === "agent-runtime:session:inspect");
+}
+
+describe("created chat Session-bound Workbench navigation", () => {
+  test("a Thread from another cached Session cannot borrow the selected Session binding", async () => {
     const source = namedSession("source", "Source", "source-thread");
-    const foreign = namedSession("foreign", "Foreign local chat", "same");
+    const other = namedSession("other", "Other chat", "same");
     const view = renderWorkbench({
-      sessionsByProject: { alpha: [source, foreign] },
+      sessionsByProject: { alpha: [source, other] },
       initialSelectedSessionId: source.id,
     });
     await settleAsyncRender();
-    const actions = await waitForLastThreadStageActions();
-    const open = actions.onOpenThread as ThreadStageActions["onOpenThread"];
-    const base = mockInvokeImpl;
-    setMockInvokeImpl(async (channel, ...args) =>
-      channel === "codex:created-thread:resolve"
-        ? { hostId: "local", threadId: "same", ready: true, parentThreadId: null }
-        : ((await base?.(channel, ...args)) ?? null),
-    );
+    const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
+      ThreadStageActions["onOpenThread"]
+    >;
     const before = view.navigationStateChanges.length;
     await act(async () => {
-      await open("same", { createdTarget: { threadId: "same", hostId: "remote" } });
-      await Promise.resolve();
+      await expect(open("same")).rejects.toThrow("Thread does not belong to this Session");
     });
     expect(view.navigationStateChanges).toHaveLength(before);
-    expect(
-      within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
-        .textContent,
-    ).toBe("Source");
-    expect(
-      invokeCalls.filter(
-        ([channel]) =>
-          channel === "codex:thread:ensure-open" || channel === "codex:thread:ensure-session",
-      ),
-    ).toEqual([]);
-    expect(
-      invokeCalls.some(
-        ([channel, input]) =>
-          channel === "codex:created-thread:resolve" &&
-          (input as { expectedHostId?: string }).expectedHostId === "remote",
-      ),
-    ).toBe(true);
+    expect(headerTitle(view)).toBe("Source");
+    expect(inspections()).toEqual([
+      ["agent-runtime:session:inspect", { sessionId: source.id, threadId: "same" }],
+    ]);
   });
-  test("an explicit missing root reaches the strict command before selecting its returned Session", async () => {
+
+  test("an unavailable destination Session leaves the current route selected", async () => {
     const source = namedSession("source", "Source", "source-thread");
-    const target = namedSession("target", "Created", "created-thread");
     const view = renderWorkbench({
       sessionsByProject: { alpha: [source] },
       initialSelectedSessionId: source.id,
     });
     await settleAsyncRender();
-    const open = (await waitForLastThreadStageActions())
-      .onOpenThread as ThreadStageActions["onOpenThread"];
-    const base = mockInvokeImpl;
-    setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:created-thread:resolve") return null;
-      if (channel === "codex:thread:ensure-open") return target;
-      return (await base?.(channel, ...args)) ?? null;
-    });
+    const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
+      ThreadStageActions["onOpenThread"]
+    >;
+    const before = view.navigationStateChanges.length;
     await act(async () => {
-      await open("created-thread", {
-        createdTarget: { threadId: "created-thread", hostId: "local" },
-      });
-      await Promise.resolve();
+      await expect(open("created-thread", { runtimeSessionId: "missing" })).rejects.toThrow(
+        "Conversation identity changed",
+      );
     });
-    await waitFor(() =>
-      expect(
-        within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
-          .textContent,
-      ).toBe("Created"),
-    );
-    expect(invokeCalls.filter(([channel]) => channel === "codex:thread:ensure-open")).toEqual([
-      ["codex:thread:ensure-open", { hostId: "local", threadId: "created-thread" }],
-    ]);
-    expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(false);
+    expect(view.navigationStateChanges).toHaveLength(before);
+    expect(headerTitle(view)).toBe("Source");
+    expect(inspections()).toEqual([]);
   });
-  test("a known linked root still crosses the exact host guard before selecting its Session", async () => {
+
+  test("a linked root is inspected through its exact Session before navigation", async () => {
     const source = namedSession("source", "Source", "source-thread");
     const target = namedSession("target", "Created", "created-thread");
     const view = renderWorkbench({
@@ -116,37 +118,22 @@ describe("created chat host-qualified Workbench navigation", () => {
       initialSelectedSessionId: source.id,
     });
     await settleAsyncRender();
-    const open = (await waitForLastThreadStageActions())
-      .onOpenThread as ThreadStageActions["onOpenThread"];
-    const base = mockInvokeImpl;
-    setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:created-thread:resolve")
-        return { hostId: "local", threadId: "created-thread", ready: true, parentThreadId: null };
-      if (channel === "codex:thread:ensure-open") return target;
-      return (await base?.(channel, ...args)) ?? null;
-    });
+    const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
+      ThreadStageActions["onOpenThread"]
+    >;
     await act(async () => {
-      await open("created-thread", {
-        createdTarget: { threadId: "created-thread", hostId: "local" },
-      });
-      await Promise.resolve();
+      await open("created-thread", { runtimeSessionId: target.id });
     });
-    await waitFor(() =>
-      expect(
-        within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
-          .textContent,
-      ).toBe("Created"),
-    );
-    expect(invokeCalls.filter(([channel]) => channel === "codex:thread:ensure-open")).toEqual([
-      ["codex:thread:ensure-open", { hostId: "local", threadId: "created-thread" }],
+    await waitFor(() => expect(headerTitle(view)).toBe("Created"));
+    expect(inspections()).toEqual([
+      ["agent-runtime:session:inspect", { sessionId: target.id, threadId: "created-thread" }],
     ]);
-    expect(invokeCalls.some(([channel]) => channel === "codex:thread:ensure-session")).toBe(false);
   });
   test("a retired message cannot select a Session whose strict open was already admitted", async () => {
     const source = namedSession("source", "Source", "source-thread");
     const target = namedSession("target", "Created", "created-thread");
-    const remoteSource = { ...source, thread: { ...source.thread!, executionHostId: "remote" } };
-    const remoteTarget = { ...target, thread: { ...target.thread!, executionHostId: "remote" } };
+    const remoteSource = remoteSession(source.id, "Source", "source-thread");
+    const remoteTarget = remoteSession(target.id, "Created", "created-thread");
     const view = renderWorkbench({
       sessionsByProject: { alpha: [remoteSource] },
       initialSelectedSessionId: source.id,
@@ -211,35 +198,21 @@ describe("created chat host-qualified Workbench navigation", () => {
       });
     }
   });
-  test("a child click keeps its captured root and host instead of the currently selected Session", async () => {
+  test("a child click keeps its captured owning Session instead of the selected root", async () => {
     const active = namedSession("active", "Current", "current-thread");
     const root = namedSession("root", "Actual root", "root-thread");
-    const remoteRoot = { ...root, thread: { ...root.thread!, executionHostId: "remote" } };
+    childThread("child", "root-thread", "Reviewer");
     const view = renderWorkbench({
-      sessionsByProject: { alpha: [active, remoteRoot] },
+      sessionsByProject: { alpha: [active, root] },
       initialSelectedSessionId: active.id,
     });
     await settleAsyncRender();
-    const open = (await waitForLastThreadStageActions())
-      .onOpenThread as ThreadStageActions["onOpenThread"];
-    const base = mockInvokeImpl;
-    setMockInvokeImpl(async (channel, ...args) => {
-      if (channel === "codex:created-thread:resolve") {
-        const input = args[0] as { threadId: string };
-        return {
-          hostId: "remote",
-          threadId: input.threadId,
-          ready: true,
-          parentThreadId: input.threadId === "child" ? "root-thread" : null,
-        };
-      }
-      if (channel === "codex:thread:ensure-open") return remoteRoot;
-      return (await base?.(channel, ...args)) ?? null;
-    });
+    const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
+      ThreadStageActions["onOpenThread"]
+    >;
     await act(async () => {
       await open("child", {
-        hostId: "remote",
-        sourceRoot: { hostId: "remote", threadId: "root-thread" },
+        runtimeSessionId: root.id,
         subagent: {
           conversationId: "child",
           displayName: "Reviewer",
@@ -250,16 +223,15 @@ describe("created chat host-qualified Workbench navigation", () => {
           diffStats: null,
         },
       });
-      await Promise.resolve();
     });
-    await waitFor(() =>
-      expect(
-        within(view.getByTestId("workbench-global-header")).getByTestId("thread-stage-title")
-          .textContent,
-      ).toBe("Actual root"),
-    );
-    expect(hydrateSelectedSubagentCalls).toEqual([
-      { rootThreadId: "root-thread", threadId: "child", expectedHostId: "remote" },
+    await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("child")).toBeDefined());
+    expect(headerTitle(view)).toBe("Actual root");
+    expect(inspections()).toEqual([
+      ["agent-runtime:session:inspect", { sessionId: root.id, threadId: "child" }],
+    ]);
+    expect(invokeCalls).toContainEqual([
+      "agent-runtime:session:control",
+      { sessionId: root.id, threadId: "child" },
     ]);
     expect(
       view.container.querySelector('[data-subagents-side-panel-tab="subagents:root-thread"]'),
@@ -269,7 +241,7 @@ describe("created chat host-qualified Workbench navigation", () => {
     "a real %s in selected child detail hydrates its grandchild against the panel's owning root",
     async (consumer) => {
       const root = namedSession("root", "Actual root", "root-thread");
-      const remoteRoot = { ...root, thread: { ...root.thread!, executionHostId: "remote" } };
+      const remoteRoot = remoteSession(root.id, "Actual root", "root-thread");
       sideChatConversations["child"] = {
         threadId: "child",
         projectId: "alpha",
@@ -373,4 +345,46 @@ describe("created chat host-qualified Workbench navigation", () => {
       }
     },
   );
+
+  test("a real card in child detail opens its grandchild through the panel's owning Session", async () => {
+    const root = namedSession("root", "Actual root", "root-thread");
+    childThread("child", "root-thread", "Child");
+    childThread("grandchild", "child", "Grandchild");
+    const view = renderWorkbench({
+      sessionsByProject: { alpha: [root] },
+      initialSelectedSessionId: root.id,
+    });
+    await settleAsyncRender();
+    const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
+      ThreadStageActions["onOpenThread"]
+    >;
+    await act(async () => {
+      await open("child", { runtimeSessionId: root.id });
+    });
+    await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("child")).toBeDefined());
+    const actions = getConnectedThreadStagePropsByThreadId("child")!.actions as ThreadStageActions;
+    const card = render(
+      <TestQueryProvider>
+        <LocalConversationCreatedThreadCards
+          results={[{ threadId: "grandchild", hostId: "local" }]}
+          sourceRoot={{ hostId: "local", threadId: "child" }}
+          onOpenThread={actions.onOpenThread}
+        />
+      </TestQueryProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(card.getByRole("button", { name: "Open chat: Created chat" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("grandchild")).toBeDefined());
+    expect(inspections()).toEqual([
+      ["agent-runtime:session:inspect", { sessionId: root.id, threadId: "child" }],
+      ["agent-runtime:session:inspect", { sessionId: root.id, threadId: "grandchild" }],
+    ]);
+    expect(invokeCalls).toContainEqual([
+      "agent-runtime:session:control",
+      { sessionId: root.id, threadId: "grandchild" },
+    ]);
+    expect(headerTitle(view)).toBe("Actual root");
+  });
 });

@@ -28,33 +28,31 @@ const sdkLayer = live.pipe(
   ),
 );
 
-it.effect(
-  "installed SDK serializes isolated launch, atomic intelligence and native image steering",
-  () =>
-    Effect.gen(function* () {
-      const root = yield* Effect.acquireRelease(
-        Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-sdk-boundary-"))),
-        (root) =>
-          Effect.promise(() =>
-            rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }),
-          ),
-      );
-      const cwd = join(root, "workspace");
-      yield* Effect.promise(() => mkdir(cwd));
-      const nativeBin = join(root, ".local", "bin");
-      yield* Effect.promise(() => mkdir(nativeBin, { recursive: true }));
-      const executable = join(nativeBin, "claude");
-      const script = join(root, "fake-claude.mjs");
-      const invocation = join(root, "invocation.json");
-      const messages = join(root, "messages.jsonl");
-      yield* Effect.promise(() =>
-        writeFile(executable, '#!/bin/sh\nexec "$NODEX_TEST_NODE" "$NODEX_TEST_CLI" "$@"\n'),
-      );
-      yield* Effect.promise(() => chmod(executable, 0o700));
-      yield* Effect.promise(() =>
-        writeFile(
-          script,
-          `
+it.effect("installed SDK discovery reads native intelligence without sending executable work", () =>
+  Effect.gen(function* () {
+    const root = yield* Effect.acquireRelease(
+      Effect.promise(() => mkdtemp(join(tmpdir(), "nodex-sdk-boundary-"))),
+      (root) =>
+        Effect.promise(() =>
+          rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 }),
+        ),
+    );
+    const cwd = join(root, "workspace");
+    yield* Effect.promise(() => mkdir(cwd));
+    const nativeBin = join(root, ".local", "bin");
+    yield* Effect.promise(() => mkdir(nativeBin, { recursive: true }));
+    const executable = join(nativeBin, "claude");
+    const script = join(root, "fake-claude.mjs");
+    const invocation = join(root, "invocation.json");
+    const messages = join(root, "messages.jsonl");
+    yield* Effect.promise(() =>
+      writeFile(executable, '#!/bin/sh\nexec "$NODEX_TEST_NODE" "$NODEX_TEST_CLI" "$@"\n'),
+    );
+    yield* Effect.promise(() => chmod(executable, 0o700));
+    yield* Effect.promise(() =>
+      writeFile(
+        script,
+        `
       import {writeFileSync,appendFileSync,existsSync,readFileSync} from "node:fs";
       import {createInterface} from "node:readline";
       const args=process.argv.slice(2);
@@ -71,264 +69,77 @@ it.effect(
         process.stdout.write(JSON.stringify({type:"control_response",response:{subtype:"success",request_id:message.request_id,response}})+"\\n");
       });
     `,
-        ),
-      );
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const sdk = yield* ClaudeSdk;
-          const session = yield* sdk.open({
+      ),
+    );
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const sdk = yield* ClaudeSdk;
+        const session = yield* sdk.discover({
+          instance: {
+            ...defaultClaudeInstance(),
+            customModels: [
+              {
+                id: "gateway/private[1m]",
+                displayName: "Private",
+                traits: { adaptiveThinking: true, disableThinking: true },
+              },
+            ],
+          },
+          environment: {
+            HOME: root,
+            PATH: "/usr/bin:/bin",
+            NODEX_TEST_NODE: process.execPath,
+            NODEX_TEST_CLI: script,
+            NODEX_TEST_INVOCATION: invocation,
+            NODEX_TEST_MESSAGES: messages,
+            ENABLE_CLAUDEAI_MCP_SERVERS: "true",
+            FORCE_CODE_TERMINAL: "1",
+          },
+          cwd,
+        });
+        expect(session.intelligence).toEqual({
+          model: "claude-opus-5",
+          effort: "medium",
+          fast: false,
+          thinking: true,
+        });
+      }),
+    );
+    const launch = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
+      yield* Effect.promise(() => readFile(invocation, "utf8")),
+    )) as {
+      args: string[];
+      cwd: string;
+      settings: unknown;
+      mcp: unknown;
+      connector: string;
+      ide: string;
+      forceTerminal?: string;
+    };
+    expect(launch.args).toContain("--strict-mcp-config");
+    expect(launch.args).toContain("--no-session-persistence");
+    expect(launch.settings).toMatchObject({ disableAllHooks: true });
+    expect(launch.mcp).toBeUndefined();
+    expect(launch.connector).toBe("false");
+    expect(launch.ide).toBe("0");
+    expect(launch.forceTerminal).toBeUndefined();
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const sdk = yield* ClaudeSdk;
+        const unavailable = yield* Effect.result(
+          sdk.discover({
             instance: {
               ...defaultClaudeInstance(),
-              customModels: [
-                {
-                  id: "gateway/private[1m]",
-                  displayName: "Private",
-                  traits: { adaptiveThinking: true, disableThinking: true },
-                },
-              ],
+              environment: [{ name: "PATH", value: "", sensitive: false }],
             },
-            environment: {
-              HOME: root,
-              PATH: "/usr/bin:/bin",
-              NODEX_TEST_NODE: process.execPath,
-              NODEX_TEST_CLI: script,
-              NODEX_TEST_INVOCATION: invocation,
-              NODEX_TEST_MESSAGES: messages,
-              ENABLE_CLAUDEAI_MCP_SERVERS: "true",
-              FORCE_CODE_TERMINAL: "1",
-            },
+            environment: { HOME: root, PATH: "" },
             cwd,
-            sessionId: "01991e60-b800-7000-8000-000000000012",
-            resume: false,
-            purpose: "discovery",
-            permissionMode: "dontAsk",
-            canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
-          });
-          expect(session.intelligence).toEqual({
-            model: "claude-opus-5",
-            effort: "medium",
-            fast: false,
-            thinking: true,
-          });
-          expect((yield* Effect.result(session.setMode("bypassPermissions")))._tag).toBe("Failure");
-          yield* session.setIntelligence({ model: "default", effort: "default", context: "1m" });
-          expect((yield* session.inspectIntelligence).model).toBe("claude-opus-5[1m]");
-          yield* session.setIntelligence({ model: "default", effort: "default", context: "200k" });
-          expect((yield* session.inspectIntelligence).model).toBe("claude-opus-5[200k]");
-          expect(
-            (yield* Effect.result(session.setIntelligence({ model: "default", effort: "default" })))
-              ._tag,
-          ).toBe("Failure");
-          yield* session.setIntelligence({
-            model: "gateway/private",
-            effort: "high",
-            fast: true,
-            thinking: true,
-            context: "1m",
-          });
-          expect(yield* session.inspectIntelligence).toEqual({
-            model: "gateway/private[1m]",
-            effort: "high",
-            fast: true,
-            thinking: true,
-          });
-          yield* session.setIntelligence({
-            model: "gateway/private",
-            effort: "high",
-            fast: false,
-            thinking: false,
-            context: "1m",
-          });
-          expect(yield* session.inspectIntelligence).toMatchObject({
-            fast: false,
-            thinking: false,
-          });
-          yield* session.setIntelligence({
-            model: "gateway/private",
-            effort: "high",
-            context: "1m",
-          });
-          expect(yield* session.inspectIntelligence).toMatchObject({ fast: false, thinking: true });
-          yield* session.send("", "01991e60-b800-7000-8000-000000000014", undefined, "now", [
-            { mediaType: "image/png", data: "AA==" },
-          ]);
-          yield* session.inspectRuntime;
-          expect(
-            (yield* Effect.result(session.setIntelligence({ model: "default", effort: "default" })))
-              ._tag,
-          ).toBe("Failure");
-        }),
-      );
-      const launch = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
-        yield* Effect.promise(() => readFile(invocation, "utf8")),
-      )) as {
-        args: string[];
-        cwd: string;
-        settings: unknown;
-        mcp: unknown;
-        connector: string;
-        ide: string;
-        forceTerminal?: string;
-      };
-      expect(launch.args).toContain("--strict-mcp-config");
-      expect(launch.args).toContain("--no-session-persistence");
-      expect(launch.settings).toMatchObject({ disableAllHooks: true });
-      expect(launch.mcp).toBeUndefined();
-      expect(launch.connector).toBe("false");
-      expect(launch.ide).toBe("0");
-      expect(launch.forceTerminal).toBeUndefined();
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const sdk = yield* ClaudeSdk;
-          const unavailable = yield* Effect.result(
-            sdk.open({
-              instance: {
-                ...defaultClaudeInstance(),
-                environment: [{ name: "PATH", value: "", sensitive: false }],
-              },
-              environment: { HOME: root, PATH: "" },
-              cwd,
-              sessionId: "01991e60-b800-7000-8000-000000000022",
-              resume: false,
-              purpose: "discovery",
-              permissionMode: "dontAsk",
-              canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
-            }),
-          );
-          expect(unavailable._tag).toBe("Failure");
-        }),
-      );
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const sdk = yield* ClaudeSdk;
-          const session = yield* sdk.open({
-            instance: { ...defaultClaudeInstance(), binaryPath: executable },
-            environment: {
-              HOME: root,
-              PATH: "/usr/bin:/bin",
-              NODEX_TEST_NODE: process.execPath,
-              NODEX_TEST_CLI: script,
-              NODEX_TEST_INVOCATION: invocation,
-              NODEX_TEST_MESSAGES: messages,
-            },
-            cwd,
-            sessionId: "01991e60-b800-7000-8000-000000000016",
-            resume: false,
-            permissionMode: "default",
-            canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
-          });
-          yield* session.setMode("bypassPermissions");
-          yield* session.setMode("plan");
-          yield* session.setMode("default");
-        }),
-      );
-      const normal = (yield* Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))(
-        yield* Effect.promise(() => readFile(invocation, "utf8")),
-      )) as { args: string[] };
-      expect(normal.args).toContain("--allow-dangerously-skip-permissions");
-      expect(normal.args[normal.args.indexOf("--permission-mode") + 1]).toBe("default");
-      expect(normal.args).not.toContain("--dangerously-skip-permissions");
-      const records = yield* Effect.forEach(
-        (yield* Effect.promise(() => readFile(messages, "utf8"))).trim().split("\n"),
-        (line) =>
-          Schema.decodeEffect(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)))(
-            line,
-          ),
-      );
-      const controls = records
-        .filter((message) => message.type === "control_request")
-        .map((message) => message.request);
-      expect(
-        controls.filter(
-          (request) => (request as { subtype: string }).subtype === "set_permission_mode",
-        ),
-      ).toEqual([
-        { subtype: "set_permission_mode", mode: "bypassPermissions" },
-        { subtype: "set_permission_mode", mode: "bypassPermissions" },
-        { subtype: "set_permission_mode", mode: "plan" },
-        { subtype: "set_permission_mode", mode: "default" },
-      ]);
-      expect(
-        controls.filter(
-          (request) => (request as { subtype: string }).subtype === "apply_flag_settings",
-        ),
-      ).toEqual([
-        { subtype: "apply_flag_settings", settings: { model: "claude-opus-5[1m]" } },
-        { subtype: "apply_flag_settings", settings: { model: "claude-opus-5[200k]" } },
-        {
-          subtype: "apply_flag_settings",
-          settings: {
-            model: "gateway/private[1m]",
-            effortLevel: "high",
-            fastMode: true,
-            alwaysThinkingEnabled: true,
-          },
-        },
-        {
-          subtype: "apply_flag_settings",
-          settings: {
-            model: "gateway/private[1m]",
-            effortLevel: "high",
-            fastMode: false,
-            alwaysThinkingEnabled: false,
-          },
-        },
-        {
-          subtype: "apply_flag_settings",
-          settings: {
-            model: "gateway/private[1m]",
-            effortLevel: "high",
-            fastMode: null,
-            alwaysThinkingEnabled: null,
-          },
-        },
-      ]);
-      expect(records.find((message) => message.type === "user")).toMatchObject({
-        priority: "now",
-        uuid: "01991e60-b800-7000-8000-000000000014",
-        message: {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: "image/png", data: "AA==" } },
-          ],
-        },
-      });
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          const sdk = yield* ClaudeSdk;
-          const session = yield* sdk.open({
-            instance: { ...defaultClaudeInstance(), binaryPath: executable },
-            environment: {
-              HOME: root,
-              PATH: "/usr/bin:/bin",
-              NODEX_TEST_NODE: process.execPath,
-              NODEX_TEST_CLI: script,
-              NODEX_TEST_INVOCATION: invocation,
-              NODEX_TEST_MESSAGES: messages,
-              NODEX_TEST_NATIVE_MODEL: "",
-            },
-            cwd,
-            sessionId: "01991e60-b800-7000-8000-000000000020",
-            resume: true,
-            permissionMode: "default",
-            canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
-          });
-          expect(session.intelligence.model).toBeNull();
-          expect(
-            (yield* Effect.result(
-              session.setIntelligence({ model: "default", effort: "default", context: "1m" }),
-            ))._tag,
-          ).toBe("Failure");
-        }),
-      );
-      const afterUnresolved = (yield* Effect.promise(() => readFile(messages, "utf8")))
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line) as { type: string; request?: { subtype: string } });
-      expect(
-        afterUnresolved.filter((entry) => entry.request?.subtype === "apply_flag_settings"),
-      ).toHaveLength(5);
-    }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
+          }),
+        );
+        expect(unavailable._tag).toBe("Failure");
+      }),
+    );
+  }).pipe(Effect.scoped, Effect.provide(sdkLayer)),
 );
 
 it.effect("consumer interruption kills a real SDK child still waiting for initialization", () =>
@@ -359,7 +170,7 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
       requests.run(
         1,
         "fixture",
-        sdk.open({
+        sdk.discover({
           instance: { ...defaultClaudeInstance(), binaryPath: executable },
           environment: {
             HOME: root,
@@ -369,11 +180,6 @@ it.effect("consumer interruption kills a real SDK child still waiting for initia
             NODEX_TEST_PID: invocation,
           },
           cwd: root,
-          sessionId: "01991e60-b800-7000-8000-000000000012",
-          resume: false,
-          purpose: "discovery",
-          permissionMode: "dontAsk",
-          canUseTool: () => Effect.succeed({ behavior: "deny", message: "No tools" }),
         }),
       ),
     );

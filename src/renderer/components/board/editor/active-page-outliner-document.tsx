@@ -28,7 +28,7 @@ import {
 } from "@/lib/rich-title-editor-dom";
 import { useProjects } from "@/lib/use-projects";
 import { resolveReferencedProjectContext } from "@/lib/referenced-project-context";
-import { projectIdFromContentAccessContext } from "../../../../shared/content-access-context";
+import { projectIdFromContentRoutingContext } from "../../../../shared/content-routing-context";
 import type { VerticalArrowDirection } from "./embedded-surface-arrow-navigation";
 import { NfmEditor, type NfmEditorBoundaryHandle } from "./nfm-editor";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
@@ -228,7 +228,7 @@ function ActivePageOutlinerContent({
           className="w-full min-w-0"
         >
           <NfmEditor
-            contentAccessContext={hostRuntime.contentAccessContext}
+            contentRoutingContext={hostRuntime.contentRoutingContext}
             projectName={targetProject.projectName}
             projectWorkspacePath={targetProject.projectWorkspacePath}
             source={{
@@ -283,7 +283,7 @@ export function ActivePageOutlinerDocument({
   onEscapeToHostShell,
 }: ActivePageOutlinerDocumentProps) {
   const { projects } = useProjects();
-  const executionProjectId = projectIdFromContentAccessContext(target.contentAccessContext);
+  const executionProjectId = projectIdFromContentRoutingContext(target.contentRoutingContext);
   const targetProject = resolveReferencedProjectContext(executionProjectId ?? "", projects);
   const pending = (
     <ProjectedRow target={target} rowProps={rowProps}>
@@ -293,7 +293,7 @@ export function ActivePageOutlinerDocument({
 
   return (
     <OwnedBlockDocumentBoundary
-      accessContext={target.contentAccessContext}
+      routingContext={target.contentRoutingContext}
       ownerBlockId={target.page.pageId}
     >
       {(model, controls) => {

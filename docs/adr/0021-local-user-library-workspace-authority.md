@@ -1,11 +1,19 @@
 # ADR 0021: The local user works with Library authority
 
-- Status: Accepted
+- Status: Superseded by [ADR 0068](0068-agent-runtime-execution-authority.md)
 - Date: 2026-07-18
 - Owners: Nodex maintainers
 - Extends: ADR 0017, ADR 0018, and ADR 0019
 
-## Context
+Current contract: the user and all Agents have full access to the current Profile.
+Project and Library routes select presentation and execution provenance, never
+resource permissions. Profile/Library identity, Store epoch, resource lifecycle
+and exact captured execution identity remain enforced. See
+[Agent Runtime behavior](../product-specs/agent-runtime-behavior.md).
+
+The access-context and grant rules below describe the superseded decision.
+
+## Historical context
 
 Nodex stores durable Pages and Databases in the local Profile's one Library.
 Projects are execution contexts bound to one Database; they are not ownership
@@ -16,7 +24,7 @@ Project's resource grants into the local user's own permission system.
 At the same time, Project sessions and Agents must not gain Library-wide access
 merely because the desktop user can browse the Library.
 
-## Decision
+## Historical decision
 
 Every content boundary receives an explicit access context:
 
@@ -38,7 +46,7 @@ and Agent tools use Project authority. Moving or linking a Library resource into
 a Project workflow never transfers ownership; it creates or requests an
 explicit Project resource grant.
 
-## Consequences
+## Historical consequences
 
 - Library content remains reachable after its former active Project is archived.
 - Project coordinates retained by receipts, change logs, recovery records, or

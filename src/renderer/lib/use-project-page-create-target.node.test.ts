@@ -31,10 +31,9 @@ const target: PageCreateTarget = {
   },
   databaseViewId: "view:alpha",
   clientSessionId: "session:test",
-  accessContext: { kind: "project", projectId: "project:alpha" },
+  routingContext: { kind: "project", projectId: "project:alpha" },
   properties: [],
   columns: [{ id: "triage", name: "Triage" }],
-  readOnlyReason: null,
 };
 
 describe("active Project Page-create capability", () => {

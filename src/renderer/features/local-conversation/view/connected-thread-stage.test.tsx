@@ -7,12 +7,13 @@ import { beforeEach, describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { installAsyncRequestAnimationFrame, installWindowApi } from "../../../test/browser-globals";
-import { render, settleAsyncRender, textContent } from "../../../test/dom";
+import { render, openNodexMenu, settleAsyncRender, textContent } from "../../../test/dom";
 import { createTestQueryClient, TestQueryProvider } from "../../../test/query";
 import { queryKeys } from "../../../lib/query-keys";
 import { RendererStateProvider } from "../../../app-providers";
 import {
   WorkbenchSessionScopePath,
+  SelectedAppShellHeaderContent,
   useSelectedConversationSkillsReloadControl,
 } from "../../../lib/workbench-ui-scopes";
 import { NodexModalHost } from "../../../lib/modal-registry";
@@ -32,6 +33,8 @@ import type {
   ConversationProviderPresentation,
 } from "../thread-stage-types";
 import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
+import { NativeConversationHistoryOwner } from "../native-conversation-history-owner";
+import { createNativeConversationHistoryRuntime } from "../native-conversation-history-adapter";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
 import { CodexConversationEntityDocument } from "../../../../shared/codex-conversation-entity-document";
@@ -364,7 +367,6 @@ vi.mock("../local-conversation-deps", () => ({
     };
   },
   subscribeCodexEvents: () => () => undefined,
-  subscribeCodexRendererClientRequests: () => () => {},
   subscribeWindowFocusChanges: () => () => {},
 }));
 
@@ -510,12 +512,11 @@ function buildActions(): ThreadStageActions {
     onCollaborationModeChange: () => {},
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
+
     onQueueingEnabledChange: () => {},
     onSendPrompt: noopAsync,
     onSteerPrompt: noopAsync,
     onInterruptTurn: noopAsync,
-    onRespondApproval: noopAsync,
     onRespondUserInput: noopAsync,
     onRespondMcpElicitation: noopAsync,
     onResolvePlanImplementationRequest: noopAsync,
@@ -540,6 +541,7 @@ async function renderStage(
   summary: CodexThreadSummary,
   options: {
     backgroundAgentDetail?: boolean;
+    executionAvailable?: boolean;
     routeActive?: boolean;
     rightPanelComposerOverlayEnabled?: boolean;
     rightPanelComposerOverlayTarget?: HTMLElement;
@@ -550,6 +552,7 @@ async function renderStage(
     projectId?: string | null;
     summaryPanelOpen?: boolean;
     onOpenThread?: ThreadStageActions["onOpenThread"];
+    onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
     skillsControlProbe?: boolean;
   } = {},
 ) {
@@ -580,11 +583,12 @@ async function renderStage(
                 selectedModel=""
                 selectedReasoningEffort="medium"
                 reasoningEffortOptions={[]}
-                permissionMode="auto"
+
                 isQueueingEnabled={false}
                 composerEnterBehavior="enter"
                 searchOpenTick={0}
                 backgroundAgentDetail={options.backgroundAgentDetail === true}
+                executionAvailable={options.executionAvailable}
                 routeActive={options.routeActive}
                 rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
                 rightPanelComposerOverlayTarget={options.rightPanelComposerOverlayTarget}
@@ -596,11 +600,15 @@ async function renderStage(
                 actions={{
                   ...buildActions(),
                   ...(options.onOpenThread ? { onOpenThread: options.onOpenThread } : {}),
+                  ...(options.onOpenSubagentsPanel
+                    ? { onOpenSubagentsPanel: options.onOpenSubagentsPanel }
+                    : {}),
                 }}
               />
             </ConversationRuntimeContext.Provider>
           </LocalConversationProvider>
           {options.skillsControlProbe ? <SkillsReloadProbe /> : null}
+          {options.onOpenSubagentsPanel ? <SelectedAppShellHeaderContent /> : null}
           {options.summaryPanelOpen ? <NodexModalHost /> : null}
         </TooltipProvider>
       </ThreadStageScope>
@@ -655,7 +663,7 @@ async function renderPrimaryAndAuxiliaryThread(
     selectedModel: "",
     selectedReasoningEffort: "medium" as const,
     reasoningEffortOptions: [],
-    permissionMode: "auto" as const,
+
     isQueueingEnabled: false,
     composerEnterBehavior: "enter" as const,
     searchOpenTick: 0,
@@ -901,7 +909,7 @@ async function renderNewThreadHome(overrides?: {
               selectedModel="gpt-5.5"
               selectedReasoningEffort="xhigh"
               reasoningEffortOptions={[{ reasoningEffort: "xhigh", description: "Extra High" }]}
-              permissionMode="full-access"
+
               isQueueingEnabled={false}
               composerEnterBehavior="enter"
               searchOpenTick={0}
@@ -918,6 +926,76 @@ async function renderNewThreadHome(overrides?: {
   });
   return view;
 }
+
+test("imported native history pages remain readable without a Composer or execution owner", async () => {
+  const summary = buildThreadSummary(false);
+  const page = (sequence: number) => ({
+    backend: "claude" as const,
+    threadId: summary.threadId,
+    sessionId: "imported-native-session",
+    status: "closed" as const,
+    error: null,
+    revision: 1,
+    history: { hasOlder: sequence === 2, oldestSequence: sequence, cursor: "older-native-page" },
+    turns: [
+      {
+        sequence,
+        clientUserMessageId: null,
+        nativeUserMessageId: `native-user:${sequence}`,
+        promptText: `Imported question ${sequence}`,
+        stopReason: "end_turn",
+        updates: [
+          {
+            kind: "message" as const,
+            key: `answer:${sequence}`,
+            messageId: `answer:${sequence}`,
+            role: "agent" as const,
+            text: `Imported answer ${sequence}`,
+          },
+        ],
+      },
+    ],
+  });
+  const read = vi.fn().mockResolvedValueOnce(page(2)).mockResolvedValueOnce(page(1));
+  const owner = new NativeConversationHistoryOwner(summary, read);
+  const runtime = createNativeConversationHistoryRuntime({
+    summary,
+    sessionId: "product-native-import",
+    backend: "claude",
+    owner,
+    retain: owner.retain,
+  });
+  const view = await renderStage(summary, {
+    runtime,
+    executionAvailable: false,
+    provider: {
+      kind: "claude",
+      label: "Claude",
+      selection: "claude",
+      options: [],
+      select: () => {},
+      commands: [],
+      error: null,
+      history: { hasOlder: true, loading: false, loadOlder: owner.loadOlder },
+    },
+  });
+  await view.findByText("Imported answer 2");
+  expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
+  expect(runtime.role(summary.threadId)).toBe("follower");
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Load earlier messages" }));
+    await Promise.resolve();
+  });
+  await view.findByText("Imported answer 1");
+  expect(read).toHaveBeenNthCalledWith(2, {
+    threadId: summary.threadId,
+    before: "older-native-page",
+    limit: 50,
+  });
+  expect(invokeCalls.some((call) => call.channel === "peer:findThreadOwner")).toBe(false);
+  view.unmount();
+  expect(owner.getSnapshot().view).toBeNull();
+});
 
 describe("ConnectedThreadStage archived resume behavior", () => {
   test("a steady text stream does not rebuild body chrome across 5000 resident Turns", async () => {
@@ -1181,6 +1259,53 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       ).toEqual([]);
     },
   );
+
+  test("Runtime task navigation keeps the Session-owned child read surface", async () => {
+    const parent = withCanonicalState(buildConversation("thread_active", { statusType: "idle" }));
+    const openTasks = vi.fn();
+    const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+    const attachment = { status: "attached" } as const;
+    const connection = { status: "connected", retries: 0 } as const;
+    const runtime: ConversationRuntime = {
+      kind: "codex",
+      hostId: "local",
+      sessionId: "session:runtime",
+      read: (id) => (id === parent.threadId ? parent : null),
+      subscribe: () => () => {},
+      children: () => emptyChildren,
+      attachment: () => attachment,
+      connection: () => connection,
+      role: () => "follower",
+      primaryRequest: () => null,
+      retain: () => () => {},
+      resume: vi.fn(async () => {}),
+      markRead: async () => {},
+      setPresented: async () => {},
+    };
+    const view = await renderStage(buildThreadSummary(false), {
+      runtime,
+      onOpenSubagentsPanel: openTasks,
+      provider: {
+        kind: "codex",
+        label: "Codex",
+        selection: "codex",
+        options: [],
+        select: () => {},
+        commands: [],
+        error: null,
+        controls: { subagents: true },
+      },
+    });
+    await openNodexMenu(view.getByRole("button", { name: "Task actions" }));
+    expect(view.queryByRole("menuitem", { name: "Tasks" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(await view.findByRole("menuitem", { name: "Subagents" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(openTasks).toHaveBeenCalledExactlyOnceWith());
+    expect(view.queryByRole("dialog", { name: "Tasks" })).toBeNull();
+    expect(runtime.resume).not.toHaveBeenCalled();
+  });
 
   test.each(["claude", "acp"] as const)(
     "active skill reload uses the provider's discovery owner (%s)",
@@ -1610,7 +1735,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     ).toBe(true);
   });
 
-  test("keeps background-agent detail read-only beside the primary thread composer", async () => {
+  test("keeps unavailable child detail from acquiring execution beside the primary composer", async () => {
     const view = await renderPrimaryAndAuxiliaryThread("background-detail");
     expect(
       invokeCalls.filter(
@@ -1626,34 +1751,23 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     expect(root?.resumeState).toBe("resumed");
   });
 
-  test("does not resume or mount a composer for a primary child route before parent history loads", async () => {
+  test("resumes an available primary child and mounts its composer without parent spawn history", async () => {
     invokeCalls = [];
-    coordination.ownerAvailable = false;
+    coordination.ownerAvailable = true;
     const view = await renderStage({
       ...buildThreadSummary(false),
       source: { parentThreadId: "thread-parent" },
     });
     await waitFor(() => {
       expect(
-        invokeCalls
-          .filter((call) => call.channel === "codex:thread:history-hydration:prepare")
-          .map((call) => call.threadId),
-      ).toEqual(expect.arrayContaining(["thread_active", "thread-parent"]));
-    });
-    await waitFor(() => {
-      expect(
-        coordination.getManager?.("local").readConversation("thread_active")?.turns.length,
-      ).toBeGreaterThan(0);
-      expect(
         coordination.getManager?.("local").readConversation("thread_active")?.resumeState,
-      ).toBe("needs_resume");
+      ).toBe("resumed");
     });
-    await view.findByText("History for thread_active");
     expect(
       view.container.querySelectorAll('[data-local-conversation-composer-shell="true"]'),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(invokeCalls.filter((call) => call.channel === "codex:thread:resume:prepare")).toEqual(
-      [],
+      expect.arrayContaining([expect.objectContaining({ threadId: "thread_active" })]),
     );
   });
 

@@ -409,7 +409,6 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         readonly AddressReset: {
-            readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
             readonly delivery_address: components["schemas"]["DeliveryAddress"];
             readonly reason: components["schemas"]["AddressResetReason"];
             readonly recipient_lease_id: string;
@@ -420,31 +419,6 @@ export interface components {
         };
         /** @enum {string} */
         readonly AddressResetReason: "stream_gap" | "recipient_nack" | "ack_timeout" | "queue_overflow" | "integrity_failure" | "store_epoch_replacement";
-        readonly AgentAuthorizationTarget: {
-            /** @enum {string} */
-            readonly kind: "page";
-            readonly page_id: string;
-        } | {
-            readonly database_id: string;
-            /** @enum {string} */
-            readonly kind: "database";
-        } | {
-            readonly data_source_id: string;
-            /** @enum {string} */
-            readonly kind: "data_source";
-        } | {
-            /** @enum {string} */
-            readonly kind: "view";
-            readonly view_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "library";
-            readonly library_id: string;
-        } | {
-            readonly id: string;
-            /** @enum {string} */
-            readonly kind: "page_or_block";
-        };
         /**
          * @description Durable identity of the runtime family that owns an Agent conversation.
          *     Backend-specific settings live behind their own stable identifiers instead
@@ -467,8 +441,6 @@ export interface components {
             /** @enum {string} */
             readonly kind: "acp";
         };
-        /** @enum {string} */
-        readonly AgentConsentRequirement: "none" | "resource";
         readonly AgentDocumentBlockGuard: {
             readonly block_id: string;
             readonly kind: components["schemas"]["AgentDocumentBlockGuardKind"];
@@ -520,7 +492,6 @@ export interface components {
         readonly AgentExecutionAuthorization: {
             readonly call_id: string;
             readonly provenance: components["schemas"]["AgentTurnProvenance"];
-            readonly resource_access?: null | components["schemas"]["AgentResourceAccessOverlay"];
         };
         /**
          * @description Stable, user-visible mutation scope. Incidental ranks and internal Document
@@ -536,7 +507,6 @@ export interface components {
             readonly updated_roots: readonly string[];
         };
         readonly AgentOperationPreparation: {
-            readonly consent: components["schemas"]["AgentConsentRequirement"];
             /** Format: int64 */
             readonly expires_at_unix_ms?: number | null;
             readonly footprint: components["schemas"]["AgentOperationFootprint"];
@@ -555,74 +525,6 @@ export interface components {
             readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
             /** @description Exact receipt replay may omit a token. A new mutation cannot. */
             readonly token?: string | null;
-        };
-        /** @enum {string} */
-        readonly AgentProjectResourceAccess: "read" | "read_write";
-        /** @enum {string} */
-        readonly AgentProjectResourceAction: "read" | "write" | "create_child" | "move" | "manage_schema" | "manage_views" | "manage_database";
-        readonly AgentResourceAccessOverlay: {
-            readonly actor_project_id: string;
-            readonly call_id?: string | null;
-            readonly grants: readonly components["schemas"]["AgentResourceGrantSpec"][];
-            readonly kind: components["schemas"]["AgentResourceAccessOverlayKind"];
-            readonly library_id: string;
-            readonly persist_resulting_page_grants?: boolean;
-            readonly root_thread_id: string;
-            readonly scope: components["schemas"]["AgentResourceAccessOverlayScope"];
-            readonly store_epoch: string;
-            readonly thread_id?: string | null;
-            readonly turn_id?: string | null;
-        };
-        /** @enum {string} */
-        readonly AgentResourceAccessOverlayKind: "inspection" | "consent";
-        /** @enum {string} */
-        readonly AgentResourceAccessOverlayScope: "call" | "task";
-        readonly AgentResourceAccessPlan: {
-            /** @enum {string} */
-            readonly kind: "authorized";
-            readonly resource_access?: null | components["schemas"]["AgentResourceAccessOverlay"];
-        } | {
-            readonly inspection_access: components["schemas"]["AgentResourceAccessOverlay"];
-            /** @enum {string} */
-            readonly kind: "consent_required";
-            readonly requirements: readonly components["schemas"]["AgentResourceConsentRequirement"][];
-        } | {
-            readonly intent: components["schemas"]["AgentResourceIntent"];
-            /** @enum {string} */
-            readonly kind: "denied";
-            readonly reason: components["schemas"]["AgentResourceAuthorizationReason"];
-        };
-        /** @enum {string} */
-        readonly AgentResourceAuthorizationReason: "allowed" | "project_not_found" | "resource_not_found" | "resource_hierarchy_corrupt" | "library_mismatch" | "authority_stale" | "grant_missing" | "project_read_only" | "turn_read_only" | "grant_read_only" | "structural_capability_required";
-        /** @enum {string} */
-        readonly AgentResourceConsentReason: "grant_missing" | "grant_read_only" | "library_consent_required";
-        readonly AgentResourceConsentRequirement: {
-            readonly grant: components["schemas"]["AgentResourceGrantSpec"];
-            readonly intent: components["schemas"]["AgentResourceIntent"];
-            readonly persistable: boolean;
-            readonly reason: components["schemas"]["AgentResourceConsentReason"];
-        };
-        readonly AgentResourceGrantRoot: {
-            /** @enum {string} */
-            readonly kind: "page";
-            readonly page_id: string;
-        } | {
-            readonly database_id: string;
-            /** @enum {string} */
-            readonly kind: "database";
-        } | {
-            /** @enum {string} */
-            readonly kind: "library";
-            readonly library_id: string;
-        };
-        readonly AgentResourceGrantSpec: {
-            readonly access: components["schemas"]["AgentProjectResourceAccess"];
-            readonly library_actions?: readonly components["schemas"]["AgentProjectResourceAction"][];
-            readonly root: components["schemas"]["AgentResourceGrantRoot"];
-        };
-        readonly AgentResourceIntent: {
-            readonly action: components["schemas"]["AgentProjectResourceAction"];
-            readonly target: components["schemas"]["AgentAuthorizationTarget"];
         };
         /** @enum {string} */
         readonly AgentResourceKind: "library" | "page" | "database";
@@ -793,13 +695,12 @@ export interface components {
             readonly payload: components["schemas"]["DeliveryAtomPayload"];
         };
         /**
-         * @description Post-state-authorized transport artifact. Packets for the apply response
+         * @description Authenticated connection transport artifact. Packets for the apply response
          *     and durable stream may have different coverage but always reference the
          *     same immutable manifest identity.
          */
         readonly AuthorizedDeliveryPacket: {
             readonly atoms: readonly components["schemas"]["AuthorizedDeliveryAtom"][];
-            readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
             readonly coverage: components["schemas"]["DeliveryCoverage"];
             readonly delivery_address: components["schemas"]["DeliveryAddress"];
             readonly document_effects: readonly components["schemas"]["AuthorizedDocumentEffect"][];
@@ -808,7 +709,6 @@ export interface components {
             /** Format: int32 */
             readonly packet_version: number;
             readonly projection_effects: readonly components["schemas"]["ProjectionEffect"][];
-            readonly visibility_deltas: readonly components["schemas"]["VisibilityDelta"][];
         };
         readonly AuthorizedDocumentEffect: {
             readonly history_fence?: null | components["schemas"]["DocumentHistoryFence"];
@@ -870,23 +770,7 @@ export interface components {
             readonly kind: "document_invalidated";
             readonly reason: components["schemas"]["DocumentInvalidationReason"];
         };
-        readonly AuthorizedReadStamp: {
-            readonly authorization_dependencies: readonly components["schemas"]["ResourceKey"][];
-            readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
-            /** Format: int64 */
-            readonly covered_commit_seq: number;
-            readonly delivery_address: components["schemas"]["DeliveryAddress"];
-            readonly request_dependencies: readonly components["schemas"]["ResourceKey"][];
-            readonly stamp_hash: string;
-            readonly store_epoch: components["schemas"]["StoreEpoch"];
-            readonly subject: components["schemas"]["ResourceKey"];
-        };
-        /**
-         * @description Core-issued identity for one active broker recipient. Main may route with
-         *     this lease but cannot construct or broaden its authorization scope.
-         */
         readonly AuthorizedRecipientLease: {
-            readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
             readonly delivery_address: components["schemas"]["DeliveryAddress"];
             readonly lease_id: string;
         };
@@ -917,8 +801,6 @@ export interface components {
             readonly service_tier?: string | null;
             readonly status: components["schemas"]["AutomationDefinitionStatus"];
             readonly target_session_id?: string | null;
-            /** @description Current backend attachment, projected from the target Session. */
-            readonly target_thread_id?: string | null;
             /** Format: int64 */
             readonly updated_at_ms: number;
         };
@@ -1030,23 +912,24 @@ export interface components {
             readonly automation_id: string;
             /** @enum {string} */
             readonly kind: "begin_run";
+            readonly run_id: string;
+            readonly session_id?: string | null;
+            readonly session_title?: string | null;
             readonly source_cwd?: string | null;
-            readonly thread_id: string;
-            readonly thread_title?: string | null;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
-            readonly kind: "replace_pending_run_thread";
-            readonly pending_thread_id: string;
-            readonly thread_id: string;
+            readonly kind: "bind_run_session";
+            readonly run_id: string;
+            readonly session_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
-            readonly kind: "set_run_thread_title";
-            readonly thread_id: string;
-            readonly thread_title?: string | null;
+            readonly kind: "set_run_session_title";
+            readonly run_id: string;
+            readonly session_title?: string | null;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
@@ -1054,7 +937,7 @@ export interface components {
             readonly inbox_title?: string | null;
             /** @enum {string} */
             readonly kind: "complete_run_for_review";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
@@ -1062,20 +945,20 @@ export interface components {
             readonly inbox_title?: string | null;
             /** @enum {string} */
             readonly kind: "set_run_inbox_item";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "accept_run";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "set_run_read_state";
             readonly read: boolean;
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "mark_all_runs_read";
@@ -1087,19 +970,19 @@ export interface components {
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "archive_run";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "unarchive_run";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "delete_run";
-            readonly thread_id: string;
+            readonly run_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "settle_interrupted_runs";
@@ -1160,6 +1043,9 @@ export interface components {
             /** Format: int64 */
             readonly claimed_at_ms: number;
             /** Format: int64 */
+            readonly definition_revision: number;
+            readonly dispatch_id: string;
+            /** Format: int64 */
             readonly expires_at_ms: number;
             readonly lease_id: string;
             readonly reason_code?: string | null;
@@ -1196,12 +1082,13 @@ export interface components {
             readonly inbox_title?: string | null;
             /** Format: int64 */
             readonly read_at_ms?: number | null;
+            readonly run_id: string;
             /** Format: int64 */
             readonly run_revision: number;
+            readonly session_id?: string | null;
+            readonly session_title?: string | null;
             readonly source_cwd?: string | null;
             readonly status: components["schemas"]["AutomationRunStatus"];
-            readonly thread_id: string;
-            readonly thread_title?: string | null;
             /** Format: int64 */
             readonly updated_at_ms: number;
         };
@@ -1307,8 +1194,6 @@ export interface components {
         /** @enum {string} */
         readonly ClientKind: "electron_host" | "native_cli" | "test";
         /** @enum {string} */
-        readonly CodexPermissionMode: "auto" | "guardian-approvals" | "full-access" | "custom";
-        /** @enum {string} */
         readonly CodexThreadActiveFlag: "waitingOnApproval" | "waitingOnUserInput";
         /** @enum {string} */
         readonly CodexThreadStatusType: "notLoaded" | "idle" | "systemError" | "active";
@@ -1339,8 +1224,6 @@ export interface components {
                 readonly service_tier?: string | null;
                 readonly status: components["schemas"]["AutomationDefinitionStatus"];
                 readonly target_session_id?: string | null;
-                /** @description Current backend attachment, projected from the target Session. */
-                readonly target_thread_id?: string | null;
                 /** Format: int64 */
                 readonly updated_at_ms: number;
             }[];
@@ -1359,9 +1242,10 @@ export interface components {
                 readonly description?: string | null;
                 /** Format: int64 */
                 readonly read_at_ms?: number | null;
+                readonly run_id: string;
+                readonly session_id?: string | null;
                 readonly source_cwd?: string | null;
                 readonly status: components["schemas"]["AutomationRunStatus"];
-                readonly thread_id: string;
                 readonly title?: string | null;
             }[];
             readonly next_cursor?: string | null;
@@ -1374,6 +1258,9 @@ export interface components {
                 readonly automation_id: string;
                 /** Format: int64 */
                 readonly claimed_at_ms: number;
+                /** Format: int64 */
+                readonly definition_revision: number;
+                readonly dispatch_id: string;
                 /** Format: int64 */
                 readonly expires_at_ms: number;
                 readonly lease_id: string;
@@ -1401,12 +1288,13 @@ export interface components {
                 readonly inbox_title?: string | null;
                 /** Format: int64 */
                 readonly read_at_ms?: number | null;
+                readonly run_id: string;
                 /** Format: int64 */
                 readonly run_revision: number;
+                readonly session_id?: string | null;
+                readonly session_title?: string | null;
                 readonly source_cwd?: string | null;
                 readonly status: components["schemas"]["AutomationRunStatus"];
-                readonly thread_id: string;
-                readonly thread_title?: string | null;
                 /** Format: int64 */
                 readonly updated_at_ms: number;
             }[];
@@ -1423,6 +1311,8 @@ export interface components {
                 readonly created_at: string;
                 /** Format: int64 */
                 readonly db_bytes: number;
+                /** Format: int64 */
+                readonly execution_bytes: number;
                 readonly includes_assets: boolean;
                 readonly label?: string | null;
                 /** Format: int64 */
@@ -1567,7 +1457,7 @@ export interface components {
             } | {
                 readonly edge_id: string;
                 /** @enum {string} */
-                readonly kind: "restricted";
+                readonly kind: "unavailable";
             })[];
             readonly next_cursor?: string | null;
         };
@@ -1653,6 +1543,44 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly ({
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "run";
+                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+                /** @enum {string} */
+                readonly kind: "native_session";
+            })[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly cleanup_id: string;
+                readonly created_at: string;
+                readonly project_id?: string | null;
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+                readonly session_id: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly bound_at: string;
+                readonly launch_request_id: string;
+                readonly project_id?: string | null;
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+                readonly session_id: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceBackgroundProcess: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -1715,6 +1643,7 @@ export interface components {
                 /** Format: int64 */
                 readonly conversation_recency_at?: number | null;
                 readonly display_title: string;
+                readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
                 readonly linked_at: string;
                 readonly project_id?: string | null;
                 readonly project_name?: string | null;
@@ -1722,6 +1651,7 @@ export interface components {
                 readonly session_id: string;
                 readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
                 readonly thread_archived: boolean;
+                /** @description The native Thread, or the Runtime root Thread of a Runtime-bound Session. */
                 readonly thread_id?: string | null;
                 readonly thread_preview: string;
                 readonly unread: boolean;
@@ -2021,8 +1951,14 @@ export interface components {
             /** @description Property ID/name, or the intrinsic title, created, or manual sort. */
             readonly property: string;
         };
-        /** @enum {string} */
-        readonly ConservativeResetReason: "authorization_closure_exceeded";
+        readonly ContentRoutingContext: {
+            /** @enum {string} */
+            readonly kind: "library";
+        } | {
+            /** @enum {string} */
+            readonly kind: "project";
+            readonly projectId: string;
+        };
         readonly CoreArtifactIdentity: {
             readonly build_id: string;
             readonly sha256: string;
@@ -2353,8 +2289,6 @@ export interface components {
             readonly operations: readonly components["schemas"]["DatabaseConfigurationOperation"][];
         };
         readonly DatabaseContainerRecord: {
-            /** Format: int64 */
-            readonly access_revision: number;
             readonly created_at: string;
             readonly database_id: string;
             readonly default_view_id?: string | null;
@@ -2489,7 +2423,7 @@ export interface components {
             readonly kind: components["schemas"]["DatabaseEventKind"];
             readonly page_ids: readonly string[];
             /**
-             * @description Profile-owned deltas are routed through View authorization but do not
+             * @description Profile-owned deltas are routed through View identity but do not
              *     invalidate shared Database/View projections.
              */
             readonly personal_view_changes?: readonly components["schemas"]["DatabasePersonalViewChange"][];
@@ -3576,10 +3510,6 @@ export interface components {
         };
         /** @enum {string} */
         readonly DeletableOwnedSourceKind: "synced_block" | "reusable_template";
-        /**
-         * @description Logical destination selected by the authenticated Host broker. Routing is
-         *     distinct from authorization even when both identities are equal today.
-         */
         readonly DeliveryAddress: {
             /** @enum {string} */
             readonly kind: "library";
@@ -3650,26 +3580,6 @@ export interface components {
             readonly library_id: string;
             /** @enum {string} */
             readonly module: "store_administration";
-        };
-        /**
-         * @description Core-authored authorization boundary for one delivery artifact. This is
-         *     part of packet integrity and must never be reconstructed by an Adapter.
-         */
-        readonly DeliveryAuthorizationScope: {
-            /** @enum {string} */
-            readonly kind: "library";
-            readonly library_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "project";
-            readonly library_id: string;
-            readonly project_id: string;
-        } | {
-            readonly document_id: string;
-            /** @enum {string} */
-            readonly kind: "document";
-            readonly library_id: string;
-            readonly project_id?: string | null;
         };
         readonly DeliveryCoverage: {
             readonly atom_ids: readonly string[];
@@ -3755,7 +3665,7 @@ export interface components {
             readonly headSeq: number;
         };
         /** @enum {string} */
-        readonly DocumentInvalidationReason: "access_changed" | "generation_changed" | "restored";
+        readonly DocumentInvalidationReason: "owner_deleted" | "generation_changed" | "restored";
         readonly DocumentModuleFrameMetadata: {
             /** @enum {string} */
             readonly kind: "module_read";
@@ -4086,27 +3996,6 @@ export interface components {
         };
         /** @enum {string} */
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
-        /** @enum {string} */
-        readonly LibraryAccess: "read" | "read_write";
-        readonly LibraryAgentAuthorizedSurface: (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
-            readonly page_id: string;
-        } & {
-            /** @enum {string} */
-            readonly kind: "page";
-        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
-            readonly data_source_id: string;
-            readonly database_id: string;
-            readonly layout: components["schemas"]["DatabaseViewLayout"];
-            readonly view_id: string;
-        } & {
-            /** @enum {string} */
-            readonly kind: "database_view";
-        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
-            readonly canvas_id: string;
-        } & {
-            /** @enum {string} */
-            readonly kind: "canvas";
-        });
         readonly LibraryAgentBlockTarget: {
             readonly block_id: string;
             readonly block_type: string;
@@ -4345,23 +4234,39 @@ export interface components {
             /** @enum {string} */
             readonly kind: "after";
         };
-        readonly LibraryAgentSurfaceDescription: (components["schemas"]["LibraryAgentAuthorizedSurface"] & {
+        readonly LibraryAgentSurface: (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly page_id: string;
+        } & {
             /** @enum {string} */
-            readonly status: "authorized";
+            readonly kind: "page";
+        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly data_source_id: string;
+            readonly database_id: string;
+            readonly layout: components["schemas"]["DatabaseViewLayout"];
+            readonly view_id: string;
+        } & {
+            /** @enum {string} */
+            readonly kind: "database_view";
+        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly canvas_id: string;
+        } & {
+            /** @enum {string} */
+            readonly kind: "canvas";
+        });
+        readonly LibraryAgentSurfaceDescription: (components["schemas"]["LibraryAgentSurface"] & {
+            /** @enum {string} */
+            readonly status: "available";
         }) | {
-            readonly reason: components["schemas"]["LibraryAgentSurfaceRestriction"];
             /** @enum {string} */
-            readonly status: "restricted";
+            readonly status: "unavailable";
         };
         readonly LibraryAgentSurfaceMetadata: {
-            /** @description Display context never contributes an Agent grant. */
-            readonly displayed_access_context: components["schemas"]["OwnedDocumentAccessContext"];
+            /** @description Presentation context for resolving the selected surface. */
+            readonly displayed_routing_context: components["schemas"]["ContentRoutingContext"];
             readonly library_id: string;
             readonly title: string;
         };
-        /** @enum {string} */
-        readonly LibraryAgentSurfaceRestriction: "consent_required" | "access_denied" | "unavailable";
-        /** @description A semantic content target, independent of the renderer's current access context. */
+        /** @description A semantic content target, independent of the renderer's current routing context. */
         readonly LibraryAgentSurfaceTarget: {
             /** @enum {string} */
             readonly kind: "page";
@@ -4964,7 +4869,6 @@ export interface components {
             readonly can_purge: boolean;
             readonly can_restore: boolean;
             readonly can_trash: boolean;
-            readonly can_write: boolean;
             readonly has_more: boolean;
             readonly items: readonly components["schemas"]["LibraryFileUsage"][];
             readonly next_cursor?: string | null;
@@ -4989,25 +4893,6 @@ export interface components {
         };
         /** @enum {string} */
         readonly LibraryHeadingLevel: "one" | "two" | "three";
-        readonly LibraryInheritedProjectAccessSource: {
-            readonly access: components["schemas"]["LibraryAccess"];
-            readonly database_id: string;
-            readonly database_name: string;
-            /** @enum {string} */
-            readonly kind: "primary_database";
-        } | {
-            readonly access: components["schemas"]["LibraryAccess"];
-            /** @enum {string} */
-            readonly kind: "ancestor_page";
-            readonly page_id: string;
-            readonly page_title: string;
-        } | {
-            readonly access: components["schemas"]["LibraryAccess"];
-            readonly database_id: string;
-            readonly database_name: string;
-            /** @enum {string} */
-            readonly kind: "database_grant";
-        };
         /** @enum {string} */
         readonly LibraryLifecycle: "active" | "archived";
         readonly LibraryLocalHistoryRetention: {
@@ -5111,10 +4996,6 @@ export interface components {
             /** @enum {string} */
             readonly kind: "database";
         };
-        readonly LibraryPageAccessContext: {
-            /** @enum {string} */
-            readonly kind: "library";
-        };
         readonly LibraryPageBacklink: {
             readonly location_label: string;
             /** Format: int32 */
@@ -5126,7 +5007,6 @@ export interface components {
             readonly updated_at: string;
         };
         readonly LibraryPageContent: {
-            readonly access_context: components["schemas"]["LibraryPageAccessContext"];
             readonly asset_refs: readonly components["schemas"]["LibraryContentAssetReference"][];
             readonly body_nfm: string;
             /** Format: int64 */
@@ -5235,7 +5115,6 @@ export interface components {
             };
         };
         readonly LibraryPageDetail: {
-            readonly access_context: components["schemas"]["LibraryPageAccessContext"];
             /** Format: int64 */
             readonly commit_seq: number;
             readonly data_source_context: components["schemas"]["LibraryPageDataSourceContext"];
@@ -5352,7 +5231,6 @@ export interface components {
         readonly LibraryPageFileInventory: {
             /** Format: int64 */
             readonly body_usage_revision: number;
-            readonly can_write: boolean;
             readonly files: readonly components["schemas"]["LibraryPageFileItem"][];
             readonly has_more: boolean;
             readonly next_cursor?: string | null;
@@ -5726,8 +5604,8 @@ export interface components {
             readonly page_id: string;
         };
         readonly LibraryPageLocation: {
-            readonly access_project_id: string;
             readonly page_id: string;
+            readonly project_id?: string | null;
         };
         readonly LibraryPageMembership: {
             readonly created_at: string;
@@ -5930,13 +5808,13 @@ export interface components {
          */
         readonly LibraryPageSearchMetadataDocument: {
             readonly assignee: string | null;
-            readonly authorized_project_ids: readonly string[];
             readonly data_source_ids: readonly string[];
             readonly location_label: string;
             readonly page_id: string;
             readonly page_key: string | null;
             readonly preview: string;
             readonly priority: null | components["schemas"]["LibraryPageSearchPriority"];
+            readonly project_ids: readonly string[];
             readonly properties: readonly components["schemas"]["LibraryPageSearchMetadataProperty"][];
             readonly status: null | components["schemas"]["LibraryPageWorkflowStatus"];
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
@@ -6035,26 +5913,6 @@ export interface components {
             /** Format: int64 */
             readonly expected_location_revision: number;
         };
-        readonly LibraryProjectAccessChange: {
-            readonly access?: null | components["schemas"]["LibraryAccess"];
-            /** Format: int64 */
-            readonly expected_revision?: number | null;
-            readonly project_id: string;
-        };
-        readonly LibraryProjectAccessRow: {
-            readonly appearance: components["schemas"]["ProjectAppearance"];
-            readonly direct_grant?: null | components["schemas"]["LibraryProjectDirectGrant"];
-            readonly effective_access?: null | components["schemas"]["LibraryAccess"];
-            readonly inherited_sources: readonly components["schemas"]["LibraryInheritedProjectAccessSource"][];
-            readonly lifecycle: components["schemas"]["ProjectLifecycle"];
-            readonly project_id: string;
-            readonly project_name: string;
-        };
-        readonly LibraryProjectDirectGrant: {
-            readonly access: components["schemas"]["LibraryAccess"];
-            /** Format: int64 */
-            readonly revision: number;
-        };
         readonly LibraryProjectPageSearchFacets: {
             readonly assignees: readonly string[];
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
@@ -6076,7 +5934,8 @@ export interface components {
             readonly page_id: string;
             readonly page_key?: string | null;
             readonly priority?: string | null;
-            readonly project_id: string;
+            /** @description Optional Project association for presentation, independent of caller routing. */
+            readonly project_id?: string | null;
             readonly status?: null | components["schemas"]["LibraryPageWorkflowStatus"];
             readonly tags: readonly components["schemas"]["LibraryPageSearchOption"][];
             readonly title: string;
@@ -6085,10 +5944,6 @@ export interface components {
         };
         readonly LibraryReadRequest: components["schemas"]["ModuleReadRequest_LibraryRead"];
         readonly LibraryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_LibraryReadValue"];
-        readonly LibraryResourceProjectAccess: {
-            readonly projects: readonly components["schemas"]["LibraryProjectAccessRow"][];
-            readonly target: components["schemas"]["LibraryResourceTarget"];
-        };
         readonly LibraryResourceTarget: {
             /** @enum {string} */
             readonly kind: "page";
@@ -6155,11 +6010,11 @@ export interface components {
             readonly physical_root: string;
         };
         readonly LibrarySearchSnapshotManifest: {
-            readonly access_project_id: string;
             /** Format: int64 */
             readonly commit_head: number;
             readonly library_id: string;
             readonly pages: readonly components["schemas"]["LibrarySearchSnapshotPage"][];
+            readonly project_id?: string | null;
             /** Format: int32 */
             readonly projection_version: number;
             readonly scope: components["schemas"]["LibrarySearchSnapshotScope"];
@@ -6392,11 +6247,11 @@ export interface components {
             readonly kind: "equation";
         };
         /** @enum {string} */
-        readonly LibraryTaskShorthandPreservedReason: "malformed_shorthand" | "nonempty_title_required" | "rich_text_boundary" | "target_property_conflict" | "target_schema_incompatible" | "tag_schema_permission_required" | "tag_option_limit";
+        readonly LibraryTaskShorthandPreservedReason: "malformed_shorthand" | "nonempty_title_required" | "rich_text_boundary" | "target_property_conflict" | "target_schema_incompatible" | "tag_option_limit";
         readonly LibraryViewLocation: {
-            readonly access_project_id: string;
             readonly data_source_id: string;
             readonly database_id: string;
+            readonly project_id?: string | null;
             readonly view_id: string;
         };
         readonly LibraryWriteParent: {
@@ -6590,23 +6445,24 @@ export interface components {
                 readonly automation_id: string;
                 /** @enum {string} */
                 readonly kind: "begin_run";
+                readonly run_id: string;
+                readonly session_id?: string | null;
+                readonly session_title?: string | null;
                 readonly source_cwd?: string | null;
-                readonly thread_id: string;
-                readonly thread_title?: string | null;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
-                readonly kind: "replace_pending_run_thread";
-                readonly pending_thread_id: string;
-                readonly thread_id: string;
+                readonly kind: "bind_run_session";
+                readonly run_id: string;
+                readonly session_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
-                readonly kind: "set_run_thread_title";
-                readonly thread_id: string;
-                readonly thread_title?: string | null;
+                readonly kind: "set_run_session_title";
+                readonly run_id: string;
+                readonly session_title?: string | null;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
@@ -6614,7 +6470,7 @@ export interface components {
                 readonly inbox_title?: string | null;
                 /** @enum {string} */
                 readonly kind: "complete_run_for_review";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
@@ -6622,20 +6478,20 @@ export interface components {
                 readonly inbox_title?: string | null;
                 /** @enum {string} */
                 readonly kind: "set_run_inbox_item";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "accept_run";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "set_run_read_state";
                 readonly read: boolean;
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "mark_all_runs_read";
@@ -6647,19 +6503,19 @@ export interface components {
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "archive_run";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "unarchive_run";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "delete_run";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "settle_interrupted_runs";
@@ -6897,22 +6753,6 @@ export interface components {
                 readonly intrinsic_mutation: components["schemas"]["LibraryBlockPropertyMutation"];
                 /** @enum {string} */
                 readonly kind: "apply_page_metadata_properties";
-            } | {
-                readonly access: components["schemas"]["LibraryAccess"];
-                /** @enum {string} */
-                readonly kind: "grant_project_access";
-                readonly project_id: string;
-                readonly target: components["schemas"]["LibraryResourceTarget"];
-            } | {
-                readonly changes: readonly components["schemas"]["LibraryProjectAccessChange"][];
-                /** @enum {string} */
-                readonly kind: "set_project_access";
-                readonly target: components["schemas"]["LibraryResourceTarget"];
-            } | {
-                readonly grants: readonly components["schemas"]["AgentResourceGrantSpec"][];
-                /** @enum {string} */
-                readonly kind: "persist_agent_project_resource_grants";
-                readonly provenance: components["schemas"]["AgentTurnProvenance"];
             } | {
                 readonly authorization: components["schemas"]["AgentPreparedExecution"];
                 /** @enum {string} */
@@ -7222,31 +7062,22 @@ export interface components {
                 readonly session_id: string;
                 readonly title: string;
             } | {
+                readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
-                readonly kind: "admit_session_launch";
-                readonly launch_request_hash: string;
+                readonly kind: "create_agent_runtime_session";
+                readonly launch_request_id: string;
                 readonly project_id?: string | null;
+                readonly replacement_default_session_id: string;
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
                 readonly session_id: string;
                 readonly title: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "admit_session_message";
-                readonly message_request_hash: string;
-                readonly session_id: string;
-                readonly thread_id: string;
             } | {
                 readonly handoff_request_hash: string;
                 /** @enum {string} */
                 readonly kind: "admit_session_handoff";
                 readonly session_id: string;
                 readonly thread_id: string;
-            } | {
-                readonly fork_request_hash: string;
-                /** @enum {string} */
-                readonly kind: "admit_session_fork";
-                readonly session_id: string;
-                readonly source_session_id: string;
-                readonly source_thread_id: string;
             } | {
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
@@ -7415,7 +7246,6 @@ export interface components {
                 readonly kind: "move_thread";
                 readonly metadata: components["schemas"]["ProjectWorkspaceThreadMoveMetadataPatch"];
                 readonly placement: components["schemas"]["ProjectWorkspaceThreadPlacement"];
-                readonly project_access_grant?: null | components["schemas"]["ProjectWorkspaceThreadMoveProjectAccessGrant"];
                 readonly runtime_workspace_roots?: readonly string[] | null;
                 readonly source: components["schemas"]["ProjectWorkspaceThreadLane"];
                 readonly target: components["schemas"]["ProjectWorkspaceThreadLane"];
@@ -7449,28 +7279,53 @@ export interface components {
                 readonly thread_id: string;
             } | {
                 readonly actor_project_id?: string | null;
-                readonly inherited_from?: null | components["schemas"]["ProjectWorkspaceTurnCoordinate"];
                 /** @enum {string} */
-                readonly kind: "freeze_turn_authority";
-                readonly read_only: boolean;
+                readonly kind: "admit_turn_authority";
                 readonly root_thread_id: string;
-                readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
                 readonly thread_id: string;
                 readonly turn_id: string;
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "admit_agent_runtime_turn_authority";
+                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
+                readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                readonly session_id: string;
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_turn_authority";
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+                /** @enum {string} */
+                readonly kind: "admit_agent_runtime_native_session_authority";
+                readonly session_id: string;
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_native_session_authority";
+            } | {
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_native_source_authorities";
+                readonly lease_id: string;
+                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
+                readonly runtime_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "revoke_agent_runtime_authorities";
+                readonly lease_id?: string | null;
+                readonly runtime_id: string;
+            } | {
+                readonly cleanup_id: string;
+                /** @enum {string} */
+                readonly kind: "acknowledge_agent_runtime_execution_cleanup";
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "upsert_background_process";
                 readonly preserve_started_at?: boolean | null;
                 readonly process: components["schemas"]["ProjectWorkspaceBackgroundProcess"];
-            } | {
-                /** @enum {string} */
-                readonly kind: "set_project_permission_mode";
-                readonly mode: components["schemas"]["CodexPermissionMode"];
-                readonly project_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "set_projectless_permission_mode";
-                readonly mode: components["schemas"]["CodexPermissionMode"];
             } | {
                 readonly intent: components["schemas"]["ProjectSessionIntent"];
                 /** @enum {string} */
@@ -7562,6 +7417,7 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "create_backup";
                 readonly label?: string | null;
+                readonly profile_snapshot?: null | components["schemas"]["ProfileSnapshotSource"];
                 readonly trigger: components["schemas"]["BackupTrigger"];
             } | {
                 readonly active_job_id: string;
@@ -7579,6 +7435,7 @@ export interface components {
                 readonly create_safety_backup: boolean;
                 /** @enum {string} */
                 readonly kind: "restore_backup";
+                readonly profile_snapshot?: null | components["schemas"]["ProfileSnapshotSource"];
             } | {
                 readonly backup_id: string;
                 /** @enum {string} */
@@ -7900,7 +7757,7 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "run";
-                readonly thread_id: string;
+                readonly run_id: string;
             } | {
                 readonly automation_id?: string | null;
                 readonly include_archived?: boolean | null;
@@ -8123,15 +7980,6 @@ export interface components {
                 readonly operation_id: string;
                 readonly store_epoch: string;
             } | {
-                /** @enum {string} */
-                readonly kind: "resource_project_access";
-                readonly target: components["schemas"]["LibraryResourceTarget"];
-            } | {
-                readonly impact: components["schemas"]["ProjectionImpact"];
-                /** @enum {string} */
-                readonly kind: "filter_projection_impact_for_project";
-                readonly project_id: string;
-            } | {
                 readonly cursor?: string | null;
                 readonly force_include_target?: null | components["schemas"]["LibraryRouteTarget"];
                 /** @enum {string} */
@@ -8218,7 +8066,7 @@ export interface components {
                 readonly kind: "agent_block_target";
             } | {
                 readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
-                readonly displayed_access_context: components["schemas"]["OwnedDocumentAccessContext"];
+                readonly displayed_routing_context: components["schemas"]["ContentRoutingContext"];
                 /** @enum {string} */
                 readonly kind: "agent_surface_description";
                 readonly target: components["schemas"]["LibraryAgentSurfaceTarget"];
@@ -8279,6 +8127,7 @@ export interface components {
                 /** Format: int32 */
                 readonly limit?: number | null;
                 readonly preferred_project_id?: string | null;
+                /** @description Explicit query filter; an empty list searches the current Library. */
                 readonly project_ids: readonly string[];
                 readonly query: string;
                 readonly recent_page_ids: readonly string[];
@@ -8312,13 +8161,6 @@ export interface components {
                 /** Format: int32 */
                 readonly limit?: number | null;
                 readonly page_id: string;
-            } | {
-                readonly call_id: string;
-                readonly intents: readonly components["schemas"]["AgentResourceIntent"][];
-                /** @enum {string} */
-                readonly kind: "plan_agent_resource_access";
-                readonly provenance: components["schemas"]["AgentTurnProvenance"];
-                readonly task_access?: null | components["schemas"]["AgentResourceAccessOverlay"];
             } | {
                 readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
                 /** @enum {string} */
@@ -8450,22 +8292,13 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "page_chat_activity_summaries";
-                readonly page_access_project_id: string;
                 readonly page_ids: readonly string[];
             } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "page_chat_window";
-                readonly page_access_project_id: string;
                 readonly page_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
-            } | {
-                /** @enum {string} */
-                readonly kind: "project_permission_mode";
-                readonly project_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "projectless_permission_mode";
             } | {
                 readonly archived: boolean;
                 /** @enum {string} */
@@ -8511,6 +8344,44 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "session";
                 readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding_by_execution";
+                readonly runtime_id: string;
+                readonly runtime_thread_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding_window";
+                readonly project_id?: string | null;
+                readonly runtime_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_execution_cleanup_window";
+                readonly runtime_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+                /** @enum {string} */
+                readonly kind: "agent_runtime_turn_authority";
+            } | {
+                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+                /** @enum {string} */
+                readonly kind: "agent_runtime_native_session_authority";
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_runtime_admission_window";
+                readonly lease_id: string;
+                readonly runtime_id: string;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_authority";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
             } | {
                 /** @enum {string} */
                 readonly kind: "agent_session";
@@ -8659,6 +8530,11 @@ export interface components {
                 readonly tasks: readonly components["schemas"]["MaintenanceTask"][];
             };
         };
+        readonly NativeHistorySnapshotSource: {
+            readonly driver: string;
+            readonly home_path?: string | null;
+            readonly provider_instance_id: string;
+        };
         readonly OperationalJournalStatus: {
             /** Format: int64 */
             readonly commit_head_seq: number;
@@ -8685,24 +8561,14 @@ export interface components {
             /** Format: int64 */
             readonly retained_receipt_count: number;
         };
-        readonly OwnedDocumentAccessContext: {
-            /** @enum {string} */
-            readonly kind: "library";
-        } | {
-            /** @enum {string} */
-            readonly kind: "project";
-            readonly projectId: string;
-        };
         readonly OwnedDocumentApplyRequest: components["schemas"]["ModuleApplyRequest_OwnedDocumentIntent"];
         readonly OwnedDocumentApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_OwnedDocumentCommitValue_OwnedDocumentReceipt"];
         /**
          * @description Canonical identity and durable head for a Document as observed through one
-         *     explicit access boundary. Library ownership and Project authorization are
-         *     deliberately separate fields; adapters must validate this descriptor, not
-         *     rewrite it into a caller-shaped identity.
+         *     explicit Document owner boundary. Project is presentation routing metadata;
+         *     adapters preserve the canonical identity and current owner lifecycle.
          */
         readonly OwnedDocumentDescriptor: {
-            readonly accessContext: components["schemas"]["OwnedDocumentAccessContext"];
             readonly documentId: string;
             /** Format: int64 */
             readonly generation: number;
@@ -8713,6 +8579,7 @@ export interface components {
             readonly ownerLifecycle: components["schemas"]["OwnedDocumentOwnerLifecycle"];
             readonly ownerType: string;
             readonly readiness: components["schemas"]["OwnedDocumentReadiness"];
+            readonly routingContext: components["schemas"]["ContentRoutingContext"];
             readonly schemaKey: string;
             /** Format: int64 */
             readonly schemaVersion: number;
@@ -8800,14 +8667,6 @@ export interface components {
             /** @enum {string} */
             readonly kind: "canvas_scene";
         };
-        readonly PageDocumentHeadImpact: {
-            readonly document_id: string;
-            /** Format: int64 */
-            readonly generation: number;
-            /** Format: int64 */
-            readonly head_seq: number;
-            readonly page_id: string;
-        };
         readonly PageFileReferenceChange: {
             readonly added_file_ids: readonly string[];
             /** @enum {string} */
@@ -8825,7 +8684,7 @@ export interface components {
             readonly title_markdown: string;
         };
         /** @enum {string} */
-        readonly PageOccurrenceMutationCode: "page_not_found" | "page_not_scheduled" | "page_not_recurring" | "authorization_denied" | "invalid_occurrence_request";
+        readonly PageOccurrenceMutationCode: "page_not_found" | "page_not_scheduled" | "page_not_recurring" | "invalid_occurrence_request";
         readonly PageOccurrenceMutationResult: {
             readonly code?: null | components["schemas"]["PageOccurrenceMutationCode"];
             /** Format: int64 */
@@ -8881,6 +8740,20 @@ export interface components {
             readonly idempotency_slot?: string | null;
             readonly operation_id: string;
             readonly store_epoch: string;
+        };
+        /**
+         * @description Ephemeral, path-only evidence supplied by the physical execution snapshot owner.
+         *     These paths never enter the durable operation fingerprint or Backup manifest.
+         */
+        readonly ProfileSnapshotSource: {
+            readonly attachments_path: string;
+            readonly database_path: string;
+            readonly environment_id_path: string;
+            readonly native_histories: readonly components["schemas"]["NativeHistorySnapshotSource"][];
+            readonly runtime_generation: string;
+            readonly runtime_id: string;
+            /** Format: int64 */
+            readonly sequence: number;
         };
         readonly ProjectAppearance: {
             readonly color: components["schemas"]["ProjectMarkerColor"];
@@ -8939,11 +8812,11 @@ export interface components {
         };
         readonly ProjectedRelationSummaryV1: {
             readonly has_more: boolean;
-            /** Format: int64 */
-            readonly restricted_count: number;
             readonly targets: readonly components["schemas"]["ProjectedIdentityV1"][];
             /** Format: int64 */
             readonly total_count: number;
+            /** Format: int64 */
+            readonly unavailable_count: number;
         };
         readonly ProjectedScheduleV1: {
             readonly all_day: boolean;
@@ -8962,21 +8835,6 @@ export interface components {
             /** Format: int64 */
             readonly result_revision: number;
             readonly scope: components["schemas"]["ProjectionScopeKey"];
-        };
-        readonly ProjectionImpact: {
-            /** @enum {string} */
-            readonly kind: "none";
-        } | {
-            /** @enum {string} */
-            readonly kind: "all";
-        } | {
-            readonly data_source_ids: readonly string[];
-            readonly database_ids: readonly string[];
-            readonly document_heads: readonly components["schemas"]["PageDocumentHeadImpact"][];
-            /** @enum {string} */
-            readonly kind: "resources";
-            readonly page_ids: readonly string[];
-            readonly view_ids: readonly string[];
         };
         /**
          * @description One projection scope transition. Revisions are per scope and advance in the
@@ -9051,12 +8909,10 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "link_page";
-            readonly page_access_project_id: string;
             readonly page_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "unlink_page";
-            readonly page_access_project_id: string;
             readonly page_id: string;
         };
         readonly ProjectSessionInvalidationScope: {
@@ -9080,10 +8936,48 @@ export interface components {
             readonly value: components["schemas"]["ProjectWorkspaceAgentConfigValue"];
         };
         readonly ProjectWorkspaceAgentConfigValue: string | boolean;
+        /**
+         * @description Exact native connection lifetime for calls that supply no causal Run metadata.
+         *     Incarnations are unique within a runtime and can never be recycled after retirement.
+         */
+        readonly ProjectWorkspaceAgentRuntimeNativeSessionIdentity: {
+            readonly incarnation_id: string;
+            readonly lease_id: string;
+            /** Format: int32 */
+            readonly native_generation: number;
+            readonly provider_session_id: string;
+            readonly runtime_id: string;
+            readonly thread_id: string;
+        };
+        /** @description Native source captured by the authenticated Host, independent of foreground completion. */
+        readonly ProjectWorkspaceAgentRuntimeNativeSource: {
+            /** Format: int32 */
+            readonly native_generation: number;
+            readonly provider_session_id: string;
+        };
         readonly ProjectWorkspaceAgentRuntimeOptions: {
             readonly config_options: readonly components["schemas"]["ProjectWorkspaceAgentConfigOption"][];
             readonly mode_id?: string | null;
             readonly model?: string | null;
+        };
+        /**
+         * @description A stable Session-to-runtime link, without provider, Run, or transcript projections.
+         *     The host retries an interrupted launch with the same request and Thread identities.
+         */
+        readonly ProjectWorkspaceAgentRuntimeSessionBinding: {
+            readonly bound_at: string;
+            readonly launch_request_id: string;
+            readonly project_id?: string | null;
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
+            readonly session_id: string;
+        };
+        /** @description Persistent engine and execution identity plus one Host-authenticated credential lifetime. */
+        readonly ProjectWorkspaceAgentRuntimeTurnIdentity: {
+            readonly lease_id: string;
+            readonly run_id: string;
+            readonly runtime_id: string;
+            readonly thread_id: string;
         };
         readonly ProjectWorkspaceApplyRequest: components["schemas"]["ModuleApplyRequest_ProjectWorkspaceIntent"];
         readonly ProjectWorkspaceApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_ProjectWorkspaceCommitValue_ProjectWorkspaceReceipt"];
@@ -9157,7 +9051,6 @@ export interface components {
         /** @enum {string} */
         readonly ProjectWorkspaceEventKind: "workspace_changed";
         readonly ProjectWorkspaceExecutionContext: {
-            readonly permission_mode?: null | components["schemas"]["CodexPermissionMode"];
             readonly project?: null | components["schemas"]["ProjectWorkspaceProject"];
             readonly thread: components["schemas"]["ProjectWorkspaceThread"];
             readonly workspace_state?: null | components["schemas"]["ProjectWorkspaceThreadWorkspaceState"];
@@ -9304,6 +9197,8 @@ export interface components {
             readonly kind: "agent";
             readonly label: string;
             readonly project_id?: string | null;
+            /** @description The captured causal Run; absent when the native protocol cannot identify one. */
+            readonly run_id?: string | null;
             readonly session_id?: string | null;
             readonly thread_id?: string | null;
         } | {
@@ -9501,31 +9396,22 @@ export interface components {
             readonly session_id: string;
             readonly title: string;
         } | {
+            readonly initial_page_ids: readonly string[];
             /** @enum {string} */
-            readonly kind: "admit_session_launch";
-            readonly launch_request_hash: string;
+            readonly kind: "create_agent_runtime_session";
+            readonly launch_request_id: string;
             readonly project_id?: string | null;
+            readonly replacement_default_session_id: string;
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
             readonly session_id: string;
             readonly title: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "admit_session_message";
-            readonly message_request_hash: string;
-            readonly session_id: string;
-            readonly thread_id: string;
         } | {
             readonly handoff_request_hash: string;
             /** @enum {string} */
             readonly kind: "admit_session_handoff";
             readonly session_id: string;
             readonly thread_id: string;
-        } | {
-            readonly fork_request_hash: string;
-            /** @enum {string} */
-            readonly kind: "admit_session_fork";
-            readonly session_id: string;
-            readonly source_session_id: string;
-            readonly source_thread_id: string;
         } | {
             readonly initial_page_ids: readonly string[];
             /** @enum {string} */
@@ -9694,7 +9580,6 @@ export interface components {
             readonly kind: "move_thread";
             readonly metadata: components["schemas"]["ProjectWorkspaceThreadMoveMetadataPatch"];
             readonly placement: components["schemas"]["ProjectWorkspaceThreadPlacement"];
-            readonly project_access_grant?: null | components["schemas"]["ProjectWorkspaceThreadMoveProjectAccessGrant"];
             readonly runtime_workspace_roots?: readonly string[] | null;
             readonly source: components["schemas"]["ProjectWorkspaceThreadLane"];
             readonly target: components["schemas"]["ProjectWorkspaceThreadLane"];
@@ -9728,28 +9613,53 @@ export interface components {
             readonly thread_id: string;
         } | {
             readonly actor_project_id?: string | null;
-            readonly inherited_from?: null | components["schemas"]["ProjectWorkspaceTurnCoordinate"];
             /** @enum {string} */
-            readonly kind: "freeze_turn_authority";
-            readonly read_only: boolean;
+            readonly kind: "admit_turn_authority";
             readonly root_thread_id: string;
-            readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
             readonly thread_id: string;
             readonly turn_id: string;
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            /** @enum {string} */
+            readonly kind: "admit_agent_runtime_turn_authority";
+            readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
+            readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            readonly session_id: string;
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_turn_authority";
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+            /** @enum {string} */
+            readonly kind: "admit_agent_runtime_native_session_authority";
+            readonly session_id: string;
+        } | {
+            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_native_session_authority";
+        } | {
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_native_source_authorities";
+            readonly lease_id: string;
+            readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
+            readonly runtime_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "revoke_agent_runtime_authorities";
+            readonly lease_id?: string | null;
+            readonly runtime_id: string;
+        } | {
+            readonly cleanup_id: string;
+            /** @enum {string} */
+            readonly kind: "acknowledge_agent_runtime_execution_cleanup";
+            readonly runtime_id: string;
+            readonly runtime_thread_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "upsert_background_process";
             readonly preserve_started_at?: boolean | null;
             readonly process: components["schemas"]["ProjectWorkspaceBackgroundProcess"];
-        } | {
-            /** @enum {string} */
-            readonly kind: "set_project_permission_mode";
-            readonly mode: components["schemas"]["CodexPermissionMode"];
-            readonly project_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "set_projectless_permission_mode";
-            readonly mode: components["schemas"]["CodexPermissionMode"];
         } | {
             readonly intent: components["schemas"]["ProjectSessionIntent"];
             /** @enum {string} */
@@ -9943,6 +9853,8 @@ export interface components {
             readonly page_id: string;
             /** Format: int32 */
             readonly related_count: number;
+            /** @description The most recently updated linked Runtime-bound Sessions, bounded, for live status. */
+            readonly runtime_session_ids: readonly string[];
             readonly sole_session_id?: string | null;
             /** Format: int32 */
             readonly unread_count: number;
@@ -9950,7 +9862,10 @@ export interface components {
             readonly waiting_on_approval_count: number;
             /** Format: int32 */
             readonly waiting_on_user_input_count: number;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Native thread status only; Runtime-bound Sessions report live status outside Core.
+             */
             readonly working_count: number;
         };
         readonly ProjectWorkspaceProject: {
@@ -9990,11 +9905,17 @@ export interface components {
         };
         readonly ProjectWorkspaceReadRequest: components["schemas"]["ModuleReadRequest_ProjectWorkspaceRead"];
         readonly ProjectWorkspaceReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"];
+        /** @description Immutable execution coordinates; presentation and execution state come from the runtime. */
+        readonly ProjectWorkspaceSessionExecutionRef: {
+            readonly runtime_id: string;
+            readonly thread_id: string;
+        };
         readonly ProjectWorkspaceSessionSummary: {
             readonly archived: boolean;
             readonly archived_at?: string | null;
             readonly created_at: string;
             readonly display_title: string;
+            readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
             readonly id: string;
             readonly no_thread_fallback_title: string;
             /** Format: int64 */
@@ -10246,11 +10167,6 @@ export interface components {
             readonly projectless_output_directory?: string | null;
             readonly projectless_workspace_browser_root?: string | null;
         };
-        readonly ProjectWorkspaceThreadMoveProjectAccessGrant: {
-            /** Format: int64 */
-            readonly expected_target_binding_revision: number;
-            readonly missing_source_roots: readonly string[];
-        };
         readonly ProjectWorkspaceThreadPatch: {
             readonly agent_nickname?: string | null;
             readonly agent_path?: string | null;
@@ -10353,30 +10269,18 @@ export interface components {
             readonly actor_project_id?: string | null;
             readonly library_id: string;
             readonly root_thread_id: string;
-            readonly scope: components["schemas"]["ProjectWorkspaceTurnAuthorityScope"];
-            readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
             readonly store_epoch: string;
             readonly thread_id: string;
             readonly turn_id: string;
         };
         readonly ProjectWorkspaceTurnAuthorityResolution: {
-            readonly authority?: null | components["schemas"]["ProjectWorkspaceTurnAuthority"];
             /**
              * Format: int64
-             * @description Present only for persisted authority and stable across process restarts.
+             * @description Stable admission timestamp; execution identity carries no content permissions.
              */
-            readonly frozen_at_ms?: number | null;
+            readonly admitted_at_ms?: number | null;
+            readonly authority?: null | components["schemas"]["ProjectWorkspaceTurnAuthority"];
             readonly persisted: boolean;
-            /** @description Immutable execution constraint, independent of resource scope. */
-            readonly read_only: boolean;
-        };
-        /** @enum {string} */
-        readonly ProjectWorkspaceTurnAuthorityScope: "project" | "library";
-        /** @enum {string} */
-        readonly ProjectWorkspaceTurnAuthoritySource: "project_turn" | "builtin_full_access" | "inherited_builtin_full_access";
-        readonly ProjectWorkspaceTurnCoordinate: {
-            readonly thread_id: string;
-            readonly turn_id: string;
         };
         readonly QueryReadRequest: components["schemas"]["ModuleReadRequest_QueryRead"];
         readonly QueryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"];
@@ -10683,10 +10587,7 @@ export interface components {
             /** Format: int64 */
             readonly snooze_id: number;
         };
-        /**
-         * @description Exact authorization vocabulary used by semantic delivery. Scope resources
-         *     are explicit requirements rather than ambient packet metadata.
-         */
+        /** @description Exact resource vocabulary used for delivery routing and projection invalidation. */
         readonly ResourceKey: {
             /** @enum {string} */
             readonly kind: "library";
@@ -10724,8 +10625,6 @@ export interface components {
             /** @enum {string} */
             readonly kind: "file";
         };
-        /** @enum {string} */
-        readonly ResourceRevocationReason: "ownership_moved" | "access_revoked" | "archived" | "deleted";
         readonly ResponseEnvelope_ApplyResponse_AutomationCommitValue_AutomationReceipt: {
             /**
              * @description Closed result of an authorized command. A semantic mutation returns its
@@ -11108,7 +11007,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_AutomationReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11166,7 +11064,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_DatabaseReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11279,7 +11176,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_LibraryReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11328,14 +11224,6 @@ export interface components {
                     readonly kind: "metadata";
                     readonly library_id: string;
                     readonly profile_id: string;
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "resource_project_access";
-                    readonly value: components["schemas"]["LibraryResourceProjectAccess"];
-                } | {
-                    readonly impact: components["schemas"]["ProjectionImpact"];
-                    /** @enum {string} */
-                    readonly kind: "projection_impact";
                 } | {
                     readonly has_more: boolean;
                     readonly items: readonly components["schemas"]["LibraryNavigationNode"][];
@@ -11501,10 +11389,6 @@ export interface components {
                     readonly value: components["schemas"]["LibraryPageHistoryPage"];
                 } | {
                     /** @enum {string} */
-                    readonly kind: "agent_resource_access_plan";
-                    readonly value: components["schemas"]["AgentResourceAccessPlan"];
-                } | {
-                    /** @enum {string} */
                     readonly kind: "agent_page_copy_preparation";
                     readonly value: components["schemas"]["LibraryAgentPageCopyPreparation"];
                 } | {
@@ -11526,7 +11410,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_OwnedDocumentReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11591,7 +11474,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11646,14 +11528,6 @@ export interface components {
                     readonly kind: "page_chat_window";
                 } | {
                     /** @enum {string} */
-                    readonly kind: "project_permission_mode";
-                    readonly mode?: null | components["schemas"]["CodexPermissionMode"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "projectless_permission_mode";
-                    readonly mode?: null | components["schemas"]["CodexPermissionMode"];
-                } | {
-                    /** @enum {string} */
                     readonly kind: "session_window";
                     readonly sessions: components["schemas"]["CollectionWindow_ProjectWorkspaceSessionListingItem"];
                 } | {
@@ -11689,6 +11563,34 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                } | {
+                    readonly binding?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_session_binding";
+                } | {
+                    readonly bindings: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeSessionBinding"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_session_binding_window";
+                } | {
+                    readonly cleanups: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_execution_cleanup_window";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_turn_authority";
+                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_native_session_authority";
+                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
+                } | {
+                    readonly admissions: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission"];
+                    /** @enum {string} */
+                    readonly kind: "agent_runtime_admission_window";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_authority";
+                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_session";
@@ -11771,7 +11673,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_QueryReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11800,7 +11701,6 @@ export interface components {
         };
         readonly ResponseEnvelope_ModuleReadSnapshot_StoreAdministrationReadValue: {
             readonly payload: {
-                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
                 /** Format: int64 */
                 readonly commit_head: number;
                 /** Format: int32 */
@@ -11991,28 +11891,6 @@ export interface components {
             readonly max: number;
             /** Format: int32 */
             readonly min: number;
-        };
-        /**
-         * @description Manifest-bound authorization change. Exact deltas carry one or more roots;
-         *     conservative resets intentionally carry none and fence the whole address.
-         */
-        readonly VisibilityDelta: {
-            readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
-            readonly change: components["schemas"]["VisibilityDeltaKind"];
-            readonly delta_hash: string;
-            readonly roots: readonly components["schemas"]["ResourceKey"][];
-        };
-        readonly VisibilityDeltaKind: {
-            /** @enum {string} */
-            readonly kind: "grant";
-        } | {
-            /** @enum {string} */
-            readonly kind: "revoke";
-            readonly reason: components["schemas"]["ResourceRevocationReason"];
-        } | {
-            /** @enum {string} */
-            readonly kind: "conservative_reset";
-            readonly reason: components["schemas"]["ConservativeResetReason"];
         };
     };
     responses: never;

@@ -12,10 +12,7 @@ import {
 } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
-import {
-  presentPageChatActivity,
-  presentPageChatItemActivity,
-} from "@/lib/page-chat-activity-presentation";
+import { usePageChatActivity, usePageChatItemActivity } from "@/lib/use-page-chat-activity";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import type { PageChatActivitySummary, PageChatItem } from "@/lib/types";
 
@@ -48,7 +45,7 @@ function RelatedChatRow({
   readonly onOpen: () => void;
   readonly onRemove?: () => void;
 }) {
-  const activity = presentPageChatItemActivity(item);
+  const activity = usePageChatItemActivity(item);
   const projectLabel = item.projectName?.trim() || "Chats";
   return (
     <div
@@ -104,7 +101,7 @@ export function PageChatActivityControl({
 }: PageChatActivityControlProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [removingSessionId, setRemovingSessionId] = useState<string | null>(null);
-  const activity = presentPageChatActivity(summary);
+  const activity = usePageChatActivity(summary);
   const detailQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
       pageAccessProjectId,

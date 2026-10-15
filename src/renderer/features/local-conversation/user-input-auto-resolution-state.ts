@@ -72,21 +72,26 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
+const subscribeDisabled = (): (() => void) => () => {};
+const getDisabledSnapshot = (): null => null;
+
 export function useUserInputAutoResolution(
   conversationId: string,
   requestId: CodexProtocolRequestId,
+  enabled = true,
 ): CodexUserInputAutoResolutionEntry | null {
   const key = buildKey(conversationId, requestId);
   const entry = useSyncExternalStore(
-    subscribe,
-    () => entries.get(key) ?? null,
+    enabled ? subscribe : subscribeDisabled,
+    enabled ? () => entries.get(key) ?? null : getDisabledSnapshot,
     () => null,
   );
 
   useEffect(() => {
+    if (!enabled) return;
     ensureStarted();
     void hydrationPromise;
-  }, []);
+  }, [enabled]);
 
   return entry;
 }

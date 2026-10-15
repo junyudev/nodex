@@ -5,11 +5,11 @@ use crate::infrastructure::{
     prepared_blobs,
     sqlite::{StoreError, StoreErrorCode},
 };
-use nodex_core_contracts::{AdapterKind, BoundModuleContext};
+use nodex_core_contracts::BoundModuleContext;
 use rusqlite::{Connection, params};
 use std::collections::BTreeSet;
 
-pub(super) fn require_access(
+fn require_thread_for_assets(
     connection: &Connection,
     context: &BoundModuleContext,
     thread_id: &str,
@@ -17,27 +17,23 @@ pub(super) fn require_access(
 ) -> Result<(), StoreError> {
     let thread = super::thread::read_thread(connection, &context.library_id.0, thread_id)?
         .ok_or_else(|| error(StoreErrorCode::NotFound, "Thread is unavailable"))?;
-    let Some(project) = &context.project_id else {
-        if matches!(
-            context.adapter,
-            AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
-        ) {
-            return Ok(());
+    if !write {
+        return Ok(());
+    }
+    if thread.archived {
+        return Err(error(StoreErrorCode::NotFound, "Thread is archived"));
+    }
+    if let Some(project_id) = thread.project_id {
+        let active = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2 AND lifecycle = 'active')",
+            params![project_id, context.library_id.0], |row| row.get::<_, bool>(0),
+        )?;
+        if !active {
+            return Err(error(
+                StoreErrorCode::NotFound,
+                "Thread belongs to an inactive Project",
+            ));
         }
-        return Err(error(
-            StoreErrorCode::Unauthorized,
-            "Thread assets require a Project or trusted Library authority",
-        ));
-    };
-    let accessible: bool = connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1 AND library_id = ?2 AND (lifecycle = 'active' OR (?3 = 0 AND lifecycle = 'inactive')))",
-        params![project.0,context.library_id.0,i64::from(write)], |row| row.get(0),
-    )?;
-    if !accessible || thread.project_id.as_deref() != Some(&project.0) {
-        return Err(error(
-            StoreErrorCode::Unauthorized,
-            "Thread assets are unavailable to the bound Project",
-        ));
     }
     Ok(())
 }
@@ -52,7 +48,7 @@ pub(super) fn retain(
     thread_id: &str,
     receipt_ids: &[String],
 ) -> Result<super::ProjectWorkspaceApplyOutcome, StoreError> {
-    require_access(connection, context, thread_id, true)?;
+    require_thread_for_assets(connection, context, thread_id, true)?;
     if receipt_ids.is_empty() || receipt_ids.len() > 512 {
         return Err(error(
             StoreErrorCode::InvalidInput,
@@ -182,7 +178,7 @@ impl super::ProjectWorkspaceModule {
         readers.read_default(move |connection| {
             use rusqlite::OptionalExtension;
             let transaction = connection.unchecked_transaction()?;
-            require_access(&transaction,&context,&thread_id,false)?;
+            require_thread_for_assets(&transaction,&context,&thread_id,false)?;
             let (name,length) = transaction.query_row(
                 "SELECT blob.physical_asset_name, blob.byte_length FROM managed_blobs blob
                  WHERE blob.content_hash = ?3 AND (
@@ -307,6 +303,26 @@ mod tests {
             .unwrap();
         let mut outsider = context();
         outsider.project_id = Some(nodex_core_contracts::ProjectId("other-project".to_owned()));
+        let mut cross_project = fixture
+            .module
+            .resolve_thread_asset_blob(&outsider, "thread:assets", &hash)
+            .expect("same Profile reads Thread bytes across Project routing");
+        let mut cross_project_bytes = Vec::new();
+        cross_project
+            .file
+            .read_to_end(&mut cross_project_bytes)
+            .unwrap();
+        assert_eq!(cross_project_bytes, b"retained input");
+        outsider.project_id = None;
+        assert_eq!(
+            fixture
+                .module
+                .resolve_thread_asset_blob(&outsider, "thread:assets", &hash)
+                .unwrap()
+                .content_hash,
+            hash
+        );
+        outsider.library_id = nodex_core_contracts::LibraryId("foreign-library".to_owned());
         assert_eq!(
             fixture
                 .module

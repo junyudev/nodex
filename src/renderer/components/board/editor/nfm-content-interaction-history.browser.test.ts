@@ -87,7 +87,7 @@ function surface(history: InteractionHistory, name: string, apply?: typeof apply
     apply: apply ?? (async (_scope, request) => receipt(request)),
     historyReconciliation: availableHistoryReconciliation,
     runtime: {
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
       libraryId: "library:realm",
       source: { documentId: doc.guid, storeEpoch: "epoch:realm", generation: 1 },
       participant: {

@@ -9,14 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { WorktreeShellEnvironmentRuntime } from "../../host-runtime/WorktreeShellEnvironmentRuntime";
-import {
-  ClaudeSdk,
-  live,
-  claudeHistoryWindow,
-  claudeForkMessageIds,
-  claudeHistoryImage,
-  claudeHistoryToolOutput,
-} from "./ClaudeSdk";
+import { ClaudeSdk, live, claudeHistoryImage, claudeHistoryToolOutput } from "./ClaudeSdk";
 import { defaultClaudeInstance } from "../../../shared/claude-agent-settings";
 import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 const ambientNativeConfiguration = () => process.env.CLAUDE_CONFIG_DIR;
@@ -90,7 +83,7 @@ it.effect("native home rejects relative paths and non-directory ancestors", () =
 );
 
 it.effect(
-  "native history workers isolate account environments and remap forks without a Claude query",
+  "native history workers isolate account environments and page without a Claude query",
   () =>
     Effect.gen(function* () {
       const root = yield* Effect.acquireRelease(
@@ -100,7 +93,7 @@ it.effect(
       const workspace = join(root, "workspace");
       yield* Effect.promise(() => mkdir(workspace));
       const cwd = yield* Effect.promise(() => realpath(workspace));
-      const prepare = (account: string, text: string) =>
+      const prepare = (account: string, text: string, imageData = "AA==") =>
         Effect.gen(function* () {
           const configDirectory = join(root, account);
           const projects = join(configDirectory, "projects", cwd.replace(/[^a-zA-Z0-9]/gu, "-"));
@@ -118,7 +111,7 @@ it.effect(
                 content: [
                   {
                     type: "image",
-                    source: { type: "base64", media_type: "image/png", data: "AA==" },
+                    source: { type: "base64", media_type: "image/png", data: imageData },
                   },
                   { type: "text", text },
                 ],
@@ -191,10 +184,6 @@ it.effect(
       });
       expect(yield* sdk.sessionInfo(first, "01991e60-b800-7000-8000-000000000020")).toBeNull();
 
-      expect(yield* sdk.hasSession(first)).toBe(true);
-      expect(
-        yield* sdk.hasSession({ ...first, sessionId: "01991e60-b800-7000-8000-000000000020" }),
-      ).toBe(false);
       const a = yield* sdk.historyPage(first, { limit: 1 });
       const b = yield* sdk.historyPage(second, { limit: 1 });
       expect(a.messages).toHaveLength(3);
@@ -217,22 +206,22 @@ it.effect(
         content: [{ type: "image" }, { type: "text", text: "Account B" }],
       });
       const relocated = { ...first, cwd: join(root, "destination-worktree") };
-      expect(yield* sdk.hasSession(relocated)).toBe(true);
       expect((yield* sdk.historyPage(relocated)).messages).toEqual(a.messages);
       expect(yield* sdk.historyImage(relocated, user, 0)).toEqual({
         mediaType: "image/png",
         data: "AA==",
       });
-      const fork = yield* sdk.fork(relocated, assistant);
-      expect(fork.sessionId).not.toBe(id);
-      expect(fork.messageIdMap?.[user]).toBeTruthy();
-      expect(fork.messageIdMap?.[user]).not.toBe(user);
-      const copied = yield* sdk.historyPage({ ...first, sessionId: fork.sessionId });
-      expect(copied.messages[0]?.message).toMatchObject({
-        content: [{ type: "image" }, { type: "text", text: "Account A" }],
+      const largeData = Buffer.alloc(5 * 1024 * 1024).toString("base64");
+      const large = yield* prepare("account-large", "Large image", largeData);
+      const largePage = yield* sdk.historyPage(large, { limit: 1 });
+      expect(JSON.stringify(largePage).length).toBeLessThan(1024 * 1024);
+      expect(largePage.messages[0]?.message).toMatchObject({
+        content: [
+          { type: "image", source: { media_type: "image/png" } },
+          { type: "text", text: "Large image" },
+        ],
       });
-      expect(copied.messages[0]?.uuid).toBe(fork.messageIdMap?.[user]);
-      expect((yield* sdk.historyPage(first)).messages[0]?.uuid).toBe(user);
+      expect((yield* sdk.historyImage(large, user, 0)).data).toBe(largeData);
       expect(ambientNativeConfiguration()).toBe(ambient);
       expect(
         yield* sdk
@@ -294,40 +283,6 @@ it.effect(
       ).toThrow("image limit");
     }),
 );
-it.effect("page boundaries exclude tool results and sidechain prompts", () =>
-  Effect.sync(() => {
-    const messages = [
-      entry(user, "first"),
-      entry(assistant, [{ type: "tool_result", content: "output" }]),
-      entry(id, "child", { parent_agent_id: "agent" }),
-      entry("later", "second"),
-      entry("end", [], { type: "assistant" }),
-    ];
-    expect(claudeHistoryWindow(messages, { limit: 1 })).toMatchObject({
-      messages: messages.slice(3),
-      before: "later",
-      hasMore: true,
-    });
-    expect(claudeHistoryWindow(messages, { before: "later", limit: 1 })).toMatchObject({
-      messages: messages.slice(0, 3),
-      before: null,
-      hasMore: false,
-    });
-    expect(() => claudeHistoryWindow(messages, { before: "missing" })).toThrow("cursor");
-  }),
-);
-
-it.effect("fork UUID maps require matching content and actor", () =>
-  Effect.sync(() => {
-    const source = [entry(user, "same"), entry(assistant, "different")];
-    const forked = [entry("new-user", "same"), entry("new-assistant", "wrong")];
-    expect(claudeForkMessageIds(source, forked)).toEqual({ [user]: "new-user" });
-    expect(
-      claudeForkMessageIds(source, [entry("child", "same", { parent_agent_id: "other" })]),
-    ).toEqual({});
-  }),
-);
-
 it.effect(
   "lazy tool output checks exact native UUID and tool identity and excludes binary payloads",
   () =>

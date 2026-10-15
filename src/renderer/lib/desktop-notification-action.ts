@@ -1,34 +1,14 @@
-import type { CodexCanonicalServerRequest } from "../../shared/codex-conversation-state/codex-conversation-state";
-import type {
-  CodexApprovalKind,
-  CodexProtocolRequestId,
-  DesktopNotificationActionInvocation,
-} from "../../shared/types";
+import type { DesktopNotificationActionInvocation } from "../../shared/types";
 
 export interface DesktopNotificationActionManager {
   asyncQuestions?: {
     open(threadId: string, questionId: string): void;
     read(threadId: string): { activeTurnId: string | null };
   };
-  readConversation(conversationId: string): {
-    canonicalRequests?: readonly CodexCanonicalServerRequest[];
-  } | null;
   startTurn(conversationId: string, prompt: string): Promise<unknown>;
-  respondApproval(
-    requestId: CodexProtocolRequestId,
-    response: {
-      kind: CodexApprovalKind;
-      decision: "accept" | "acceptForSession" | "decline";
-    },
-    conversationId: string,
-  ): Promise<unknown>;
 }
 
-export type DesktopNotificationActionResult =
-  | "opened"
-  | "replied"
-  | "approval-responded"
-  | "ignored";
+export type DesktopNotificationActionResult = "opened" | "replied" | "ignored";
 
 function decodeNavigationSegment(value: string): string {
   try {
@@ -50,6 +30,17 @@ export function resolveDesktopNotificationParentThreadId(
   return invocation.conversationId;
 }
 
+/** The product Session of a Runtime-bound conversation named by `session:<id>`, if any. */
+export function resolveDesktopNotificationRuntimeSessionId(
+  invocation: DesktopNotificationActionInvocation,
+): string | null {
+  const segment = (invocation.navigationPath ?? "")
+    .split("/")
+    .find((part) => part.startsWith("session:"));
+  const encoded = segment?.slice("session:".length).trim() ?? "";
+  return encoded.length > 0 ? decodeNavigationSegment(encoded) : null;
+}
+
 export function resolveDesktopNotificationSideChatThreadId(
   invocation: DesktopNotificationActionInvocation,
 ): string | null {
@@ -59,25 +50,7 @@ export function resolveDesktopNotificationSideChatThreadId(
   return conversationId;
 }
 
-function resolveLiveApprovalKind(
-  manager: DesktopNotificationActionManager,
-  conversationId: string,
-  requestId: CodexProtocolRequestId,
-): CodexApprovalKind | null {
-  const request = manager
-    .readConversation(conversationId)
-    ?.canonicalRequests?.find((candidate) => candidate.id === requestId);
-  if (!request) return null;
-  if (request.method === "item/commandExecution/requestApproval") return "command";
-  if (request.method === "item/fileChange/requestApproval") return "file";
-  return null;
-}
-
-/**
- * Executes a native notification action only after Workbench navigation has
- * completed. Approval intent is revalidated against live canonical request
- * state so a stale notification cannot answer a resolved or replaced request.
- */
+/** Execute a native notification action after Workbench navigation settles. */
 export async function executeDesktopNotificationAction(
   invocation: DesktopNotificationActionInvocation,
   manager: DesktopNotificationActionManager,
@@ -102,21 +75,22 @@ export async function executeDesktopNotificationAction(
     return "replied";
   }
 
-  const requestId = invocation.requestId;
-  if (requestId === null) return "ignored";
-  const kind = resolveLiveApprovalKind(manager, conversationId, requestId);
-  if (!kind) return "ignored";
+  return "ignored";
+}
 
-  const decision =
-    invocation.actionType === "approve"
-      ? "accept"
-      : invocation.actionType === "approve-for-session"
-        ? "acceptForSession"
-        : invocation.actionType === "decline"
-          ? "decline"
-          : null;
-  if (!decision) return "ignored";
-
-  await manager.respondApproval(requestId, { kind, decision }, conversationId);
-  return "approval-responded";
+/**
+ * Actions on a Runtime-bound conversation. Opening already presented the Session; a reply is
+ * an ordinary follow-up through the Session's execution owner, never a native turn.
+ */
+export async function executeRuntimeDesktopNotificationAction(
+  invocation: DesktopNotificationActionInvocation,
+  sessionId: string,
+  sendMessage: (input: { readonly sessionId: string; readonly text: string }) => Promise<unknown>,
+): Promise<DesktopNotificationActionResult> {
+  if (invocation.actionType === "open") return "opened";
+  if (invocation.actionType !== "reply") return "ignored";
+  const reply = invocation.reply?.trim() ?? "";
+  if (reply.length === 0) return "ignored";
+  await sendMessage({ sessionId, text: reply });
+  return "replied";
 }

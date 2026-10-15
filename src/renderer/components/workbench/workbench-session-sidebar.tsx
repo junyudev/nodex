@@ -61,17 +61,6 @@ import {
 import type { StableWorktreeEntry } from "./stable-worktree-production";
 import { StableWorktreeSidebarRows } from "./stable-worktree-sidebar-row";
 import { AutomationsIcon, NewChatIcon, ThreadIcon, PluginsIcon } from "@/components/shared/icons";
-import {
-  NodexDialog,
-  NodexDialogAction,
-  NodexDialogBody,
-  NodexDialogContent,
-  NodexDialogDescription,
-  NodexDialogFooter,
-  NodexDialogFrame,
-  NodexDialogHeader,
-  NodexDialogTitle,
-} from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
 import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
@@ -96,11 +85,9 @@ import {
   type CodexSidebarProjectGroup,
   type CodexSidebarThreadSyncModel,
 } from "@/lib/codex-sidebar-thread-sync";
-import {
-  buildLibraryMoveOperation,
-  buildLibraryProjectGrantOperation,
-} from "@/lib/library-operations";
+import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { projectActivitySummariesQueryOptions } from "@/lib/query-options";
+import { runtimeSessionTarget } from "@/lib/session-execution";
 import {
   listExpandedVisibleProjectGroupIds,
   listReopenableVisibleProjectGroupIds,
@@ -1383,6 +1370,7 @@ function SidebarThreadOrganizerSections({
         <CodexSidebarThreadRow
           key={item.key}
           item={item}
+          runtime={runtimeSessionTarget(session)}
           grouped={options.grouped}
           active={
             (item.clientThreadId ?? item.threadId) === activePendingClientThreadId ||
@@ -1458,11 +1446,18 @@ function SidebarThreadOrganizerSections({
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
       .filter((item): item is CodexSidebarThreadItem => item != null);
+    const runtimeSessions = projectThreadItems.flatMap((item) => {
+      const session = resolveSessionForItem(item);
+      return session?.executionRef && !session.archived
+        ? [{ sessionId: session.id, unread: session.unread }]
+        : [];
+    });
 
     return (
       <CodexProjectRow
         key={project.id}
         project={project}
+        runtimeSessions={runtimeSessions}
         activity={
           projectActivityQuery.isPending
             ? undefined
@@ -1975,11 +1970,6 @@ export function ProjectSessionSidebar({
     sessionCollectionsByProject,
   ]);
   const [sidebarResizing, setSidebarResizing] = useState(false);
-  const [pendingLibraryGrantDrop, setPendingLibraryGrantDrop] = useState<{
-    readonly resource: SidebarLibraryDragResource;
-    readonly projectId: string;
-  } | null>(null);
-  const [libraryGrantAccess, setLibraryGrantAccess] = useState<"read" | "read_write">("read_write");
   const { mutation: libraryMutation } = useApplyLibraryOperation();
   const sidebarScrollChrome = useSidebarScrollChrome();
   const sidebarResizeDisabled = resizeDisabled;
@@ -2047,40 +2037,6 @@ export function ProjectSessionSidebar({
     },
     [libraryMutation],
   );
-  const confirmLibraryGrantDrop = useCallback(async () => {
-    if (!pendingLibraryGrantDrop) return;
-    const project = sidebarThreadModel.projectGroups.find(
-      (group) => group.project.id === pendingLibraryGrantDrop.projectId,
-    )?.project;
-    if (!project) {
-      toast.danger("The destination Project is no longer active");
-      setPendingLibraryGrantDrop(null);
-      return;
-    }
-    try {
-      const receipt = await libraryMutation.mutateAsync(
-        buildLibraryProjectGrantOperation({
-          projectId: project.id,
-          target: pendingLibraryGrantDrop.resource.target,
-          access: libraryGrantAccess,
-        }),
-      );
-      if (!receipt.didMutate) toast.info(`${project.name} already has this access`);
-      setPendingLibraryGrantDrop(null);
-    } catch (error) {
-      toast.danger(error instanceof Error ? error.message : "Could not grant Project access");
-    }
-  }, [
-    libraryGrantAccess,
-    libraryMutation,
-    pendingLibraryGrantDrop,
-    sidebarThreadModel.projectGroups,
-  ]);
-  const pendingLibraryGrantProject = pendingLibraryGrantDrop
-    ? (sidebarThreadModel.projectGroups.find(
-        (group) => group.project.id === pendingLibraryGrantDrop.projectId,
-      )?.project ?? null)
-    : null;
   const sidebarThreadIdByKey = useMemo(() => {
     const entries: Array<readonly [string, string]> = [];
     for (const [threadKey, item] of sidebarThreadModel.threadItemsByKey) {
@@ -2360,7 +2316,6 @@ export function ProjectSessionSidebar({
                 onThreadError={reportSidebarThreadReorderError}
                 onThreadDrop={handleSidebarThreadDrop}
                 onLibraryMove={handleLibraryMove}
-                onLibraryGrant={setPendingLibraryGrantDrop}
               >
                 <SidebarThreadOrganizerSections
                   activeProjectId={activeProjectId}
@@ -2420,60 +2375,6 @@ export function ProjectSessionSidebar({
                   onLoadMoreProjects={onLoadMoreProjects}
                 />
               </SidebarReorderDndProvider>
-              <NodexDialog
-                open={pendingLibraryGrantDrop !== null}
-                onOpenChange={(open) => {
-                  if (!open) setPendingLibraryGrantDrop(null);
-                }}
-              >
-                <NodexDialogContent size="compact">
-                  <NodexDialogFrame>
-                    <NodexDialogHeader>
-                      <NodexDialogTitle>Give Project access?</NodexDialogTitle>
-                      <NodexDialogDescription>
-                        {pendingLibraryGrantProject?.name ?? "This Project"} will receive recursive
-                        access to {pendingLibraryGrantDrop?.resource.title ?? "this Library item"}.
-                        Ownership and Database bindings will not change.
-                      </NodexDialogDescription>
-                    </NodexDialogHeader>
-                    <NodexDialogBody>
-                      <fieldset className="grid gap-2 text-sm text-token-text-primary">
-                        <legend className="mb-1">Access</legend>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="library-drop-access"
-                            checked={libraryGrantAccess === "read"}
-                            onChange={() => setLibraryGrantAccess("read")}
-                          />
-                          Read
-                        </label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="library-drop-access"
-                            checked={libraryGrantAccess === "read_write"}
-                            onChange={() => setLibraryGrantAccess("read_write")}
-                          />
-                          Read &amp; write
-                        </label>
-                      </fieldset>
-                    </NodexDialogBody>
-                    <NodexDialogFooter>
-                      <NodexDialogAction onClick={() => setPendingLibraryGrantDrop(null)}>
-                        Cancel
-                      </NodexDialogAction>
-                      <NodexDialogAction
-                        tone="primary"
-                        disabled={!pendingLibraryGrantProject || libraryMutation.isPending}
-                        onClick={() => void confirmLibraryGrantDrop()}
-                      >
-                        Grant access
-                      </NodexDialogAction>
-                    </NodexDialogFooter>
-                  </NodexDialogFrame>
-                </NodexDialogContent>
-              </NodexDialog>
             </div>
 
             <LeftSidebarFooter

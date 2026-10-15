@@ -19,13 +19,6 @@ interface CodexSidebarThreadMoveBase {
   threadId: string;
   sourceContainerId: CodexSidebarThreadContainerId;
   targetContainerId: CodexSidebarThreadContainerId;
-  projectAccessGrant?: CodexSidebarThreadMoveProjectAccessGrant;
-}
-
-export interface CodexSidebarThreadMoveProjectAccessGrant {
-  targetProjectId: string;
-  expectedBindingRevision: number;
-  missingProjectSources: string[];
 }
 
 export type CodexSidebarThreadMovePlacement =
@@ -76,19 +69,7 @@ export interface CodexSidebarThreadMoveSuccess {
   projectionRevision: number;
 }
 
-export interface CodexSidebarThreadMoveConfirmationRequired {
-  status: "confirmation-required";
-  reason: "target-project-needs-source-access";
-  threadId: string;
-  targetProjectId: string;
-  targetBindingRevision: number;
-  missingProjectSources: string[];
-  targetProjectName: string;
-}
-
-export type CodexSidebarThreadMoveResult =
-  | CodexSidebarThreadMoveSuccess
-  | CodexSidebarThreadMoveConfirmationRequired;
+export type CodexSidebarThreadMoveResult = CodexSidebarThreadMoveSuccess;
 
 const ContainerIdSchema = z
   .string()
@@ -105,20 +86,11 @@ const ContainerIdSchema = z
     "Invalid sidebar thread container id",
   ) as z.ZodType<CodexSidebarThreadContainerId>;
 
-const ProjectAccessGrantSchema = z
-  .object({
-    targetProjectId: z.string().trim().min(1),
-    expectedBindingRevision: z.number().int().positive().safe(),
-    missingProjectSources: z.array(z.string().trim().min(1)).min(1),
-  })
-  .strict() satisfies z.ZodType<CodexSidebarThreadMoveProjectAccessGrant>;
-
 const MoveBaseSchema = z.object({
   hostId: z.literal("local"),
   threadId: z.string().trim().min(1),
   sourceContainerId: ContainerIdSchema,
   targetContainerId: ContainerIdSchema,
-  projectAccessGrant: ProjectAccessGrantSchema.optional(),
 });
 
 const MovePlacementSchema = z.union([

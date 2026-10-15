@@ -16,7 +16,7 @@ import {
 } from "./canvas-scene";
 import type { LocalCommitCommandSuccess } from "../local-commit-delivery";
 import type { CoreFailureEvidence } from "../core-failure-evidence";
-import { parseContentAccessContext, type ContentAccessContext } from "../content-access-context";
+import { parseContentRoutingContext, type ContentRoutingContext } from "../content-routing-context";
 
 export const MAX_CANVAS_SCENE_MUTATION_BYTES = 2 * 1024 * 1024;
 export const MAX_CANVAS_SCENE_SNAPSHOT_BYTES = 16 * 1024 * 1024;
@@ -34,7 +34,7 @@ export type CanvasSceneAppStateIntents = Readonly<Record<string, CanvasSceneAppS
 
 export interface CanvasSceneMutationIntent {
   readonly mutationId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -57,7 +57,7 @@ export interface CanvasSceneMutationRequest extends CanvasSceneMutationIntent {
 export interface CanvasSceneMutationResult {
   readonly mutationId: string;
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -90,7 +90,7 @@ export type CanvasSceneMutationErrorCode =
   | "invalid_response"
   | "invalid_canvas_scene_mutation"
   | "store_epoch_mismatch"
-  | "access_scope_mismatch"
+  | "invalid_session"
   | "document_not_found"
   | "document_not_ready"
   | "document_engine_mismatch"
@@ -121,7 +121,7 @@ export type CanvasSceneSyncCommandResult =
   | { readonly ok: false; readonly error: CanvasSceneMutationError };
 
 export interface CanvasSceneSubscribeRequest {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly clientSessionId: string;
 }
@@ -143,7 +143,7 @@ export type CanvasSceneSubscriptionCommandResult =
 
 export interface CanvasSceneSyncRequest {
   readonly syncRequestId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly clientSessionId: string;
   readonly knownStoreEpoch?: string;
@@ -155,7 +155,7 @@ export interface CanvasSceneSyncRequest {
 interface CanvasSceneSyncResponseBase {
   readonly syncRequestId: string;
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -175,7 +175,7 @@ export type CanvasSceneSyncResponse =
 export interface CanvasSceneCommittedEvent {
   readonly type: "canvas_scene_committed";
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -192,7 +192,7 @@ export interface CanvasSceneCommittedEvent {
 export interface CanvasSceneResyncRequiredEvent {
   readonly type: "canvas_scene_resync_required";
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly storeEpoch: string;
   readonly generation: number;
@@ -202,7 +202,7 @@ export interface CanvasSceneResyncRequiredEvent {
 export type CanvasSceneSessionEvent = {
   readonly type: "canvas_scene_session";
   readonly libraryId: string;
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly documentId: string;
   readonly clientSessionId: string;
 } & (
@@ -225,9 +225,9 @@ const requireSafeInteger = (value: unknown, field: string, minimum: number): num
   throw new CanvasSceneContractError(`${field} must be a safe integer >= ${minimum}`);
 };
 
-const requireAccessContext = (value: unknown, field: string): ContentAccessContext => {
+const requireRoutingContext = (value: unknown, field: string): ContentRoutingContext => {
   try {
-    return parseContentAccessContext(value);
+    return parseContentRoutingContext(value);
   } catch (error) {
     throw new CanvasSceneContractError(`${field} is invalid`, { cause: error });
   }
@@ -282,7 +282,7 @@ export const canonicalizeCanvasSceneMutationIntent = (
   }
   exactKeys(input, "Canvas scene mutation intent", [
     "mutationId",
-    "accessContext",
+    "routingContext",
     "documentId",
     "storeEpoch",
     "generation",
@@ -352,7 +352,7 @@ export const canonicalizeCanvasSceneMutationIntent = (
   );
   const intent: CanvasSceneMutationIntent = {
     mutationId: requireCanvasSceneIdentity(input.mutationId, "mutationId"),
-    accessContext: requireAccessContext(input.accessContext, "accessContext"),
+    routingContext: requireRoutingContext(input.routingContext, "routingContext"),
     documentId: requireCanvasSceneIdentity(input.documentId, "documentId"),
     storeEpoch: requireCanvasSceneIdentity(input.storeEpoch, "storeEpoch"),
     generation: requireSafeInteger(input.generation, "generation", 1),
@@ -382,7 +382,7 @@ export const canonicalizeCanvasSceneMutationRequest = (
   }
   exactKeys(input, "Canvas scene mutation", [
     "mutationId",
-    "accessContext",
+    "routingContext",
     "documentId",
     "storeEpoch",
     "generation",
@@ -434,7 +434,7 @@ export const canonicalizeCanvasSceneMutationResult = (
   exactKeys(input, "Canvas scene mutation result", [
     "mutationId",
     "libraryId",
-    "accessContext",
+    "routingContext",
     "documentId",
     "storeEpoch",
     "generation",
@@ -564,7 +564,7 @@ export const canonicalizeCanvasSceneMutationResult = (
   return {
     mutationId: requireCanvasSceneIdentity(input.mutationId, "mutationId"),
     libraryId: requireCanvasSceneIdentity(input.libraryId, "libraryId"),
-    accessContext: requireAccessContext(input.accessContext, "accessContext"),
+    routingContext: requireRoutingContext(input.routingContext, "routingContext"),
     documentId: requireCanvasSceneIdentity(input.documentId, "documentId"),
     storeEpoch: requireCanvasSceneIdentity(input.storeEpoch, "storeEpoch"),
     generation: requireSafeInteger(input.generation, "generation", 1),

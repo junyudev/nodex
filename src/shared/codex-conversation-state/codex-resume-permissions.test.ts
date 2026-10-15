@@ -15,7 +15,7 @@ const permissions = {
   activePermissionProfile: null,
   runtimeWorkspaceRoots: ["/retained"],
 };
-const workspace = { cwd: "/workspace", permissions };
+const workspace = { cwd: "/workspace", runtimeWorkspaceRoots: permissions.runtimeWorkspaceRoots };
 const state = () =>
   createCodexCanonicalHydratedConversationState(buildAgentActivityV2CorpusThread([]), {
     hostId: "local",
@@ -35,73 +35,58 @@ test("hydrated turn permission defaults do not become explicit resume overrides"
   expect(request).not.toHaveProperty("approvalsReviewer");
 });
 
-test("explicit local profile retains workspace roots and takes precedence over inferred defaults", () => {
+test("historical native profiles retain workspace placement without becoming execution overrides", () => {
   const canonical = state();
   const latest = {
     ...canonical.turns[0]!,
     permissionParamsSource: undefined,
     params: {
       ...canonical.turns[0]!.params,
-      permissions: ":danger-full-access",
-      runtimeWorkspaceRoots: [],
-      useAppServerPermissionDefault: false as const,
+      permissions: "historical-profile",
+      runtimeWorkspaceRoots: ["/historical"],
       attachments: [],
       sandboxPolicy: permissions.sandboxPolicy,
-      approvalPolicy: "never" as const,
+      approvalPolicy: "on-request" as const,
     },
   };
   const request = canonicalResumeOverrides({ ...canonical, turns: [latest] }, workspace);
-  expect(request).toMatchObject({
-    approvalPolicy: "never",
-    permissions: ":danger-full-access",
-    runtimeWorkspaceRoots: ["/retained", canonical.cwd],
-  });
+  expect(request.cwd).toBe(canonical.cwd);
+  expect(request.runtimeWorkspaceRoots).toEqual([canonical.cwd, "/retained"]);
+  expect(request).not.toHaveProperty("permissions");
+  expect(request).not.toHaveProperty("approvalPolicy");
   expect(request).not.toHaveProperty("sandbox");
 });
 
-test("explicit settings can clear a profile and carry sandbox policy fields through configuration", () => {
+test("resident nonpermission settings survive resume while historical policy remains diagnostic", () => {
   const canonical = state();
-  const request = canonicalResumeOverrides(
-    {
-      ...canonical,
-      latestThreadSettings: {
-        model: "model",
-        effort: null,
-        collaborationMode: canonical.latestCollaborationMode,
-        activePermissionProfile: null,
-        approvalPolicy: "never",
-        approvalsReviewer: "guardian_subagent",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/configured"],
-          networkAccess: true,
-          excludeTmpdirEnvVar: true,
-          excludeSlashTmp: false,
-        },
-        serviceTier: null,
-      },
+  const history = {
+    ...canonical,
+    latestThreadSettings: {
+      model: "model",
+      effort: null,
+      collaborationMode: canonical.latestCollaborationMode,
+      activePermissionProfile: null,
+      approvalPolicy: "on-request" as const,
+      approvalsReviewer: "guardian_subagent" as const,
+      sandboxPolicy: permissions.sandboxPolicy,
+      serviceTier: null,
+      personality: "pragmatic" as const,
     },
-    workspace,
-  );
-  expect(request).toMatchObject({
-    sandbox: "workspace-write",
-    approvalPolicy: "never",
-    approvalsReviewer: "guardian_subagent",
-    serviceTier: null,
-    config: {
-      sandbox_workspace_write: {
-        writable_roots: ["/configured", "/retained"],
-        network_access: true,
-        exclude_tmpdir_env_var: true,
-        exclude_slash_tmp: false,
-      },
-    },
-  });
-  expect(request).not.toHaveProperty("permissions");
+  };
+  const before = structuredClone(history.latestThreadSettings);
+  const request = canonicalResumeOverrides(history, workspace);
+  expect(request).toMatchObject({ serviceTier: null, personality: "pragmatic" });
+  expect(Object.keys(request).sort()).toEqual([
+    "cwd",
+    "personality",
+    "runtimeWorkspaceRoots",
+    "serviceTier",
+  ]);
+  expect(history.latestThreadSettings).toEqual(before);
 });
 
 test.each(["same-id", "later-id"])(
-  "resume permissions come from resident history despite a %s presentation overlay",
+  "resume service tier comes from resident history despite a %s presentation overlay",
   (overlayKind) => {
     const canonical = state();
     const resident = {
@@ -112,7 +97,7 @@ test.each(["same-id", "later-id"])(
         permissions: "resident-profile",
         runtimeWorkspaceRoots: ["/workspace"],
         sandboxPolicy: permissions.sandboxPolicy,
-        useAppServerPermissionDefault: false,
+
         attachments: [],
         approvalPolicy: "never" as const,
         serviceTier: "priority" as const,
@@ -137,99 +122,18 @@ test.each(["same-id", "later-id"])(
       },
     };
     expect(canonicalResumeOverrides({ ...history, turns: [overlay] }, workspace)).toMatchObject({
-      permissions: "resident-profile",
-      approvalPolicy: "never",
       serviceTier: "priority",
     });
   },
 );
 
-test.each([
-  {
-    label: "replacement profile",
-    previousProfile: "previous",
-    nextProfile: "next",
-    fixedRoots: ["/granted"],
-    nextFixedRoots: ["/granted"],
-    savedRoots: ["/granted"],
-    expectedRoots: ["/workspace/project", "/granted"],
-  },
-  {
-    label: "same profile with newer settings",
-    previousProfile: "same",
-    nextProfile: "same",
-    fixedRoots: ["/granted"],
-    nextFixedRoots: ["/newly-configured"],
-    savedRoots: ["/granted", "/newly-configured"],
-    expectedRoots: ["/workspace/project", "/newly-configured"],
-  },
-])(
-  "resume distinguishes fixed roots from grants for $label",
-  ({ previousProfile, nextProfile, fixedRoots, nextFixedRoots, savedRoots, expectedRoots }) => {
-    const canonical = state();
-    const policy = {
-      type: "workspaceWrite" as const,
-      writableRoots: fixedRoots,
-      networkAccess: false,
-      excludeTmpdirEnvVar: false,
-      excludeSlashTmp: false,
-    };
-    const request = canonicalResumeOverrides(
-      {
-        ...canonical,
-        currentPermissions: {
-          ...permissions,
-          activePermissionProfile: { id: previousProfile, extends: null },
-          runtimeWorkspaceRoots: [],
-          sandboxPolicy: policy,
-        },
-        latestThreadSettings: {
-          model: "model",
-          effort: null,
-          collaborationMode: canonical.latestCollaborationMode,
-          activePermissionProfile: { id: nextProfile, extends: null },
-          sandboxPolicy: { ...policy, writableRoots: nextFixedRoots },
-        },
-      },
-      { cwd: canonical.cwd, permissions: { ...permissions, runtimeWorkspaceRoots: savedRoots } },
-    );
-    expect(request.permissions).toBe(nextProfile);
-    expect(request.runtimeWorkspaceRoots).toEqual(expectedRoots);
-  },
-);
-
-test("resume excludes equivalent fixed Windows roots and roots from another path family", () => {
+test("resume normalizes physical Windows roots without replaying historical profile grants", () => {
   const canonical = state();
-  const current = {
-    ...permissions,
-    activePermissionProfile: { id: "same", extends: null },
-    runtimeWorkspaceRoots: [],
-    sandboxPolicy: {
-      type: "workspaceWrite" as const,
-      writableRoots: ["C:\\Repo\\Shared"],
-      networkAccess: false,
-      excludeTmpdirEnvVar: false,
-      excludeSlashTmp: false,
-    },
-  };
   const request = canonicalResumeOverrides(
-    {
-      ...canonical,
-      cwd: "C:\\Repo\\Project",
-      currentPermissions: current,
-      latestThreadSettings: {
-        model: "model",
-        effort: null,
-        collaborationMode: canonical.latestCollaborationMode,
-        activePermissionProfile: current.activePermissionProfile,
-      },
-    },
+    { ...canonical, cwd: "C:\\Repo\\Project" },
     {
       cwd: canonical.cwd,
-      permissions: {
-        ...permissions,
-        runtimeWorkspaceRoots: ["c:/repo/shared/", "C:\\Repo\\Extra", "/foreign-root", "relative"],
-      },
+      runtimeWorkspaceRoots: ["c:/repo/project/", "C:\\Repo\\Extra", "/foreign-root", "relative"],
     },
   );
   expect(request.runtimeWorkspaceRoots).toEqual(["C:\\Repo\\Project", "C:\\Repo\\Extra"]);

@@ -40,7 +40,6 @@ it.effect("waits for native observation before executing a raced MCP request", (
   Effect.scoped(
     Effect.gen(function* () {
       const runtime = yield* make;
-      yield* runtime.startTurn("thread-1", "turn-1");
       let ran = false;
       const call = yield* runtime
         .run(request(), () =>
@@ -77,13 +76,12 @@ it.effect("rejects an unobserved call after a bounded wait without executing it"
   ),
 );
 
-for (const trigger of ["turn", "generation"] as const) {
+for (const trigger of ["cancelled turn", "generation"] as const) {
   it.effect(`interrupts active work when its ${trigger} closes`, () =>
     Effect.scoped(
       Effect.gen(function* () {
         const scope = yield* Scope.make();
         const runtime = yield* make.pipe(Effect.provideService(Scope.Scope, scope));
-        yield* runtime.startTurn("thread-1", "turn-1");
         yield* runtime.observe(event());
         const started = yield* Deferred.make<void>();
         const stopped = yield* Deferred.make<void>();
@@ -96,7 +94,7 @@ for (const trigger of ["turn", "generation"] as const) {
           )
           .pipe(Effect.flip, Effect.forkChild);
         yield* Deferred.await(started);
-        if (trigger === "turn") yield* runtime.endTurn("thread-1", "turn-1");
+        if (trigger === "cancelled turn") yield* runtime.cancelTurn("thread-1", "turn-1");
         else yield* Scope.close(scope, Exit.void);
         assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
         yield* Deferred.await(stopped);

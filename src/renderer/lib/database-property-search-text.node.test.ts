@@ -10,7 +10,7 @@ describe("Database Property search text", () => {
         value: {
           value_revision: 1,
           total_count: 2,
-          restricted_count: 1,
+          unavailable_count: 1,
           has_more: true,
           targets: [
             {

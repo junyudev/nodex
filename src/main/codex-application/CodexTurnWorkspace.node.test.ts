@@ -36,7 +36,7 @@ test("sticky environment suppresses a pending workspace", () => {
   expect(prepared.cwd).toBe("/environment");
   expect(prepared.pendingWorkspace).toBeNull();
   expect(prepared.pendingRevision).toBeNull();
-  expect(prepared.permissionTransition).toBeUndefined();
+  expect(prepared.workspaceTransition).toBeUndefined();
 });
 
 test("pending workspace captures replace semantics and accepted revision", () => {
@@ -58,7 +58,7 @@ test("pending workspace captures replace semantics and accepted revision", () =>
   });
 
   expect(prepared.cwd).toBe("/new");
-  expect(prepared.permissionTransition).toEqual({
+  expect(prepared.workspaceTransition).toEqual({
     appliedRoots: ["/old", "/old-project"],
     pendingRoots: ["/new", "/new-project"],
   });

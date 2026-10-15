@@ -141,7 +141,6 @@ async function readFetchObservation(
       runtime.identity.profileId,
       request.authority,
       request.callId ?? `nodex-agent:${request.tool}`,
-      request.resourceAccess,
     );
     const targetRead = await client.libraryRead(
       {

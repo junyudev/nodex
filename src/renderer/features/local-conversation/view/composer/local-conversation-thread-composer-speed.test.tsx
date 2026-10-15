@@ -310,7 +310,7 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       { reasoningEffort: "high", description: "Spend more time reasoning before answering." },
       { reasoningEffort: "medium", description: "Balance speed and deeper reasoning." },
     ],
-    permissionMode: "auto",
+
     isQueueingEnabled: false,
     composerEnterBehavior: "enter",
     composerIntent: null,
@@ -348,7 +348,6 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       backgroundTerminalRows: [],
       showRequestCards: false,
       showComposer: true,
-      showApprovalMode: false,
     },
     ...overrides,
   };
@@ -4612,7 +4611,7 @@ describe("ThreadComposer speed menu", () => {
     expect(selectedModels[0]).toBe("gpt-5.5");
   });
 
-  test("places permissions and context inside the existing-thread composer footer without a lower status row", async () => {
+  test("places context inside the existing-thread composer footer without a lower status row", async () => {
     resetStorage();
     const invokedChannels: string[] = [];
     const view = await renderComposer(undefined, undefined, async (channel) => {
@@ -4620,14 +4619,12 @@ describe("ThreadComposer speed menu", () => {
       return undefined;
     });
 
-    const permissionTrigger = view.getByLabelText("Change permissions");
     const contextTrigger = view.getByLabelText(/Context window/);
     const lowerStatusRow = view.container.querySelector('[data-composer-lower-status-row="true"]');
     const formFooter = view.container.querySelector('[data-composer-form-footer="true"]');
 
     expect(formFooter !== null).toBe(true);
     expect(lowerStatusRow === null).toBe(true);
-    expect(formFooter?.contains(permissionTrigger)).toBe(true);
     expect(formFooter?.contains(contextTrigger)).toBe(true);
     expect(invokedChannels.some((channel) => channel.startsWith("git:branch:"))).toBe(false);
   });
@@ -4764,7 +4761,6 @@ describe("ThreadComposer speed menu", () => {
     expect(promptFrame !== null).toBe(true);
     expect(promptFrame?.contains(composer)).toBe(true);
     expect(promptFrame?.classList.contains("text-size-chat") ?? false).toBe(true);
-    expect(promptFrame?.classList.contains("text-base") ?? false).toBe(true);
     expect(composerSurface !== null).toBe(true);
     expect(composerSurface?.tagName).toBe("DIV");
     expect(attachmentStrip?.classList.contains("empty:hidden") ?? true).toBe(false);
@@ -5191,32 +5187,15 @@ describe("ThreadComposer speed menu", () => {
 
     const formFooter = view.container.querySelector('[data-composer-form-footer="true"]');
     const addContextButton = view.getByLabelText("Add files and more");
-    const permissionTrigger = view.getByLabelText("Change permissions");
     const planButton = view.getByLabelText("Plan");
-    const planAccessoryDivider = formFooter?.querySelector(
-      '[data-composer-footer-accessory-divider="true"]',
-    );
-
-    expect(formFooter !== null).toBe(true);
     expect(formFooter?.contains(addContextButton)).toBe(true);
-    expect(formFooter?.contains(permissionTrigger)).toBe(true);
     expect(formFooter?.contains(planButton)).toBe(true);
     expect(planButton.hasAttribute("aria-haspopup")).toBe(false);
-    expect(planButton.getAttribute("data-slot") === "dropdown-trigger").toBe(false);
-    expect(planAccessoryDivider !== null).toBe(true);
     expect(
       Boolean(
-        addContextButton.compareDocumentPosition(permissionTrigger) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+        addContextButton.compareDocumentPosition(planButton) & Node.DOCUMENT_POSITION_FOLLOWING,
       ),
     ).toBe(true);
-    expect(
-      Boolean(
-        permissionTrigger.compareDocumentPosition(planButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(permissionTrigger.nextElementSibling === planAccessoryDivider).toBe(true);
-    expect(planAccessoryDivider?.nextElementSibling === planButton).toBe(true);
 
     await act(async () => {
       fireEvent.click(planButton);

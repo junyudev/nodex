@@ -14,7 +14,7 @@ import { ContentSaveStatus } from "./content-save-status";
 
 const scope = {
   libraryId: "library",
-  accessContext: { kind: "project" as const, projectId: "project" },
+  routingContext: { kind: "project" as const, projectId: "project" },
   storeEpoch: "epoch",
 };
 function Issues({

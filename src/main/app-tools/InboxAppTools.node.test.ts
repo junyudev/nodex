@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
@@ -8,19 +8,16 @@ import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { make } from "./InboxAppTools";
+import { make, makeWithCapture } from "./InboxAppTools";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority: NodexAgentTurnContext = {
   threadId: "caller",
   turnId: "turn",
   rootThreadId: "caller",
   actorProjectId: "project",
   libraryId: "library",
   storeEpoch: "epoch",
-  frozenAtMs: Date.now(),
-  readOnly: false,
-  scope: "project",
-  source: "project_turn",
+  admittedAtMs: Date.now(),
 };
 const input: AppToolInvocation = {
   name: "send_to_inbox",
@@ -35,7 +32,7 @@ const input: AppToolInvocation = {
   },
 };
 
-const setup = (options: { readOnly?: boolean; rejectWith?: string } = {}) => {
+const setup = (options: { rejectWith?: string } = {}) => {
   const applied: ProjectWorkspaceApplyInput[] = [];
   const seen = new Set<string>();
   return {
@@ -43,7 +40,7 @@ const setup = (options: { readOnly?: boolean; rejectWith?: string } = {}) => {
     execute: make.pipe(
       Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
       Effect.provideService(CodexTurnAuthority, {
-        capture: () => Effect.succeed({ ...authority, readOnly: options.readOnly ?? false }),
+        capture: () => Effect.succeed(authority),
       } as never),
       Effect.provideService(CoreModules, {
         workspace: {
@@ -93,23 +90,44 @@ it.effect("drops one message under the calling Turn and replays it without a sec
   }),
 );
 
-it.effect("refuses read-only Turns before touching Core", () =>
+it.effect("withdraws a call cancelled while its source is captured", () =>
   Effect.gen(function* () {
-    const fixture = setup({ readOnly: true });
-    const result = yield* (yield* fixture.execute)(input);
-    assert.deepEqual(result.structuredContent, { error: { code: "read_only_turn" } });
-    assert.strictEqual(fixture.applied.length, 0);
+    let active = true;
+    let writes = 0;
+    const execute = yield* makeWithCapture(() =>
+      Effect.sync(() => {
+        active = false;
+        return authority;
+      }),
+    ).pipe(
+      Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+      Effect.provideService(CoreModules, {
+        workspace: {
+          apply: () =>
+            Effect.sync(() => {
+              writes++;
+              return {};
+            }),
+        },
+      } as never),
+    );
+    const result = yield* execute({
+      ...input,
+      caller: { ...input.caller, isActive: () => active },
+    });
+    assert.deepEqual(result.structuredContent, { error: { code: "call_withdrawn" } });
+    assert.strictEqual(writes, 0);
   }),
 );
 
-it.effect("reports the per-Turn message cap as its own failure", () =>
+it.effect("reports the captured source's message cap as its own failure", () =>
   Effect.gen(function* () {
     const fixture = setup({ rejectWith: "resource_exhausted" });
     const result = yield* (yield* fixture.execute)(input);
     assert.isTrue(result.isError);
     assert.strictEqual(
       (result.structuredContent as { error: { code: string } }).error.code,
-      "inbox_turn_limit",
+      "inbox_message_limit",
     );
   }),
 );

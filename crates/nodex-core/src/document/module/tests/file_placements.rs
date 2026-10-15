@@ -44,17 +44,34 @@ fn standalone_page_accepts_imported_files_without_project_grants_or_entries() {
                 .file_ids(),
             vec!["file:paste"]
         );
-        seeded.kernel.readers().read_default(|connection| {
-            assert_eq!(connection.query_row("SELECT count(*) FROM page_file_entries WHERE file_id = 'file:paste'", [], |r| r.get::<_, i64>(0))?, 0);
-            assert_eq!(connection.query_row("SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file' AND root_id = 'file:paste'", [], |r| r.get::<_, i64>(0))?, 0);
-            assert_eq!(connection.query_row("SELECT count(*) FROM block_asset_refs WHERE file_id = 'file:paste'", [], |r| r.get::<_, i64>(0))?, 1);
-            Ok::<_, StoreError>(())
-        }).unwrap();
+        seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM page_file_entries WHERE file_id = 'file:paste'",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )?,
+                    0
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT count(*) FROM block_asset_refs WHERE file_id = 'file:paste'",
+                        [],
+                        |r| r.get::<_, i64>(0)
+                    )?,
+                    1
+                );
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
     }
 }
 
 #[test]
-fn project_cannot_insert_a_library_file_without_read_authority() {
+fn project_route_can_insert_a_library_file() {
     let seeded = seeded_module();
     create_file(
         &seeded,
@@ -63,7 +80,7 @@ fn project_cannot_insert_a_library_file_without_read_authority() {
         b"private bytes",
     );
     let (head, engine) = synced_page_engine(&seeded);
-    let error = seeded
+    let committed = seeded
         .module
         .apply(
             &context(),
@@ -73,9 +90,8 @@ fn project_cannot_insert_a_library_file_without_read_authority() {
                 raw_document_operation_update(&engine, &[file_block("image", "file:private")]),
             ),
         )
-        .expect_err("File identity and Page write do not authorize File reads");
-    assert_eq!(error.code, CoreErrorCode::InvalidInput);
-    assert_eq!(synced_page_engine(&seeded).0, head);
+        .expect("Profile File is available across Project routes");
+    assert_eq!(committed.committed.value.head_seq, head + 1);
 }
 
 #[test]
@@ -150,30 +166,6 @@ fn library_file_placement_rejects_missing_trashed_and_retired_files() {
             )
             .expect_err("Library authority cannot revive an unavailable File");
         assert_eq!(error.code, CoreErrorCode::InvalidInput);
-        assert_eq!(synced_page_engine(&seeded).0, head);
-    }
-}
-
-#[test]
-fn projectless_untrusted_adapters_cannot_claim_library_file_authority() {
-    let seeded = seeded_module();
-    let trusted = library_context_for("library-import", AdapterKind::ElectronHost);
-    create_file(&seeded, &trusted, "file:private", b"private bytes");
-    let (head, engine) = synced_page_engine(&seeded);
-    for adapter in [AdapterKind::Agent, AdapterKind::LoopbackHttp] {
-        let access = library_context_for("untrusted", adapter);
-        let error = seeded
-            .module
-            .apply(
-                &access,
-                apply_request(
-                    "paste:untrusted",
-                    head,
-                    raw_document_operation_update(&engine, &[file_block("image", "file:private")]),
-                ),
-            )
-            .expect_err("no Project is not Library authority");
-        assert_eq!(error.code, CoreErrorCode::Unauthorized);
         assert_eq!(synced_page_engine(&seeded).0, head);
     }
 }

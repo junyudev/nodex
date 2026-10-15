@@ -8,7 +8,7 @@ import type {
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { createCoreLibraryModuleAdapter } from "./library-module-adapter";
 
-test("Library history uses real Library authority while Project history stays scoped", async () => {
+test("structural history remains usable across Project presentations in one Library", async () => {
   await withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (ctx) => {
     const other = await ctx.seed.createProject({
       name: "Independent history authority",
@@ -80,19 +80,7 @@ test("Library history uses real Library authority while Project history stays sc
       const sourceHead = await head(pageId);
       return { sourceDocumentId: sourceHead.documentId, rootBlockIds: [childId], sourceHead };
     };
-    const denied = await project.apply(
-      request({
-        kind: "apply_structural_edit",
-        command: {
-          kind: "delete_selection",
-          selection: await selection(),
-          reason: { kind: "delete" },
-          direction: "forward",
-        },
-      }),
-    );
-    expect(denied.ok).toBe(false);
-    const deleted = await apply(source, {
+    const deleted = await apply(project, {
       kind: "apply_structural_edit",
       command: {
         kind: "delete_selection",
@@ -102,13 +90,9 @@ test("Library history uses real Library authority while Project history stays sc
       },
     });
     if (!deleted.history) throw new Error("Missing delete history");
-    expect(await state(project, deleted.history)).toBe("unavailable");
+    expect(await state(project, deleted.history)).toBe("available");
     expect(await state(library, deleted.history)).toBe("available");
-    expect(
-      (await project.apply(request({ kind: "reverse_structural_edit", token: deleted.history })))
-        .ok,
-    ).toBe(false);
-    const restored = await apply(library, {
+    const restored = await apply(source, {
       kind: "reverse_structural_edit",
       token: deleted.history,
     });

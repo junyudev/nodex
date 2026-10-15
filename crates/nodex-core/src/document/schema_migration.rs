@@ -708,8 +708,8 @@ mod tests {
     use crate::infrastructure::document_repository::{
         DocumentAuthority, DocumentReadiness, DocumentSyncEngine,
     };
+    use crate::infrastructure::legacy_visibility_migration::install_test_maintenance_context;
     use crate::infrastructure::schema::install_current_schema;
-    use crate::infrastructure::visibility_delta_journal::install_test_maintenance_context;
 
     fn block(
         id: &str,

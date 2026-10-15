@@ -8,9 +8,9 @@ import {
 import { bindLibraryModuleApply } from "../../shared/library-module-transport";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
 import {
-  projectContentAccess,
-  type ContentAccessContext,
-} from "../../shared/content-access-context";
+  projectContentRoute,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 import { noOpLocalCommit } from "../../shared/testing/local-commit";
 import { applyLibraryModule, readLibraryModule } from "./api";
 import {
@@ -34,7 +34,7 @@ vi.mock("./api", () => ({
 }));
 
 const uuidV7 = (sequence: number): string => createUuidV7FromTimestamp(1_785_491_085_000, sequence);
-const accessContext = projectContentAccess("project-1");
+const routingContext = projectContentRoute("project-1");
 
 function makeRuntime(
   input: {
@@ -60,9 +60,8 @@ function makeRuntime(
       writeFrozen: false,
       descriptor: {
         libraryId: "library-1",
-        accessContext,
+        routingContext,
         documentId,
-        authorization: null,
         ownerBlockId,
         ownerType: "page",
         ownerLifecycle: "active",
@@ -142,8 +141,8 @@ const receiptFor = (
 describe("Canvas host operations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(readLibraryModule).mockImplementation(async (receivedAccessContext, request) => {
-      expect(receivedAccessContext).toEqual(accessContext);
+    vi.mocked(readLibraryModule).mockImplementation(async (receivedRoutingContext, request) => {
+      expect(receivedRoutingContext).toEqual(routingContext);
       return {
         ok: true,
         value: {
@@ -151,7 +150,6 @@ describe("Canvas host operations", () => {
           libraryId: "library-1",
           storeEpoch: "epoch-1",
           commitSeq: 9,
-          authorization: null,
           value: {
             kind: "canvas_target",
             value: {
@@ -164,8 +162,8 @@ describe("Canvas host operations", () => {
         },
       };
     });
-    vi.mocked(applyLibraryModule).mockImplementation(async (receivedAccessContext, request) => {
-      expect(receivedAccessContext).toEqual(accessContext);
+    vi.mocked(applyLibraryModule).mockImplementation(async (receivedRoutingContext, request) => {
+      expect(receivedRoutingContext).toEqual(routingContext);
       bindLibraryModuleApply(request);
       return receiptFor(request);
     });
@@ -218,7 +216,7 @@ describe("Canvas host operations", () => {
     const runtime = makeRuntime({ ownerBlockId: pageId });
 
     await createCanvasInHostPage({
-      accessContext,
+      routingContext,
       hostPageId: pageId,
       replacementBlockId,
       runtime,
@@ -229,7 +227,7 @@ describe("Canvas host operations", () => {
       },
     });
     await duplicateCanvasInHostPage({
-      accessContext,
+      routingContext,
       sourceCanvasBlockId: canvasId,
       hostPageId: pageId,
       insertion: { kind: "append" },
@@ -241,7 +239,7 @@ describe("Canvas host operations", () => {
       },
     });
     await moveCanvasOwnerBetweenHostPages({
-      accessContext,
+      routingContext,
       canvasBlockId: canvasId,
       targetPageId: pageId,
       insertion: {
@@ -254,8 +252,8 @@ describe("Canvas host operations", () => {
     });
 
     expect(applyLibraryModule).toHaveBeenCalledTimes(3);
-    for (const [receivedAccessContext, request] of vi.mocked(applyLibraryModule).mock.calls) {
-      expect(receivedAccessContext).toEqual(accessContext);
+    for (const [receivedRoutingContext, request] of vi.mocked(applyLibraryModule).mock.calls) {
+      expect(receivedRoutingContext).toEqual(routingContext);
       const operation = request.operation;
       if (
         operation.kind !== "create_canvas" &&
@@ -280,7 +278,7 @@ describe("Canvas host operations", () => {
     const targetPageId = uuidV7(2);
 
     await moveCanvasOwnerBetweenHostPages({
-      accessContext,
+      routingContext,
       canvasBlockId: canvasId,
       targetPageId,
       insertion: { kind: "append" },
@@ -320,7 +318,6 @@ describe("Canvas host operations", () => {
         libraryId: "library-1",
         storeEpoch: "epoch-2",
         commitSeq: 9,
-        authorization: null,
         value: {
           kind: "canvas_target",
           value: {
@@ -333,7 +330,7 @@ describe("Canvas host operations", () => {
 
     await expect(
       moveCanvasOwnerBetweenHostPages({
-        accessContext,
+        routingContext,
         canvasBlockId: canvasId,
         targetPageId: uuidV7(2),
         insertion: { kind: "append" },
@@ -390,20 +387,20 @@ describe("Canvas host operations", () => {
         },
       });
 
-    await applyLibraryRequestWithExactRetry(accessContext, request, apply);
+    await applyLibraryRequestWithExactRetry(routingContext, request, apply);
 
     expect(apply).toHaveBeenCalledTimes(2);
-    expect(apply.mock.calls[0]).toEqual([accessContext, request]);
-    expect(apply.mock.calls[1]).toEqual([accessContext, request]);
+    expect(apply.mock.calls[0]).toEqual([routingContext, request]);
+    expect(apply.mock.calls[1]).toEqual([routingContext, request]);
   });
 
   test("deletes a nested Canvas with the mounted host Document barrier", async () => {
     const apply = vi.fn(
       async (
-        receivedAccessContext: ContentAccessContext,
+        receivedRoutingContext: ContentRoutingContext,
         request: LibraryModuleApplyRequest,
       ): Promise<LibraryModuleApplyResult> => {
-        expect(receivedAccessContext).toEqual(accessContext);
+        expect(receivedRoutingContext).toEqual(routingContext);
         return {
           ok: true,
           localCommit: noOpLocalCommit(request.storeEpoch),
@@ -435,14 +432,14 @@ describe("Canvas host operations", () => {
 
     await deleteCanvasOwner(
       {
-        accessContext,
+        routingContext,
         canvasBlockId: "canvas-1",
         runtime: makeRuntime({ ownerBlockId: "page-1" }),
         operationId: "delete-1",
       },
       {
-        readTarget: async (receivedAccessContext) => {
-          expect(receivedAccessContext).toEqual(accessContext);
+        readTarget: async (receivedRoutingContext) => {
+          expect(receivedRoutingContext).toEqual(routingContext);
           return {
             libraryId: "library-1",
             storeEpoch: "epoch-1",
@@ -469,7 +466,7 @@ describe("Canvas host operations", () => {
       },
     );
 
-    expect(apply).toHaveBeenCalledWith(accessContext, {
+    expect(apply).toHaveBeenCalledWith(routingContext, {
       operationId: "delete-1",
       storeEpoch: "epoch-1",
       operation: {
@@ -487,7 +484,7 @@ describe("Canvas host operations", () => {
     expect(retireOwner).toHaveBeenCalledWith(
       {
         libraryId: "library-1",
-        accessContext,
+        routingContext,
       },
       "canvas-1",
     );

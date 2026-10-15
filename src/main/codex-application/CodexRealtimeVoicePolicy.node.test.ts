@@ -1,4 +1,6 @@
 import { assert, it } from "@effect/vitest";
+import * as Stream from "effect/Stream";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -275,4 +277,55 @@ it.effect(
         "Failure",
       );
     }).pipe(Effect.scoped),
+);
+
+it.effect("uses its captured Runtime voice source after the construction Context is gone", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const nativeCalls: string[] = [];
+      const localTarget = { hostId: "local", threadId: "runtime-thread" };
+      const source = {
+        runtimeGeneration: "runtime",
+        threadId: localTarget.threadId,
+        providerSessionId: "session",
+        nativeGeneration: 1,
+        providerThreadId: "provider",
+        nativeThreadId: "native",
+      };
+      const f = yield* fixture().pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          nativeThread: (threadId: string) => {
+            assert.equal(threadId, localTarget.threadId);
+            return Effect.succeed({
+              connection: {
+                subscribeNotifications: Effect.succeed(Stream.never),
+                request: (method: string) =>
+                  Effect.sync(() => {
+                    nativeCalls.push(method);
+                    if (method === "native.voice.prepare")
+                      return {
+                        source,
+                        userAgent: "codex/0.162.0-alpha.20",
+                        voices: { v1: ["arbor"], defaultV1: "arbor" },
+                        features: [],
+                        history: [],
+                      };
+                    if (method === "native.voice.current") return true;
+                    return null;
+                  }),
+              },
+            });
+          },
+        } as unknown as AgentRuntimeApplication["Service"]),
+      );
+      assert.isTrue(yield* f.policy.isAvailable(localTarget));
+      assert.deepEqual(nativeCalls, []);
+      const prepared = yield* f.policy.prepare(localTarget);
+      assert.isDefined(prepared.runtime);
+      assert.deepEqual(prepared.runtime!.capture.source, source);
+      assert.deepEqual(f.requests, []);
+      yield* prepared.runtime!.release;
+      assert.equal(nativeCalls.at(-1), "native.voice.release");
+    }),
+  ),
 );

@@ -81,7 +81,7 @@ test.each(["response", "admission"] as const)(
           },
           editor,
           runtime: {
-            accessContext: { kind: "project", projectId: ctx.manifest.projectId },
+            routingContext: { kind: "project", projectId: ctx.manifest.projectId },
             libraryId: ctx.runtime.identity.libraryId,
             source: { documentId, storeEpoch: initial.storeEpoch, generation: initial.generation },
             getContainer: () => null,

@@ -1,6 +1,5 @@
 import type {
   CodexBackgroundProcessRecord,
-  CodexPermissionMode,
   CodexThreadActiveFlag,
   CodexThreadStatusType,
   CodexThreadSummary,
@@ -178,6 +177,7 @@ export const projectWorkspacePageChatActivitySummaryFromCore = (
   errorCount: summary.error_count,
   unreadCount: summary.unread_count,
   soleSessionId: summary.sole_session_id ?? null,
+  runtimeSessionIds: [...summary.runtime_session_ids],
 });
 
 export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): PageChatItem => ({
@@ -186,6 +186,9 @@ export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): Pa
   projectName: item.project_name ?? null,
   displayTitle: item.display_title,
   threadId: item.thread_id ?? null,
+  executionRef: item.execution_ref
+    ? { runtimeId: item.execution_ref.runtime_id, threadId: item.execution_ref.thread_id }
+    : null,
   threadPreview: item.thread_preview,
   threadStatus: item.status
     ? {
@@ -242,10 +245,6 @@ export interface DesktopProjectWorkspaceThreadMoveInput {
     readonly pending: DesktopProjectWorkspaceThreadWorkspace | null;
   };
   readonly runtimeWorkspaceRoots?: readonly string[];
-  readonly projectAccessGrant?: {
-    readonly expectedTargetBindingRevision: number;
-    readonly missingProjectSources: readonly string[];
-  };
   readonly metadata?: Pick<
     DesktopProjectWorkspaceThreadPatch,
     | "cwd"
@@ -349,9 +348,8 @@ export interface DesktopProjectWorkspaceSidebar {
 export interface DesktopProjectWorkspaceExecutionContext {
   readonly threadId: string;
   readonly projectId: string | null;
-  readonly permissionMode: CodexPermissionMode | null;
   readonly dynamicToolCatalogs: readonly DynamicToolCatalogSelection[];
-  readonly writableRoots: readonly string[];
+  readonly workspaceRoots: readonly string[];
   readonly workspaceState: DesktopProjectWorkspaceThreadWorkspaceState | null;
 }
 
@@ -746,6 +744,9 @@ const fromCoreSessionSummary = (
   id: session.id,
   projectId: session.project_id ?? null,
   noThreadFallbackTitle: session.no_thread_fallback_title,
+  executionRef: session.execution_ref
+    ? { runtimeId: session.execution_ref.runtime_id, threadId: session.execution_ref.thread_id }
+    : null,
   displayTitle: session.display_title,
   order: session.order,
   pinned: session.pinned,

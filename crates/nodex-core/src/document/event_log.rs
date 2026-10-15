@@ -266,7 +266,7 @@ pub(crate) fn reconstruct_document_event(
         },
         "document_invalidated" => {
             let reason = match metadata.reason.as_deref() {
-                Some("access_changed") => DocumentInvalidationReason::AccessChanged,
+                Some("owner_deleted") => DocumentInvalidationReason::OwnerDeleted,
                 Some("generation_changed") => DocumentInvalidationReason::GenerationChanged,
                 Some("restored") => DocumentInvalidationReason::Restored,
                 _ => return Err(corrupt("Document invalidation reason is invalid")),

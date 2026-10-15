@@ -24,6 +24,30 @@ const require = createRequire(import.meta.url);
 const mimeTypes: { lookup: (path: string) => string | false } = require("mime-types");
 
 describe("ordinary media locator policy", () => {
+  test("uses a real Runtime source lease without inventing a native connection", () => {
+    let current = true;
+    const runtimeScope = {
+      ...scope,
+      hostId: "local",
+      nativeConnection: undefined,
+      executionSource: { identity: "session/thread/source", isCurrent: () => current },
+      isResourceCurrent: () => current,
+    };
+    expect(resolveConversationMediaTarget("/workspace/image.png", runtimeScope)).toEqual({
+      kind: "file",
+      hostId: "local",
+      path: "/workspace/image.png",
+    });
+    expect(resolveConversationMediaTarget("/workspace/movie.mp4", runtimeScope)).toMatchObject({
+      kind: "stream",
+      hostId: "local",
+      path: "/workspace/movie.mp4",
+    });
+    current = false;
+    expect(resolveConversationMediaTarget("/workspace/image.png", runtimeScope)).toEqual({
+      kind: "blocked",
+    });
+  });
   test.each([
     ["/x.mp4", "video"],
     ["/x.wav", "audio"],

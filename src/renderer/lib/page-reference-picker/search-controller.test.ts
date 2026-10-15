@@ -6,7 +6,7 @@ import {
 import type { PageReferenceCandidate, PageReferencePickerRequest } from "./types";
 
 const request = (query: string): PageReferencePickerRequest => ({
-  accessContext: { kind: "library" },
+  routingContext: { kind: "library" },
   hostPageId: "page:host",
   ancestorPageIds: [],
   intent: "mention",

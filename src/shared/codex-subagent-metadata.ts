@@ -1,3 +1,20 @@
+import type { CodexCanonicalTurnState } from "./types";
+
+/** Resident references help locate children; they do not control Thread interaction. */
+export function collectCodexSubagentThreadIds(
+  turns: readonly Pick<CodexCanonicalTurnState, "items">[],
+): ReadonlySet<string> {
+  const threadIds = new Set<string>();
+  for (const turn of turns) {
+    for (const item of turn.items) {
+      if (item.type === "subAgentActivity") threadIds.add(item.agentThreadId);
+      if (item.type !== "collabAgentToolCall") continue;
+      for (const threadId of item.receiverThreadIds) threadIds.add(threadId);
+    }
+  }
+  return threadIds;
+}
+
 export interface CodexThreadSpawnMetadata {
   parentThreadId: string | null;
   depth: number | null;

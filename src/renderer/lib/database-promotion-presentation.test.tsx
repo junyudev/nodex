@@ -35,7 +35,7 @@ const effective = {
 const model = (windowKey: string): DatabaseViewRenderModel => {
   const base = {
     libraryId: "library",
-    accessContext: { kind: "project" as const, projectId: "project" },
+    routingContext: { kind: "project" as const, projectId: "project" },
     databaseId,
     dataSourceId,
     databaseViewId,
@@ -44,8 +44,6 @@ const model = (windowKey: string): DatabaseViewRenderModel => {
     viewName: "Board",
     storeEpoch: "epoch",
     commitSeq: 10,
-    authorization: null,
-    readOnlyReason: null,
     columns: [],
     query: {
       view: { config },

@@ -1,8 +1,8 @@
 import type { BlockNoteEditorOptions } from "@blocknote/core";
 import { withCollaboration, type CollaborationOptions } from "@blocknote/core/yjs";
 import type { Awareness } from "y-protocols/awareness";
-import type { ContentAccessContext } from "../../../../shared/content-access-context";
-import { contentAccessContextKey } from "../../../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../../../shared/content-routing-context";
+import { contentRoutingContextKey } from "../../../../shared/content-routing-context";
 import type * as Y from "yjs";
 
 /**
@@ -84,12 +84,12 @@ function getCollaborativeFragmentId(fragment: Y.XmlFragment): number {
 }
 
 export function getNfmEditorInstanceKey(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly source: NfmEditorSource;
 }): string {
   return [
     "collaborative-document",
-    contentAccessContextKey(input.accessContext),
+    contentRoutingContextKey(input.routingContext),
     input.source.documentId,
     input.source.generation,
     getCollaborativeFragmentId(input.source.fragment),

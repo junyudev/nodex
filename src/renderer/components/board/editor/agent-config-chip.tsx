@@ -18,7 +18,7 @@ import {
   NodexPopoverTrigger,
 } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { PermissionModeDropdown } from "@/features/local-conversation/view/shared/permission-mode-dropdown";
+
 import {
   formatCodexModelLabel,
   formatCodexReasoningEffortLabel,
@@ -29,14 +29,9 @@ import { agentConfigInlineContentConfig } from "../../../../shared/block-documen
 import { normalizeCodexServiceTier } from "../../../../shared/codex-service-tier";
 import {
   CodexCollaborationModeKindSchema,
-  CodexPermissionModeSchema,
   CodexReasoningEffortSchema,
 } from "../../../../shared/schemas/codex";
-import type {
-  CodexModelOption,
-  CodexPermissionMode,
-  CodexReasoningEffort,
-} from "../../../../shared/types";
+import type { CodexModelOption, CodexReasoningEffort } from "../../../../shared/types";
 import { useAgentConfigRuntime, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 
 const CODEX_PROVIDER_ID = "openai";
@@ -47,7 +42,6 @@ export interface AgentConfigProps {
   model: string;
   reasoning: string;
   speed: string;
-  permission: string;
   unknownAttributes: string;
   rawAttributes: string;
 }
@@ -58,7 +52,7 @@ export interface AgentConfigInlineContentUpdate {
 }
 
 type AgentConfigFieldPatch = Partial<
-  Pick<AgentConfigProps, "mode" | "provider" | "model" | "reasoning" | "speed" | "permission">
+  Pick<AgentConfigProps, "mode" | "provider" | "model" | "reasoning" | "speed">
 >;
 
 export type AgentConfigIntelligenceSelection =
@@ -84,7 +78,6 @@ export function normalizeAgentConfigProps(
     model: typeof input?.model === "string" ? input.model : "",
     reasoning: typeof input?.reasoning === "string" ? input.reasoning : "",
     speed: typeof input?.speed === "string" ? input.speed : "",
-    permission: typeof input?.permission === "string" ? input.permission : "",
     unknownAttributes: typeof input?.unknownAttributes === "string" ? input.unknownAttributes : "",
     rawAttributes: typeof input?.rawAttributes === "string" ? input.rawAttributes : "",
   };
@@ -101,7 +94,6 @@ function hasExplicitAgentConfig(props: AgentConfigProps): boolean {
     props.model ||
     props.reasoning ||
     props.speed ||
-    props.permission ||
     props.unknownAttributes ||
     props.rawAttributes,
   );
@@ -208,26 +200,6 @@ function isKnownAgentConfigMode(value: string): boolean {
   return value === "" || CodexCollaborationModeKindSchema.safeParse(value).success;
 }
 
-function parsePermissionMode(value: string): CodexPermissionMode | null {
-  const parsed = CodexPermissionModeSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-function formatPermissionMode(value: string): string {
-  switch (value) {
-    case "auto":
-      return "Ask for approval";
-    case "guardian-approvals":
-      return "Approve for me";
-    case "full-access":
-      return "Full access";
-    case "custom":
-      return "Custom";
-    default:
-      return value;
-  }
-}
-
 export function resolveAgentConfigChip(
   input: Partial<AgentConfigProps> | undefined,
   models: readonly CodexModelOption[] = [],
@@ -245,17 +217,13 @@ export function resolveAgentConfigChip(
         ? "Fast"
         : props.speed
     : "";
-  const permissionLabel = props.permission ? formatPermissionMode(props.permission) : "";
   const summary = [modeLabel, modelLabel].filter(Boolean).join(" · ");
-  const detail = [modeLabel, modelLabel, reasoningLabel, speedLabel, permissionLabel]
-    .filter(Boolean)
-    .join(" · ");
+  const detail = [modeLabel, modelLabel, reasoningLabel, speedLabel].filter(Boolean).join(" · ");
   const invalid =
     props.unknownAttributes.trim().length > 0 ||
     Boolean(props.rawAttributes.trim()) ||
     !isKnownAgentConfigMode(props.mode) ||
-    Boolean(props.provider && props.provider !== CODEX_PROVIDER_ID) ||
-    Boolean(props.permission && !parsePermissionMode(props.permission));
+    Boolean(props.provider && props.provider !== CODEX_PROVIDER_ID);
   return { label: "Agent config", summary, detail, invalid };
 }
 
@@ -294,7 +262,6 @@ export function buildAgentConfigResetUpdate(): AgentConfigInlineContentUpdate {
       model: "",
       reasoning: "",
       speed: "",
-      permission: "",
       unknownAttributes: "",
       rawAttributes: "",
     },
@@ -379,16 +346,11 @@ function AgentConfigPopoverBody({
     models,
     defaultSelection,
   });
-  const permissionMode = props.permission ? parsePermissionMode(props.permission) : null;
   const invalidReason = chip.invalid
     ? "Unsupported Agent config attributes or values."
     : hasExplicitIntelligence(props) && intelligence.kind === "unavailable"
       ? intelligence.reason
       : null;
-  const fullAccessEnabled =
-    runtime?.projectId !== null &&
-    runtime?.permissionState.mode === "full-access" &&
-    runtime.permissionState.effectivePreset === "full-access";
 
   return (
     <div className="w-[min(21.5rem,calc(100vw-2rem))] p-1 text-sm">
@@ -445,29 +407,6 @@ function AgentConfigPopoverBody({
             <UnavailableSettingsTrigger
               label={loading ? "Codex model catalog loading" : "Agent intelligence"}
             />
-          )}
-        </AgentConfigControlRow>
-
-        <AgentConfigControlRow label="Permission">
-          {runtime ? (
-            <PermissionModeDropdown
-              selectedMode={permissionMode}
-              availableModes={runtime.permissionState.availableModes}
-              autoReviewAvailable={runtime.permissionState.autoReviewAvailable}
-              triggerStyle="settings"
-              triggerClassName="w-full min-w-0"
-              allowInherit
-              confirmFullAccess={false}
-              fullAccessDisabledReason={
-                fullAccessEnabled
-                  ? undefined
-                  : "Enable Full access in Composer or Permissions before using it here"
-              }
-              onInherit={() => onPatch({ permission: "" })}
-              onSelect={(permission) => onPatch({ permission })}
-            />
-          ) : (
-            <UnavailableSettingsTrigger label="Permission mode" />
           )}
         </AgentConfigControlRow>
       </div>

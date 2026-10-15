@@ -232,7 +232,7 @@ export function CanvasBlock({
   const open = useCallback(() => {
     if (!host?.openCanvas || !summary) return;
     void host.openCanvas({
-      accessContext: host.contentAccessContext,
+      routingContext: host.contentRoutingContext,
       canvasBlockId,
       titleSnapshot: summary.title,
     });
@@ -268,7 +268,7 @@ export function CanvasBlock({
       .retireOwner(
         {
           libraryId: targetLibraryId,
-          accessContext: host.contentAccessContext,
+          routingContext: host.contentRoutingContext,
         },
         canvasBlockId,
       )
@@ -314,7 +314,7 @@ export function CanvasBlock({
       ) : active && host && surfaceKey && summary ? (
         <Suspense fallback={<CanvasDocumentState status="loading" label="Opening Canvas…" />}>
           <CanvasDocumentSurface
-            accessContext={host.contentAccessContext}
+            routingContext={host.contentRoutingContext}
             canvasBlockId={canvasBlockId}
             surfaceKey={surfaceKey}
             viewportPreferenceScope={makeCanvasViewportPreferenceScope({

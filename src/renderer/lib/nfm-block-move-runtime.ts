@@ -180,7 +180,7 @@ const readProjectDefaultDatabase = async (
 /**
  * Compiles a Promotion request after the surface owner admits and fences the gesture.
  * Page-to-Page moves belong to the editor's structural history session.
- * Target identity, authorization reads, and BlockTransfer compilation
+ * Target identity, canonical reads, and BlockTransfer compilation
  * stay behind this interface so picker callers cannot assemble partial moves.
  */
 export const prepareNfmBlockPromotion = async (

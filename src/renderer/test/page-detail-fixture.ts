@@ -14,7 +14,6 @@ import {
 import type { PageDetailResult, PageIntrinsicProperty } from "../../shared/page-detail";
 import type { DatabasePage } from "@/lib/types";
 import { testPropertySemantics } from "../../shared/testing/database-property-record";
-import { authorizedReadStampFixture } from "../../shared/testing/authorized-read-stamp-fixture";
 
 /** Builds a typed Page Detail read for isolated renderer ownership tests. */
 export const buildPageDetailFixtureResult = (
@@ -142,16 +141,6 @@ export const buildPageDetailFixtureResult = (
       libraryId,
       storeEpoch,
       commitSeq,
-      authorization: authorizedReadStampFixture({
-        deliveryAddress: {
-          kind: "project",
-          library_id: libraryId,
-          project_id: projectId,
-        },
-        subject: { kind: "page", page_id: page.id },
-        storeEpoch,
-        commitSeq,
-      }),
       page: {
         pageId: page.id,
         libraryId,
@@ -200,7 +189,6 @@ export const buildPageDetailFixtureResult = (
           name: "Fixture Database",
           lifecycle: "active",
           defaultViewId: viewId,
-          accessRevision: 1,
           metadataRevision: 1,
           createdAt: timestamp,
           updatedAt: timestamp,

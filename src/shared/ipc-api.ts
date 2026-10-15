@@ -1,3 +1,4 @@
+import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
 import type {
   CodexVisualizationStateIdentity,
@@ -9,7 +10,6 @@ import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
 } from "./opencode-agent-settings";
-import type { AgentInteractionResponse } from "./agent-conversation";
 import type {
   CodexHomeSettingsSnapshot,
   CodexHomeSettingsUpdateInput,
@@ -28,6 +28,7 @@ import type {
   CodexAppHandoffOperation,
   CodexThreadHandoffSnapshot,
   ThreadExecutionHandoffInput,
+  ThreadExecutionLocationView,
 } from "./codex-thread-handoff";
 import type {
   CodexTurnPresentationCaptureInput,
@@ -44,26 +45,10 @@ import type { ClaudeDiscoveryInput, ClaudeModelCatalogInput } from "./claude-mod
 import type { AgentSessionConfigSelectOption } from "./agent-conversation";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
-import type {
-  AgentBackendAuthenticateInput,
-  AgentBackendAuthenticateResult,
-  AgentBackendConfigOptionInput,
-  AgentBackendConfigOptionResult,
-  AgentBackendModeInput,
-  AgentBackendPromptInput,
-  AgentBackendPromptResult,
-  AgentBackendSessionOpenInput,
-  AgentBackendThreadStartInput,
-  AgentBackendThreadStartResult,
-} from "./agent-backend-api";
-import type {
-  AgentBackendSessionPresentation,
-  AgentConversationSnapshot,
-} from "./agent-conversation";
 import type { CodexPersistedHistorySearchReadPage } from "./codex-persisted-history-search";
 
 import type { GitRepositoryIdentity } from "./git-repository-identity";
-import type { ContentAccessContext } from "./content-access-context";
+import type { ContentRoutingContext } from "./content-routing-context";
 import type { LocalPathPresentationContext } from "./local-path-presentation";
 import type {
   ManagedAssetImageBytes,
@@ -266,7 +251,6 @@ import type {
   CodexAccountSnapshot,
   CodexRateLimitResetInput,
   CodexRateLimitResetResult,
-  CodexApprovalResponse,
   CodexCanonicalOptionPickerResponse,
   CodexCanonicalSetupContextPickerResponse,
   CodexCanonicalSetupCodexStepResponse,
@@ -294,11 +278,8 @@ import type {
   CodexConversationThreadSettingsPatch,
   CodexPersonality,
   CodexEvent,
-  CodexAgentMode,
   CodexReviewStartParams,
   CodexReviewStartResponse,
-  CodexRendererClientRequestMessage,
-  CodexRendererClientResponseMessage,
   CodexAutomationRunsInboxResponse,
   CodexAutomationRunArchiveInput,
   CodexAutomationRunDeleteInput,
@@ -361,18 +342,13 @@ import type {
   CodexComposerSkillListInput,
   CodexHostMessage,
   CodexMcpServerElicitationResponse,
-  CodexPermissionMode,
-  CodexPermissionRequestResponse,
   CodexProtocolRequestId,
-  CodexPermissionState,
   CodexProjectlessThreadCwdInput,
   CodexProjectlessWorkspace,
   CodexSteerTurnInput,
   CodexSteerTurnResult,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
-  CodexThreadStartForSessionInput,
-  CodexThreadStartForSessionResult,
   CodexThreadGoalDraftInput,
   CodexThreadGoalSetActionInput,
   CodexThreadGoalMaterializedDraft,
@@ -731,7 +707,7 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-export interface IpcApi {
+export interface IpcApi extends AgentRuntimeIpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;
@@ -837,11 +813,11 @@ export interface IpcApi {
     result: LibraryBlockPropertyMutationCommandResultV2;
   };
   "pages:lifecycle:preflight": {
-    args: [projectId: string, pageId: string];
+    args: [projectId: string | null, pageId: string];
     result: PageLifecyclePreflightResultV2;
   };
   "pages:lifecycle:apply": {
-    args: [projectId: string, request: PageLifecycleMutationRequestV2];
+    args: [projectId: string | null, request: PageLifecycleMutationRequestV2];
     result: PageLifecycleMutationCommandResultV2;
   };
   "database-module:read": {
@@ -853,47 +829,47 @@ export interface IpcApi {
     result: DatabaseApplyResultV2;
   };
   "library-module:read": {
-    args: [accessContext: ContentAccessContext, request: LibraryModuleReadRequest];
+    args: [routingContext: ContentRoutingContext, request: LibraryModuleReadRequest];
     result: LibraryModuleReadResult;
   };
   "library-module:apply": {
-    args: [accessContext: ContentAccessContext, request: LibraryModuleApplyRequest];
+    args: [routingContext: ContentRoutingContext, request: LibraryModuleApplyRequest];
     result: LibraryModuleApplyResult;
   };
   "files:prepare": {
-    args: [accessContext: ContentAccessContext, input: PrepareFileBlobInput];
+    args: [routingContext: ContentRoutingContext, input: PrepareFileBlobInput];
     result: PreparedFileBlob;
   };
   "editor-history:release": {
-    args: [accessContext: ContentAccessContext, request: LibraryModuleApplyRequest];
+    args: [routingContext: ContentRoutingContext, request: LibraryModuleApplyRequest];
     result: import("./library-module").EditorHistoryReleaseHandoff;
   };
   "editor-history:abandon": {
-    args: [ContentAccessContext, LibraryModuleApplyRequest];
+    args: [ContentRoutingContext, LibraryModuleApplyRequest];
     result: import("./library-module").EditorHistoryReleaseHandoff;
   };
   "editor-history:abandon-transfer": {
-    args: [projectId: string, intent: PublicBlockTransferIntent];
+    args: [projectId: string | null, intent: PublicBlockTransferIntent];
     result: import("./library-module").EditorHistoryReleaseHandoff;
   };
   "files:pick-and-prepare": {
-    args: [accessContext: ContentAccessContext, input: PickFilesInput];
+    args: [routingContext: ContentRoutingContext, input: PickFilesInput];
     result: PickFilesResult;
   };
   "files:prepare-local-drop": {
-    args: [accessContext: ContentAccessContext, input: PrepareDroppedFilesInput];
+    args: [routingContext: ContentRoutingContext, input: PrepareDroppedFilesInput];
     result: PrepareDroppedFilesResult;
   };
   "files:read": {
-    args: [accessContext: ContentAccessContext, input: ReadFileBytesInput];
+    args: [routingContext: ContentRoutingContext, input: ReadFileBytesInput];
     result: FileBytes;
   };
   "files:materialize": {
-    args: [accessContext: ContentAccessContext, input: SaveFileInput];
+    args: [routingContext: ContentRoutingContext, input: SaveFileInput];
     result: string;
   };
   "files:save": {
-    args: [accessContext: ContentAccessContext, input: SaveFileInput];
+    args: [routingContext: ContentRoutingContext, input: SaveFileInput];
     result: SaveFileResult;
   };
   "library-database-module:read": {
@@ -1001,15 +977,15 @@ export interface IpcApi {
     result: DocumentSyncCommandResult<DocumentAwarenessPublishAck>;
   };
   "blocks:transfer": {
-    args: [projectId: string, intent: PublicBlockTransferIntent];
+    args: [projectId: string | null, intent: PublicBlockTransferIntent];
     result: BlockTransferCommandResult;
   };
   "blocks:transfer:plan": {
-    args: [projectId: string, intent: PublicBlockTransferIntent];
+    args: [projectId: string | null, intent: PublicBlockTransferIntent];
     result: BlockTransferPresentationPlanResult;
   };
   "blocks:transfer:undo": {
-    args: [projectId: string, intent: PublicBlockTransferUndoIntent];
+    args: [projectId: string | null, intent: PublicBlockTransferUndoIntent];
     result: BlockTransferUndoCommandResult;
   };
   "diagnostics:renderer-log": {
@@ -1330,22 +1306,6 @@ export interface IpcApi {
     args: [input: UpdateAcpAgentSettingsInput];
     result: AcpAgentSettings;
   };
-  "agent-backend:session:respond": {
-    args: [input: { threadId: string; requestId: string; response: AgentInteractionResponse }];
-    result: void;
-  };
-  "agent-backend:session:open": {
-    args: [input: AgentBackendSessionOpenInput];
-    result: AgentBackendSessionPresentation;
-  };
-  "agent-backend:thread:start": {
-    args: [input: AgentBackendThreadStartInput];
-    result: AgentBackendThreadStartResult;
-  };
-  "agent-backend:session:read": {
-    args: [threadId: string];
-    result: AgentBackendSessionPresentation | null;
-  };
   "agent-backend:model-catalog:read": {
     args: [input: AgentModelCatalogInput];
     result: AgentModelCatalog;
@@ -1362,21 +1322,17 @@ export interface IpcApi {
     args: [input: ClaudeDiscoveryInput];
     result: import("./claude-models").ClaudeDiscovery;
   };
-  "agent-backend:permission-mode:get": {
-    args: [projectId: string | null];
-    result: import("./agent-backend-api").NativePermissionMode;
-  };
-  "agent-backend:permission-mode:set": {
-    args: [projectId: string | null, mode: import("./agent-backend-api").NativePermissionMode];
-    result: import("./agent-backend-api").NativePermissionMode;
-  };
   "agent-backend:claude:cancel-discovery": {
     args: [input: { readonly requestId: string }];
     result: void;
   };
+  "agent-backend:session:history": {
+    args: [input: import("./agent-backend-api").AgentBackendHistoryReadInput];
+    result: import("./agent-conversation").AgentConversationSnapshot;
+  };
   "agent-backend:session:inspect": {
     args: [threadId: string];
-    result: import("./claude-models").ClaudeRuntimeDiagnostics;
+    result: import("./agent-backend-api").AgentNativeHistoryInspection;
   };
   "agent-backend:session:history-image": {
     args: [input: import("./agent-backend-api").AgentBackendHistoryImageInput];
@@ -1385,54 +1341,6 @@ export interface IpcApi {
   "agent-backend:session:tool-output": {
     args: [input: import("./agent-backend-api").AgentBackendToolOutputInput];
     result: import("./agent-tool-output").AgentToolOutput;
-  };
-  "agent-backend:session:set-intelligence": {
-    args: [input: import("./agent-backend-api").AgentBackendIntelligenceInput];
-    result: AgentBackendSessionPresentation;
-  };
-  "agent-backend:session:control": {
-    args: [input: import("./agent-backend-api").AgentBackendControlInput];
-    result: AgentBackendSessionPresentation;
-  };
-  "agent-backend:session:fork": {
-    args: [input: import("./agent-backend-api").AgentBackendForkInput];
-    result: AgentBackendThreadStartResult;
-  };
-  "agent-backend:session:generate-title": {
-    args: [threadId: string];
-    result: string | null;
-  };
-  "agent-backend:session:observe": {
-    args: [threadId: string];
-    result: void;
-  };
-  "agent-backend:session:unobserve": {
-    args: [threadId: string];
-    result: void;
-  };
-  "agent-backend:session:prompt": {
-    args: [input: AgentBackendPromptInput];
-    result: AgentBackendPromptResult;
-  };
-  "agent-backend:session:cancel": {
-    args: [threadId: string];
-    result: AgentConversationSnapshot;
-  };
-  "agent-backend:session:set-mode": {
-    args: [input: AgentBackendModeInput];
-    result: AgentConversationSnapshot;
-  };
-  "agent-backend:session:set-config-option": {
-    args: [input: AgentBackendConfigOptionInput];
-    result: AgentBackendConfigOptionResult;
-  };
-  "agent-backend:session:authenticate": {
-    args: [input: AgentBackendAuthenticateInput];
-    result: AgentBackendAuthenticateResult;
-  };
-  "agent-backend:session:close": {
-    args: [threadId: string];
-    result: void;
   };
   "settings:history:get": { args: []; result: HistorySettings };
   "settings:history:update": {
@@ -2339,10 +2247,6 @@ export interface IpcApi {
     args: [input: CodexProjectlessThreadCwdInput];
     result: CodexProjectlessWorkspace;
   };
-  "codex:thread:start-for-session": {
-    args: [CodexThreadStartForSessionInput];
-    result: CodexThreadStartForSessionResult;
-  };
   "codex:thread:side-chat:start": {
     args: [CodexSideChatStartInput];
     result: CodexSideChatStartResult;
@@ -2354,10 +2258,6 @@ export interface IpcApi {
   "codex:renderer-client:id": {
     args: [];
     result: string | null;
-  };
-  "codex:renderer-client:response": {
-    args: [response: CodexRendererClientResponseMessage];
-    result: boolean;
   };
   "codex:thread:history-hydration:prepare": {
     args: [threadId: string];
@@ -2381,47 +2281,6 @@ export interface IpcApi {
   "codex:app-server:host-context": {
     args: [hostId: string];
     result: import("./codex-renderer-resume").CodexRendererHostContext;
-  };
-  "codex:thread:native-session:prepare": {
-    args: [input: CodexThreadStartForSessionInput];
-    result: import("./codex-native-thread-start").CodexNativeSessionLaunchPreparation;
-  };
-  "codex:thread:native-session:execute": {
-    args: [
-      input: {
-        hostId: string;
-        receiptId: string;
-        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
-        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
-      },
-    ];
-    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
-      import("@nodex/codex-app-server-protocol/v2").ThreadStartResponse
-    >;
-  };
-  "codex:thread:native-session:accept": {
-    args: [receiptId: string];
-    result: CodexThreadStartForSessionResult;
-  };
-  "codex:thread:native-session:release": { args: [receiptId: string]; result: void };
-  "codex:turn:native-fresh:prepare": {
-    args: [threadId: string, launchId: string];
-    result: import("./codex-thread-follower-request").ConversationFollowerTurnStart;
-  };
-  "codex:turn:native-fresh:execute": {
-    args: [
-      input: {
-        hostId: string;
-        threadId: string;
-        launchId: string;
-        request: import("@nodex/codex-app-server-protocol/v2").TurnStartParams;
-        caller: import("./codex-renderer-request").CodexRendererRequestCaller;
-        trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
-      },
-    ];
-    result: import("./codex-native-request-outcome").CodexNativeRequestOutcome<
-      import("@nodex/codex-app-server-protocol/v2").TurnStartResponse
-    >;
   };
   "codex:thread:native-fork:prepare": {
     args: [sourceThreadId: string, lastTurnId: string];
@@ -2535,7 +2394,6 @@ export interface IpcApi {
       requestId: CodexProtocolRequestId,
       context: {
         nativeOccurrence: import("./types").CodexNativeIngressIdentity;
-        permissionMode: CodexAgentMode;
         serviceTierSelector: { type: "standard" } | { type: "custom"; serviceTier: string };
       },
     ];
@@ -2592,6 +2450,10 @@ export interface IpcApi {
     args: [input: ThreadExecutionHandoffInput];
     result: CodexAppHandoffOperation;
   };
+  "thread-execution:location": {
+    args: [input: { readonly threadId: string }];
+    result: ThreadExecutionLocationView;
+  };
   "codex:pending-worktrees:list": {
     args: [];
     result: CodexPendingWorktreeEntry[];
@@ -2601,7 +2463,7 @@ export interface IpcApi {
     result: CodexPendingWorktreeCreateResult;
   };
   "codex:pending-worktree:auto-fix": {
-    args: [hostId: string, pendingWorktreeId: string, agentMode: CodexAgentMode];
+    args: [hostId: string, pendingWorktreeId: string];
     result: CodexPendingWorktreeCreateResult;
   };
   "codex:pending-worktree:retry": {
@@ -2669,10 +2531,6 @@ export interface IpcApi {
   "codex:thread:resume:accept": { args: [receiptId: string]; result: CodexThreadSummary };
   "codex:thread:resume:release": { args: [receiptId: string]; result: void };
 
-  "codex:thread:fresh-owner:adopt": {
-    args: [threadId: string, launchId: string];
-    result: import("./codex-native-thread-start").CodexNativeFreshLaunchAdoption;
-  };
   "codex:subagents:overview:read": {
     args: [input: CodexSubagentOverviewReadInput];
     result: CodexSubagentOverviewWindow;
@@ -2925,14 +2783,6 @@ export interface IpcApi {
     args: [threadId?: string];
     result: ProtocolListMcpServerStatusResponse;
   };
-  "codex:approval:respond": {
-    args: [
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-      response: CodexApprovalResponse,
-    ];
-    result: boolean;
-  };
   "codex:user-input:respond": {
     args: [
       conversationId: string,
@@ -2946,14 +2796,6 @@ export interface IpcApi {
       conversationId: string,
       requestId: CodexProtocolRequestId,
       response: CodexMcpServerElicitationResponse,
-    ];
-    result: boolean;
-  };
-  "codex:permission-request:respond": {
-    args: [
-      conversationId: string,
-      requestId: CodexProtocolRequestId,
-      response: CodexPermissionRequestResponse,
     ];
     result: boolean;
   };
@@ -2985,25 +2827,9 @@ export interface IpcApi {
     args: [conversationId: string, hasUnreadTurn: boolean];
     result: boolean;
   };
-  "codex:permission:mode:set": {
-    args: [projectId: string | null, mode: CodexPermissionMode];
-    result: CodexPermissionState;
-  };
-  "codex:permission:mode:get": {
-    args: [projectId: string | null];
-    result: CodexPermissionMode;
-  };
-  "codex:permission:state:get": {
-    args: [projectId: string | null];
-    result: CodexPermissionState;
-  };
-  "codex:permission:config-value:set": {
-    args: [projectId: string | null, keyPath: string, value: unknown];
-    result: CodexPermissionState;
-  };
 }
 
-/** The endpoint table already guarantees argument tuples; avoid rediscovering them in callers. */
+/** The endpoint table guarantees argument tuples. */
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
@@ -3014,7 +2840,9 @@ export interface IpcEvents {
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "dictation:open-recording": { readonly recordingId: string };
   "agent-import:progress": AgentImportProgress;
-  "agent-backend:session-changed": import("./agent-backend-api").AgentBackendSessionChangedEvent;
+  "agent-runtime:session-event": import("./agent-runtime-api").AgentRuntimeSessionEvent;
+  "agent-runtime:activity-changed": import("./agent-runtime-api").AgentRuntimeSessionActivityChange;
+  "agent-runtime:connection-changed": import("./agent-runtime-api").AgentRuntimeConnectionState;
   "workspace-file:changed": import("./types").WorkspaceFileChangedEvent;
   "document-sync:event": DocumentSyncRealtimeEvent;
   "persisted-atom:updated": PersistedAtomEvent;
@@ -3041,7 +2869,6 @@ export interface IpcEvents {
   "codex:event": CodexEvent;
   "codex:host-message": CodexHostMessage;
   "codex:user-input:auto-resolution:changed": CodexUserInputAutoResolutionChange;
-  "codex:renderer-client:request": CodexRendererClientRequestMessage;
   "codex:scheduled-automations:changed": CodexScheduledAutomationChangedEvent;
   "codex:automation-runs:updated": CodexAutomationRunsUpdatedEvent;
   "codex:hooks:changed": CodexHooksChangedEvent;

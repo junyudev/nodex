@@ -82,6 +82,7 @@ export function buildRemoteDestinationSearchResult({
     matchedProjectIds: new Set(),
     matchedColumnIdsByProjectId: new Map(),
     pageHits: results.flatMap((result, index) => {
+      if (result.projectId === null) return [];
       const project = projectById.get(result.projectId);
       if (!project) return [];
       if (!result.status) return [];

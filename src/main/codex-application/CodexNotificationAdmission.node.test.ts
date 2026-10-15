@@ -1,4 +1,3 @@
-import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import {
   makeTestTurnPresentation,
@@ -9,8 +8,6 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import type { CodexCanonicalConversationState } from "../../shared/types";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import {
   CodexInternalThreadRegistry,
@@ -19,11 +16,6 @@ import {
 import { make } from "./CodexNotificationAdmission";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
-import { ConversationEntityMap } from "./internal/ConversationEntityMap";
-import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { replaceCanonicalHistoryDraft } from "../../shared/codex-conversation-state/codex-canonical-history-loader";
-import { buildAgentActivityV2CorpusThread } from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
-import { produce } from "immer";
 import { CoreModules } from "../core-runtime/CoreModules";
 
 const thread = (input: {
@@ -60,24 +52,7 @@ const delta = (threadId: string): CodexServerNotification => ({
   params: { threadId, turnId: "turn-a", itemId: "message-a", delta: "next" },
 });
 
-const parentAuthority: FrozenNodexAgentTurnAuthority = {
-  threadId: "parent",
-  turnId: "parent-turn",
-  rootThreadId: "parent",
-  actorProjectId: "project-a",
-  libraryId: "library-a",
-  storeEpoch: "epoch-a",
-  frozenAtMs: 1_785_491_085_000,
-  readOnly: false,
-  scope: "library",
-  source: "builtin_full_access",
-};
-
-const makeHarness = (
-  trace: string[],
-  parentState?: CodexCanonicalConversationState,
-  core?: CoreModules["Service"],
-) =>
+const makeHarness = (trace: string[], core?: CoreModules["Service"]) =>
   Effect.gen(function* () {
     const internalThreads = yield* makeInternalThreads;
     const knownSubagents = new Set<string>();
@@ -121,38 +96,9 @@ const makeHarness = (
       bind: () => Effect.die("unused"),
       observeStarted: (threadId, turnId) =>
         Effect.sync(() => trace.push(`authority:observe:${threadId}:${turnId}`)),
-      capture: (threadId, turnId) =>
-        Effect.sync(() => {
-          trace.push(`authority:capture:${threadId}:${turnId}`);
-          return parentAuthority;
-        }),
-      inherit: (threadId, turnId, inherited) =>
-        Effect.sync(() =>
-          trace.push(`authority:inherit:${threadId}:${turnId}:${inherited.turnId}`),
-        ),
+      capture: () => Effect.die("Native child observations cannot choose a parent execution"),
       abort: () => undefined,
     });
-    const conversations = ConversationEntityMap.of({
-      registerThreadMetadata: () => {},
-      readThreadMetadata: () => null,
-      current: (threadId: string) =>
-        threadId === "parent"
-          ? ({
-              readCanonicalState: () =>
-                parentState ??
-                ({
-                  turns: [
-                    {
-                      ...({ turnId: "parent-turn", status: "inProgress" } satisfies Pick<
-                        CodexCanonicalTurnHeader,
-                        "turnId" | "status"
-                      >),
-                    },
-                  ],
-                } as unknown as CodexCanonicalConversationState),
-            } as unknown as ReturnType<ConversationEntityMap["Service"]["entity"]>)
-          : null,
-    } as unknown as ConversationEntityMap["Service"]);
     const presentation = yield* makeTestTurnPresentation;
     const admission = yield* make.pipe(
       Effect.provideService(
@@ -168,68 +114,9 @@ const makeHarness = (
       Effect.provideService(CodexSubagentDirectory, subagents),
       Effect.provideService(CodexTurnAuthority, authority),
       Effect.provideService(CodexTurnPresentation, presentation),
-      Effect.provideService(ConversationEntityMap, conversations),
     );
     return { admission, internalThreads, subagents, presentation };
   });
-
-it.effect.each(["inProgress", "completed"] as const)(
-  "subagent authority follows canonical parent status %s despite a stale legacy copy",
-  (status) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const metadata = buildAgentActivityV2CorpusThread();
-        const legacy = createCodexCanonicalHydratedConversationState(
-          {
-            ...metadata,
-            id: "parent",
-            turns: metadata.turns.map((turn) => ({ ...turn, id: "parent-turn", status })),
-          },
-          {
-            hostId: "local",
-            model: "fixture-model",
-            reasoningEffort: null,
-            cwd: "/work",
-            approvalPolicy: "on-request",
-            approvalsReviewer: "user",
-            sandboxPolicy: { type: "readOnly", networkAccess: false },
-            activePermissionProfile: null,
-            runtimeWorkspaceRoots: ["/work"],
-          },
-        );
-        const canonical = produce(legacy, (draft) => {
-          replaceCanonicalHistoryDraft(draft, legacy.turns, true);
-        });
-        const state = {
-          ...canonical,
-          turns:
-            status === "completed"
-              ? legacy.turns.map((turn) => ({ ...turn, status: "inProgress" as const }))
-              : [],
-        };
-        const trace: string[] = [];
-        const { admission } = yield* makeHarness(trace, state);
-        yield* admission.decide({
-          notification: startedThread(thread({ id: "child", parentThreadId: "parent" })),
-          threadId: "child",
-        });
-        yield* admission.decide({
-          notification: startedTurn("child", "child-turn"),
-          threadId: "child",
-        });
-        assert.deepStrictEqual(
-          trace,
-          status === "inProgress"
-            ? [
-                "subagent:observe:child",
-                "authority:capture:parent:parent-turn",
-                "authority:inherit:child:child-turn:parent-turn",
-              ]
-            : ["subagent:observe:child", "authority:observe:child:child-turn"],
-        );
-      }),
-    ),
-);
 
 it.effect(
   "admits a Core-linked root with a subagent label and keeps subsequent deltas free of Core reads",
@@ -270,7 +157,7 @@ it.effect(
             }),
         },
       } as unknown as CoreModules["Service"]);
-      const test = yield* makeHarness([], undefined, core);
+      const test = yield* makeHarness([], core);
       const started = startedThread(thread({ id: "created", threadSource: "subagent" }));
       assert.deepStrictEqual(
         yield* test.admission.decide({
@@ -337,55 +224,53 @@ it.effect("suppresses structured-title and non-sidebar helpers before visible pr
   ),
 );
 
-it.effect("inherits parent authority and drops unopened child deltas", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const trace: string[] = [];
-      const { admission, subagents } = yield* makeHarness(trace);
-      const child = thread({
-        id: "child",
-        parentThreadId: "parent",
-        source: {
-          subAgent: {
-            thread_spawn: {
-              parent_thread_id: "parent",
-              depth: 1,
-              agent_path: null,
-              agent_nickname: "worker",
-              agent_role: null,
+it.effect(
+  "keeps historical child observation passive while preserving selected history deltas",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const trace: string[] = [];
+        const { admission, subagents } = yield* makeHarness(trace);
+        const child = thread({
+          id: "child",
+          parentThreadId: "parent",
+          source: {
+            subAgent: {
+              thread_spawn: {
+                parent_thread_id: "parent",
+                depth: 1,
+                agent_path: null,
+                agent_nickname: "worker",
+                agent_role: null,
+              },
             },
           },
-        },
-      });
+        });
 
-      assert.strictEqual(
-        (yield* admission.decide({ notification: startedThread(child), threadId: "child" }))._tag,
-        "Admit",
-      );
-      assert.strictEqual(
-        (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
-        "Drop",
-      );
-      assert.strictEqual(
-        (yield* admission.decide({
-          notification: startedTurn("child", "child-turn"),
-          threadId: "child",
-        }))._tag,
-        "Admit",
-      );
-      assert.deepEqual(trace, [
-        "subagent:observe:child",
-        "authority:capture:parent:parent-turn",
-        "authority:inherit:child:child-turn:parent-turn",
-      ]);
+        assert.strictEqual(
+          (yield* admission.decide({ notification: startedThread(child), threadId: "child" }))._tag,
+          "Admit",
+        );
+        assert.strictEqual(
+          (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
+          "Drop",
+        );
+        assert.strictEqual(
+          (yield* admission.decide({
+            notification: startedTurn("child", "child-turn"),
+            threadId: "child",
+          }))._tag,
+          "Admit",
+        );
+        assert.deepEqual(trace, ["subagent:observe:child", "authority:observe:child:child-turn"]);
 
-      yield* subagents.hydrateSelected({ rootThreadId: "parent", threadId: "child" });
-      assert.strictEqual(
-        (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
-        "Admit",
-      );
-    }),
-  ),
+        yield* subagents.hydrateSelected({ rootThreadId: "parent", threadId: "child" });
+        assert.strictEqual(
+          (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
+          "Admit",
+        );
+      }),
+    ),
 );
 
 it.effect("binds submit presentation only when notification user-message identity matches", () =>

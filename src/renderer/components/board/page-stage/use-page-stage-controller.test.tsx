@@ -51,12 +51,11 @@ function documentAuthority(): PageStageProps["documentAuthority"] {
     kind: "yjs",
     descriptor: {
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       ownerBlockId: "page-1",
       ownerType: "page",
       ownerLifecycle: "active",
       documentId: "document-1",
-      authorization: null,
       storeEpoch: "store-epoch-1",
       generation: 1,
       headSeq: 1,
@@ -74,7 +73,7 @@ function buildProps(overrides: Partial<PageStageProps> = {}): PageStageProps {
   const page = overrides.page === undefined ? toStageModel(sourcePage) : overrides.page;
   return {
     page,
-    contentAccessContext: { kind: "project", projectId: "project-1" },
+    contentRoutingContext: { kind: "project", projectId: "project-1" },
     documentAuthority: documentAuthority(),
     onClose: () => undefined,
     onUpdate: async (_pageId, updates) => updatedResult(sourcePage, updates),
@@ -174,7 +173,7 @@ describe("usePageStageController", () => {
     const snapshots: PageStageSessionSnapshot[] = [];
     const result = renderController(
       buildProps({
-        contentAccessContext: { kind: "library" },
+        contentRoutingContext: { kind: "library" },
         onLeavePage: (snapshot) => snapshots.push(snapshot),
       }),
     );

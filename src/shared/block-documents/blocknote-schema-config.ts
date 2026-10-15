@@ -108,7 +108,6 @@ export const agentConfigInlineContentConfig = {
     model: { default: "" },
     reasoning: { default: "" },
     speed: { default: "" },
-    permission: { default: "" },
     unknownAttributes: { default: "" },
     rawAttributes: { default: "" },
   },

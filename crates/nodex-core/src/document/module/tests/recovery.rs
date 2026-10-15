@@ -797,10 +797,10 @@ fn recovery_metadata_reaches_live_audiences_without_document_update_resources() 
     let log = crate::infrastructure::event_log::CoreEventLog::new(seeded.kernel.readers());
     let host = library_context_for("host:recovery-delivery", AdapterKind::ElectronHost);
     let scopes = [
-        nodex_core_contracts::DeliveryAuthorizationScope::Library {
+        nodex_core_contracts::DeliveryAddress::Library {
             library_id: LIBRARY_ID.to_owned(),
         },
-        nodex_core_contracts::DeliveryAuthorizationScope::Project {
+        nodex_core_contracts::DeliveryAddress::Project {
             library_id: LIBRARY_ID.to_owned(),
             project_id: PROJECT_ID.to_owned(),
         },
@@ -826,7 +826,6 @@ fn recovery_metadata_reaches_live_audiences_without_document_update_resources() 
 fn canvas_draft_restores_or_copies_its_captured_file_after_shared_update_and_revocation() {
     use nodex_core_contracts::library::{
         LIBRARY_CONTRACT_VERSION, LibraryFileChange, LibraryFileReadSource, LibraryIntent,
-        LibraryProjectAccessChange, LibraryResourceTarget,
     };
     for (choice, trashed) in [
         (RecoveryChoice::Restore, false),
@@ -945,26 +944,6 @@ fn canvas_draft_restores_or_copies_its_captured_file_after_shared_update_and_rev
                 )
                 .unwrap();
         }
-        library
-            .apply(
-                &library_context_for("revoke", AdapterKind::Test),
-                ModuleApplyRequest {
-                    contract_version: LIBRARY_CONTRACT_VERSION,
-                    operation_id: "canvas:revoke".to_owned(),
-                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
-                    intent: LibraryIntent::SetProjectAccess {
-                        target: LibraryResourceTarget::File {
-                            file_id: "canvas-image".to_owned(),
-                        },
-                        changes: vec![LibraryProjectAccessChange {
-                            project_id: PROJECT_ID.to_owned(),
-                            access: None,
-                            expected_revision: Some(1),
-                        }],
-                    },
-                },
-            )
-            .unwrap();
         let source = LibraryFileReadSource::CanvasRecovery {
             document_id: DOCUMENT_ID.to_owned(),
             draft_id: "draft:test".to_owned(),

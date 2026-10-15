@@ -95,7 +95,7 @@ function buildParams(): CodexCanonicalLiveTurnParams {
       excludeTmpdirEnvVar: false,
       excludeSlashTmp: false,
     },
-    useAppServerPermissionDefault: false,
+
     model: null,
     serviceTier: "fast",
     effort: "medium",

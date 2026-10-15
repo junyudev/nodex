@@ -42,10 +42,6 @@ pub(super) fn read(
             window,
         } => {
             super::agent_command::admit_read(connection, library_id, context, &provenance)?;
-            let project_id = (provenance.authority.scope
-                != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library)
-                .then_some(provenance.authority.actor_project_id.as_deref())
-                .flatten();
             Ok(AutomationReadValue::Definitions {
                 window: read_definition_window(
                     connection,
@@ -53,7 +49,7 @@ pub(super) fn read(
                     commit_head,
                     DefinitionWindowQuery {
                         include_deleted: false,
-                        project_id,
+                        project_id: None,
                         search_query: search_query.as_deref(),
                     },
                     &window,
@@ -67,15 +63,6 @@ pub(super) fn read(
             super::agent_command::admit_read(connection, library_id, context, &provenance)?;
             validate_id("automation_id", &automation_id)?;
             let item = read_definition(connection, &automation_id)?;
-            if let Some(definition) = &item {
-                super::agent_command::require_target(
-                    connection,
-                    &provenance,
-                    definition.kind,
-                    definition.project_id.as_deref(),
-                    definition.target_session_id.as_deref(),
-                )?;
-            }
             Ok(AutomationReadValue::Definition {
                 item: item.map(Box::new),
             })
@@ -150,8 +137,8 @@ pub(super) fn read(
                 )?,
             })
         }
-        AutomationRead::Run { thread_id } => Ok(AutomationReadValue::Run {
-            item: super::run::read_run(connection, &thread_id)?.map(Box::new),
+        AutomationRead::Run { run_id } => Ok(AutomationReadValue::Run {
+            item: super::run::read_run(connection, &run_id)?.map(Box::new),
         }),
         AutomationRead::Runs {
             automation_id,
@@ -291,7 +278,7 @@ fn read_definition_window(
                 agent_backend_kind, agent_backend_definition_id, \
                 agent_backend_instance_config_id, execution_environment, \
                 local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                (SELECT thread_id FROM project_session_threads WHERE session_id = codex_scheduled_automations.target_session_id), project_id \
+                project_id \
          FROM codex_scheduled_automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
@@ -358,7 +345,7 @@ pub(super) fn read_definition(
                     agent_backend_kind, agent_backend_definition_id, \
                     agent_backend_instance_config_id, execution_environment, \
                     local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
-                (SELECT thread_id FROM project_session_threads WHERE session_id = codex_scheduled_automations.target_session_id), project_id \
+                project_id \
              FROM codex_scheduled_automations WHERE automation_id = ?1",
             [automation_id],
             definition_from_row,
@@ -380,9 +367,8 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
         definition_revision: row.get(1)?,
         kind,
         status,
-        project_id: row.get(23)?,
+        project_id: row.get(22)?,
         target_session_id: row.get(4)?,
-        target_thread_id: row.get(22)?,
         notification_policy: match row.get::<_, Option<String>>(21)?.as_deref() {
             None => None,
             Some("failed_runs_only") => Some(AutomationNotificationPolicy::FailedRunsOnly),
@@ -488,7 +474,7 @@ fn read_lease_window(
         .transpose()?;
     let mut statement = connection.prepare(
         "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                expires_at_ms, settled_at_ms, retry_at_ms, reason_code \
+                expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision \
          FROM core_automation_leases \
          WHERE (?1 IS NULL OR automation_id = ?1) AND (?2 OR status = 'claimed') \
            AND (?3 IS NULL OR scheduled_for_ms < ?3 \
@@ -552,7 +538,7 @@ pub(super) fn read_lease(
     connection
         .query_row(
             "SELECT lease_id, automation_id, scheduled_for_ms, attempt, status, claimed_at_ms, \
-                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code \
+                    expires_at_ms, settled_at_ms, retry_at_ms, reason_code, dispatch_id, definition_revision \
              FROM core_automation_leases WHERE lease_id = ?1",
             [lease_id],
             lease_from_row,
@@ -569,6 +555,8 @@ fn lease_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationLease> 
         .map_err(|_| rusqlite_conversion("Automation lease attempt is invalid".to_owned()))?;
     Ok(AutomationLease {
         lease_id: row.get(0)?,
+        dispatch_id: row.get(10)?,
+        definition_revision: row.get(11)?,
         automation_id: row.get(1)?,
         scheduled_for_ms: row.get(2)?,
         attempt,
@@ -582,12 +570,15 @@ fn lease_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationLease> 
 }
 
 fn validate_lease(lease: AutomationLease) -> Result<AutomationLease, StoreError> {
+    validate_id("stored Automation dispatch id", &lease.dispatch_id)
+        .map_err(|_| corrupt("Stored Automation dispatch id is invalid"))?;
     if lease.lease_id.is_empty()
         || lease.lease_id.len() > MAX_ID_LENGTH
         || lease.automation_id.is_empty()
         || lease.automation_id.len() > MAX_ID_LENGTH
         || lease.scheduled_for_ms < 0
         || lease.attempt == 0
+        || lease.definition_revision < 1
         || lease.claimed_at_ms < 0
         || lease.expires_at_ms <= lease.claimed_at_ms
     {

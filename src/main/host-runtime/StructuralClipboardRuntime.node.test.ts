@@ -84,7 +84,6 @@ const rendererClientLayer = (events: RendererClientRuntime["Service"]["events"] 
       getWebContentsIdForClientId: () => null,
       getClientCount: () => 0,
       getClientIds: () => [],
-      getPendingRequestCount: () => 0,
       sendToClient: () => false,
       sendCriticalToClient: () => false,
       sendToClients: () => ({
@@ -93,8 +92,6 @@ const rendererClientLayer = (events: RendererClientRuntime["Service"]["events"] 
         failedClientIds: [],
       }),
       broadcast: () => 0,
-      request: () => Effect.never,
-      handleResponse: () => Effect.succeed(false),
       handleDeliveryAcknowledgment: () => Effect.void,
       disposeClient: () => Effect.void,
       events,

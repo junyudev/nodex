@@ -3,9 +3,9 @@ import type {
   DocumentRecoveryScope,
 } from "../../shared/block-documents/document-recovery";
 import {
-  contentAccessIdentityKey,
-  parseContentAccessContext,
-} from "../../shared/content-access-context";
+  contentRoutingIdentityKey,
+  parseContentRoutingContext,
+} from "../../shared/content-routing-context";
 import { isBoundedOperationId } from "../../shared/operation-identity";
 import { recoveryRecord } from "./document-recovery-staging";
 
@@ -45,10 +45,10 @@ export function parseRecoveryResolveOperation(
     throw new Error(
       "A saved recovery action cannot be verified. Refresh its result or export the draft before continuing.",
     );
-  const accessContext = parseContentAccessContext(command.accessContext);
+  const routingContext = parseContentRoutingContext(command.routingContext);
   if (
-    contentAccessIdentityKey({ libraryId: scope.libraryId, accessContext }) !==
-    contentAccessIdentityKey(scope)
+    contentRoutingIdentityKey({ libraryId: scope.libraryId, routingContext }) !==
+    contentRoutingIdentityKey(scope)
   )
     throw new Error("A saved recovery action belongs to another access context");
   return command as unknown as RecoveryResolveOperation;

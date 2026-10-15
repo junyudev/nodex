@@ -5,7 +5,7 @@ use nodex_core_contracts::automation::{AutomationEvent, AutomationEventKind};
 use nodex_core_contracts::database::{
     DatabaseEvent, DatabaseEventKind, DatabasePersonalViewChange, DatabaseViewDisclosureTarget,
 };
-use nodex_core_contracts::events::DeliveryAuthorizationScope;
+use nodex_core_contracts::events::DeliveryAddress;
 use nodex_core_contracts::library::{LibraryEvent, LibraryEventKind, LibraryPageFileInvalidation};
 use nodex_core_contracts::workspace::{
     ProjectCatalogChangeKind, ProjectSessionInvalidationScope, ProjectWorkspaceEvent,
@@ -50,11 +50,6 @@ const DOCUMENT_LIVE_ROUTE_SQL: &str = "SELECT
          WHERE document.store_epoch = ?1
            AND document.commit_seq = ?2 AND document.document_id = ?3
        ) OR EXISTS(
-         SELECT 1 FROM local_commit_revocations revocation
-         WHERE revocation.store_epoch = ?1 AND revocation.commit_seq = ?2
-           AND revocation.resource_kind = 'document'
-           AND revocation.resource_id = ?3
-       ) OR EXISTS(
          SELECT 1 FROM local_commit_effects effect
          JOIN change_log change ON change.seq = effect.change_log_seq
          JOIN json_each(change.document_ids_json) routed
@@ -65,11 +60,6 @@ const DOCUMENT_LIVE_ROUTES_SQL: &str = "SELECT document_id FROM (
        SELECT document.document_id AS document_id
        FROM local_commit_documents document
        WHERE document.store_epoch = ?1 AND document.commit_seq = ?2
-       UNION
-       SELECT revocation.resource_id AS document_id
-       FROM local_commit_revocations revocation
-       WHERE revocation.store_epoch = ?1 AND revocation.commit_seq = ?2
-         AND revocation.resource_kind = 'document'
        UNION
        SELECT CAST(routed.value AS TEXT) AS document_id
        FROM local_commit_effects effect
@@ -263,7 +253,7 @@ pub enum DocumentLiveDelivery {
     Unrelated,
     Packet(Box<AuthorizedDeliveryPacket>),
     IdentityChanged(StreamCheckpoint),
-    AccessRevoked,
+    DocumentUnavailable,
 }
 
 #[derive(Clone)]
@@ -376,25 +366,16 @@ impl CoreEventLog {
                 transaction.commit()?;
                 return Ok(DocumentLiveDelivery::Unrelated);
             }
-            let authorization_scope =
-                nodex_core_contracts::events::DeliveryAuthorizationScope::Document {
-                    library_id: context.library_id.0.clone(),
-                    project_id: context
-                        .project_id
-                        .as_ref()
-                        .map(|project_id| project_id.0.clone()),
-                    document_id: document_id.clone(),
-                };
-            if !super::resource_authorization::can_read(
+            if let Err(error) = crate::document::require_owned_document_for_live_delivery(
                 &transaction,
                 &context,
-                &authorization_scope,
-                &nodex_core_contracts::events::ResourceKey::Document {
-                    document_id: document_id.clone(),
-                },
-            )? {
+                &document_id,
+            ) {
+                if error.code != StoreErrorCode::NotFound {
+                    return Err(error);
+                }
                 transaction.commit()?;
-                return Ok(DocumentLiveDelivery::AccessRevoked);
+                return Ok(DocumentLiveDelivery::DocumentUnavailable);
             }
             let packet = authorized_delivery::resolve(
                 &transaction,
@@ -467,7 +448,7 @@ impl CoreEventLog {
         &self,
         commit_seq: i64,
         host_context: &BoundModuleContext,
-        scopes: &[DeliveryAuthorizationScope],
+        scopes: &[DeliveryAddress],
     ) -> Result<Vec<AuthorizedDeliveryPacket>, StoreError> {
         validate_projection_live_request(host_context, scopes)?;
         let host_context = host_context.clone();
@@ -491,7 +472,7 @@ impl CoreEventLog {
         limit: Option<u32>,
         generation: &str,
         host_context: &BoundModuleContext,
-        scopes: &[DeliveryAuthorizationScope],
+        scopes: &[DeliveryAddress],
     ) -> Result<CoreAuthorizedEventReplay, StoreError> {
         validate_projection_live_request(host_context, scopes)?;
         let generation = generation.to_owned();
@@ -809,7 +790,7 @@ fn scan_authorized_events_with(
 
 fn validate_projection_live_request(
     host_context: &BoundModuleContext,
-    scopes: &[DeliveryAuthorizationScope],
+    scopes: &[DeliveryAddress],
 ) -> Result<(), StoreError> {
     if host_context.adapter != AdapterKind::ElectronHost || host_context.project_id.is_some() {
         return Err(StoreError::new(
@@ -832,18 +813,16 @@ fn resolve_projection_live_packets(
     connection: &Connection,
     commit_seq: i64,
     host_context: &BoundModuleContext,
-    scopes: &[DeliveryAuthorizationScope],
+    scopes: &[DeliveryAddress],
 ) -> Result<Vec<AuthorizedDeliveryPacket>, StoreError> {
     let verified = local_commit::load_verified_commit(connection, commit_seq)?;
     let mut packets = Vec::with_capacity(scopes.len());
     for scope in scopes {
         let context = match scope {
-            DeliveryAuthorizationScope::Library { library_id }
-                if library_id == &host_context.library_id.0 =>
-            {
+            DeliveryAddress::Library { library_id } if library_id == &host_context.library_id.0 => {
                 host_context.clone()
             }
-            DeliveryAuthorizationScope::Project {
+            DeliveryAddress::Project {
                 library_id,
                 project_id,
             } if library_id == &host_context.library_id.0 => BoundModuleContext {
@@ -851,9 +830,9 @@ fn resolve_projection_live_packets(
                 project_id: Some(ProjectId(project_id.clone())),
                 ..host_context.clone()
             },
-            DeliveryAuthorizationScope::Library { .. }
-            | DeliveryAuthorizationScope::Project { .. }
-            | DeliveryAuthorizationScope::Document { .. } => {
+            DeliveryAddress::Library { .. }
+            | DeliveryAddress::Project { .. }
+            | DeliveryAddress::Document { .. } => {
                 return Err(StoreError::new(
                     StoreErrorCode::Unauthorized,
                     "Projection live scope is outside the Host Library",
@@ -1680,9 +1659,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use nodex_core_contracts::{
-        AdapterKind, BoundModuleContext, LibraryId, ProfileId, ProjectId, ResourceRevocation,
-        ResourceRevocationReason, RevokedResourceKind,
-        events::{DeliveryAtomPayload, DeliveryAuthorizationScope},
+        AdapterKind, BoundModuleContext, LibraryId, ProfileId, ProjectId,
+        events::{DeliveryAddress, DeliveryAtomPayload},
     };
     use rusqlite::OptionalExtension;
     use tempfile::tempdir;
@@ -1778,36 +1756,13 @@ mod tests {
         module_name: &str,
         entry: NewChangeLogEntry<'_>,
     ) -> Result<i64, StoreError> {
-        append_finalized_test_events_with_revocations(connection, module_name, vec![entry], &[])
-    }
-
-    fn append_finalized_test_event_with_revocations(
-        connection: &Connection,
-        module_name: &str,
-        entry: NewChangeLogEntry<'_>,
-        revocations: &[ResourceRevocation],
-    ) -> Result<i64, StoreError> {
-        append_finalized_test_events_with_revocations(
-            connection,
-            module_name,
-            vec![entry],
-            revocations,
-        )
+        append_finalized_test_events(connection, module_name, vec![entry])
     }
 
     fn append_finalized_test_events(
         connection: &Connection,
         module_name: &str,
         entries: Vec<NewChangeLogEntry<'_>>,
-    ) -> Result<i64, StoreError> {
-        append_finalized_test_events_with_revocations(connection, module_name, entries, &[])
-    }
-
-    fn append_finalized_test_events_with_revocations(
-        connection: &Connection,
-        module_name: &str,
-        entries: Vec<NewChangeLogEntry<'_>>,
-        revocations: &[ResourceRevocation],
     ) -> Result<i64, StoreError> {
         let _ = store_identity(connection)?;
         let first = entries
@@ -1846,9 +1801,6 @@ mod tests {
         }
         let event_sequence =
             event_sequence.ok_or_else(|| corrupt("Test LocalCommit needs at least one effect"))?;
-        for revocation in revocations {
-            local_commit::record_revocation(connection, &commit, revocation)?;
-        }
         let result = serde_json::json!({ "eventSequence": event_sequence });
         insert_module_receipt(
             connection,
@@ -2659,7 +2611,7 @@ mod tests {
     }
 
     #[test]
-    fn authorized_scan_uses_explicit_checkpoint_across_sequence_gaps_and_filters() {
+    fn scan_preserves_gapped_checkpoints_and_explicit_projection_routes() {
         let directory = tempdir().expect("temporary Profile");
         let kernel = SqliteStoreKernel::open_test(directory.path()).expect("Core store");
         let (store_epoch, library_id, first_commit, second_commit) = kernel
@@ -2676,7 +2628,7 @@ mod tests {
                      VALUES ('project:other', ?1, 'Other', '2026-01-01', '2026-01-01')",
                     [&library_id],
                 )?;
-                append_finalized_test_event_with_revocations(
+                append_finalized_test_event(
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
@@ -2695,22 +2647,13 @@ mod tests {
                         projection_impact: &ProjectionImpact::None,
                         committed_at: "2026-08-07T00:00:00Z",
                     },
-                    &[ResourceRevocation {
-                        authorization_scope: DeliveryAuthorizationScope::Project {
-                            library_id: library_id.clone(),
-                            project_id: "project:events".to_owned(),
-                        },
-                        resource_kind: RevokedResourceKind::Page,
-                        resource_id: "page:first".to_owned(),
-                        reason: ResourceRevocationReason::AccessRevoked,
-                    }],
                 )?;
                 let first_commit = local_commit::head(connection)?;
                 connection.execute(
                     "UPDATE sqlite_sequence SET seq = ?1 WHERE name = 'local_commits'",
                     [first_commit + 7],
                 )?;
-                append_finalized_test_event_with_revocations(
+                append_finalized_test_event(
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
@@ -2729,15 +2672,6 @@ mod tests {
                         projection_impact: &ProjectionImpact::None,
                         committed_at: "2026-08-07T00:00:01Z",
                     },
-                    &[ResourceRevocation {
-                        authorization_scope: DeliveryAuthorizationScope::Project {
-                            library_id: library_id.clone(),
-                            project_id: "project:events".to_owned(),
-                        },
-                        resource_kind: RevokedResourceKind::Page,
-                        resource_id: "page:second".to_owned(),
-                        reason: ResourceRevocationReason::AccessRevoked,
-                    }],
                 )?;
                 let second_commit = local_commit::head(connection)?;
                 Ok((store_epoch, library_id, first_commit, second_commit))
@@ -2780,14 +2714,15 @@ mod tests {
                 &context(&library_id, "project:other"),
                 None,
             )
-            .expect("filtered scan")
+            .expect("another Project route reads the same Profile events")
         else {
             panic!("expected filtered scan");
         };
-        assert!(packets.is_empty());
+        assert_eq!(packets.len(), 1);
+        assert_eq!(packets[0].manifest.identity.commit_seq, second_commit);
         assert_eq!(checkpoint.scanned_through_seq, second_commit);
 
-        let project_scope = [DeliveryAuthorizationScope::Project {
+        let project_scope = [DeliveryAddress::Project {
             library_id: library_id.clone(),
             project_id: "project:events".to_owned(),
         }];
@@ -2833,7 +2768,7 @@ mod tests {
         assert_eq!(checkpoint.scanned_through_seq, second_commit);
         assert_eq!(commit_head, second_commit);
 
-        let unrelated_scope = [DeliveryAuthorizationScope::Project {
+        let unrelated_scope = [DeliveryAddress::Project {
             library_id: library_id.clone(),
             project_id: "project:other".to_owned(),
         }];
@@ -2849,11 +2784,19 @@ mod tests {
                 &host_context(&library_id),
                 &unrelated_scope,
             )
-            .expect("zero-packet projection scan")
+            .expect(
+                "another Project route retains Profile events without unrelated projection effects",
+            )
         else {
             panic!("expected zero-packet projection scan");
         };
-        assert!(packets.is_empty());
+        assert_eq!(packets.len(), 2);
+        assert!(
+            packets
+                .iter()
+                .all(|packet| packet.delivery_address == unrelated_scope[0]
+                    && packet.projection_effects.is_empty())
+        );
         assert_eq!(checkpoint.scanned_through_seq, second_commit);
     }
 
@@ -3023,212 +2966,7 @@ mod tests {
     }
 
     #[test]
-    fn post_state_delivery_revokes_source_access_and_grants_target_access() {
-        let directory = tempdir().expect("temporary Profile");
-        let kernel = SqliteStoreKernel::open_test(directory.path()).expect("Core store");
-        let (store_epoch, library_id, commit_seq) = kernel
-            .writer()
-            .call(|connection| {
-                let (store_epoch, library_id) = store_identity(connection)?;
-                connection.execute_batch(
-                    "INSERT INTO projects(id, library_id, name, created, updated)
-                     VALUES ('project:a', 'library:events', 'A', '2026-08-07', '2026-08-07');
-                     INSERT INTO projects(id, library_id, name, created, updated)
-                     VALUES ('project:b', 'library:events', 'B', '2026-08-07', '2026-08-07');
-                     INSERT INTO blocks(
-                       id, library_id, type, lifecycle, placement_revision,
-                       metadata_revision, created_at, updated_at
-                     ) VALUES (
-                       'page:moved', 'library:events', 'page', 'active', 1, 1,
-                       '2026-08-07', '2026-08-07'
-                     );
-                     INSERT INTO documents(
-                       id, library_id, generation, head_seq, schema_key, schema_version,
-                       state_vector, state_hash, readiness, authority, created_at, updated_at,
-                       sync_engine
-                     ) VALUES (
-                       'document:moved', 'library:events', 1, 0, 'nodex.page', 3,
-                       X'', '', 'ready', 'ydoc_primary', '2026-08-07', '2026-08-07', 'yjs'
-                     );
-                     INSERT INTO block_documents(block_id, document_id, library_id, created_at)
-                     VALUES ('page:moved', 'document:moved', 'library:events', '2026-08-07');
-                     INSERT INTO pages(
-                       block_id, library_id, document_id, parent_kind, parent_id,
-                       created_at, updated_at
-                     ) VALUES (
-                       'page:moved', 'library:events', 'document:moved', 'library',
-                       'library:events', '2026-08-07', '2026-08-07'
-                     );
-                     INSERT INTO library_block_placements(
-                       block_id, library_id, rank_key, revision, created_at, updated_at
-                     ) VALUES (
-                       'page:moved', 'library:events', '7fffffffffffffffffffffffffffffff',
-                       1, '2026-08-07', '2026-08-07'
-                     );
-                     INSERT INTO project_resource_grants(
-                       id, project_id, library_id, root_kind, root_id, access,
-                       recursive, revision, lifecycle, created_at, updated_at
-                     ) VALUES (
-                       'grant:moved-target', 'project:b', 'library:events', 'page',
-                       'page:moved', 'read_write', 1, 1, 'active',
-                       '2026-08-07', '2026-08-07'
-                     );",
-                )?;
-                append_finalized_test_event_with_revocations(
-                    connection,
-                    "library",
-                    NewChangeLogEntry {
-                        project_id: Some("project:a"),
-                        store_epoch: &store_epoch,
-                        kind: "library.changed",
-                        operation_id: Some("page:move:a-to-b"),
-                        block_ids: &["page:moved".to_owned()],
-                        document_ids: &[],
-                        database_block_ids: &[],
-                        payload_json: r#"{
-                          "module":"library","affectedPageIds":["page:moved"],
-                          "affectedDatabaseIds":[],"affectedViewIds":[],
-                          "affectedParentKeys":["library:events"]
-                        }"#,
-                        projection_impact: &ProjectionImpact::Resources {
-                            page_ids: vec!["page:moved".to_owned()],
-                            database_ids: Vec::new(),
-                            data_source_ids: Vec::new(),
-                            view_ids: Vec::new(),
-                            document_heads: Vec::new(),
-                        },
-                        committed_at: "2026-08-07T00:00:00Z",
-                    },
-                    &[
-                        ResourceRevocation {
-                            authorization_scope: DeliveryAuthorizationScope::Project {
-                                library_id: "library:events".to_owned(),
-                                project_id: "project:a".to_owned(),
-                            },
-                            resource_kind: RevokedResourceKind::Page,
-                            resource_id: "page:moved".to_owned(),
-                            reason: ResourceRevocationReason::AccessRevoked,
-                        },
-                        ResourceRevocation {
-                            authorization_scope: DeliveryAuthorizationScope::Project {
-                                library_id: "library:events".to_owned(),
-                                project_id: "project:a".to_owned(),
-                            },
-                            resource_kind: RevokedResourceKind::Document,
-                            resource_id: "document:moved".to_owned(),
-                            reason: ResourceRevocationReason::AccessRevoked,
-                        },
-                    ],
-                )?;
-                Ok((store_epoch, library_id, local_commit::head(connection)?))
-            })
-            .expect("cross-Project delivery fixture");
-        let log = CoreEventLog::new(kernel.readers());
-
-        let source = log
-            .authorized_packet(commit_seq, &context(&library_id, "project:a"), None, true)
-            .expect("source packet")
-            .expect("source revocation packet");
-        let target = log
-            .authorized_packet(commit_seq, &context(&library_id, "project:b"), None, true)
-            .expect("target packet")
-            .expect("target delivery packet");
-        let root = log
-            .authorized_packet(
-                commit_seq,
-                &BoundModuleContext {
-                    editor_history_owner: None,
-                    profile_id: ProfileId("profile:events".to_owned()),
-                    library_id: LibraryId(library_id.clone()),
-                    project_id: None,
-                    connection_id: "connection:root".to_owned(),
-                    adapter: AdapterKind::Test,
-                },
-                None,
-                true,
-            )
-            .expect("root packet")
-            .expect("root delivery packet");
-        let broker = log
-            .authorized_packet_for_library_broker(
-                commit_seq,
-                &BoundModuleContext {
-                    editor_history_owner: None,
-                    profile_id: ProfileId("profile:events".to_owned()),
-                    library_id: LibraryId(library_id.clone()),
-                    project_id: Some(ProjectId("project:a".to_owned())),
-                    connection_id: "connection:broker".to_owned(),
-                    adapter: AdapterKind::ElectronHost,
-                },
-                true,
-            )
-            .expect("broker packet")
-            .expect("broker delivery packet");
-
-        assert_eq!(source.atoms.len(), 1);
-        assert!(source.atoms.iter().all(|atom| {
-            let DeliveryAtomPayload::Library { event, .. } = &atom.payload else {
-                return false;
-            };
-            event.page_ids.is_empty()
-                && event.database_ids.is_empty()
-                && event.view_ids.is_empty()
-                && event.parent_keys == ["library:events"]
-        }));
-        assert!(source.document_effects.is_empty());
-        assert!(source.visibility_deltas.iter().any(|delta| {
-            matches!(
-                delta.change,
-                nodex_core_contracts::VisibilityDeltaKind::Revoke { .. }
-            ) && delta.roots.iter().any(|root| {
-                matches!(
-                    root,
-                    nodex_core_contracts::ResourceKey::Page { page_id }
-                        if page_id == "page:moved"
-                )
-            })
-        }));
-        assert_eq!(target.atoms.len(), 2);
-        assert!(target.visibility_deltas.is_empty());
-        assert_eq!(root.atoms.len(), 2);
-        assert!(root.visibility_deltas.is_empty());
-        assert!(matches!(
-            source.authorization_scope,
-            DeliveryAuthorizationScope::Project { ref project_id, .. }
-                if project_id == "project:a"
-        ));
-        assert!(matches!(
-            target.authorization_scope,
-            DeliveryAuthorizationScope::Project { ref project_id, .. }
-                if project_id == "project:b"
-        ));
-        assert!(matches!(
-            root.authorization_scope,
-            DeliveryAuthorizationScope::Library { .. }
-        ));
-        assert_eq!(broker, root);
-        assert_eq!(
-            log.authorized_document_live_delivery(
-                commit_seq,
-                &context(&library_id, "project:a"),
-                "document:moved",
-                &StoreEpoch(store_epoch),
-                "generation:test",
-                0,
-            )
-            .expect("source exact Document revocation"),
-            DocumentLiveDelivery::AccessRevoked,
-        );
-        assert_eq!(
-            source.manifest.identity.manifest_hash,
-            target.manifest.identity.manifest_hash
-        );
-        assert_ne!(source.packet_hash, target.packet_hash);
-        assert_ne!(source.packet_hash, root.packet_hash);
-    }
-
-    #[test]
-    fn mixed_resource_event_delivers_visible_atom_without_hidden_sibling() {
+    fn mixed_resource_event_delivers_all_profile_resource_atoms() {
         let directory = tempdir().expect("temporary Profile");
         let kernel = SqliteStoreKernel::open_test(directory.path()).expect("Core store");
         let (library_id, commit_seq) = kernel
@@ -3276,13 +3014,7 @@ mod tests {
                        1, '2026-08-07', '2026-08-07'),
                      ('page:hidden', 'library:events', '7fffffffffffffffffffffffffffffff',
                        1, '2026-08-07', '2026-08-07');
-                     INSERT INTO project_resource_grants(
-                       id, project_id, library_id, root_kind, root_id, access,
-                       recursive, revision, lifecycle, created_at, updated_at
-                     ) VALUES (
-                       'grant:visible', 'project:reader', 'library:events', 'page',
-                       'page:visible', 'read', 1, 1, 'active', '2026-08-07', '2026-08-07'
-                     );",
+                     ",
                 )?;
                 append_finalized_test_event(
                     connection,
@@ -3324,10 +3056,19 @@ mod tests {
             .expect("resolve packet")
             .expect("visible sibling packet");
 
-        assert_eq!(packet.atoms.len(), 1);
-        let bytes = serde_json::to_string(&packet).expect("serialize packet");
-        assert!(bytes.contains("page:visible"));
-        assert!(!bytes.contains("page:hidden"));
-        assert_eq!(packet.coverage.atom_ids.len(), 1);
+        assert_eq!(packet.atoms.len(), 2);
+        let page_ids = packet
+            .atoms
+            .iter()
+            .flat_map(|atom| match &atom.payload {
+                DeliveryAtomPayload::Library { event, .. } => event.page_ids.clone(),
+                _ => panic!("Library resource atom"),
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            page_ids,
+            std::collections::BTreeSet::from(["page:visible".to_owned(), "page:hidden".to_owned()])
+        );
+        assert_eq!(packet.coverage.atom_ids.len(), 2);
     }
 }

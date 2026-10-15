@@ -556,51 +556,6 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     );
     assert_eq!(response_json(&created_database)["status"], "ok");
 
-    let grant_database = serde_json::json!({
-        "contract_version": LIBRARY_CONTRACT_VERSION,
-        "operation_id": "lifecycle-database-grant",
-        "store_epoch": expected.store_epoch,
-        "intent": {
-            "kind": "grant_project_access",
-            "project_id": "project:default",
-            "target": { "kind": "database", "database_id": DATABASE_ID },
-            "access": "read_write"
-        }
-    })
-    .to_string();
-    let granted_database = request_with_headers(
-        &expected.socket_path,
-        &auth,
-        "POST",
-        "/core/v1/modules/library/apply",
-        &grant_database,
-        &module_headers,
-    );
-    assert_eq!(response_json(&granted_database)["status"], "ok");
-
-    let redundant_grant = grant_database.replace(
-        "lifecycle-database-grant",
-        "lifecycle-database-grant-redundant",
-    );
-    let redundant_grant = request_with_headers(
-        &expected.socket_path,
-        &auth,
-        "POST",
-        "/core/v1/modules/library/apply",
-        &redundant_grant,
-        &module_headers,
-    );
-    let redundant_grant = response_json(&redundant_grant);
-    assert_eq!(redundant_grant["status"], "ok");
-    assert_eq!(redundant_grant["payload"]["status"], "no_op");
-    assert!(redundant_grant["payload"].get("commit").is_none());
-    assert!(redundant_grant["payload"].get("delivery").is_none());
-    assert_eq!(
-        redundant_grant["payload"]["observed"]["store_epoch"],
-        expected.store_epoch,
-    );
-    assert_eq!(redundant_grant["payload"]["receipt"]["did_mutate"], false,);
-
     let database_read = serde_json::to_string(&ModuleReadRequest {
         contract_version: DATABASE_CONTRACT_VERSION,
         read: DatabaseRead::PropertyWindow {
@@ -654,8 +609,8 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         &module_headers,
     );
     let database_apply = response_json(&database_apply);
-    assert_eq!(database_apply["status"], "error");
-    assert_eq!(database_apply["payload"]["code"], "unauthorized");
+    assert_eq!(database_apply["status"], "ok");
+    assert_eq!(database_apply["payload"]["status"], "committed");
 
     let oversized = request(
         &expected.socket_path,

@@ -7,29 +7,34 @@ boundary and sampling fields are documented in [Configuration](../CONFIGURATION.
 ## Generation and lifetime
 
 A latest Turn completion can request a live prediction from the current root
-Conversation owner. A ready, connected, idle Composer can request the same latest Turn
-through catch-up. Background generation does not require an empty editor. Side Chats,
+conversation's execution owner. A ready, connected, idle Composer can request the same
+latest Turn through catch-up. Background generation does not require an empty editor. Side Chats,
 ephemeral Threads and unsupported conversation modes do not generate predictions.
 
-The Main owner caches one request per host, Thread and latest Turn. Shared callers reuse
-that request and its successful result only while the same physical host source is current;
-replacing a source invalidates reuse even when its generation number is unchanged.
+Agent Runtime owns local prediction requests and helper calls on the Session's managed
+native connection; Main owns predictions for explicitly attached remote conversations.
+Each owner caches one request per source Thread and latest completed work: a local Run
+or a remote native Turn. Shared callers reuse that request and its successful result
+only while the same physical source is current; replacing a source invalidates reuse
+even when its generation number is unchanged. Unsampled local requests remain cold
+and cache their empty result without opening a Provider connection.
 Failures do not retry automatically, but a later
 explicit request can try again. Changing the latest Turn
 removes the old request. A new parent Turn, host generation retirement, account mutation,
 logout, authentication failure or explicit clear cancels pending work and invalidates
 cached results. Configuration availability is local and does not start a connection.
-Cancellation also covers configuration and authentication waits before a request enters
-the cache, so disabling predictions or replacing an account cannot create a late helper.
-Unrelated host or Thread clears preserve an admitted request.
+Remote cancellation also covers configuration and authentication waits before a request
+enters the cache, so disabling predictions or replacing an account cannot create a late helper.
+Remote clears preserve requests admitted for unrelated hosts and Threads.
 
 Generation first resumes the parent to obtain its effective model, provider, effort,
 service tier and collaboration mode. Plan mode, non-OpenAI providers, excluded models and
 unsupported native prediction forks return no suggestion. Eligible generation creates a
 single ephemeral prediction fork, inheriting the parent's effective configuration, tools,
-environments and persisted history. It does not override permissions or replace a failed
-fork with a fresh Thread. Its Turn supplies only the prediction prompt, configured effort,
-trigger and client message identity. The helper is hidden from normal Thread catalogs.
+environments and persisted history, with full execution and Profile content access.
+It does not replace a failed fork with a fresh Thread. Its Turn supplies only the
+prediction prompt, configured effort, trigger and client message identity. The helper
+is hidden from normal Thread catalogs.
 
 The response must contain a nullable `suggestion` string. Completed message text replaces
 partial deltas, and the returned text is trimmed. Malformed output fails the prediction
@@ -39,8 +44,8 @@ terminal path unsubscribes the temporary Thread and releases its internal classi
 Cancellation during fork creation keeps release ownership until the fork acknowledgement
 identifies its helper; that helper is released before the cancellation settles and never
 starts a prediction Turn. Cancellation after Turn dispatch releases the helper immediately
-and still interrupts an accepted Turn if its acknowledgement arrives later. The Profile
-Scope owns that acknowledgement wait and closes it with the application.
+and still interrupts an accepted Turn if its acknowledgement arrives later. The owning
+process Scope retains that acknowledgement wait and closes it on process shutdown.
 
 ## Composer interaction
 

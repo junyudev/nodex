@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import type { ContentAccessContext } from "../../shared/content-access-context";
+import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type { LibraryFilePresentation, ReadFileBytesInput } from "../../shared/library-files";
 import type { NodexClipboardEnvelopeV1 } from "../../shared/clipboard-paste";
 import {
@@ -28,12 +28,12 @@ export class FileExportRuntime extends Context.Service<
   FileExportRuntime,
   {
     readonly materialize: (
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       input: ReadFileBytesInput,
       defaultName?: string,
     ) => Effect.Effect<string, FileExportError>;
     readonly clipboardText: (
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       envelope: NodexClipboardEnvelopeV1,
       text: string,
     ) => Effect.Effect<string, FileExportError>;
@@ -49,7 +49,7 @@ export const live = Layer.effect(
     const permits = yield* Semaphore.make(2);
     const root = path.join(config.nodexHome, "cache", "file-exports");
     const metadata = Effect.fn("FileExportRuntime.metadata")(
-      function* (access: ContentAccessContext, input: ReadFileBytesInput) {
+      function* (access: ContentRoutingContext, input: ReadFileBytesInput) {
         const result = yield* library.read(access, {
           read: {
             mode: "file_presentation",
@@ -71,7 +71,7 @@ export const live = Layer.effect(
     );
     const materializeBound = Effect.fn("FileExportRuntime.materializeBound")(
       function* (
-        access: ContentAccessContext,
+        access: ContentRoutingContext,
         input: ReadFileBytesInput,
         presentation: LibraryFilePresentation,
         defaultName?: string,
@@ -107,7 +107,7 @@ export const live = Layer.effect(
       Effect.mapError((cause) => new FileExportError({ cause })),
     );
     const materialize = Effect.fn("FileExportRuntime.materialize")(function* (
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       input: ReadFileBytesInput,
       defaultName?: string,
     ) {
@@ -115,7 +115,7 @@ export const live = Layer.effect(
       return yield* materializeBound(access, input, presentation, defaultName);
     }, permits.withPermits(1));
     const clipboardText = Effect.fn("FileExportRuntime.clipboardText")(function* (
-      access: ContentAccessContext,
+      access: ContentRoutingContext,
       envelope: NodexClipboardEnvelopeV1,
       text: string,
     ) {
@@ -136,7 +136,7 @@ export const live = Layer.effect(
           ),
         { concurrency: 2 },
       );
-      // Recheck lease and source authorization after the slow work, immediately before native CAS.
+      // Recheck lease and source identity after the slow work, immediately before native CAS.
       yield* Effect.forEach(references, ({ fileId }) => metadata(access, { fileId, source }), {
         concurrency: 2,
         discard: true,

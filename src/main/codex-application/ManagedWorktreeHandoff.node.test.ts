@@ -62,6 +62,7 @@ const makeFixture = (
     failWorker?: boolean;
     preparationRestored?: boolean;
     rollbackWarnings?: readonly string[];
+    noNativeThread?: boolean;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -131,12 +132,17 @@ const makeFixture = (
             Layer.succeed(CoreModules, {
               workspace: {
                 read: (input: { kind: string }) =>
-                  Effect.succeed({
-                    value:
-                      input.kind === "project"
-                        ? { kind: "project", project: { sources: [{ root: "/repo" }] } }
-                        : { kind: "thread", thread: { thread_name: "Task", thread_preview: "" } },
-                  }),
+                  input.kind === "thread" && options.noNativeThread
+                    ? Effect.die("Runtime metadata must not read a native Core Thread")
+                    : Effect.succeed({
+                        value:
+                          input.kind === "project"
+                            ? { kind: "project", project: { sources: [{ root: "/repo" }] } }
+                            : {
+                                kind: "thread",
+                                thread: { thread_name: "Task", thread_preview: "" },
+                              },
+                      }),
               },
             } as unknown as CoreModules["Service"]),
             Layer.succeed(CrossHostThreadHandoff, {
@@ -206,6 +212,22 @@ it.effect("waits for the durable allocation checkpoint before the worker can mov
       assert.strictEqual(prepared.destination.managedWorktreePath, allocated);
       assert.isTrue(fixture.newborns.has(allocated));
       assert.strictEqual(fixture.requests[0]?.operation, "prepare-handoff");
+    }),
+  ),
+);
+
+it.effect("uses the journal's Runtime title without acquiring native Thread metadata", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* makeFixture({ noNativeThread: true });
+      yield* f.handoff.prepare({
+        ...entry,
+        threadId: "runtime-root",
+        threadTitle: "Runtime conversation",
+      });
+      assert.equal(f.requests[0]?.operation, "prepare-handoff");
+      if (f.requests[0]?.operation === "prepare-handoff")
+        assert.equal(f.requests[0].input.threadTitle, "Runtime conversation");
     }),
   ),
 );

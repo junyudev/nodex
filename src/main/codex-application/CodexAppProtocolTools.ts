@@ -11,21 +11,12 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import type {
-  CodexReasoningEffort,
-  CodexScheduledAutomationCreateInput,
-  CodexScheduledAutomationExecutionEnvironment,
-  CodexScheduledAutomationReasoningEffort,
-  CodexScheduledAutomationStatus,
-  CodexScheduledAutomationUpdateInput,
-} from "../../shared/types";
+import type { CodexReasoningEffort } from "../../shared/types";
 import {
   CODEX_APP_TOOL_NAMESPACE,
   isCodexAppDynamicTool,
 } from "../../shared/codex-dynamic-tool-identity";
-import { createCodexFirstSubmissionIdentity } from "../../shared/codex-first-submission";
 import {
-  AUTOMATION_UPDATE_TOOL_NAME,
   buildCodexAppDynamicToolFailure,
   buildCodexAppDynamicToolSuccess,
   CODEX_APP_HANDOFF_MAX_WAIT_MS,
@@ -33,19 +24,18 @@ import {
   CODEX_APP_LOCAL_HOST_ID,
 } from "../codex/codex-app-meta-thread-tools";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import type { CodexDynamicCreatePermissionMode } from "../codex/codex-dynamic-create-permissions";
+
 import { parseCodexDynamicCreateThreadInput } from "../codex/codex-dynamic-thread-create";
-import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { CoreModules } from "../core-runtime/CoreModules";
 import type { ProjectWorkspaceIntent, ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
-import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { AutomationApplication } from "../automation-application/AutomationApplication";
 import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
 import { CodexProjectSessionFork } from "./CodexProjectSessionFork";
 import { CodexReadThreadHistory } from "./CodexReadThreadHistory";
-import { CodexSessionThreadLaunch } from "./CodexSessionThreadLaunch";
+import { AppToolInvocationInbox } from "../app-tools/AppToolInvocationInbox";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
+import { CodexApplicationRequestInbox } from "../codex-runtime/CodexApplicationRequestInbox";
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -73,8 +63,9 @@ export type CodexCreateThreadServiceTierSelector =
   | { readonly type: "custom"; readonly serviceTier: string };
 
 export interface CodexAppProtocolToolExecutionContext {
-  readonly permissionMode?: CodexDynamicCreatePermissionMode;
   readonly serviceTierSelector?: CodexCreateThreadServiceTierSelector;
+  /** Captured by native request ingress; renderer arguments cannot select the source. */
+  readonly nativeSource?: { readonly hostId: string; readonly generation: number };
 }
 
 export class CodexAppProtocolTools extends Context.Service<
@@ -91,37 +82,6 @@ export class CodexAppProtocolTools extends Context.Service<
     ) => Effect.Effect<DynamicToolCallResponse | null>;
   }
 >()("nodex/main/codex-application/CodexAppProtocolTools") {}
-
-type AutomationUpdateMode =
-  | "list"
-  | "view"
-  | "create"
-  | "suggested_create"
-  | "update"
-  | "suggested_update"
-  | "delete";
-type AutomationDestination = "local" | "worktree" | "thread";
-interface ParsedAutomationUpsertArgs {
-  readonly mode: "create" | "suggested_create" | "update" | "suggested_update";
-  readonly id?: string;
-  readonly kind: "cron" | "heartbeat";
-  readonly name: string;
-  readonly prompt: string;
-  readonly rrule: string;
-  readonly status: CodexScheduledAutomationStatus;
-  readonly projectId?: string | null;
-  readonly cwds?: readonly string[];
-  readonly destination?: AutomationDestination;
-  readonly executionEnvironment?: CodexScheduledAutomationExecutionEnvironment;
-  readonly localEnvironmentConfigPath?: string | null;
-  readonly model?: string | null;
-  readonly reasoningEffort?: CodexScheduledAutomationReasoningEffort | null;
-  readonly targetThreadId?: string;
-}
-type ParsedAutomationArgs =
-  | { readonly mode: "list"; readonly query: string | null; readonly limit: number }
-  | { readonly mode: "view" | "delete"; readonly id: string }
-  | ParsedAutomationUpsertArgs;
 
 export class CodexAppProtocolToolError extends Data.TaggedError("CodexAppProtocolToolError")<{
   readonly message: string;
@@ -178,198 +138,17 @@ const failureMessage = (cause: unknown): string => {
   return String(cause);
 };
 
-const automationMode = (value: unknown): AutomationUpdateMode | null =>
-  value === "list" ||
-  value === "view" ||
-  value === "create" ||
-  value === "suggested_create" ||
-  value === "update" ||
-  value === "suggested_update" ||
-  value === "delete"
-    ? value
-    : null;
-
-const automationCwds = (value: unknown): readonly string[] | null => {
-  const normalize = (items: readonly unknown[]) =>
-    items
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .filter((item, index, items) => item.length > 0 && items.indexOf(item) === index);
-  if (Array.isArray(value)) return normalize(value);
-  if (typeof value !== "string") return null;
-  const input = value.trim();
-  if (!input) return [];
-  if (input.startsWith("[") && input.endsWith("]")) {
-    try {
-      const parsed = JSON.parse(input) as unknown;
-      return Array.isArray(parsed) ? normalize(parsed) : null;
-    } catch {
-      return null;
-    }
-  }
-  return normalize(input.split(","));
-};
-
-const parseAutomationArgs = (args: Record<string, unknown>): ParsedAutomationArgs => {
-  const mode = automationMode(args.mode);
-  if (!mode) throw new Error("mode is invalid");
-  if (mode === "list") {
-    return { mode, query: stringArg(args.query), limit: intArg(args.limit, 20, 1, 100) };
-  }
-  if (mode === "view" || mode === "delete") {
-    const id = stringArg(args.id);
-    if (!id) throw new Error("id is required");
-    return { mode, id };
-  }
-  if (args.kind !== "cron" && args.kind !== "heartbeat") throw new Error("kind is invalid");
-  const name = stringArg(args.name);
-  const prompt = stringArg(args.prompt);
-  const rrule = stringArg(args.rrule);
-  if (!name || !prompt || !rrule) throw new Error("name, prompt, and rrule are required");
-  if (args.status !== "ACTIVE" && args.status !== "PAUSED") throw new Error("status is invalid");
-  const destination = args.destination;
-  if (
-    destination !== undefined &&
-    destination !== "local" &&
-    destination !== "worktree" &&
-    destination !== "thread"
-  ) {
-    throw new Error("destination is invalid");
-  }
-  const id = mode === "update" || mode === "suggested_update" ? stringArg(args.id) : null;
-  if ((mode === "update" || mode === "suggested_update") && !id) {
-    throw new Error("id is required");
-  }
-  if (args.kind === "heartbeat") {
-    const targetThreadId = stringArg(args.targetThreadId) ?? undefined;
-    if (!targetThreadId && destination !== "thread") {
-      throw new Error("Missing targetThreadId or destination=thread");
-    }
-    return {
-      mode,
-      ...(id ? { id } : {}),
-      kind: "heartbeat",
-      name,
-      prompt,
-      rrule,
-      status: args.status,
-      ...(destination ? { destination } : {}),
-      ...(targetThreadId ? { targetThreadId } : {}),
-    };
-  }
-  const projectId =
-    args.projectId === null || args.projectId === undefined ? null : stringArg(args.projectId);
-  if (args.projectId !== null && args.projectId !== undefined && projectId === null)
-    throw new Error("projectId is invalid");
-  const cwds = automationCwds(args.cwds);
-  if (cwds === null) throw new Error("cwds is invalid");
-  if (args.executionEnvironment !== "local" && args.executionEnvironment !== "worktree") {
-    throw new Error("executionEnvironment is invalid");
-  }
-  const model = stringArg(args.model);
-  const effort = reasoningEffort(args.reasoningEffort);
-  if (!model || !effort) throw new Error("model or reasoningEffort is invalid");
-  const hasEnvironmentPath = Object.prototype.hasOwnProperty.call(
-    args,
-    "localEnvironmentConfigPath",
-  );
-  const environmentPath = hasEnvironmentPath
-    ? args.localEnvironmentConfigPath === null
-      ? null
-      : stringArg(args.localEnvironmentConfigPath)
-    : undefined;
-  if (hasEnvironmentPath && environmentPath === null && args.localEnvironmentConfigPath !== null) {
-    throw new Error("localEnvironmentConfigPath is invalid");
-  }
-  return {
-    mode,
-    ...(id ? { id } : {}),
-    kind: "cron",
-    name,
-    prompt,
-    rrule,
-    status: args.status,
-    projectId,
-    cwds,
-    ...(destination ? { destination } : {}),
-    executionEnvironment: args.executionEnvironment,
-    ...(hasEnvironmentPath ? { localEnvironmentConfigPath: environmentPath } : {}),
-    model,
-    reasoningEffort: effort,
-  };
-};
-
-const automationCreateInput = (
-  args: ParsedAutomationUpsertArgs,
-  currentThreadId: string,
-): CodexScheduledAutomationCreateInput =>
-  args.kind === "heartbeat"
-    ? {
-        kind: "heartbeat",
-        name: args.name,
-        prompt: args.prompt,
-        rrule: args.rrule,
-        targetThreadId: args.targetThreadId ?? currentThreadId,
-        model: null,
-        reasoningEffort: null,
-      }
-    : {
-        kind: "cron",
-        name: args.name,
-        prompt: args.prompt,
-        rrule: args.rrule,
-        projectId: args.projectId ?? null,
-        cwds: [...(args.cwds ?? [])],
-        executionEnvironment: args.executionEnvironment ?? "worktree",
-        localEnvironmentConfigPath: args.localEnvironmentConfigPath ?? null,
-        model: args.model ?? null,
-        reasoningEffort: args.reasoningEffort ?? null,
-      };
-
-const automationUpdateInput = (
-  args: ParsedAutomationUpsertArgs & { readonly id: string },
-  currentThreadId: string,
-): CodexScheduledAutomationUpdateInput =>
-  args.kind === "heartbeat"
-    ? {
-        id: args.id,
-        kind: "heartbeat",
-        status: args.status,
-        name: args.name,
-        prompt: args.prompt,
-        rrule: args.rrule,
-        targetThreadId: args.targetThreadId ?? currentThreadId,
-        model: null,
-        reasoningEffort: null,
-      }
-    : {
-        id: args.id,
-        kind: "cron",
-        status: args.status,
-        name: args.name,
-        prompt: args.prompt,
-        rrule: args.rrule,
-        projectId: args.projectId ?? null,
-        cwds: [...(args.cwds ?? [])],
-        executionEnvironment: args.executionEnvironment ?? "worktree",
-        ...(args.localEnvironmentConfigPath === undefined
-          ? {}
-          : { localEnvironmentConfigPath: args.localEnvironmentConfigPath }),
-        model: args.model ?? null,
-        reasoningEffort: args.reasoningEffort ?? null,
-      };
-
 export const make: Effect.Effect<
   CodexAppProtocolTools["Service"],
   never,
-  | AutomationApplication
-  | CodexApplicationEventHub
   | CodexConversationFork
   | CodexPendingServerRequestRuntime
   | CodexProjectSessionFork
   | CodexReadThreadHistory
   | CodexWaitThreads
-  | CodexSessionThreadLaunch
+  | AppToolInvocationInbox
+  | CodexMainConversationManagers
+  | CodexApplicationRequestInbox
   | CodexSidebarSectionSync
   | CodexThreadCatalog
   | CodexThreadDescriptionPersistence
@@ -382,13 +161,13 @@ export const make: Effect.Effect<
   | TerminalSessions
 > = Effect.gen(function* () {
   const waits = yield* CodexWaitThreads;
-  const events = yield* CodexApplicationEventHub;
-  const automations = yield* AutomationApplication;
   const conversationFork = yield* CodexConversationFork;
   const pending = yield* CodexPendingServerRequestRuntime;
   const projectSessionFork = yield* CodexProjectSessionFork;
   const readThreadHistory = yield* CodexReadThreadHistory;
-  const sessionLaunch = yield* CodexSessionThreadLaunch;
+  const appTools = yield* AppToolInvocationInbox;
+  const managers = yield* CodexMainConversationManagers;
+  const requestInbox = yield* CodexApplicationRequestInbox;
   const sectionSync = yield* CodexSidebarSectionSync;
   const catalog = yield* CodexThreadCatalog;
   const descriptions = yield* CodexThreadDescriptionPersistence;
@@ -399,6 +178,47 @@ export const make: Effect.Effect<
   const commands = yield* ConversationCommands;
   const core = yield* CoreModules;
   const terminals = yield* TerminalSessions;
+
+  const sessionCommand = Effect.fn("CodexAppProtocolTools.sessionCommand")(function* (
+    params: DynamicToolCallParams,
+    context: CodexAppProtocolToolExecutionContext,
+    name: "create_session" | "send_message_to_session" | "fork_session",
+    arguments_: Record<string, unknown>,
+  ) {
+    const source = context.nativeSource;
+    const manager = source ? managers.current(source.hostId) : null;
+    if (!source || !manager) return yield* toolError("Native request source is unavailable");
+    const lifetime = yield* requestInbox.captureNativeTurnSource(
+      source,
+      params.threadId,
+      params.turnId,
+    );
+    if (!lifetime) return yield* toolError("Native request source retired");
+    const isActive = () => {
+      if (!lifetime.isActive()) return false;
+      try {
+        manager.assertCurrent(source.generation);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!isActive()) return yield* toolError("Native request source retired");
+    const result = yield* appTools.invoke({
+      caller: {
+        backend: "codex",
+        threadId: params.threadId,
+        turnId: params.turnId,
+        callId: params.callId,
+        ...source,
+        isActive,
+      },
+      name,
+      arguments: arguments_,
+    });
+    if (result.isError) return yield* toolError(JSON.stringify(result.structuredContent));
+    return buildCodexAppDynamicToolSuccess(result.structuredContent ?? {});
+  });
 
   const requireThread = Effect.fn("CodexAppProtocolTools.requireThread")(function* (
     threadId: string,
@@ -511,127 +331,6 @@ export const make: Effect.Effect<
       .pipe(Effect.tap(() => sectionSync.request("agent-mutation")));
   });
 
-  const handleAutomation = Effect.fn("CodexAppProtocolTools.handleAutomation")(function* (
-    params: DynamicToolCallParams,
-    args: Record<string, unknown>,
-  ) {
-    const parsed = yield* Effect.try({
-      try: () => parseAutomationArgs(args),
-      catch: (cause) =>
-        toolError(`${AUTOMATION_UPDATE_TOOL_NAME} received invalid arguments`, cause),
-    });
-    if (
-      (parsed.mode === "create" || parsed.mode === "update") &&
-      parsed.kind === "cron" &&
-      parsed.executionEnvironment === "worktree" &&
-      (parsed.mode === "create"
-        ? parsed.localEnvironmentConfigPath != null
-        : parsed.localEnvironmentConfigPath !== null)
-    ) {
-      return buildCodexAppDynamicToolFailure(
-        "For safety, automations created by the model cannot immediately run a worktree local environment setup script. Use suggested_create or suggested_update so the user can review and approve it, or set localEnvironmentConfigPath to null.",
-      );
-    }
-    if (parsed.mode === "list") {
-      const query = parsed.query?.toLowerCase() ?? "";
-      const definitions = (yield* automations.definitions.list())
-        .filter((automation) =>
-          query
-            ? [automation.id, automation.name, automation.prompt]
-                .join(" ")
-                .toLowerCase()
-                .includes(query)
-            : true,
-        )
-        .slice(0, parsed.limit)
-        .map((automation) => ({
-          id: automation.id,
-          kind: automation.kind,
-          status: automation.status,
-          name: automation.name,
-          prompt: automation.prompt,
-          rrule: automation.rrule,
-          targetThreadId: automation.targetThreadId,
-          nextRunAt: automation.nextRunAt,
-        }));
-      return buildCodexAppDynamicToolSuccess({ query: parsed.query, automations: definitions });
-    }
-    if (
-      parsed.mode === "view" ||
-      parsed.mode === "suggested_create" ||
-      parsed.mode === "suggested_update"
-    ) {
-      return textSuccess("Rendered automation card in the app.");
-    }
-    if (parsed.mode === "delete") {
-      const result = yield* automations.definitions.delete(parsed.id);
-      if (!result.success) return buildCodexAppDynamicToolFailure("Automation was not deleted.");
-      events.publish({
-        kind: "codex",
-        value: {
-          type: "scheduledAutomationChanged",
-          event: {
-            automationId: result.item?.id ?? parsed.id,
-            targetThreadId: result.item?.targetThreadId ?? null,
-            reason: "delete",
-          },
-        },
-      });
-      return textSuccess(
-        `Deleted automation in the app.\n${JSON.stringify({ automationId: parsed.id, mode: "delete" })}`,
-      );
-    }
-    if ("kind" in parsed && parsed.kind === "heartbeat") {
-      yield* requireCodexThreadAuthority(parsed.targetThreadId ?? params.threadId);
-    }
-    if (parsed.mode === "create") {
-      const automation = yield* automations.definitions.create(
-        automationCreateInput(parsed, params.threadId),
-      );
-      events.publish({
-        kind: "codex",
-        value: {
-          type: "scheduledAutomationChanged",
-          event: {
-            automationId: automation.id,
-            targetThreadId: automation.targetThreadId,
-            reason: "upsert",
-          },
-        },
-      });
-      return textSuccess(
-        `Created automation in the app.\n${JSON.stringify({ automationId: automation.id, mode: "create" })}`,
-      );
-    }
-    if (parsed.mode === "update") {
-      const id = parsed.id;
-      if (!id) return yield* toolError("id is required");
-      const current = yield* automations.definitions.get(id);
-      if (!current)
-        return yield* toolError("Automation does not exist in the app and could not be updated.");
-      const automation = yield* automations.definitions.update(
-        automationUpdateInput({ ...parsed, id }, params.threadId),
-      );
-      if (!automation)
-        return yield* toolError("Automation does not exist in the app and could not be updated.");
-      events.publish({
-        kind: "codex",
-        value: {
-          type: "scheduledAutomationChanged",
-          event: {
-            automationId: automation.id,
-            targetThreadId: automation.targetThreadId,
-            reason: "upsert",
-          },
-        },
-      });
-      return textSuccess(
-        `Updated automation in the app.\n${JSON.stringify({ automationId: automation.id, mode: "update" })}`,
-      );
-    }
-    return yield* toolError(`Unsupported automation mode: ${parsed.mode}`);
-  });
-
   const readThread = Effect.fn("CodexAppProtocolTools.readThread")(function* (
     args: Record<string, unknown>,
   ) {
@@ -677,7 +376,6 @@ export const make: Effect.Effect<
               "setup_codex_step interactive steps must be handled by the app.",
             );
       }
-      if (params.tool === AUTOMATION_UPDATE_TOOL_NAME) return yield* handleAutomation(params, args);
       if (params.tool === "read_thread_terminal") {
         const snapshot = yield* terminals.getThreadSnapshot(params.threadId);
         if (!snapshot)
@@ -1157,7 +855,15 @@ export const make: Effect.Effect<
         const prompt = stringArg(args.prompt);
         if (!threadId || !prompt)
           return yield* toolError("send_message_to_thread requires threadId and prompt");
-        yield* requireCodexThread(threadId);
+        const target = yield* requireCodexThread(threadId);
+        if (target.durable.executionHostId === CODEX_APP_LOCAL_HOST_ID) {
+          if (!target.durable.sessionId) return yield* toolError("Target has no product Session");
+          return yield* sessionCommand(params, context, "send_message_to_session", {
+            sessionId: target.durable.sessionId,
+            prompt,
+            ...(stringArg(args.model) ? { model: stringArg(args.model) } : {}),
+          });
+        }
         yield* delegatedMessages.send(threadId, params.threadId, prompt, {
           model: stringArg(args.model) ?? undefined,
           reasoningEffort: reasoningEffort(args.thinking),
@@ -1192,9 +898,16 @@ export const make: Effect.Effect<
       if (params.tool === "fork_thread") {
         const sourceThreadId = stringArg(args.threadId) ?? params.threadId;
         const environment = asRecord(args.environment);
+        const selected = yield* requireCodexThread(sourceThreadId);
+        if (selected.durable.executionHostId === CODEX_APP_LOCAL_HOST_ID) {
+          if (!selected.durable.sessionId) return yield* toolError("Source has no product Session");
+          return yield* sessionCommand(params, context, "fork_session", {
+            sessionId: selected.durable.sessionId,
+            ...(environment ? { environment } : {}),
+          });
+        }
         if (environment?.type === "worktree") {
-          const source = yield* requireCodexThread(sourceThreadId);
-          const sessionId = source.durable.sessionId;
+          const sessionId = selected.durable.sessionId;
           if (!sessionId) return yield* toolError("Worktree fork requires a Project Session");
           const forked = yield* projectSessionFork.fork({
             sessionId,
@@ -1207,7 +920,6 @@ export const make: Effect.Effect<
         }
         if (environment && environment.type !== "same-directory")
           return yield* toolError("fork_thread received invalid arguments.");
-        yield* requireCodexThread(sourceThreadId);
         const forked = yield* conversationFork.fork({ sourceThreadId, threadSource: "subagent" });
         return buildCodexAppDynamicToolSuccess({
           environment: { type: "same-directory" },
@@ -1219,101 +931,12 @@ export const make: Effect.Effect<
       if (params.tool === "create_thread") {
         const input = parseCodexDynamicCreateThreadInput(args);
         if (!input) return yield* toolError("create_thread received invalid arguments.");
-        const projectId = input.target.type === "project" ? input.target.projectId : null;
-        if (projectId) {
-          const project = yield* core.workspace.read(
-            { kind: "project", project_id: projectId },
-            undefined,
-            projectId,
-          );
-          if (project.value.kind !== "project" || project.value.project.lifecycle !== "active") {
-            return yield* toolError(`Project '${projectId}' was not found`);
-          }
-        }
-        const sessionId = createUuidV7();
-        yield* core.workspace.apply(
-          {
-            operationId: `codex-app:create-thread:${params.callId}:${sessionId}`,
-            intent: {
-              kind: "create_session",
-              session_id: sessionId,
-              project_id: projectId,
-              title: "New chat",
-              initial_page_ids: [],
-            },
-          },
-          undefined,
-          projectId ?? undefined,
-        );
-        const { launch, projectlessWorkspace } = yield* Effect.gen(function* () {
-          const projectlessTarget = input.target.type === "projectless" ? input.target : null;
-          const projectlessWorkspace = projectlessTarget
-            ? yield* Effect.tryPromise(() =>
-                createCodexProjectlessWorkspace({
-                  createSplitDirectories: true,
-                  directoryName: projectlessTarget.directoryName,
-                  prompt: input.prompt,
-                }),
-              )
-            : undefined;
-          const launch = yield* sessionLaunch.start(
-            {
-              firstSubmission: createCodexFirstSubmissionIdentity(),
-              projectId,
-              sessionId,
-              prompt: input.prompt,
-              ...(projectlessWorkspace ? { projectlessWorkspace } : {}),
-              model: input.model,
-              reasoningEffort: reasoningEffort(input.thinking),
-              permissionMode:
-                context.permissionMode === "guardian-approvals" ||
-                context.permissionMode === "full-access" ||
-                context.permissionMode === "custom"
-                  ? context.permissionMode
-                  : undefined,
-              serviceTier:
-                context.serviceTierSelector?.type === "custom"
-                  ? context.serviceTierSelector.serviceTier
-                  : context.serviceTierSelector?.type === "standard"
-                    ? null
-                    : undefined,
-              threadSource: "subagent",
-              runInTarget:
-                input.target.type === "project" && input.target.environment.type === "worktree"
-                  ? "newWorktree"
-                  : "localProject",
-              ...(input.target.type === "project" && input.target.environment.type === "worktree"
-                ? { worktreeStartingState: input.target.environment.startingState }
-                : {}),
-            },
-            { browserViewScopeId: "codex-app-protocol", ownerClientId: null },
-          );
-          return { launch, projectlessWorkspace };
-        }).pipe(
-          Effect.onError(() =>
-            core.workspace
-              .apply(
-                {
-                  operationId: `codex-app:create-thread:rollback:${params.callId}:${sessionId}`,
-                  intent: { kind: "delete_session", session_id: sessionId },
-                },
-                undefined,
-                projectId ?? undefined,
-              )
-              .pipe(Effect.ignore),
-          ),
-        );
-        return buildCodexAppDynamicToolSuccess(
-          launch.kind === "pending"
-            ? { clientThreadId: launch.clientThreadId, hostId: launch.hostId }
-            : {
-                threadId: launch.detail.threadId,
-                hostId: launch.hostId,
-                ...(projectlessWorkspace
-                  ? { projectlessOutputDirectory: projectlessWorkspace.outputDirectory }
-                  : {}),
-              },
-        );
+        return yield* sessionCommand(params, context, "create_session", {
+          prompt: input.prompt,
+          target: input.target,
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.thinking ? { reasoningEffort: input.thinking } : {}),
+        });
       }
       if (params.tool === "handoff_thread") {
         const threadId = stringArg(args.threadId);
@@ -1389,7 +1012,10 @@ export const make: Effect.Effect<
                   Effect.sync(() => pending.complete(entry, response ?? CodexAppServerNoResponse)),
                 ),
               );
-          return executeInfallible(entry.request.params, context).pipe(
+          return executeInfallible(entry.request.params, {
+            ...context,
+            nativeSource: { hostId: entry.hostId, generation: entry.generation },
+          }).pipe(
             Effect.tap((response) => Effect.sync(() => pending.complete(entry, response))),
             Effect.onExit((exit) =>
               Exit.isFailure(exit)

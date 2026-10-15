@@ -27,6 +27,7 @@ import {
   openPanelMenu,
   pointerDownAndSettle,
   renderWorkbench,
+  rendererCommandPayload,
   sideChatConversations,
   startSideChatCalls,
   setInvokeCalls,
@@ -161,6 +162,30 @@ describe("workbench session shell / panel-commands", () => {
       ),
     ).toBe(true);
     expect(screen.container.querySelector("[data-review-diff-panel]") !== null).toBe(true);
+  });
+
+  test("opens Review through the Runtime Session binding without a native Thread link", async () => {
+    const session = makeAttachedSession({
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "runtime-review-thread" },
+    });
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    const menu = await openPanelMenu(screen, "Open side panel tab");
+    await act(async () => {
+      fireEvent.click(within(menu).getByText("Review"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.container.querySelector("[data-review-diff-panel]")).not.toBeNull(),
+    );
+    const props = (globalThis as { __lastConnectedReviewDiffPanelProps?: Record<string, unknown> })
+      .__lastConnectedReviewDiffPanelProps;
+    expect(props).toMatchObject({
+      threadId: session.executionRef?.threadId,
+      runtimeTarget: { sessionId: session.id, threadId: session.executionRef?.threadId },
+    });
   });
 
   test("summary Changes action opens Review without routing presentation state through props", async () => {
@@ -493,7 +518,11 @@ describe("workbench session shell / panel-commands", () => {
     });
     await settleAsyncRender();
 
-    expect(String(startSideChatCalls.length)).toBe("1");
+    expect(startSideChatCalls).toHaveLength(0);
+    const createdSideChat = rendererCommandPayload(
+      invokeCalls.find(([channel]) => channel === "project-sessions:create"),
+    );
+    expect(createdSideChat?.input).toMatchObject({ projectId: "alpha", initialPageIds: [] });
     await waitFor(() => {
       expect(screen.queryAllByRole("tab", { name: "Side chat" }).length).toBe(1);
     });
@@ -656,7 +685,7 @@ describe("workbench session shell / panel-commands", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { accessContext: { kind: "project", projectId: "alpha" } },
+          config: { routingContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "browser-tab",
@@ -926,7 +955,7 @@ describe("workbench session shell / panel-commands", () => {
       title: "Card One",
       order: 0,
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "card-1",
         titleSnapshot: "Card One",
       },
@@ -939,7 +968,7 @@ describe("workbench session shell / panel-commands", () => {
       title: "Card Two",
       order: 1,
       config: {
-        accessContext: { kind: "project", projectId: "alpha" },
+        routingContext: { kind: "project", projectId: "alpha" },
         pageId: "card-2",
         titleSnapshot: "Card Two",
       },
@@ -1302,7 +1331,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second",
@@ -1376,7 +1405,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-split-close",
@@ -1455,7 +1484,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-direct",
@@ -1636,7 +1665,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { accessContext: { kind: "project", projectId: "alpha" } },
+      config: { routingContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-middle",

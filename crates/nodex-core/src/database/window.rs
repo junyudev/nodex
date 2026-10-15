@@ -27,7 +27,6 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::authorization::{authorize_required, project_primary_database};
 use super::order_read::{POSITION_RANK, POSITION_REVISION, order_rank, position_joins};
 use super::view_contract::MAX_VIEW_SORT_RULES;
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
@@ -102,7 +101,7 @@ pub(super) struct ViewGroupsRead<'a> {
 pub(super) struct ViewContextRead<'a> {
     pub projection_property_ids: Option<&'a [String]>,
     pub commit_head: i64,
-    pub project_id: &'a str,
+    pub project_id: Option<&'a str>,
     pub store_epoch: &'a str,
     pub window: &'a CollectionWindowRequest,
     pub group_scope: Option<&'a DatabaseGroupScope>,
@@ -200,9 +199,7 @@ pub(super) fn data_source_window(
     query: &DatabaseDataSourceQuery,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseDataSourceQueryWindow, StoreError> {
-    let project_id = read
-        .project_id
-        .ok_or_else(|| unauthorized("Data Source query requires a bound Project"))?;
+    let project_id = read.project_id;
     let view =
         resolve_data_source_query(connection, library_id, project_id, data_source_id, query)?;
     let projection_property_ids = resolve_agent_projection_property_ids(
@@ -214,6 +211,7 @@ pub(super) fn data_source_window(
         connection,
         read.store_epoch,
         read.commit_head,
+        library_id,
         project_id,
         &view,
     )?;
@@ -1708,16 +1706,21 @@ fn data_source_projection_snapshot_authority(
     connection: &Connection,
     store_epoch: &str,
     commit_head: i64,
-    project_id: &str,
+    library_id: &str,
+    project_id: Option<&str>,
     view: &ResolvedView,
 ) -> Result<ProjectionSnapshotAuthority, StoreError> {
-    let scope = crate::infrastructure::projection_scope_head::canonical_scope_key(
-        LocalProjectionScope::PageDetailDataSource {
+    let scope = match project_id {
+        Some(project_id) => LocalProjectionScope::PageDetailDataSource {
             project_id: project_id.to_owned(),
             database_id: view.database_id.clone(),
             data_source_id: view.data_source_id.clone(),
         },
-    )?;
+        None => LocalProjectionScope::Library {
+            library_id: library_id.to_owned(),
+        },
+    };
+    let scope = crate::infrastructure::projection_scope_head::canonical_scope_key(scope)?;
     let head = crate::infrastructure::projection_scope_head::read(connection, store_epoch, &scope)?;
     Ok(ProjectionSnapshotAuthority {
         scope,
@@ -2002,7 +2005,7 @@ pub(super) fn view_context(
         library_id,
         read.store_epoch,
         read.commit_head,
-        Some(read.project_id),
+        read.project_id,
         &view,
     )?;
     let property_ids = match read.projection_property_ids {
@@ -2028,7 +2031,7 @@ pub(super) fn view_context(
             .items
             .into_iter()
             .map(|summary| {
-                let move_etag = mint_page_move_etag(
+                let move_etag = mint_page_move_etag_prevalidated(
                     connection,
                     library_id,
                     read.project_id,
@@ -2197,54 +2200,12 @@ pub(crate) fn default_page_move_view_id(
         .map_err(StoreError::from)
 }
 
-pub(crate) fn mint_page_move_etag(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    store_epoch: &str,
-    page_id: &str,
-    view_id: Option<&str>,
-) -> Result<String, StoreError> {
-    mint_page_move_etag_with_authority(
-        connection,
-        library_id,
-        Some(project_id),
-        Some(project_id),
-        store_epoch,
-        page_id,
-        view_id,
-    )
-}
-
-/// Mints the same validator as [`mint_page_move_etag`] after a trusted
-/// Library operation has already established the destination authority. The
-/// actor Project remains part of the signed coordinate, but it does not own or
-/// constrain the target Database.
+/// Sign exact Page/View state with optional presentation attribution.
+/// Library routing preserves the same physical owner and freshness checks.
 pub(crate) fn mint_page_move_etag_prevalidated(
     connection: &Connection,
     library_id: &str,
     actor_project_id: Option<&str>,
-    store_epoch: &str,
-    page_id: &str,
-    view_id: Option<&str>,
-) -> Result<String, StoreError> {
-    mint_page_move_etag_with_authority(
-        connection,
-        library_id,
-        actor_project_id,
-        None,
-        store_epoch,
-        page_id,
-        view_id,
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn mint_page_move_etag_with_authority(
-    connection: &Connection,
-    library_id: &str,
-    actor_project_id: Option<&str>,
-    authorizing_project_id: Option<&str>,
     store_epoch: &str,
     page_id: &str,
     view_id: Option<&str>,
@@ -2275,16 +2236,6 @@ fn mint_page_move_etag_with_authority(
     let view = view_id
         .map(|view_id| {
             let view = resolve_view(connection, library_id, view_id)?;
-            if let Some(project_id) = authorizing_project_id {
-                let primary_database_id =
-                    project_primary_database(connection, library_id, project_id)?;
-                authorize_required(
-                    connection,
-                    Some(project_id),
-                    primary_database_id.as_deref(),
-                    &view.database_id,
-                )?;
-            }
             Ok::<_, StoreError>(PageMoveViewAuthority {
                 database_id: view.database_id,
                 data_source_id: view.data_source_id,
@@ -2672,7 +2623,7 @@ fn resolve_saved_view(
 fn resolve_data_source_query(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     data_source_id: &str,
     query: &DatabaseDataSourceQuery,
 ) -> Result<ResolvedView, StoreError> {
@@ -2754,10 +2705,9 @@ fn resolve_data_source_query(
     super::mutation::validate_view_definition(
         connection,
         library_id,
-        Some(project_id),
+        project_id,
         data_source_id,
         &definition,
-        false,
     )?;
     let mut view = ResolvedView {
         database_id,
@@ -3141,7 +3091,7 @@ pub(super) fn validate_preferences_override(
     connection: &Connection,
     library_id: &str,
     actor_project_id: Option<&str>,
-    authority_project_id: Option<&str>,
+    _authority_project_id: Option<&str>,
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<(), StoreError> {
@@ -3154,7 +3104,6 @@ pub(super) fn validate_preferences_override(
         actor_project_id,
         &view.data_source_id,
         &view.config,
-        authority_project_id.is_none(),
     )
 }
 
@@ -3977,10 +3926,6 @@ fn parse_json_value(value: String, label: &str) -> rusqlite::Result<Value> {
 
 fn invalid(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn not_found(message: &str) -> StoreError {

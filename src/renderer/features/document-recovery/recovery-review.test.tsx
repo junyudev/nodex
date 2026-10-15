@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const scope = { libraryId: "library:recovery", accessContext: { kind: "library" as const } };
+const scope = { libraryId: "library:recovery", routingContext: { kind: "library" as const } };
 const createInspection = (): RecoveryDraftInspection => ({
   summary: {
     draft_id: "draft:retained",

@@ -57,7 +57,7 @@ export const sessionPresentationSchemas = {
 
 const descriptions: Record<keyof typeof sessionPresentationSchemas, string> = {
   navigate_to_session:
-    "Show an authorized Session in the calling Turn's submission window and wait for its navigation receipt. An explicit window must be a current window reference returned by Workbench context. Never infers global focus.",
+    "Show a Session in the current Profile in the calling Turn's submission window and wait for its navigation receipt. An explicit window must be a current window reference returned by Workbench context. Never infers global focus.",
   open_in_nodex:
     "Open a file (optionally at a line), Browser URL or existing Browser tab, Terminal, Review, Page, View or Canvas in the calling Session's panel. Set sessionId only for an explicitly requested other Session. Hidden Sessions retain the opened tab without navigating there. Existing Browser and Terminal identities must belong to that Session. Local workspace targets require a local Session. Returns the exact window and Scene receipt; this opens presentation and does not read file contents or execute shell commands on behalf of the Agent.",
 };

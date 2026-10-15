@@ -3,13 +3,13 @@ import { createElement } from "react";
 import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import type {
-  CodexApprovalRequest,
   CodexOptionPickerRequest,
   CodexPlanImplementationRequest,
   CodexSetupCodexStepRequest,
 } from "@/lib/types";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { settleAsyncRender } from "@/test/dom";
+import { installWindowApi } from "@/test/browser-globals";
 import type {
   ThreadComposerShellPendingRequestModel,
   ThreadStageActions,
@@ -78,7 +78,7 @@ function createActions(log: string[]): ThreadStageActions {
     },
     onModelChange: () => {},
     onReasoningEffortChange: () => {},
-    onPermissionModeChange: () => {},
+
     onQueueingEnabledChange: () => {},
     onSendPrompt: async (prompt, opts) => {
       log.push(`send:${prompt}:${opts?.collaborationMode ?? "none"}`);
@@ -86,11 +86,6 @@ function createActions(log: string[]): ThreadStageActions {
     onSteerPrompt: async () => {},
     onSendCapturedFollowUp: async () => {},
     onInterruptTurn: async () => {},
-    onRespondApproval: async (requestId, response, context) => {
-      log.push(
-        `approval:${requestId}:${response.kind}:${response.decision}:${context?.conversationId ?? "none"}`,
-      );
-    },
     onRespondUserInput: async (requestId, answers, context) => {
       log.push(
         `userInput:${requestId}:${answers.q1?.[0] ?? "none"}:${context?.conversationId ?? "none"}`,
@@ -100,12 +95,6 @@ function createActions(log: string[]): ThreadStageActions {
       log.push(
         `mcp:${requestId}:${typeof action === "string" ? action : action.action}:${context?.conversationId ?? "none"}`,
       );
-    },
-    onRespondPermissionRequest: async (requestId, response, context) => {
-      log.push(`permission:${requestId}:${response.scope}:${context?.conversationId ?? "none"}`);
-    },
-    onRespondNodexAgentAuthorization: async (requestId, response, context) => {
-      log.push(`nodex:${requestId}:${response.decision}:${context?.conversationId ?? "none"}`);
     },
     onRespondOptionPicker: async (requestId, response, context) => {
       log.push(
@@ -135,39 +124,86 @@ function createActions(log: string[]): ThreadStageActions {
 }
 
 describe("CodexPendingRequestCard", () => {
-  test("wires a direct request-card response to its conversation adapter", async () => {
+  test("answers and dismisses Session questions without interrupting an unrelated foreground Turn", async () => {
     const { CodexPendingRequestCard } = await import("./codex-pending-request-card");
-    const log: string[] = [];
-    const actions = createActions(log);
-    const entry: ThreadComposerShellPendingRequestModel = {
-      conversationId: "thread_1",
-      surface: "activeThread",
-      request: {
-        type: "approval",
-        requestId: "approval_1",
-        kind: "file",
-        projectId: "project_1",
-        threadId: "thread_1",
-        turnId: "turn_1",
-        itemId: "file_1",
-        createdAt: 2,
-      } satisfies CodexApprovalRequest,
-    };
-
-    const { getByText } = render(
-      <TooltipProvider>
-        <CodexPendingRequestCard entry={entry} actions={actions} />
-      </TooltipProvider>,
-    );
-
-    await act(async () => {
-      fireEvent.click(getByText("Skip"));
-      await settleAsyncRender();
-    });
-
-    expect(log).toEqual(["approval:approval_1:file:decline:thread_1"]);
+    vi.useFakeTimers();
+    try {
+      const invoke = vi.fn().mockRejectedValue(new Error("Legacy request control is unavailable"));
+      const subscribe = vi.fn(() => () => {});
+      installWindowApi({ invoke, on: subscribe });
+      const actions = createActions([]);
+      const answers = vi.fn().mockResolvedValue(undefined);
+      const interrupt = vi.fn().mockResolvedValue(undefined);
+      actions.onRespondUserInput = answers;
+      actions.onInterruptTurn = interrupt;
+      const entry: ThreadComposerShellPendingRequestModel = {
+        conversationId: "native-session-question",
+        surface: "activeThread",
+        request: {
+          type: "userInput",
+          executionOwner: "agent-runtime",
+          requestId: "native-question",
+          projectId: "project_1",
+          threadId: "native-session-question",
+          turnId: null,
+          itemId: "native-question-item",
+          createdAt: 1,
+          isBlocking: true,
+          questions: [
+            {
+              id: "q1",
+              header: "Choice",
+              question: "Continue?",
+              isOther: false,
+              options: [{ label: "Yes", description: "Continue" }],
+            },
+          ],
+        },
+      };
+      const view = render(
+        <TooltipProvider>
+          <CodexPendingRequestCard entry={entry} actions={actions} />
+        </TooltipProvider>,
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("radio", { name: "Yes" }));
+        await vi.advanceTimersByTimeAsync(200);
+        await Promise.resolve();
+      });
+      expect(answers).toHaveBeenCalledWith(
+        "native-question",
+        { q1: ["Yes"] },
+        { conversationId: "native-session-question" },
+      );
+      expect(interrupt).not.toHaveBeenCalled();
+      expect(invoke).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+      view.unmount();
+      const dismissed = render(
+        <TooltipProvider>
+          <CodexPendingRequestCard
+            entry={{ ...entry, request: { ...entry.request, requestId: "native-dismiss" } }}
+            actions={actions}
+          />
+        </TooltipProvider>,
+      );
+      await act(async () => {
+        fireEvent.click(dismissed.getByRole("button", { name: "Dismiss" }));
+        await vi.advanceTimersByTimeAsync(1);
+        await Promise.resolve();
+      });
+      expect(answers).toHaveBeenCalledWith(
+        "native-dismiss",
+        {},
+        { conversationId: "native-session-question" },
+      );
+      expect(interrupt).not.toHaveBeenCalled();
+      expect(invoke).not.toHaveBeenCalled();
+      expect(subscribe).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
-
   test("implementing a plan preserves the request while starting the Default-mode turn", async () => {
     const { CodexPendingRequestCard } = await import("./codex-pending-request-card");
     const log: string[] = [];

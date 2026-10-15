@@ -70,7 +70,7 @@ pub(crate) fn select_identity(
     if selector.starts_with('@') {
         return Err(CliError::new(
             CliErrorCode::ScopeNotFound,
-            format!("no authorized {kind} has identity '{selector_id}'"),
+            format!("no available {kind} has identity '{selector_id}'"),
         ));
     }
     let mut matches: Vec<_> = candidates
@@ -85,7 +85,7 @@ pub(crate) fn select_identity(
         [] => Err(CliError::new(
             CliErrorCode::ScopeNotFound,
             format!(
-                "no authorized {kind} matches '{selector}'; list available resources and use their ID"
+                "no available {kind} matches '{selector}'; list available resources and use their ID"
             ),
         )),
         _ => Err(CliError::new(
@@ -106,13 +106,13 @@ pub(crate) fn select_identity(
 
 pub(crate) fn database_candidates(
     client: &CoreClient,
-    project: &nodex_core_contracts::workspace::ProjectWorkspaceProject,
+    project_id: Option<&str>,
 ) -> Result<Vec<(String, String)>, CliError> {
     let mut after = None;
     let mut candidates = Vec::new();
     loop {
         let snapshot = unwrap_database(client.database_read(
-            Some(&project.id),
+            project_id,
             DatabaseRead::CatalogWindow {
                 window: CollectionWindowRequest {
                     after,
@@ -149,15 +149,18 @@ pub(crate) fn enforce_selector_budget(count: usize) -> Result<(), CliError> {
 
 pub(crate) fn resolve_database(
     client: &CoreClient,
-    project: &nodex_core_contracts::workspace::ProjectWorkspaceProject,
+    project: Option<&nodex_core_contracts::workspace::ProjectWorkspaceProject>,
     selector: Option<&str>,
 ) -> Result<String, CliError> {
     let Some(selector) = selector else {
-        return Ok(project.database_id.clone());
+        return project
+            .map(|project| project.database_id.clone())
+            .ok_or_else(|| CliError::new(CliErrorCode::InvalidInput, "A default Database requires a selected Project; pass an explicit Database identity"));
     };
+    let project_id = project.map(|project| project.id.as_str());
     if let Some(id) = read_identity(
         client,
-        &project.id,
+        project_id,
         selector,
         DatabaseRead::Database {
             target: nodex_core_contracts::database::DatabaseIdentityTarget::Database {
@@ -167,7 +170,11 @@ pub(crate) fn resolve_database(
     )? {
         return Ok(id);
     }
-    select_identity(selector, "Database", database_candidates(client, project)?)
+    select_identity(
+        selector,
+        "Database",
+        database_candidates(client, project_id)?,
+    )
 }
 
 pub(crate) fn resolve_source(
@@ -177,7 +184,7 @@ pub(crate) fn resolve_source(
 ) -> Result<String, CliError> {
     if let Some(id) = read_identity(
         client,
-        &project.id,
+        Some(&project.id),
         selector,
         DatabaseRead::DataSource {
             data_source_id: stable_id(selector)?,
@@ -271,21 +278,21 @@ pub(crate) fn select_default_source(
     Err(CliError::new(code, "Specify a Data Source; the Project's default Database does not have exactly one active Data Source. Query `data_sources` with `nodex sql query`.").with_details(serde_json::json!({"argument":"data_source", "scope": database_id, "candidates": candidates, "hint":"Pass a Data Source ID or unique name"})))
 }
 
-/// Probe identities directly before bounded name discovery; a name can fail identity authorization.
+/// Probe identities directly before bounded name discovery; a name can resolve to a missing or retired identity.
 pub(crate) fn read_identity(
     client: &CoreClient,
-    project_id: &str,
+    project_id: Option<&str>,
     selector: &str,
     read: DatabaseRead,
 ) -> Result<Option<String>, CliError> {
-    let snapshot = match unwrap_database(client.database_read(Some(project_id), read)) {
+    let snapshot = match unwrap_database(client.database_read(project_id, read)) {
         Ok(value) => value,
         Err(error)
             if !selector.starts_with('@')
                 && (matches!(
                     error.code,
                     CliErrorCode::ScopeNotFound | CliErrorCode::InvalidInput
-                ) || (error.code == CliErrorCode::ScopeUnauthorized
+                ) || (error.code == CliErrorCode::IdentityUnauthorized
                     && !uuid_identity(selector))) =>
         {
             return Ok(None);
@@ -311,7 +318,7 @@ fn uuid_identity(value: &str) -> bool {
         })
 }
 
-/// Select the collection Database without changing the Project authorization identity.
+/// Select the collection Database without changing the Project routing coordinate.
 pub(crate) fn selected_database_project(
     client: &CoreClient,
     explicit_project: Option<&str>,
@@ -322,7 +329,7 @@ pub(crate) fn selected_database_project(
     let Some(database) = database else {
         return Ok(project);
     };
-    let database_id = resolve_database(client, &project, Some(database))?;
+    let database_id = resolve_database(client, Some(&project), Some(database))?;
     let snapshot = unwrap_database(client.database_read(
         Some(&project.id),
         DatabaseRead::Database {

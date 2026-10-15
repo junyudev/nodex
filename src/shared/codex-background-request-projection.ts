@@ -143,20 +143,3 @@ export function buildCodexPermissionRequest(
     createdAt: params.startedAtMs,
   };
 }
-
-/** Derives the background control surface directly from a retained native request. */
-export function projectCodexBackgroundRequest(
-  conversation: Pick<CodexConversationRequestContext, "projectId">,
-  request: CodexCanonicalServerRequest,
-): CodexApprovalRequest | CodexPermissionRequest | null {
-  switch (request.method) {
-    case "item/commandExecution/requestApproval":
-      return buildCodexCommandApprovalRequest(conversation, request.id, request.params);
-    case "item/fileChange/requestApproval":
-      return buildCodexFileApprovalRequest(conversation, request.id, request.params);
-    case "item/permissions/requestApproval":
-      return buildCodexPermissionRequest(conversation, request.id, request.params);
-    default:
-      return null;
-  }
-}

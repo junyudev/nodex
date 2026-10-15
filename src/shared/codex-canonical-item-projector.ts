@@ -917,6 +917,37 @@ function projectCanonicalItemViews(
     }
     case "functionCallOutput":
       return [];
+    case "runtimeNotice":
+      return [
+        {
+          ...buildBaseView(item, context),
+          normalizedKind: "systemEvent",
+          semanticKind: "runtimeNotice",
+          markdownText: item.message,
+          runtimeNotice: item.notice,
+          status: "completed",
+        },
+      ];
+    case "delegatedTask": {
+      const { type: _type, id: _id, ...delegatedTask } = item;
+      return [
+        {
+          ...buildBaseView(item, context),
+          normalizedKind: "toolCall",
+          semanticKind: "delegatedTask",
+          markdownText: item.title,
+          delegatedTask,
+          status:
+            item.status === "running" || item.status === "waiting"
+              ? "inProgress"
+              : item.status === "failed"
+                ? "failed"
+                : item.status === "completed"
+                  ? "completed"
+                  : "interrupted",
+        },
+      ];
+    }
     case "plan": {
       const status = resolveCanonicalItemStatus(item, context);
       return [
@@ -1214,6 +1245,8 @@ function projectCanonicalItemViews(
           markdownText,
           questionReplies,
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
+          ...(item.origin ? { userMessageOrigin: item.origin } : {}),
+          ...(item.inputIntent ? { userInputIntent: item.inputIntent } : {}),
         },
       ];
     }

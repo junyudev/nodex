@@ -3,7 +3,7 @@
 Status: Accepted; supersedes the per-surface chronology decision in ADR 0058.
 
 Page body, Page title, and Database View actions share one chronological history
-within a renderer window's Library, access context, and Store epoch. Focus selects
+within a renderer window's Library, presentation route and Store epoch. Focus selects
 the input boundary, not the content action to reverse. Typed participants retain
 their own inverse resources and presentation capabilities; one interaction owner
 admits commands, orders replay, and bounds the reachable interval. Combining
@@ -24,7 +24,7 @@ or prevent native typing from merging across a Database action.
   barrier and their exact Main recovery responsibility.
 - Native input drafts, Composer drafts, Canvas scene editing, and embedded
   file editing keep independent input boundaries. Other windows and different
-  authorization contexts never inherit this timeline.
+  presentation routes never inherit this timeline.
 - Core remains the authority for inverse capability validity and semantic
   address recovery. The address, retention, and durable recovery decisions in
   [ADR 0058](0058-surface-history-and-semantic-address-recovery.md) remain in force.

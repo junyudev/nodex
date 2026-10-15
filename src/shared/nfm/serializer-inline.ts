@@ -38,7 +38,6 @@ function serializeItem(item: NfmInlineContent): string {
     if (item.model) attrs.push(`model="${escapeXmlAttr(item.model)}"`);
     if (item.reasoning) attrs.push(`reasoning="${escapeXmlAttr(item.reasoning)}"`);
     if (item.speed) attrs.push(`speed="${escapeXmlAttr(item.speed)}"`);
-    if (item.permission) attrs.push(`permission="${escapeXmlAttr(item.permission)}"`);
     if (attrs.length === 0 && item.rawAttributes?.trim()) {
       return `<agent-config ${item.rawAttributes.trim()} />`;
     }

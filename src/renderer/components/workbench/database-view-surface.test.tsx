@@ -85,6 +85,7 @@ const pageChatRuntime = vi.hoisted(() => ({
     errorCount: number;
     unreadCount: number;
     soleSessionId: string | null;
+    runtimeSessionIds: string[];
   }>,
 }));
 vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({
@@ -131,7 +132,7 @@ const mutationReceipt = (
 
 const model: DatabaseViewRenderModel = {
   libraryId: "library-1",
-  accessContext: { kind: "project", projectId: "project-1" },
+  routingContext: { kind: "project", projectId: "project-1" },
   databaseViewId: viewId,
   databaseId,
   dataSourceId,
@@ -140,8 +141,6 @@ const model: DatabaseViewRenderModel = {
   viewName: "Focused",
   storeEpoch: "epoch-1",
   commitSeq: 2,
-  authorization: null,
-  readOnlyReason: null,
   query: {
     database: {
       databaseId,
@@ -149,7 +148,6 @@ const model: DatabaseViewRenderModel = {
       name: "Tasks",
       lifecycle: "active",
       defaultViewId: parseDatabaseViewId("view-default"),
-      accessRevision: 1,
       metadataRevision: 1,
       createdAt: timestamp,
       updatedAt: timestamp,
@@ -860,6 +858,7 @@ describe("DatabaseViewSurface", () => {
         errorCount: 0,
         unreadCount: 1,
         soleSessionId: "session-related",
+        runtimeSessionIds: [],
       },
     ];
     const onOpenPage = vi.fn();
@@ -1674,7 +1673,7 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
     expect(deletePage).toHaveBeenCalledWith({
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       libraryId: "library-1",
       projectId: "project-1",
       pageId: "page-focused",
@@ -2246,7 +2245,7 @@ describe("DatabaseViewSurface", () => {
     );
     await waitFor(() =>
       expect(optionRuntime.read).toHaveBeenCalledWith(
-        model.accessContext,
+        model.routingContext,
         expect.objectContaining({ propertyId: statusPropertyId }),
         null,
       ),

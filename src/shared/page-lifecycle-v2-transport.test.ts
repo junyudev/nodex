@@ -97,11 +97,11 @@ describe("Page lifecycle v2 transport binding", () => {
   test("preserves lifecycle HTTP and writer-failure semantics", () => {
     expect(
       pageLifecycleMutationHttpStatusV2({
-        code: "authorization_denied",
+        code: "page_not_found",
         message: "denied",
         retryable: false,
       }),
-    ).toBe(403);
+    ).toBe(404);
     expect(
       pageLifecycleMutationHttpStatusV2({
         code: "data_source_not_found",

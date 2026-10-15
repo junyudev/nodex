@@ -34,7 +34,7 @@ pub(super) fn apply(
         | LibraryFileChange::Trash { file_id, .. }
         | LibraryFileChange::Restore { file_id, .. }
         | LibraryFileChange::Purge { file_id, .. } => {
-            super::file_access::require_direct(connection, context, file_id, true)?;
+            super::file_access::require_direct(connection, context, file_id)?;
             Some(files::metadata(connection, library_id, file_id)?)
         }
         LibraryFileChange::Fork {
@@ -195,15 +195,7 @@ pub(super) fn apply(
                 change,
                 LibraryFileChange::Create { .. } | LibraryFileChange::Fork { .. }
             );
-            if created && let Some(project_id) = &authority.requesting_project_id {
-                mutation::grant_created_file(
-                    connection,
-                    library_id,
-                    &file.file_id,
-                    project_id,
-                    &now,
-                )?;
-            }
+            if created && let Some(_project_id) = &authority.requesting_project_id {}
             if let Some(prepared) = &prepared {
                 crate::infrastructure::prepared_blobs::consume(
                     connection,

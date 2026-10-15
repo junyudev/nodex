@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::workspace::{
-    ProjectCatalogChangeKind, ProjectWorkspaceThreadMoveMetadataPatch,
-    ProjectWorkspaceThreadMoveProjectAccessGrant, ProjectWorkspaceThreadPlacement,
+    ProjectWorkspaceThreadMoveMetadataPatch, ProjectWorkspaceThreadPlacement,
     ProjectWorkspaceThreadWorkspaceTransition,
 };
 use rusqlite::{Connection, OptionalExtension, params};
@@ -39,7 +38,6 @@ pub(super) fn move_thread(
     metadata: &ProjectWorkspaceThreadMoveMetadataPatch,
     workspace_transition: Option<&ProjectWorkspaceThreadWorkspaceTransition>,
     runtime_workspace_roots: Option<&[String]>,
-    project_access_grant: Option<&ProjectWorkspaceThreadMoveProjectAccessGrant>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("thread_id", thread_id)?;
     if let Some(project_id) = source_project_id {
@@ -79,20 +77,6 @@ pub(super) fn move_thread(
         )));
     }
 
-    let project_access = match (project_access_grant, source_project_id, target_project_id) {
-        (None, _, _) => None,
-        (Some(grant), Some(source_project_id), Some(target_project_id))
-            if source_project_id != target_project_id =>
-        {
-            Some((source_project_id, target_project_id, grant))
-        }
-        (Some(_), _, _) => {
-            return Err(invalid(
-                "Project access grants require a cross-Project Thread move",
-            ));
-        }
-    };
-
     let project_ids = [source_project_id, target_project_id]
         .into_iter()
         .flatten()
@@ -116,7 +100,7 @@ pub(super) fn move_thread(
         operation_id,
         request_hash,
         "move_thread",
-        project_access.map(|_| ProjectCatalogChangeKind::SourcesUpdated),
+        None,
         session_summary_scopes,
         project_ids,
         session_ids,
@@ -130,15 +114,7 @@ pub(super) fn move_thread(
                     transition,
                 )?;
             }
-            if let Some((source_project_id, target_project_id, grant)) = project_access {
-                super::mutation::grant_project_sources_for_thread_move(
-                    connection,
-                    library_id,
-                    source_project_id,
-                    target_project_id,
-                    grant,
-                )?;
-            }
+
             if source_project_id != target_project_id {
                 move_thread_membership(
                     connection,
@@ -906,9 +882,8 @@ fn corrupt(message: impl Into<String>) -> StoreError {
 mod tests {
     use nodex_core_contracts::workspace::{
         ProjectWorkspaceIntent, ProjectWorkspaceThreadLane,
-        ProjectWorkspaceThreadMoveMetadataPatch, ProjectWorkspaceThreadMoveProjectAccessGrant,
-        ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadWorkspace,
-        ProjectWorkspaceThreadWorkspaceTransition,
+        ProjectWorkspaceThreadMoveMetadataPatch, ProjectWorkspaceThreadPlacement,
+        ProjectWorkspaceThreadWorkspace, ProjectWorkspaceThreadWorkspaceTransition,
     };
 
     use super::super::test_support::{
@@ -959,7 +934,6 @@ mod tests {
                             metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
                             workspace_transition: None,
                             runtime_workspace_roots: None,
-                            project_access_grant: None,
                         },
                     ),
                 )
@@ -1008,7 +982,6 @@ mod tests {
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
                 workspace_transition: None,
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
         let before = workspace
@@ -1051,7 +1024,6 @@ mod tests {
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
                 workspace_transition: None,
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
 
@@ -1091,200 +1063,6 @@ mod tests {
         assert_eq!(after[0], before[0], "thread:a rank must remain stable");
         assert_eq!(after[1], before[1], "thread:b rank must remain stable");
         assert_ne!(after[2], before[2], "only the moved rank is rewritten");
-    }
-
-    #[test]
-    fn confirmed_move_owns_authority_roots_and_membership_in_one_journaled_commit() {
-        let workspace = seeded_workspace();
-        create_project(&workspace.module, "create-source-project", "project:source");
-        create_project(&workspace.module, "create-target-project", "project:target");
-        create_session_thread(
-            &workspace.module,
-            "grant-and-move",
-            "session:grant-and-move",
-            "thread:grant-and-move",
-            Some("project:source"),
-            100,
-        );
-        workspace
-            .kernel
-            .writer()
-            .call(|connection| {
-                connection.execute_batch(
-                    "CREATE TRIGGER test_thread_project_move_requires_visibility_journal
-                     BEFORE UPDATE OF project_id ON codex_threads
-                     WHEN OLD.project_id IS NOT NEW.project_id
-                     BEGIN
-                       SELECT CASE WHEN NOT EXISTS (
-                         SELECT 1 FROM local_commit_visibility_context
-                         WHERE id = 1 AND mode = 'active'
-                       ) THEN RAISE(ABORT, 'test move requires active visibility journal') END;
-                     END;
-                     DELETE FROM local_commit_visibility_context WHERE mode = 'maintenance';",
-                )?;
-                Ok(())
-            })
-            .expect("production visibility guard");
-
-        apply(
-            &workspace.module,
-            "grant-project-access-and-move-thread",
-            ProjectWorkspaceIntent::MoveThread {
-                thread_id: "thread:grant-and-move".to_owned(),
-                source: ProjectWorkspaceThreadLane::Project {
-                    project_id: "project:source".to_owned(),
-                },
-                target: ProjectWorkspaceThreadLane::Project {
-                    project_id: "project:target".to_owned(),
-                },
-                placement: ProjectWorkspaceThreadPlacement::Default,
-                metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
-                workspace_transition: None,
-                runtime_workspace_roots: Some(vec![
-                    "/workspace/project:target".to_owned(),
-                    "/workspace/project:source".to_owned(),
-                ]),
-                project_access_grant: Some(ProjectWorkspaceThreadMoveProjectAccessGrant {
-                    expected_target_binding_revision: 1,
-                    missing_source_roots: vec!["/workspace/project:source".to_owned()],
-                }),
-            },
-        );
-
-        let (thread_project_id, target_revision, target_roots, writable_roots, open_journals) =
-            workspace
-                .kernel
-                .writer()
-                .call(|connection| {
-                    let thread_project_id = connection.query_row(
-                        "SELECT project_id FROM codex_threads WHERE thread_id = ?1",
-                        ["thread:grant-and-move"],
-                        |row| row.get::<_, String>(0),
-                    )?;
-                    let target_revision = connection.query_row(
-                        "SELECT binding_revision FROM projects WHERE id = ?1",
-                        ["project:target"],
-                        |row| row.get::<_, i64>(0),
-                    )?;
-                    let target_roots = connection
-                    .prepare(
-                        "SELECT root FROM project_sources WHERE project_id = ?1 ORDER BY \"order\"",
-                    )?
-                    .query_map(["project:target"], |row| row.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                    let writable_roots = connection
-                        .prepare(
-                            "SELECT root FROM codex_thread_writable_roots
-                         WHERE thread_id = ?1 ORDER BY root_order",
-                        )?
-                        .query_map(["thread:grant-and-move"], |row| row.get::<_, String>(0))?
-                        .collect::<rusqlite::Result<Vec<_>>>()?;
-                    let open_journals = connection.query_row(
-                        "SELECT count(*) FROM local_commit_visibility_context",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?;
-                    Ok((
-                        thread_project_id,
-                        target_revision,
-                        target_roots,
-                        writable_roots,
-                        open_journals,
-                    ))
-                })
-                .expect("confirmed Project access move");
-        assert_eq!(thread_project_id, "project:target");
-        assert_eq!(target_revision, 2);
-        assert_eq!(
-            target_roots,
-            [
-                "/workspace/project:target".to_owned(),
-                "/workspace/project:source".to_owned(),
-            ],
-        );
-        assert_eq!(
-            writable_roots,
-            [
-                "/workspace/project:target".to_owned(),
-                "/workspace/project:source".to_owned(),
-            ],
-        );
-        assert_eq!(open_journals, 0);
-    }
-
-    #[test]
-    fn stale_project_access_confirmation_rolls_back_roots_and_membership() {
-        let workspace = seeded_workspace();
-        create_project(
-            &workspace.module,
-            "create-stale-source-project",
-            "project:source",
-        );
-        create_project(
-            &workspace.module,
-            "create-stale-target-project",
-            "project:target",
-        );
-        create_session_thread(
-            &workspace.module,
-            "stale-grant-and-move",
-            "session:stale-grant-and-move",
-            "thread:stale-grant-and-move",
-            Some("project:source"),
-            100,
-        );
-
-        let error = workspace
-            .module
-            .apply(
-                &context(),
-                request(
-                    "stale-project-access-and-move-thread",
-                    ProjectWorkspaceIntent::MoveThread {
-                        thread_id: "thread:stale-grant-and-move".to_owned(),
-                        source: ProjectWorkspaceThreadLane::Project {
-                            project_id: "project:source".to_owned(),
-                        },
-                        target: ProjectWorkspaceThreadLane::Project {
-                            project_id: "project:target".to_owned(),
-                        },
-                        placement: ProjectWorkspaceThreadPlacement::Default,
-                        metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
-                        workspace_transition: None,
-                        runtime_workspace_roots: None,
-                        project_access_grant: Some(ProjectWorkspaceThreadMoveProjectAccessGrant {
-                            expected_target_binding_revision: 99,
-                            missing_source_roots: vec!["/workspace/project:source".to_owned()],
-                        }),
-                    },
-                ),
-            )
-            .expect_err("stale confirmation must fail");
-        assert_eq!(
-            error.code,
-            nodex_core_contracts::CoreErrorCode::RevisionConflict
-        );
-
-        let (thread_project_id, target_roots) = workspace
-            .kernel
-            .writer()
-            .call(|connection| {
-                let thread_project_id = connection.query_row(
-                    "SELECT project_id FROM codex_threads WHERE thread_id = ?1",
-                    ["thread:stale-grant-and-move"],
-                    |row| row.get::<_, String>(0),
-                )?;
-                let target_roots = connection
-                    .prepare(
-                        "SELECT root FROM project_sources WHERE project_id = ?1 ORDER BY \"order\"",
-                    )?
-                    .query_map(["project:target"], |row| row.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
-                Ok((thread_project_id, target_roots))
-            })
-            .expect("unchanged stale move state");
-        assert_eq!(thread_project_id, "project:source");
-        assert_eq!(target_roots, ["/workspace/project:target".to_owned()]);
     }
 
     #[test]
@@ -1331,7 +1109,6 @@ mod tests {
                     pending: Some(accepted.clone()),
                 }),
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
         let newer = ProjectWorkspaceThreadWorkspace {
@@ -1357,7 +1134,6 @@ mod tests {
                     pending: Some(newer.clone()),
                 }),
                 runtime_workspace_roots: None,
-                project_access_grant: None,
             },
         );
         apply(

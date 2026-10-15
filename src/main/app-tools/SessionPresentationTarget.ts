@@ -1,15 +1,16 @@
 import { isAbsolute, relative } from "node:path";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type { z } from "zod";
 import type { sessionPresentationSchemas } from "../../shared/nodex-app-tools/session-presentation-schemas";
 import type { WorkbenchCommand } from "../../shared/nodex-app-tools/workbench-commands";
 import type { WorkbenchRendererObservation } from "../../shared/nodex-app-tools/workbench";
-import type { FrozenNodexAgentTurnAuthority } from "../../shared/nodex-agent-authority";
-import type { NodexAgentResourceAccessOverlay } from "../../shared/nodex-agent-resource-access";
+import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import type { ProjectSession } from "../../shared/types";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { GitWorkerRuntime } from "../host-runtime/GitWorkerRuntime";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { make as makeOpenTarget } from "./WorkbenchOpenTarget";
 
 type Target = z.infer<typeof sessionPresentationSchemas.open_in_nodex>["target"];
@@ -20,14 +21,14 @@ export const make = Effect.gen(function* () {
   const open = yield* makeOpenTarget;
   const terminals = yield* TerminalSessions;
   const git = yield* GitWorkerRuntime;
+  const runtime = yield* Effect.serviceOption(AgentRuntimeApplication);
   return Effect.fn("SessionPresentationTarget.resolve")(function* (input: {
     readonly target: Target;
     readonly session: ProjectSession;
     readonly observation: WorkbenchRendererObservation | null;
     readonly operationId: string;
-    readonly authority: FrozenNodexAgentTurnAuthority;
+    readonly authority: NodexAgentTurnContext;
     readonly callId: string;
-    readonly taskAccess?: NodexAgentResourceAccessOverlay;
   }): Effect.fn.Return<Opening | { readonly existingTabId: string } | null> {
     const { target, session } = input;
     const sceneOwner = { kind: "session" as const, sessionId: session.id };
@@ -64,18 +65,28 @@ export const make = Effect.gen(function* () {
       );
       return tab ? { existingTabId: tab.tabId } : null;
     }
-    const thread = session.thread
-      ? yield* workspace
-          .getThread(session.thread.threadId)
-          .pipe(Effect.catch(() => Effect.succeed(null)))
-      : null;
+    const execution =
+      session.executionRef && Option.isSome(runtime)
+        ? yield* runtime.value
+            .inspect({ sessionId: session.id })
+            .pipe(Effect.catch(() => Effect.succeed(null)))
+        : null;
+    if (session.executionRef && !execution) return null;
+    const thread =
+      !session.executionRef && session.thread
+        ? yield* workspace
+            .getThread(session.thread.threadId)
+            .pipe(Effect.catch(() => Effect.succeed(null)))
+        : null;
     if (thread && thread.executionHostId !== "local") return null;
     const project = session.projectId
       ? yield* workspace
           .getProject(session.projectId)
           .pipe(Effect.catch(() => Effect.succeed(null)))
       : null;
-    const cwd = thread?.cwd ?? project?.primaryWorkspaceRoot ?? null;
+    const cwd =
+      execution?.thread.worktreePath ?? thread?.cwd ?? project?.primaryWorkspaceRoot ?? null;
+    const threadId = execution?.threadId ?? thread?.threadId ?? null;
     if (target.kind === "terminal") {
       if (!cwd) return null;
       if (!target.terminalId) {
@@ -84,7 +95,7 @@ export const make = Effect.gen(function* () {
       }
       const owned = yield* terminals.listSnapshotsForOwners({
         projectSessionIds: new Set([session.id]),
-        conversationIds: new Set(thread ? [thread.threadId] : []),
+        conversationIds: new Set(threadId ? [threadId] : []),
       });
       const observed = input.observation?.tabs.find(
         (tab) =>
@@ -104,7 +115,7 @@ export const make = Effect.gen(function* () {
         },
       };
     }
-    if (!thread) return null;
+    if (!threadId) return null;
     const baseBranch = target.baseBranch;
     const view = target.view ?? (baseBranch ? "branch" : "last-turn");
     let reviewRoot = cwd;
@@ -135,7 +146,7 @@ export const make = Effect.gen(function* () {
       },
       reveal: {
         kind: "review",
-        threadId: thread.threadId,
+        threadId,
         view,
         ...(baseBranch ? { baseBranch } : {}),
         ...(path ? { path } : {}),

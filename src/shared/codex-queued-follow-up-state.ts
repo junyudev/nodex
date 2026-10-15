@@ -72,6 +72,8 @@ export interface CodexQueuedFollowUpProjection {
   readonly inFlightFollowUpId: string | null;
   readonly editingFollowUpId: string | null;
   readonly error: string | null;
+  readonly hasPreviousPage?: boolean;
+  readonly hasNextPage?: boolean;
 }
 
 export const EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION: CodexQueuedFollowUpProjection = {

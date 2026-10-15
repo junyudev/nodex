@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ import {
   invokeIpc,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -31,7 +32,7 @@ const outputRecords = (value: unknown) =>
     }
   });
 
-test("native Workbench tools arrange, read and safely edit the exact authorized Page", async () => {
+test("native Workbench tools arrange, read and safely edit the exact Page", async () => {
   test.setTimeout(180_000);
   const pageId = createUuidV7();
   const secondPageId = createUuidV7();
@@ -49,27 +50,27 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
               expect(tool).not.toBeNull();
               return responses.stream([
                 responses.created("workbench_control"),
-                responses.customToolCall(
+                nativeAppToolCall(
                   "workbench_call",
                   tool!.name,
                   [
                     '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 18000}',
                     'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };',
-                    "const initial = unwrap(await tools.mcp__nodex_app__get_session_context({})); text({initial});",
-                    'const groups = unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:initial.presentation.observationId})); const group = groups.items.find(g=>g.panelId === "right");',
-                    `text({opened:unwrap(await tools.mcp__nodex_app__open_tab({observationId:initial.presentation.observationId,panelId:"right",groupId:group.groupId,target:{kind:"page",pageId:${JSON.stringify(pageId)}}}))});`,
-                    'const nextContext = unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); const nextGroups = unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:nextContext.presentation.observationId}));',
-                    `text({openedSecond:unwrap(await tools.mcp__nodex_app__open_tab({observationId:nextContext.presentation.observationId,panelId:"right",groupId:nextGroups.items.find(g=>g.panelId === "right").groupId,target:{kind:"page",pageId:${JSON.stringify(secondPageId)}}}))});`,
-                    'const refreshed = unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); const tabs = unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:refreshed.presentation.observationId})); text({tabs});',
+                    "const initial = unwrap(await app.get_session_context({})); text({initial});",
+                    'const groups = unwrap(await app.list_tab_groups({observationId:initial.presentation.observationId})); const group = groups.items.find(g=>g.panelId === "right");',
+                    `text({opened:unwrap(await app.open_tab({observationId:initial.presentation.observationId,panelId:"right",groupId:group.groupId,target:{kind:"page",pageId:${JSON.stringify(pageId)}}}))});`,
+                    'const nextContext = unwrap(await app.get_session_context({mode:"refresh"})); const nextGroups = unwrap(await app.list_tab_groups({observationId:nextContext.presentation.observationId}));',
+                    `text({openedSecond:unwrap(await app.open_tab({observationId:nextContext.presentation.observationId,panelId:"right",groupId:nextGroups.items.find(g=>g.panelId === "right").groupId,target:{kind:"page",pageId:${JSON.stringify(secondPageId)}}}))});`,
+                    'const refreshed = unwrap(await app.get_session_context({mode:"refresh"})); const tabs = unwrap(await app.list_session_tabs({observationId:refreshed.presentation.observationId})); text({tabs});',
                     `const page = tabs.items.find(t=>t.pageId === ${JSON.stringify(pageId)});`,
-                    'text({split:unwrap(await tools.mcp__nodex_app__split_tab_group({observationId:refreshed.presentation.observationId,panelId:"right",groupId:page.groupId,tabId:page.tabId,side:"right"}))});',
-                    'const final = unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); text({final});',
-                    "const finalTabs = unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:final.presentation.observationId})); const primary = finalTabs.items.find(t=>t.protected);",
-                    "text({protectedClose:unwrap(await tools.mcp__nodex_app__close_tab({observationId:final.presentation.observationId,tabId:primary.tabId}))});",
-                    `const observedPage = finalTabs.items.find(t=>t.pageId === ${JSON.stringify(pageId)}); const content=unwrap(await tools.mcp__nodex_app__read_tab_content({observationId:final.presentation.observationId,tabId:observedPage.tabId})); text({content}); if(content.status !== "ready") throw new Error(JSON.stringify(content));`,
-                    `const patch = {pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:content.validators.body,patches:[{oldMarkdown:"Keep this Page intact while arranging its view.",newMarkdown:"Keep this Page synchronized while arranging its view."}]}}; text({edited:unwrap(await tools.mcp__nodex_app__update_page(patch))});`,
-                    "text({staleEdit:unwrap(await tools.mcp__nodex_app__update_page(patch))});",
-                    `text({fetched:unwrap(await tools.mcp__nodex_app__fetch({id:${JSON.stringify(pageId)}}))});`,
+                    'text({split:unwrap(await app.split_tab_group({observationId:refreshed.presentation.observationId,panelId:"right",groupId:page.groupId,tabId:page.tabId,side:"right"}))});',
+                    'const final = unwrap(await app.get_session_context({mode:"refresh"})); text({final});',
+                    "const finalTabs = unwrap(await app.list_session_tabs({observationId:final.presentation.observationId})); const primary = finalTabs.items.find(t=>t.protected);",
+                    "text({protectedClose:unwrap(await app.close_tab({observationId:final.presentation.observationId,tabId:primary.tabId}))});",
+                    `const observedPage = finalTabs.items.find(t=>t.pageId === ${JSON.stringify(pageId)}); const content=unwrap(await app.read_tab_content({observationId:final.presentation.observationId,tabId:observedPage.tabId})); text({content}); if(content.status !== "ready") throw new Error(JSON.stringify(content));`,
+                    `const patch = {pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:content.validators.body,patches:[{oldMarkdown:"Keep this Page intact while arranging its view.",newMarkdown:"Keep this Page synchronized while arranging its view."}]}}; text({edited:unwrap(await app.update_page(patch))});`,
+                    "text({staleEdit:unwrap(await app.update_page(patch))});",
+                    `text({fetched:unwrap(await app.fetch({id:${JSON.stringify(pageId)}}))});`,
                   ].join("\n"),
                   tool!.namespace,
                 ),
@@ -90,7 +91,7 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
             });
             expect(records.find((record) => record.tabs)?.tabs).toMatchObject({
               items: expect.arrayContaining([
-                expect.objectContaining({ pageId, title: "Workbench Page", status: "authorized" }),
+                expect.objectContaining({ pageId, title: "Workbench Page", status: "available" }),
               ]),
             });
             expect(records.find((record) => record.final)?.final).toMatchObject({
@@ -156,6 +157,7 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
         { mode: 0o600 },
       );
       let threadId: string | null = null;
+      let callerSessionId = "";
       try {
         const page = await harness.launch();
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
@@ -164,6 +166,7 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
           harness.profile.initialProjectsDirectory,
           "Workbench controls",
         );
+        callerSessionId = draft.projectSessionId;
         const seed = new RendererIpcSeedAdapter(page);
         await seed.createPage({
           key: "page",
@@ -183,17 +186,21 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
           title: "Companion Page",
           nfm: "This Page stays in the original group.",
         });
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         threadId = await sendAgentPrompt(page, draft.projectSessionId, "WORKBENCH_CONTROL_PROBE");
         await waitForFinalMarker(page, "WORKBENCH_CONTROL_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: draft.projectSessionId, threadId },
+          60_000,
+        );
         await expect(page.getByRole("tab", { name: "Workbench Page", exact: true })).toBeVisible();
         expect((await seed.readPage(draft.projectId, pageId)).title).toBe("Workbench Page");
       } catch (error) {
         const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
-              () => null,
-            )
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: callerSessionId,
+              threadId,
+            }).catch(() => null)
           : null;
         throw new Error(
           `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-48_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,

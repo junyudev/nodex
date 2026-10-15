@@ -17,7 +17,7 @@ type CoreError = components["schemas"]["CoreError"];
 
 const documentErrorCodes = {
   invalid_input: "invalid_document_update",
-  unauthorized: "unauthorized",
+  unauthorized: "invalid_session",
   not_found: "document_not_found",
   ambiguous: "unknown",
   conflict: "recovery_required",
@@ -96,7 +96,7 @@ export const documentSessionError = (failure: unknown): DocumentSyncCommandError
     return {
       code:
         error.status === 401 || error.status === 403
-          ? "unauthorized"
+          ? "authentication_failed"
           : error.status === 429 || error.status === 503
             ? "service_busy"
             : "invalid_response",

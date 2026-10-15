@@ -88,6 +88,7 @@ const makeFixture = (): {
     "packages/core-protocol/value.ts",
     "packages/effect-codex-app-server/value.ts",
     "packages/nodex-app-tools-mcp/value.ts",
+    "packages/agent-runtime/value.ts",
     "resources/icon.icon/value.json",
     "resources/icon.png",
     "resources/nodex-icon.svg",
@@ -127,6 +128,10 @@ const makeFixture = (): {
     "tsconfig.node.json",
     "tsconfig.web.json",
     "out/main/bootstrap.js",
+    "out/main/agent-runtime/entry.mjs",
+    "out/main/agent-runtime/LICENSE.t3code",
+    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
+    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
     "out/preload/index.js",
     "out/renderer/index.html",
   ];

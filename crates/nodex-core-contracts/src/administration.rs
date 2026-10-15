@@ -4,7 +4,27 @@ use utoipa::ToSchema;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const STORE_ADMINISTRATION_CONTRACT_VERSION: u32 = 8;
+pub const STORE_ADMINISTRATION_CONTRACT_VERSION: u32 = 9;
+
+/// Ephemeral, path-only evidence supplied by the physical execution snapshot owner.
+/// These paths never enter the durable operation fingerprint or Backup manifest.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProfileSnapshotSource {
+    pub runtime_id: String,
+    pub runtime_generation: String,
+    pub sequence: u64,
+    pub database_path: String,
+    pub environment_id_path: String,
+    pub attachments_path: String,
+    pub native_histories: Vec<NativeHistorySnapshotSource>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct NativeHistorySnapshotSource {
+    pub provider_instance_id: String,
+    pub driver: String,
+    pub home_path: Option<String>,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -110,6 +130,7 @@ pub struct BackupRecord {
     pub includes_assets: bool,
     pub db_bytes: u64,
     pub assets_bytes: u64,
+    pub execution_bytes: u64,
     pub total_bytes: u64,
     pub byte_length: u64,
 }
@@ -224,6 +245,8 @@ pub enum StoreAdministrationIntent {
         label: Option<String>,
         include_assets: bool,
         trigger: BackupTrigger,
+        #[serde(default)]
+        profile_snapshot: Option<ProfileSnapshotSource>,
     },
     CoalesceBackup {
         active_job_id: String,
@@ -237,6 +260,8 @@ pub enum StoreAdministrationIntent {
     RestoreBackup {
         backup_id: String,
         create_safety_backup: bool,
+        #[serde(default)]
+        profile_snapshot: Option<ProfileSnapshotSource>,
     },
     DeleteBackup {
         backup_id: String,

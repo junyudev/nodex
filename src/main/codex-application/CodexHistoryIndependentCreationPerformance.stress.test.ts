@@ -39,7 +39,7 @@ import {
   make as makeForkTitlePolicy,
 } from "./CodexForkTitlePolicy";
 import { make as makeSideChatCommands } from "./CodexSideChatCommands";
-import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
+import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatBoundary";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
@@ -526,7 +526,6 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
         executePreparedNativeSteer: () => Effect.die("unused"),
         releasePreparedNativeSteer: () => {},
         start: () => Effect.die("Side-chat fixture has no initial prompt"),
-        startAutomation: () => Effect.die("unused"),
         steer: () => Effect.die("unused"),
       } satisfies CodexTurnCommandsService),
     ),

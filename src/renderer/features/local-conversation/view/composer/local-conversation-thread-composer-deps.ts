@@ -1,10 +1,6 @@
 export { getGitWorkerClient } from "@/lib/api";
 export { invokeBrowserSidebarCommand } from "@/features/browser-sidebar/browser-sidebar-commands";
-export {
-  captureComposerAppshot,
-  pickComposerFiles,
-  readComposerPermissionState,
-} from "../../composer-context-operations";
+export { captureComposerAppshot, pickComposerFiles } from "../../composer-context-operations";
 export { NodexTooltip } from "@/components/ui/tooltip";
 export {
   NodexDropdownButtonTrigger,
@@ -23,4 +19,3 @@ export {
 export { BranchSelectorPopover } from "../shared/branch-selector-popover";
 export { EnvironmentSelectorPopover } from "../shared/environment-selector-popover";
 export { ContextWindowIndicator, resolvePromptTextareaMaxHeightPx } from "../shared/context-window";
-export { PermissionModeDropdown } from "../shared/permission-mode-dropdown";

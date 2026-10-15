@@ -15,7 +15,9 @@ export function deriveComposerIntelligenceSelection(
     serviceTier:
       model.provider && model.provider.kind !== "codex"
         ? null
-        : (model.conversation?.latestThreadSettings?.serviceTier ?? defaultServiceTier),
+        : model.provider?.serviceTier !== undefined
+          ? model.provider.serviceTier
+          : (model.conversation?.latestThreadSettings?.serviceTier ?? defaultServiceTier),
   };
 }
 

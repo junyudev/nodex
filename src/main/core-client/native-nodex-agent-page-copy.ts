@@ -155,7 +155,7 @@ export const prepareNativeNodexAgentPageCopy = async (
   const operationId = nativeNodexAgentPageCopyOperationId(request);
   try {
     if (!request.authority) {
-      throw new Error("Native Agent Page copy requires frozen Turn authority");
+      throw new Error("Native Agent Page copy requires captured execution provenance");
     }
     const copyRequest = coreRequest(request);
     const snapshot = await nativeAgentClient(runtime, request.projectId).libraryRead(
@@ -167,7 +167,6 @@ export const prepareNativeNodexAgentPageCopy = async (
           runtime.identity.profileId,
           request.authority,
           request.callId,
-          request.resourceAccess,
         ),
         request: copyRequest,
       },
@@ -278,7 +277,7 @@ export const executeNativeNodexAgentPageCopy = async (
         ok: false,
         error: {
           code: "authorization_denied",
-          message: "Native Agent Page copy lost its frozen Turn authority",
+          message: "Native Agent Page copy lost its captured execution provenance",
           retryable: false,
           recovery: "start_new_task",
         },
@@ -297,7 +296,6 @@ export const executeNativeNodexAgentPageCopy = async (
               runtime.identity.profileId,
               authority,
               pending.request.callId,
-              pending.request.resourceAccess,
             ),
             token: pending.token,
           },

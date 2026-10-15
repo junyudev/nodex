@@ -13,7 +13,6 @@ import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { RemoteHostedPipRuntime } from "../host-runtime/RemoteHostedPipRuntime";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { CodexAutomationTurnCompletion } from "./CodexAutomationTurnCompletion";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
 import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexConversationProjection } from "./CodexConversationProjection";
@@ -55,7 +54,6 @@ const liveNativeState = (threadId: string, hostId: string) =>
 it.effect("drains only Main-owned prose before applying terminal product consequences", () =>
   Effect.gen(function* () {
     const trace: string[] = [];
-    let automationDecision: CodexHeartbeatDecision | null = "DONT_NOTIFY";
     let streamRole: ConversationStreamRole = { role: "owner" };
     let widgetClearFailure = false;
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
@@ -113,15 +111,6 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
                 deliveredHosts.push(event.value.hostId);
               }
             },
-          }),
-        ),
-        Effect.provideService(
-          CodexAutomationTurnCompletion,
-          CodexAutomationTurnCompletion.of({
-            complete: () =>
-              Effect.sync(() => trace.push("automation")).pipe(
-                Effect.map(() => automationDecision),
-              ),
           }),
         ),
         Effect.provideService(
@@ -257,16 +246,14 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       "drain",
       "browser",
       "pip",
-      "automation",
       "queue-terminal:false:0",
       "durable:remote-a:7",
     ]);
 
-    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY"]);
+    assert.deepEqual(deliveredDecisions, [null]);
     assert.deepEqual(targetChanges, [
       { type: "createdThreadTargetChanged", hostId: "remote-a", threadId: "thread-a" },
     ]);
-    automationDecision = null;
     trace.length = 0;
     yield* service.apply({
       hostId: "remote-a",
@@ -294,12 +281,11 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       "drain",
       "browser",
       "pip",
-      "automation",
       "queue-terminal:true:0",
       "durable:remote-a:7",
     ]);
 
-    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null]);
+    assert.deepEqual(deliveredDecisions, [null, null]);
 
     trace.length = 0;
     streamRole = { role: "follower", ownerClientId: "renderer-owner" };
@@ -310,14 +296,8 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
       occurrenceId: "remote-a:7:inbox-a:93",
       occurrenceToken: 93,
     });
-    assert.deepEqual(trace, [
-      "browser",
-      "pip",
-      "automation",
-      "queue-terminal:false:0",
-      "durable:remote-a:7",
-    ]);
-    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null, null]);
+    assert.deepEqual(trace, ["browser", "pip", "queue-terminal:false:0", "durable:remote-a:7"]);
+    assert.deepEqual(deliveredDecisions, [null, null, null]);
     assert.deepEqual(deliveredHosts, ["remote-a", "remote-a", "remote-a"]);
 
     trace.length = 0;

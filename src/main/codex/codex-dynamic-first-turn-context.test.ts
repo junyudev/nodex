@@ -1,9 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import path from "node:path";
-import {
-  augmentCodexDynamicFirstTurnPermissionContext,
-  resolveCodexThreadVisualizationDirectory,
-} from "./codex-dynamic-first-turn-context";
+import { resolveCodexThreadVisualizationDirectory } from "./codex-dynamic-first-turn-context";
 
 describe("Codex dynamic first-turn context", () => {
   test("derives the exact UTC visualization directory from a UUIDv7 thread id", () => {
@@ -30,62 +27,5 @@ describe("Codex dynamic first-turn context", () => {
         threadId.replace("-0004-", "-0001-"),
       ),
     ).toBeNull();
-  });
-
-  test("adds retained, cwd, and visualization roots to a profile selection", () => {
-    const context = augmentCodexDynamicFirstTurnPermissionContext({
-      context: {
-        activePermissionProfile: { id: ":workspace", extends: null },
-        runtimeWorkspaceRoots: ["/workspace"],
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/workspace"],
-          networkAccess: false,
-          excludeSlashTmp: false,
-          excludeTmpdirEnvVar: false,
-        },
-      },
-      cwd: "/workspace",
-      retainedWritableRoots: ["/retained"],
-      visualizationDirectory: "/home/.codex/visualizations/day/thread",
-    });
-
-    expect(JSON.stringify(context.runtimeWorkspaceRoots)).toBe(
-      JSON.stringify(["/workspace", "/retained", "/home/.codex/visualizations/day/thread"]),
-    );
-    expect(
-      JSON.stringify(
-        context.sandboxPolicy.type === "workspaceWrite" ? context.sandboxPolicy.writableRoots : [],
-      ),
-    ).toBe(JSON.stringify(["/workspace", "/retained", "/home/.codex/visualizations/day/thread"]));
-  });
-
-  test("keeps runtime roots absent for an explicit sandbox selection", () => {
-    const context = augmentCodexDynamicFirstTurnPermissionContext({
-      context: {
-        activePermissionProfile: null,
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/workspace"],
-          networkAccess: false,
-          excludeSlashTmp: false,
-          excludeTmpdirEnvVar: false,
-        },
-      },
-      cwd: "/workspace",
-      retainedWritableRoots: ["/retained"],
-      visualizationDirectory: null,
-    });
-
-    expect(context.runtimeWorkspaceRoots).toBe(undefined);
-    expect(
-      JSON.stringify(
-        context.sandboxPolicy.type === "workspaceWrite" ? context.sandboxPolicy.writableRoots : [],
-      ),
-    ).toBe(JSON.stringify(["/workspace", "/retained"]));
   });
 });

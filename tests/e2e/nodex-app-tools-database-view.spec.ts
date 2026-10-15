@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ import {
   invokeIpc,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -65,13 +66,13 @@ test("native Database View tools distinguish displayed rows from the effective s
               expect(tool).not.toBeNull();
               return responses.stream([
                 responses.created("database_view_open"),
-                responses.customToolCall(
+                nativeAppToolCall(
                   "database_view_open_call",
                   tool!.name,
                   [
                     UNWRAP,
-                    "const initial=unwrap(await tools.mcp__nodex_app__get_session_context({})); const groups=unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:initial.presentation.observationId}));",
-                    `text({opened:unwrap(await tools.mcp__nodex_app__open_tab({observationId:initial.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId === "right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
+                    "const initial=unwrap(await app.get_session_context({})); const groups=unwrap(await app.list_tab_groups({observationId:initial.presentation.observationId}));",
+                    `text({opened:unwrap(await app.open_tab({observationId:initial.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId === "right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
                   ].join("\n"),
                   tool!.namespace,
                 ),
@@ -105,17 +106,17 @@ test("native Database View tools distinguish displayed rows from the effective s
               expect(tool).not.toBeNull();
               return responses.stream([
                 responses.created("database_view_read"),
-                responses.customToolCall(
+                nativeAppToolCall(
                   "database_view_read_call",
                   tool!.name,
                   [
                     '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 18000}',
                     UNWRAP,
-                    `const exact = async () => { const context=unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); const tabs=unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:context.presentation.observationId})); const tab=tabs.items.find(t=>t.viewId === ${JSON.stringify(viewId)}); if(!tab) throw new Error(JSON.stringify(tabs)); return {observationId:context.presentation.observationId,tabId:tab.tabId}; };`,
+                    `const exact = async () => { const context=unwrap(await app.get_session_context({mode:"refresh"})); const tabs=unwrap(await app.list_session_tabs({observationId:context.presentation.observationId})); const tab=tabs.items.find(t=>t.viewId === ${JSON.stringify(viewId)}); if(!tab) throw new Error(JSON.stringify(tabs)); return {observationId:context.presentation.observationId,tabId:tab.tabId}; };`,
                     'const summarize = r => { if(r.status !== "ready") return r; const result=r.query.result; const fields=["page_id","title"]; return {...r,query:{...r.query,result:{...result,columns:fields,rows:result.rows.map(row=>fields.map(field=>row[result.columns.indexOf(field)]))}}}; };',
-                    'text({loaded:summarize(unwrap(await tools.mcp__nodex_app__read_tab_content({...await exact(),view:{range:"loaded",limit:100,propertyIds:["status"]}})))});',
-                    'text({viewport:summarize(unwrap(await tools.mcp__nodex_app__read_tab_content({...await exact(),view:{range:"viewport",limit:100,propertyIds:["status"]}})))});',
-                    'text({effective:summarize(unwrap(await tools.mcp__nodex_app__query_displayed_view({...await exact(),propertyIds:["status"]})))});',
+                    'text({loaded:summarize(unwrap(await app.read_tab_content({...await exact(),view:{range:"loaded",limit:100,propertyIds:["status"]}})))});',
+                    'text({viewport:summarize(unwrap(await app.read_tab_content({...await exact(),view:{range:"viewport",limit:100,propertyIds:["status"]}})))});',
+                    'text({effective:summarize(unwrap(await app.query_displayed_view({...await exact(),propertyIds:["status"]})))});',
                   ].join("\n"),
                   tool!.namespace,
                 ),
@@ -154,6 +155,7 @@ test("native Database View tools distinguish displayed rows from the effective s
         { mode: 0o600 },
       );
       let threadId: string | null = null;
+      let callerSessionId = "";
       try {
         const page = await harness.launch();
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.6-sol" });
@@ -162,6 +164,7 @@ test("native Database View tools distinguish displayed rows from the effective s
           harness.profile.initialProjectsDirectory,
           "Database View content",
         );
+        callerSessionId = draft.projectSessionId;
         const seed = new RendererIpcSeedAdapter(page);
         const initial = requireSuccess(
           await seed.readDatabase({
@@ -274,10 +277,13 @@ test("native Database View tools distinguish displayed rows from the effective s
             ],
           }),
         );
-        await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
         threadId = await sendAgentPrompt(page, draft.projectSessionId, "DATABASE_VIEW_OPEN_PROBE");
         await waitForFinalMarker(page, "DATABASE_VIEW_OPEN_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: draft.projectSessionId, threadId },
+          60_000,
+        );
         const surface = page.locator(`[data-database-view-id="${viewId}"]:visible`);
         await expect(surface).toBeVisible();
         await page
@@ -293,7 +299,11 @@ test("native Database View tools distinguish displayed rows from the effective s
         await composer.fill("DATABASE_VIEW_READ_PROBE");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "DATABASE_VIEW_READ_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(
+          page,
+          { sessionId: draft.projectSessionId, threadId },
+          60_000,
+        );
         const records = viewResults;
         await test.info().attach("native-view-results", {
           body: JSON.stringify(records, null, 2),
@@ -373,9 +383,10 @@ test("native Database View tools distinguish displayed rows from the effective s
         expect(effective.query.rules_fingerprint).toBe(viewport.query.rules_fingerprint);
       } catch (error) {
         const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
-              () => null,
-            )
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: callerSessionId,
+              threadId,
+            }).catch(() => null)
           : null;
         throw new Error(
           `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-48_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,

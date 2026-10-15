@@ -77,7 +77,7 @@ import {
 import {
   databaseViewConditionalColorBackground,
   databaseViewConditionalColorBorder,
-  type DatabaseViewAccessContext,
+  type DatabaseViewRoutingContext,
   type DatabaseViewRenderModel,
 } from "@/lib/database-view-render-model";
 import type { DatabaseViewPresentationActivity } from "@/lib/database-view-presentation-activity";
@@ -1598,7 +1598,7 @@ function SortableConditionalColorRule({
   property,
   layout,
   options,
-  accessContext,
+  routingContext,
   disabled,
   onRequestOptions,
   onChange,
@@ -1608,7 +1608,7 @@ function SortableConditionalColorRule({
   readonly property: DataSourcePropertyRecordV2;
   readonly layout: DatabaseViewLayout;
   readonly options: readonly DatabasePropertyOption[];
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly disabled: boolean;
   readonly onRequestOptions: (property: DataSourcePropertyRecordV2) => void;
   readonly onChange: (rule: DatabaseViewConditionalColorRule) => void;
@@ -1680,7 +1680,7 @@ function SortableConditionalColorRule({
             property={property}
             options={options}
             onRequestOptions={onRequestOptions}
-            accessContext={accessContext}
+            routingContext={routingContext}
             disabled={disabled}
             presentation="conditional"
             onChange={(value) => onChange({ ...rule, value })}
@@ -1707,7 +1707,7 @@ function ViewConditionalColorRoute({
   activeView,
   properties,
   optionRegistries,
-  accessContext,
+  routingContext,
   onRequestPropertyOptions,
   onPreviewConditionalColors,
   onPublishConditionalColors,
@@ -1716,7 +1716,7 @@ function ViewConditionalColorRoute({
   readonly activeView: DatabaseViewRecordV2;
   readonly properties: readonly DataSourcePropertyRecordV2[];
   readonly optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>;
-  readonly accessContext: DatabaseViewAccessContext;
+  readonly routingContext: DatabaseViewRoutingContext;
   readonly onRequestPropertyOptions: (property: DataSourcePropertyRecordV2) => void;
   readonly onPreviewConditionalColors: (
     rules: readonly DatabaseViewConditionalColorRule[] | null,
@@ -1918,7 +1918,7 @@ function ViewConditionalColorRoute({
                     options={
                       optionRegistries[property.propertyId] ?? readDatabasePropertyOptions(property)
                     }
-                    accessContext={accessContext}
+                    routingContext={routingContext}
                     disabled={busy}
                     onRequestOptions={onRequestPropertyOptions}
                     onChange={(next) => updateRule(rule.ruleId, () => next)}
@@ -3327,7 +3327,7 @@ export function DatabaseSettingsRail({
         activeView={activeView}
         properties={model.query.properties}
         optionRegistries={optionRegistries}
-        accessContext={model.accessContext}
+        routingContext={model.routingContext}
         onRequestPropertyOptions={onRequestPropertyOptions}
         onPreviewConditionalColors={onPreviewConditionalColors}
         onPublishConditionalColors={onPublishConditionalColors}

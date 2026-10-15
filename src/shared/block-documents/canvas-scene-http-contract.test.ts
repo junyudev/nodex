@@ -25,7 +25,7 @@ describe("Canvas scene HTTP contract", () => {
     const sync = decodeCanvasSceneSyncRequestHttp(
       encodeCanvasSceneSyncRequestHttp({
         syncRequestId: "sync-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: "canvas-1",
         clientSessionId: "client-1",
         knownStoreEpoch: "store-1",
@@ -40,7 +40,7 @@ describe("Canvas scene HTTP contract", () => {
     const mutation = decodeCanvasSceneMutationRequestHttp(
       encodeCanvasSceneMutationRequestHttp({
         mutationId: "mutation-1",
-        accessContext: { kind: "project", projectId: "project-1" },
+        routingContext: { kind: "project", projectId: "project-1" },
         documentId: "canvas-1",
         storeEpoch: "store-1",
         generation: 1,
@@ -59,7 +59,7 @@ describe("Canvas scene HTTP contract", () => {
   test("rejects a request whose Project route does not match", () => {
     const serialized = encodeCanvasSceneSyncRequestHttp({
       syncRequestId: "sync-2",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       documentId: "canvas-1",
       clientSessionId: "client-1",
     });
@@ -81,7 +81,7 @@ describe("Canvas scene HTTP contract", () => {
             kind: "snapshot",
             syncRequestId: "sync-1",
             libraryId: "library-1",
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             documentId: "canvas-1",
             storeEpoch: "store-1",
             generation: 1,
@@ -98,7 +98,7 @@ describe("Canvas scene HTTP contract", () => {
           value: {
             mutationId: "mutation-1",
             libraryId: "library-1",
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             documentId: "canvas-1",
             storeEpoch: "store-1",
             generation: 1,
@@ -124,7 +124,7 @@ describe("Canvas scene HTTP contract", () => {
         JSON.stringify({
           type: "canvas_scene_resync_required",
           libraryId: "library-1",
-          accessContext: { kind: "project", projectId: "project-1" },
+          routingContext: { kind: "project", projectId: "project-1" },
           documentId: "canvas-1",
           storeEpoch: "store-1",
           generation: 1,
@@ -135,7 +135,7 @@ describe("Canvas scene HTTP contract", () => {
     const value = {
       mutationId: "mutation-1",
       libraryId: "library-1",
-      accessContext: { kind: "project", projectId: "project-1" },
+      routingContext: { kind: "project", projectId: "project-1" },
       documentId: "canvas-1",
       storeEpoch: "store-1",
       generation: 1,
@@ -166,7 +166,7 @@ describe("Canvas scene HTTP contract", () => {
           event: {
             type: "canvas_scene_resync_required",
             libraryId: "library-1",
-            accessContext: { kind: "project", projectId: "project-1" },
+            routingContext: { kind: "project", projectId: "project-1" },
             documentId: "canvas-1",
             storeEpoch: "store-1",
             generation: 1,

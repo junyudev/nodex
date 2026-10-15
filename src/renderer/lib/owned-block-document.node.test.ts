@@ -26,7 +26,7 @@ import {
 } from "./owned-block-document-query";
 
 const REQUEST: OwnedBlockDocumentRequest = {
-  accessContext: { kind: "project", projectId: "project-a" },
+  routingContext: { kind: "project", projectId: "project-a" },
   ownerBlockId: "card-a",
 };
 
@@ -34,12 +34,11 @@ const makeDescriptor = (
   overrides: Partial<OwnedDocumentDescriptor> = {},
 ): OwnedDocumentDescriptor => ({
   libraryId: "library-a",
-  accessContext: REQUEST.accessContext,
+  routingContext: REQUEST.routingContext,
   ownerBlockId: REQUEST.ownerBlockId,
   ownerType: "page",
   ownerLifecycle: "active",
   documentId: "opaque-owned-document-id",
-  authorization: null,
   storeEpoch: "store-epoch-a",
   generation: 3,
   headSeq: 11,
@@ -63,9 +62,9 @@ describe("owned Block Document renderer boundary", () => {
   test("validates Library descriptors without admitting Project coordinates", () => {
     const ready = validateLibraryOwnedBlockDocumentDescriptor(REQUEST.ownerBlockId, {
       ...makeDescriptor(),
-      accessContext: { kind: "library" },
+      routingContext: { kind: "library" },
     });
-    expect(ready.accessContext).toEqual({ kind: "library" });
+    expect(ready.routingContext).toEqual({ kind: "library" });
     expect("projectId" in ready).toBe(false);
     expect(() =>
       validateLibraryOwnedBlockDocumentDescriptor(REQUEST.ownerBlockId, makeDescriptor()),
@@ -117,9 +116,9 @@ describe("owned Block Document renderer boundary", () => {
       readonly descriptor: unknown;
     }> = [
       {
-        expected: "access_context_mismatch",
+        expected: "routing_context_mismatch",
         descriptor: makeDescriptor({
-          accessContext: { kind: "project", projectId: "project-b" },
+          routingContext: { kind: "project", projectId: "project-b" },
         }),
       },
       {
@@ -165,8 +164,8 @@ describe("owned Block Document renderer boundary", () => {
     const calls: string[] = [];
     const descriptor = await fetchOwnedBlockDocumentDescriptor(
       REQUEST,
-      async (accessContext, ownerBlockId) => {
-        calls.push(`${JSON.stringify(accessContext)}/${ownerBlockId}`);
+      async (routingContext, ownerBlockId) => {
+        calls.push(`${JSON.stringify(routingContext)}/${ownerBlockId}`);
         return makeDescriptor({
           documentId: "server-owned-document",
           sync: { kind: "yjs", stateVector: new Uint8Array([4]) },
@@ -202,7 +201,7 @@ describe("owned Block Document renderer boundary", () => {
     try {
       await fetchOwnedBlockDocumentDescriptor(
         {
-          accessContext: { kind: "project", projectId: " project-a" },
+          routingContext: { kind: "project", projectId: " project-a" },
           ownerBlockId: "card-a",
         },
         async () => {

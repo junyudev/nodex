@@ -18,26 +18,12 @@ import type { DatabaseId } from "../../../shared/database-identities";
 import { queryKeys } from "../../lib/query-keys";
 import { invalidateExactQuery } from "../../lib/query-invalidation";
 import { useProjectionRegistration } from "../../lib/projection-invalidation-context";
-import { libraryContentAccess } from "../../../shared/content-access-context";
+import { libraryContentRoute } from "../../../shared/content-routing-context";
 import {
   pageDetailDataDependencies,
   pageDetailDocumentDependencies,
 } from "../../lib/page-detail-projection-dependencies";
 import { libraryPageDetailQueryOptions } from "../../lib/library-page-detail-query";
-import type { AuthorizedReadStamp } from "../../../shared/authorized-read-stamp";
-import {
-  admitResourceAuthorityQuery,
-  resourceAuthorityQueryMeta,
-} from "../../lib/resource-authority-query-cache";
-
-const resolveLibraryPageAuthority = (_queryKey: readonly unknown[], data: unknown) => {
-  const authorization = (
-    data as {
-      readonly authorization?: AuthorizedReadStamp | null;
-    } | null
-  )?.authorization;
-  return authorization ? { authorizations: [authorization] } : null;
-};
 
 const ignoreLibraryPageClose = (): void => undefined;
 
@@ -64,7 +50,7 @@ export function WorkbenchLibraryPageSurface({
   const detailQueryKey = useMemo(() => queryKeys.library.pageDetail(pageId), [pageId]);
   const documentQueryKey = useMemo(() => queryKeys.library.pageDocument(pageId), [pageId]);
   const detail = useQuery({
-    ...libraryPageDetailQueryOptions(pageId, [documentQueryKey]),
+    ...libraryPageDetailQueryOptions(pageId),
   });
   const document = useQuery({
     queryKey: documentQueryKey,
@@ -73,9 +59,8 @@ export function WorkbenchLibraryPageSurface({
         await prepareLibraryOwnedBlockDocument(pageId),
       );
       const descriptor = validateLibraryOwnedBlockDocumentDescriptor(pageId, prepared);
-      return await admitResourceAuthorityQuery(descriptor, resolveLibraryPageAuthority);
+      return descriptor;
     },
-    meta: resourceAuthorityQueryMeta(resolveLibraryPageAuthority),
   });
   const stagePage = useMemo(() => {
     if (!detail.data) return null;
@@ -167,7 +152,7 @@ export function WorkbenchLibraryPageSurface({
 
   return (
     <PageStage
-      contentAccessContext={libraryContentAccess}
+      contentRoutingContext={libraryContentRoute}
       editorSessionKey={editorSessionKey}
       pageTitleIdentity={{ libraryId: detail.data.libraryId, pageId }}
       retainEditorSession

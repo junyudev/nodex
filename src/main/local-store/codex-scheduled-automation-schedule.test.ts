@@ -21,7 +21,6 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
     notificationPolicy: null,
     kind: "cron",
     status: "ACTIVE",
-    targetThreadId: null,
     name: "Report",
     prompt: "Run the report.",
     rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=30",

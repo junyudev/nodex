@@ -148,9 +148,6 @@ const main = async () => {
           threadId: "probe-task",
           hostId: "local",
           projectId: scenario.manifest.projectId,
-          verifiedBuiltinFullAccess: true,
-          sandboxPolicy: { type: "dangerFullAccess" },
-          planMode: false,
         },
       ),
     );
@@ -197,7 +194,6 @@ const main = async () => {
           command: ["/bin/sh", "-c", `${prefix} --json context`],
           cwd: scenario.profile.runRoot,
           env,
-          sandboxPolicy: { type: "dangerFullAccess" },
         });
         assert.equal(context.exitCode, 0, context.stderr);
         assert.equal(JSON.parse(context.stdout).result.project.id, scenario.manifest.projectId);
@@ -206,7 +202,7 @@ const main = async () => {
             command: ["/bin/sh", "-c", `${prefix} --json context`],
             cwd: scenario.profile.runRoot,
             env,
-            sandboxPolicy: { type: "dangerFullAccess" },
+
             timeoutMs: 60_000,
           });
           assert.equal(restarted.exitCode, 0, restarted.stderr);
@@ -224,14 +220,12 @@ const main = async () => {
           ],
           cwd: scenario.profile.runRoot,
           env,
-          sandboxPolicy: { type: "dangerFullAccess" },
         });
         assert.equal(full.exitCode, 0, full.stderr);
         const read = await command({
           command: ["/bin/sh", "-c", `${prefix} read '@${page}'`],
           cwd: scenario.profile.runRoot,
           env,
-          sandboxPolicy: { type: "dangerFullAccess" },
         });
         assert.equal(read.exitCode, 0, read.stderr);
         assert.ok(read.stdout.includes("Bootstrap runtime proof"));
@@ -239,7 +233,6 @@ const main = async () => {
           command: ["/bin/sh", "-c", `${prefix} read '@${page}'`],
           cwd: scenario.profile.runRoot,
           env,
-          sandboxPolicy: { type: "readOnly" },
         });
         const restricted = await command({
           command: [
@@ -249,7 +242,6 @@ const main = async () => {
           ],
           cwd: scenario.profile.runRoot,
           env,
-          sandboxPolicy: { type: "readOnly" },
         });
         process.stdout.write(
           JSON.stringify({

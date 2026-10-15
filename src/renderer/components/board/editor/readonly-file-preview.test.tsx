@@ -16,7 +16,7 @@ afterEach(() => vi.resetAllMocks());
 const authority = (revisionId: string): FileReadAuthority => ({
   libraryId: "library",
   storeEpoch: "epoch",
-  contentAccessContext: { kind: "project", projectId: "project" },
+  contentRoutingContext: { kind: "project", projectId: "project" },
   readSource: { kind: "document_revision", document_id: "document", revision_id: revisionId },
 });
 const content =
@@ -100,7 +100,7 @@ test("a merged preview uses per-File bindings and refuses references missing fro
   const base = {
     libraryId: "library",
     storeEpoch: "epoch",
-    contentAccessContext: { kind: "project", projectId: "project" },
+    contentRoutingContext: { kind: "project", projectId: "project" },
   } as const;
   const runtime = createFilePreviewRuntime({
     ...base,

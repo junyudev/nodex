@@ -10,7 +10,6 @@ import {
 } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { createCodexFirstSubmissionIdentity } from "../../../shared/codex-first-submission";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
 import { PageStageContentSkeleton } from "@/components/board/page-stage/content-skeleton";
 import { PageStageToolbar } from "@/components/board/page-stage/toolbar";
@@ -19,7 +18,19 @@ import type {
   PageStageSessionSnapshot,
 } from "@/components/board/page-stage/types";
 import { NodexButton } from "@/components/ui/button";
-import { useCodexAppServerControl } from "@/features/local-conversation";
+import { useCodexThreadSettings } from "@/lib/use-codex-thread-settings";
+import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import {
+  captureCodexTurnPresentation,
+  readCodexSubmissionPresentation,
+} from "@/lib/codex-turn-presentation";
+import { launchAgentRuntimeSession } from "@/lib/agent-runtime-session-launch";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { agentRuntimePromptImages } from "@/lib/agent-runtime-prompt";
+import { prepareAgentPrompt } from "../../../shared/agent-prompt";
+import { readPastedTextAttachment } from "@/lib/api";
+import { sessionFirstSubmissionOwner } from "@/features/conversation-launch/session-first-submission-owner";
 import { usePageOwnershipPathReadModel } from "@/lib/block-reference-queries";
 import {
   commitPageDetailMetadataPatch,
@@ -33,7 +44,7 @@ import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import { fetchPageDetail, usePageDetail } from "@/lib/page-detail-store";
 import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
 import { RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE } from "@/lib/right-panel-composer-overlay-reserve";
-import { projectContentAccess } from "../../../shared/content-access-context";
+import { projectContentRoute } from "../../../shared/content-routing-context";
 import type {
   CodexPromptInput,
   CodexThreadSummary,
@@ -183,17 +194,21 @@ export function PageStageSessionTab({
     readonly sessionId: string;
   }) => Promise<void>;
   relatedChatCandidates: readonly PageStageRelatedChatCandidate[];
-  onResolveChatSessionForThread: (
-    threadId: string,
-  ) => Promise<{ readonly id: string; readonly projectId: string | null }>;
+  onResolveChatSessionForThread: (threadId: string) => Promise<{
+    readonly id: string;
+    readonly projectId: string | null;
+    readonly executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
+  }>;
   historyPanelActive: boolean;
   onToggleHistoryPanel: (context: PageStageHistoryModalContext) => void;
   isActivePanelTab: boolean;
 }) {
-  if (tab.config.accessContext.kind !== "project")
-    throw new Error("Project Page Stage requires Project access");
-  const pageAccessProjectId = tab.config.accessContext.projectId;
-  const codexControl = useCodexAppServerControl(pageAccessProjectId);
+  if (tab.config.routingContext.kind !== "project")
+    throw new Error("Project Page Stage requires a Project route");
+  const pageAccessProjectId = tab.config.routingContext.projectId;
+  const workbenchOwner = useWorkbenchWindowOwner();
+  const { settings: threadSettings } = useCodexThreadSettings();
+  const { serviceTierSettings } = useCodexServiceTierSettings();
   const queryClient = useQueryClient();
   const relatedChatsQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
@@ -256,7 +271,7 @@ export function PageStageSessionTab({
     !page && (detailSnapshot.loading || (!detailSnapshot.error && !stageProjection.error));
 
   const ownershipPath = usePageOwnershipPathReadModel(
-    projectContentAccess(project?.id ?? pageAccessProjectId),
+    projectContentRoute(project?.id ?? pageAccessProjectId),
     tab.config.pageId,
   );
   const ownershipAncestors =
@@ -288,48 +303,70 @@ export function PageStageSessionTab({
       submittedPresentation?: WorkbenchSubmitPresentation;
     }) => {
       const submittedPresentation =
-        input.submittedPresentation ?? codexControl.captureSubmissionPresentation();
+        input.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
+      const identity = {
+        launchId: createUuidV7(),
+        clientUserMessageId: createUuidV7(),
+        acceptedAt: Date.now(),
+      };
       const promptInput = await materializePagePromptInput(
-        projectContentAccess(pageAccessProjectId),
+        projectContentRoute(pageAccessProjectId),
         tab.config.pageId,
         input.promptInput,
       );
       const targetSessionId =
         input.targetSessionId?.trim() ||
         (await onEnsureDefaultDraftSessionForProject(input.projectId, { select: false })).id;
-      await onLinkPageToChat({
-        pageAccessProjectId: pageAccessProjectId,
-        pageId: tab.config.pageId,
-        sessionId: targetSessionId,
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        { kind: "session", sessionId: targetSessionId, launchId: identity.launchId },
+        submittedPresentation,
+      );
+      // Launch links the Page in its binding transaction, so a rejected launch leaves no link.
+      const submission = sessionFirstSubmissionOwner.begin({
+        backend: "codex",
+        originProjectId: input.projectId,
+        originSessionId: targetSessionId,
+        prompt: input.prompt,
+        promptInput,
+        identity,
       });
-      const result = await codexControl.startThreadForSession(
-        {
-          firstSubmission: createCodexFirstSubmissionIdentity(),
+      sessionFirstSubmissionOwner.update(submission.launchId, { phase: "startingThread" });
+      try {
+        const result = await launchAgentRuntimeSession({
           projectId: input.projectId,
           sessionId: targetSessionId,
           prompt: input.prompt,
           promptInput,
-          threadName: input.threadName,
-          skipAutoTitleGeneration: Boolean(input.threadName?.trim()),
-          runInTarget: "localProject",
-        },
-        submittedPresentation,
-      );
-      if (result.kind !== "started") {
-        throw new Error("Page thread unexpectedly started in a worktree");
+          title: input.threadName,
+          initialPageIds: [tab.config.pageId],
+          codexDefaults: { ...threadSettings, serviceTier: serviceTierSettings.serviceTier },
+          presentationTicket,
+          launchIdentity: {
+            launchId: submission.launchId,
+            messageId: submission.clientUserMessageId,
+            acceptedAt: submission.acceptedAt,
+          },
+        });
+        sessionFirstSubmissionOwner.update(submission.launchId, {
+          threadId: result.threadId,
+          phase: "startingTurn",
+        });
+        await onRefreshSessions(input.projectId);
+        return { threadId: result.threadId, sessionId: result.sessionId };
+      } catch (cause) {
+        sessionFirstSubmissionOwner.fail(submission.launchId, {
+          stage: "startingThread",
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+        throw cause;
       }
-      const { detail } = result;
-      await onRefreshSessions(input.projectId);
-      await codexControl.loadThreads(input.projectId);
-      return {
-        threadId: detail.threadId,
-        sessionId: targetSessionId,
-      };
     },
     [
-      codexControl,
+      workbenchOwner,
+      threadSettings,
+      serviceTierSettings.serviceTier,
       onEnsureDefaultDraftSessionForProject,
-      onLinkPageToChat,
       onRefreshSessions,
       tab.config.pageId,
       pageAccessProjectId,
@@ -399,7 +436,7 @@ export function PageStageSessionTab({
     databaseCapability: PageStageDatabaseCapability | null,
   ): ReactNode => (
     <OwnedBlockDocumentBoundary
-      accessContext={projectContentAccess(pageAccessProjectId)}
+      routingContext={projectContentRoute(pageAccessProjectId)}
       ownerBlockId={page.page.id}
     >
       {(documentModel, documentControls) => {
@@ -456,7 +493,7 @@ export function PageStageSessionTab({
 
         return (
           <PageStage
-            contentAccessContext={projectContentAccess(pageAccessProjectId)}
+            contentRoutingContext={projectContentRoute(pageAccessProjectId)}
             editorSessionKey={editorSessionKey}
             pageTitleIdentity={
               project ? { libraryId: project.libraryId, pageId: tab.config.pageId } : undefined
@@ -551,23 +588,33 @@ export function PageStageSessionTab({
             onLoadMoreRelatedChats={async () => {
               await relatedChatsQuery.fetchNextPage();
             }}
-            onOpenCodexThread={onOpenThread}
-            onOpenPage={async ({ accessContext, pageId, titleSnapshot, sourceBlockId }) => {
-              if (accessContext.kind !== "project") return;
-              await onOpenPageTab(accessContext.projectId, pageId, titleSnapshot, {
+            onOpenCodexThread={async (threadId) => {
+              // Runtime chats open by Session identity; their root Thread is not a native Thread.
+              const runtimeChat = relatedChats.find(
+                (chat) => chat.executionRef?.threadId === threadId,
+              );
+              if (runtimeChat && onOpenRelatedChat) {
+                await onOpenRelatedChat(runtimeChat.sessionId);
+                return;
+              }
+              await onOpenThread(threadId);
+            }}
+            onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {
+              if (routingContext.kind !== "project") return;
+              await onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {
                 placement: { kind: "same-group", sourceSurfaceId: tab.id },
                 openMode: "durable",
               });
               if (!sourceBlockId) return;
               requestPageBlockFocus({
-                projectId: accessContext.projectId,
+                projectId: routingContext.projectId,
                 pageId,
                 blockId: sourceBlockId,
               });
             }}
-            onOpenCanvas={({ accessContext, canvasBlockId, titleSnapshot }) => {
-              if (accessContext.kind !== "project") return;
-              void onOpenCanvasStage(accessContext.projectId, canvasBlockId, titleSnapshot, {
+            onOpenCanvas={({ routingContext, canvasBlockId, titleSnapshot }) => {
+              if (routingContext.kind !== "project") return;
+              void onOpenCanvasStage(routingContext.projectId, canvasBlockId, titleSnapshot, {
                 placement: { kind: "same-group", sourceSurfaceId: tab.id },
               });
             }}
@@ -578,30 +625,45 @@ export function PageStageSessionTab({
               promptInput,
               submittedPresentation: origin,
             }) => {
-              const submittedPresentation = origin ?? codexControl.captureSubmissionPresentation();
+              const submittedPresentation =
+                origin ?? readCodexSubmissionPresentation(workbenchOwner);
               const materializedInput = await materializePagePromptInput(
-                projectContentAccess(pageAccessProjectId),
+                projectContentRoute(pageAccessProjectId),
                 tab.config.pageId,
                 promptInput,
               );
               const targetSession = await onResolveChatSessionForThread(threadId);
-              if (!targetSession.projectId) {
-                throw new Error("Page content can only be sent to a Project chat");
-              }
+              if (!targetSession.executionRef)
+                throw new Error(
+                  "This imported conversation has no execution owner. Open a new chat to send.",
+                );
+              const target = { sessionId: targetSession.id, threadId };
+              await agentRuntimeRuntime.inspect(target);
+              const presentationTicket = await captureCodexTurnPresentation(
+                workbenchOwner,
+                { kind: "thread", threadId },
+                submittedPresentation,
+              );
               await onLinkPageToChat({
                 pageAccessProjectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 sessionId: targetSession.id,
               });
-              await codexControl.startTurn(
-                threadId,
-                prompt,
-                {
-                  projectId: targetSession.projectId,
-                  promptInput: materializedInput,
+              await agentRuntimeRuntime.message({
+                ...target,
+                presentationTicket,
+                message: {
+                  messageId: createUuidV7(),
+                  text: await prepareAgentPrompt(
+                    prompt,
+                    materializedInput,
+                    (file) => readPastedTextAttachment({ file }),
+                    { images: true, agentConfigs: true },
+                  ),
+                  images: agentRuntimePromptImages(materializedInput),
+                  agentConfigs: materializedInput?.agentConfigs ?? [],
                 },
-                submittedPresentation,
-              );
+              });
             }}
           />
         );

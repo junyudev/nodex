@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { evaluateDatabaseViewRows, type DatabaseViewReadModel } from "./database-views";
 import type { DatabasePageSummary } from "./types";
-import { authorizedReadStampFixture } from "./testing/authorized-read-stamp-fixture";
 
 const makePage = (id: string): DatabasePageSummary => ({
   id,
@@ -23,15 +22,6 @@ const makeReadModel = (includeHostPage: boolean): DatabaseViewReadModel => ({
   libraryId: "library:test",
   storeEpoch: "epoch:test",
   commitSeq: 1,
-  authorization: authorizedReadStampFixture({
-    deliveryAddress: {
-      kind: "project",
-      library_id: "library:test",
-      project_id: "project:test",
-    },
-    subject: { kind: "view", view_id: "view:test" },
-    storeEpoch: "epoch:test",
-  }),
   dataSourceId: "data-source:test",
   view: {
     id: "view:test",

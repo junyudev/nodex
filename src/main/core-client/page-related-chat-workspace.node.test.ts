@@ -29,7 +29,6 @@ describe("Page related Chats over the real Core transport", () => {
 
       const activity = await client.workspaceRead({
         kind: "page_chat_activity_summaries",
-        page_access_project_id: projectId,
         page_ids: [pageId],
       });
       expect(activity.value).toMatchObject({
@@ -50,7 +49,6 @@ describe("Page related Chats over the real Core transport", () => {
 
       const detail = await client.workspaceRead({
         kind: "page_chat_window",
-        page_access_project_id: projectId,
         page_id: pageId,
         include_archived: false,
         window: { after: null, first: 50 },
@@ -83,13 +81,11 @@ describe("Page related Chats over the real Core transport", () => {
           intent: {
             kind: "unlink_page",
             page_id: pageId,
-            page_access_project_id: projectId,
           },
         },
       });
       const unlinked = await client.workspaceRead({
         kind: "page_chat_activity_summaries",
-        page_access_project_id: projectId,
         page_ids: [pageId],
       });
       expect(unlinked.value).toMatchObject({
@@ -104,14 +100,12 @@ describe("Page related Chats over the real Core transport", () => {
           intent: {
             kind: "link_page",
             page_id: pageId,
-            page_access_project_id: projectId,
           },
         },
       });
 
       const relinked = await client.workspaceRead({
         kind: "page_chat_activity_summaries",
-        page_access_project_id: projectId,
         page_ids: [pageId],
       });
       expect(relinked.value).toMatchObject({

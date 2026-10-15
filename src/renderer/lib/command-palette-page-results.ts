@@ -195,6 +195,7 @@ export function buildCommandPalettePagesFromSearchResults({
   );
   const recentIndex = new Map(recentPageIds.map((pageId, index) => [pageId, index] as const));
   return results.flatMap((result, index) => {
+    if (result.projectId === null) return [];
     const project = projectById.get(result.projectId);
     const existing = existingById.get(`${result.projectId}:${result.pageId}`);
     if (!project && !existing) return [];

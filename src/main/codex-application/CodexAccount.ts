@@ -196,6 +196,14 @@ export const live = (
         Effect.forkScoped,
       );
 
+      // A real catalog/account/remote consumer has already acquired the endpoint. Observing
+      // its cold state never starts a process, while ready generations publish account facts.
+      yield* gateway.connectionChanges(gateway.localHostId).pipe(
+        Stream.filter((connection) => connection.kind === "ready"),
+        Stream.runForEach(() => refresh.pipe(Effect.ignore)),
+        Effect.forkScoped,
+      );
+
       if (options.refreshOnStart === true) yield* refresh.pipe(Effect.ignore);
 
       const consumeRateLimitResetCredit = Effect.fn("CodexAccount.consumeResetCredit")(function* (

@@ -5,7 +5,7 @@ import {
   useSelectedWorkspaceSearchContext,
 } from "@/lib/workbench-ui-scopes";
 import type { Dispatch, SetStateAction } from "react";
-import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
+import { copySessionConversationMarkdown } from "@/lib/session-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import type { useWorkbenchPanelOpeners } from "@/lib/use-workbench-panel-openers";
 import type { useWorkbenchSessionCommands } from "@/lib/use-workbench-session-commands";
@@ -27,12 +27,19 @@ import type {
 import type { useWorkbenchSidebarController } from "./use-workbench-sidebar-controller";
 import { CommandPalette } from "./command-palette";
 import { usePageCreateTargetResolution } from "@/lib/page-create-target-registry";
-import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
+import {
+  hasSessionConversation,
+  resolveSessionExecution,
+  resolveSessionMarkdownExport,
+} from "@/lib/session-execution";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
   ReturnType<typeof useWorkbenchSessionCommands>,
-  "openAttachedThreadSession" | "requestContentSearchOpen" | "startNewChatInProject"
+  | "openAttachedThreadSession"
+  | "openProjectSessionById"
+  | "requestContentSearchOpen"
+  | "startNewChatInProject"
 >;
 type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
@@ -127,9 +134,9 @@ export function WorkbenchCommandPaletteHost({
         : null,
     hasActiveSession: Boolean(activeSession),
     activeSessionPinned: activeSession?.pinned ?? false,
-    hasAttachedThread: Boolean(activeSession?.thread),
-    canExportConversationMarkdown: activeSession?.thread
-      ? isCodexAgentBackendBinding(activeSession.thread.backendBinding)
+    hasAttachedThread: hasSessionConversation(activeSession),
+    canExportConversationMarkdown: activeSession
+      ? resolveSessionMarkdownExport(resolveSessionExecution(activeSession)) !== null
       : false,
     panelActionAvailability: Object.fromEntries(
       Object.entries(panelCapabilities.actions).map(([kind, capability]) => [
@@ -168,17 +175,8 @@ export function WorkbenchCommandPaletteHost({
       void sidebarCommands.archiveSession(activeSession);
     },
     copyConversationMarkdown: () => {
-      if (
-        !activeSession?.thread ||
-        !isCodexAgentBackendBinding(activeSession.thread.backendBinding)
-      )
-        return;
-      void copyConversationMarkdown({
-        conversationId: activeSession.thread.threadId,
-        executionHostId: activeSession.thread.executionHostId,
-        parentConversationId: activeSession.thread.parentThreadId ?? null,
-        title: activeSession.displayTitle,
-      });
+      if (!activeSession) return;
+      void copySessionConversationMarkdown(activeSession, activeSession.displayTitle);
     },
     toggleThreadPin: () => {
       if (!activeSession) return;
@@ -262,7 +260,15 @@ export function WorkbenchCommandPaletteHost({
       onOpenPage={(projectId, pageId, titleSnapshot) => {
         void panelOpeners.openPageTab(projectId, pageId, titleSnapshot);
       }}
-      onOpenThread={sessionCommands.openAttachedThreadSession}
+      onOpenThread={(threadId, sessionId) => {
+        void Promise.resolve(
+          sessionId
+            ? sessionCommands.openProjectSessionById(sessionId)
+            : sessionCommands.openAttachedThreadSession(threadId),
+        ).catch((cause: unknown) => {
+          toast.danger(cause instanceof Error ? cause.message : "Couldn’t open chat");
+        });
+      }}
     />
   );
 }

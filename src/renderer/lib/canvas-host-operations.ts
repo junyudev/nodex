@@ -4,9 +4,9 @@ import { canvasSceneSurfaceRegistry } from "./canvas-scene-surface-runtime";
 import { applyLibraryModule, readLibraryModule } from "./api";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type {
-  ContentAccessContext,
-  ContentAccessIdentity,
-} from "../../shared/content-access-context";
+  ContentRoutingContext,
+  ContentRoutingIdentity,
+} from "../../shared/content-routing-context";
 import {
   type LibraryModuleApplyReceipt,
   type LibraryModuleApplyRequest,
@@ -148,7 +148,7 @@ function requireCanvasHostDocument(host: PreparedCanvasHost, documentId: string)
 }
 
 export async function applyLibraryRequestWithExactRetry(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   request: LibraryModuleApplyRequest,
   apply: typeof applyLibraryModule = applyLibraryModule,
 ): Promise<LibraryModuleApplyReceipt> {
@@ -156,7 +156,7 @@ export async function applyLibraryRequestWithExactRetry(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     let result: Awaited<ReturnType<typeof apply>>;
     try {
-      result = await apply(accessContext, request);
+      result = await apply(routingContext, request);
     } catch (error) {
       thrown = error;
       if (attempt === 0) continue;
@@ -170,14 +170,14 @@ export async function applyLibraryRequestWithExactRetry(
 }
 
 async function readAvailableCanvas(
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   canvasId: string,
 ): Promise<{
   readonly libraryId: string;
   readonly storeEpoch: string;
   readonly summary: LibraryCanvasSummary;
 }> {
-  const result = await readLibraryModule(accessContext, {
+  const result = await readLibraryModule(routingContext, {
     read: { mode: "canvas_target", canvasId },
   });
   if (!result.ok) throw new Error(result.error.message);
@@ -200,7 +200,7 @@ async function readAvailableCanvas(
 }
 
 export async function createCanvasInHostPage(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly hostPageId: string;
   readonly replacementBlockId: string;
   readonly displayName?: string;
@@ -242,18 +242,18 @@ export async function createCanvasInHostPage(input: {
 
   return {
     canvasBlockId: identities.canvasId,
-    receipt: await applyLibraryRequestWithExactRetry(input.accessContext, request),
+    receipt: await applyLibraryRequestWithExactRetry(input.routingContext, request),
   };
 }
 
 export async function renameCanvasOwner(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;
   readonly displayName: string;
   readonly operationId?: string;
 }): Promise<LibraryModuleApplyReceipt> {
-  const target = await readAvailableCanvas(input.accessContext, input.canvasBlockId);
-  return applyLibraryRequestWithExactRetry(input.accessContext, {
+  const target = await readAvailableCanvas(input.routingContext, input.canvasBlockId);
+  return applyLibraryRequestWithExactRetry(input.routingContext, {
     operationId: input.operationId ?? createUuidV7(),
     storeEpoch: target.storeEpoch,
     operation: {
@@ -267,7 +267,7 @@ export async function renameCanvasOwner(input: {
 
 export async function deleteCanvasOwner(
   input: {
-    readonly accessContext: ContentAccessContext;
+    readonly routingContext: ContentRoutingContext;
     readonly canvasBlockId: string;
     readonly runtime?: CanvasHostDocumentRuntime;
     readonly operationId?: string;
@@ -275,11 +275,14 @@ export async function deleteCanvasOwner(
   dependencies: {
     readonly readTarget?: typeof readAvailableCanvas;
     readonly apply?: typeof applyLibraryModule;
-    readonly retireOwner?: (identity: ContentAccessIdentity, ownerBlockId: string) => Promise<void>;
+    readonly retireOwner?: (
+      identity: ContentRoutingIdentity,
+      ownerBlockId: string,
+    ) => Promise<void>;
   } = {},
 ): Promise<LibraryModuleApplyReceipt> {
   const target = await (dependencies.readTarget ?? readAvailableCanvas)(
-    input.accessContext,
+    input.routingContext,
     input.canvasBlockId,
   );
   let containingDocumentHead: LibraryDocumentHead | undefined;
@@ -298,7 +301,7 @@ export async function deleteCanvasOwner(
     };
   }
   const receipt = await applyLibraryRequestWithExactRetry(
-    input.accessContext,
+    input.routingContext,
     {
       operationId: input.operationId ?? createUuidV7(),
       storeEpoch: target.storeEpoch,
@@ -315,7 +318,7 @@ export async function deleteCanvasOwner(
   await (dependencies.retireOwner ?? canvasDocumentSessionRegistry.retireOwner)(
     {
       libraryId: target.libraryId,
-      accessContext: input.accessContext,
+      routingContext: input.routingContext,
     },
     input.canvasBlockId,
   ).catch(() => undefined);
@@ -323,7 +326,7 @@ export async function deleteCanvasOwner(
 }
 
 export async function duplicateCanvasInHostPage(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly sourceCanvasBlockId: string;
   readonly hostPageId: string;
   readonly insertion: LibraryPageInsertion;
@@ -341,14 +344,14 @@ export async function duplicateCanvasInHostPage(input: {
   const host = await prepareCanvasHost(input.runtime);
   requireCanvasHostOwner(host, input.hostPageId);
   await canvasSceneSurfaceRegistry.flushOwnerCommitted(input.sourceCanvasBlockId);
-  const target = await readAvailableCanvas(input.accessContext, input.sourceCanvasBlockId);
+  const target = await readAvailableCanvas(input.routingContext, input.sourceCanvasBlockId);
   requireCanvasHostStoreEpoch(target.storeEpoch, host);
   const identities = input.identities ?? {
     operationId: createUuidV7(),
     canvasId: createUuidV7(),
     documentId: createUuidV7(),
   };
-  const receipt = await applyLibraryRequestWithExactRetry(input.accessContext, {
+  const receipt = await applyLibraryRequestWithExactRetry(input.routingContext, {
     operationId: identities.operationId,
     storeEpoch: target.storeEpoch,
     operation: {
@@ -370,7 +373,7 @@ export async function duplicateCanvasInHostPage(input: {
 }
 
 export async function moveCanvasOwnerToPage(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;
   readonly targetPageId: string;
   readonly targetDocumentGeneration: number;
@@ -380,14 +383,14 @@ export async function moveCanvasOwnerToPage(input: {
   readonly operationId?: string;
 }): Promise<LibraryModuleApplyReceipt> {
   const sourceHost = await prepareCanvasHost(input.sourceRuntime);
-  const target = await readAvailableCanvas(input.accessContext, input.canvasBlockId);
+  const target = await readAvailableCanvas(input.routingContext, input.canvasBlockId);
   if (target.summary.location.kind !== "page") {
     throw new Error("The Canvas is no longer inside a Page.");
   }
   requireCanvasHostStoreEpoch(target.storeEpoch, sourceHost);
   requireCanvasHostOwner(sourceHost, target.summary.location.pageId);
   requireCanvasHostDocument(sourceHost, target.summary.location.documentId);
-  return applyLibraryRequestWithExactRetry(input.accessContext, {
+  return applyLibraryRequestWithExactRetry(input.routingContext, {
     operationId: input.operationId ?? createUuidV7(),
     storeEpoch: target.storeEpoch,
     operation: {
@@ -407,7 +410,7 @@ export async function moveCanvasOwnerToPage(input: {
 }
 
 export async function moveCanvasOwnerBetweenHostPages(input: {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly canvasBlockId: string;
   readonly targetPageId: string;
   readonly insertion: LibraryPageInsertion;
@@ -420,7 +423,7 @@ export async function moveCanvasOwnerBetweenHostPages(input: {
     input.sourceRuntime === input.targetRuntime
       ? sourceHost
       : await prepareCanvasHost(input.targetRuntime);
-  const target = await readAvailableCanvas(input.accessContext, input.canvasBlockId);
+  const target = await readAvailableCanvas(input.routingContext, input.canvasBlockId);
   if (target.summary.location.kind !== "page") {
     throw new Error("The Canvas is no longer inside a Page.");
   }
@@ -428,7 +431,7 @@ export async function moveCanvasOwnerBetweenHostPages(input: {
   requireCanvasHostOwner(sourceHost, target.summary.location.pageId);
   requireCanvasHostDocument(sourceHost, target.summary.location.documentId);
   requireCanvasHostOwner(targetHost, input.targetPageId);
-  return applyLibraryRequestWithExactRetry(input.accessContext, {
+  return applyLibraryRequestWithExactRetry(input.routingContext, {
     operationId: input.operationId ?? createUuidV7(),
     storeEpoch: target.storeEpoch,
     operation: {

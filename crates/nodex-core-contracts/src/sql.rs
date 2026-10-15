@@ -1,4 +1,4 @@
-//! Read-only SQL over authorized public content relations.
+//! Read-only SQL over public content relations in the current Library.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;

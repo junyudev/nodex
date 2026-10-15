@@ -10,15 +10,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 const CATALOG_FILTER: &str = "file.library_id = ?1 AND file.lifecycle = ?2
     AND instr(lower(file.default_name), lower(?3)) > 0
-    AND (?4 IS NULL OR EXISTS(
-        SELECT 1 FROM project_resource_grants grant_row
-        JOIN projects project ON project.id = grant_row.project_id AND project.library_id = grant_row.library_id
-        WHERE grant_row.root_kind = 'file' AND grant_row.root_id = file.file_id
-          AND grant_row.library_id = file.library_id AND grant_row.project_id = ?4
-          AND grant_row.lifecycle = 'active' AND grant_row.recursive = 0
-          AND project.lifecycle IN ('active', 'inactive')
-    ))
-    AND (?5 = 0 OR (
+    AND (?4 = 0 OR (
       NOT EXISTS(SELECT 1 FROM page_file_entries entry
         WHERE entry.library_id = file.library_id AND entry.file_id = file.file_id)
       AND NOT EXISTS(SELECT 1 FROM block_asset_refs body_ref
@@ -30,9 +22,9 @@ const CATALOG_FILTER: &str = "file.library_id = ?1 AND file.lifecycle = ?2
 fn catalog_items_sql() -> String {
     format!(
         "{} WHERE {CATALOG_FILTER}
-        AND (?6 IS NULL OR file.default_name COLLATE NOCASE > ?6
-          OR (file.default_name COLLATE NOCASE = ?6 AND file.file_id > ?7))
-        ORDER BY file.default_name COLLATE NOCASE, file.file_id LIMIT ?8",
+        AND (?5 IS NULL OR file.default_name COLLATE NOCASE > ?5
+          OR (file.default_name COLLATE NOCASE = ?5 AND file.file_id > ?6))
+        ORDER BY file.default_name COLLATE NOCASE, file.file_id LIMIT ?7",
         files::select_sql()
     )
 }
@@ -42,7 +34,7 @@ pub(super) fn metadata(
     context: &BoundModuleContext,
     file_id: &str,
 ) -> Result<LibraryFile, StoreError> {
-    file_access::require_direct(connection, context, file_id, false)?;
+    file_access::require_direct(connection, context, file_id)?;
     files::metadata(connection, &context.library_id.0, file_id)
 }
 
@@ -61,7 +53,7 @@ pub(super) fn presentation(
             (target.version, target.default_name)
         }
         LibraryFileReadSource::Direct => {
-            file_access::require_direct(connection, context, file_id, false)?;
+            file_access::require_direct(connection, context, file_id)?;
             let file = files::metadata(connection, &context.library_id.0, file_id)?;
             (
                 requested_version.unwrap_or(file.head_version),
@@ -170,13 +162,6 @@ pub(super) fn catalog(
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
 ) -> Result<LibraryFilePage, StoreError> {
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|project| project.0.as_str());
-    if project_id.is_none() {
-        super::require_trusted_library_authority(context)?;
-    }
     let query = query.unwrap_or_default().trim();
     if query.len() > 512 {
         return Err(invalid("File query exceeds 512 bytes"));
@@ -188,7 +173,6 @@ pub(super) fn catalog(
     let unused_only = usage == LibraryFileUsageFilter::Unused;
     let subject = vec![
         "files".to_owned(),
-        project_id.unwrap_or_default().to_owned(),
         query.to_owned(),
         lifecycle.to_owned(),
         if unused_only { "unused" } else { "all" }.to_owned(),
@@ -206,13 +190,7 @@ pub(super) fn catalog(
     let limit = limit(requested_limit)?;
     let total = connection.query_row(
         &format!("SELECT count(*) FROM library_files file WHERE {CATALOG_FILTER}"),
-        params![
-            context.library_id.0,
-            lifecycle,
-            query,
-            project_id,
-            unused_only
-        ],
+        params![context.library_id.0, lifecycle, query, unused_only],
         |row| row.get::<_, i64>(0),
     )?;
     let mut items = connection
@@ -222,7 +200,6 @@ pub(super) fn catalog(
                 context.library_id.0,
                 lifecycle,
                 query,
-                project_id,
                 unused_only,
                 after_name,
                 after_id,
@@ -266,16 +243,8 @@ pub(super) fn versions(
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
 ) -> Result<LibraryFileVersionPage, StoreError> {
-    file_access::require_direct(connection, context, file_id, false)?;
-    let subject = vec![
-        "file_versions".to_owned(),
-        file_id.to_owned(),
-        context
-            .project_id
-            .as_ref()
-            .map(|id| id.0.clone())
-            .unwrap_or_default(),
-    ];
+    file_access::require_direct(connection, context, file_id)?;
+    let subject = vec!["file_versions".to_owned(), file_id.to_owned()];
     let coordinate = requested_cursor
         .map(|encoded| cursor::decode(connection, encoded, &context.library_id.0, &subject))
         .transpose()?;
@@ -524,7 +493,6 @@ mod tests {
                             "library-1",
                             "live",
                             "",
-                            Option::<String>::None,
                             true,
                             Option::<String>::None,
                             Option::<String>::None,

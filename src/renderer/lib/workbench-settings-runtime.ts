@@ -63,22 +63,6 @@ const deleteBackupCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
-const updateCodexPermissionConfigValueCommand = defineRendererCommand({
-  key: "workbench_settings.codex_permission_config.update",
-  channel: "codex:permission:config-value:set",
-  authority: "main",
-  owner: "CodexPermissionSettings",
-  protocol: { kind: "returned_value" },
-});
-
-const updateCodexPermissionModeCommand = defineRendererCommand({
-  key: "workbench_settings.codex_permission_mode.update",
-  channel: "codex:permission:mode:set",
-  authority: "main",
-  owner: "CodexPermissionSettings",
-  protocol: { kind: "returned_value" },
-});
-
 const updateGitSettingsCommand = defineRendererCommand({
   key: "workbench_settings.git.update",
   channel: "settings:git:update",
@@ -161,20 +145,6 @@ export const restoreBackup = (input: RestoreBackupInput) =>
 export const deleteBackup = (backupId: string) => invokePlainCommand(deleteBackupCommand, backupId);
 
 export const readThirdPartyNotices = () => invokeRendererQuery("settings:third-party-notices:get");
-
-export const readCodexPermissionState = (projectId: string | null) =>
-  invokeRendererQuery("codex:permission:state:get", projectId);
-
-export const updateCodexPermissionConfigValue = (
-  projectId: string | null,
-  keyPath: string,
-  value: unknown,
-) => invokePlainCommand(updateCodexPermissionConfigValueCommand, projectId, keyPath, value);
-
-export const updateCodexPermissionMode = (
-  projectId: string | null,
-  mode: "auto" | "guardian-approvals" | "full-access" | "custom",
-) => invokePlainCommand(updateCodexPermissionModeCommand, projectId, mode);
 
 export const revealFileInManager = (path: string) => openFileLink({ path }, "fileManager");
 

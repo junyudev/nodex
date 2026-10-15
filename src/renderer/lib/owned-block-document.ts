@@ -17,17 +17,17 @@ import {
   getOwnedDocumentSchemaRegistration,
 } from "../../shared/block-documents/document-schema-adapters";
 import {
-  contentAccessContextKey,
-  libraryContentAccess,
-  parseContentAccessContext,
-  type ContentAccessContext,
-} from "../../shared/content-access-context";
+  contentRoutingContextKey,
+  libraryContentRoute,
+  parseContentRoutingContext,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 
 export const PAGE_BLOCK_DOCUMENT_SCHEMA_KEY = PAGE_DOCUMENT_SCHEMA_KEY;
 export const PAGE_BLOCK_DOCUMENT_SCHEMA_VERSION = PAGE_DOCUMENT_SCHEMA_VERSION;
 
 export interface OwnedBlockDocumentRequest {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly ownerBlockId: BlockId;
 }
 
@@ -59,7 +59,7 @@ export type OwnedBlockDocumentErrorCode =
   | "invalid_request"
   | "fetch_failed"
   | "invalid_descriptor"
-  | "access_context_mismatch"
+  | "routing_context_mismatch"
   | "owner_mismatch"
   | "unsupported_owner_type"
   | "owner_not_active"
@@ -75,7 +75,7 @@ export interface OwnedBlockDocumentErrorModel {
 }
 
 interface OwnedBlockDocumentRequestModel {
-  readonly accessContext: ContentAccessContext;
+  readonly routingContext: ContentRoutingContext;
   readonly ownerBlockId: BlockId;
 }
 
@@ -130,7 +130,7 @@ export type RegisteredOwnedBlockDocumentQuerySnapshot =
     };
 
 export type OwnedDocumentDescriptorFetcher = (
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   ownerBlockId: BlockId,
   signal?: AbortSignal,
 ) => Promise<unknown>;
@@ -184,7 +184,7 @@ const requireValidRequest = (request: OwnedBlockDocumentRequest): OwnedBlockDocu
   }
   try {
     return {
-      accessContext: parseContentAccessContext(request.accessContext),
+      routingContext: parseContentRoutingContext(request.routingContext),
       ownerBlockId: request.ownerBlockId,
     };
   } catch (error) {
@@ -253,16 +253,16 @@ export const validateLibraryOwnedBlockDocumentDescriptor = (
     );
   }
   const ready = validateOwnedBlockDocumentDescriptor(
-    { accessContext: libraryContentAccess, ownerBlockId },
+    { routingContext: libraryContentRoute, ownerBlockId },
     value,
   );
-  if (ready.accessContext.kind !== "library") {
+  if (ready.routingContext.kind !== "library") {
     throw new OwnedBlockDocumentBoundaryError(
       "invalid_descriptor",
       "Library Owned Block Document access context is invalid",
     );
   }
-  return { ...ready, accessContext: ready.accessContext };
+  return { ...ready, routingContext: ready.routingContext };
 };
 
 export const validateRegisteredOwnedBlockDocumentDescriptor = (
@@ -276,9 +276,9 @@ export const validateRegisteredOwnedBlockDocumentDescriptor = (
       "Owned Block Document descriptor must be an object",
     );
   }
-  let descriptorAccessContext: ContentAccessContext;
+  let descriptorRoutingContext: ContentRoutingContext;
   try {
-    descriptorAccessContext = parseContentAccessContext(value.accessContext);
+    descriptorRoutingContext = parseContentRoutingContext(value.routingContext);
   } catch (error) {
     throw new OwnedBlockDocumentBoundaryError(
       "invalid_descriptor",
@@ -287,11 +287,11 @@ export const validateRegisteredOwnedBlockDocumentDescriptor = (
     );
   }
   if (
-    contentAccessContextKey(descriptorAccessContext) !==
-    contentAccessContextKey(requested.accessContext)
+    contentRoutingContextKey(descriptorRoutingContext) !==
+    contentRoutingContextKey(requested.routingContext)
   ) {
     throw new OwnedBlockDocumentBoundaryError(
-      "access_context_mismatch",
+      "routing_context_mismatch",
       "Owned Block Document descriptor does not match the requested access context",
     );
   }
@@ -345,7 +345,7 @@ export const validateRegisteredOwnedBlockDocumentDescriptor = (
   requireDescriptorCore(value);
   return {
     ...value,
-    accessContext: descriptorAccessContext,
+    routingContext: descriptorRoutingContext,
   } as unknown as ReadyRegisteredOwnedBlockDocumentDescriptor;
 };
 
@@ -357,7 +357,7 @@ const fetchDescriptor = async <T>(
   const requested = requireValidRequest(request);
   let descriptor: unknown;
   try {
-    descriptor = await fetcher(requested.accessContext, requested.ownerBlockId);
+    descriptor = await fetcher(requested.routingContext, requested.ownerBlockId);
   } catch (error) {
     if (error instanceof OwnedBlockDocumentBoundaryError) throw error;
     throw new OwnedBlockDocumentBoundaryError(
@@ -407,7 +407,7 @@ export const makeOwnedBlockDocumentModel = (
   snapshot: OwnedBlockDocumentQuerySnapshot,
 ): OwnedBlockDocumentModel => {
   const identity = {
-    accessContext: request.accessContext,
+    routingContext: request.routingContext,
     ownerBlockId: request.ownerBlockId,
   };
   try {
@@ -438,7 +438,7 @@ export const makeRegisteredOwnedBlockDocumentModel = (
   snapshot: RegisteredOwnedBlockDocumentQuerySnapshot,
 ): RegisteredOwnedBlockDocumentModel => {
   const identity = {
-    accessContext: request.accessContext,
+    routingContext: request.routingContext,
     ownerBlockId: request.ownerBlockId,
   };
   try {

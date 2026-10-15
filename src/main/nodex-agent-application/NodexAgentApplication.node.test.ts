@@ -26,7 +26,7 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
     contract_version: 1,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
+
     value: {
       kind: "project",
       project: {
@@ -51,7 +51,7 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
+
     value: {
       kind: "database",
       value: {
@@ -61,7 +61,6 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
           name: "Tasks",
           lifecycle: "active",
           default_view_id: null,
-          access_revision: 1,
           metadata_revision: 1,
           created_at: "2026-08-23T00:00:00.000Z",
           updated_at: "2026-08-23T00:00:00.000Z",
@@ -73,7 +72,7 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
+
     value: {
       kind: "data_source_window",
       data_sources: {
@@ -87,7 +86,7 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
     contract_version: 4,
     store_epoch: identity.storeEpoch,
     commit_head: commitHead,
-    authorization: null,
+
     value: {
       kind: "view_descriptor_window",
       views: {
@@ -156,17 +155,14 @@ it.effect("projects Agent context from the canonical Project and Database author
         tool: "get_context",
         callId: "call:agent",
         projectId,
-        access: {
-          read: "allowed",
-          write: "consent_required",
-          domains: ["document", "placement", "database"],
-        },
+
         input: { include: { databases: true, markdownGuide: true } },
       });
 
       assert.strictEqual(envelope.metrics.mutationId, "call:agent");
       assert.isTrue(envelope.result.ok);
       if (!envelope.result.ok || envelope.result.tool !== "get_context") return;
+      assert.strictEqual(envelope.result.output.data.libraryId, identity.libraryId);
       assert.deepEqual(
         envelope.result.output.data.project && {
           ...envelope.result.output.data.project,
@@ -273,10 +269,7 @@ it.effect("carries interruption to the in-flight Core request", () => {
             actorProjectId: projectId,
             libraryId: identity.libraryId,
             storeEpoch: identity.storeEpoch,
-            frozenAtMs: 1_785_491_085_000,
-            readOnly: false,
-            scope: "project",
-            source: "project_turn",
+            admittedAtMs: 1_785_491_085_000,
           },
           input: { query: "interruption" },
         })
@@ -372,6 +365,36 @@ it.effect("serializes one mutation identity without blocking independent mutatio
   ),
 );
 
+it.effect(
+  "describes the current Library without reading a default Project or content bodies",
+  () => {
+    const handshake = createFakeCoreHandshake(identity);
+    const client = new FakeCoreClient() as unknown as CoreGenerationClient;
+    const sessionAccess = CoreSessionAccess.of({
+      use: () => Effect.die("Projectless context must not read Core content"),
+      handshake: Effect.succeed(handshake),
+    });
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const context = yield* Layer.build(
+          applicationLayerFor(client, handshake, [], sessionAccess),
+        );
+        const application = Context.get(context, NodexAgentApplication);
+        const envelope = yield* application.read({
+          tool: "get_context",
+          projectId: null,
+          input: { include: { databases: true } },
+        });
+        assert.deepEqual(envelope.result, {
+          ok: true,
+          tool: "get_context",
+          output: { data: { libraryId: identity.libraryId, project: null } },
+        });
+      }),
+    );
+  },
+);
+
 it.effect("rejects operations after its application scope closes", () => {
   const client = new FakeCoreClient();
   const handshake = createFakeCoreHandshake(identity);
@@ -400,7 +423,7 @@ it.effect("rejects operations after its application scope closes", () => {
       .read({
         tool: "get_context",
         projectId: null,
-        access: { read: "allowed", write: "unavailable", domains: [] },
+
         input: {},
       })
       .pipe(Effect.flip);

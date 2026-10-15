@@ -10,14 +10,41 @@ use serde::Deserialize;
 
 use crate::Result;
 use crate::files::invalid;
+const MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
 
-pub(crate) struct SnapshotLease(UnixStream);
+pub(crate) struct SnapshotLease {
+    stream: UnixStream,
+    execution: Option<ExecutionSnapshot>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExecutionSnapshot {
+    pub runtime_id: String,
+    pub runtime_generation: String,
+    pub sequence: u64,
+    pub database_path: std::path::PathBuf,
+    pub attachments_path: std::path::PathBuf,
+    pub environment_id_path: std::path::PathBuf,
+    #[serde(default)]
+    pub native_histories: Vec<NativeHistorySource>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct NativeHistorySource {
+    pub provider_instance_id: String,
+    pub driver: String,
+    pub home_path: Option<String>,
+}
 
 #[derive(Deserialize)]
 struct Response {
     version: u32,
     status: String,
     message: Option<String>,
+    #[serde(default, rename = "executionSnapshot")]
+    execution: Option<ExecutionSnapshot>,
 }
 
 impl SnapshotLease {
@@ -60,23 +87,31 @@ impl SnapshotLease {
         stream.set_read_timeout(Some(Duration::from_secs(75)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
         stream.write_all(b"{\"version\":1}\n")?;
-        let mut lease = Self(stream);
-        lease.expect("ready")?;
+        let mut lease = Self {
+            stream,
+            execution: None,
+        };
+        lease.execution = lease.expect("ready")?.execution;
         Ok(Some(lease))
     }
 
     /// Release after native locks, and require acknowledgement before publishing the target.
     pub(crate) fn finish(mut self) -> Result<()> {
-        self.0.write_all(b"{\"version\":1,\"release\":true}\n")?;
-        self.expect("resumed")
+        self.stream
+            .write_all(b"{\"version\":1,\"release\":true}\n")?;
+        self.expect("resumed").map(|_| ())
     }
 
-    fn expect(&mut self, status: &str) -> Result<()> {
+    pub(crate) fn execution(&self) -> Option<&ExecutionSnapshot> {
+        self.execution.as_ref()
+    }
+
+    fn expect(&mut self, status: &str) -> Result<Response> {
         let mut line = Vec::new();
-        BufReader::new(&mut self.0)
-            .take(4097)
+        BufReader::new(&mut self.stream)
+            .take(MAX_RESPONSE_BYTES + 1)
             .read_until(b'\n', &mut line)?;
-        if line.len() > 4096 || line.last() != Some(&b'\n') {
+        if line.len() as u64 > MAX_RESPONSE_BYTES || line.last() != Some(&b'\n') {
             return Err(invalid(
                 "Source Desktop closed or returned an invalid snapshot response",
             ));
@@ -87,7 +122,7 @@ impl SnapshotLease {
                 "Source Desktop could not coordinate a Profile snapshot".to_owned()
             })));
         }
-        Ok(())
+        Ok(response)
     }
 }
 
@@ -98,6 +133,14 @@ mod tests {
     use std::os::unix::net::UnixListener;
 
     fn serve(profile: &Path, fail: bool) -> std::thread::JoinHandle<()> {
+        serve_snapshot(profile, fail, None)
+    }
+
+    fn serve_snapshot(
+        profile: &Path,
+        fail: bool,
+        execution: Option<serde_json::Value>,
+    ) -> std::thread::JoinHandle<()> {
         let directory = profile.join("ipc");
         fs::create_dir(&directory).unwrap();
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
@@ -119,7 +162,7 @@ mod tests {
                 return;
             }
             socket
-                .write_all(b"{\"version\":1,\"status\":\"ready\"}\n")
+                .write_all(format!("{}\n", serde_json::json!({ "version": 1, "status": "ready", "executionSnapshot": execution })).as_bytes())
                 .unwrap();
             message.clear();
             if reader.read_line(&mut message).unwrap() == 0 {
@@ -130,6 +173,32 @@ mod tests {
                 .write_all(b"{\"version\":1,\"status\":\"resumed\"}\n")
                 .unwrap();
         })
+    }
+
+    #[test]
+    fn admits_bounded_provider_metadata_larger_than_a_small_control_frame() {
+        let profile = tempfile::tempdir().unwrap();
+        let providers = (0..256)
+            .map(|index| {
+                serde_json::json!({
+                    "providerInstanceId": format!("claude:{index}"), "driver": "claudeAgent",
+                    "homePath": format!("/private/accounts/{}/claude", "directory".repeat(40)),
+                })
+            })
+            .collect::<Vec<_>>();
+        let execution = serde_json::json!({
+            "runtimeId": "runtime", "runtimeGeneration": "generation", "sequence": 7,
+            "databasePath": "/profile/runtime/snapshots/execution.sqlite",
+            "attachmentsPath": "/profile/agent-runtime/userdata/attachments",
+            "environmentIdPath": "/profile/agent-runtime/userdata/environment-id",
+            "nativeHistories": providers,
+        });
+        assert!(execution.to_string().len() > 16384);
+        let server = serve_snapshot(profile.path(), false, Some(execution));
+        let lease = SnapshotLease::acquire(profile.path()).unwrap().unwrap();
+        assert_eq!(lease.execution().unwrap().native_histories.len(), 256);
+        lease.finish().unwrap();
+        server.join().unwrap();
     }
 
     #[test]

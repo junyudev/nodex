@@ -1,6 +1,5 @@
 import { selectOwnConversationTurns } from "./codex-inherited-history";
 import { isRawCodexSubagentThreadIdLabel } from "./codex-subagent-display";
-import { advanceCodexSubagentInteraction } from "./codex-subagent-interaction";
 import type {
   CodexConversationChildMembership,
   CodexConversationItem,
@@ -17,6 +16,7 @@ import type {
 import { normalizeMultiAgentActionPayload } from "./codex-transcript-special-items";
 /** One pure row contract shared by overview, transcript, summary and mentions. */
 export interface CodexSubagentRow {
+  /** Current child metadata is available; parent transcript events confer no capability. */
   canInteract: boolean;
   conversationId: string;
   parentConversationId: string;
@@ -58,7 +58,6 @@ type NormalizedAgentStatus = "active" | "waiting" | "done" | "hidden" | "unknown
 type ChildProgressStatus = "inProgress" | "notInProgress" | "unknown";
 
 interface LatestReference {
-  canInteract: boolean;
   objective: string | null;
   tool: CodexMultiAgentActionName;
   parentTurnKey: string;
@@ -263,7 +262,6 @@ function buildLatestReferenceMap(
             message: null,
           },
           spawnModel: null,
-          canInteract: advanceCodexSubagentInteraction(previous, parentTurnKey, "activity"),
         });
       }
 
@@ -290,11 +288,6 @@ function buildLatestReferenceMap(
             payload.action === "spawnAgent"
               ? (payload.model ?? previous?.spawnModel ?? null)
               : (previous?.spawnModel ?? null),
-          canInteract: advanceCodexSubagentInteraction(
-            previous,
-            parentTurnKey,
-            payload.action === "spawnAgent" ? "spawn" : "collaboration",
-          ),
         });
       }
     }
@@ -325,7 +318,6 @@ function buildFallbackReference(
             message: null,
           },
     spawnModel: null,
-    canInteract: false,
   };
 }
 
@@ -620,7 +612,7 @@ export function buildBackgroundSubagentRows(
           membership.createdAtMs ??
           null,
         isCurrentParentTurn: reference.parentTurnKey === currentParentTurnKey,
-        canInteract: reference.canInteract,
+        canInteract: membership.task === undefined && child !== null && child.archived !== true,
         status,
         statusSummary: status === "active" ? resolveStatusSummary(child) : null,
         lastAssistantMessage: lastAssistantMessage?.text ?? null,

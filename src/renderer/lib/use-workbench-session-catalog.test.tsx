@@ -15,6 +15,7 @@ import type { WorkbenchLocation } from "../../shared/workbench-layout";
 import { materializeInitialWorkbenchSessionView } from "../../shared/workbench-session-view";
 import {
   applyLegacySessionViewToWorkbenchScene,
+  createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
 } from "../../shared/workbench-scene";
@@ -32,6 +33,7 @@ import {
   type WorkbenchSessionCatalogWindowPort,
 } from "./use-workbench-session-catalog";
 import { queryKeys } from "./query-keys";
+import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 
 function makeProject(id: string): Project {
   return {
@@ -193,6 +195,125 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
 }
 
 describe("useWorkbenchSessionCatalog", () => {
+  test("keeps a Runtime Session's persisted Review while hydrating its catalog", async () => {
+    const session = makeAttachedSession({
+      id: "session:runtime-review",
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "runtime-thread" },
+    });
+    const owner = { kind: "session", sessionId: session.id } as const;
+    const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+      panelId: "right",
+      surface: {
+        id: "runtime-review",
+        kind: "review",
+        titleSnapshot: "Review",
+        config: { projectId: session.projectId },
+        stateKey: 0,
+        state: null,
+      },
+    });
+    const window = {
+      ...makeWindowPort({
+        kind: "session",
+        sessionId: session.id,
+        projectContextId: session.projectId,
+      }),
+      scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
+    };
+    invokeMock.mockImplementation(async (channel: string) =>
+      channel === "project-sessions:get" ? session : makeWindow([session]),
+    );
+    const { hook } = createHarness(window);
+    try {
+      await waitFor(() => expect(hook.result.current.activeProjection?.id).toBe(session.id));
+      expect(hook.result.current.activeProjection?.tabs).toEqual([
+        expect.objectContaining({ id: "runtime-review", kind: "review" }),
+      ]);
+      expect(window.setScene).not.toHaveBeenCalled();
+    } finally {
+      hook.unmount();
+    }
+  });
+
+  test("forks a Runtime child into an independently bound Session without native writers or transcript reads", async () => {
+    const source = makeAttachedSession({
+      id: "runtime-source",
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "root" },
+    });
+    const forked = makeAttachedSession({
+      id: "runtime-fork",
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "fork-root" },
+    });
+    invokeMock.mockImplementation(async (channel: string) =>
+      channel === "project-sessions:get" ? forked : makeWindow([]),
+    );
+    const fork = vi.spyOn(agentRuntimeRuntime, "fork").mockResolvedValue({
+      sessionId: forked.id,
+      projectId: "alpha",
+      threadId: "fork-root",
+      sourceSessionId: source.id,
+    });
+    const { hook } = createHarness(makeWindowPort({ kind: "project", projectId: "alpha" }));
+    try {
+      await waitFor(() =>
+        expect(hook.result.current.collectionsByProject.alpha.state.kind).toBe("ready"),
+      );
+      let result!: Awaited<ReturnType<typeof hook.result.current.fork>>;
+      await act(async () => {
+        result = await hook.result.current.fork(source, {
+          target: "newWorktree",
+          turnId: "source-run",
+          sourceThreadId: "child",
+          localEnvironmentConfigPath: "environment.json",
+          browserViewScopeId: "window",
+          message: "Draft continuation",
+        });
+      });
+      expect(fork).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source: { sessionId: source.id, threadId: "child" },
+          environment: "worktree",
+          sourceRunId: "source-run",
+          runInEnvironmentPath: "environment.json",
+        }),
+      );
+      expect(result).toMatchObject({
+        session: { id: forked.id, thread: null, executionRef: forked.executionRef },
+        threadId: "fork-root",
+        composerIntent: { prompt: "Draft continuation" },
+      });
+      expect(
+        invokeMock.mock.calls.filter(([channel]) =>
+          ["project-sessions:fork", "agent-runtime:session:read", "codex:thread:resume"].includes(
+            channel,
+          ),
+        ),
+      ).toHaveLength(0);
+    } finally {
+      fork.mockRestore();
+      hook.unmount();
+    }
+  });
+  test("keeps a local native import passive instead of acquiring a legacy fork owner", async () => {
+    invokeMock.mockResolvedValue(makeWindow([]));
+    const source = makeAttachedSession({ executionRef: null });
+    const { hook } = createHarness(makeWindowPort({ kind: "project", projectId: "alpha" }));
+    await waitFor(() =>
+      expect(hook.result.current.collectionsByProject.alpha.state.kind).toBe("ready"),
+    );
+    await act(async () => {
+      await expect(
+        hook.result.current.fork(source, { target: "local", browserViewScopeId: "window" }),
+      ).rejects.toThrow("no execution owner");
+    });
+    expect(invokeMock.mock.calls.some(([channel]) => channel === "project-sessions:fork")).toBe(
+      false,
+    );
+    hook.unmount();
+  });
   test("keeps loading distinct from an empty catalog", async () => {
     let resolveProject: ((value: ProjectSessionSummaryWindow) => void) | null = null;
     invokeMock.mockImplementation((channel: string, projectId: string | null) => {

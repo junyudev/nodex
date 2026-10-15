@@ -2,12 +2,18 @@ import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "../../test/dom";
 import type { ProjectAgentDockModel } from "@/lib/project-agent-dock-model";
+import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
+import type {
+  AgentRuntimeSessionActivity,
+  AgentRuntimeSessionActivityChange,
+} from "../../../shared/agent-runtime-api";
 import { ProjectAgentDockTargetSelector } from "./project-agent-dock-target-selector";
 
 const newRow = {
   id: "new",
   kind: "new",
   sessionId: null,
+  runtimeSessionId: null,
   label: "New chat",
   preview: null,
   selected: true,
@@ -18,6 +24,7 @@ const runningRow = {
   id: "session:running",
   kind: "session",
   sessionId: "running",
+  runtimeSessionId: null,
   label: "Refine board",
   preview: "Updating the project database",
   selected: false,
@@ -28,6 +35,7 @@ const unreadRow = {
   id: "session:unread",
   kind: "session",
   sessionId: "unread",
+  runtimeSessionId: null,
   label: "Review notes",
   preview: "A new response is ready",
   selected: false,
@@ -172,5 +180,68 @@ describe("ProjectAgentDockTargetSelector", () => {
     });
     expect(onRetry).toHaveBeenCalledOnce();
     expect(onLoadMore).toHaveBeenCalledOnce();
+  });
+
+  test("updates a Runtime chat's indicator from its own Session activity", async () => {
+    const listeners = new Set<(change: AgentRuntimeSessionActivityChange) => void>();
+    const store = createAgentRuntimeActivityStore({
+      read: async () => ({ sequence: 0, items: [], complete: true }),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      readConnection: async () => ({ status: "ready", generation: "g1" }),
+      subscribeConnection: () => () => {},
+    });
+    const runtimeRow = {
+      ...unreadRow,
+      id: "session:runtime",
+      sessionId: "runtime",
+      runtimeSessionId: "runtime",
+      label: "Delegate review",
+      indicator: "idle",
+    } as const;
+    const activity = (
+      status: AgentRuntimeSessionActivity["status"],
+    ): AgentRuntimeSessionActivity => ({
+      sessionId: "runtime",
+      threadId: "root-1",
+      status,
+      activeRunId: null,
+      pendingRequestCount: status === "waiting" ? 1 : 0,
+      activeTaskCount: status === "background" ? 1 : 0,
+      resumesAutomatically: status === "background",
+      providerInstanceId: "claude",
+      model: "claude-sonnet",
+      updatedAt: "2026-10-15T00:00:00.000Z",
+    });
+    const view = render(
+      <ProjectAgentDockTargetSelector
+        model={makeModel({ trigger: runtimeRow, rows: [newRow, runtimeRow] })}
+        query=""
+        onQueryChange={() => undefined}
+        onSelect={() => undefined}
+        onLoadMore={() => undefined}
+        onRetry={() => undefined}
+        activityStore={store}
+      />,
+    );
+    expect(await view.findByLabelText("Connected chat: Delegate review")).not.toBeNull();
+    const push = async (change: AgentRuntimeSessionActivityChange) => {
+      await act(async () => {
+        for (const listener of listeners) listener(change);
+        await Promise.resolve();
+      });
+    };
+    await push({ type: "upsert", sequence: 1, activity: activity("background") });
+    expect(
+      await view.findByLabelText("Connected chat: Delegate review, Working in background"),
+    ).not.toBeNull();
+    await push({ type: "upsert", sequence: 2, activity: activity("waiting") });
+    expect(
+      await view.findByLabelText("Connected chat: Delegate review, Needs attention"),
+    ).not.toBeNull();
+    await push({ type: "remove", sequence: 3, sessionId: "runtime" });
+    expect(await view.findByLabelText("Connected chat: Delegate review")).not.toBeNull();
   });
 });

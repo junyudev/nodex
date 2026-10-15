@@ -143,25 +143,14 @@ const materialize = async (
     operationId: createUuidV7(),
     title: "Embedded Page",
   });
-  const readOnlyPageId = createUuidV7();
+  const additionalSourcePageId = createUuidV7();
   await port.createStandalonePage({
     projectId: project.id,
-    pageId: readOnlyPageId,
+    pageId: additionalSourcePageId,
     documentId: createUuidV7(),
     operationId: createUuidV7(),
-    title: "Read-only source",
+    title: "Additional source",
   });
-  await port.setResourceProjectAccess({
-    projectId: project.id,
-    target: { kind: "page", pageId: readOnlyPageId },
-    access: "read",
-  });
-  for (const fileId of [sharedFileId, secondFileId])
-    await port.setResourceProjectAccess({
-      projectId: project.id,
-      target: { kind: "file", fileId },
-      access: null,
-    });
   const board = await port.readDatabase({
     projectId: project.id,
     read: {
@@ -208,7 +197,7 @@ const materialize = async (
       source: sourcePageId,
       target: targetPageId,
       embedded: embeddedPageId,
-      readOnly: readOnlyPageId,
+      readOnly: additionalSourcePageId,
     },
     entityIdsByKey: {
       sharedFileId,

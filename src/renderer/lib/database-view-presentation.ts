@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
-import { contentAccessContextKey } from "../../shared/content-access-context";
+import { contentRoutingContextKey } from "../../shared/content-routing-context";
 import type { DatabaseApplyOperationV2 } from "../../shared/database-module-v2";
 import type { DatabaseViewRenderModel } from "./database-view-render-model";
 import { compileDatabaseViewOperationProjection } from "./database-view-operation-projection";
@@ -92,7 +92,7 @@ export class DatabaseViewPresentationStore {
   isActive = (): boolean => this.listeners.size > 0;
   attach = (): (() => void) => {
     this.presentations += 1;
-    if (this.presentations === 1 && this.model.authorization !== null) {
+    if (this.presentations === 1) {
       const revoke = () => {
         if (this.presentations === 0) return;
         this.authorityGeneration += 1;
@@ -103,7 +103,7 @@ export class DatabaseViewPresentationStore {
         for (const listener of this.listeners) listener();
       };
       this.releaseRevocations = this.getProjectionRegistry().register({
-        scope: { ...this.model.accessContext, libraryId: this.model.libraryId },
+        scope: { ...this.model.routingContext, libraryId: this.model.libraryId },
         consumerKey: this.consumerKey,
         projectionEffects: "ignore",
         getDependencies: () => ({
@@ -121,7 +121,6 @@ export class DatabaseViewPresentationStore {
           storeEpoch: this.canonicalModel.storeEpoch,
           commitSeq: this.canonicalModel.commitSeq,
         }),
-        revoke,
         fence: revoke,
         invalidate: () => undefined,
       });
@@ -251,7 +250,7 @@ export class DatabaseViewPresentationStore {
 export const databaseViewPresentationIdentity = (model: DatabaseViewRenderModel): string =>
   JSON.stringify([
     model.libraryId,
-    contentAccessContextKey(model.accessContext),
+    contentRoutingContextKey(model.routingContext),
     model.storeEpoch,
     model.databaseId,
     model.dataSourceId,

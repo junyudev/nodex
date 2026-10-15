@@ -91,6 +91,8 @@ pub enum ProjectWorkspaceInboxSource {
     Agent {
         session_id: Option<String>,
         thread_id: Option<String>,
+        /// The captured causal Run; absent when the native protocol cannot identify one.
+        run_id: Option<String>,
         project_id: Option<String>,
         label: String,
     },

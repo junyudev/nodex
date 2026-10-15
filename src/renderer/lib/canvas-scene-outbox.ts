@@ -16,10 +16,10 @@ import {
   type CanvasSceneMutationIntent,
 } from "../../shared/block-documents";
 import {
-  contentAccessContextKey,
-  contentAccessIdentityKey,
-  type ContentAccessContext,
-} from "../../shared/content-access-context";
+  contentRoutingContextKey,
+  contentRoutingIdentityKey,
+  type ContentRoutingContext,
+} from "../../shared/content-routing-context";
 
 export interface QuarantinedCanvasSceneMutation {
   readonly scene?: PortableCanvasScene;
@@ -31,11 +31,11 @@ export interface QuarantinedCanvasSceneMutation {
 export interface CanvasSceneOutbox {
   readonly libraryId: string;
   list: (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ) => Promise<readonly CanvasSceneMutationIntent[]>;
   listQuarantined: (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ) => Promise<readonly QuarantinedCanvasSceneMutation[]>;
   put: (intent: CanvasSceneMutationIntent) => Promise<void>;
@@ -46,11 +46,11 @@ export interface CanvasSceneOutbox {
     scene?: PortableCanvasScene,
   ) => Promise<void>;
   remove: (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
     mutationId: string,
   ) => Promise<void>;
-  clear: (accessContext: ContentAccessContext, documentId: string) => Promise<void>;
+  clear: (routingContext: ContentRoutingContext, documentId: string) => Promise<void>;
 }
 
 export const MAX_CANVAS_OUTBOX_MUTATIONS = 256;
@@ -73,14 +73,14 @@ const assertOutboxCapacity = (
 
 const outboxBoundaryKey = (
   libraryId: string,
-  accessContext: ContentAccessContext,
+  routingContext: ContentRoutingContext,
   documentId: string,
-): string => JSON.stringify([contentAccessIdentityKey({ libraryId, accessContext }), documentId]);
+): string => JSON.stringify([contentRoutingIdentityKey({ libraryId, routingContext }), documentId]);
 
 const canonicalOutboxLibraryId = (libraryId: string): string => {
-  contentAccessIdentityKey({
+  contentRoutingIdentityKey({
     libraryId,
-    accessContext: { kind: "library" },
+    routingContext: { kind: "library" },
   });
   return libraryId;
 };
@@ -96,25 +96,25 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
   }
 
   list = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ): Promise<readonly CanvasSceneMutationIntent[]> => [
-    ...(this.intents.get(outboxBoundaryKey(this.libraryId, accessContext, documentId))?.values() ??
+    ...(this.intents.get(outboxBoundaryKey(this.libraryId, routingContext, documentId))?.values() ??
       []),
   ];
 
   listQuarantined = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ): Promise<readonly QuarantinedCanvasSceneMutation[]> => [
     ...(this.quarantined
-      .get(outboxBoundaryKey(this.libraryId, accessContext, documentId))
+      .get(outboxBoundaryKey(this.libraryId, routingContext, documentId))
       ?.values() ?? []),
   ];
 
   put = async (input: CanvasSceneMutationIntent): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
-    const boundary = outboxBoundaryKey(this.libraryId, intent.accessContext, intent.documentId);
+    const boundary = outboxBoundaryKey(this.libraryId, intent.routingContext, intent.documentId);
     const documentIntents =
       this.intents.get(boundary) ?? new Map<string, CanvasSceneMutationIntent>();
     const existing = documentIntents.get(intent.mutationId);
@@ -138,7 +138,7 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
     scene?: PortableCanvasScene,
   ): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
-    const boundary = outboxBoundaryKey(this.libraryId, intent.accessContext, intent.documentId);
+    const boundary = outboxBoundaryKey(this.libraryId, intent.routingContext, intent.documentId);
     const documentIntents = this.intents.get(boundary);
     const active = documentIntents?.get(intent.mutationId);
     if (!active) return;
@@ -161,19 +161,19 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
   };
 
   remove = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
     mutationId: string,
   ): Promise<void> => {
-    const boundary = outboxBoundaryKey(this.libraryId, accessContext, documentId);
+    const boundary = outboxBoundaryKey(this.libraryId, routingContext, documentId);
     const documentIntents = this.intents.get(boundary);
     if (!documentIntents) return;
     documentIntents.delete(mutationId);
     if (documentIntents.size === 0) this.intents.delete(boundary);
   };
 
-  clear = async (accessContext: ContentAccessContext, documentId: string): Promise<void> => {
-    this.intents.delete(outboxBoundaryKey(this.libraryId, accessContext, documentId));
+  clear = async (routingContext: ContentRoutingContext, documentId: string): Promise<void> => {
+    this.intents.delete(outboxBoundaryKey(this.libraryId, routingContext, documentId));
   };
 }
 
@@ -263,15 +263,15 @@ const legacyProjectIntent = (value: unknown): CanvasSceneMutationIntent => {
     throw new TypeError("Canvas outbox intent must be an object");
   }
   const record = value as Readonly<Record<string, unknown>>;
-  if (record.accessContext !== undefined) {
+  if (record.routingContext !== undefined) {
     return canonicalizeCanvasSceneMutationIntent(record);
   }
   if (typeof record.projectId !== "string") {
-    throw new TypeError("Legacy Canvas outbox intent has no Project access");
+    throw new TypeError("Legacy Canvas outbox intent has no Project routing identity");
   }
   return canonicalizeCanvasSceneMutationIntent({
     ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "projectId")),
-    accessContext: { kind: "project", projectId: record.projectId },
+    routingContext: { kind: "project", projectId: record.projectId },
   });
 };
 
@@ -417,10 +417,10 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
   });
 
   list = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ): Promise<readonly CanvasSceneMutationIntent[]> => {
-    const accessKey = contentAccessContextKey(accessContext);
+    const accessKey = contentRoutingContextKey(routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(MUTATION_STORE, "readonly");
     const stored = (await requestResult(
@@ -441,10 +441,10 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
   };
 
   listQuarantined = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
   ): Promise<readonly QuarantinedCanvasSceneMutation[]> => {
-    const accessKey = contentAccessContextKey(accessContext);
+    const accessKey = contentRoutingContextKey(routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(QUARANTINE_STORE, "readonly");
     const stored = (await requestResult(
@@ -474,7 +474,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
 
   put = async (input: CanvasSceneMutationIntent): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
-    const accessKey = contentAccessContextKey(intent.accessContext);
+    const accessKey = contentRoutingContextKey(intent.routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(MUTATION_STORE, "readwrite");
     const store = transaction.objectStore(MUTATION_STORE);
@@ -535,7 +535,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
     scene?: PortableCanvasScene,
   ): Promise<void> => {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
-    const accessKey = contentAccessContextKey(intent.accessContext);
+    const accessKey = contentRoutingContextKey(intent.routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(
       [MUTATION_STORE, QUARANTINE_STORE, RECOVERY_DIRECTORY_STORE],
@@ -593,11 +593,11 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
   };
 
   remove = async (
-    accessContext: ContentAccessContext,
+    routingContext: ContentRoutingContext,
     documentId: string,
     mutationId: string,
   ): Promise<void> => {
-    const accessKey = contentAccessContextKey(accessContext);
+    const accessKey = contentRoutingContextKey(routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(MUTATION_STORE, "readwrite");
     const store = transaction.objectStore(MUTATION_STORE);
@@ -610,8 +610,8 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
     await transactionComplete(transaction);
   };
 
-  clear = async (accessContext: ContentAccessContext, documentId: string): Promise<void> => {
-    const accessKey = contentAccessContextKey(accessContext);
+  clear = async (routingContext: ContentRoutingContext, documentId: string): Promise<void> => {
+    const accessKey = contentRoutingContextKey(routingContext);
     const database = await this.getDatabase();
     const transaction = database.transaction(MUTATION_STORE, "readwrite");
     const request = transaction
@@ -697,7 +697,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         .index(DOCUMENT_MUTATION_INDEX)
         .getKey([
           this.libraryId,
-          contentAccessContextKey(snapshot.intent.accessContext),
+          contentRoutingContextKey(snapshot.intent.routingContext),
           snapshot.intent.documentId,
           snapshot.intent.mutationId,
         ]),
