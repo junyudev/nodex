@@ -97,7 +97,7 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
   options: McpSessionRegistryOptions = {},
 ) {
   const crypto = yield* Crypto.Crypto;
-  const environment = yield* ServerEnvironment.ServerEnvironment;
+  const environment = yield* ServerEnvironment.ServerEnvironmentIdentity;
   const environmentId = yield* environment.getEnvironmentId;
   const httpServer = yield* HttpServer.HttpServer;
   const state = yield* SynchronizedRef.make<RegistryState>({ records: new Map() });

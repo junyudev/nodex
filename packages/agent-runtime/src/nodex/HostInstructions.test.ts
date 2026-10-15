@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { buildCodexTurnStartParams } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { makeClaudeQueryOptions } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { ORCHESTRATION_INSTRUCTIONS } from "./Instructions.ts";
-import { t3AcpPromptWithInstructions } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { acpPromptWithInstructions } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { compileClaudeModelSelection } from "../claudeModelOptions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -21,8 +21,6 @@ it.effect("sends admitted host context through Codex's trusted instruction chann
       runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: "/workspace" },
       modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
       hasT3Mcp: true,
-      browserToolsAvailable: false,
-      deviceToolsAvailable: false,
       hostInstructions: "The admitted CLI context is ready.",
       hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
     });
@@ -30,11 +28,16 @@ it.effect("sends admitted host context through Codex's trusted instruction chann
       kind: "application",
       value: "The admitted CLI context is ready.",
     });
-    expect(params.additionalContext?.t3_code_orchestration).toEqual({
+    expect(params.additionalContext?.nodex_tools).toEqual({
       kind: "application",
       value: ORCHESTRATION_INSTRUCTIONS,
     });
-    expect(params.additionalContext?.t3_code_tools).toBeUndefined();
+    expect(Object.keys(params.additionalContext ?? {}).toSorted()).toEqual([
+      "nodex_host",
+      "nodex_runtime",
+      "nodex_tools",
+    ]);
+    expect(params.additionalContext?.nodex_runtime?.value).toContain("running in Nodex");
   }),
 );
 
@@ -60,10 +63,12 @@ it("sends admitted host context with Claude's system preset", () => {
       : undefined;
   expect(prompt).toContain(ORCHESTRATION_INSTRUCTIONS);
   expect(prompt).toContain("The admitted CLI context is ready.");
+  expect(prompt).toContain("running in Nodex through the Claude Code harness");
+  expect(prompt).not.toMatch(/T3|t3[-_]?code/i);
 });
 
 it("refreshes admitted ACP context on each Turn while preserving native slash commands", () => {
-  const state = { interactionMode: "default", hasT3Mcp: true } as const;
+  const state = { interactionMode: "default", hasAppTools: true } as const;
   const prepared = {
     prompt: "Inspect the Page.",
     state,
@@ -71,12 +76,11 @@ it("refreshes admitted ACP context on each Turn while preserving native slash co
     hostInstructions: "Use the current admitted Page and CLI tools.",
     hostOrchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
   };
-  const prompt = t3AcpPromptWithInstructions(prepared);
+  const prompt = acpPromptWithInstructions(prepared);
   expect(prompt).toContain(prepared.hostInstructions);
   expect(prompt).toContain(ORCHESTRATION_INSTRUCTIONS);
   expect(prompt).toContain("<user_request>\nInspect the Page.\n</user_request>");
-  expect(prompt).not.toContain("T3 Code collaborative browser");
-  expect(t3AcpPromptWithInstructions({ ...prepared, prompt: "/compact" })).toBe("/compact");
+  expect(acpPromptWithInstructions({ ...prepared, prompt: "/compact" })).toBe("/compact");
 });
 
 it("enforces custom Claude thinking constraints and validated context suffixes at execution", () => {

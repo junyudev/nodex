@@ -424,7 +424,7 @@ describe("CodexAdapterV2 runtime policy", () => {
       assert.deepEqual(alone.additionalContext, {
         "mcp_app_todos_list_todos_item-1": { kind: "untrusted", value: "Filtered to overdue" },
       });
-      // Alongside T3's own context, both are kept.
+      // Alongside Nodex's own context, both are kept.
       const withT3 = yield* CodexAdapterV2.buildCodexTurnStartParams({
         nativeThreadId: "native-app-context",
         codexInput: [{ type: "text", text: "what's on my list?" }],
@@ -437,11 +437,11 @@ describe("CodexAdapterV2 runtime policy", () => {
         kind: "untrusted",
         value: "Filtered to overdue",
       });
-      assert.isDefined(withT3.additionalContext?.["t3_code_runtime"]);
+      assert.isDefined(withT3.additionalContext?.["nodex_runtime"]);
     }),
   );
 
-  it.effect("adds default-mode developer instructions when the T3 MCP server is attached", () =>
+  it.effect("adds default-mode developer instructions and host tool guidance with the tools", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
         nativeThreadId: "native-orchestration-instructions",
@@ -456,17 +456,15 @@ describe("CodexAdapterV2 runtime policy", () => {
           model: "gpt-5.4",
         },
         hasT3Mcp: true,
+        hostOrchestrationInstructions: "Use delegate_task for child work.",
       });
 
       assert.equal(params.collaborationMode?.mode, "default");
-      assert.include(
-        params.additionalContext?.t3_code_orchestration?.value ?? "",
-        "Use `delegate_task`",
-      );
-      assert.include(
-        params.additionalContext?.t3_code_orchestration?.value ?? "",
-        "structured object, never as JSON text",
-      );
+      assert.deepEqual(params.additionalContext?.nodex_tools, {
+        kind: "application",
+        value: "Use delegate_task for child work.",
+      });
+      assert.include(params.additionalContext?.nodex_runtime?.value ?? "", "running in Nodex");
     }),
   );
 
@@ -491,7 +489,7 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
-  it.effect("adds T3 plan-mode developer instructions when the T3 MCP server is attached", () =>
+  it.effect("adds plan-mode developer instructions when the application tools are attached", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({
         nativeThreadId: "native-plan-with-t3-mcp",
@@ -513,7 +511,6 @@ describe("CodexAdapterV2 runtime policy", () => {
         params.collaborationMode?.settings.developer_instructions ?? "",
         "request_user_input",
       );
-      assert.include(params.additionalContext?.t3_code_tools?.value ?? "", "preview_status");
     }),
   );
 
@@ -3264,7 +3261,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
-  it.effect("preserves T3 context on the wire and restores it after compaction", () =>
+  it.effect("preserves Nodex context on the wire and restores it after compaction", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const nativeThreadId = "context-thread";
@@ -3276,10 +3273,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           modelSelection: CODEX_TEST_MODEL_SELECTION,
           hasT3Mcp: true,
         });
-        assert.include(
-          params.additionalContext?.t3_code_orchestration?.value ?? "",
-          "delegate_task",
-        );
+        assert.include(params.additionalContext?.nodex_runtime?.value ?? "", "running in Nodex");
         const entries = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "work" });
         const transcript = makeCodexReplayTranscript({
           scenario: "restore-context",

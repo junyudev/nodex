@@ -44,7 +44,6 @@ import {
   canReuseCodexContextUsage,
 } from "../Adapters/CodexAdapterV2.ts";
 import { AcpProviderCapabilitiesV2 } from "@t3tools/provider-acp/server/adapter";
-import { CursorProviderCapabilitiesV2 } from "@t3tools/provider-cursor/testing";
 import * as EventSink from "../EventSink.ts";
 import * as EventStore from "../EventStore.ts";
 import * as LegacyV1ThreadImporter from "../legacy/LegacyV1ThreadImporter.ts";
@@ -58,7 +57,6 @@ import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
 import {
   CLAUDE_MODEL_SELECTION,
   CODEX_MODEL_SELECTION,
-  CURSOR_MODEL_SELECTION,
   GROK_MODEL_SELECTION,
 } from "./fixtures/shared.ts";
 import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
@@ -74,7 +72,6 @@ const claudePrompt = "Respond with exactly: claude switched response";
 const returnPrompt = "Respond with exactly: codex after return";
 const CODEX_DRIVER = ProviderDriverKind.make("codex");
 const CLAUDE_DRIVER = ProviderDriverKind.make("claudeAgent");
-const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
 const GROK_DRIVER = ProviderDriverKind.make("acp");
 
 interface CapturedTurn {
@@ -3351,132 +3348,6 @@ describe("orchestration v2 provider switching", () => {
         assert.include(targetTurn?.text ?? "", "Context handoff (full_thread_summary):");
         assert.include(targetTurn?.text ?? "", sourcePrompt);
         assert.include(targetTurn?.text ?? "", "I will remember violet.");
-        assert.include(targetTurn?.text ?? "", targetPrompt);
-      }),
-    ),
-  );
-
-  it.live("resolves a same-provider Cursor fork with portable context", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const sourceThreadId = ThreadId.make("thread:cursor-portable-fork:source");
-        const targetThreadId = ThreadId.make("thread:cursor-portable-fork:target");
-        const sourcePrompt = "Remember that the deployment marker is indigo.";
-        const sourceResponse = "I will remember indigo.";
-        const targetPrompt = "What deployment marker did we choose?";
-        const cwd = yield* checkpointWorkspace("cursor-portable-fork");
-        const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
-        const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
-          makeTestAdapter({
-            instanceId: ProviderInstanceId.make("cursor"),
-            driver: CURSOR_DRIVER,
-            capabilities: CursorProviderCapabilitiesV2,
-            modelSelection: CURSOR_MODEL_SELECTION,
-            responseByRunOrdinal: {},
-            responseByThreadId: {
-              [sourceThreadId]: { 1: sourceResponse },
-              [targetThreadId]: { 1: "The deployment marker is indigo." },
-            },
-            capturedTurns,
-          }),
-        ]);
-        const commands = [
-          {
-            type: "thread.create",
-            createdBy: "user",
-            creationSource: "web",
-            commandId: CommandId.make("command:cursor-portable-fork:create"),
-            threadId: sourceThreadId,
-            projectId,
-            title: "Cursor portable fork source",
-            modelSelection: CURSOR_MODEL_SELECTION,
-            runtimeMode: "full-access",
-            interactionMode: "default",
-            branch: null,
-            worktreePath: null,
-          },
-          {
-            type: "message.dispatch",
-            createdBy: "user",
-            creationSource: "web",
-            commandId: CommandId.make("command:cursor-portable-fork:source"),
-            threadId: sourceThreadId,
-            messageId: MessageId.make("message:cursor-portable-fork:source"),
-            text: sourcePrompt,
-            attachments: [],
-            modelSelection: CURSOR_MODEL_SELECTION,
-            dispatchMode: { type: "start_immediately" },
-          },
-          {
-            type: "thread.fork",
-            createdBy: "user",
-            creationSource: "web",
-            commandId: CommandId.make("command:cursor-portable-fork:fork"),
-            sourceThreadId,
-            targetThreadId,
-            sourcePoint: { type: "latest_stable" },
-            title: "Cursor portable fork target",
-          },
-          {
-            type: "message.dispatch",
-            createdBy: "user",
-            creationSource: "web",
-            commandId: CommandId.make("command:cursor-portable-fork:target"),
-            threadId: targetThreadId,
-            messageId: MessageId.make("message:cursor-portable-fork:target"),
-            text: targetPrompt,
-            attachments: [],
-            modelSelection: CURSOR_MODEL_SELECTION,
-            dispatchMode: { type: "start_immediately" },
-          },
-        ] satisfies ReadonlyArray<OrchestrationV2Command>;
-
-        const targetProjection = yield* Effect.gen(function* () {
-          const orchestrator = yield* Orchestrator.OrchestratorV2;
-          yield* orchestrator.dispatch(commands[0]!);
-          yield* orchestrator.dispatch(commands[1]!);
-          yield* waitForIdle(sourceThreadId);
-          yield* orchestrator.dispatch(commands[2]!);
-          yield* orchestrator.dispatch(commands[3]!);
-          return yield* waitForIdle(targetThreadId);
-        }).pipe(
-          Effect.provide(
-            ProviderReplayHarness.layerWithRegistry(
-              {
-                name: "cursor-portable-fork",
-                runtimePolicyOverride: {
-                  cwd,
-                },
-              },
-              layerRegistry,
-            ),
-          ),
-        );
-        const turns = yield* Ref.get(capturedTurns);
-        const targetTurn = turns.find((turn) => turn.threadId === targetThreadId);
-
-        assert.deepEqual(
-          targetProjection.runs.map((run) => [run.providerInstanceId, run.status]),
-          [["cursor", "completed"]],
-        );
-        assert.lengthOf(targetProjection.providerThreads, 1);
-        assert.equal(targetProjection.providerThreads[0]?.driver, "cursor");
-        assert.isNull(targetProjection.providerThreads[0]?.forkedFrom);
-        assert.deepEqual(
-          targetProjection.contextTransfers.map((transfer) => [
-            transfer.type,
-            transfer.status,
-            transfer.resolution?.strategy,
-          ]),
-          [["fork", "consumed", "portable_context"]],
-        );
-        assert.deepEqual(
-          targetProjection.contextHandoffs.map((handoff) => handoff.strategy),
-          ["full_thread_summary"],
-        );
-        assert.include(targetTurn?.text ?? "", "Context handoff (full_thread_summary):");
-        assert.include(targetTurn?.text ?? "", sourcePrompt);
-        assert.include(targetTurn?.text ?? "", sourceResponse);
         assert.include(targetTurn?.text ?? "", targetPrompt);
       }),
     ),

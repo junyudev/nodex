@@ -314,3 +314,23 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(SourceControlProviderRegistry, make);
+
+/**
+ * Nodex reads no pull request or forge metadata in the Runtime, so its registry
+ * has no host drivers: links stay unresolved and every host reports unsupported.
+ */
+export const layerWithoutHosts = Layer.succeed(
+  SourceControlProviderRegistry,
+  SourceControlProviderRegistry.of({
+    resolveLink: () => undefined,
+    get: (kind) => Effect.succeed(unsupportedProvider(kind)),
+    resolveHandle: () =>
+      Effect.succeed({
+        provider: unsupportedProvider(SourceControlProviderKind.make("unknown")),
+        context: null,
+      }),
+    resolve: () =>
+      Effect.succeed(unsupportedProvider(SourceControlProviderKind.make("unknown"))),
+    discover: Effect.succeed([]),
+  }),
+);

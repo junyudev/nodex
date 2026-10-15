@@ -24,8 +24,6 @@ import * as ProjectEnrichment from "../project/ProjectEnrichmentService.ts";
 import * as ProjectFavicon from "../project/ProjectFaviconResolver.ts";
 import * as RepositoryIdentity from "../project/RepositoryIdentityResolver.ts";
 import * as ProjectFiles from "../project/T3ProjectFileLoader.ts";
-import * as VcsRegistry from "../vcs/VcsDriverRegistry.ts";
-import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as SourceControlRegistry from "../sourceControl/SourceControlProviderRegistry.ts";

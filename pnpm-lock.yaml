@@ -646,9 +646,6 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 0.3.276
         version: 0.3.276(@anthropic-ai/sdk@0.128.0(zod@4.4.3))(@modelcontextprotocol/sdk@1.32.1(supports-color@10.2.2)(zod@4.4.3))(zod@4.4.3)
-      '@cursor/sdk':
-        specifier: 1.0.35
-        version: 1.0.35
       '@effect/platform-node':
         specifier: 4.0.3
         version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
@@ -661,12 +658,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.4.3)
-      '@muse-code/sdk':
-        specifier: 1.4.6
-        version: 1.4.6(@types/node@24.13.3)
-      '@napi-rs/keyring':
-        specifier: 1.3.0
-        version: 1.3.0
       '@nodex/codex-app-server-protocol':
         specifier: workspace:*
         version: link:../codex-app-server-protocol
@@ -685,21 +676,9 @@ importers:
       '@t3tools/provider-core':
         specifier: workspace:*
         version: link:vendor/provider-core
-      '@t3tools/provider-cursor':
-        specifier: workspace:*
-        version: link:vendor/provider-cursor
-      '@t3tools/provider-grok':
-        specifier: workspace:*
-        version: link:vendor/provider-grok
-      '@t3tools/provider-muse':
-        specifier: workspace:*
-        version: link:vendor/provider-muse
       '@t3tools/provider-opencode':
         specifier: workspace:*
         version: link:vendor/provider-opencode
-      '@t3tools/provider-pi':
-        specifier: workspace:*
-        version: link:vendor/provider-pi
       '@t3tools/provider-testing':
         specifier: workspace:*
         version: link:vendor/provider-testing
@@ -730,12 +709,6 @@ importers:
       '@t3tools/source-control-testing':
         specifier: workspace:*
         version: link:vendor/source-control-testing
-      '@t3tools/ssh':
-        specifier: workspace:*
-        version: link:vendor/ssh
-      '@t3tools/tailscale':
-        specifier: workspace:*
-        version: link:vendor/tailscale
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
@@ -751,9 +724,6 @@ importers:
       jose:
         specifier: 6.2.2
         version: 6.2.2
-      playwright-core:
-        specifier: 1.60.0
-        version: 1.60.0
       proper-lockfile:
         specifier: 4.1.2
         version: 4.1.2
@@ -951,117 +921,6 @@ importers:
         specifier: 1.1.0
         version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
 
-  packages/agent-runtime/vendor/provider-cursor:
-    dependencies:
-      '@cursor/sdk':
-        specifier: 1.0.35
-        version: 1.0.35
-      '@napi-rs/keyring':
-        specifier: 1.3.0
-        version: 1.3.0
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/provider-core':
-        specifier: workspace:*
-        version: link:../provider-core
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-      yaml:
-        specifier: 2.9.0
-        version: 2.9.0
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@t3tools/provider-testing':
-        specifier: workspace:*
-        version: link:../provider-testing
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
-
-  packages/agent-runtime/vendor/provider-grok:
-    dependencies:
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/provider-acp':
-        specifier: workspace:*
-        version: link:../provider-acp
-      '@t3tools/provider-core':
-        specifier: workspace:*
-        version: link:../provider-core
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@t3tools/provider-testing':
-        specifier: workspace:*
-        version: link:../provider-testing
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      effect-acp:
-        specifier: workspace:*
-        version: link:../effect-acp
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
-
-  packages/agent-runtime/vendor/provider-muse:
-    dependencies:
-      '@muse-code/sdk':
-        specifier: 1.4.6
-        version: 1.4.6(@types/node@24.13.3)
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/provider-core':
-        specifier: workspace:*
-        version: link:../provider-core
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@t3tools/provider-testing':
-        specifier: workspace:*
-        version: link:../provider-testing
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
-
   packages/agent-runtime/vendor/provider-opencode:
     dependencies:
       '@opencode-ai/sdk':
@@ -1076,37 +935,6 @@ importers:
       '@opencode/schema':
         specifier: 2.0.23
         version: 2.0.23(patch_hash=650f1b8602789407c010861284272dcb6bd6de01ec6a75bf3c0904a0e7596d59)
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/provider-core':
-        specifier: workspace:*
-        version: link:../provider-core
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@t3tools/provider-testing':
-        specifier: workspace:*
-        version: link:../provider-testing
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
-
-  packages/agent-runtime/vendor/provider-pi:
-    dependencies:
       '@t3tools/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -1457,50 +1285,6 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
-
-  packages/agent-runtime/vendor/ssh:
-    dependencies:
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-    devDependencies:
-      '@effect/platform-node':
-        specifier: 4.0.3
-        version: 4.0.3(effect@4.0.3)(redis@6.2.1(@opentelemetry/api@1.9.1))
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
-
-  packages/agent-runtime/vendor/tailscale:
-    dependencies:
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../shared
-      effect:
-        specifier: 4.0.3
-        version: 4.0.3
-    devDependencies:
-      '@effect/vitest':
-        specifier: 4.0.3
-        version: 4.0.3(patch_hash=3077f8d588f06c81c702b7ec15e5f62eb60f0945a6d3f6c147e61bb27fa4b5b0)(effect@4.0.3)(vite-plus@1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0))(vitest@5.0.4)
-      '@types/node':
-        specifier: 24.13.3
-        version: 24.13.3
-      vite-plus:
-        specifier: 1.1.0
-        version: 1.1.0(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.4)(@vitest/ui@5.0.4)(esbuild@0.28.1)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(playwright@1.61.1)(sass@1.101.0)(tsx@4.23.0)(typescript@7.0.2)(yaml@2.9.0)
 
   packages/codex-app-server-protocol: {}
 
@@ -2025,9 +1809,6 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@bufbuild/protobuf@1.10.0':
-    resolution: {integrity: sha512-QDdVFLoN93Zjg36NoQPZfsVH9tZew7wKDKyV5qRdj8ntT4wQCOradQjRaTdwMhWUYsgKsvCINKKm87FdEk96Ag==}
-
   '@chevrotain/cst-dts-gen@11.0.3':
     resolution: {integrity: sha512-BvIKpRLeS/8UbfxXxgC33xOumsacaeCKAjAeLyOn7Pcp95HiRbrpl14S+9vaZLolnbssPIUuiUd8IvgkRyt6NQ==}
 
@@ -2045,17 +1826,6 @@ packages:
 
   '@chevrotain/utils@11.0.3':
     resolution: {integrity: sha512-YslZMgtJUyuMbZ+aKvfF3x1f5liK4mWNxghFRv7jqRR9C3R3fAOGTTKvxXDa2Y1s9zSbcpuO0cAxDYsc9SrXoQ==}
-
-  '@connectrpc/connect-web@1.7.0':
-    resolution: {integrity: sha512-qyP0YOnUPRWwCc/VfsoydMJvkb7EyUPr2q9sHgBuJzbADjiqck1gKH5V5ZPzPhTLBvmz5UvG+wiZ5sMRQHU1MQ==}
-    peerDependencies:
-      '@bufbuild/protobuf': ^1.10.0
-      '@connectrpc/connect': 1.7.0
-
-  '@connectrpc/connect@1.7.0':
-    resolution: {integrity: sha512-iNKdJRi69YP3mq6AePRT8F/HrxWCewrhxnLMNm0vpqXAR8biwzRtO6Hjx80C6UvtKJ5sFmffQT7I4Baecz389w==}
-    peerDependencies:
-      '@bufbuild/protobuf': ^1.10.0
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -2092,40 +1862,6 @@ packages:
   '@csstools/css-tokenizer@4.0.0':
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
-
-  '@cursor/sdk-darwin-arm64@1.0.35':
-    resolution: {integrity: sha512-q9/y2NHTGnE0iwMfJ+FIHmj2gDGDRy45fH3rF3SAFGEGzM4xh726r64n6hH4OQYwKhcMqhqxbPGBpXHd5lRW4A==}
-    cpu: [arm64]
-    os: [darwin]
-    hasBin: true
-
-  '@cursor/sdk-darwin-x64@1.0.35':
-    resolution: {integrity: sha512-0IGwzNr3Lq9IrcIRU4AlT7kTkwwVhRpQyjHqhvnKdgtn+WFYShr9gqTb44leihi/Cbf7a76yEdCgpfScBCPtxQ==}
-    cpu: [x64]
-    os: [darwin]
-    hasBin: true
-
-  '@cursor/sdk-linux-arm64@1.0.35':
-    resolution: {integrity: sha512-AAx2DBqOc21kIwKuHRLl+4bCbuU7Su/BWY+TzXMgMsxAOHvLDGg7SGVvHOMV4ENczbOEcO4zc3XDbmQB4x3rdw==}
-    cpu: [arm64]
-    os: [linux]
-    hasBin: true
-
-  '@cursor/sdk-linux-x64@1.0.35':
-    resolution: {integrity: sha512-3PABXvbT/Ue3jN+ytWcNDPBWptAiJv4qzxL0m2rma3e7kyx/Q1/8FYRYunIpX21HfPGgDSURlWztEov1xdZs3Q==}
-    cpu: [x64]
-    os: [linux]
-    hasBin: true
-
-  '@cursor/sdk-win32-x64@1.0.35':
-    resolution: {integrity: sha512-zADtORY6QRMCBTckxTieAKxcthRiefNNHxVhX2RtO3pQGa4iQwTrHjmjUw0nqCF6sJlCrQ58DTgkrz+BZhLEcw==}
-    cpu: [x64]
-    os: [win32]
-    hasBin: true
-
-  '@cursor/sdk@1.0.35':
-    resolution: {integrity: sha512-CJQR4ocRFm74N1miSqSSrhWyEbvTRIJGyMfHQvZlcBIYzLMXCVPmb1bV82L4NJ8mG9TyvbckEjERjbnzpG5akQ==}
-    engines: {node: '>=22.13'}
 
   '@date-fns/tz@1.5.0':
     resolution: {integrity: sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg==}
@@ -2810,15 +2546,6 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@muse-code/sdk@1.4.6':
-    resolution: {integrity: sha512-pUENCnmn9q4e2xMXicdRbzbSMdH1fiyTIh5fVBXuxNdNP2ZKA0kwQz5fWMxIB8wzxS2ZyH0v27dvfbZuGuoUjg==}
-    engines: {node: '>=20'}
-    peerDependencies:
-      '@types/node': 24.13.3
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
   '@napi-rs/canvas-android-arm64@0.1.100':
     resolution: {integrity: sha512-hjhCKhntPv9+t4ckHymdx0phYNcVW+GKQR6Lzw2zE+pOVjOplSmtx9nNNknTjbEDLcuLZqA1y8ufKg1XfgftzQ==}
     engines: {node: '>= 10'}
@@ -2892,87 +2619,6 @@ packages:
 
   '@napi-rs/canvas@0.1.100':
     resolution: {integrity: sha512-xglYA6q3XO5P3BNJYxVZ1IV7DLVjp1Py6nwag88YntrS+3vKHyYcMqXVS4ZztJmwz2uGvz1FWhI/4LgbR5uQDA==}
-    engines: {node: '>= 10'}
-
-  '@napi-rs/keyring-darwin-arm64@1.3.0':
-    resolution: {integrity: sha512-pl76hJvdYUBn6I24bXiOBMA9nbDapo3I5B+f3OorjDU4dUMSypXeKbOVehJe8fhgTiH24flMyTS3aAIy43xegQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@napi-rs/keyring-darwin-x64@1.3.0':
-    resolution: {integrity: sha512-YcJtEV5LA3cvA4z3BurgxH5IhTsW1JfIvcAAcqcecwk06Si9F9NqkxbZVIfDwQ8oRHgaBmT3zZJnLAotCrVahw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@napi-rs/keyring-freebsd-x64@1.3.0':
-    resolution: {integrity: sha512-vlLf31TGhfRAaxLDBhg8b89ss0HHD/lyNmL5F3UjSaz5CUXElsJmKYq9fqA/B+cZKUEUcLHHGhF0I/CqcFdaVw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [freebsd]
-
-  '@napi-rs/keyring-linux-arm-gnueabihf@1.3.0':
-    resolution: {integrity: sha512-KiWdMMu/Inz/bHHIAGrnF7r54FZDYXuHO6UFF/rhIrshUsxbMG1Rl9lEymNtqqsVo927G0VYcb02FzWQ3iBQRQ==}
-    engines: {node: '>= 10'}
-    cpu: [arm]
-    os: [linux]
-
-  '@napi-rs/keyring-linux-arm64-gnu@1.3.0':
-    resolution: {integrity: sha512-eyKGpY40lm9Jvs1aD294XRH4y7+TlJM0YVAryZeXA6TX0mb4gMkxVXwSQv7MCwgah7raeUd0dKUb4BPAYIgcMg==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-arm64-musl@1.3.0':
-    resolution: {integrity: sha512-iIK6JWHXAJqDrEyLY3TmswwloVyt2vj+04TZnew+uSJ9gnDO8EwRbp3/iw3LpWaXiDO7VomGO6y8I0Id8uBZSw==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [linux]
-    libc: [musl]
-
-  '@napi-rs/keyring-linux-riscv64-gnu@1.3.0':
-    resolution: {integrity: sha512-/PGqrwn6EwgtK6vccASSXJRfOSP4vN1F4ASsIQ+7MdrK6hNvAJ1FZPrIuD5gGGdxezo3F++To2Wq7DbuGIeuNQ==}
-    engines: {node: '>= 10'}
-    cpu: [riscv64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-x64-gnu@1.3.0':
-    resolution: {integrity: sha512-2PDK1WKWTu9lBGq9VvNEkSlQD3O7YwVpmnyN2M3cy4v7NJ/8gDMd9GXv3G+FVXN13uhp4gnnPBS+ScefmEeD2A==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [linux]
-    libc: [glibc]
-
-  '@napi-rs/keyring-linux-x64-musl@1.3.0':
-    resolution: {integrity: sha512-oJ2HkX8YUo46QBkn0pG+HuIKQNqr523q6vBobCn+P95s4C4K6/kLBqHY/1bg5J4ap31DzsznhnFKcfBNBsjCnw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [linux]
-    libc: [musl]
-
-  '@napi-rs/keyring-win32-arm64-msvc@1.3.0':
-    resolution: {integrity: sha512-tOd3c/uAaeoE4ycVlmAdSvygz0Zt3zdca6Y7gokBeIbaRDWpjDIUOpU3MvML59XAaqyuKGsVVu0F/DZb1lHPmw==}
-    engines: {node: '>= 10'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@napi-rs/keyring-win32-ia32-msvc@1.3.0':
-    resolution: {integrity: sha512-sPSqeAFZMGqP1R++M2JTza7GQJJ/TpCo6JU6Vcd4jnebvOaEDs9b7eipakU1PJdSvhpC2yXMCNRk9gXfrhuwHQ==}
-    engines: {node: '>= 10'}
-    cpu: [ia32]
-    os: [win32]
-
-  '@napi-rs/keyring-win32-x64-msvc@1.3.0':
-    resolution: {integrity: sha512-4DnCWXwDc0HRKwyRlG5y0VhKZW2tNRQfKKfyj6IX/KWfDNyq9hn4n+GL1auyDcOO/v8PwnhmYo2+rOOqCkvvOg==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [win32]
-
-  '@napi-rs/keyring@1.3.0':
-    resolution: {integrity: sha512-WrOw/bcXm0f9qHkumlT1QlArXSTWqaY9sunsDpOk+yCCorCKMxvWT/a3xko4EYHVdeZoh00yI2TydXn6eyICDA==}
     engines: {node: '>= 10'}
 
   '@noble/curves@1.9.1':
@@ -4448,14 +4094,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@statsig/client-core@3.31.0':
-    resolution: {integrity: sha512-SuxQD6TmVszPG7FoMKwTk/uyBuVFk7XnxI3T/E0uyb7PL7GNjONtfsoh+NqBBVUJVse0CUeSFfgJPoZy1ZOslQ==}
-
   '@statsig/client-core@3.33.2':
     resolution: {integrity: sha512-TKZ546NfK2oShe1sHhgn+TaCoAWZ/bs0soK+gAjB/y5UAqWVhCcORAd/8eRUyor8Lz2VfL3V4Ze/zr1CCM2/5g==}
-
-  '@statsig/js-client@3.31.0':
-    resolution: {integrity: sha512-LFa5E0LjT6sTfZv3sNGoyRLSZ1078+agdgOA+Vm1ecjG+KbSOfBLTW7hMwimrJ29slRwbYDzbtKaPJo/R37N2g==}
 
   '@statsig/js-client@3.33.2':
     resolution: {integrity: sha512-FgAnaN0d8X/OEZS/HEGI2D3CdbZzsbw3BHlSGvaqUcnwu45aXejFFUCCw96/NTH4lEvSMj1S1RBsrnQ2pVErgQ==}
@@ -7921,11 +7561,6 @@ packages:
     resolution: {integrity: sha512-emEcLuomt2j03vxD54giVB4SxTjnsqkU692xZOZXHDVoYyypEm+b3jpiTcc+Cf+myooc+/Ly0z01jqeNHVgJGw==}
     engines: {node: '>=16.0.0'}
 
-  playwright-core@1.60.0:
-    resolution: {integrity: sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA==}
-    engines: {node: '>=18'}
-    hasBin: true
-
   playwright-core@1.61.1:
     resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
     engines: {node: '>=18'}
@@ -9187,9 +8822,6 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -9455,8 +9087,6 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@bufbuild/protobuf@1.10.0': {}
-
   '@chevrotain/cst-dts-gen@11.0.3':
     dependencies:
       '@chevrotain/gast': 11.0.3
@@ -9475,15 +9105,6 @@ snapshots:
   '@chevrotain/types@11.1.2': {}
 
   '@chevrotain/utils@11.0.3': {}
-
-  '@connectrpc/connect-web@1.7.0(@bufbuild/protobuf@1.10.0)(@connectrpc/connect@1.7.0(@bufbuild/protobuf@1.10.0))':
-    dependencies:
-      '@bufbuild/protobuf': 1.10.0
-      '@connectrpc/connect': 1.7.0(@bufbuild/protobuf@1.10.0)
-
-  '@connectrpc/connect@1.7.0(@bufbuild/protobuf@1.10.0)':
-    dependencies:
-      '@bufbuild/protobuf': 1.10.0
 
   '@csstools/color-helpers@6.1.0': {}
 
@@ -9508,35 +9129,6 @@ snapshots:
       css-tree: 3.2.1
 
   '@csstools/css-tokenizer@4.0.0': {}
-
-  '@cursor/sdk-darwin-arm64@1.0.35':
-    optional: true
-
-  '@cursor/sdk-darwin-x64@1.0.35':
-    optional: true
-
-  '@cursor/sdk-linux-arm64@1.0.35':
-    optional: true
-
-  '@cursor/sdk-linux-x64@1.0.35':
-    optional: true
-
-  '@cursor/sdk-win32-x64@1.0.35':
-    optional: true
-
-  '@cursor/sdk@1.0.35':
-    dependencies:
-      '@bufbuild/protobuf': 1.10.0
-      '@connectrpc/connect': 1.7.0(@bufbuild/protobuf@1.10.0)
-      '@connectrpc/connect-web': 1.7.0(@bufbuild/protobuf@1.10.0)(@connectrpc/connect@1.7.0(@bufbuild/protobuf@1.10.0))
-      '@statsig/js-client': 3.31.0
-      zod: 3.25.76
-    optionalDependencies:
-      '@cursor/sdk-darwin-arm64': 1.0.35
-      '@cursor/sdk-darwin-x64': 1.0.35
-      '@cursor/sdk-linux-arm64': 1.0.35
-      '@cursor/sdk-linux-x64': 1.0.35
-      '@cursor/sdk-win32-x64': 1.0.35
 
   '@date-fns/tz@1.5.0': {}
 
@@ -10163,10 +9755,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@muse-code/sdk@1.4.6(@types/node@24.13.3)':
-    optionalDependencies:
-      '@types/node': 24.13.3
-
   '@napi-rs/canvas-android-arm64@0.1.100':
     optional: true
 
@@ -10214,57 +9802,6 @@ snapshots:
       '@napi-rs/canvas-win32-arm64-msvc': 0.1.100
       '@napi-rs/canvas-win32-x64-msvc': 0.1.100
     optional: true
-
-  '@napi-rs/keyring-darwin-arm64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-darwin-x64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-freebsd-x64@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm-gnueabihf@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-arm64-musl@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-riscv64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-x64-gnu@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-linux-x64-musl@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-arm64-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-ia32-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring-win32-x64-msvc@1.3.0':
-    optional: true
-
-  '@napi-rs/keyring@1.3.0':
-    optionalDependencies:
-      '@napi-rs/keyring-darwin-arm64': 1.3.0
-      '@napi-rs/keyring-darwin-x64': 1.3.0
-      '@napi-rs/keyring-freebsd-x64': 1.3.0
-      '@napi-rs/keyring-linux-arm-gnueabihf': 1.3.0
-      '@napi-rs/keyring-linux-arm64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-arm64-musl': 1.3.0
-      '@napi-rs/keyring-linux-riscv64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-x64-gnu': 1.3.0
-      '@napi-rs/keyring-linux-x64-musl': 1.3.0
-      '@napi-rs/keyring-win32-arm64-msvc': 1.3.0
-      '@napi-rs/keyring-win32-ia32-msvc': 1.3.0
-      '@napi-rs/keyring-win32-x64-msvc': 1.3.0
 
   '@noble/curves@1.9.1':
     dependencies:
@@ -11415,13 +10952,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@statsig/client-core@3.31.0': {}
-
   '@statsig/client-core@3.33.2': {}
-
-  '@statsig/js-client@3.31.0':
-    dependencies:
-      '@statsig/client-core': 3.31.0
 
   '@statsig/js-client@3.33.2':
     dependencies:
@@ -15296,8 +14827,6 @@ snapshots:
       pvutils: 1.1.5
       tslib: 2.8.1
 
-  playwright-core@1.60.0: {}
-
   playwright-core@1.61.1: {}
 
   playwright@1.61.1:
@@ -16793,8 +16322,6 @@ snapshots:
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
       zod: 4.4.3
-
-  zod@3.25.76: {}
 
   zod@4.4.3: {}
 

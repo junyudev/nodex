@@ -503,6 +503,7 @@ describe("ClaudeAdapterV2 native protocol logging", () => {
       allowedTools: overrides.allowedTools ?? [],
       mcpServers: overrides.mcpServers ?? {},
       environment: {},
+      hostOrchestrationInstructions: "Use `delegate_task` for child work.",
     });
     assert.isObject(options.systemPrompt);
     const systemPrompt = options.systemPrompt as {

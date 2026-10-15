@@ -14,19 +14,12 @@ import {
 } from "../Adapters/ClaudeAdapterV2.testkit.ts";
 import { CodexOrchestratorReplayHarness } from "../Adapters/CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "../Adapters/CodexAdapterV2.testkit.ts";
-import {
-  type CursorAgentSdkReplayTranscript,
-  CursorOrchestratorReplayHarness,
-  makeCursorAgentSdkReplayRunner,
-} from "../Adapters/CursorAdapterV2.testkit.ts";
-import * as CursorAdapterV2Testkit from "../Adapters/CursorAdapterV2.testkit.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import {
   CLAUDE_MODEL_SELECTION,
   CODEX_MODEL_SELECTION,
-  CURSOR_MODEL_SELECTION,
   materializeFixtureInput,
   type MaterializedOrchestratorFixtureInput,
   PROVIDER_THREAD_RESUME_FIRST_PROMPT,
@@ -78,17 +71,7 @@ const readClaudeSubagentResumeTranscript = Effect.fn("readClaudeSubagentResumeTr
     );
   },
 );
-const readCursorTranscript = Effect.fn("readCursorRecoveryTranscript")(function* () {
-  const transcript = yield* readRawTranscript(
-    new URL("./fixtures/provider_thread_resume/cursor_transcript.ndjson", import.meta.url),
-  );
-  return yield* CursorOrchestratorReplayHarness.decodeTranscript(
-    materializeReplayTranscriptRuntimeInstructions(transcript, {
-      driver: ProviderDriverKind.make("cursor"),
-      model: CURSOR_MODEL_SELECTION.model,
-    }),
-  );
-});
+
 
 function splitAfterFirstIdle(materialized: MaterializedOrchestratorFixtureInput) {
   const splitIndex = materialized.steps.findIndex((step) => step.type === "await_thread_idle");
@@ -106,94 +89,7 @@ function splitAfterFirstIdle(materialized: MaterializedOrchestratorFixtureInput)
   };
 }
 
-const runCursorRecovery = Effect.fn("runCursorRecovery")(function* (input: {
-  readonly transcript: CursorAgentSdkReplayTranscript;
-  readonly runner: ReturnType<typeof makeCursorAgentSdkReplayRunner>;
-}) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const tempDir = yield* Effect.acquireRelease(
-    fs.makeTempDirectory({
-      prefix: "t3-orchestration-v2-cursor-recovery-",
-    }),
-    (directory) => fs.remove(directory, { recursive: true, force: true }).pipe(Effect.orDie),
-  );
-  yield* fs.makeDirectory(tempDir, { recursive: true });
-  const dbPath = path.join(tempDir, "state.sqlite");
-  const materialized = yield* materializeFixtureInput({
-    scenario: "provider_thread_resume",
-    fixtureInput: {
-      steps: [
-        { type: "message", text: PROVIDER_THREAD_RESUME_FIRST_PROMPT },
-        { type: "message", text: PROVIDER_THREAD_RESUME_SECOND_PROMPT },
-      ],
-    },
-    driver: ProviderDriverKind.make("cursor"),
-    modelSelection: CURSOR_MODEL_SELECTION,
-  });
-  const { phase1Commands, phase1Steps, phase2Commands, phase2Steps } =
-    splitAfterFirstIdle(materialized);
-  const options = {
-    databaseLayer: SqlitePersistence.layerFromPath(dbPath).pipe(Layer.provide(NodeServices.layer)),
-  };
-  const harness = {
-    ...CursorOrchestratorReplayHarness,
-    makeProviderAdapterRegistryLayer: () =>
-      CursorAdapterV2Testkit.layer(input.transcript, {
-        runner: input.runner,
-        assertCompleteOnFinalize: false,
-      }),
-  };
 
-  yield* Effect.scoped(
-    runOrchestratorV2ProviderReplayScenario(
-      {
-        name: "provider_thread_resume/cursor:first-runtime",
-        transcript: input.transcript,
-        commands: phase1Commands,
-        steps: phase1Steps,
-        projectionThreadIds: materialized.projectionThreadIds,
-        runtimePolicyOverride: { cwd: tempDir },
-      },
-      harness,
-      options,
-    ),
-  );
-
-  const result = yield* Effect.scoped(
-    runOrchestratorV2ProviderReplayScenario(
-      {
-        name: "provider_thread_resume/cursor:second-runtime",
-        transcript: input.transcript,
-        commands: phase2Commands,
-        steps: phase2Steps,
-        projectionThreadIds: materialized.projectionThreadIds,
-        runtimePolicyOverride: { cwd: tempDir },
-      },
-      harness,
-      options,
-    ),
-  );
-
-  assertBaseProjection({
-    result,
-    transcript: input.transcript,
-    runCount: 2,
-    runStatuses: ["completed", "completed"],
-  });
-  const projection = projectionFor(result, input.transcript.scenario);
-  assertSemanticProjectionIntegrity(projection);
-  assertRunOrdinals(projection, [1, 2]);
-  assertConversationMessageRoles(projection, ["user", "assistant", "user", "assistant"]);
-  assertTurnItemTypes(projection, ["user_message", "assistant_message"]);
-  assertUserMessagesInclude(projection, [
-    PROVIDER_THREAD_RESUME_FIRST_PROMPT,
-    PROVIDER_THREAD_RESUME_SECOND_PROMPT,
-  ]);
-  assertAssistantTextIncludes(projection, FIRST_FINAL);
-  assertAssistantTextIncludes(projection, SECOND_FINAL);
-  assert.lengthOf(projection.providerThreads, 1);
-});
 
 describe("orchestrator replay recovery", () => {
   it.effect(
@@ -294,21 +190,6 @@ describe("orchestrator replay recovery", () => {
       ),
   );
 
-  it.effect(
-    "resumes a provider-native Cursor thread after recreating the orchestrator runtime",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const transcript = yield* readCursorTranscript();
-          const runner = makeCursorAgentSdkReplayRunner(transcript);
-          yield* runCursorRecovery({ transcript, runner });
-          yield* runner.assertComplete;
-        }).pipe(
-          provideDeterministicTestRuntime,
-          Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer)),
-        ),
-      ),
-  );
   it.effect("keeps a Claude subagent resumed after a server restart in its own thread", () =>
     Effect.scoped(
       Effect.gen(function* () {

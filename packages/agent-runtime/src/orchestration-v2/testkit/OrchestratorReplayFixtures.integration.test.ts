@@ -11,23 +11,15 @@ import * as Path from "effect/Path";
 
 import { ClaudeOrchestratorReplayHarness } from "../Adapters/ClaudeAdapterV2.testkit.ts";
 import { CodexOrchestratorReplayHarness } from "../Adapters/CodexAdapterV2.testkit.ts";
-import { CursorOrchestratorReplayHarness } from "../Adapters/CursorAdapterV2.testkit.ts";
 import { AcpRegistryOrchestratorReplayHarness } from "../Adapters/AcpRegistryAdapterV2.testkit.ts";
-import { GrokOrchestratorReplayHarness } from "../Adapters/GrokAdapterV2.testkit.ts";
 import { OpenCodeOrchestratorReplayHarness } from "../Adapters/OpenCodeAdapterV2.testkit.ts";
 import {
   OPENCODE2_HTTP_PROTOCOL,
   OpenCode2OrchestratorReplayHarness,
 } from "../Adapters/OpenCode2AdapterV2.testkit.ts";
-import {
-  materializeMuseReplayWorkspace,
-  MuseOrchestratorReplayHarness,
-} from "../Adapters/MuseAdapterV2.testkit.ts";
-import { PiOrchestratorReplayHarness } from "../Adapters/PiAdapterV2.testkit.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import { ORCHESTRATOR_REPLAY_FIXTURES } from "./fixtures/index.ts";
-import { messageRestartInput } from "./fixtures/message_steering/input.ts";
 import {
   assertProviderNativeSubagentRootTurns,
   materializeFixtureInput,
@@ -107,9 +99,7 @@ const runFixtureProvider = Effect.fn("runOrchestratorReplayFixture")(function* <
   const transcript = yield* input.harness.decodeTranscript(
     input.driver.driver === "codex"
       ? materializeReplayTranscriptWorkspace(replayTranscript, workspace)
-      : input.driver.driver === "muse"
-        ? yield* materializeMuseReplayWorkspace(replayTranscript, workspace)
-        : replayTranscript,
+      : replayTranscript,
   );
   const materialized = yield* materializeFixtureInput({
     scenario: input.fixtureName,
@@ -189,16 +179,6 @@ function runFixtureProviderWithRegisteredHarness(input: {
         ...input,
         harness: ClaudeOrchestratorReplayHarness,
       }).pipe(Effect.mapError(normalizeTestError), Effect.scoped);
-    case "cursor":
-      return runFixtureProvider({
-        ...input,
-        harness: CursorOrchestratorReplayHarness,
-      }).pipe(Effect.mapError(normalizeTestError), Effect.scoped);
-    case "grok":
-      return runFixtureProvider({
-        ...input,
-        harness: GrokOrchestratorReplayHarness,
-      }).pipe(Effect.mapError(normalizeTestError), Effect.scoped);
     case "acpRegistry":
       return runFixtureProvider({
         ...input,
@@ -215,16 +195,6 @@ function runFixtureProviderWithRegisteredHarness(input: {
         Effect.mapError(normalizeTestError),
         Effect.scoped,
       );
-    case "pi":
-      return runFixtureProvider({
-        ...input,
-        harness: PiOrchestratorReplayHarness,
-      }).pipe(Effect.mapError(normalizeTestError), Effect.scoped);
-    case "muse":
-      return runFixtureProvider({
-        ...input,
-        harness: MuseOrchestratorReplayHarness,
-      }).pipe(Effect.mapError(normalizeTestError), Effect.scoped);
     default:
       return Effect.die(
         new Error(`No replay harness registered for provider ${input.driver.driver}.`),
@@ -246,22 +216,6 @@ describe("orchestrator replay fixtures", () => {
       driver: provider,
     }),
   );
-
-  const steeringFixture = ORCHESTRATOR_REPLAY_FIXTURES.find(
-    (fixture) => fixture.name === "message_steering",
-  );
-  const cursorSteeringProvider = steeringFixture?.providers.find(
-    (provider) => provider.driver === "cursor",
-  );
-  if (cursorSteeringProvider !== undefined) {
-    it.effect("executes explicit Cursor restart_active through the recorded SDK boundary", () =>
-      runFixtureProviderWithRegisteredHarness({
-        fixtureName: "message_steering",
-        buildInput: messageRestartInput,
-        driver: cursorSteeringProvider,
-      }),
-    );
-  }
 
   // A later OpenCode may change an execution start's shape; the client then
   // reads it as `unreadable.execution.started`. A subagent's turn and a

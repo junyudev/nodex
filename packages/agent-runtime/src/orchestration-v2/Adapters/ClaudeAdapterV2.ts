@@ -133,7 +133,6 @@ import {
 } from "../../provider/claudeUsageLimits.ts";
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
 import {
@@ -1149,9 +1148,9 @@ export function makeClaudeQueryOptions(input: {
       preset: "claude_code" as const,
       append:
         buildRuntimeInstructions({ harness: "Claude Code" }) +
-        (input.mcpServers === undefined
+        (input.mcpServers === undefined || input.hostOrchestrationInstructions === undefined
           ? ""
-          : (input.hostOrchestrationInstructions ?? T3_CODE_ORCHESTRATION_INSTRUCTIONS)) +
+          : input.hostOrchestrationInstructions) +
         (input.hostInstructions === undefined ? "" : `\n\n${input.hostInstructions}`),
     },
     ...(Object.keys(extraArgs).length === 0 ? {} : { extraArgs }),

@@ -33,7 +33,7 @@ import {
   makeAcpReplayRuntime,
 } from "./AcpAdapterV2.testkit.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import { BUILT_IN_PROVIDER_ADAPTER_DRIVER_KINDS_V2 } from "../builtInProviderAdapterDrivers.ts";
+import { BUILT_IN_DRIVERS } from "../../provider/builtInDrivers.ts";
 import { AcpRegistryAdapterV2Driver } from "@t3tools/provider-acp-registry/server";
 import {
   ACP_REGISTRY_PROVIDER,
@@ -127,7 +127,7 @@ describe("AcpRegistryAdapterV2", () => {
     assert.notInclude(rejected.message, "token=secret");
   });
   it("is registered as a generic provider driver with schema defaults", () => {
-    assert.isTrue(BUILT_IN_PROVIDER_ADAPTER_DRIVER_KINDS_V2.has(ACP_REGISTRY_PROVIDER));
+    assert.isTrue(BUILT_IN_DRIVERS.some((driver) => driver.driverKind === ACP_REGISTRY_PROVIDER));
     assert.equal(AcpRegistryAdapterV2Driver.driverKind, ACP_REGISTRY_PROVIDER);
     assert.deepEqual(AcpRegistryAdapterV2Driver.defaultConfig(), {
       source: "registry",

@@ -587,9 +587,8 @@ const fakeHttpServer = HttpServer.HttpServer.of({
   serve: (() => Effect.void) as HttpServer.HttpServer["Service"]["serve"],
 });
 
-const fakeEnvironment = ServerEnvironment.ServerEnvironment.of({
+const fakeEnvironment = ServerEnvironment.ServerEnvironmentIdentity.of({
   getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-provider-session-manager")),
-  getDescriptor: Effect.die("unused"),
 });
 
 const layerTestMcpRegistry = Layer.effect(
@@ -597,7 +596,7 @@ const layerTestMcpRegistry = Layer.effect(
   McpSessionRegistry.__testing.make(),
 ).pipe(
   Layer.provide(Layer.succeed(HttpServer.HttpServer, fakeHttpServer)),
-  Layer.provide(Layer.succeed(ServerEnvironment.ServerEnvironment, fakeEnvironment)),
+  Layer.provide(Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, fakeEnvironment)),
   Layer.provide(NodeServices.layer),
 );
 

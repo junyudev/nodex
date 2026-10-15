@@ -2,12 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { buildRuntimeInstructions } from "./runtimeInstructions.ts";
 
 describe("buildRuntimeInstructions", () => {
-  it("requires explicit registration of every PR and stack layer", () => {
-    const instructions = buildRuntimeInstructions({ harness: "Codex" });
-    expect(instructions).toContain("When the t3-code MCP server exposes link_pull_request");
-    expect(instructions).toContain("with the full PR URL immediately after creating a PR");
-    expect(instructions).toContain("For a stack, call it for every layer");
-    expect(instructions).toContain("call list_thread_pull_requests and link any PR");
+  it("names the product and harness the Agent runs in", () => {
+    expect(buildRuntimeInstructions({ harness: "Codex" })).toContain(
+      "you are running in Nodex through the Codex harness.",
+    );
   });
 
   it("keeps known model and effort metadata on one line", () => {
@@ -30,8 +28,8 @@ describe("buildRuntimeInstructions", () => {
   });
 
   it.each([undefined, "", "auto", "default"])("omits unresolved model %s", (model) => {
-    const instructions = buildRuntimeInstructions({ harness: "Cursor", model });
-    expect(instructions).toContain("through the Cursor harness.");
+    const instructions = buildRuntimeInstructions({ harness: "OpenCode", model });
+    expect(instructions).toContain("through the OpenCode harness.");
     expect(instructions).not.toContain("reasoning effort");
   });
 });

@@ -26,7 +26,7 @@ export const layer = (configuration: AgentRuntimeConfiguration) => {
   return HttpRouter.serve(routes, { disableLogger: true }).pipe(
     Layer.provideMerge(engine),
     Layer.provideMerge(Sessions.layer),
-    Layer.provideMerge(ServerEnvironment.layer),
+    Layer.provideMerge(ServerEnvironment.layerIdentity),
     Layer.provideMerge(ServerSecrets.layer),
     Layer.provideMerge(Runtime.layerConfiguration(configuration)),
     Layer.provideMerge(
