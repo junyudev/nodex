@@ -1,0 +1,42 @@
+src/shared/ipc-endpoint-policy.ts
+  s_1ca65ffa5958ee::t_81b9ee8b5ecf0c 76-77
+src/renderer/lib/agent-runtime-session-activity.node.test.ts
+  s_1ca65ffa5958ee::t_51a2de5f7c88e1 1-135
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_1ca65ffa5958ee::t_6eaa1001a01822 15,19,37,99-121
+src/shared/ipc-api.ts
+  s_1ca65ffa5958ee::t_81b9ee8b5ecf0c 2839-2840
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_1ca65ffa5958ee::t_3c5cd4a3c213b4 1-34
+src/renderer/lib/agent-runtime-session-activity.ts
+  s_1ca65ffa5958ee::t_215ae1576103b5 99,115,126,130-131
+  s_1ca65ffa5958ee::t_b36291c5ae00c6 1-98,100-114,116-125,127-129,132-212
+src/shared/agent-runtime-api.ts
+  s_1ca65ffa5958ee::t_3e43ac1536598d 184-228,230-237
+src/main/ipc/handlers/AgentRuntimeIpc.node.test.ts
+  s_1ca65ffa5958ee::t_cd393637f83c5d 14-15,100,111-114
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_1ca65ffa5958ee::t_07302427146f24 39-40,469
+src/renderer/lib/agent-runtime-runtime.ts
+  s_1ca65ffa5958ee::t_fd7d5addda8241 28-29,182-183,216-217
+src/renderer/lib/electron-renderer-transport.ts
+  s_1ca65ffa5958ee::t_ab805382a50d7c 374-389
+src/renderer/lib/renderer-transport.ts
+  s_1ca65ffa5958ee::t_b5aa3aec841ea3 15-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1b3fb0ea9402f61c0873dc990cef46a5c1050336",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
