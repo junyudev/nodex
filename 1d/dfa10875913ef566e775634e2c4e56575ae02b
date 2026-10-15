@@ -1,0 +1,55 @@
+crates/nodex-core-contracts/src/workspace.rs
+  s_1ca65ffa5958ee::t_b00411dba54d10 1765-1768
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_1ca65ffa5958ee::t_628ec16b23970d 377-413
+  s_1ca65ffa5958ee::t_b12e3d1ec242cc 374-376
+packages/core-protocol/src/generated.ts
+  s_1ca65ffa5958ee::t_148dd8d3d57b98 8838-8842
+packages/core-protocol/openapi.json
+  s_1ca65ffa5958ee::t_148dd8d3d57b98 36736-36742
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_1ca65ffa5958ee::t_f41e2194b9fa56 383-388,406-417,420-435,470,487,589,862,1607-1609,1700,1759
+  s_1ca65ffa5958ee::t_e471184b89d936 1921
+  s_1ca65ffa5958ee::t_95aa9eed58ea19 1071-1082,1084-1098,1101-1120
+  s_1ca65ffa5958ee::t_1bfead7b35d59d 33,924,966-975,979-1021
+  s_1ca65ffa5958ee::t_13b41d6689c7b3 575,581,584-588,592
+  s_1ca65ffa5958ee::t_815912f28ab9bd 1022
+crates/nodex-core/src/workspace/session_mutation.rs
+  s_1ca65ffa5958ee::t_fd44e92061a727 193-197
+  s_1ca65ffa5958ee::t_b00411dba54d10 90,100,168,174-175,177
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_86a55e59b2d6d4 30-35,333-338
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_1ca65ffa5958ee::t_fa6b6559fabe9b 1240-1248
+  s_1ca65ffa5958ee::t_13b41d6689c7b3 167,341-342,1205,1211-1213,1216-1219,1229-1234,1237-1239,1250
+  s_1ca65ffa5958ee::t_86a55e59b2d6d4 786-789,1235-1236,1767-1808
+  s_1ca65ffa5958ee::t_1f35f7956bc6ad 1249
+  s_1ca65ffa5958ee::t_95aa9eed58ea19 1820
+  s_1ca65ffa5958ee::t_e0727e93f96bbf 168,331-336,1172-1201
+  s_1ca65ffa5958ee::t_77130e5e8ba784 1202-1203
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_1ca65ffa5958ee::t_95aa9eed58ea19 477
+src/main/codex/thread-title-generator.ts
+  s_1ca65ffa5958ee::t_be0312399dca6a 179-180,182-184
+src/main/agent-runtime/AgentRuntimeSessionTitle.ts
+  s_1ca65ffa5958ee::t_1bfead7b35d59d 10,44,49-50
+  s_1ca65ffa5958ee::t_01e376747ba572 1-9,11-43,45-48,51-58
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_1ca65ffa5958ee::t_44109ec06d7125 97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ddfa10875913ef566e775634e2c4e56575ae02b",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
