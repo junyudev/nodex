@@ -17,3 +17,4 @@ export type {
 } from "@t3tools/contracts";
 
 export type * from "./Interface.ts";
+export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";

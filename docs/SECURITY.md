@@ -194,6 +194,11 @@ read through the authenticated Profile and exact execution identity boundary.
   installs packages or substitutes system runtimes during discovery. Python import isolation
   is not a sandbox; Agent execution runs with full native access as the current user.
 
+- Provider instance configuration, including decrypted environment secrets, reaches the Agent
+  Runtime only as the first frame on its private stdin pipe. It never enters the execution
+  process's arguments or environment, which is exactly the launch environment Main composes
+  rather than an extension of Main's own.
+
 - Native Claude Code instances run user-managed executables through the official Agent SDK.
   Inherited user/project/local settings may execute hooks, skills, subagents, and MCP servers as the
   current user. Nodex starts Claude Code with bypass permissions and automatically approves

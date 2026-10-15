@@ -252,3 +252,45 @@ it.live("a native Session source cannot masquerade as Run preparation", () =>
     assert.isFalse(called);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.live("configures providers over stdin so credentials never enter the process environment", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: {
+        home: "/tmp",
+        cwd: "/tmp",
+        providers: {
+          claude: {
+            driver: "claudeAgent",
+            environment: [{ name: "ANTHROPIC_API_KEY", value: "fixture-secret", sensitive: true }],
+            config: { binaryPath: "/usr/bin/claude" },
+          },
+        },
+        host: { tools: [{ name: "read_page", inputSchema: { type: "object" } }] },
+      },
+      environment: { FIXTURE_VISIBLE: "1" },
+      requestTimeoutMs: 5_000,
+      host: () => Effect.succeed(null),
+    });
+    const received = (yield* connection.request("project.read", {
+      projectId: "bootstrap",
+    })) as unknown as {
+      readonly providers: Readonly<Record<string, unknown>>;
+      readonly hostTools: ReadonlyArray<{ readonly name: string }>;
+      readonly environment: Readonly<Record<string, string>>;
+    };
+    assert.deepEqual(Object.keys(received.providers), ["claude"]);
+    assert.deepEqual(
+      received.hostTools.map((tool) => tool.name),
+      ["read_page"],
+    );
+    assert.strictEqual(received.environment.FIXTURE_VISIBLE, "1");
+    assert.isFalse(
+      Object.entries(received.environment).some(
+        ([name, value]) => name.startsWith("NODEX_AGENT_RUNTIME") || value.includes("fixture-secret"),
+      ),
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);

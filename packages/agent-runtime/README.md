@@ -5,8 +5,9 @@ delegated tasks, transcripts, command receipts and execution recovery. It runs
 outside Electron Main and writes a dedicated `agent-runtime.sqlite` database
 beneath its absolute home. Content and desktop capabilities remain host-owned.
 
-The process starts with `--home <absolute-directory> --cwd <execution-directory>`.
-`NODEX_AGENT_RUNTIME_PROVIDER_INSTANCES` carries the provider-instance map; each
+The process starts with `--home <absolute-directory> --cwd <execution-directory>`. Its first
+stdin line is the bootstrap frame (`type: "bootstrap"`, see `src/nodex/Bootstrap.ts`); the
+process refuses to start without it. Its `providers` map carries the provider instances; each
 entry selects the `codex`, `claudeAgent`, `opencode` or `acpRegistry` driver and its canonical settings.
 Named instances retain independent executables, homes and environments.
 ACP instances can set `config.inheritEnvironment: false`; their supplied environment is then the
@@ -47,9 +48,9 @@ explicit policy overrides, and parked workers start after startup recovery compl
 launch, worktree setup, content operations, scheduled tasks, usage-limit auto-resume and native
 session import are not composed; scheduling tools report the capability as unavailable.
 
-`NODEX_AGENT_RUNTIME_HOST_TOOLS` supplies the host's MCP tool descriptors and
-activates Turn admission. Before native execution, `host.request` with operation
-`turn.prepare` sends the exact project, Thread, Run, attempt, provider session and
+The bootstrap frame's `hostTools` supplies the host's MCP tool descriptors and
+activates Turn admission; provider credentials never enter the process environment.
+Before native execution, `host.request` with operation `turn.prepare` sends the exact project, Thread, Run, attempt, provider session and
 native generation to the host. The host replies with `host.result` and optional
 trusted instructions. The same callback channel proxies host tool calls and
 preserves observed native Turn and MCP request metadata. Responses bypass the

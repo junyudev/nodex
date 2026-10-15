@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AgentRuntimeBootstrap,
   AgentHostRequest,
   AgentHostResult,
   AgentRuntimeConfiguration,
@@ -238,6 +239,12 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     });
   });
 
+  // The first frame configures providers before readiness; it is queued ahead of every request.
+  yield* send({
+    type: "bootstrap",
+    providers: options.configuration.providers,
+    ...(options.configuration.host ? { hostTools: options.configuration.host.tools } : {}),
+  } satisfies AgentRuntimeBootstrap);
   const process = yield* spawner
     .spawn(
       ChildProcess.make(
@@ -254,16 +261,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           detached: true,
           killSignal: "SIGTERM",
           forceKillAfter: Duration.seconds(5),
-          env: {
-            ...options.environment,
-            NODEX_AGENT_RUNTIME_PROVIDER_INSTANCES: JSON.stringify(options.configuration.providers),
-            ...(options.configuration.host
-              ? {
-                  NODEX_AGENT_RUNTIME_HOST_TOOLS: JSON.stringify(options.configuration.host.tools),
-                }
-              : {}),
-          },
-          extendEnv: true,
+          // Exactly the composed environment; provider credentials arrive over stdin instead.
+          env: { ...options.environment },
+          extendEnv: false,
           stdin: Stream.fromQueue(input),
           stdout: "pipe",
           stderr: "inherit",

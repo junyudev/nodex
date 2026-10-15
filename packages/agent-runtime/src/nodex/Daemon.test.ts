@@ -6,9 +6,13 @@ import * as path from "node:path";
 import * as readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
+import type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
 import type { AgentRuntimeResponse, AgentStorageSnapshot } from "./Interface.ts";
 
-async function startProcess(home: string) {
+async function startProcess(
+  home: string,
+  bootstrap: AgentRuntimeBootstrap | null = { type: "bootstrap", providers: {}, hostTools: [] },
+) {
   const child = spawn(
     process.execPath,
     [
@@ -22,14 +26,11 @@ async function startProcess(home: string) {
     ],
     {
       cwd: fileURLToPath(new URL("../..", import.meta.url)),
-      env: {
-        ...process.env,
-        NODEX_AGENT_RUNTIME_PROVIDER_INSTANCES: "{}",
-        NODEX_AGENT_RUNTIME_HOST_TOOLS: "[]",
-      },
+      env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
+  if (bootstrap) child.stdin.write(`${JSON.stringify(bootstrap)}\n`);
   const exit = new Promise<number | null>((resolve) => child.once("exit", resolve));
   const waiting = new Map<
     string,
@@ -274,5 +275,51 @@ it("admits one physical writer, removes ownership on EOF, and recovers a killed 
     runtime.child.kill("SIGKILL");
     await runtime.exit;
     await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+it("starts only from a stdin bootstrap whose provider instances stay out of the environment", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-runtime-bootstrap-"));
+  const runtime = await startProcess(home, {
+    type: "bootstrap",
+    providers: {
+      codex: {
+        driver: "codex",
+        enabled: false,
+        environment: [{ name: "OPENAI_API_KEY", value: "bootstrap-secret", sensitive: true }],
+        config: { binaryPath: path.join(home, "codex"), homePath: path.join(home, "codex-home") },
+      },
+    },
+  });
+  try {
+    const providers = await runtime.request("providers.read");
+    expect(providers.success).toBe(true);
+    if (providers.success)
+      expect((providers.output as ReadonlyArray<{ readonly instanceId: string }>).map(
+        (provider) => provider.instanceId,
+      )).toContain("codex");
+    expect(await runtime.close()).toBe(0);
+  } finally {
+    runtime.child.kill("SIGKILL");
+    await runtime.exit;
+    await fs.rm(home, { recursive: true, force: true });
+  }
+  const unconfigured = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-runtime-no-bootstrap-"));
+  try {
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", fileURLToPath(new URL("./entry.ts", import.meta.url)), "--home", unconfigured],
+      { cwd: fileURLToPath(new URL("../..", import.meta.url)), stdio: ["pipe", "pipe", "pipe"] },
+    );
+    let stdout = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    const exit = new Promise<number | null>((resolve) => child.once("exit", resolve));
+    child.stdin.write(`${JSON.stringify({ id: "1", method: "runtime.identity", input: {} })}\n`);
+    expect(await exit).toBe(1);
+    expect(stdout).toBe("");
+  } finally {
+    await fs.rm(unconfigured, { recursive: true, force: true });
   }
 });

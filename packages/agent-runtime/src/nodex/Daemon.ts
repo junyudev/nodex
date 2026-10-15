@@ -7,6 +7,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import { HostBridge } from "./HostBridge.ts";
+import { readAgentRuntimeBootstrap } from "./Bootstrap.ts";
 import type { AgentRuntimeConfiguration, AgentRuntimeNotification } from "./Interface.ts";
 
 export async function runAgentRuntimeProcess(): Promise<void> {
@@ -21,19 +22,21 @@ export async function runAgentRuntimeProcess(): Promise<void> {
     process.stderr.write("An absolute --home is required for Agent Runtime.\n");
     process.exitCode = 1;
   } else {
-    const providerBootstrap = process.env.NODEX_AGENT_RUNTIME_PROVIDER_INSTANCES;
-    const hostToolBootstrap = process.env.NODEX_AGENT_RUNTIME_HOST_TOOLS;
-    delete process.env.NODEX_AGENT_RUNTIME_PROVIDER_INSTANCES;
-    delete process.env.NODEX_AGENT_RUNTIME_HOST_TOOLS;
+    const input = NodeReadline.createInterface({ input: process.stdin, terminal: false });
+    const lines = input[Symbol.asyncIterator]();
+    let bootstrap: Awaited<ReturnType<typeof readAgentRuntimeBootstrap>>;
+    try {
+      bootstrap = await readAgentRuntimeBootstrap(lines);
+    } catch (error) {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+      input.close();
+      return;
+    }
     const configuration: AgentRuntimeConfiguration = {
       home,
       cwd: argument("--cwd") ?? process.cwd(),
-      providers: JSON.parse(providerBootstrap ?? "{}"),
-      ...(hostToolBootstrap === undefined
-        ? {}
-        : {
-            host: { tools: JSON.parse(hostToolBootstrap) },
-          }),
+      ...bootstrap,
     };
     const write = (value: unknown): Promise<void> =>
       new Promise((resolve, reject) => {
@@ -49,7 +52,6 @@ export async function runAgentRuntimeProcess(): Promise<void> {
         Layer.provideMerge(Logger.layer([Logger.withConsoleError(Logger.formatLogFmt)])),
       ),
     );
-    const input = NodeReadline.createInterface({ input: process.stdin, terminal: false });
     let closing = false;
     let disposal: Promise<void> | undefined;
     const dispose = () => {
@@ -98,7 +100,7 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           });
         active.add(task);
       };
-      for await (const line of input) {
+      for await (const line of { [Symbol.asyncIterator]: () => lines }) {
         let request: { readonly id?: string; readonly type?: string; readonly method?: string };
         try {
           request = JSON.parse(line);

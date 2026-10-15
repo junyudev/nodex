@@ -13,9 +13,14 @@ const success = (id, output) => send({ id, success: true, output });
 const pendingHosts = new Map();
 let executionSubscription;
 const blocked = [];
+const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
+const first = await lines.next();
+const bootstrap = first.done ? null : JSON.parse(first.value);
+// Provider configuration arrives only as the first stdin frame.
+if (bootstrap?.type !== "bootstrap") process.exit(3);
 send({ type: "ready", identity });
 
-for await (const line of createInterface({ input: process.stdin })) {
+for await (const line of { [Symbol.asyncIterator]: () => lines }) {
   const request = JSON.parse(line);
   if (request.type === "host.result") {
     const id = pendingHosts.get(request.id);
@@ -52,6 +57,15 @@ for await (const line of createInterface({ input: process.stdin })) {
       continue;
     }
     if (request.input.projectId === "exit") process.exit(9);
+    if (request.input.projectId === "bootstrap") {
+      success(request.id, {
+        providers: bootstrap.providers,
+        hostTools: bootstrap.hostTools ?? null,
+        environment: process.env,
+        execArgv: process.execArgv,
+      });
+      continue;
+    }
     if (request.input.projectId === "reject") {
       send({ id: request.id, success: false, error: { message: "Execution is busy" } });
       continue;
