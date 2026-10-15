@@ -39,11 +39,13 @@ its explicit ownership token for scoped cancellation.
 The process registers the four provider drivers and execution MCP tools. OpenCode instances
 select their native 1.x or 2.x adapter from their executable. ACP's stdio bridge commands use
 a separate entry path without acquiring the engine or provider runtimes.
-Desktop launch, worktree setup, content operations and schedules compose
-through their host boundaries. The complete production assembly is retained in
-`src/orchestration-v2/runtimeLayer.ts`; its execution layer shares the same stores,
-workers and request queues with the independent host. Scheduling capabilities are
-reported only when a scheduler is supplied.
+The engine is the single production composition `layerProduction` in
+`src/orchestration-v2/runtimeLayer.ts`: execution services, the provider continuation worker and
+hourly pruning of settled outbox receipts older than seven days (failed receipts and cancelled
+provider retirements remain). `src/nodex/Runtime.ts` supplies only platform capabilities and
+explicit policy overrides, and parked workers start after startup recovery completes. Desktop
+launch, worktree setup, content operations, scheduled tasks, usage-limit auto-resume and native
+session import are not composed; scheduling tools report the capability as unavailable.
 
 `NODEX_AGENT_RUNTIME_HOST_TOOLS` supplies the host's MCP tool descriptors and
 activates Turn admission. Before native execution, `host.request` with operation

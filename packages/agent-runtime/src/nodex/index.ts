@@ -3,7 +3,6 @@ export * as Runtime from "../orchestration-v2/runtimeLayer.ts";
 export * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 export * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 export * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
-export * as ThreadLifecycle from "../orchestration-v2/ThreadLifecycleService.ts";
 export * as Project from "../project/ProjectService.ts";
 export * as Settings from "../serverSettings.ts";
 export * as Configuration from "../config.ts";

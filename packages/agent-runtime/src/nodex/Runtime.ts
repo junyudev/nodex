@@ -50,14 +50,16 @@ import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCod
 import type { AnyProviderDriver } from "@t3tools/provider-core/server/driver";
 import * as CodexAdapter from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as ClaudeAdapter from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
-import * as RuntimeLayer from "../orchestration-v2/executionLayer.ts";
-import * as Continuation from "../orchestration-v2/ProviderContinuationService.ts";
+import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as Recovery from "../orchestration-v2/ProviderRuntimeRecoveryService.ts";
 import * as ProviderSessions from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as Fiber from "effect/Fiber";
+import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
+import * as ServerActivation from "../serverActivation.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
@@ -182,9 +184,20 @@ const layerProviderInfrastructure = Layer.mergeAll(
   Layer.provideMerge(ServerSecretStore.layer),
 );
 
+/** Parked background workers start only after startup recovery admits commands. */
+class ExecutionActivation extends Context.Service<ExecutionActivation, Deferred.Deferred<void>>()(
+  "nodex/agent-runtime/ExecutionActivation",
+) {}
+const layerActivation = Layer.effect(ExecutionActivation, Deferred.make<void>());
+const layerServerActivation = Layer.effect(
+  ServerActivation.ServerActivation,
+  ExecutionActivation.useSync((activation) => Deferred.await(activation)),
+);
+
 /**
- * The execution engine retains its original transactional stores and workers.
- * HTTP/MCP credentials are supplied by the scoped transport host, never by a renderer.
+ * The engine is the orchestration production composition. Nodex supplies only platform
+ * capabilities and its explicit policy overrides; HTTP/MCP credentials come from the scoped
+ * transport host, never from a renderer.
  */
 export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
   const layerPolicy = Layer.unwrap(
@@ -201,17 +214,13 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
       );
     }),
   );
-  const layerExecution = Layer.mergeAll(
-    RuntimeLayer.layer,
+  return Layer.mergeAll(
+    RuntimeLayer.layerProduction,
     RuntimeLayer.layerEventSink,
     RuntimeLayer.layerStores,
-  ).pipe(Layer.provideMerge(RuntimeLayer.layerProjectService));
-  const layerContinuation = Continuation.layer.pipe(
-    Layer.provide(layerExecution),
-    Layer.provide(ProviderContinuationRequests.layer),
-    Layer.provide(IdAllocator.layer),
-  );
-  return Layer.mergeAll(layerExecution, layerContinuation).pipe(
+  ).pipe(
+    Layer.provide(layerServerActivation),
+    Layer.provideMerge(layerActivation),
     Layer.provideMerge(ProjectionStore.layer),
     Layer.provideMerge(layerProjectEnrichment),
     Layer.provideMerge(WorkspacePaths.layer),
@@ -231,7 +240,10 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
   );
 };
 
-/** Recovery finishes before external command admission and before the outbox worker starts. */
+/**
+ * Recovery finishes before external command admission, the outbox worker and parked
+ * production workers start.
+ */
 export const acquireExecution = Effect.gen(function* () {
   const settings = yield* ServerSettings.ServerSettingsService;
   const recovery = yield* Recovery.ProviderRuntimeRecoveryService;
@@ -241,6 +253,7 @@ export const acquireExecution = Effect.gen(function* () {
   yield* recovery.recover;
   yield* orchestrator.recoverDelegatedTasks;
   const worker = yield* EffectWorker.runDaemon.pipe(Effect.forkScoped);
+  yield* Deferred.succeed(yield* ExecutionActivation, undefined);
   yield* Effect.addFinalizer(() =>
     Fiber.interrupt(worker).pipe(
       Effect.andThen(recovery.prepareForShutdown),
