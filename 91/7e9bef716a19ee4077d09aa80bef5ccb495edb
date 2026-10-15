@@ -1,0 +1,41 @@
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.tsx
+  s_1ca65ffa5958ee::t_c7c9a60691b8d9 64,107-121
+src/renderer/lib/agent-runtime-session-launch.ts
+  s_1ca65ffa5958ee::t_9b608b7e2b387b 5,59-68
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1ca65ffa5958ee::t_c7c9a60691b8d9 1039
+  s_1ca65ffa5958ee::t_add803c1ca6123 18-19,21-22,136-174,587-588,629,651-654,687-688,692-699,836-838,840-866,912-915,919-927,1009,1074
+src/shared/agent-runtime-provider.ts
+  s_1ca65ffa5958ee::t_fe5f50f1c38e88 28-92
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_1ca65ffa5958ee::t_69336dd0e020de 21-24,96-259
+src/shared/agent-runtime-provider.node.test.ts
+  s_1ca65ffa5958ee::t_1843f10d5d576c 3-9,42-82,85-123
+  s_1ca65ffa5958ee::t_25bbf708337141 83-84,124
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.ts
+  s_1ca65ffa5958ee::t_add803c1ca6123 18-20
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.test.tsx
+  s_1ca65ffa5958ee::t_31612f0863d8f9 329
+  s_1ca65ffa5958ee::t_3b0ac6f0156223 314-328,330-353
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_7c98f3370d6018 159-168
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_1ca65ffa5958ee::t_add803c1ca6123 280-281
+  s_1ca65ffa5958ee::t_c7c9a60691b8d9 271-272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "917e9bef716a19ee4077d09aa80bef5ccb495edb",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
