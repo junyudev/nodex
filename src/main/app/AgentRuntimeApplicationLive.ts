@@ -466,7 +466,11 @@ const supervisor = Layer.effectContext(
         }),
     });
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
-      Context.add(AgentRuntimeSessionActivity, SessionActivity.inactive),
+      Context.add(AgentRuntimeSessionActivity, {
+        ...SessionActivity.inactive,
+        connection: runtime.connectionState,
+        connectionChanges: runtime.connectionChanges,
+      }),
       Context.add(AgentRuntimeProviderConfiguration, { refresh }),
       Context.add(AgentRuntimeApplication, product),
       Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),

@@ -291,3 +291,14 @@ supervised connection. An unused endpoint snapshot does not start a provider.
 An existing execution database resumes under the supervised Host after application
 tools are ready. Durable Session deletion intents are reconciled after each connection;
 their acknowledged tombstones prevent a deleted execution from being adopted again.
+
+## Execution process supervision
+
+Main supervises one execution process per Profile and publishes its connection state to every
+window: idle (not running; the next Agent action starts it), starting, ready with its process
+generation, restarting with the recovery attempt, or failed with a readable reason. An
+unexpected exit or failed start makes the next start a recovery. At most three recoveries
+start within any five-minute window, whether automatic or requested by an Agent action, so a
+crash loop cannot restart once per user action. When the budget is spent the state stays
+failed until the window moves on; the next Agent action after that starts the process again.
+Failed requests are never resubmitted automatically.
