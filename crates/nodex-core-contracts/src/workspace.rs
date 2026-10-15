@@ -1150,12 +1150,15 @@ pub struct ProjectWorkspaceProjectActivitySummary {
 pub struct ProjectWorkspacePageChatActivitySummary {
     pub page_id: String,
     pub related_count: u32,
+    /// Native thread status only; Runtime-bound Sessions report live status outside Core.
     pub working_count: u32,
     pub waiting_on_approval_count: u32,
     pub waiting_on_user_input_count: u32,
     pub error_count: u32,
     pub unread_count: u32,
     pub sole_session_id: Option<String>,
+    /// The most recently updated linked Runtime-bound Sessions, bounded, for live status.
+    pub runtime_session_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1164,7 +1167,11 @@ pub struct ProjectWorkspacePageChatItem {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub display_title: String,
+    /// The native Thread, or the Runtime root Thread of a Runtime-bound Session.
     pub thread_id: Option<String>,
+    /// Present for Runtime-bound Sessions; their status comes from execution, not `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub thread_preview: String,
     pub status: Option<ProjectWorkspaceThreadStatus>,
     pub thread_archived: bool,

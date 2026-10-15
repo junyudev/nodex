@@ -513,7 +513,7 @@ export interface PageSearchMetadataSnapshot {
 }
 
 export interface CommandPaletteThreadSummary {
-  backendBinding: AgentBackendBinding;
+  /** The native Thread, or the Runtime root Thread of a Runtime-bound Session. */
   threadId: string;
   sessionId: string | null;
   projectId: string | null;
@@ -664,6 +664,8 @@ export interface PageChatActivitySummary {
   errorCount: number;
   unreadCount: number;
   soleSessionId: string | null;
+  /** Bounded linked Runtime-bound Sessions; their live status comes from Session activity. */
+  runtimeSessionIds: string[];
 }
 
 export interface PageChatActivitySummaryInput {
@@ -681,7 +683,10 @@ export interface PageChatItem {
   projectId: string | null;
   projectName: string | null;
   displayTitle: string;
+  /** The native Thread, or the Runtime root Thread of a Runtime-bound Session. */
   threadId: string | null;
+  /** Present for Runtime-bound Sessions, whose status comes from Session activity. */
+  executionRef: { readonly runtimeId: string; readonly threadId: string } | null;
   threadPreview: string;
   threadStatus: {
     statusType: CodexThreadStatusType;

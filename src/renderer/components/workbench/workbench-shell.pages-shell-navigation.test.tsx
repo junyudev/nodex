@@ -623,6 +623,44 @@ describe("workbench session shell / pages-shell-navigation", () => {
     expect(documentAuthority?.descriptor?.ownerBlockId).toBe("card-beta");
   });
 
+  test("page-stage editor sends to a bound Runtime chat instead of launching it again", async () => {
+    const session = makeBlankSession({
+      id: "session:alpha:runtime-page",
+      executionRef: { runtimeId: "runtime:test", threadId: "engine:runtime-page" },
+      tabs: [
+        {
+          id: "card-tab",
+          sessionId: "session:alpha:runtime-page",
+          projectId: "alpha",
+          kind: "page_stage",
+          title: "Card One",
+          panelId: "right",
+          config: {
+            routingContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
+        },
+      ],
+      panels: makePanels({
+        rightTabIds: ["card-tab"],
+        rightActiveTabId: "card-tab",
+      }),
+    });
+
+    renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
+      .__lastPageStageProps;
+    expect(pageStageProps?.sessionId).toBe("session:alpha:runtime-page");
+    expect(pageStageProps?.canStartThreadInSession).toBe(false);
+    expect(pageStageProps?.sessionThread).toMatchObject({ threadId: "engine:runtime-page" });
+  });
+
   test("page-stage editor can start a new thread in the current blank session", async () => {
     const session = makeBlankSession({
       id: "session:alpha:card-empty",
@@ -686,15 +724,8 @@ describe("workbench session shell / pages-shell-navigation", () => {
       }),
     );
     expect(agentRuntimeLaunchCalls).toHaveLength(1);
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "page-chats:link" &&
-          call[1] === "session:alpha:card-empty" &&
-          JSON.stringify(call[2]) ===
-            JSON.stringify({ pageAccessProjectId: "alpha", pageId: "card-1" }),
-      ),
-    ).toBe(true);
+    // Launch links the Page in its binding transaction; a rejected launch leaves no link.
+    expect(invokeCalls.some((call) => call[0] === "page-chats:link")).toBe(false);
     const startInput = agentRuntimeLaunchCalls[0]!;
     expect(isUuidV7(startInput.launchId)).toBe(true);
     expect(isUuidV7(startInput.message.messageId)).toBe(true);
@@ -735,6 +766,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         projectName: "Alpha",
         displayTitle: "Research follow-up",
         threadId: null,
+        executionRef: null,
         threadPreview: "",
         threadStatus: null,
         threadArchived: false,

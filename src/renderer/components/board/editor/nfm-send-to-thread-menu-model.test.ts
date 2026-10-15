@@ -144,7 +144,6 @@ describe("nfm send-to-thread menu model", () => {
       threadSearchBatch: makeThreadContentBatch("needle", [
         {
           thread: {
-            backendBinding: { kind: "codex" },
             threadId: "content-hit",
             sessionId: "session-existing",
             projectId: "project-1",
@@ -186,7 +185,6 @@ describe("nfm send-to-thread menu model", () => {
       threadSearchBatch: makeThreadContentBatch("handoff", [
         {
           thread: {
-            backendBinding: { kind: "codex" },
             threadId: "server-only-target",
             sessionId: null,
             projectId: "project-1",

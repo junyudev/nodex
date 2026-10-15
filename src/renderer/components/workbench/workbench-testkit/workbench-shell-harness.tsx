@@ -3189,6 +3189,7 @@ export function renderWorkbench({
           errorCount: 0,
           unreadCount: 0,
           soleSessionId: null,
+          runtimeSessionIds: [],
         })),
         projectionRevision: 1,
       };

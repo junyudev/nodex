@@ -108,6 +108,20 @@ const coreTask = (
   },
 });
 
+const runtimeTask = (sessionId: string) => {
+  const task = coreTask(`unused-${sessionId}`, { kind: "codex" });
+  return {
+    session: {
+      ...task.session,
+      id: sessionId,
+      display_title: "Runtime chat",
+      thread_id: null,
+      execution_ref: { runtime_id: "runtime-1", thread_id: `root-${sessionId}` },
+    },
+    thread: null,
+  };
+};
+
 const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
   const tasks = {
     items: [
@@ -117,6 +131,7 @@ const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
         agent_definition_id: "claude-code",
         instance_config_id: null,
       }),
+      ...(kind === "task_window" ? [runtimeTask("session-runtime")] : []),
     ],
     next_cursor: null,
     authority: { projection_revision: 1 },
@@ -343,12 +358,13 @@ it.effect("keeps every Codex-only catalog list free of durable ACP Threads", () 
         project.items.map((thread) => thread.threadId),
         ["thread-codex"],
       );
+      // Runtime-bound Sessions are listed by their root Thread with their product Session.
       assert.deepEqual(
-        palette.map((thread) => ({
-          threadId: thread.threadId,
-          backendBinding: thread.backendBinding,
-        })),
-        [{ threadId: "thread-codex", backendBinding: { kind: "codex" } }],
+        palette.map((thread) => ({ threadId: thread.threadId, sessionId: thread.sessionId })),
+        [
+          { threadId: "root-session-runtime", sessionId: "session-runtime" },
+          { threadId: "thread-codex", sessionId: "session-thread-codex" },
+        ],
       );
     }),
   ),

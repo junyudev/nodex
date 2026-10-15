@@ -26,6 +26,7 @@ import {
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
+import { resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
 import type { LibraryRouteTarget } from "../../../shared/library-module";
@@ -270,6 +271,12 @@ export function WorkbenchTabProjectionPanel({
     if (tab.config.routingContext.kind !== "project") return null;
     const pageAccessProjectId = tab.config.routingContext.projectId;
     const pageTab = tab;
+    // A bound Runtime Session is an existing chat; only an unstarted Session can launch here.
+    const sendTarget = resolveSessionPageSendTarget(
+      activeSession,
+      pageAccessProjectId,
+      activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null,
+    );
     return (
       <PageStageSessionTab
         tab={pageTab}
@@ -278,12 +285,8 @@ export function WorkbenchTabProjectionPanel({
         persistRef={pageStagePersistRef}
         sessionSnapshotRef={pageStageSessionSnapshotRef}
         sessionId={activeSession.id}
-        sessionThread={
-          activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null
-        }
-        canStartThreadInSession={
-          !activeSession.thread && activeSession.projectId === pageAccessProjectId
-        }
+        sessionThread={sendTarget.kind === "thread" ? sendTarget.thread : null}
+        canStartThreadInSession={sendTarget.kind === "launch"}
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}
         onOpenTerminal={async () => {

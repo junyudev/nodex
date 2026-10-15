@@ -14,7 +14,6 @@ import {
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
-import { CODEX_AGENT_BACKEND_BINDING } from "../../shared/agent-backend";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -265,14 +264,38 @@ export const make = (
       const seen = new Set<string>();
       const add = (tasks: CoreTaskWindow): void => {
         for (const task of tasks.items) {
-          if (summaries.length >= 100 || !task.thread || task.thread.parent_thread_id) continue;
-          if (task.thread.backend_binding.kind !== "codex") continue;
-          if (task.session.archived || task.thread.archived || seen.has(task.thread.thread_id)) {
+          if (summaries.length >= 100 || task.session.archived) continue;
+          // Runtime-bound Sessions are chats too; their status and location live in execution.
+          const runtimeRoot = task.thread ? null : task.session.execution_ref?.thread_id;
+          if (runtimeRoot) {
+            if (seen.has(runtimeRoot)) continue;
+            seen.add(runtimeRoot);
+            summaries.push({
+              threadId: runtimeRoot,
+              sessionId: task.session.id,
+              projectId: task.session.project_id ?? null,
+              projectName: task.session.project_id
+                ? (projectNames.get(task.session.project_id) ?? null)
+                : null,
+              title: task.session.display_title,
+              preview: "",
+              cwd: null,
+              gitBranch: null,
+              projectless: task.session.project_id == null,
+              pinned: task.session.pinned,
+              pinnedOrder: task.session.pinned_order ?? null,
+              statusType: "notLoaded",
+              statusActiveFlags: [],
+              createdAt: Date.parse(task.session.created_at) || 0,
+              updatedAt: Date.parse(task.session.updated_at) || 0,
+            });
             continue;
           }
+          if (!task.thread || task.thread.parent_thread_id) continue;
+          if (task.thread.backend_binding.kind !== "codex") continue;
+          if (task.thread.archived || seen.has(task.thread.thread_id)) continue;
           seen.add(task.thread.thread_id);
           summaries.push({
-            backendBinding: CODEX_AGENT_BACKEND_BINDING,
             threadId: task.thread.thread_id,
             sessionId: task.session.id,
             projectId: task.session.project_id ?? null,
@@ -648,7 +671,6 @@ export const make = (
                 const status = parseThreadStatus(thread.status);
                 const result: CommandPaletteThreadSearchResult = {
                   thread: {
-                    backendBinding: CODEX_AGENT_BACKEND_BINDING,
                     threadId: thread.id,
                     sessionId: linked?.id ?? persisted?.sessionId ?? null,
                     projectId,

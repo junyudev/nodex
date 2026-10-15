@@ -177,6 +177,7 @@ export const projectWorkspacePageChatActivitySummaryFromCore = (
   errorCount: summary.error_count,
   unreadCount: summary.unread_count,
   soleSessionId: summary.sole_session_id ?? null,
+  runtimeSessionIds: [...summary.runtime_session_ids],
 });
 
 export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): PageChatItem => ({
@@ -185,6 +186,9 @@ export const projectWorkspacePageChatItemFromCore = (item: CorePageChatItem): Pa
   projectName: item.project_name ?? null,
   displayTitle: item.display_title,
   threadId: item.thread_id ?? null,
+  executionRef: item.execution_ref
+    ? { runtimeId: item.execution_ref.runtime_id, threadId: item.execution_ref.thread_id }
+    : null,
   threadPreview: item.thread_preview,
   threadStatus: item.status
     ? {

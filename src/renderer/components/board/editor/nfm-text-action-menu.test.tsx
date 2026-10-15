@@ -560,7 +560,6 @@ describe("nfm text action menu surface", () => {
             results: [
               {
                 thread: {
-                  backendBinding: { kind: "codex" },
                   threadId: existingThread.threadId,
                   sessionId: existingThread.sessionId,
                   projectId: existingThread.projectId,

@@ -6896,6 +6896,17 @@
                 "display_title": {
                   "type": "string"
                 },
+                "execution_ref": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
+                      "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+                    }
+                  ]
+                },
                 "linked_at": {
                   "type": "string"
                 },
@@ -6934,7 +6945,8 @@
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "The native Thread, or the Runtime root Thread of a Runtime-bound Session."
                 },
                 "thread_preview": {
                   "type": "string"
@@ -41272,7 +41284,8 @@
           "waiting_on_approval_count",
           "waiting_on_user_input_count",
           "error_count",
-          "unread_count"
+          "unread_count",
+          "runtime_session_ids"
         ],
         "properties": {
           "error_count": {
@@ -41287,6 +41300,13 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
+          },
+          "runtime_session_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The most recently updated linked Runtime-bound Sessions, bounded, for live status."
           },
           "sole_session_id": {
             "type": [
@@ -41312,6 +41332,7 @@
           "working_count": {
             "type": "integer",
             "format": "int32",
+            "description": "Native thread status only; Runtime-bound Sessions report live status outside Core.",
             "minimum": 0
           }
         }

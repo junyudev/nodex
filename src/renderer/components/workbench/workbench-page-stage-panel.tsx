@@ -322,11 +322,7 @@ export function PageStageSessionTab({
         { kind: "session", sessionId: targetSessionId, launchId: identity.launchId },
         submittedPresentation,
       );
-      await onLinkPageToChat({
-        pageAccessProjectId: pageAccessProjectId,
-        pageId: tab.config.pageId,
-        sessionId: targetSessionId,
-      });
+      // Launch links the Page in its binding transaction, so a rejected launch leaves no link.
       const submission = sessionFirstSubmissionOwner.begin({
         backend: "codex",
         originProjectId: input.projectId,
@@ -371,7 +367,6 @@ export function PageStageSessionTab({
       threadSettings,
       serviceTierSettings.serviceTier,
       onEnsureDefaultDraftSessionForProject,
-      onLinkPageToChat,
       onRefreshSessions,
       tab.config.pageId,
       pageAccessProjectId,
@@ -593,7 +588,17 @@ export function PageStageSessionTab({
             onLoadMoreRelatedChats={async () => {
               await relatedChatsQuery.fetchNextPage();
             }}
-            onOpenCodexThread={onOpenThread}
+            onOpenCodexThread={async (threadId) => {
+              // Runtime chats open by Session identity; their root Thread is not a native Thread.
+              const runtimeChat = relatedChats.find(
+                (chat) => chat.executionRef?.threadId === threadId,
+              );
+              if (runtimeChat && onOpenRelatedChat) {
+                await onOpenRelatedChat(runtimeChat.sessionId);
+                return;
+              }
+              await onOpenThread(threadId);
+            }}
             onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {
               if (routingContext.kind !== "project") return;
               await onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {

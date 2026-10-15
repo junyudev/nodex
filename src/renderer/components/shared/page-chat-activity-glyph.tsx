@@ -19,6 +19,8 @@ export function PageChatActivityGlyph({
   const glyph =
     activity.execution === "working" ? (
       <ActivitySpinnerIcon className="size-3" animationDurationMs={2_000} />
+    ) : activity.execution === "background" ? (
+      <ActivitySpinnerIcon className="size-3 opacity-60" animationDurationMs={5_000} />
     ) : activity.execution === "error" ? (
       <CircleAlert className="size-3" />
     ) : activity.execution === "approval" ? (

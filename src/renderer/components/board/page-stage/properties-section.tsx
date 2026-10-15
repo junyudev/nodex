@@ -19,7 +19,7 @@ import {
   ThreadIcon,
 } from "@/components/shared/icons";
 import { PageChatActivityGlyph } from "@/components/shared/page-chat-activity-glyph";
-import { presentPageChatItemActivity } from "@/lib/page-chat-activity-presentation";
+import { usePageChatItemActivity } from "@/lib/use-page-chat-activity";
 import {
   advancePageStageQuietPropertiesState,
   createPageStageQuietPropertiesState,
@@ -56,7 +56,7 @@ export function RelatedChatPropertyChip({
   onOpen,
   onRemove,
 }: RelatedChatPropertyChipProps) {
-  const activity = presentPageChatItemActivity(chat);
+  const activity = usePageChatItemActivity(chat);
 
   return (
     <span

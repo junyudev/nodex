@@ -1643,6 +1643,7 @@ export interface components {
                 /** Format: int64 */
                 readonly conversation_recency_at?: number | null;
                 readonly display_title: string;
+                readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
                 readonly linked_at: string;
                 readonly project_id?: string | null;
                 readonly project_name?: string | null;
@@ -1650,6 +1651,7 @@ export interface components {
                 readonly session_id: string;
                 readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
                 readonly thread_archived: boolean;
+                /** @description The native Thread, or the Runtime root Thread of a Runtime-bound Session. */
                 readonly thread_id?: string | null;
                 readonly thread_preview: string;
                 readonly unread: boolean;
@@ -9851,6 +9853,8 @@ export interface components {
             readonly page_id: string;
             /** Format: int32 */
             readonly related_count: number;
+            /** @description The most recently updated linked Runtime-bound Sessions, bounded, for live status. */
+            readonly runtime_session_ids: readonly string[];
             readonly sole_session_id?: string | null;
             /** Format: int32 */
             readonly unread_count: number;
@@ -9858,7 +9862,10 @@ export interface components {
             readonly waiting_on_approval_count: number;
             /** Format: int32 */
             readonly waiting_on_user_input_count: number;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description Native thread status only; Runtime-bound Sessions report live status outside Core.
+             */
             readonly working_count: number;
         };
         readonly ProjectWorkspaceProject: {

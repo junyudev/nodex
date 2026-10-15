@@ -85,6 +85,7 @@ const pageChatRuntime = vi.hoisted(() => ({
     errorCount: number;
     unreadCount: number;
     soleSessionId: string | null;
+    runtimeSessionIds: string[];
   }>,
 }));
 vi.mock("@/lib/database-property-options-runtime", async (importOriginal) => ({
@@ -857,6 +858,7 @@ describe("DatabaseViewSurface", () => {
         errorCount: 0,
         unreadCount: 1,
         soleSessionId: "session-related",
+        runtimeSessionIds: [],
       },
     ];
     const onOpenPage = vi.fn();

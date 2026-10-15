@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::collection::{
@@ -6,7 +6,8 @@ use nodex_core_contracts::collection::{
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspacePageChatActivitySummary,
-    ProjectWorkspacePageChatItem, ProjectWorkspaceThreadStatus,
+    ProjectWorkspacePageChatItem, ProjectWorkspaceSessionExecutionRef,
+    ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -25,6 +26,9 @@ use super::session_mutation::{
 
 const MAX_INITIAL_PAGE_IDS: usize = 16;
 const MAX_ACTIVITY_PAGE_IDS: usize = 200;
+/// Live status for Runtime-bound Sessions is read per Session outside Core; a Page reports at
+/// most this many of its most recently updated ones.
+const MAX_ACTIVITY_RUNTIME_SESSIONS: i64 = 32;
 
 pub(super) fn validate_initial_page_ids(
     connection: &Connection,
@@ -265,6 +269,7 @@ pub(super) fn read_page_chat_activity_summaries(
     if rows.len() != page_ids.len() {
         return Err(not_found("One or more Pages are unavailable"));
     }
+    let mut runtime_sessions = read_runtime_session_ids(connection, library_id, page_ids)?;
     rows.into_iter()
         .map(
             |(
@@ -278,6 +283,7 @@ pub(super) fn read_page_chat_activity_summaries(
                 sole_session_id,
             )| {
                 Ok(ProjectWorkspacePageChatActivitySummary {
+                    runtime_session_ids: runtime_sessions.remove(&page_id).unwrap_or_default(),
                     page_id,
                     related_count: bounded_count(related_count)?,
                     working_count: bounded_count(working_count)?,
@@ -292,6 +298,56 @@ pub(super) fn read_page_chat_activity_summaries(
         .collect()
 }
 
+/// Runtime-bound linked Sessions per Page, most recently updated first and bounded per Page.
+fn read_runtime_session_ids(
+    connection: &Connection,
+    library_id: &str,
+    page_ids: &[String],
+) -> Result<BTreeMap<String, Vec<String>>, StoreError> {
+    let mut parameters = vec![
+        SqlValue::Text(library_id.to_owned()),
+        SqlValue::Integer(MAX_ACTIVITY_RUNTIME_SESSIONS),
+    ];
+    let requested_values = page_ids
+        .iter()
+        .map(|page_id| {
+            parameters.push(SqlValue::Text(page_id.clone()));
+            format!("(?{})", parameters.len())
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "WITH requested(page_id) AS (VALUES {requested_values}), \
+         ranked AS ( \
+           SELECT relation.page_id, session.id AS session_id, \
+             ROW_NUMBER() OVER ( \
+               PARTITION BY relation.page_id ORDER BY session.updated_at DESC, session.id \
+             ) AS rank \
+           FROM requested \
+           JOIN project_session_pages relation ON relation.page_id = requested.page_id \
+           JOIN project_sessions session \
+             ON session.id = relation.session_id AND session.archived = 0 \
+             AND (session.project_id IS NULL OR EXISTS ( \
+               SELECT 1 FROM projects owner \
+               WHERE owner.id = session.project_id AND owner.library_id = ?1 \
+             )) \
+           JOIN project_session_execution_bindings binding ON binding.session_id = session.id \
+         ) \
+         SELECT page_id, session_id FROM ranked WHERE rank <= ?2 ORDER BY page_id, rank"
+    );
+    let mut sessions = BTreeMap::<String, Vec<String>>::new();
+    let rows = connection
+        .prepare(&sql)?
+        .query_map(params_from_iter(parameters.iter()), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for (page_id, session_id) in rows {
+        sessions.entry(page_id).or_default().push(session_id);
+    }
+    Ok(sessions)
+}
+
 pub(super) fn read_page_chat_window(
     connection: &Connection,
     library_id: &str,
@@ -303,7 +359,7 @@ pub(super) fn read_page_chat_window(
     require_page_access(connection, library_id, page_id)?;
     let normalized = normalize_request(request)?;
     let fingerprint =
-        cursor::query_fingerprint(&("workspace_page_chat_window_v2", page_id, include_archived))?;
+        cursor::query_fingerprint(&("workspace_page_chat_window_v3", page_id, include_archived))?;
     let subject = CollectionCursorSubject {
         kind: "workspace_page_chats",
         library_id,
@@ -350,14 +406,11 @@ pub(super) fn read_page_chat_window(
                 SqlValue::Text(linked_at),
                 SqlValue::Text(stable_id),
             ]);
-            "AND (CASE WHEN thread.thread_id IS NULL THEN 1 ELSE 0 END > ?4 \
-              OR (CASE WHEN thread.thread_id IS NULL THEN 1 ELSE 0 END = ?4 \
-                AND -COALESCE(thread.recency_at, 0) > ?5) \
-              OR (CASE WHEN thread.thread_id IS NULL THEN 1 ELSE 0 END = ?4 \
-                AND -COALESCE(thread.recency_at, 0) = ?5 AND relation.linked_at < ?6) \
-              OR (CASE WHEN thread.thread_id IS NULL THEN 1 ELSE 0 END = ?4 \
-                AND -COALESCE(thread.recency_at, 0) = ?5 AND relation.linked_at = ?6 \
-                AND session.id > ?7))"
+            "AND (chat.recency_null > ?4 \
+              OR (chat.recency_null = ?4 AND chat.recency_order > ?5) \
+              OR (chat.recency_null = ?4 AND chat.recency_order = ?5 AND chat.linked_at < ?6) \
+              OR (chat.recency_null = ?4 AND chat.recency_order = ?5 AND chat.linked_at = ?6 \
+                AND chat.session_id > ?7))"
         })
         .unwrap_or_default();
     parameters.push(SqlValue::Integer(
@@ -365,25 +418,37 @@ pub(super) fn read_page_chat_window(
             .map_err(|_| invalid("Page Chat window size is invalid"))?,
     ));
     let limit_parameter = parameters.len();
+    // A Runtime-bound Session has no native thread recency; its Session recency orders it.
     let sql = format!(
-        "SELECT session.id, session.project_id, project.name, \
-           session.no_thread_fallback_title, thread.thread_id, thread.thread_name, \
-           COALESCE(substr(thread.thread_preview, 1, 1024), ''), thread.status_type, \
-           thread.status_active_flags_json, COALESCE(thread.archived, 0), session.unread, \
-           session.archived, thread.recency_at, relation.linked_at, \
-           CASE WHEN thread.thread_id IS NULL THEN 1 ELSE 0 END AS recency_null, \
-           -COALESCE(thread.recency_at, 0) AS recency_order \
-         FROM project_session_pages relation \
-         JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?2 \
-         JOIN project_sessions session ON session.id = relation.session_id \
-         LEFT JOIN projects project ON project.id = session.project_id \
-         LEFT JOIN project_session_threads session_thread ON session_thread.session_id = session.id \
-         LEFT JOIN codex_threads thread ON thread.thread_id = session_thread.thread_id \
-         WHERE relation.page_id = ?1 \
-           AND (session.project_id IS NULL OR project.library_id = ?2) \
-           AND (?3 = 1 OR session.archived = 0) \
-           {cursor_predicate} \
-         ORDER BY recency_null, recency_order, relation.linked_at DESC, session.id \
+        "SELECT * FROM ( \
+           SELECT session.id AS session_id, session.project_id, project.name, \
+             session.no_thread_fallback_title, thread.thread_id, thread.thread_name, \
+             COALESCE(substr(thread.thread_preview, 1, 1024), ''), thread.status_type, \
+             thread.status_active_flags_json, COALESCE(thread.archived, 0), session.unread, \
+             session.archived, \
+             COALESCE(thread.recency_at, CASE WHEN binding.session_id IS NOT NULL \
+               THEN unixepoch(session.updated_at) * 1000 END) AS conversation_recency_at, \
+             relation.linked_at AS linked_at, \
+             CASE WHEN thread.thread_id IS NULL AND binding.session_id IS NULL \
+               THEN 1 ELSE 0 END AS recency_null, \
+             -COALESCE(thread.recency_at, CASE WHEN binding.session_id IS NOT NULL \
+               THEN unixepoch(session.updated_at) * 1000 END, 0) AS recency_order, \
+             binding.runtime_id, binding.runtime_thread_id \
+           FROM project_session_pages relation \
+           JOIN pages page ON page.block_id = relation.page_id AND page.library_id = ?2 \
+           JOIN project_sessions session ON session.id = relation.session_id \
+           LEFT JOIN projects project ON project.id = session.project_id \
+           LEFT JOIN project_session_threads session_thread \
+             ON session_thread.session_id = session.id \
+           LEFT JOIN codex_threads thread ON thread.thread_id = session_thread.thread_id \
+           LEFT JOIN project_session_execution_bindings binding \
+             ON binding.session_id = session.id \
+           WHERE relation.page_id = ?1 \
+             AND (session.project_id IS NULL OR project.library_id = ?2) \
+             AND (?3 = 1 OR session.archived = 0) \
+         ) chat \
+         WHERE 1 = 1 {cursor_predicate} \
+         ORDER BY chat.recency_null, chat.recency_order, chat.linked_at DESC, chat.session_id \
          LIMIT ?{limit_parameter}"
     );
     let rows = connection
@@ -431,8 +496,18 @@ struct PageChatRow {
 }
 
 fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
-    let thread_id = row.get::<_, Option<String>>(4)?;
-    let status = thread_id
+    let native_thread_id = row.get::<_, Option<String>>(4)?;
+    let execution_ref = match (
+        row.get::<_, Option<String>>(16)?,
+        row.get::<_, Option<String>>(17)?,
+    ) {
+        (Some(runtime_id), Some(thread_id)) => Some(ProjectWorkspaceSessionExecutionRef {
+            runtime_id,
+            thread_id,
+        }),
+        _ => None,
+    };
+    let status = native_thread_id
         .as_ref()
         .map(|_| -> rusqlite::Result<ProjectWorkspaceThreadStatus> {
             let status_type = match row.get::<_, String>(7)?.as_str() {
@@ -455,9 +530,14 @@ fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
     let thread_preview = super::task_window::bounded_preview(&row.get::<_, String>(6)?);
     let display_title = super::read::project_session_display_title(
         row.get::<_, Option<String>>(5)?.as_deref(),
-        thread_id.as_ref().map(|_| thread_preview.as_str()),
+        native_thread_id.as_ref().map(|_| thread_preview.as_str()),
         &fallback_title,
     );
+    let thread_id = native_thread_id.or_else(|| {
+        execution_ref
+            .as_ref()
+            .map(|reference| reference.thread_id.clone())
+    });
     Ok(PageChatRow {
         item: ProjectWorkspacePageChatItem {
             session_id: row.get(0)?,
@@ -465,6 +545,7 @@ fn page_chat_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PageChatRow> {
             project_name: row.get(2)?,
             display_title,
             thread_id,
+            execution_ref,
             thread_preview,
             status,
             thread_archived: row.get::<_, i64>(9)? == 1,
@@ -899,6 +980,117 @@ mod tests {
             summaries[0].sole_session_id.as_deref(),
             Some("session:working")
         );
+    }
+
+    #[test]
+    fn lists_runtime_sessions_by_session_recency_with_their_execution_root() {
+        let workspace = seeded_workspace();
+        create_library_page(&workspace, "page:runtime", "project:default");
+        create_page_session(
+            &workspace,
+            "create-threadless-chat",
+            "session:threadless",
+            "page:runtime",
+        );
+        create_page_session(
+            &workspace,
+            "create-native-chat",
+            "session:native",
+            "page:runtime",
+        );
+        apply(
+            &workspace.module,
+            "create-native-thread",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "thread:native".to_owned(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    project_id: Some(Some("project:default".to_owned())),
+                    thread_name: Some(Some("Native chat".to_owned())),
+                    thread_preview: Some("Native preview".to_owned()),
+                    created_at: Some(10),
+                    updated_at: Some(10),
+                    recency_at: Some(10),
+                    linked_at: Some("2026-07-19T06:01:00.000Z".to_owned()),
+                    ..ProjectWorkspaceThreadPatch::default()
+                }),
+            },
+        );
+        apply(
+            &workspace.module,
+            "link-native-thread",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:native".to_owned(),
+                intent: ProjectSessionIntent::LinkThread {
+                    thread_id: "thread:native".to_owned(),
+                    expected_project_id: Some("project:default".to_owned()),
+                    thread_patch: None,
+                    execution_location: None,
+                },
+            },
+        );
+        apply(
+            &workspace.module,
+            "launch-runtime-chat",
+            ProjectWorkspaceIntent::CreateAgentRuntimeSession {
+                session_id: "session:runtime".to_owned(),
+                replacement_default_session_id: "replacement:runtime".to_owned(),
+                project_id: Some("project:default".to_owned()),
+                title: "Runtime chat".to_owned(),
+                initial_page_ids: vec!["page:runtime".to_owned()],
+                runtime_id: "runtime:primary".to_owned(),
+                runtime_thread_id: "root:runtime".to_owned(),
+                launch_request_id: "launch:runtime".to_owned(),
+            },
+        );
+
+        let window = |after: Option<String>| {
+            let ProjectWorkspaceReadValue::PageChatWindow { chats } = read(
+                &workspace.module,
+                ProjectWorkspaceRead::PageChatWindow {
+                    page_id: "page:runtime".to_owned(),
+                    include_archived: Some(false),
+                    window: CollectionWindowRequest {
+                        after,
+                        first: Some(1),
+                    },
+                },
+            ) else {
+                panic!("Page Chat window");
+            };
+            chats
+        };
+        let first = window(None);
+        let runtime = &first.items[0];
+        assert_eq!(runtime.session_id, "session:runtime");
+        assert_eq!(runtime.display_title, "Runtime chat");
+        assert_eq!(runtime.thread_id.as_deref(), Some("root:runtime"));
+        assert_eq!(
+            runtime
+                .execution_ref
+                .as_ref()
+                .map(|reference| (reference.runtime_id.as_str(), reference.thread_id.as_str())),
+            Some(("runtime:primary", "root:runtime"))
+        );
+        assert!(runtime.status.is_none());
+        assert!(runtime.conversation_recency_at.is_some_and(|recency| recency > 10));
+        let second = window(first.next_cursor.clone());
+        assert_eq!(second.items[0].session_id, "session:native");
+        assert!(second.items[0].execution_ref.is_none());
+        let third = window(second.next_cursor.clone());
+        assert_eq!(third.items[0].session_id, "session:threadless");
+        assert!(third.items[0].thread_id.is_none());
+        assert!(third.next_cursor.is_none());
+
+        let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::PageChatActivitySummaries {
+                page_ids: vec!["page:runtime".to_owned()],
+            },
+        ) else {
+            panic!("Page Chat activity summaries");
+        };
+        assert_eq!(summaries[0].related_count, 3);
+        assert_eq!(summaries[0].runtime_session_ids, vec!["session:runtime"]);
     }
 
     #[test]

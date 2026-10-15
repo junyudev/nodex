@@ -40,7 +40,8 @@ interface CommandPaletteProps {
   commandHandlers: CommandPaletteShellCommandHandlers;
   onOpenChange: (open: boolean) => void;
   onOpenPage: (projectId: string, pageId: string, titleSnapshot?: string) => void;
-  onOpenThread: (threadId: string) => void;
+  /** Runtime chats carry their Session; their root Thread is not a native Thread. */
+  onOpenThread: (threadId: string, sessionId: string | null) => void;
 }
 
 type PaletteItem =
@@ -116,7 +117,7 @@ export function CommandPalette({
       return;
     }
     if (item.kind === "thread") {
-      onOpenThread(item.threadId);
+      onOpenThread(item.threadId, item.sessionId);
       return;
     }
     if (item.id === "searchChats") {

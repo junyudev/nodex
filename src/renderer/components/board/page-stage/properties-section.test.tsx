@@ -243,6 +243,7 @@ describe("PageStagePropertiesSection", () => {
               projectName: "Nodex",
               displayTitle: "Research follow-up",
               threadId: null,
+              executionRef: null,
               threadPreview: "",
               threadStatus: null,
               threadArchived: false,
