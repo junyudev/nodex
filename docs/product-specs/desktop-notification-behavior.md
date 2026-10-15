@@ -7,7 +7,7 @@ Active
 ## Purpose
 
 This document is the source of truth for Nodex OS-level notifications produced
-by Codex task lifecycle events. Browser delivery, in-app toasts, reminder
+by Codex task lifecycle events and by Agent Runtime Sessions. Browser delivery, in-app toasts, reminder
 notifications, and remote cloud-task watchers are separate features.
 
 ## Notification Families
@@ -30,7 +30,8 @@ The feature has four owners:
 1. `CodexProtocolNotificationEffects` publishes a typed application occurrence
    only after the canonical conversation transition or pending-request state
    change has committed. Hydration and renderer snapshot projection are not
-   producers.
+   producers. Agent Runtime Sessions publish the same occurrences from Main's
+   Session activity transitions (see [Agent Runtime Sessions](#agent-runtime-sessions)).
 2. The pure Codex notification handler decides policy, settings, focus,
    presentation, host, and target renderer; its Main-scoped runtime owns event
    subscription and action admission.
@@ -249,3 +250,25 @@ if its Turn is still running. It has no inline reply or blocking-request identit
 notification cannot send text or start another Turn. Accepted answers and Turn completion
 dismiss the corresponding question notifications; foreground presentation also dismisses
 notifications through the ordinary visibility boundary.
+
+## Agent Runtime Sessions
+
+A Runtime-bound Session uses the same families, settings, policy, copy and
+target selection. Its conversation identity is the Session's root Thread, its
+title is the Session title, and its host is the local host.
+
+- `turn-complete`: the root's foreground Run ends completed, failed or
+  interrupted, including an automatic wake Run after delegated results. A
+  cancelled Run counts as interrupted; a Run rolled back by conversation rewind
+  does not notify. Live delegated or background work, or a delegated result
+  that will wake the root, is a pending continuation for every terminal state;
+  a queued follow-up that starts next suppresses completed and failed but not
+  interrupted. The body is the Run's final reply, read only when turn policy
+  could show the notification. Delegated children never notify on their own.
+- `question`: the root starts waiting for an information answer or gains
+  another pending question. One notification represents the waiting episode
+  and is withdrawn when the root stops waiting.
+
+Either event marks the Session unread in Core unless a focused window presents
+its conversation or the Session is archived. Process restarts and missed
+observations reread activity without producing notifications.

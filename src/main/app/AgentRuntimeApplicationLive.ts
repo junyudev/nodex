@@ -66,6 +66,11 @@ import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess
 import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
 import { shellQuote } from "../platform/node/NodexCliShell";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
+import { createOperationId } from "../core-runtime/operation-identity";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
@@ -161,6 +166,35 @@ const supervisor = Layer.effectContext(
     const activity = yield* SessionActivity.make({
       resolveSessions: yield* SessionActivity.coreSessionResolver,
     });
+    const presented = yield* CodexRendererPresentationRegistry;
+    const applicationEvents = yield* CodexApplicationEventHub;
+    const projects = yield* ProjectWorkspace;
+    yield* runSessionNotifications({
+      transitions: activity.transitions,
+      isPresentedInForeground: presented.isPresentedInForeground,
+      readSession: (sessionId) =>
+        projects.getProjectSession(sessionId).pipe(
+          Effect.map((session) =>
+            session
+              ? { title: session.displayTitle, archived: session.archived, unread: session.unread }
+              : null,
+          ),
+        ),
+      markUnread: (sessionId) =>
+        projects.markProjectSessionUnread({
+          operationId: createOperationId("agent-runtime.session.unread"),
+          payload: { sessionId, unread: true },
+        }),
+      turnMayShow: settings.snapshot().pipe(
+        Effect.map(
+          ({ notifications }) =>
+            notifications.turnMode === "always" ||
+            (notifications.turnMode === "unfocused" && !presented.hasForegroundClient()),
+        ),
+        Effect.orElseSucceed(() => true),
+      ),
+      publish: (event) => applicationEvents.publish({ kind: "threadNotification", value: event }),
+    }).pipe(Effect.forkScoped);
     // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
     const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();
     const preparedEnvironment = new WeakMap<

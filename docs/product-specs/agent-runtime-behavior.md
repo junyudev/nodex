@@ -341,7 +341,9 @@ then reports which roots changed, and only those roots are re-read and mapped to
 through the Core binding, so idle Sessions cost no execution or Core reads. Changes carry one
 increasing sequence. A process replacement or missed observation publishes a reset, after which
 windows read a fresh snapshot of at most 500 Sessions. Reading activity never starts an idle
-execution process; while none runs, the snapshot is empty and complete.
+execution process; while none runs, the snapshot is empty and complete. Finished foreground
+Runs and new questions mark unseen Sessions unread and raise
+[desktop notifications](desktop-notification-behavior.md#agent-runtime-sessions).
 
 ## Execution process supervision
 
