@@ -115,6 +115,8 @@ export interface InboxItem {
   readonly title: string;
   readonly body: string;
   readonly bodyTruncated: boolean;
+  /** Plain message text shown whole, so it can be rewritten in place; else edit its Page. */
+  readonly bodyEditable: boolean;
   readonly submittedAt: string;
   readonly source: InboxSource;
   readonly kind: InboxEntryKind | null;
@@ -195,6 +197,13 @@ export interface InboxSetStateInput extends InboxPageIdsInput {
 export interface InboxSetKindInput {
   readonly pageId: string;
   readonly kind: InboxEntryKind | null;
+}
+
+/** Rewrites a waiting message; `originalText` is the text the user started from. */
+export interface InboxEditInput {
+  readonly pageId: string;
+  readonly originalText: string;
+  readonly text: string;
 }
 
 export interface InboxProposalInput {

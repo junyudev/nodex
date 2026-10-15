@@ -11,11 +11,12 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxProjectCount,
-    ProjectWorkspaceInboxProposal, ProjectWorkspaceInboxProposalOrigin,
-    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
-    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
-    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis,
+    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposal,
+    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
+    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
+    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceThreadStatus,
@@ -27,7 +28,7 @@ use crate::infrastructure::collection_window::{WindowCandidate, assemble, normal
 use crate::infrastructure::cursor::{
     self, CollectionCursorSubject, CursorDirection, KeysetCoordinate, KeysetValue,
 };
-use crate::infrastructure::sqlite::StoreError;
+use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::inbox::{
     MAX_PROPOSAL_PAGES, corrupt, invalid, parse_action, parse_kind, proposal_page_ids, scope_home,
@@ -113,7 +114,7 @@ pub(super) fn read_summary(
 /// A message stays in its Inbox until the user handles it. A confirmed chat dispatch,
 /// filing it into a Project, Keep, and Done all handle it; a failed dispatch brings it
 /// back. Where the Page lives does not matter. Never NULL.
-const IN_INBOX: &str = "(entry.state = 'open' \
+pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
     AND COALESCE(proposal.state, '') <> 'dispatching' \
     AND NOT (COALESCE(proposal.state, '') = 'completed' \
       AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
@@ -342,6 +343,61 @@ fn read_entry(
         .ok_or_else(|| corrupt("Inbox entry Page disappeared during the read"))
 }
 
+/// Prepares a user's rewrite of a message: the same rules as sending it, fenced by the
+/// text the user started from and the Page state that text was read at.
+pub(super) fn read_message_edit(
+    connection: &Connection,
+    _context: &BoundModuleContext,
+    library_id: &str,
+    page_id: &str,
+    original_text: &str,
+    text: &str,
+) -> Result<ProjectWorkspaceInboxMessageEdit, StoreError> {
+    super::inbox::require_waiting_entry(connection, library_id, page_id)?;
+    let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
+    let current = editable_text(&row)
+        .filter(|_| !row.source_body_truncated)
+        .ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::Conflict,
+                "This message has richer content now; edit it as its Page",
+                false,
+            )
+        })?;
+    if current != original_text {
+        return Err(StoreError::new(
+            StoreErrorCode::RevisionConflict,
+            "This message changed while you were editing it",
+            true,
+        ));
+    }
+    let lines = super::inbox::message_lines(text)?;
+    let changed = lines.join("\n") != current;
+    let provisional = row.provisional_title.as_deref() == Some(row.title.as_str());
+    let title_markdown = changed
+        .then(|| super::inbox::provisional_title(&lines[0]))
+        .filter(|excerpt| provisional && *excerpt != row.title)
+        .map(|excerpt| super::inbox::title_markdown(&excerpt));
+    Ok(ProjectWorkspaceInboxMessageEdit {
+        basis: ProjectWorkspaceInboxPageBasis {
+            page_id: page_id.to_owned(),
+            generation: row.generation,
+            head_seq: row.head_seq,
+        },
+        body_markdown: changed.then(|| super::inbox::message_body_nfm(&lines)),
+        title_markdown,
+    })
+}
+
+/// The message text while the bounded Page body is still plain message text the stream
+/// shows whole; otherwise the message is edited as its Page.
+fn editable_text(row: &EntryRow) -> Option<String> {
+    row.nfm
+        .as_deref()
+        .and_then(super::inbox::plain_message_text)
+        .filter(|text| text.len() <= MAX_STREAM_BODY_BYTES)
+}
+
 /// The message is the Page body; the title is only its label.
 fn message_body(row: &EntryRow) -> String {
     let Some(nfm) = &row.nfm else {
@@ -395,6 +451,7 @@ fn read_item(
 ) -> Result<(ProjectWorkspaceInboxItem, i64), StoreError> {
     let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
     let (body, body_truncated) = bounded_utf8(&message_body(&row), MAX_STREAM_BODY_BYTES);
+    let body_truncated = body_truncated || row.source_body_truncated || row.nfm.is_none();
     let location = location(connection, home, &row)?;
     let proposal = row
         .current_proposal_id
@@ -407,8 +464,9 @@ fn read_item(
             page_id: page_id.to_owned(),
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             title: row.title.clone(),
+            body_editable: !body_truncated && editable_text(&row).is_some(),
             body,
-            body_truncated: body_truncated || row.source_body_truncated || row.nfm.is_none(),
+            body_truncated,
             submitted_at: row.submitted_at.clone(),
             source: source(&row),
             kind: parse_kind(row.kind.as_deref())?,

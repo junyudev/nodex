@@ -12,6 +12,7 @@ import {
   confirmInboxDispatch,
   deleteInboxMessages,
   dispatchInboxEntries,
+  editInboxMessage,
   keepInboxEntries,
   requestInboxSuggestion,
   retryInboxDispatch,
@@ -25,6 +26,8 @@ import { useMoveInboxPagesToProject } from "./use-inbox-move";
 
 export interface InboxActions {
   readonly send: (text: string) => Promise<boolean>;
+  /** Rewrites a waiting message from the text the user started with; it is suggested again. */
+  readonly edit: (pageId: string, originalText: string, text: string) => Promise<boolean>;
   /** Confirms a suggestion, optionally as edited by the user. */
   readonly confirm: (proposal: InboxProposal, edited?: InboxDispatchAction) => Promise<boolean>;
   /** Authors and confirms a dispatch without a suggestion. */
@@ -97,6 +100,10 @@ export function useInboxActions(projects: readonly Project[], scope: InboxScope)
 
   return {
     send: (text) => run("The message could not be saved", () => sendInboxMessage({ scope, text })),
+    edit: (pageId, originalText, text) =>
+      run("The message could not be edited", () =>
+        editInboxMessage({ pageId, originalText, text }),
+      ),
     confirm: (proposal, edited) =>
       run("The suggestion could not be confirmed", async () => {
         const action = edited ?? proposal.action;

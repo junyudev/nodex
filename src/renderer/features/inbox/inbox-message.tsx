@@ -107,6 +107,7 @@ export function InboxMessage({
   selectionActive,
   onToggleSelected,
   onOpenSource,
+  editor,
   strip,
   actions,
 }: {
@@ -116,6 +117,8 @@ export function InboxMessage({
   readonly selectionActive: boolean;
   readonly onToggleSelected: () => void;
   readonly onOpenSource: (sessionId: string) => void;
+  /** Takes the message text's place while the user rewrites it. */
+  readonly editor: React.ReactNode;
   /** What Nodex made of the message, inside the card; null leaves the message alone. */
   readonly strip: React.ReactNode;
   /** The row of ways to act, under the card and exactly as wide. */
@@ -184,7 +187,13 @@ export function InboxMessage({
         )}
       >
         {checkbox}
-        <div className="flex w-fit max-w-[80%] min-w-[min(18rem,80%)] flex-col gap-1.5">
+        <div
+          className={cn(
+            "flex max-w-[80%] min-w-[min(18rem,80%)] flex-col gap-1.5",
+            // A rewrite gets the stream's full message width to work in.
+            editor == null ? "w-fit" : "w-full",
+          )}
+        >
           {/* One object: the message on top and, joined to it, the strip about it. */}
           <div
             data-testid="inbox-message-unit"
@@ -203,7 +212,7 @@ export function InboxMessage({
                 !fromUser && strip != null && "border-b border-token-border",
               )}
             >
-              <UserMessageText text={item.body} />
+              {editor ?? <UserMessageText text={item.body} />}
             </div>
             {strip == null ? null : (
               <div data-testid="inbox-triage" className="px-3 py-2.5">

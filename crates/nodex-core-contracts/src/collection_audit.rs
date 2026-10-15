@@ -78,7 +78,8 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }
         | ProjectWorkspaceRead::SidebarSectionPlacement { .. }
-        | ProjectWorkspaceRead::InboxSummary { .. } => ReadBudgetPolicy::Identity,
+        | ProjectWorkspaceRead::InboxSummary { .. }
+        | ProjectWorkspaceRead::InboxMessageEdit { .. } => ReadBudgetPolicy::Identity,
     }
 }
 

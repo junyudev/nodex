@@ -437,6 +437,17 @@ pub(super) fn apply(
                     page_id,
                     *entry_kind,
                 ),
+                ProjectWorkspaceIntent::ReviseInboxMessage { page_id } => {
+                    super::inbox::revise_message(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_id,
+                    )
+                }
                 ProjectWorkspaceIntent::RequestInboxSuggestion { page_ids } => {
                     super::inbox::request_suggestion(
                         transaction,

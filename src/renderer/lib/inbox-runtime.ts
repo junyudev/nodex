@@ -1,6 +1,7 @@
 import type {
   InboxConfirmInput,
   InboxDispatchInput,
+  InboxEditInput,
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
@@ -26,6 +27,7 @@ const inboxCommand = <const Key extends string, const Channel extends InboxComma
 
 type InboxCommandChannel =
   | "inbox:send"
+  | "inbox:edit"
   | "inbox:confirm"
   | "inbox:dispatch"
   | "inbox:keep"
@@ -37,6 +39,7 @@ type InboxCommandChannel =
 
 const commands = {
   send: inboxCommand("inbox.send", "inbox:send"),
+  edit: inboxCommand("inbox.edit", "inbox:edit"),
   confirm: inboxCommand("inbox.confirm", "inbox:confirm"),
   dispatch: inboxCommand("inbox.dispatch", "inbox:dispatch"),
   keep: inboxCommand("inbox.keep", "inbox:keep"),
@@ -61,6 +64,7 @@ export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxWindowInput) =>
   invokeRendererQuery("inbox:window", input);
 export const sendInboxMessage = (input: InboxSendInput) => invokePlainCommand(commands.send, input);
+export const editInboxMessage = (input: InboxEditInput) => invokePlainCommand(commands.edit, input);
 export const confirmInboxDispatch = (input: InboxConfirmInput) =>
   invokePlainCommand(commands.confirm, input);
 export const dispatchInboxEntries = (input: InboxDispatchInput) =>

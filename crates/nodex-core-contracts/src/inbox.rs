@@ -191,6 +191,9 @@ pub struct ProjectWorkspaceInboxItem {
     pub title: String,
     pub body: String,
     pub body_truncated: bool,
+    /// The body is still plain message text that the stream shows whole, so the user
+    /// can rewrite it in place. Richer or longer bodies are edited as their Page.
+    pub body_editable: bool,
     pub submitted_at: String,
     pub source: ProjectWorkspaceInboxSource,
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
@@ -201,6 +204,18 @@ pub struct ProjectWorkspaceInboxItem {
     pub location: ProjectWorkspaceInboxLocation,
     pub proposal: Option<ProjectWorkspaceInboxProposal>,
     pub revision: i64,
+}
+
+/// The Page write that rewrites one message, prepared by Core's message rules so
+/// an edit reads exactly like a message sent with the same text.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxMessageEdit {
+    /// The Page state the write must still apply to.
+    pub basis: ProjectWorkspaceInboxPageBasis,
+    /// The new body, or None when the text did not change.
+    pub body_markdown: Option<String>,
+    /// The new provisional title, only while the title is still provisional.
+    pub title_markdown: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

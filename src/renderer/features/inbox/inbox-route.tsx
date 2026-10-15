@@ -370,6 +370,7 @@ export function InboxRoute({
         groupedWithKey={anchor && anchor !== item.pageId ? (keysByPage.get(anchor) ?? null) : null}
         menu={menu}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
+        onEditAsPage={() => onOpenPage(item.pageId)}
       >
         {(triage) => (
           <InboxMessage
@@ -378,6 +379,7 @@ export function InboxRoute({
             selectionActive={selected.size > 0}
             onToggleSelected={() => toggleSelected(item.pageId)}
             onOpenSource={onOpenSession}
+            editor={triage.editor}
             strip={triage.strip}
             actions={triage.actions}
           />

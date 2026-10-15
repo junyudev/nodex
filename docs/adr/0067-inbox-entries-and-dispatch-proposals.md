@@ -66,7 +66,10 @@ Project's Inbox narrows the context to that Project: its messages already belong
 there, so routing stays inside the Project except for filing in another one. Main validates every target
 against that context before recording a proposal. Only the user's confirmation
 can start a chat or send a prompt. A Page move is the user's own Library
-relocation, which Core verifies before completing the proposal.
+relocation, which Core verifies before completing the proposal. Rewriting a
+message is likewise the user's own Page write: Core prepares it under the same
+rules as sending, the Document owner applies it fenced by the Page Core read,
+and only then does the Inbox withdraw suggestions about the old text.
 
 Main delivers confirmed chat work through the same launch and message seams that
 ordinary chats use. Launch identities derive from the proposal. Delivery to a

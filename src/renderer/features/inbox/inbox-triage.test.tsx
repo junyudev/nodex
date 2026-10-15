@@ -5,6 +5,7 @@ import { openNodexMenu, render } from "@/test/dom";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
+import { draftFromAction } from "./inbox-dispatch-editor";
 import { InboxHistory } from "./inbox-history";
 import { InboxMessage } from "./inbox-message";
 import { InboxTriage } from "./inbox-triage";
@@ -38,6 +39,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   title: "Homepage positioning",
   body: "Homepage feels like a dev tool",
   bodyTruncated: false,
+  bodyEditable: true,
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
   kind: "question",
@@ -53,6 +55,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
 
 const actions = (): InboxActions => ({
   send: vi.fn(async () => true),
+  edit: vi.fn(async () => true),
   confirm: vi.fn(async () => true),
   dispatch: vi.fn(async () => true),
   keep: vi.fn(async () => true),
@@ -63,8 +66,10 @@ const actions = (): InboxActions => ({
   retryDispatch: vi.fn(async () => true),
 });
 
-const renderTriage = (overrides: Partial<Parameters<typeof InboxTriage>[0]> = {}) => {
-  const commands = actions();
+const renderTriage = (
+  overrides: Partial<Parameters<typeof InboxTriage>[0]> = {},
+  commands: InboxActions = actions(),
+) => {
   render(
     <InboxTriage
       item={item()}
@@ -76,10 +81,12 @@ const renderTriage = (overrides: Partial<Parameters<typeof InboxTriage>[0]> = {}
       inboxProjectId={null}
       menu={null}
       onManualDraftChange={vi.fn()}
+      onEditAsPage={vi.fn()}
       {...overrides}
     >
-      {({ strip, actions: row }) => (
+      {({ editor, strip, actions: row }) => (
         <>
+          {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
           {strip}
           {row}
         </>
@@ -108,9 +115,69 @@ describe("InboxTriage", () => {
     expect(commands.dispatch).not.toHaveBeenCalled();
   });
 
-  test("an edited suggestion confirms the edited action against the same proposal", async () => {
+  test("Edit rewrites the message itself and asks nothing to run", async () => {
     const commands = renderTriage();
     await click("Edit");
+    const editor = await screen.findByRole("textbox", { name: "Edit message" });
+    expect((editor as HTMLTextAreaElement).value).toBe("Homepage feels like a dev tool");
+    // What Nodex made of the old text steps aside while it is rewritten.
+    expect(screen.queryByText("Compare both homepage positions first.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start chat" })).toBeNull();
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: "Homepage should read like an assistant" } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "Enter" });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(commands.edit).toHaveBeenCalledWith(
+        "page:1",
+        "Homepage feels like a dev tool",
+        "Homepage should read like an assistant",
+      ),
+    );
+    expect(await screen.findByText("Compare both homepage positions first.")).toBeTruthy();
+    expect(commands.confirm).not.toHaveBeenCalled();
+    expect(commands.dispatch).not.toHaveBeenCalled();
+  });
+
+  test("an edit that fails to save stays open, and Escape restores the message", async () => {
+    const commands = { ...actions(), edit: vi.fn(async () => false) };
+    renderTriage({}, commands);
+    await click("Edit");
+    const editor = await screen.findByRole("textbox", { name: "Edit message" });
+    // Unchanged text has nothing to save.
+    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: "A different thought" } });
+      await Promise.resolve();
+    });
+    await click("Save");
+    await waitFor(() => expect(commands.edit).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("textbox", { name: "Edit message" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "Edit message" }), { key: "Escape" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("textbox", { name: "Edit message" })).toBeNull();
+    expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
+  });
+
+  test("a message too rich to rewrite in place is edited as its Page", async () => {
+    const onEditAsPage = vi.fn();
+    renderTriage({ item: item({ bodyEditable: false }), onEditAsPage });
+    await click("Edit as Page");
+    expect(onEditAsPage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("textbox", { name: "Edit message" })).toBeNull();
+  });
+
+  test("a hand-written dispatch from the suggestion sends the edited action", async () => {
+    const message = item();
+    const commands = renderTriage({
+      manualDraft: draftFromAction(proposal().action, message.body),
+    });
     const prompt = await screen.findByRole("textbox", { name: "Prompt" });
     await act(async () => {
       fireEvent.change(prompt, { target: { value: "Only list the trade-offs." } });
@@ -118,7 +185,7 @@ describe("InboxTriage", () => {
     });
     await click("Start chat");
     await waitFor(() =>
-      expect(commands.confirm).toHaveBeenCalledWith(proposal(), {
+      expect(commands.dispatch).toHaveBeenCalledWith(["page:1"], {
         type: "new_chat",
         projectId: "project:nodex",
         prompt: "Only list the trade-offs.",
@@ -284,6 +351,7 @@ describe("InboxMessage source navigation", () => {
           selectionActive={false}
           onToggleSelected={vi.fn()}
           onOpenSource={onOpenSource}
+          editor={null}
           strip={null}
           actions={null}
         />,
@@ -311,6 +379,7 @@ describe("InboxMessage source navigation", () => {
         selectionActive={false}
         onToggleSelected={vi.fn()}
         onOpenSource={onOpenSource}
+        editor={null}
         strip={null}
         actions={null}
       />,

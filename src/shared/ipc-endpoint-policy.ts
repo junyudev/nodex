@@ -602,6 +602,7 @@ type PlainResultCommandEndpointPolicy =
   | "page-chats:link"
   | "page-chats:unlink"
   | "inbox:send"
+  | "inbox:edit"
   | "inbox:confirm"
   | "inbox:dispatch"
   | "inbox:keep"

@@ -3,10 +3,11 @@ use nodex_core_contracts::collection::CollectionWindowRequest;
 use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposalOrigin,
-    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
-    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
-    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxProjectCount,
+    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
+    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
+    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
+    ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -1630,4 +1631,264 @@ fn one_suggestion_pass_never_mixes_inboxes() {
         ),
         CoreErrorCode::InvalidInput
     );
+}
+
+fn prepare_edit(
+    module: &ProjectWorkspaceModule,
+    page_id: &str,
+    original_text: &str,
+    text: &str,
+) -> Result<ProjectWorkspaceInboxMessageEdit, CoreErrorCode> {
+    module
+        .read(
+            &host(),
+            ModuleReadRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                read: ProjectWorkspaceRead::InboxMessageEdit {
+                    page_id: page_id.to_owned(),
+                    original_text: original_text.to_owned(),
+                    text: text.to_owned(),
+                },
+            },
+        )
+        .map(|snapshot| {
+            let ProjectWorkspaceReadValue::InboxMessageEdit { edit } = snapshot.value else {
+                panic!("Inbox message edit");
+            };
+            edit
+        })
+        .map_err(|error| error.code)
+}
+
+/// Stands in for the Document owner applying a prepared edit; the desktop app does
+/// this through an ordinary fenced Document write.
+fn write_message(workspace: &TestWorkspace, edit: &ProjectWorkspaceInboxMessageEdit, text: &str) {
+    let page_id = edit.basis.page_id.clone();
+    let body = edit.body_markdown.clone().expect("a changed body");
+    let title = edit.title_markdown.clone();
+    let text = text.to_owned();
+    workspace
+        .kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "UPDATE document_materializations \
+                 SET nfm = ?2, plain_text = ?4, title = COALESCE(?3, title) \
+                 WHERE document_id = (SELECT document_id FROM pages WHERE block_id = ?1)",
+                rusqlite::params![page_id, body, title, text],
+            )?;
+            connection.execute(
+                "UPDATE documents SET head_seq = head_seq + 1 \
+                 WHERE id = (SELECT document_id FROM pages WHERE block_id = ?1)",
+                [&page_id],
+            )?;
+            Ok(())
+        })
+        .expect("write message");
+}
+
+fn revise(module: &ProjectWorkspaceModule, page_id: &str) {
+    apply_host(
+        module,
+        &format!("revise:{page_id}"),
+        ProjectWorkspaceIntent::ReviseInboxMessage {
+            page_id: page_id.to_owned(),
+        },
+    );
+}
+
+fn item(module: &ProjectWorkspaceModule, page_id: &str) -> ProjectWorkspaceInboxItem {
+    window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
+        .into_iter()
+        .find(|item| item.page_id == page_id)
+        .unwrap_or_else(|| panic!("{page_id} is not waiting"))
+}
+
+#[test]
+fn rewriting_a_message_follows_the_rules_of_sending_it() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(
+        module,
+        "edit",
+        "Survey onboarding flows\nKeep it read-only.",
+    );
+    let original = item(module, "page:edit");
+    assert!(original.body_editable);
+    assert_eq!(original.body, "Survey onboarding flows\nKeep it read-only.");
+
+    let edit = prepare_edit(
+        module,
+        "page:edit",
+        &original.body,
+        "\n  \nCompare three onboarding flows  \n\nKeep it read-only.\n\n",
+    )
+    .expect("prepare edit");
+    let sent =
+        super::inbox::message_page("Compare three onboarding flows\n\nKeep it read-only.", None)
+            .expect("message page");
+    assert_eq!(edit.body_markdown.as_deref(), Some(sent.body_nfm.as_str()));
+    // The title is still Core's provisional label, so it follows the new opening words.
+    assert_eq!(
+        edit.title_markdown.as_deref(),
+        Some("Compare three onboarding flows")
+    );
+
+    // Saving the same text writes nothing.
+    let unchanged = prepare_edit(
+        module,
+        "page:edit",
+        &original.body,
+        "Survey onboarding flows\nKeep it read-only.\n",
+    )
+    .expect("unchanged edit");
+    assert_eq!(
+        (unchanged.body_markdown, unchanged.title_markdown),
+        (None, None)
+    );
+
+    // An edit never silently overwrites text that changed underneath it, or erases it.
+    assert_eq!(
+        prepare_edit(module, "page:edit", "Survey onboarding flows", "Anything"),
+        Err(CoreErrorCode::RevisionConflict)
+    );
+    assert_eq!(
+        prepare_edit(module, "page:edit", &original.body, " \n "),
+        Err(CoreErrorCode::InvalidInput)
+    );
+}
+
+#[test]
+fn rewriting_withdraws_suggestions_and_asks_again_for_their_whole_group() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Survey onboarding flows");
+    send(module, "b", "Compare their empty states");
+    let entries = pending(module);
+    apply_host(
+        module,
+        "propose:group",
+        ProjectWorkspaceIntent::ProposeInboxDispatch {
+            proposal_id: "proposal:group".into(),
+            page_ids: entries.iter().map(|entry| entry.page_id.clone()).collect(),
+            basis: entries.iter().map(|entry| entry.basis.clone()).collect(),
+            action: ProjectWorkspaceInboxDispatchAction::Keep,
+            entry_kind: None,
+            summary: "Keep both as research notes".to_owned(),
+            rationale: None,
+            produced_by: None,
+        },
+    );
+    assert!(pending(module).is_empty());
+
+    let original = item(module, "page:a");
+    let edit = prepare_edit(
+        module,
+        "page:a",
+        &original.body,
+        "Survey five onboarding flows",
+    )
+    .expect("prepare edit");
+    write_message(&workspace, &edit, "Survey five onboarding flows");
+    revise(module, "page:a");
+
+    for page_id in ["page:a", "page:b"] {
+        let waiting = item(module, page_id);
+        assert_eq!(
+            waiting.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Pending
+        );
+        // The suggestion about the old text is gone.
+        assert_eq!(waiting.proposal, None);
+    }
+    let again = pending(module);
+    let rewritten = again
+        .iter()
+        .find(|entry| entry.page_id == "page:a")
+        .expect("rewritten message waits for a suggestion");
+    assert_eq!(rewritten.body, "Survey five onboarding flows");
+    assert_eq!(rewritten.title, "Survey five onboarding flows");
+    // Its new provisional title can still be named by the next suggestion.
+    assert!(rewritten.title_provisional);
+    assert!(again.iter().any(|entry| entry.page_id == "page:b"));
+}
+
+#[test]
+fn only_plain_waiting_messages_are_rewritten_in_place() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "rich", "Ship the changelog");
+    send(module, "named", "Homepage feels like a dev tool");
+    send(module, "kept", "A lovely changelog layout");
+    workspace
+        .kernel
+        .writer()
+        .call(|connection| {
+            // Made richer on its Page, and named by an earlier suggestion.
+            connection.execute(
+                "UPDATE document_materializations SET nfm = '**Ship** the changelog' \
+                 WHERE document_id = 'document:rich'",
+                [],
+            )?;
+            connection.execute(
+                "UPDATE document_materializations SET title = 'Homepage positioning' \
+                 WHERE document_id = 'document:named'",
+                [],
+            )?;
+            Ok(())
+        })
+        .expect("shape message Pages");
+    apply_host(
+        module,
+        "keep:kept",
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec!["page:kept".into()],
+        },
+    );
+
+    let rich = item(module, "page:rich");
+    assert!(!rich.body_editable);
+    assert_eq!(
+        prepare_edit(module, "page:rich", &rich.body, "Ship it"),
+        Err(CoreErrorCode::Conflict)
+    );
+    // A handled message is a record of what was decided.
+    assert_eq!(
+        prepare_edit(
+            module,
+            "page:kept",
+            "A lovely changelog layout",
+            "A denser changelog layout"
+        ),
+        Err(CoreErrorCode::Conflict)
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "revise:kept",
+            ProjectWorkspaceIntent::ReviseInboxMessage {
+                page_id: "page:kept".into(),
+            }
+        ),
+        CoreErrorCode::Conflict
+    );
+
+    // A name is the user's or a suggestion's choice, so an edit keeps it.
+    let named = item(module, "page:named");
+    let edit = prepare_edit(
+        module,
+        "page:named",
+        &named.body,
+        "Homepage should read like an assistant",
+    )
+    .expect("prepare edit");
+    assert_eq!(edit.title_markdown, None);
+    write_message(&workspace, &edit, "Homepage should read like an assistant");
+    revise(module, "page:named");
+    let entry = pending(module)
+        .into_iter()
+        .find(|entry| entry.page_id == "page:named")
+        .expect("named message waits for a suggestion");
+    assert_eq!(entry.title, "Homepage positioning");
+    assert!(!entry.title_provisional);
 }

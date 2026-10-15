@@ -8,6 +8,7 @@ import type {
   InboxConfirmInput,
   InboxDispatchAction,
   InboxDispatchInput,
+  InboxEditInput,
   InboxPageIdsInput,
   InboxProposalInput,
   InboxScope,
@@ -32,6 +33,11 @@ const pageIds = (maximum: number) =>
     .min(1)
     .max(maximum)
     .refine((values) => new Set(values).size === values.length, "Inbox entries must be unique");
+
+const messageText = z
+  .string()
+  .refine((value) => value.trim().length > 0, "Message is empty")
+  .refine((value) => utf8Bytes(value) <= MAX_INBOX_MESSAGE_BYTES, "Message is too long");
 
 const prompt = z
   .string()
@@ -71,12 +77,13 @@ export const InboxWindowInputSchema = z
 export const InboxSendInputSchema = z
   .object({
     scope: InboxScopeSchema,
-    text: z
-      .string()
-      .refine((value) => value.trim().length > 0, "Message is empty")
-      .refine((value) => utf8Bytes(value) <= MAX_INBOX_MESSAGE_BYTES, "Message is too long"),
+    text: messageText,
   })
   .strict() satisfies z.ZodType<InboxSendInput>;
+
+export const InboxEditInputSchema = z
+  .object({ pageId: id, originalText: messageText, text: messageText })
+  .strict() satisfies z.ZodType<InboxEditInput>;
 
 export const InboxConfirmInputSchema = z
   .object({

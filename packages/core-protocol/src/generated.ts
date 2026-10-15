@@ -1593,6 +1593,11 @@ export interface components {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
                 readonly body: string;
+                /**
+                 * @description The body is still plain message text that the stream shows whole, so the user
+                 *     can rewrite it in place. Richer or longer bodies are edited as their Page.
+                 */
+                readonly body_editable: boolean;
                 readonly body_truncated: boolean;
                 readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
                 readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
@@ -7349,6 +7354,10 @@ export interface components {
                 readonly page_ids: readonly string[];
             } | {
                 /** @enum {string} */
+                readonly kind: "revise_inbox_message";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "record_inbox_suggestion_failure";
                 readonly message: string;
                 readonly page_ids: readonly string[];
@@ -8421,6 +8430,12 @@ export interface components {
                 readonly kind: "inbox_dispatch_outbox";
                 /** Format: int32 */
                 readonly limit: number;
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_message_edit";
+                readonly original_text: string;
+                readonly page_id: string;
+                readonly text: string;
             };
         };
         readonly ModuleReadRequest_QueryRead: {
@@ -9110,6 +9125,18 @@ export interface components {
             /** @enum {string} */
             readonly kind: "other";
         };
+        /**
+         * @description The Page write that rewrites one message, prepared by Core's message rules so
+         *     an edit reads exactly like a message sent with the same text.
+         */
+        readonly ProjectWorkspaceInboxMessageEdit: {
+            /** @description The Page state the write must still apply to. */
+            readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            /** @description The new body, or None when the text did not change. */
+            readonly body_markdown?: string | null;
+            /** @description The new provisional title, only while the title is still provisional. */
+            readonly title_markdown?: string | null;
+        };
         /** @description Causal evidence that a proposal was made for the current message content. */
         readonly ProjectWorkspaceInboxPageBasis: {
             /** Format: int64 */
@@ -9665,6 +9692,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "request_inbox_suggestion";
             readonly page_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "revise_inbox_message";
+            readonly page_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "record_inbox_suggestion_failure";
@@ -11604,6 +11635,10 @@ export interface components {
                     readonly dispatches: readonly components["schemas"]["ProjectWorkspaceInboxDispatchWork"][];
                     /** @enum {string} */
                     readonly kind: "inbox_dispatch_outbox";
+                } | {
+                    readonly edit: components["schemas"]["ProjectWorkspaceInboxMessageEdit"];
+                    /** @enum {string} */
+                    readonly kind: "inbox_message_edit";
                 };
             };
             /** @enum {string} */

@@ -1032,6 +1032,7 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: import("./inbox").InboxSendInput];
     result: import("./inbox").InboxSendResult;
   };
+  "inbox:edit": { args: [input: import("./inbox").InboxEditInput]; result: void };
   "inbox:confirm": { args: [input: import("./inbox").InboxConfirmInput]; result: void };
   "inbox:dispatch": { args: [input: import("./inbox").InboxDispatchInput]; result: void };
   "inbox:keep": { args: [input: import("./inbox").InboxPageIdsInput]; result: void };

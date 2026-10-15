@@ -7,7 +7,7 @@ use crate::inbox::{
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
     ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem,
-    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
+    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
     ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSummary,
     ProjectWorkspaceInboxWindowFilter,
 };
@@ -180,6 +180,14 @@ pub enum ProjectWorkspaceRead {
     InboxDispatchOutbox {
         limit: u32,
     },
+    /// Prepares the user's rewrite of a message still waiting in its Inbox.
+    /// `original_text` is the text the user started from; a message that changed
+    /// since, or whose body is no longer plain message text, cannot be rewritten.
+    InboxMessageEdit {
+        page_id: String,
+        original_text: String,
+        text: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -313,6 +321,9 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxDispatchOutbox {
         dispatches: Vec<ProjectWorkspaceInboxDispatchWork>,
+    },
+    InboxMessageEdit {
+        edit: ProjectWorkspaceInboxMessageEdit,
     },
 }
 
@@ -1741,6 +1752,12 @@ pub enum ProjectWorkspaceIntent {
     /// Supersedes current open suggestions and asks for a new one.
     RequestInboxSuggestion {
         page_ids: Vec<String>,
+    },
+    /// Records that the user rewrote a message. Suggestions made for the old text are
+    /// withdrawn and every message they covered waits for a new one; a provisional
+    /// title follows the new opening words.
+    ReviseInboxMessage {
+        page_id: String,
     },
     RecordInboxSuggestionFailure {
         page_ids: Vec<String>,

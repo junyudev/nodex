@@ -1,0 +1,66 @@
+import { assert, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import { inboxOverRealCore } from "./InboxApplication.test-support";
+
+const LIBRARY = { kind: "library" } as const;
+
+it.effect("an edit rewrites the message Page and asks for a fresh suggestion", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { inbox, client } = yield* inboxOverRealCore();
+      const original = "Homepage feels like a dev tool.\nMaybe it should read like an assistant?";
+      const { pageId } = yield* inbox.send({ scope: LIBRARY, text: original });
+      const [entry] = yield* inbox.pendingSuggestions(8);
+      if (!entry) return assert.fail("Missing pending entry");
+      yield* inbox.propose({
+        proposalId: createUuidV7(),
+        pageIds: [pageId],
+        basis: [entry.basis],
+        action: { type: "keep" },
+        kind: "question",
+        summary: "Keep this question for later.",
+        rationale: null,
+        producedBy: "Test",
+      });
+
+      const rewritten =
+        "The homepage should read like a personal assistant.\n\nKeep the docs link.";
+      yield* inbox.edit({ pageId, originalText: original, text: rewritten });
+
+      const [item] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
+      assert.deepInclude(item, {
+        pageId,
+        body: rewritten,
+        bodyEditable: true,
+        // The provisional title follows the new opening words.
+        title: "The homepage should read like a personal…",
+        suggestionState: "pending",
+        proposal: null,
+      });
+      // The Page itself changed, so the Board, search, and an open Page agree with the stream.
+      const page = yield* Effect.promise(() =>
+        client.libraryRead({
+          kind: "page_projection_file",
+          page_id: pageId,
+          file_kind: "body_nested_markdown",
+        }),
+      );
+      assert.strictEqual(page.value.kind, "page_projection_file");
+      if (page.value.kind === "page_projection_file") {
+        assert.include(page.value.value.content, "Keep the docs link.");
+      }
+      const [again] = yield* inbox.pendingSuggestions(8);
+      assert.strictEqual(again?.body, rewritten);
+      assert.isTrue(again?.title_provisional);
+
+      // An edit started from text that has since changed never overwrites it.
+      const stale = yield* Effect.flip(
+        inbox.edit({ pageId, originalText: original, text: "Something else" }),
+      );
+      assert.match(stale.message, /changed while you were editing/);
+      const [unchanged] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
+      assert.strictEqual(unchanged?.body, rewritten);
+    }),
+  ),
+);

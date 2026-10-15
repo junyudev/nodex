@@ -63,6 +63,24 @@ preferences. The renderer owns route presentation, drafts, and selection only.
   Page is edited, confirming that suggestion fails; `Suggest again` produces a
   fresh one.
 
+## Editing a message
+
+`Edit` rewrites a message that is still waiting in the Inbox, in its own bubble.
+`Enter` saves, `Shift+Enter` inserts a line break, and `Escape` puts the message
+back. While it is rewritten, what Nodex made of the old text steps aside.
+
+- Saving is an ordinary write to the message Page under the same rules as
+  sending, so the Board, search, and an open Page agree with the stream.
+- Suggestions about the old text are withdrawn, and every message they covered
+  waits for a new suggestion. A provisional title follows the new opening words;
+  a name given by the user or a suggestion is kept.
+- An edit started from text that has changed since is refused rather than
+  overwriting it.
+- A message whose Page holds richer content, or more than the stream shows, is
+  edited as its Page: its row offers `Edit as Page` instead.
+- Handled messages are a record of what was decided and are not edited from
+  History.
+
 ## Inbox and History
 
 The goal is an empty Inbox. A message stays in the Inbox only while it still
@@ -151,7 +169,10 @@ message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
 opens the message menu: `Open as Page`, `Dispatch…`,
-`Suggest again`, `Mark done`, and `Delete…`. With nothing to say yet, the card is
+`Suggest again`, `Mark done`, and `Delete…`. `Dispatch…` opens the dispatch editor
+in place of the strip, starting from the current suggestion when there is one.
+The second icon is `Edit`, on every message still waiting in the Inbox except one
+whose delivery failed. With nothing to say yet, the card is
 the message alone. Once a message has a kind, the
 kind's glyph leads its strip in every state. Hovering the glyph names the kind,
 and clicking it changes the kind; this is the one place a kind is changed. The
@@ -164,7 +185,6 @@ strip and its row show one of these:
   - the prompt, collapsed to two lines;
   - a primary button named for the action. Hovering it names the exact
     destination, which the strip never states a second time;
-  - `Edit`, which opens the dispatch editor in place of the strip;
   - `Keep`.
 - **Failure:** a failed suggestion or delivery, with one short reason, `Retry`,
   `Dispatch…`, and `Keep`.

@@ -94,6 +94,20 @@ pub(super) fn read(
                 )?,
             })
         }
+        ProjectWorkspaceRead::InboxMessageEdit {
+            page_id,
+            original_text,
+            text,
+        } => Ok(ProjectWorkspaceReadValue::InboxMessageEdit {
+            edit: super::inbox_read::read_message_edit(
+                connection,
+                context,
+                library_id,
+                &page_id,
+                &original_text,
+                &text,
+            )?,
+        }),
         ProjectWorkspaceRead::InboxDispatchOutbox { limit } => {
             Ok(ProjectWorkspaceReadValue::InboxDispatchOutbox {
                 dispatches: super::inbox_read::read_dispatch_outbox(

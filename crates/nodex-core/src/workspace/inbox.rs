@@ -39,6 +39,8 @@ const INBOX_PLACEMENT_RANK_KEY: &str = "7fffffffffffffffffffffffffffffff";
 const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 const MAX_GIVEN_TITLE_CHARS: usize = 200;
 const PROVISIONAL_TITLE_COLUMNS: usize = 48;
+/// More than any opening line a provisional title can be cut from.
+const OPENING_TEXT_CHARS: i64 = 4_096;
 pub(super) const MAX_PROPOSAL_PAGES: usize = 16;
 const MAX_BULK_PAGES: usize = 200;
 const MAX_PROMPT_BYTES: usize = 32 * 1024;
@@ -263,25 +265,7 @@ pub(super) struct MessagePage {
 }
 
 pub(super) fn message_page(text: &str, title: Option<&str>) -> Result<MessagePage, StoreError> {
-    if text.len() > MAX_MESSAGE_BYTES {
-        return Err(invalid("Inbox message exceeds its 64 KiB bound"));
-    }
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut lines = normalized
-        .split('\n')
-        .map(str::trim_end)
-        .collect::<Vec<_>>();
-    let leading = lines
-        .iter()
-        .take_while(|line| line.trim().is_empty())
-        .count();
-    lines.drain(..leading);
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
-    let first = lines
-        .first()
-        .ok_or_else(|| invalid("Inbox message must contain text"))?;
+    let lines = message_lines(text)?;
     let (title, provisional_title) = match title {
         Some(title) => {
             let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -293,12 +277,42 @@ pub(super) fn message_page(text: &str, title: Option<&str>) -> Result<MessagePag
             (title, None)
         }
         None => {
-            let excerpt = provisional_title(first);
+            let excerpt = provisional_title(&lines[0]);
             (excerpt.clone(), Some(excerpt))
         }
     };
+    Ok(MessagePage {
+        title_markdown: title_markdown(&title),
+        body_nfm: message_body_nfm(&lines),
+        provisional_title,
+    })
+}
+
+/// The lines a message keeps: line endings unified, trailing spaces and blank lines at
+/// either end dropped. The first line always has text.
+pub(super) fn message_lines(text: &str) -> Result<Vec<String>, StoreError> {
+    if text.len() > MAX_MESSAGE_BYTES {
+        return Err(invalid("Inbox message exceeds its 64 KiB bound"));
+    }
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines = normalized
+        .split('\n')
+        .map(|line| line.trim_end().to_owned())
+        .skip_while(|line| line.trim().is_empty())
+        .collect::<Vec<_>>();
+    while lines.last().is_some_and(|line| line.trim().is_empty()) {
+        lines.pop();
+    }
+    if lines.is_empty() {
+        return Err(invalid("Inbox message must contain text"));
+    }
+    Ok(lines)
+}
+
+/// The Page body for message lines: one plain paragraph per line.
+pub(super) fn message_body_nfm(lines: &[String]) -> String {
     let blocks = lines
-        .into_iter()
+        .iter()
         .map(|line| {
             if line.trim().is_empty() {
                 NfmBlock::EmptyBlock {
@@ -313,13 +327,44 @@ pub(super) fn message_page(text: &str, title: Option<&str>) -> Result<MessagePag
             }
         })
         .collect::<Vec<_>>();
-    Ok(MessagePage {
-        title_markdown: crate::domain::nfm::serialize_inline_content_for_adapter(&[plain_text(
-            &title,
-        )]),
-        body_nfm: serialize_nfm(&blocks),
-        provisional_title,
-    })
+    serialize_nfm(&blocks)
+}
+
+pub(super) fn title_markdown(title: &str) -> String {
+    crate::domain::nfm::serialize_inline_content_for_adapter(&[plain_text(title)])
+}
+
+/// The message text while the Page body is still plain paragraphs, as the Inbox writes
+/// it. A body made richer on its Page has no plain text and is edited there instead.
+pub(super) fn plain_message_text(nfm: &str) -> Option<String> {
+    let blocks = crate::domain::nfm_parser::parse_nfm(nfm).ok()?;
+    let mut lines = Vec::with_capacity(blocks.len());
+    for block in &blocks {
+        match block {
+            NfmBlock::EmptyBlock { children } if children.is_empty() => lines.push(String::new()),
+            NfmBlock::Paragraph {
+                content,
+                color: None,
+                children,
+            } if children.is_empty() => {
+                let mut line = String::new();
+                for item in content {
+                    match item {
+                        NfmInlineContent::Text { text, styles }
+                            if *styles == NfmStyleSet::default() =>
+                        {
+                            line.push_str(text);
+                        }
+                        NfmInlineContent::LineBreak => line.push('\n'),
+                        _ => return None,
+                    }
+                }
+                lines.push(line);
+            }
+            _ => return None,
+        }
+    }
+    Some(lines.join("\n"))
 }
 
 /// A label for the message until it is named: its opening words, cut to a
@@ -1505,6 +1550,78 @@ pub(super) fn request_suggestion(
     )
 }
 
+/// The user rewrote a message's text through the Document owner. Suggestions about the
+/// old text are withdrawn, every message they covered waits for a new one, and a title
+/// that still matches the opening words stays provisional so it can be named again.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn revise_message(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    page_id: &str,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    validate_id("page_id", page_id)?;
+    require_waiting_entry(connection, library_id, page_id)?;
+    // The opening words are all a provisional title needs, so only a bounded text prefix is read.
+    let (title, opening) = connection.query_row(
+        "SELECT COALESCE(materialization.title, ''), \
+           substr(COALESCE(materialization.plain_text, ''), 1, ?2) \
+         FROM pages page \
+         LEFT JOIN document_materializations materialization \
+           ON materialization.document_id = page.document_id \
+         WHERE page.block_id = ?1",
+        params![page_id, OPENING_TEXT_CHARS],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+    )?;
+    let follows_text = opening
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .is_some_and(|line| provisional_title(line) == title);
+    let mut covered = BTreeSet::from([page_id.to_owned()]);
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT other.page_id FROM inbox_proposal_pages member \
+         JOIN inbox_proposals proposal \
+           ON proposal.proposal_id = member.proposal_id AND proposal.state = 'open' \
+         JOIN inbox_proposal_pages other ON other.proposal_id = member.proposal_id \
+         WHERE member.page_id = ?1",
+    )?;
+    for row in statement.query_map([page_id], |row| row.get::<_, String>(0))? {
+        covered.insert(row?);
+    }
+    let covered = covered.into_iter().collect::<Vec<_>>();
+    let now = sqlite_now(connection)?;
+    run_mutation(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        &now,
+        |_| {
+            supersede_open_proposals(connection, &covered, "superseded", &now)?;
+            for covered_page_id in &covered {
+                connection.execute(
+                    "UPDATE inbox_entries SET suggestion_state = 'pending', \
+                       suggestion_error = NULL, revision = revision + 1, updated_at = ?2 \
+                     WHERE page_id = ?1 AND library_id = ?3 AND state = 'open'",
+                    params![covered_page_id, now, library_id],
+                )?;
+            }
+            if follows_text {
+                connection.execute(
+                    "UPDATE inbox_entries SET provisional_title = ?2 \
+                     WHERE page_id = ?1 AND library_id = ?3",
+                    params![page_id, title, library_id],
+                )?;
+            }
+            Ok(simple_effects("inbox_revise_message", &now))
+        },
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn record_suggestion_failure(
     connection: &Connection,
@@ -1757,6 +1874,32 @@ fn require_live_entries(
         if !live {
             return Err(not_found("Inbox entry is unavailable"));
         }
+    }
+    Ok(())
+}
+
+/// Only a message still waiting in its Inbox can be rewritten: a handled one is a record
+/// of what was decided, and one being delivered must keep the text it was sent with.
+pub(super) fn require_waiting_entry(
+    connection: &Connection,
+    library_id: &str,
+    page_id: &str,
+) -> Result<(), StoreError> {
+    let page_ids = [page_id.to_owned()];
+    require_live_entries(connection, library_id, &page_ids)?;
+    let waiting = connection.query_row(
+        &format!(
+            "SELECT {} FROM inbox_entries entry \
+             LEFT JOIN inbox_proposals proposal \
+               ON proposal.proposal_id = entry.current_proposal_id \
+             WHERE entry.page_id = ?1",
+            super::inbox_read::IN_INBOX
+        ),
+        [page_id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if !waiting || has_in_flight_dispatch(connection, &page_ids)? {
+        return Err(conflict("This message was already handled"));
     }
     Ok(())
 }

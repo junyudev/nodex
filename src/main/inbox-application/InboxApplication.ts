@@ -7,6 +7,7 @@ import type {
   InboxCounts,
   InboxDispatchAction,
   InboxDispatchInput,
+  InboxEditInput,
   InboxEntryKind,
   InboxPageIdsInput,
   InboxProposalInput,
@@ -22,6 +23,7 @@ import type {
 import {
   InboxConfirmInputSchema,
   InboxDispatchInputSchema,
+  InboxEditInputSchema,
   InboxPageIdsInputSchema,
   InboxProposalInputSchema,
   InboxSendInputSchema,
@@ -49,7 +51,9 @@ import type {
   ProjectWorkspaceRead,
   ProjectWorkspaceReadSnapshot,
 } from "../core-client/types";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { StoreAdministration } from "../core-runtime/StoreAdministration";
 import { createOperationId } from "../core-runtime/operation-identity";
 
@@ -91,6 +95,11 @@ export class InboxApplication extends Context.Service<
     readonly counts: InboxEffect<InboxCounts>;
     readonly window: (input: InboxWindowInput) => InboxEffect<InboxWindow>;
     readonly send: (input: InboxSendInput) => InboxEffect<InboxSendResult>;
+    /**
+     * Rewrites a waiting message's text as the user's own Page write. Suggestions about the old
+     * text are withdrawn and the message is suggested again.
+     */
+    readonly edit: (input: InboxEditInput) => InboxEffect<void>;
     readonly confirm: (input: InboxConfirmInput) => InboxEffect<void>;
     readonly dispatch: (input: InboxDispatchInput) => InboxEffect<void>;
     readonly keep: (input: InboxPageIdsInput) => InboxEffect<void>;
@@ -120,8 +129,15 @@ export class InboxApplication extends Context.Service<
   }
 >()("nodex/main/inbox-application/InboxApplication") {}
 
-const errorMessage = (cause: unknown): string =>
-  cause instanceof Error && cause.message.trim() ? cause.message : "The Inbox operation failed";
+// A Core refusal is written for the user, so it explains itself; a runtime or transport failure
+// keeps its safe message.
+const errorMessage = (cause: unknown): string => {
+  const refusal = Schema.is(CoreRuntimeError)(cause) ? cause.cause : cause;
+  if (refusal instanceof CoreModuleResponseError) return refusal.coreError.message;
+  return cause instanceof Error && cause.message.trim()
+    ? cause.message
+    : "The Inbox operation failed";
+};
 
 type ApplyIntent = ProjectWorkspaceApplyInput["intent"];
 
@@ -200,6 +216,72 @@ export const make = Effect.gen(function* () {
       project_id: parsed.scope.kind === "project" ? parsed.scope.projectId : null,
     });
     return { pageId } satisfies InboxSendResult;
+  });
+
+  // Core prepares the write under its message rules, the Document owner applies it fenced by the
+  // exact Page Core read, and only then does the Inbox withdraw suggestions about the old text.
+  const edit = Effect.fn("InboxApplication.edit")(function* (input: InboxEditInput) {
+    const parsed = yield* parse("edit", () => InboxEditInputSchema.parse(input));
+    const prepared = yield* read("edit", {
+      kind: "inbox_message_edit",
+      page_id: parsed.pageId,
+      original_text: parsed.originalText,
+      text: parsed.text,
+    }).pipe(
+      Effect.flatMap((snapshot) =>
+        parse("edit", () => expectVariant(snapshot, "inbox_message_edit").edit),
+      ),
+    );
+    const body = prepared.body_markdown;
+    if (!body) return;
+    const title = prepared.title_markdown ?? null;
+    const snapshot = yield* core.library
+      .read(
+        { kind: "page_projection_file", page_id: parsed.pageId, file_kind: "meta_yaml" },
+        undefined,
+        null,
+      )
+      .pipe(Effect.mapError(fail("edit")));
+    const page = snapshot.value.kind === "page_projection_file" ? snapshot.value.value : null;
+    const { body_etag: bodyEtag, title_etag: titleEtag } = page?.validators ?? {};
+    if (
+      !page ||
+      !bodyEtag ||
+      (title && !titleEtag) ||
+      page.document_generation !== prepared.basis.generation ||
+      page.document_head_seq !== prepared.basis.head_seq
+    ) {
+      return yield* Effect.fail(
+        new InboxApplicationError({
+          operation: "edit",
+          message: "This message changed while you were editing it",
+          cause: null,
+        }),
+      );
+    }
+    yield* core.document
+      .apply(
+        {
+          operationId: createOperationId("inbox.edit"),
+          clientSessionId: "inbox-edit",
+          intent: {
+            kind: "apply_semantic_mutation",
+            document_id: page.document_id,
+            generation: prepared.basis.generation,
+            expected_head_seq: prepared.basis.head_seq,
+            commands: [
+              { kind: "replace_body", nested_markdown: body, expected_etag: bodyEtag },
+              ...(title && titleEtag
+                ? [{ kind: "set_title" as const, inline_markdown: title, expected_etag: titleEtag }]
+                : []),
+            ],
+          },
+        },
+        undefined,
+        null,
+      )
+      .pipe(Effect.mapError(fail("edit")));
+    yield* apply("edit", { kind: "revise_inbox_message", page_id: parsed.pageId });
   });
 
   // Core consumes the preallocated Session identity only when the confirmed action starts a chat.
@@ -390,6 +472,7 @@ export const make = Effect.gen(function* () {
     counts,
     window,
     send,
+    edit,
     confirm,
     dispatch,
     keep,

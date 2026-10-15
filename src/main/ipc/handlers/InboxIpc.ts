@@ -78,6 +78,7 @@ export const live: Layer.Layer<
     yield* query("inbox:counts", () => inbox.counts);
     yield* query("inbox:window", (_, input) => inbox.window(input));
     yield* command("inbox:send", (_, input) => inbox.send(input));
+    yield* command("inbox:edit", (_, input) => inbox.edit(input));
     yield* command("inbox:confirm", (_, input) => inbox.confirm(input));
     yield* command("inbox:dispatch", (_, input) => inbox.dispatch(input));
     yield* command("inbox:keep", (_, input) => inbox.keep(input));

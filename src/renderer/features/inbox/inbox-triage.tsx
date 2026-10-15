@@ -20,6 +20,7 @@ import {
   type InboxIcon,
 } from "./inbox-icon-action";
 import { InboxKindControl } from "./inbox-kind-control";
+import { InboxMessageEditor } from "./inbox-message-editor";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
   INBOX_KIND_LABELS,
@@ -161,15 +162,18 @@ function SuggestionStrip({
 
 /** What a message's card holds beneath the message, and the row of ways to act under the card. */
 export interface InboxTriageParts {
+  /** Replaces the message's text while the user rewrites it; null otherwise. */
+  readonly editor: ReactNode;
   /** What Nodex made of the message; null when there is nothing to say. */
   readonly strip: ReactNode;
-  /** Icon actions and the menu, then the decision at the right; null while the editor is open. */
+  /** Icon actions and the menu, then the decision at the right; null while an editor is open. */
   readonly actions: ReactNode;
 }
 
 /**
  * What Nodex made of one message: a suggestion to decide, a reason it has none, or the way to
- * dispatch it by hand. Only a button here can make anything run.
+ * dispatch it by hand. Only a button here can make anything run. `Edit` rewrites the message
+ * itself; dispatching by hand lives in the message menu.
  */
 export function InboxTriage({
   item,
@@ -181,6 +185,7 @@ export function InboxTriage({
   menu,
   inboxProjectId,
   onManualDraftChange,
+  onEditAsPage,
   children,
 }: {
   readonly item: InboxItem;
@@ -196,10 +201,12 @@ export function InboxTriage({
   /** The message's menu, the first of the action row's icons. */
   readonly menu: ReactNode;
   readonly onManualDraftChange: (draft: InboxDispatchDraft | null) => void;
+  /** Opens the message's Page, where a body too rich or long to rewrite in place is edited. */
+  readonly onEditAsPage: () => void;
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
-  const [editing, setEditing] = useState<InboxDispatchDraft | null>(null);
+  const [editing, setEditing] = useState(false);
   const model = inboxTriageModel(item, suggestionsEnabled);
   const message = item.body;
   const done = () => void actions.setState([item.pageId], "done");
@@ -208,6 +215,11 @@ export function InboxTriage({
     onManualDraftChange(
       draftFromAction({ type: "new_chat", projectId: inboxProjectId, prompt: message }, message),
     );
+  const editAction = item.bodyEditable ? (
+    <InboxIconAction label="Edit" icon={EditIcon} onClick={() => setEditing(true)} />
+  ) : (
+    <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
+  );
   const keepAction = <InboxIconAction label="Keep as a note" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
   const setKind = (kind: InboxEntryKind | null) => void actions.setKind(item.pageId, kind);
@@ -219,24 +231,17 @@ export function InboxTriage({
     </Row>
   );
 
-  const parts = (): InboxTriageParts => {
-    const editorDraft = editing ?? manualDraft;
-    if (editorDraft) {
-      const proposal = model.kind === "suggestion" && editing ? model.proposal : null;
+  const parts = (): Omit<InboxTriageParts, "editor"> => {
+    if (manualDraft) {
       return {
         strip: (
           <InboxDispatchEditor
             embedded
-            initial={editorDraft}
+            initial={manualDraft}
             projects={projects}
             inboxProjectId={inboxProjectId}
-            onCancel={() => {
-              setEditing(null);
-              onManualDraftChange(null);
-            }}
-            onSubmit={(action) =>
-              proposal ? actions.confirm(proposal, action) : actions.dispatch([item.pageId], action)
-            }
+            onCancel={() => onManualDraftChange(null)}
+            onSubmit={(action) => actions.dispatch([item.pageId], action)}
           />
         ),
         actions: null,
@@ -250,7 +255,14 @@ export function InboxTriage({
             Suggested together with {groupedWithKey} below
           </span>
         ),
-        actions: menuOnly,
+        actions: (
+          <Row>
+            <InboxIconActions>
+              {menu}
+              {editAction}
+            </InboxIconActions>
+          </Row>
+        ),
       };
     }
 
@@ -264,6 +276,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
+                {editAction}
                 {doneAction}
               </InboxIconActions>
             </Row>
@@ -289,11 +302,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
-                <InboxIconAction
-                  label="Edit"
-                  icon={EditIcon}
-                  onClick={() => setEditing(draftFromAction(proposal.action, message))}
-                />
+                {editAction}
                 {proposal.action.type === "keep" ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
@@ -321,6 +330,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
+                {editAction}
                 <InboxIconAction
                   label="Retry"
                   icon={RetryIcon}
@@ -381,6 +391,7 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
+                {editAction}
                 {suggestionsEnabled ? (
                   <InboxIconAction
                     label="Suggest"
@@ -409,5 +420,23 @@ export function InboxTriage({
     }
   };
 
-  return children(parts());
+  // While the message is being rewritten, what Nodex made of the old text steps aside.
+  if (editing) {
+    return children({
+      editor: (
+        <InboxMessageEditor
+          text={item.body}
+          onCancel={() => setEditing(false)}
+          onSave={async (text) => {
+            const saved = await actions.edit(item.pageId, item.body, text);
+            if (saved) setEditing(false);
+            return saved;
+          }}
+        />
+      ),
+      strip: null,
+      actions: null,
+    });
+  }
+  return children({ editor: null, ...parts() });
 }

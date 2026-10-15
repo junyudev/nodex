@@ -6653,6 +6653,7 @@
                 "title",
                 "body",
                 "body_truncated",
+                "body_editable",
                 "submitted_at",
                 "source",
                 "state",
@@ -6664,6 +6665,10 @@
               "properties": {
                 "body": {
                   "type": "string"
+                },
+                "body_editable": {
+                  "type": "boolean",
+                  "description": "The body is still plain message text that the stream shows whole, so the user\ncan rewrite it in place. Richer or longer bodies are edited as their Page."
                 },
                 "body_truncated": {
                   "type": "boolean"
@@ -30639,6 +30644,25 @@
               },
               {
                 "type": "object",
+                "description": "Records that the user rewrote a message. Suggestions made for the old text are\nwithdrawn and every message they covered waits for a new one; a provisional\ntitle follows the new opening words.",
+                "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "revise_inbox_message"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "page_ids",
                   "message",
@@ -35408,6 +35432,33 @@
                     "minimum": 0
                   }
                 }
+              },
+              {
+                "type": "object",
+                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_text` is the text the user started from; a message that changed\nsince, or whose body is no longer plain message text, cannot be rewritten.",
+                "required": [
+                  "page_id",
+                  "original_text",
+                  "text",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "inbox_message_edit"
+                    ]
+                  },
+                  "original_text": {
+                    "type": "string"
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
               }
             ]
           }
@@ -37841,6 +37892,33 @@
           }
         ],
         "description": "Where a message's Page lives, relative to the Inbox that received it."
+      },
+      "ProjectWorkspaceInboxMessageEdit": {
+        "type": "object",
+        "description": "The Page write that rewrites one message, prepared by Core's message rules so\nan edit reads exactly like a message sent with the same text.",
+        "required": [
+          "basis"
+        ],
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis",
+            "description": "The Page state the write must still apply to."
+          },
+          "body_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new body, or None when the text did not change."
+          },
+          "title_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The new provisional title, only while the title is still provisional."
+          }
+        }
       },
       "ProjectWorkspaceInboxPageBasis": {
         "type": "object",
@@ -40377,6 +40455,25 @@
                 "items": {
                   "type": "string"
                 }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Records that the user rewrote a message. Suggestions made for the old text are\nwithdrawn and every message they covered waits for a new one; a provisional\ntitle follows the new opening words.",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "revise_inbox_message"
+                ]
+              },
+              "page_id": {
+                "type": "string"
               }
             }
           },
@@ -49551,6 +49648,24 @@
                             "type": "string",
                             "enum": [
                               "inbox_dispatch_outbox"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "edit",
+                          "kind"
+                        ],
+                        "properties": {
+                          "edit": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceInboxMessageEdit"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "inbox_message_edit"
                             ]
                           }
                         }

@@ -135,6 +135,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   title: item.title,
   body: item.body,
   bodyTruncated: item.body_truncated,
+  bodyEditable: item.body_editable,
   submittedAt: item.submitted_at,
   source: inboxSourceFromCore(item.source),
   kind: item.kind ?? null,

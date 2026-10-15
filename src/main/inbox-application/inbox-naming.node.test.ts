@@ -1,80 +1,14 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import {
-  withCoreScenario,
-  type CoreScenarioContext,
-} from "../../../scripts/scenarios/harness/core-scenario-harness";
-import { BOARD_DENSE_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/board-dense";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { CoreModules } from "../core-runtime/CoreModules";
-import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { StoreAdministration } from "../core-runtime/StoreAdministration";
-import { make as makeInboxApplication } from "./InboxApplication";
+import { inboxOverRealCore } from "./InboxApplication.test-support";
 
 const LIBRARY = { kind: "library" } as const;
-
-type ScenarioClient = CoreScenarioContext["client"];
-
-/** Holds one isolated Core scenario open for the lifetime of the test Scope. */
-const scenario = Effect.acquireRelease(
-  Effect.promise(
-    () =>
-      new Promise<{ readonly context: CoreScenarioContext; readonly close: () => Promise<void> }>(
-        (resolve, reject) => {
-          let release!: () => void;
-          const released = new Promise<void>((done) => (release = done));
-          const finished = withCoreScenario({ scenarioId: BOARD_DENSE_SCENARIO_ID }, (context) => {
-            resolve({
-              context,
-              close: () => {
-                release();
-                return finished;
-              },
-            });
-            return released;
-          });
-          finished.catch(reject);
-        },
-      ),
-  ),
-  ({ close }) => Effect.promise(close),
-);
-
-const coreModulesOver = (client: ScenarioClient) => {
-  const call = <A>(operation: string, run: () => Promise<A>) =>
-    Effect.tryPromise({
-      try: run,
-      catch: (cause) =>
-        coreRuntimeError({ operation, reason: "operation", retryable: false, cause }),
-    });
-  return CoreModules.of({
-    workspace: {
-      read: (read: Parameters<ScenarioClient["workspaceRead"]>[0]) =>
-        call("workspace.read", () => client.workspaceRead(read)),
-      apply: (input: Parameters<ScenarioClient["workspaceApply"]>[0]) =>
-        call("workspace.apply", () => client.workspaceApply(input)),
-    },
-    library: {
-      read: (read: Parameters<ScenarioClient["libraryRead"]>[0]) =>
-        call("library.read", () => client.libraryRead(read)),
-    },
-    document: {
-      apply: (input: Parameters<ScenarioClient["documentApply"]>[0]) =>
-        call("document.apply", () => client.documentApply(input)),
-    },
-  } as never);
-};
 
 it.effect("names a provisional title only on the exact Page the Agent read", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { context } = yield* scenario;
-      const inbox = yield* makeInboxApplication.pipe(
-        Effect.provideService(CoreModules, coreModulesOver(context.client)),
-        Effect.provideService(StoreAdministration, {
-          requestErasure: Effect.void,
-        } as unknown as StoreAdministration["Service"]),
-      );
+      const { inbox } = yield* inboxOverRealCore();
       const message =
         "Homepage feels like a dev tool.\nMaybe it should read like a personal assistant?";
       const { pageId } = yield* inbox.send({ scope: LIBRARY, text: message });
@@ -123,15 +57,11 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
 it.effect("deleting a message erases it from both views and wakes Store maintenance", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { context } = yield* scenario;
       let erasureRequests = 0;
-      const inbox = yield* makeInboxApplication.pipe(
-        Effect.provideService(CoreModules, coreModulesOver(context.client)),
-        Effect.provideService(StoreAdministration, {
-          requestErasure: Effect.sync(() => {
-            erasureRequests += 1;
-          }),
-        } as unknown as StoreAdministration["Service"]),
+      const { inbox, client } = yield* inboxOverRealCore(
+        Effect.sync(() => {
+          erasureRequests += 1;
+        }),
       );
       const { pageId } = yield* inbox.send({
         scope: LIBRARY,
@@ -145,7 +75,7 @@ it.effect("deleting a message erases it from both views and wakes Store maintena
       assert.strictEqual(erasureRequests, 1);
       // The Page is no longer readable anywhere in the Library.
       const page = yield* Effect.promise(() =>
-        context.client
+        client
           .libraryRead({ kind: "page_projection_file", page_id: pageId, file_kind: "meta_yaml" })
           .then(
             () => "readable",
