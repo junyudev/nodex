@@ -43,6 +43,7 @@ vi.mock("@/lib/api", () => ({
     };
   },
   subscribeBoardChanges: () => () => undefined,
+  subscribeCodexThreadHandoffsChanged: () => () => undefined,
   subscribeProjectSessionChanges: () => () => undefined,
   subscribeProjectChanges: () => () => undefined,
   subscribeCodexHostMessages: () => () => undefined,

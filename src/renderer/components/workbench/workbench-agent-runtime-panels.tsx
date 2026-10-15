@@ -180,13 +180,33 @@ export function AgentRuntimeSideChatPanel(input: {
       });
     }
   });
+  const catalog = agent.provider.modelCatalog;
   useEffect(() => {
     const identity = input.initialSubmission;
-    if (!identity || session.executionRef || !agent.models.length || !agent.selectedModel) return;
+    if (!identity || session.executionRef) return;
     if (startedInitialSubmission.current === identity.launchId) return;
+    const ready = agent.models.length > 0 && Boolean(agent.selectedModel);
+    // Waiting is only correct while the catalog loads; afterwards the draft stays for a manual send.
+    if (!ready && catalog?.loading !== false) return;
     startedInitialSubmission.current = identity.launchId;
-    void submitInitialPrompt();
-  }, [input.initialSubmission, session.executionRef, agent.models.length, agent.selectedModel]);
+    if (ready) {
+      void submitInitialPrompt();
+      return;
+    }
+    toast.danger(
+      catalog?.error ??
+        "No Agent model is available, so the side chat was not sent. Choose a model to send it.",
+      { id: `side-chat-submit:${session.id}` },
+    );
+  }, [
+    input.initialSubmission,
+    session.executionRef,
+    session.id,
+    agent.models.length,
+    agent.selectedModel,
+    catalog?.loading,
+    catalog?.error,
+  ]);
   const actions = composeNativeThreadStageActions(
     {
       onQueueingEnabledChange: input.hostActions.onQueueingEnabledChange ?? (() => {}),

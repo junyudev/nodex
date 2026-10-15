@@ -1,4 +1,5 @@
 import { agentRuntimeDraftOwner } from "./agent-runtime-draft-owner";
+import { toast } from "@/components/ui/toast";
 import { nativeIntelligenceIntentOwner } from "../../lib/native-intelligence-intent-owner";
 import { isClaudeEffortLevel, type ClaudeModelSelection } from "../../../shared/claude-models";
 import {
@@ -7,11 +8,14 @@ import {
   resolveRuntimeClaudeIntent,
   runtimeClaudeModelOption,
 } from "./agent-runtime-model-intent";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
-import type { AgentRuntimeSessionTarget } from "../../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeConnectionState,
+  AgentRuntimeSessionTarget,
+} from "../../../shared/agent-runtime-api";
 import {
   agentRuntimeModelSelection,
   agentRuntimeProviderId,
@@ -26,6 +30,7 @@ import type {
   CodexCollaborationModePreset,
   CodexThreadSummary,
   CodexPromptInput,
+  CodexConnectionState,
 } from "../../../shared/types";
 import { readPastedTextAttachment } from "../../lib/api";
 import {
@@ -54,7 +59,11 @@ import {
   stopAgentRuntimeBackgroundTasks,
 } from "./agent-runtime-delegated-tasks";
 import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
-import { useAgentRuntimeSessionActivity } from "../../lib/agent-runtime-session-activity";
+import {
+  agentRuntimeActivityStore,
+  useAgentRuntimeConnectionState,
+  useAgentRuntimeSessionActivity,
+} from "../../lib/agent-runtime-session-activity";
 import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import {
   captureCodexTurnPresentation,
@@ -77,6 +86,24 @@ const emptyState: AgentRuntimeConversationOwnerSnapshot = {
 const emptySubscribe = () => () => {};
 const emptyRead = () => emptyState;
 const connected = { status: "connected", retries: 0 } as const;
+const starting = { status: "starting", retries: 0 } as const;
+const connectionViews = new WeakMap<AgentRuntimeConnectionState, CodexConnectionState>();
+
+/** One supervised execution process serves every Runtime chat; an idle process starts on use. */
+export function projectAgentRuntimeConnection(
+  state: AgentRuntimeConnectionState,
+): CodexConnectionState {
+  if (state.status === "idle" || state.status === "ready") return connected;
+  if (state.status === "starting") return starting;
+  const cached = connectionViews.get(state);
+  if (cached) return cached;
+  const view: CodexConnectionState =
+    state.status === "restarting"
+      ? { status: "disconnected", retries: state.attempt, message: "Agent execution is restarting" }
+      : { status: "error", retries: 0, message: state.message };
+  connectionViews.set(state, view);
+  return view;
+}
 const emptyChildren = [] as const;
 const runtimePorts = new WeakMap<
   AgentRuntimeConversationOwner,
@@ -100,7 +127,14 @@ export function createAgentRuntimeConversationRuntime(
     hostId: "local",
     sessionId: target?.sessionId,
     read: (id) => (matches(id) ? owner!.getSnapshot().view : null),
-    subscribe: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
+    subscribe: (_id, listener) => {
+      const releaseOwner = owner?.subscribe(listener) ?? (() => {});
+      const releaseConnection = agentRuntimeActivityStore.subscribeConnection(listener);
+      return () => {
+        releaseOwner();
+        releaseConnection();
+      };
+    },
     subscribeChildObservations: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
     transcriptReadOwner: (id) => (matches(id) ? owner!.readOwner : null),
     contentSource: (id) => (matches(id) ? owner!.contentSource() : null),
@@ -111,7 +145,7 @@ export function createAgentRuntimeConversationRuntime(
         return { status: "failed", message: state.error ?? "Could not open conversation" };
       return state.connection === "ready" ? { status: "attached" } : { status: "attaching" };
     },
-    connection: () => connected,
+    connection: () => projectAgentRuntimeConnection(agentRuntimeActivityStore.readConnection()),
     role: (id) => (matches(id) ? "follower" : null),
     ...(target
       ? {
@@ -627,6 +661,16 @@ export function useAgentRuntimeConversationAdapter(input: {
     owner?.getSnapshot ?? emptyRead,
   );
   useEffect(() => acquired?.retain(), [acquired]);
+  // A replacement execution process re-reads what failed while it was unavailable.
+  const runtimeConnection = useAgentRuntimeConnectionState();
+  const previousConnection = useRef(runtimeConnection.status);
+  useEffect(() => {
+    const recovered = runtimeConnection.status === "ready" && previousConnection.current !== "ready";
+    previousConnection.current = runtimeConnection.status;
+    if (!recovered) return;
+    if (owner?.getSnapshot().connection === "failed") void owner.resume();
+    if (catalogState.error) refreshCatalog();
+  }, [runtimeConnection.status, owner, catalogState.error]);
   const observed = state.conversation?.snapshot.projection.thread;
   const entries: readonly AgentModelPickerEntry[] = catalogState.providers.flatMap((provider) => {
     const binding =
@@ -784,6 +828,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         targetProjectId: request.projectId,
         phase: "startingThread",
       });
+      let launched: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult;
       try {
         const presentationTicket =
           request.presentationTicket ??
@@ -825,15 +870,27 @@ export function useAgentRuntimeConversationAdapter(input: {
           threadId: result.threadId,
           phase: "startingTurn",
         });
-        await input.onRefresh(request.projectId);
-        if (input.onLaunched) await input.onLaunched(result);
-        else await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
+        launched = result;
       } catch (cause) {
         sessionFirstSubmissionOwner.fail(submission.launchId, {
           stage: "startingThread",
           message: cause instanceof Error ? cause.message : String(cause),
         });
         throw cause;
+      }
+      // The chat exists from here. Failing to show it must not restore the draft and invite a
+      // second send of the same message.
+      try {
+        await input.onRefresh(request.projectId);
+        if (input.onLaunched) await input.onLaunched(launched);
+        else await input.onOpenThread(launched.threadId, { runtimeSessionId: launched.sessionId });
+      } catch (cause) {
+        toast.danger(
+          `The chat started, but it could not be opened: ${
+            cause instanceof Error ? cause.message : String(cause)
+          }`,
+          { id: `agent-runtime-launch-open:${launched.sessionId}` },
+        );
       }
     },
     onModelChange: (model) => chooseModel({ ...selection, model }),
@@ -1077,7 +1134,12 @@ export function useAgentRuntimeConversationAdapter(input: {
         await owner?.loadOlder();
       },
     },
-    error: state.error ?? catalogState.error ?? provider?.message ?? null,
+    // Only a blocking provider state is a composer error; warnings such as an unchecked status or
+    // a model that needs a newer CLI belong to provider settings.
+    error:
+      state.error ??
+      catalogState.error ??
+      (provider?.status === "error" ? (provider.message ?? null) : null),
     status: backgroundMessage
       ? {
           message: backgroundMessage,
