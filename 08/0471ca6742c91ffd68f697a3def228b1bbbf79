@@ -1,0 +1,93 @@
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_1ca65ffa5958ee::t_cecab6b7a8d415 22
+  s_1ca65ffa5958ee::t_1d71ea71a674af 17-21,23-36,39-40
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 2011-2062
+src/renderer/features/local-conversation/projection/agent-activity-v2.ts
+  s_1ca65ffa5958ee::t_a2c1743418bd9a 171,192,215,236,329,333,555-556,595-596,630,642
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_1ca65ffa5958ee::t_891b2d8d4ab4a3 6-7,189-206,208-210
+  s_1ca65ffa5958ee::t_f87df05ced44dd 207,252
+  s_1ca65ffa5958ee::t_b6189c6e9b7372 211
+src/renderer/features/local-conversation/delegated-task-presentation.ts
+  s_1ca65ffa5958ee::t_cecab6b7a8d415 33-36,39,41-47
+  s_1ca65ffa5958ee::t_c2720a3484e1a0 1-32,37-38,40,48-68
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_1ca65ffa5958ee::t_2d2b151175449b 1-115,117-203
+  s_1ca65ffa5958ee::t_8a116ecb308623 116
+src/shared/types.ts
+  s_1ca65ffa5958ee::t_33bde3700159bb 145-149,2894-2895,3271-3274,3330-3333
+  s_1ca65ffa5958ee::t_eee2e0dca94c44 3164-3168
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_1ca65ffa5958ee::t_891b2d8d4ab4a3 31,248-251,611-637,639
+  s_1ca65ffa5958ee::t_5aca76fd991aab 24,638,875-926,928-935,941,1061
+  s_1ca65ffa5958ee::t_3aae7ae8400654 640,927
+src/shared/codex-canonical-item-projector.ts
+  s_1ca65ffa5958ee::t_95cc2a61609667 1248-1249
+  s_1ca65ffa5958ee::t_c5089b55942b79 925,927-947,950
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.ts
+  s_1ca65ffa5958ee::t_87bdcb4fcf019d 335-338
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_1ca65ffa5958ee::t_2c10b386fc92ac 626-627,629,1421,1423-1428,1431,1612-1613
+  s_1ca65ffa5958ee::t_8833e301e73515 1383-1389,1391-1392,1395,1410-1420,1422,1429-1430,1432
+  s_1ca65ffa5958ee::t_052938f1506f94 1433-1434
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.ts
+  s_1ca65ffa5958ee::t_448b996bb4c3ff 1-51,58,60-70,86-87,91-133,135-140
+  s_1ca65ffa5958ee::t_9bd0c97a5d68b1 71,81,83-85
+  s_1ca65ffa5958ee::t_cecab6b7a8d415 52-57,59,72-74,76-80,88-90,134
+  s_1ca65ffa5958ee::t_a45347229fe030 75,82
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_41d4cfccfeb08e 159-183
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_1ca65ffa5958ee::t_c6203a3847efc2 377-388,733-734,770,1087-1089,1092-1102,1116-1123
+  s_1ca65ffa5958ee::t_2c10b386fc92ac 134-136
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_1ca65ffa5958ee::t_3bd1c102fca31d 6,9-11,109-113,117,120-244,255-257,262-263,278,337-338,342-343,358-359,361,363-368,418,420,426,432-435
+  s_1ca65ffa5958ee::t_1800d1d641508c 58,79-81
+  s_1ca65ffa5958ee::t_0b207321ba115f 370-374
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_1ca65ffa5958ee::t_837d109a3c136b 1-202
+src/renderer/features/local-conversation/agent-runtime-markdown-export.ts
+  s_1ca65ffa5958ee::t_1800d1d641508c 8-10,53
+  s_1ca65ffa5958ee::t_231d19f3ebac36 7
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_1ca65ffa5958ee::t_87bdcb4fcf019d 690-691
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_1ca65ffa5958ee::t_50d4ad3aee33da 400-413,419,422-461
+  s_1ca65ffa5958ee::t_d6e07ba4d7812d 581
+  s_1ca65ffa5958ee::t_90c6cd46dc8128 566,569
+  s_1ca65ffa5958ee::t_d05308a7ed9bf3 462
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1ca65ffa5958ee::t_05ead3859a7b3e 44-47,106-109,112-113,132-144,531-543,594
+  s_1ca65ffa5958ee::t_1c7aff594f8d4d 110-111
+src/renderer/features/local-conversation/conversation-markdown.ts
+  s_1ca65ffa5958ee::t_0b6ffa755ee19a 373-378
+  s_1ca65ffa5958ee::t_685e716e40dce9 3
+src/renderer/features/local-conversation/projection/bucketize-turn-items.ts
+  s_1ca65ffa5958ee::t_87bdcb4fcf019d 89-90,168-176
+  s_1ca65ffa5958ee::t_4d16fbd09b4daa 177-179
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_1ca65ffa5958ee::t_8812c68f9aa566 77,84,96,108
+  s_1ca65ffa5958ee::t_925039cb8b03ce 1-76,79-83,85-95,97-107,109-156,158-168
+  s_1ca65ffa5958ee::t_a2f0474d3c6a3f 78,157
+src/shared/codex-transcript-entry-projection.ts
+  s_1ca65ffa5958ee::t_e4b7c5d14a16b6 31-34
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_1ca65ffa5958ee::t_6a2c9e4937dd98 377-399
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "080471ca6742c91ffd68f697a3def228b1bbbf79",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
