@@ -1,0 +1,81 @@
+src/renderer/lib/page-chat-activity-presentation.node.test.ts
+  s_1ca65ffa5958ee::t_ed0bc967d69350 3-7,58-110
+  s_1ca65ffa5958ee::t_e583f3be47c445 18
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_1ca65ffa5958ee::t_b64213451076d3 39-42,263,265-266,271
+  s_1ca65ffa5958ee::t_d40a9171c0f759 264,267-270
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_1ca65ffa5958ee::t_4b266fd4af1aaa 591-600
+  s_1ca65ffa5958ee::t_c0703e49c1f6f6 325
+  s_1ca65ffa5958ee::t_2ea659c92e5311 601
+src/shared/types.ts
+  s_1ca65ffa5958ee::t_93a2f1aa50cc89 667-668,686,688-689
+  s_1ca65ffa5958ee::t_8b91b0ecbae737 516
+src/renderer/components/workbench/command-palette.tsx
+  s_1ca65ffa5958ee::t_b64213451076d3 43-44,120
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_1ca65ffa5958ee::t_fe21bdf97fb468 861
+  s_1ca65ffa5958ee::t_6c8104e40004e7 88
+src/renderer/lib/use-page-chat-activity.ts
+  s_1ca65ffa5958ee::t_a151c8c37bdeae 2-68
+  s_1ca65ffa5958ee::t_97822d762cc1b8 1
+src/renderer/components/workbench/page-chat-activity-control.tsx
+  s_1ca65ffa5958ee::t_a151c8c37bdeae 15,48,104
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_1ca65ffa5958ee::t_e583f3be47c445 769
+  s_1ca65ffa5958ee::t_435cf6e6b9865f 626-663
+  s_1ca65ffa5958ee::t_a8564e94ff4e30 727-728
+src/main/codex-application/CodexThreadCatalog.ts
+  s_1ca65ffa5958ee::t_8b91b0ecbae737 267-291,294-296
+src/main/project-application/ProjectWorkspace.node.test.ts
+  s_1ca65ffa5958ee::t_81184c70d868d8 656,715,733
+src/renderer/components/board/page-stage/properties-section.test.tsx
+  s_1ca65ffa5958ee::t_e583f3be47c445 246
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_1ca65ffa5958ee::t_fe21bdf97fb468 3192
+crates/nodex-core-contracts/src/workspace.rs
+  s_1ca65ffa5958ee::t_e719f73f4b4cfe 1153,1160-1161,1170,1172-1174
+src/renderer/lib/page-chat-queries.node.test.ts
+  s_1ca65ffa5958ee::t_e583f3be47c445 25
+packages/core-protocol/src/generated.ts
+  s_1ca65ffa5958ee::t_3b0ac6f0156223 1646,1654,9856-9857,9865-9868
+crates/nodex-core/src/workspace/page_chat.rs
+  s_1ca65ffa5958ee::t_fa9d3ee8630338 1,9-10,29-31,272,286,301-350,362,409-413,421,423-451,499-510,533,536-540,548,1094
+  s_1ca65ffa5958ee::t_2f5d25b6cd8cca 985-1093,1095
+src/main/core-client/project-workspace-adapter.ts
+  s_1ca65ffa5958ee::t_93a2f1aa50cc89 180,189-191
+src/renderer/components/workbench/page-chat-activity-control.test.tsx
+  s_1ca65ffa5958ee::t_e583f3be47c445 18,28
+packages/core-protocol/openapi.json
+  s_1ca65ffa5958ee::t_3b0ac6f0156223 6899-6909,6948-6949,41287-41288,41304-41310,41335
+src/renderer/components/board/page-stage/properties-section.tsx
+  s_1ca65ffa5958ee::t_a151c8c37bdeae 22,59
+src/renderer/components/board/page-stage/properties-section.browser.test.tsx
+  s_1ca65ffa5958ee::t_e583f3be47c445 15
+src/main/codex-application/CodexThreadCatalog.node.test.ts
+  s_1ca65ffa5958ee::t_db8b75e5febb15 111-124,134,361,363-367
+src/renderer/lib/use-page-chat-activity.test.tsx
+  s_1ca65ffa5958ee::t_9c9e22e685553c 1-73
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_1ca65ffa5958ee::t_c0703e49c1f6f6 29,274-279,288-289
+src/renderer/lib/page-chat-activity-presentation.ts
+  s_1ca65ffa5958ee::t_5ddfe8d3edd822 2,4-10,18-22,26-29,32,34-42,48,50,52-54,60-65,76-96
+src/renderer/components/shared/page-chat-activity-glyph.tsx
+  s_1ca65ffa5958ee::t_a151c8c37bdeae 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8c17ba4867a0574ae63f980f7e3dd6880dea776",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
