@@ -1,0 +1,24 @@
+src/main/agent-runtime/AgentRuntimeSupervisor.node.test.ts
+  s_1ca65ffa5958ee::t_4793efbceb4002 386-404
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_1ca65ffa5958ee::t_2ddc7d436ed2f2 3-6,161-162,164,400-401,405,432,457-458
+  s_1ca65ffa5958ee::t_08bef8db46540a 65
+src/main/agent-runtime/AgentRuntimeSupervisor.ts
+  s_1ca65ffa5958ee::t_4793efbceb4002 28-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "884e6e03c18a0953cb4ad00034a89ce2af668e59",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
