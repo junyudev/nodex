@@ -43,6 +43,11 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
           runId: null, attemptId: null, incarnationId: "incarnation", providerSessionId: "acp-session", nativeGeneration: 1}});
       continue;
     }
+    if (request.input.projectId === "activity") {
+      send({ type: "activity", rootThreadId: "thread:root", sequence: 12 });
+      success(request.id, null);
+      continue;
+    }
     if (request.input.projectId === "native-session-closed") {
       send({type: "execution.native-session.closed", runtimeId: identity.runtimeId,
         runtimeGeneration: identity.runtimeGeneration, providerSessionId: "acp-session", nativeGeneration: 1, incarnationId: "incarnation"});

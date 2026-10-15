@@ -123,6 +123,11 @@ const notificationSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("event.error"), subscriptionId: z.string(), message: z.string() }),
   z.object({
+    type: z.literal("activity"),
+    rootThreadId: z.string().min(1),
+    sequence: z.number().int().nonnegative(),
+  }),
+  z.object({
     type: z.literal("execution.native-session.closed"),
     runtimeId: z.string().min(1),
     runtimeGeneration: z.string().min(1),
@@ -322,6 +327,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       if (
         notification.type === "execution.lifecycle" ||
         notification.type === "execution.native-session.closed" ||
+        notification.type === "activity" ||
         notification.type === "event.error"
       ) {
         const delivery = yield* Ref.updateAndGet(executionDelivery, (current) => current + 1);

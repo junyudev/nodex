@@ -321,6 +321,22 @@ An existing execution database resumes under the supervised Host after applicati
 tools are ready. Durable Session deletion intents are reconciled after each connection;
 their acknowledged tombstones prevent a deleted execution from being adopted again.
 
+## Session activity
+
+Main keeps one projection of live execution for Runtime-bound Sessions and serves it to every
+window. A Session is running while its root has an active Run, waiting while an information
+question awaits the user, and background while delegated or native background work is live
+or a delegated result will wake it; idle Sessions are absent. Each activity names the root
+Thread, active Run, pending question and live task counts, whether the Session resumes
+automatically, and its provider and model. Core never stores these facts.
+
+Each execution process generation is read once in bounded pages. One execution observation
+then reports which roots changed, and only those roots are re-read and mapped to their Session
+through the Core binding, so idle Sessions cost no execution or Core reads. Changes carry one
+increasing sequence. A process replacement or missed observation publishes a reset, after which
+windows read a fresh snapshot of at most 500 Sessions. Reading activity never starts an idle
+execution process; while none runs, the snapshot is empty and complete.
+
 ## Execution process supervision
 
 Main supervises one execution process per Profile and publishes its connection state to every

@@ -158,6 +158,9 @@ const supervisor = Layer.effectContext(
       Deferred.await(toolsReady).pipe(Effect.flatMap((tools) => tools(caller, name, input)));
     const acpProbe = yield* AcpAgentLaunchProbe;
     const projectlessId = `nodex:projectless:${core.identity.profileId}`;
+    const activity = yield* SessionActivity.make({
+      resolveSessions: yield* SessionActivity.coreSessionResolver,
+    });
     // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
     const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();
     const preparedEnvironment = new WeakMap<
@@ -413,6 +416,15 @@ const supervisor = Layer.effectContext(
           readProviderAuth,
         }).pipe(
           Effect.tap(() =>
+            activity
+              .attach(connection)
+              .pipe(
+                Effect.catchCause(() =>
+                  Effect.logWarning("Session activity is unavailable for this execution process"),
+                ),
+              ),
+          ),
+          Effect.tap(() =>
             Deferred.await(toolsReady).pipe(
               Effect.andThen(product.cleanupDeletedSessions),
               Effect.catchCause(() =>
@@ -468,7 +480,8 @@ const supervisor = Layer.effectContext(
     });
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
       Context.add(AgentRuntimeSessionActivity, {
-        ...SessionActivity.inactive,
+        read: activity.read,
+        activityChanges: activity.activityChanges,
         connection: runtime.connectionState,
         connectionChanges: runtime.connectionChanges,
       }),

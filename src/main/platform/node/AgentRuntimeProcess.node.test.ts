@@ -300,3 +300,21 @@ it.live("configures providers over stdin so credentials never enter the process 
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+it.live("root activity notifications travel on the execution metadata channel", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const execution = yield* connection.subscribeExecutionNotifications;
+    yield* connection.request("project.read", { projectId: "activity" });
+    const delivered = yield* execution.pipe(
+      Stream.take(1),
+      Stream.runCollect,
+      Effect.timeout("2 seconds"),
+    );
+    assert.deepEqual(delivered[0]?.notification, {
+      type: "activity",
+      rootThreadId: "thread:root",
+      sequence: 12,
+    });
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
