@@ -114,6 +114,14 @@ describe("workbench panel preview", () => {
       kind: "review",
       config: { projectId: null },
     });
+    const runtime = {
+      ...makeTestWorkbenchSession({ projectId: null, thread: null }),
+      executionRef: { runtimeId: "runtime", threadId: "runtime-thread" },
+    };
+    expect(makeWorkbenchTabProjectionDraft(runtime, "review")).toMatchObject({
+      kind: "review",
+      config: { projectId: null },
+    });
   });
 
   test("gives each Browser runtime a distinct preview identity that survives promotion", () => {

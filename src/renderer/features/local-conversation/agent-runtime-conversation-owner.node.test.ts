@@ -273,6 +273,477 @@ async function open(initial: AgentRuntimeConversation, pages: readonly AgentHist
   return { owner, wire, release };
 }
 
+const retiredAt = "2026-10-14T00:00:05.000Z";
+const retiredEvent = (sequence = 2): AgentEvent => ({
+  sequence,
+  commandId: null,
+  event: {
+    id: `retired:${sequence}`,
+    threadId: target.threadId,
+    occurredAt: retiredAt,
+    type: "run.execution-retired",
+    payload: {
+      runId: "run",
+      attemptId: "attempt",
+      rootNodeId: "root",
+      providerThreadId: "provider",
+      cohortParentRunId: "cohort",
+      deliveryRunId: "delivery",
+      operationId: "handoff",
+      retirementEffectId: "retirement",
+    },
+  },
+});
+const runtimeNode = (
+  id: string,
+  runId: string | null,
+): AgentSnapshot["projection"]["nodes"][number] => ({
+  id,
+  threadId: target.threadId,
+  runId,
+  parentNodeId: null,
+  rootNodeId: id,
+  kind: "user_input_request",
+  status: "waiting",
+  countsForRun: true,
+  providerThreadId: "provider",
+  providerTurnId: null,
+  nativeItemRef: null,
+  runtimeRequestId: null,
+  checkpointScopeId: null,
+  startedAt: at,
+  completedAt: null,
+});
+const runtimeQuestion = (
+  id: string,
+  runId: string | null,
+): Extract<AgentTurnItem, { type: "user_input_request" }> => ({
+  ...base(`${id}:item`, 20_001),
+  type: "user_input_request",
+  nodeId: `${id}:node`,
+  runId,
+  status: "waiting",
+  completedAt: null,
+  requestId: id,
+  questions: [{ id: "q", header: "Choice", question: "Continue?", options: [] }],
+});
+const runtimeRequest = (id: string): AgentSnapshot["projection"]["runtimeRequests"][number] => ({
+  id,
+  nodeId: `${id}:node`,
+  providerTurnId: null,
+  nativeRequestRef: null,
+  kind: "user_input",
+  status: "pending",
+  responseCapability: { type: "live", providerSessionId: "physical" },
+  createdAt: at,
+  resolvedAt: null,
+});
+
+test("retires only live resident keys and the addressed delivery without rereading history or queue bodies", async () => {
+  const cold = Array.from({ length: 1_000 }, (_, ordinal) => ({
+    ...command(ordinal),
+    runId: "history",
+    output: "Cold output ".repeat(600),
+  }));
+  const completed = Array.from({ length: 10 }, (_, ordinal) => ({
+    ...command(ordinal + 1_000),
+    output: "Completed output ".repeat(600),
+  }));
+  const running: AgentTurnItem = {
+    ...command(2_000),
+    nodeId: "root",
+    status: "running",
+    completedAt: null,
+    output: "Partial output",
+    exitCode: undefined,
+  };
+  const dynamic: AgentTurnItem = {
+    ...base("dynamic", 2_001),
+    type: "dynamic_tool",
+    nodeId: "dynamic-node",
+    status: "waiting",
+    completedAt: null,
+    toolName: "Read",
+    input: { path: "large.txt" },
+    output: { partial: "retained" },
+  };
+  const taskItem: AgentTurnItem = {
+    ...base("native-item", 2_002),
+    type: "subagent",
+    nodeId: "native-node",
+    status: "running",
+    completedAt: null,
+    origin: "provider_native",
+    driver: "claudeAgent",
+    providerInstanceId: "claude",
+    subagentId: "native-task",
+    childThreadId: null,
+    prompt: "Keep this prompt",
+    result: "Partial result",
+  };
+  const heldItem: Extract<AgentTurnItem, { type: "user_message" }> = {
+    ...base("held-item", 2_003),
+    type: "user_message",
+    runId: "held",
+    messageId: "held-message",
+    text: "Keep my queued intent",
+    attachments: [],
+    inputIntent: "queued_turn",
+    createdBy: "user",
+    creationSource: "web",
+    status: "pending",
+    completedAt: null,
+  };
+  const deliveryItem: AgentTurnItem = {
+    ...heldItem,
+    id: "delivery-item",
+    runId: "delivery",
+    messageId: "delivery-message",
+    text: "Completion notification",
+  };
+  const otherItem = { ...assistant("Other live Run"), id: "other-item", runId: "other" };
+  const source = conversation([
+    ...cold,
+    ...completed,
+    running,
+    dynamic,
+    taskItem,
+    assistant(),
+    runtimeQuestion("owned", "run"),
+    runtimeQuestion("unknown", null),
+    otherItem,
+    deliveryItem,
+    heldItem,
+  ]);
+  const template = source.snapshot.projection.runs[0]!;
+  const tasks: AgentSnapshot["projection"]["subagents"] = [
+    {
+      id: "native-task",
+      threadId: target.threadId,
+      runId: "run",
+      parentNodeId: "root",
+      origin: "provider_native",
+      createdBy: "agent",
+      driver: "claudeAgent",
+      providerInstanceId: "claude",
+      providerThreadId: "provider",
+      childThreadId: null,
+      nativeTaskRef: null,
+      prompt: "Native prompt",
+      title: "Native",
+      model: null,
+      status: "running",
+      result: null,
+      startedAt: at,
+      completedAt: null,
+      updatedAt: at,
+    },
+    {
+      id: "pending-task",
+      threadId: target.threadId,
+      runId: "cohort",
+      parentNodeId: "cohort-root",
+      origin: "app_owned",
+      createdBy: "agent",
+      driver: "claudeAgent",
+      providerInstanceId: "claude",
+      providerThreadId: null,
+      childThreadId: "child",
+      nativeTaskRef: null,
+      prompt: "Child prompt",
+      title: "Child",
+      model: null,
+      status: "completed",
+      result: "Child result",
+      startedAt: at,
+      completedAt: at,
+      updatedAt: at,
+      completionDelivery: { state: "claimed", observedByRunId: "delivery" },
+    },
+  ];
+  const provider: AgentSnapshot["projection"]["providerThreads"][number] = {
+    id: "provider",
+    driver: "claudeAgent",
+    providerInstanceId: "claude",
+    providerSessionId: "physical",
+    appThreadId: target.threadId,
+    ownerNodeId: "root",
+    nativeThreadRef: null,
+    nativeConversationHeadRef: null,
+    status: "active",
+    firstRunOrdinal: 1,
+    lastRunOrdinal: 3,
+    handoffIds: [],
+    forkedFrom: null,
+    pendingBackgroundTasks: [],
+    contextUsage: null,
+    nativeMetadata: null,
+    goal: null,
+    createdAt: at,
+    updatedAt: at,
+  };
+  const initial: AgentRuntimeConversation = {
+    ...source,
+    snapshot: {
+      ...source.snapshot,
+      projection: {
+        ...source.snapshot.projection,
+        runs: [
+          { ...template, id: "history", ordinal: 1, status: "completed", completedAt: at },
+          {
+            ...template,
+            id: "cohort",
+            ordinal: 2,
+            status: "completed",
+            completedAt: at,
+            delegatedCompletion: {
+              disposition: "open",
+              nextGeneration: 7,
+              delivery: { generation: 6, messageId: "delivery-message", taskIds: ["pending-task"] },
+            },
+          },
+          {
+            ...template,
+            ordinal: 3,
+            providerThreadId: "provider",
+            rootNodeId: "root",
+            activeAttemptId: "attempt",
+          },
+          {
+            ...template,
+            id: "delivery",
+            ordinal: 4,
+            status: "queued",
+            userMessageId: "delivery-message",
+            queuePosition: 1,
+          },
+          {
+            ...template,
+            id: "held",
+            ordinal: 5,
+            status: "queued",
+            userMessageId: "held-message",
+            queuePosition: 2,
+            queueHeld: true,
+          },
+          { ...template, id: "other", ordinal: 6 },
+        ],
+        nodes: [runtimeNode("owned:node", "run"), runtimeNode("unknown:node", null)],
+        runtimeRequests: [runtimeRequest("owned"), runtimeRequest("unknown")],
+        providerThreads: [provider, { ...provider, id: "other-provider", lastRunOrdinal: 6 }],
+        providerTurns: [
+          {
+            id: "native-turn",
+            providerThreadId: "provider",
+            nodeId: "root",
+            runAttemptId: "attempt",
+            nativeTurnRef: null,
+            ordinal: 1,
+            status: "running",
+            startedAt: at,
+            completedAt: null,
+          },
+          {
+            id: "other-turn",
+            providerThreadId: "other-provider",
+            nodeId: "other-root",
+            runAttemptId: "other-attempt",
+            nativeTurnRef: null,
+            ordinal: 1,
+            status: "running",
+            startedAt: at,
+            completedAt: null,
+          },
+        ],
+        subagents: [
+          ...tasks,
+          {
+            ...tasks[1]!,
+            id: "delivered-task",
+            completionDelivery: { state: "delivered", observedByRunId: "old-delivery" },
+          },
+          { ...tasks[1]!, id: "other-task", runId: "other" },
+        ],
+      },
+    },
+  };
+  const { owner, wire, release } = await open(initial);
+  await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.entries).toHaveLength(2));
+  const key = JSON.stringify(["agent-run", target.threadId, "run"]);
+  const historyKey = JSON.stringify(["agent-run", target.threadId, "history"]);
+  const heldKey = JSON.stringify(["agent-run", target.threadId, "held"]);
+  const before = owner.getSnapshot().conversation!.snapshot.projection;
+  const historyBody = owner.readOwner.readItem(historyKey, "command:0");
+  const completedBody = owner.readOwner.readItem(key, "command:1000");
+  const heldBody = owner.readOwner.readItem(heldKey, "held-item");
+  const structure = owner.readOwner.readStructure();
+  const historyTurn = structure!.turns.find((turn) => turn.entityKey === historyKey);
+  const changed = vi.fn();
+  const siblingChanged = vi.fn();
+  const structureChanged = vi.fn();
+  const stops = [
+    owner.readOwner.subscribeItem(key, running.id, changed),
+    owner.readOwner.subscribeItem(historyKey, "command:0", siblingChanged),
+    owner.readOwner.subscribeStructure(structureChanged),
+  ];
+  const readItem = vi.spyOn(owner.readOwner, "readItem");
+  const readTurn = vi.spyOn(owner.readOwner, "readTurn");
+  vi.mocked(wire.port.readQueuePage).mockClear();
+  wire.emit(retiredEvent());
+  const deliveryKey = JSON.stringify(["agent-run", target.threadId, "delivery"]);
+  expect(readItem.mock.calls.every(([entity]) => entity === key || entity === deliveryKey)).toBe(
+    true,
+  );
+  expect(readItem.mock.calls.length).toBeLessThanOrEqual(21);
+  expect(readTurn).not.toHaveBeenCalled();
+  expect(wire.port.read).toHaveBeenCalledOnce();
+  expect(wire.port.history).not.toHaveBeenCalled();
+  expect(wire.port.item).not.toHaveBeenCalled();
+  expect(wire.port.readQueuePage).not.toHaveBeenCalled();
+  expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
+  expect(wire.port.readQueuedMessage).not.toHaveBeenCalled();
+  expect(changed).toHaveBeenCalledOnce();
+  expect(siblingChanged).not.toHaveBeenCalled();
+  expect(structureChanged).toHaveBeenCalledOnce();
+  expect(owner.readOwner.readStructure()!.turnEntityKeys).toBe(structure!.turnEntityKeys);
+  expect(owner.readOwner.readStructure()!.turns.find((turn) => turn.entityKey === historyKey)).toBe(
+    historyTurn,
+  );
+  expect(owner.readOwner.readItem(historyKey, "command:0")).toBe(historyBody);
+  expect(owner.readOwner.readItem(key, "command:1000")).toBe(completedBody);
+  expect(owner.readOwner.readItem(heldKey, "held-item")).toBe(heldBody);
+  expect(owner.readOwner.readItem(key, running.id)).toMatchObject({
+    status: "declined",
+    aggregatedOutput: "Partial output",
+    durationMs: 5_000,
+  });
+  expect(owner.readOwner.readItem(key, "dynamic")).toMatchObject({
+    status: "failed",
+    success: false,
+    arguments: { path: "large.txt" },
+    contentItems: [{ text: '{"partial":"retained"}' }],
+  });
+  expect(owner.readOwner.readItem(key, "native-item")).toMatchObject({
+    status: "failed",
+    prompt: "Keep this prompt",
+    agentsStates: { "native-task": { status: "interrupted", message: "Partial result" } },
+  });
+  expect(owner.readOwner.readTurnDetails(key)?.status).toBe("interrupted");
+  expect(owner.readOwner.readTurnDetails(deliveryKey)?.status).toBe("interrupted");
+  const after = owner.getSnapshot().conversation!.snapshot.projection;
+  expect(after.runs.find((run) => run.id === "run")).toMatchObject({
+    status: "interrupted",
+    completedAt: retiredAt,
+  });
+  expect(after.runs.find((run) => run.id === "cohort")).toMatchObject({
+    status: "completed",
+    delegatedCompletion: { disposition: "stopped", nextGeneration: 7, delivery: null },
+  });
+  expect(after.runs.find((run) => run.id === "delivery")).toMatchObject({
+    status: "cancelled",
+    queuePosition: null,
+  });
+  expect(after.runs.find((run) => run.id === "held")).toBe(
+    before.runs.find((run) => run.id === "held"),
+  );
+  expect(after.runs.find((run) => run.id === "other")).toBe(
+    before.runs.find((run) => run.id === "other"),
+  );
+  expect(after.providerTurns[0]).toMatchObject({ status: "interrupted", completedAt: retiredAt });
+  expect(after.providerTurns[1]).toBe(before.providerTurns[1]);
+  expect(after.providerThreads[0]).toMatchObject({ status: "idle" });
+  expect(after.providerThreads[1]).toBe(before.providerThreads[1]);
+  expect(after.runtimeRequests[0]).toMatchObject({
+    status: "cancelled",
+    resolvedAt: retiredAt,
+    responseCapability: { type: "not_resumable" },
+  });
+  expect(after.runtimeRequests[1]).toBe(before.runtimeRequests[1]);
+  expect(owner.getSnapshot().view?.requests.map((request) => request.requestId)).toEqual([
+    "unknown",
+  ]);
+  expect(after.subagents[0]).toMatchObject({ status: "interrupted", completedAt: retiredAt });
+  expect(after.subagents[1]).toMatchObject({
+    completionDelivery: { state: "disposed", observedByRunId: null },
+  });
+  expect(after.subagents[2]).toBe(before.subagents[2]);
+  expect(after.subagents[3]).toBe(before.subagents[3]);
+  expect(owner.getSnapshot().view?.queuedFollowUps.entries).toMatchObject([
+    { followUpId: "held", prompt: "Keep my queued intent", pause: { kind: "interrupted" } },
+  ]);
+  wire.emit({
+    sequence: 3,
+    commandId: null,
+    event: {
+      id: "follow-up",
+      threadId: target.threadId,
+      occurredAt: retiredAt,
+      type: "run.updated",
+      payload: { ...template, id: "cohort", ordinal: 2, status: "completed", completedAt: at },
+    },
+  });
+  expect(
+    owner.getSnapshot().conversation!.snapshot.projection.runs.find((run) => run.id === "cohort")
+      ?.delegatedCompletion,
+  ).toEqual({ disposition: "stopped", nextGeneration: 7, delivery: null });
+  stops.forEach((stop) => stop());
+  release();
+});
+
+test("control-only retirement uses captured node sources and preserves unknown ACP Run identity", async () => {
+  const source = conversation([]);
+  const initial: AgentRuntimeConversation = {
+    ...source,
+    snapshot: {
+      ...source.snapshot,
+      projection: {
+        ...source.snapshot.projection,
+        runs: [{ ...source.snapshot.projection.runs[0]!, status: "completed", completedAt: at }],
+        nodes: [runtimeNode("owned:node", "run"), runtimeNode("unknown:node", null)],
+        runtimeRequests: [
+          runtimeRequest("owned"),
+          runtimeRequest("late"),
+          runtimeRequest("unknown"),
+        ],
+      },
+    },
+  };
+  const wire = transport(initial);
+  vi.mocked(wire.port.control).mockResolvedValue(initial);
+  const owner = new AgentRuntimeConversationOwner(target, wire.port);
+  const release = owner.retain();
+  await owner.resume();
+  const before = owner.getSnapshot().conversation!.snapshot.projection;
+  wire.emit({
+    sequence: 2,
+    commandId: null,
+    event: {
+      id: "late-node",
+      threadId: target.threadId,
+      occurredAt: at,
+      type: "node.updated",
+      payload: runtimeNode("late:node", "run"),
+    },
+  });
+  wire.emit(retiredEvent(3));
+  const after = owner.getSnapshot().conversation!.snapshot.projection;
+  expect(after.runs[0]).toBe(before.runs[0]);
+  expect(after.runtimeRequests.slice(0, 2).map((request) => request.status)).toEqual([
+    "cancelled",
+    "cancelled",
+  ]);
+  expect(after.runtimeRequests[2]).toBe(before.runtimeRequests[2]);
+  expect(after.nodes).toEqual([]);
+  expect(after.turnItems).toEqual([]);
+  expect(owner.readOwner.readStructure()).toBeNull();
+  expect(wire.port.control).toHaveBeenCalledOnce();
+  expect(wire.port.read).not.toHaveBeenCalled();
+  expect(wire.port.history).not.toHaveBeenCalled();
+  expect(wire.port.item).not.toHaveBeenCalled();
+  expect(wire.port.readQueuePage).not.toHaveBeenCalled();
+  release();
+});
+
 describe("Agent Runtime keyed transcript reads", () => {
   test("retains a content source across streamed deltas and retires it on reconnect or release", async () => {
     const { owner, wire, release } = await open(conversation([assistant()]));

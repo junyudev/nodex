@@ -33,9 +33,10 @@ export const make = Effect.gen(function* () {
       .getProjectSession(sessionId)
       .pipe(Effect.catch(() => Effect.succeed(null)));
     if (!session) return toolFailure("session_unavailable");
-    const anchor = Option.isSome(presentation)
-      ? presentation.value.read(input.caller.threadId, input.caller.turnId)
-      : null;
+    const anchor =
+      Option.isSome(presentation) && caller?.runId != null
+        ? presentation.value.read(caller.threadId, caller.runId)
+        : null;
     const requestedWindow = parsed.data.window ?? anchor;
     if (!requestedWindow)
       return toolSuccess({ status: "window_required", windows: bridge.registered() });

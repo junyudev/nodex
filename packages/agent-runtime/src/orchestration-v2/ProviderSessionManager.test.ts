@@ -1,6 +1,6 @@
 import * as NetAddress from "effect/net/NetAddress";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import {
   EnvironmentId,
@@ -31,6 +31,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
 import { TestClock } from "effect/testing";
 import { HttpServer } from "effect/http";
 
@@ -330,6 +331,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     /** Completed when a hanging scope close reaches its wedged finalizer. */
     readonly scopeCloseReached?: Deferred.Deferred<void>;
     readonly scopeClosed?: Deferred.Deferred<void>;
+    readonly scopeCloseRelease?: Deferred.Deferred<void>;
   } = {},
 ) {
   const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
@@ -352,7 +354,13 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     (options.scopeCloseReached === undefined
       ? Effect.void
       : Deferred.succeed(options.scopeCloseReached, undefined)
-    ).pipe(Effect.andThen(Effect.never)),
+    ).pipe(
+      Effect.andThen(
+        options.scopeCloseRelease === undefined
+          ? Effect.never
+          : Deferred.await(options.scopeCloseRelease),
+      ),
+    ),
   );
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: ProviderInstanceId.make("codex"),
@@ -491,6 +499,7 @@ function layerTest(input: {
   readonly spawnBeforeOpen?: boolean;
   readonly scopeCloseReached?: Deferred.Deferred<void>;
   readonly scopeClosed?: Deferred.Deferred<void>;
+  readonly scopeCloseRelease?: Deferred.Deferred<void>;
   readonly serverSettingsLayer?: ReturnType<typeof ServerSettings.layerTest>;
   readonly projectServiceLayer?: Layer.Layer<ProjectService.ProjectService>;
 }) {
@@ -506,6 +515,9 @@ function layerTest(input: {
     makeProviderAdapter(input.state, {
       failEventStream: input.failEventStream ?? false,
       ...(input.scopeClosed === undefined ? {} : { scopeClosed: input.scopeClosed }),
+      ...(input.scopeCloseRelease === undefined
+        ? {}
+        : { scopeCloseRelease: input.scopeCloseRelease }),
       ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
       ...(input.mcpConfigs === undefined ? {} : { mcpConfigs: input.mcpConfigs }),
       ...(input.beforeOpen === undefined ? {} : { beforeOpen: input.beforeOpen }),
@@ -4377,6 +4389,7 @@ it.effect(
           threadId: secondThreadId,
           providerSessionId,
           now,
+          nativeThreadId: "native-thread-b",
         });
         const firstRunId = idAllocator.derive.run({ threadId: firstThreadId, ordinal: 1 });
         yield* eventSink.write({
@@ -4479,8 +4492,8 @@ it.effect(
         yield* resumeSecondThread;
         assert.equal((yield* Ref.get(state)).resumeCount, 4);
 
-        // The second thread has no persisted provider thread, so nothing is unloaded.
-        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, []);
+        // The physical owner retains the resumed source even before its metadata is persisted.
+        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread-b"]);
 
         yield* manager.detach({ providerSessionId, threadId: firstThreadId });
         assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
@@ -4488,7 +4501,10 @@ it.effect(
         assert.equal((yield* Ref.get(state)).interruptCount, 1);
         // The runtime stays up for the second thread; the first thread's
         // native state is unloaded after its turn is interrupted.
-        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread"]);
+        assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, [
+          "native-thread-b",
+          "native-thread",
+        ]);
 
         yield* manager.detach({ providerSessionId, threadId: secondThreadId });
         yield* TestClock.adjust("1 second");
@@ -5190,5 +5206,227 @@ it.effect(
         );
         assert.equal((yield* Ref.get(state)).closeCount, 2);
       }).pipe(Effect.provide(layerTest({ state, idleTimeoutMs: 60_000, scopeClosed: closed })));
+    }),
+);
+
+for (const failure of ["throw", "timeout"] as const) {
+  it.effect(
+    `terminal retirement retains its exact source after ${failure} and ignores cold history`,
+    () =>
+      Effect.gen(function* () {
+        const state = yield* Ref.make(emptyState);
+        const allowUnload = yield* Ref.make(false);
+        const unloadStarted = yield* Deferred.make<void>();
+        let attempts = 0;
+        const beforeUnload = Effect.gen(function* () {
+          attempts++;
+          yield* Deferred.succeed(unloadStarted, undefined);
+          if (yield* Ref.get(allowUnload)) return;
+          if (failure === "throw") return yield* Effect.die(new Error("native unload rejected"));
+          yield* Effect.never;
+        });
+        const effect = Effect.gen(function* () {
+          const sink = yield* EventSink.EventSinkV2;
+          const ids = yield* IdAllocator.IdAllocatorV2;
+          const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+          const sql = yield* SqlClient.SqlClient;
+          const store = yield* ProjectionStore.ProjectionStoreV2;
+          const now = yield* DateTime.now;
+          const projectId = yield* ids.allocate.project({ fixtureName: `retirement-${failure}` });
+          const threadId = yield* ids.allocate.thread({
+            fixtureName: `retirement-${failure}`,
+            projectId,
+          });
+          const otherThreadId = yield* ids.allocate.thread({
+            fixtureName: `retirement-other-${failure}`,
+            projectId,
+          });
+          const providerSessionId = ids.derive.providerSession({
+            providerInstanceId: modelSelection.instanceId,
+          });
+          const providerThread = makeProviderThread({
+            idAllocator: ids,
+            threadId,
+            providerSessionId,
+            now,
+          });
+          yield* sink.write({
+            events: [
+              yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now }),
+              yield* makeThreadCreatedEvent({ idAllocator: ids, threadId: otherThreadId, now }),
+              {
+                id: yield* ids.allocate.event({ threadId }),
+                type: "provider-thread.updated",
+                threadId,
+                driver: CODEX_DRIVER,
+                occurredAt: now,
+                payload: providerThread,
+              },
+            ],
+          });
+          const runtime = yield* manager.open({
+            threadId,
+            providerSessionId,
+            modelSelection,
+            runtimePolicy,
+          });
+          yield* manager.open({
+            threadId: otherThreadId,
+            providerSessionId,
+            modelSelection,
+            runtimePolicy,
+          });
+          yield* runtime.resumeThread({ providerThread, threadId, modelSelection, runtimePolicy });
+          // Storage-scale fixture: a retirement must read only the actual loaded root and its last turn.
+          const cold = JSON.stringify({ COLD_RETIREMENT_HISTORY: "x".repeat(64 * 1024) });
+          yield* sql`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i < 1000)
+          INSERT INTO orchestration_v2_projection_provider_turns
+            (provider_turn_id,thread_id,provider_thread_id,node_id,run_attempt_id,ordinal,status,started_at,completed_at,payload_json)
+          SELECT 'cold-retirement:' || i, ${threadId}, ${providerThread.id}, 'cold-node', NULL, i, 'completed', NULL, NULL, ${cold} FROM n`;
+          const lastTurnId = ids.derive.providerTurn({
+            driver: CODEX_DRIVER,
+            nativeTurnId: "retire-last",
+          });
+          yield* sink.write({
+            events: [
+              {
+                id: yield* ids.allocate.event({ threadId }),
+                type: "provider-turn.updated",
+                threadId,
+                driver: CODEX_DRIVER,
+                occurredAt: now,
+                payload: {
+                  id: lastTurnId,
+                  providerThreadId: providerThread.id,
+                  nodeId: ids.derive.rootNode({ runId: ids.derive.run({ threadId, ordinal: 1 }) }),
+                  runAttemptId: null,
+                  nativeTurnRef: null,
+                  ordinal: 1001,
+                  status: "completed",
+                  startedAt: now,
+                  completedAt: now,
+                },
+              },
+            ],
+          });
+          const parsed: string[] = [];
+          const original = JSON.parse;
+          const trace = vi.spyOn(JSON, "parse").mockImplementation((value, reviver) => {
+            if (typeof value === "string" && value.includes("COLD_RETIREMENT_HISTORY"))
+              parsed.push(value);
+            return original(value, reviver);
+          });
+          try {
+            const point = yield* store.getProviderRetirementContext(
+              threadId,
+              providerSessionId,
+              providerThread.id,
+            );
+            assert.equal(point.providerThread?.id, providerThread.id);
+            assert.equal(point.providerTurn?.id, lastTurnId);
+            const plan = yield* sql<{
+              detail: string;
+            }>`EXPLAIN QUERY PLAN SELECT payload_json FROM orchestration_v2_projection_provider_turns
+            WHERE thread_id = ${threadId} AND provider_thread_id = ${providerThread.id} ORDER BY ordinal DESC LIMIT 1`;
+            assert.isTrue(
+              plan.some((row) =>
+                row.detail.includes(
+                  "orchestration_v2_projection_provider_turns_thread_ordinal_idx",
+                ),
+              ),
+            );
+            const detach = { threadId, providerSessionId, revokeMcpCredential: true };
+            const first = yield* manager.detach(detach).pipe(Effect.result, Effect.forkScoped);
+            yield* Deferred.await(unloadStarted);
+            if (failure === "timeout") yield* TestClock.adjust("10 seconds");
+            assert.equal((yield* Fiber.join(first))._tag, "Failure");
+            assert.isTrue(Option.isSome(yield* manager.get(providerSessionId)));
+            // Core projections and credentials may already be detached. The physical owner
+            // must retain the old handle rather than rediscovering a replacement on retry.
+            yield* sql`DELETE FROM orchestration_v2_projection_provider_turns WHERE thread_id = ${threadId}`;
+            yield* sql`DELETE FROM orchestration_v2_projection_provider_threads WHERE provider_thread_id = ${providerThread.id}`;
+            yield* Ref.set(allowUnload, true);
+            yield* manager.detach(detach);
+            assert.equal(attempts, 2);
+            assert.equal((yield* Ref.get(state)).interruptCount, 2);
+            assert.deepEqual((yield* Ref.get(state)).unloadedNativeThreadIds, ["native-thread"]);
+            assert.deepEqual(parsed, []);
+            assert.isTrue(
+              Option.isSome(yield* manager.get(providerSessionId)),
+              "An unrelated shared Thread stays live",
+            );
+          } finally {
+            trace.mockRestore();
+          }
+        });
+        yield* effect.pipe(
+          Effect.provide(
+            layerTest({ state, idleTimeoutMs: 600000, beforeUnload }).pipe(
+              Layer.provideMerge(layerTestDatabase),
+            ),
+          ),
+          Effect.scoped,
+        );
+      }),
+  );
+}
+
+it.effect(
+  "terminal retirement cannot forget a pending nonshared scope close, including a late ACK",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const closeStarted = yield* Deferred.make<void>();
+      const closeRelease = yield* Deferred.make<void>();
+      const closed = yield* Deferred.make<void>();
+      const effect = Effect.gen(function* () {
+        const sink = yield* EventSink.EventSinkV2;
+        const ids = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const now = yield* DateTime.now;
+        const projectId = yield* ids.allocate.project({ fixtureName: "retirement-close" });
+        const threadId = yield* ids.allocate.thread({ fixtureName: "retirement-close", projectId });
+        const providerSessionId = yield* ids.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        yield* sink.write({
+          events: [yield* makeThreadCreatedEvent({ idAllocator: ids, threadId, now })],
+        });
+        yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+        const input = { threadId, providerSessionId, revokeMcpCredential: true };
+        const first = yield* manager.detach(input).pipe(Effect.result, Effect.forkScoped);
+        yield* Deferred.await(closeStarted);
+        assert.isTrue(Option.isNone(yield* manager.get(providerSessionId)));
+        assert.equal((yield* manager.detach(input).pipe(Effect.result))._tag, "Failure");
+        yield* TestClock.adjust("30 seconds");
+        assert.equal((yield* Fiber.join(first))._tag, "Failure");
+        assert.equal((yield* manager.detach(input).pipe(Effect.result))._tag, "Failure");
+        yield* Deferred.succeed(closeRelease, undefined);
+        yield* Deferred.await(closed);
+        yield* Effect.yieldNow;
+        yield* manager.detach(input);
+        assert.equal((yield* Ref.get(state)).closeCount, 1);
+      });
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 1000,
+            capabilities: {
+              ...CodexCapabilities,
+              sessions: {
+                ...CodexCapabilities.sessions,
+                supportsMultipleProviderThreadsPerSession: false,
+              },
+            },
+            hangSessionScopeClose: true,
+            scopeCloseReached: closeStarted,
+            scopeCloseRelease: closeRelease,
+            scopeClosed: closed,
+          }),
+        ),
+        Effect.scoped,
+      );
     }),
 );

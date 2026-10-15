@@ -3414,7 +3414,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
      * otherwise hold up every event. A stray is forgotten once stopped or
      * gone; one still running waits for the next Stop.
      */
-    const stopStrays = (thread: ThreadState) =>
+    const stopStrays = (thread: ThreadState, strict = false) =>
       Effect.forEach(
         [...strays].flatMap(([childId, caller]) => (rootOf(caller) === thread ? [childId] : [])),
         (childId) =>
@@ -3423,7 +3423,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             Effect.catchTags({ SessionNotFoundError: () => Effect.void }),
             Effect.timeout(INTERRUPT_TIMEOUT),
             Effect.tap(() => Effect.sync(() => strays.delete(childId))),
-            Effect.ignore({ log: true }),
+            Effect.catchCause((cause) => strict ? Effect.failCause(cause) : Effect.logWarning("Could not stop a stray OpenCode subagent.", cause)),
           ),
         { discard: true },
       );
@@ -3487,7 +3487,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
      * so its call stays tracked: the session is not released under it, and
      * the next Stop tries it again.
      */
-    const stopBackground = Effect.fnUntraced(function* (state: ThreadState) {
+    const stopBackground = Effect.fnUntraced(function* (state: ThreadState, strict = false) {
       const calls = runningCalls(state).filter((call) => call.background);
       // Every session under the thread, which a stopped subagent may report to.
       const callers = sessionsOf(state);
@@ -3516,7 +3516,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
       const unreached = new Set<string>();
       for (const [childId, caller] of children) {
         caller.stoppedChildren.add(childId);
-        const reached = yield* client.session
+        const result = yield* client.session
           .interrupt({ sessionID: Session.ID.make(childId) })
           .pipe(
             // A session that is gone runs nothing.
@@ -3526,8 +3526,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               Effect.logWarning("Could not stop an OpenCode subagent.", cause),
             ),
             Effect.exit,
-            Effect.map(Exit.isSuccess),
           );
+        if (strict && Exit.isFailure(result)) return yield* Effect.failCause(result.cause);
+        const reached = Exit.isSuccess(result);
         if (!reached) unreached.add(childId);
       }
       // Its end closes its turn; one the Stop did not reach stays pending work.
@@ -3537,7 +3538,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           .pipe(
             Effect.catchTags({ SessionNotFoundError: () => Effect.void }),
             Effect.timeout(INTERRUPT_TIMEOUT),
-            Effect.ignore({ log: true }),
+            Effect.catchCause((cause) => strict ? Effect.failCause(cause) : Effect.logWarning("Could not stop an OpenCode follow-up.", cause)),
           );
       }
       yield* lock.withPermit(
@@ -3559,12 +3560,12 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
             markUnsettled(state);
             yield* client.session
               .interrupt({ sessionID: Session.ID.make(state.sessionId) })
-              .pipe(Effect.timeout(INTERRUPT_TIMEOUT), Effect.ignore({ log: true }));
+              .pipe(Effect.timeout(INTERRUPT_TIMEOUT), Effect.catchCause((cause) => strict ? Effect.failCause(cause) : Effect.logWarning("Could not stop an OpenCode wake.", cause)));
           }
         }),
       );
       // Subagents of held executions this or an earlier Stop dropped.
-      yield* stopStrays(state);
+      yield* stopStrays(state, strict);
     });
 
     /**
@@ -4005,16 +4006,21 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
         ),
       interruptTurn: (interruptInput) =>
         Effect.gen(function* () {
+          const strict = interruptInput.requireTerminalAcknowledgement === true;
           const sessionId = yield* sessionIdOf(interruptInput.providerThread);
           const state = threads.get(sessionId);
           if (state === undefined) return;
           const turn = state.active;
+          const awaitRetirement = Effect.suspend(() => Effect.succeed(
+            !hasBackground(state) && !sessionsOf(state).some((entry) => busy.has(entry.sessionId) || entry.unsettled || entry.active !== undefined),
+          )).pipe(Effect.repeat({ until: (done) => done, schedule: Schedule.spaced("25 millis") }), Effect.timeout(INTERRUPT_TIMEOUT));
           // OpenCode stops a foreground subagent with its parent, but not a
           // background one: a user Stop (`requestRuntimeRestart`) stops those
           // too, and the execution OpenCode starts to report them. A turn
           // interrupted to restart it with new input leaves them running.
-          if (interruptInput.requestRuntimeRestart === true) yield* stopBackground(state);
+          if (interruptInput.requestRuntimeRestart === true) yield* stopBackground(state, strict);
           if (turn === undefined || turn.providerTurn.id !== interruptInput.providerTurnId) {
+            if (strict) yield* awaitRetirement;
             return;
           }
           // The session answers with `session.execution.interrupted`, which ends
@@ -4033,6 +4039,10 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               ),
             );
           if (reply._tag === "None") {
+            if (strict) {
+              turn.interrupted = false;
+              return yield* new ProviderAdapter.ProviderAdapterProtocolError({ driver, detail: "OpenCode did not acknowledge native termination; workspace retirement remains pending" });
+            }
             markUnsettled(state);
             return yield* lock.withPermit(finishTurn(state, { status: "interrupted" }));
           }
@@ -4041,13 +4051,17 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           if (!reply.value.interrupted && state.active === turn && turn.heldEnd !== undefined) {
             markUnsettled(state);
             yield* lock.withPermit(finishTurn(state, { status: "interrupted" }));
-            return yield* cancelStrandedSteers(state);
+            yield* cancelStrandedSteers(state);
+            if (strict) yield* awaitRetirement;
+            return;
           }
           // Nothing was running because the turn has not sent its request yet
           // (it is reading the workspace's commands or skills): it ends here,
           // and never sends it.
           if (!reply.value.interrupted && state.active === turn && turn.unsent) {
-            return yield* lock.withPermit(finishTurn(state, { status: "interrupted" }));
+            yield* lock.withPermit(finishTurn(state, { status: "interrupted" }));
+            if (strict) yield* awaitRetirement;
+            return;
           }
           // Nothing was running. Unless the execution already ended (its event
           // is on the way), the turn is still open and nothing stopped.
@@ -4058,6 +4072,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
               detail: `OpenCode session ${sessionId} had nothing running to stop`,
             });
           }
+          if (strict) yield* awaitRetirement;
         }).pipe(
           Effect.mapError((cause) =>
             isProviderAdapterError(cause)

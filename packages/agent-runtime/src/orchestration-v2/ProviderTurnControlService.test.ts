@@ -212,6 +212,11 @@ it.effect(
         ProjectionStore.ProjectionStoreV2.of({
           apply: () => Effect.void,
           getRunOutcome: () => Effect.succeed(null),
+          getExecutionActors: () => Effect.die("unused execution actors"),
+          getExecutionHandoffs: () => Effect.die("unused execution handoffs"),
+          getExecutionDetachBarrier: () => Effect.die("unused execution detach barrier"),
+          getExecutionRetirementContext: () => Effect.die("unused execution retirement context"),
+          getProviderRetirementContext: () => Effect.die("unused provider retirement context"),
           getMessageDispatchProjection: () => Effect.die("unused message dispatch projection"),
           getHandoffHistory: () => Effect.die("unused handoff history"),
           getLastDeliveredRun: () => Effect.die("unused delivered run"),

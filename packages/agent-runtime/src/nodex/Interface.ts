@@ -159,7 +159,41 @@ export interface AgentPredictionInput {
     readonly catch_up_sample_rate?: number | undefined;
   };
 }
+export type AgentExecutionLocation = AgentWire<
+  import("@t3tools/contracts").OrchestrationV2AppThread["executionLocation"]
+> & {};
+
 export interface AgentRuntimeOperations {
+  readonly "execution.handoff.pending": {
+    readonly input: { readonly cursor?: string };
+    readonly output: AgentWire<
+      import("../orchestration-v2/ProjectionStore.ts").ProjectionExecutionHandoffPage
+    >;
+  };
+  readonly "execution.handoff.hold": {
+    readonly input: {
+      readonly threadId: string;
+      readonly operationId: string;
+      readonly action: "acquire" | "recovery" | "release";
+      readonly recoveryRequired?: boolean;
+      readonly sourceLocation?: AgentExecutionLocation;
+    };
+    readonly output: null;
+  };
+  readonly "execution.handoff.quiesce": {
+    readonly input: { readonly threadId: string; readonly operationId: string };
+    readonly output: null;
+  };
+  readonly "execution.handoff.commit": {
+    readonly input: {
+      readonly threadId: string;
+      readonly operationId: string;
+      readonly location: AgentExecutionLocation;
+      readonly sourceWorkspaceRoot?: string;
+      readonly childrenOnly?: boolean;
+    };
+    readonly output: null;
+  };
   readonly "native.voice.prepare": {
     readonly input: { readonly threadId: string; readonly claimId: string };
     readonly output: AgentVoiceCapture;

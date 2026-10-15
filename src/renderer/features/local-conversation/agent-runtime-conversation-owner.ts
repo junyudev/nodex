@@ -82,6 +82,9 @@ interface ResidentItem {
   readonly type: AgentTurnItem["type"];
   readonly opening: boolean;
   readonly taskId: string | null;
+  readonly nodeId: string | null;
+  readonly status: AgentTurnItem["status"];
+  readonly startedAt: string | null;
 }
 interface ResidentTurn {
   readonly details: CodexTranscriptTurnDetails;
@@ -98,6 +101,53 @@ const emptyChildren: readonly CodexConversationChildMembership[] = [];
 
 const controlStatusIsLive = (status: string): boolean =>
   ["queued", "preparing", "starting", "running", "waiting", "pending", "paused"].includes(status);
+const workIsActive = (status: string): boolean =>
+  status === "pending" || status === "running" || status === "waiting";
+const runIsActive = (status: AgentRuntimeRun["status"]): boolean =>
+  status === "preparing" || status === "starting" || status === "running" || status === "waiting";
+const itemIsLive = (item: AgentTurnItem): boolean =>
+  workIsActive(item.status) || ("streaming" in item && item.streaming);
+function controlRun(run: AgentRuntimeRun, previous?: AgentRuntimeRun): AgentRuntimeRun {
+  const { restartCancelledBackgroundWork: _work, delegatedCompletion, ...metadata } = run;
+  const cohort = delegatedCompletion ?? previous?.delegatedCompletion;
+  return cohort && cohort.disposition !== "open" && cohort.delivery === null
+    ? { ...metadata, delegatedCompletion: cohort }
+    : metadata;
+}
+
+/** Patch the addressed presentation value without retaining or re-projecting its source body. */
+function retireItem(
+  item: CodexCanonicalItem,
+  startedAt: string | null,
+  completedAt: string,
+): CodexCanonicalItem {
+  const durationMs = startedAt
+    ? Math.max(0, (agentRuntimeTime(completedAt) ?? 0) - (agentRuntimeTime(startedAt) ?? 0))
+    : null;
+  switch (item.type) {
+    case "commandExecution":
+      return { ...item, status: "declined", durationMs };
+    case "fileChange":
+      return { ...item, status: "declined" };
+    case "dynamicToolCall":
+      return { ...item, status: "failed", success: false, durationMs };
+    case "collabAgentToolCall":
+      return {
+        ...item,
+        status: "failed",
+        agentsStates: Object.fromEntries(
+          Object.entries(item.agentsStates).map(([id, state]) => [
+            id,
+            state && (state.status === "running" || state.status === "pendingInit")
+              ? { ...state, status: "interrupted" as const }
+              : state,
+          ]),
+        ),
+      };
+    default:
+      return item;
+  }
+}
 const recentMetadata = <T extends { readonly id: string; readonly updatedAt: string }>(
   rows: readonly T[],
 ): T[] =>
@@ -122,10 +172,7 @@ function controlConversation(value: AgentRuntimeConversation): AgentRuntimeConve
         checkpointScopes: [],
         contextHandoffs: [],
         contextTransfers: [],
-        runs: projection.runs.map(
-          ({ restartCancelledBackgroundWork: _work, delegatedCompletion: _completion, ...run }) =>
-            run,
-        ),
+        runs: projection.runs.map((run) => controlRun(run)),
         subagents: projection.subagents.map((task) => ({
           ...task,
           prompt: "",
@@ -145,6 +192,12 @@ export class AgentRuntimeConversationOwner {
   readonly #target: ResolvedAgentRuntimeTarget;
   readonly #listeners = new Set<() => void>();
   readonly #items = new Map<string, ResidentItem>();
+  readonly #liveItemsByRun = new Map<string, Set<string>>();
+  readonly #nodeRuns = new Map<string, { readonly runId: string | null; readonly live: boolean }>();
+  readonly #cohortHeads = new Map<
+    string,
+    Pick<NonNullable<AgentRuntimeRun["delegatedCompletion"]>, "disposition" | "nextGeneration">
+  >();
   readonly #residentTaskIds = new Set<string>();
   readonly #turns = new Map<string, ResidentTurn>();
   readonly #requests = new Map<string, CodexConversationServerRequest>();
@@ -273,6 +326,8 @@ export class AgentRuntimeConversationOwner {
       this.#readMode = null;
       this.#clearTranscript();
       this.#requests.clear();
+      this.#nodeRuns.clear();
+      this.#cohortHeads.clear();
       this.#patch({
         conversation: null,
         view: null,
@@ -328,6 +383,7 @@ export class AgentRuntimeConversationOwner {
       itemId: source.sourceItemId,
     });
     if (generation !== this.#generation || !this.#transcriptActive || !item) return item;
+    this.#rememberItem(source, item);
     this.readOwner.applyEvent({
       type: "changes",
       changes: [
@@ -347,6 +403,8 @@ export class AgentRuntimeConversationOwner {
     this.#releaseEvents?.();
     this.#releaseEvents = null;
     this.#clearTranscript();
+    this.#nodeRuns.clear();
+    this.#cohortHeads.clear();
     this.readOwner.dispose();
     this.#listeners.clear();
   }
@@ -404,12 +462,16 @@ export class AgentRuntimeConversationOwner {
           this.#historyGeneration += 1;
         }
         this.#requests.clear();
+        this.#nodeRuns.clear();
+        this.#cohortHeads.clear();
         this.#state = {
           ...this.#state,
           conversation: controlConversation(conversation),
           connection: "ready",
           error: null,
         };
+        for (const node of conversation.snapshot.projection.nodes) this.#captureNode(node);
+        for (const run of conversation.snapshot.projection.runs) this.#captureCohort(run);
         for (const row of conversation.snapshot.projection.visibleTurnItems)
           this.#captureRequest(row.item, row.visibility !== "inherited");
         this.#updateChildren();
@@ -501,6 +563,7 @@ export class AgentRuntimeConversationOwner {
   #clearTranscript(): void {
     this.#transcriptHydrated = false;
     this.#items.clear();
+    this.#liveItemsByRun.clear();
     this.#residentTaskIds.clear();
     this.#turns.clear();
     this.#turnKeys = [];
@@ -691,16 +754,22 @@ export class AgentRuntimeConversationOwner {
       group.subagent ||= item.type === "subagent" || item.type === "thread_created";
       incomingByTurn.set(entityKey, group);
       if (!this.#turns.has(entityKey) && !newKeys.includes(entityKey)) newKeys.unshift(entityKey);
-      this.#items.set(item.id, {
-        entityKey,
-        sourceThreadId: row.sourceThreadId,
-        sourceItemId: row.sourceItemId,
-        runId: item.runId,
-        ordinal: item.ordinal,
-        type: item.type,
-        opening: isTurnOpening(item),
-        taskId: item.type === "subagent" ? item.subagentId : null,
-      });
+      this.#rememberItem(
+        {
+          entityKey,
+          sourceThreadId: row.sourceThreadId,
+          sourceItemId: row.sourceItemId,
+          runId: item.runId,
+          ordinal: item.ordinal,
+          type: item.type,
+          opening: isTurnOpening(item),
+          taskId: item.type === "subagent" ? item.subagentId : null,
+          nodeId: item.nodeId,
+          status: item.status,
+          startedAt: item.startedAt,
+        },
+        item,
+      );
       itemChanges.push({
         type: "item",
         key: { ...this.readOwner.key, entityKey, itemId: item.id },
@@ -779,9 +848,239 @@ export class AgentRuntimeConversationOwner {
       this.#state.conversation?.projectId ?? null,
       item.runId,
     );
-    if (request) this.#requests.set(item.requestId, request);
-    else this.#requests.delete(item.requestId);
+    if (request) {
+      this.#requests.set(item.requestId, request);
+      if (item.nodeId && !this.#nodeRuns.has(item.nodeId))
+        this.#nodeRuns.set(item.nodeId, { runId: item.runId, live: false });
+    } else {
+      this.#requests.delete(item.requestId);
+      if (
+        item.nodeId &&
+        !this.#nodeRuns.get(item.nodeId)?.live &&
+        !this.#state.conversation?.snapshot.projection.runtimeRequests.some(
+          (pending) => pending.nodeId === item.nodeId && pending.status === "pending",
+        )
+      )
+        this.#nodeRuns.delete(item.nodeId);
+    }
     return true;
+  }
+  #rememberItem(source: ResidentItem, item: AgentTurnItem): void {
+    const resident = {
+      ...source,
+      nodeId: item.nodeId,
+      status: item.status,
+      startedAt: item.startedAt,
+    };
+    this.#items.set(item.id, resident);
+    if (item.runId === null) return;
+    const key = runKey(item.threadId, item.runId);
+    if (!itemIsLive(item)) {
+      this.#liveItemsByRun.get(key)?.delete(item.id);
+      return;
+    }
+    const live = this.#liveItemsByRun.get(key) ?? new Set<string>();
+    live.add(item.id);
+    this.#liveItemsByRun.set(key, live);
+  }
+  #captureNode(node: AgentSnapshot["projection"]["nodes"][number]): void {
+    const projection = this.#state.conversation?.snapshot.projection;
+    const live = workIsActive(node.status);
+    if (
+      !live &&
+      !projection?.runtimeRequests.some(
+        (request) => request.nodeId === node.id && request.status === "pending",
+      ) &&
+      !projection?.providerTurns.some(
+        (turn) =>
+          turn.nodeId === node.id && (turn.status === "pending" || turn.status === "running"),
+      )
+    ) {
+      this.#nodeRuns.delete(node.id);
+      return;
+    }
+    this.#nodeRuns.set(node.id, { runId: node.runId, live });
+  }
+  #captureCohort(run: AgentRuntimeRun): void {
+    if (!run.delegatedCompletion) return;
+    const { disposition, nextGeneration } = run.delegatedCompletion;
+    this.#cohortHeads.set(run.id, { disposition, nextGeneration });
+  }
+  #retireExecution(
+    event: Extract<AgentEvent["event"], { readonly type: "run.execution-retired" }>,
+  ): void {
+    const conversation = this.#state.conversation;
+    if (!conversation) return;
+    const projection = conversation.snapshot.projection;
+    const { runId, attemptId, rootNodeId, providerThreadId, cohortParentRunId, deliveryRunId } =
+      event.payload;
+    const now = event.occurredAt;
+    const target = projection.runs.find((run) => run.id === runId);
+    const delivery = projection.runs.find((run) => run.id === deliveryRunId);
+    const cancelDelivery = deliveryRunId !== null && (!delivery || delivery.status === "queued");
+    const ownedNodes = new Set<string>(rootNodeId === null ? [] : [rootNodeId]);
+    for (const [id, source] of this.#nodeRuns) {
+      if (source.runId === runId) ownedNodes.add(id);
+    }
+    const entityKey = runKey(event.threadId, runId);
+    const changes: CodexTranscriptChange[] = [];
+    // Only active resident keys are visited. Cold bodies and completed siblings remain untouched.
+    for (const itemId of this.#liveItemsByRun.get(entityKey) ?? []) {
+      const source = this.#items.get(itemId);
+      if (!source) continue;
+      if (source.nodeId) ownedNodes.add(source.nodeId);
+      const current = this.readOwner.readItem(entityKey, itemId);
+      const value =
+        current && workIsActive(source.status)
+          ? retireItem(current, source.startedAt, now)
+          : current;
+      if (value !== current)
+        changes.push({ type: "item", key: { ...this.readOwner.key, entityKey, itemId }, value });
+      this.#items.set(itemId, {
+        ...source,
+        status: workIsActive(source.status) ? "interrupted" : source.status,
+      });
+    }
+    this.#liveItemsByRun.delete(entityKey);
+    for (const id of ownedNodes) this.#nodeRuns.delete(id);
+    for (const [id, request] of this.#requests) {
+      if (request.turnId === runId) this.#requests.delete(id);
+    }
+    const cohort = this.#cohortHeads.get(cohortParentRunId);
+    const stopCohort =
+      cohort !== undefined ||
+      projection.subagents.some(
+        (task) => task.runId === cohortParentRunId && task.origin === "app_owned",
+      );
+    const runs = projection.runs.map((run) => {
+      const interrupt = run.id === runId && runIsActive(run.status);
+      const cancel = run.id === deliveryRunId && run.status === "queued";
+      const stop = run.id === cohortParentRunId && stopCohort;
+      if (!interrupt && !cancel && !stop) return run;
+      const stoppedCohort = stop
+        ? {
+            disposition:
+              cohort?.disposition === "disposed" ? ("disposed" as const) : ("stopped" as const),
+            nextGeneration: cohort?.nextGeneration ?? 1,
+            delivery: null,
+          }
+        : undefined;
+      if (stoppedCohort) this.#cohortHeads.set(run.id, stoppedCohort);
+      return {
+        ...run,
+        ...(interrupt ? { status: "interrupted" as const, completedAt: now } : {}),
+        ...(cancel ? { status: "cancelled" as const, queuePosition: null, completedAt: now } : {}),
+        ...(stoppedCohort ? { delegatedCompletion: stoppedCohort } : {}),
+      };
+    });
+    const subagents = projection.subagents.map((task) => {
+      const interrupt =
+        task.runId === runId && task.origin === "provider_native" && workIsActive(task.status);
+      const dispose =
+        task.runId === cohortParentRunId &&
+        task.origin === "app_owned" &&
+        task.completionDelivery?.state !== "acknowledged" &&
+        task.completionDelivery?.state !== "delivered" &&
+        task.completionDelivery?.state !== "disposed";
+      if (!interrupt && !dispose) return task;
+      return {
+        ...task,
+        ...(interrupt ? { status: "interrupted" as const, completedAt: now } : {}),
+        ...(dispose
+          ? { completionDelivery: { state: "disposed" as const, observedByRunId: null } }
+          : {}),
+        updatedAt: now,
+      };
+    });
+    this.#state = {
+      ...this.#state,
+      conversation: {
+        ...conversation,
+        snapshot: {
+          ...conversation.snapshot,
+          projection: {
+            ...projection,
+            runs,
+            subagents,
+            providerTurns: projection.providerTurns.map((turn) =>
+              ((attemptId !== null && turn.runAttemptId === attemptId) ||
+                ownedNodes.has(turn.nodeId)) &&
+              (turn.status === "pending" || turn.status === "running")
+                ? { ...turn, status: "interrupted" as const, completedAt: now }
+                : turn,
+            ),
+            providerThreads: projection.providerThreads.map((thread) =>
+              thread.id === providerThreadId &&
+              thread.status === "active" &&
+              target !== undefined &&
+              thread.lastRunOrdinal === target.ordinal
+                ? { ...thread, status: "idle" as const, updatedAt: now }
+                : thread,
+            ),
+            runtimeRequests: projection.runtimeRequests.map((request) => {
+              if (request.status !== "pending" || !ownedNodes.has(request.nodeId)) return request;
+              this.#requests.delete(request.id);
+              return {
+                ...request,
+                status: "cancelled" as const,
+                resolvedAt: now,
+                responseCapability: {
+                  type: "not_resumable" as const,
+                  reason: "The run was interrupted.",
+                },
+              };
+            }),
+            updatedAt: now,
+          },
+        },
+      },
+    };
+    for (const previous of [target, ...(cancelDelivery ? [delivery] : [])]) {
+      if (!previous) continue;
+      const retired = runs.find((run) => run.id === previous.id);
+      if (
+        !retired ||
+        (retired.status === previous.status && retired.completedAt === previous.completedAt)
+      )
+        continue;
+      const changedKey = runKey(event.threadId, retired.id);
+      const turn = this.#turns.get(changedKey);
+      if (!turn) continue;
+      const details = projectAgentRuntimeTurnDetails({
+        thread: projection.thread,
+        entityKey: changedKey,
+        run: retired,
+        previous: turn.details,
+      });
+      this.#turns.set(changedKey, { ...turn, details });
+      changes.push({
+        type: "turn",
+        key: { ...this.readOwner.key, entityKey: changedKey },
+        details,
+        hasSubagentActivity: turn.hasSubagentActivity,
+      });
+    }
+    if (changes.length > 0) this.readOwner.applyEvent({ type: "changes", changes });
+    if (cancelDelivery) {
+      this.#queueGeneration += 1;
+      this.#queueRequest = null;
+      this.#queueDirty = false;
+      this.#queueStatus = "ready";
+      if (this.#queuePage)
+        this.#queuePage = {
+          ...this.#queuePage,
+          entries: this.#queuePage.entries.filter((entry) => entry.runId !== deliveryRunId),
+          nextRunId: this.#queuePage.nextRunId === deliveryRunId ? null : this.#queuePage.nextRunId,
+        };
+      this.#queueEntries = this.#queueEntries.filter((entry) => entry.followUpId !== deliveryRunId);
+    }
+    const changedTasks = new Set(
+      subagents
+        .filter((task, index) => task !== projection.subagents[index])
+        .map((task) => task.id),
+    );
+    if (changedTasks.size > 0) this.#updateChildren(changedTasks);
+    this.#publishView();
   }
   #accept(stored: AgentEvent): void {
     if (stored.sequence <= this.#sequence) return;
@@ -791,7 +1090,8 @@ export class AgentRuntimeConversationOwner {
       const item = event.payload;
       if (this.#transcriptActive && this.#transcriptHydrated) {
         const resident = this.#items.get(item.id);
-        if (resident)
+        if (resident) {
+          this.#rememberItem(resident, item);
           this.readOwner.applyEvent({
             type: "changes",
             changes: [
@@ -802,7 +1102,7 @@ export class AgentRuntimeConversationOwner {
               },
             ],
           });
-        else {
+        } else {
           const changes = this.#admit(
             [
               {
@@ -840,6 +1140,14 @@ export class AgentRuntimeConversationOwner {
     }
     const conversation = this.#state.conversation;
     if (!conversation) return;
+    if (event.type === "node.updated") {
+      this.#captureNode(event.payload);
+      return;
+    }
+    if (event.type === "run.execution-retired") {
+      this.#retireExecution(event);
+      return;
+    }
     if (event.type === "message.updated") {
       if (this.#queuePage?.entries.some((row) => row.userMessageId === event.payload.id)) {
         this.#queueEntries = this.#queueEntries.filter(
@@ -853,11 +1161,11 @@ export class AgentRuntimeConversationOwner {
       const wasQueued = conversation.snapshot.projection.runs.some(
         (run) => run.id === event.payload.id && run.status === "queued",
       );
-      const {
-        restartCancelledBackgroundWork: _work,
-        delegatedCompletion: _completion,
-        ...run
-      } = event.payload;
+      const previous = conversation.snapshot.projection.runs.find(
+        (run) => run.id === event.payload.id,
+      );
+      const run = controlRun(event.payload, previous);
+      this.#captureCohort(run.delegatedCompletion ? run : event.payload);
       const incomingRuns = conversation.snapshot.projection.runs.filter(
         (value) => value.id !== run.id,
       );
@@ -871,6 +1179,10 @@ export class AgentRuntimeConversationOwner {
       const runs = incomingRuns.filter(
         (value) => retained.has(value.id) || this.#turns.has(runKey(value.threadId, value.id)),
       );
+      for (const id of this.#cohortHeads.keys()) {
+        if (!retained.has(id) && !this.#turns.has(runKey(run.threadId, id)))
+          this.#cohortHeads.delete(id);
+      }
       this.#state = {
         ...this.#state,
         conversation: {
@@ -885,6 +1197,7 @@ export class AgentRuntimeConversationOwner {
       const entityKey = runKey(run.threadId, run.id);
       const turn = this.#turns.get(entityKey);
       if (turn && this.#transcriptActive && run.status === "rolled_back") {
+        this.#liveItemsByRun.delete(entityKey);
         for (const itemId of turn.itemIds) this.#items.delete(itemId);
         this.#residentTaskIds.clear();
         for (const item of this.#items.values()) {
@@ -944,6 +1257,8 @@ export class AgentRuntimeConversationOwner {
         },
       };
       if (event.payload.status !== "pending") this.#requests.delete(event.payload.id);
+      if (event.payload.status !== "pending" && !this.#nodeRuns.get(event.payload.nodeId)?.live)
+        this.#nodeRuns.delete(event.payload.nodeId);
       this.#publishView();
       return;
     }
@@ -1022,9 +1337,12 @@ export class AgentRuntimeConversationOwner {
       this.#publishView();
     }
   }
-  #updateChildren(): void {
-    this.#children = (this.#state.conversation?.snapshot.projection.subagents ?? []).map(
-      (task) => ({
+  #updateChildren(changedTaskIds?: ReadonlySet<string>): void {
+    const previous = new Map(this.#children.map((child) => [child.threadId, child]));
+    this.#children = (this.#state.conversation?.snapshot.projection.subagents ?? []).map((task) => {
+      const retained = previous.get(task.childThreadId ?? task.id);
+      if (changedTaskIds && !changedTaskIds.has(task.id) && retained) return retained;
+      return {
         threadId: task.childThreadId ?? task.id,
         parentThreadId: this.#target.threadId,
         role: "backgroundChild",
@@ -1059,8 +1377,8 @@ export class AgentRuntimeConversationOwner {
               },
             }
           : {}),
-      }),
-    );
+      };
+    });
   }
   #queuedFollowUps(): CodexQueuedFollowUpProjection {
     if (!this.#transcriptActive) return EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION;

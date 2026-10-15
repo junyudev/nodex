@@ -341,7 +341,12 @@ export function WorkbenchTabProjectionPanel({
     const project = projects.find((item) => item.id === tab.projectId) ?? null;
     return (
       <ConnectedReviewDiffPanel
-        threadId={activeSession.thread?.threadId ?? null}
+        threadId={activeSession.executionRef?.threadId ?? activeSession.thread?.threadId ?? null}
+        runtimeTarget={
+          activeSession.executionRef
+            ? { sessionId: activeSession.id, threadId: activeSession.executionRef.threadId }
+            : undefined
+        }
         projectWorkspacePath={projectWorkspaceRootOrNull(project)}
         searchOpenTick={0}
         pendingOpen={readWorkbenchReviewOpen(tab.state)}

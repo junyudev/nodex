@@ -20,6 +20,7 @@ import { parseModelOption } from "../../../src/shared/codex-composer-catalog";
 import type { CodexNativeRequestOutcome } from "../../../src/shared/codex-native-request-outcome";
 import type { CodexModelOption } from "../../../src/shared/types";
 import type { IpcApi } from "../../../src/shared/ipc-api";
+import type { AgentRuntimeConversation } from "../../../src/shared/agent-runtime-api";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
 import { waitForDraftScene } from "./new-chat-draft";
@@ -146,7 +147,11 @@ export const createAgentSmokeDraft = async (
       );
       if (!Array.isArray(window.items)) return "missing";
       const draft = window.items.find(
-        (item) => isRecord(item) && item.projectId === project.id && item.thread === null,
+        (item) =>
+          isRecord(item) &&
+          item.projectId === project.id &&
+          item.thread === null &&
+          item.executionRef == null,
       );
       projectSessionId = isRecord(draft) && typeof draft.id === "string" ? draft.id : null;
       return projectSessionId ? "ready" : "missing";
@@ -204,7 +209,7 @@ export const setAgentExecutionProfile = async (
     reasoningEffort,
     serviceTier: null,
   };
-  await chooseCodexExecutionProfile(page, { id: model.slug }, profile);
+  await chooseCodexExecutionProfile(page, model.name, profile);
   return profile;
 };
 
@@ -214,15 +219,15 @@ export const selectCodexExecutionProfile = async (
   profile: CodexExecutionProfile,
 ): Promise<void> => {
   await refreshComposerModels(page);
-  await chooseCodexExecutionProfile(page, model, profile);
+  await chooseCodexExecutionProfile(page, model.displayName, profile);
 };
 
 const chooseCodexExecutionProfile = async (
   page: Page,
-  model: Pick<CodexModelOption, "id">,
+  modelName: string,
   profile: CodexExecutionProfile,
 ): Promise<void> => {
-  await chooseComposerModel(page, `${model.id} Codex`);
+  await chooseComposerModel(page, `${modelName} Codex`, modelName);
   if (profile.reasoningEffort) {
     await openComposerOptionControl(page, "Effort");
     await page
@@ -341,8 +346,12 @@ export const sendAgentPromptWithEvidence = async (
             return "failed";
           }
           const session = await invokeIpc(page, "project-sessions:get", projectSessionId);
-          if (!isRecord(session) || !isRecord(session.thread)) return "missing";
-          threadId = typeof session.thread.threadId === "string" ? session.thread.threadId : null;
+          if (!isRecord(session)) return "missing";
+          const execution = isRecord(session.executionRef) ? session.executionRef : session.thread;
+          threadId =
+            isRecord(execution) && typeof execution.threadId === "string"
+              ? execution.threadId
+              : null;
           return threadId ? "linked" : "missing";
         },
         { timeout: 45_000 },
@@ -436,6 +445,35 @@ export const waitForCompletedAgentTurn = async (
   throw new Error(
     `Timed out waiting for Agent turn completion. Latest state:\n${JSON.stringify(summarizeAgentSmokeTurnSnapshot(latestSnapshot, threadId), null, 2)}`,
   );
+};
+
+/** Runtime-backed Sessions complete through their captured product binding, including restart. */
+export const waitForRuntimeCompletedAgentTurn = async (
+  page: Page,
+  target: { readonly sessionId: string; readonly threadId: string },
+  timeout = 20_000,
+): Promise<AgentRuntimeConversation> => {
+  const deadline = Date.now() + timeout;
+  let latest: AgentRuntimeConversation | null = null;
+  while (Date.now() < deadline) {
+    latest = (await invokeIpc(
+      page,
+      "agent-runtime:session:control",
+      target,
+    )) as AgentRuntimeConversation;
+    expect(latest.sessionId).toBe(target.sessionId);
+    expect(latest.threadId).toBe(target.threadId);
+    const projection = latest.snapshot.projection;
+    const run = projection.runs.at(-1);
+    const providerThread = projection.providerThreads.find(
+      (candidate) => candidate.id === run?.providerThreadId,
+    );
+    if (run?.status === "completed" && providerThread?.status === "idle") return latest;
+    if (run && ["failed", "cancelled", "interrupted", "rolled_back"].includes(run.status))
+      throw new Error(`Runtime Run ended with ${run.status}: ${JSON.stringify(run)}`);
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`Runtime Run did not complete: ${JSON.stringify(latest).slice(0, 8_000)}`);
 };
 
 export interface NativeAgentThreadTail {

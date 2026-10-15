@@ -10,9 +10,13 @@ import type {
   AgentSnapshot,
 } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
+import { CoreModuleResponseError } from "../core-client/core-client";
+import { coreRuntimeError, type CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-client/types";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
@@ -61,6 +65,20 @@ const snapshot = (
       messages: [],
     },
   }) as unknown as AgentSnapshot;
+
+const setExecutionHold = (fixture: ReturnType<typeof setup>, threadId: string, held: boolean) => {
+  const current = fixture.snapshots.get(threadId)!;
+  fixture.snapshots.set(threadId, {
+    ...current,
+    projection: {
+      ...current.projection,
+      thread: {
+        ...current.projection.thread,
+        executionHandoff: held ? { operationId: "handoff", recoveryRequired: true } : null,
+      },
+    },
+  });
+};
 
 const setup = (
   options: Partial<import("./AgentRuntimeApplication").AgentRuntimeApplicationOptions> = {},
@@ -137,6 +155,7 @@ const setup = (
     failCore: false,
     failCoreAcknowledgment: false,
     failBindingProof: false,
+    missingSessionLookupError: null as CoreRuntimeError | null,
     archiveAfterThreadCreate: false,
     replaceBindingProof: false,
     gateDepth: 0,
@@ -154,96 +173,100 @@ const setup = (
       ? Effect.fail(new Error("Session is outside the admitted Project"))
       : input.kind === "agent_runtime_session_binding_by_execution" && state.failBindingProof
         ? Effect.fail(new Error("Core binding proof is unavailable"))
-        : Effect.sync(() => {
-            if (input.kind === "agent_runtime_execution_cleanup_window")
-              return {
-                value: {
-                  kind: "agent_runtime_execution_cleanup_window",
-                  cleanups: {
-                    items: [...cleanups.values()].filter(
-                      (cleanup) => cleanup.runtime_id === input.runtime_id,
-                    ),
-                    next_cursor: null,
-                    has_more: false,
+        : input.kind === "agent_runtime_session_binding" &&
+            !bindings.has(input.session_id) &&
+            state.missingSessionLookupError
+          ? Effect.fail(state.missingSessionLookupError)
+          : Effect.sync(() => {
+              if (input.kind === "agent_runtime_execution_cleanup_window")
+                return {
+                  value: {
+                    kind: "agent_runtime_execution_cleanup_window",
+                    cleanups: {
+                      items: [...cleanups.values()].filter(
+                        (cleanup) => cleanup.runtime_id === input.runtime_id,
+                      ),
+                      next_cursor: null,
+                      has_more: false,
+                    },
                   },
-                },
-              };
-            if (input.kind === "agent_session") {
-              order.push("core.agent-session");
-              return {
-                value: {
-                  kind: "agent_session",
-                  session: { archived: state.archived },
-                  thread: null,
-                },
-              };
-            }
-            if (input.kind === "agent_authority")
-              return {
-                value: {
-                  kind: "agent_authority",
-                  resolution: {
-                    authority: input.provenance.authority,
-                    persisted: true,
+                };
+              if (input.kind === "agent_session") {
+                order.push("core.agent-session");
+                return {
+                  value: {
+                    kind: "agent_session",
+                    session: { archived: state.archived },
+                    thread: null,
                   },
-                },
-              };
-            if (input.kind === "project")
-              return {
-                value: {
-                  kind: "project",
-                  project: {
-                    id: input.project_id,
-                    name: "Project",
-                    primary_workspace_root: "/workspace",
-                    lifecycle: state.lifecycle,
-                    sources: [{ root: "/workspace", order: 0 }],
+                };
+              }
+              if (input.kind === "agent_authority")
+                return {
+                  value: {
+                    kind: "agent_authority",
+                    resolution: {
+                      authority: input.provenance.authority,
+                      persisted: true,
+                    },
                   },
-                },
-              };
-            if (input.kind === "session")
-              return { value: { kind: "session", session: { archived: state.archived } } };
-            if (input.kind === "agent_runtime_session_binding")
-              return {
-                value: {
-                  kind: "agent_runtime_session_binding",
-                  binding: bindings.get(input.session_id) ?? null,
-                },
-              };
-            if (input.kind === "agent_runtime_session_binding_window")
-              return {
-                value: {
-                  kind: "agent_runtime_session_binding_window",
-                  bindings: {
-                    items: [...bindings.values()].filter(
-                      (binding) =>
-                        binding.runtime_id === input.runtime_id &&
-                        (binding.project_id ?? null) === (input.project_id ?? null),
-                    ),
-                    next_cursor: null,
-                    authority: { projection_revision: 1 },
+                };
+              if (input.kind === "project")
+                return {
+                  value: {
+                    kind: "project",
+                    project: {
+                      id: input.project_id,
+                      name: "Project",
+                      primary_workspace_root: "/workspace",
+                      lifecycle: state.lifecycle,
+                      sources: [{ root: "/workspace", order: 0 }],
+                    },
                   },
-                },
-              };
-            if (input.kind === "agent_runtime_session_binding_by_execution") {
-              return {
-                value: {
-                  kind: "agent_runtime_session_binding",
-                  binding: state.replaceBindingProof
-                    ? {
-                        ...[...bindings.values()][0]!,
-                        session_id: "another-session",
-                      }
-                    : ([...bindings.values()].find(
+                };
+              if (input.kind === "session")
+                return { value: { kind: "session", session: { archived: state.archived } } };
+              if (input.kind === "agent_runtime_session_binding")
+                return {
+                  value: {
+                    kind: "agent_runtime_session_binding",
+                    binding: bindings.get(input.session_id) ?? null,
+                  },
+                };
+              if (input.kind === "agent_runtime_session_binding_window")
+                return {
+                  value: {
+                    kind: "agent_runtime_session_binding_window",
+                    bindings: {
+                      items: [...bindings.values()].filter(
                         (binding) =>
                           binding.runtime_id === input.runtime_id &&
-                          binding.runtime_thread_id === input.runtime_thread_id,
-                      ) ?? null),
-                },
-              };
-            }
-            throw new Error("Unexpected Core read");
-          });
+                          (binding.project_id ?? null) === (input.project_id ?? null),
+                      ),
+                      next_cursor: null,
+                      authority: { projection_revision: 1 },
+                    },
+                  },
+                };
+              if (input.kind === "agent_runtime_session_binding_by_execution") {
+                return {
+                  value: {
+                    kind: "agent_runtime_session_binding",
+                    binding: state.replaceBindingProof
+                      ? {
+                          ...[...bindings.values()][0]!,
+                          session_id: "another-session",
+                        }
+                      : ([...bindings.values()].find(
+                          (binding) =>
+                            binding.runtime_id === input.runtime_id &&
+                            binding.runtime_thread_id === input.runtime_thread_id,
+                        ) ?? null),
+                  },
+                };
+              }
+              throw new Error("Unexpected Core read");
+            });
   const apply = (input: ProjectWorkspaceApplyInput) =>
     Effect.gen(function* () {
       actors.push(yield* CoreApplicationAgent);
@@ -610,6 +633,62 @@ const setup = (
   );
   return { owner, bindings, snapshots, commands, calls, applied, actors, order, state, cleanups };
 };
+
+it.effect("creates and binds an absent product Session before dispatch and reuses its launch", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.missingSessionLookupError = coreRuntimeError({
+      operation: "workspace.read",
+      reason: "operation",
+      retryable: false,
+      cause: new CoreModuleResponseError({
+        code: "not_found",
+        message: "Session is unavailable in this Library",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
+    });
+    const owner = yield* fixture.owner;
+    const opened = yield* owner.launch(launch);
+    assert.deepEqual(yield* owner.launch(launch), opened);
+    assert.equal(fixture.bindings.get(launch.sessionId)?.runtime_thread_id, opened.threadId);
+    assert.equal(fixture.applied.length, 1);
+    assert.isBelow(
+      fixture.order.indexOf("core.bind"),
+      fixture.order.indexOf("engine.message.dispatch"),
+    );
+    assert.equal(
+      [...fixture.commands.values()].filter((command) => command.type === "message.dispatch")
+        .length,
+      1,
+    );
+  }),
+);
+
+it.effect("other binding lookup failures prevent new Session metadata and dispatch", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.missingSessionLookupError = coreRuntimeError({
+      operation: "workspace.read",
+      reason: "operation",
+      retryable: false,
+      cause: new CoreModuleResponseError({
+        code: "conflict",
+        message: "Execution identity changed",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
+    });
+    const owner = yield* fixture.owner;
+    const result = yield* owner.launch(launch).pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    if (result._tag === "Failure")
+      assert.equal(result.failure.cause, fixture.state.missingSessionLookupError);
+    assert.equal(fixture.calls.length, 0);
+    assert.equal(fixture.bindings.size, 0);
+    assert.equal(fixture.applied.length, 0);
+  }),
+);
 
 it.effect(
   "replaces queued presentation only after its edit receipt and exact unstarted Run proof",
@@ -1613,6 +1692,17 @@ it.effect("Session forks bind a distinct root while inspection and overview rema
     const source = yield* owner.launch(launch);
     const before = fixture.calls.filter((call) => call.method === "thread.snapshot").length;
     yield* owner.inspect({ sessionId: source.sessionId });
+    fixture.state.missingSessionLookupError = coreRuntimeError({
+      operation: "workspace.read",
+      reason: "operation",
+      retryable: false,
+      cause: new CoreModuleResponseError({
+        code: "not_found",
+        message: "Session is unavailable in this Library",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
+    });
     const result = yield* owner.fork({
       source: { sessionId: source.sessionId },
       sessionId: "session:fork",
@@ -1668,6 +1758,47 @@ it.effect("Session forks bind a distinct root while inspection and overview rema
   }),
 );
 
+it.effect.each(["conflict", "transport-loss"] as const)(
+  "a destination binding %s prevents fork metadata and Core mutations",
+  (reason) =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const source = yield* owner.launch(launch);
+      const failure = coreRuntimeError({
+        operation: "workspace.read",
+        reason: reason === "conflict" ? "operation" : "transport-loss",
+        retryable: reason === "transport-loss",
+        cause:
+          reason === "conflict"
+            ? new CoreModuleResponseError({
+                code: "conflict",
+                message: "Execution identity changed",
+                retryable: false,
+                recovery: { kind: "none" },
+              })
+            : new Error("Core connection closed before lookup completed"),
+      });
+      fixture.state.missingSessionLookupError = failure;
+      const commands = fixture.commands.size;
+      const mutations = fixture.applied.length;
+      const result = yield* owner
+        .fork({
+          source: { sessionId: source.sessionId },
+          sessionId: "session:unconfirmed-fork",
+          requestId: "fork:unconfirmed-request",
+          acceptedAt: launch.acceptedAt,
+          environment: "same-directory",
+        })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure") assert.equal(result.failure.cause, failure);
+      assert.equal(fixture.commands.size, commands);
+      assert.equal(fixture.applied.length, mutations);
+      assert.equal(fixture.bindings.has("session:unconfirmed-fork"), false);
+    }),
+);
+
 it.effect(
   "Project activity and archived history reads never acquire execution admission gates",
   () =>
@@ -1720,6 +1851,116 @@ it.effect("writer admission holds the complete launch saga and leaves inspection
     });
     assert.equal(writers, 2);
   }),
+);
+
+it.effect("Session lifecycle waits for the handoff lane while stop remains available", () =>
+  Effect.gen(function* () {
+    for (const kind of ["archive", "delete", "move"] as const) {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const started = yield* owner.launch(launch);
+      const active = fixture.snapshots.get(started.threadId)!;
+      fixture.snapshots.set(started.threadId, {
+        ...active,
+        projection: { ...active.projection, runs: [{ id: "active", status: "running" } as never] },
+      });
+      const entered = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const handoff = yield* owner
+        .withExecutionLocationWriter(
+          started.sessionId,
+          Effect.gen(function* () {
+            setExecutionHold(fixture, started.threadId, true);
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(release);
+            setExecutionHold(fixture, started.threadId, false);
+          }),
+        )
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(entered);
+      const operation =
+        kind === "archive"
+          ? owner
+              .archiveSession({ operationId: kind, payload: { sessionId: started.sessionId } })
+              .pipe(Effect.asVoid)
+          : kind === "delete"
+            ? owner
+                .deleteSession({ operationId: kind, payload: { sessionId: started.sessionId } })
+                .pipe(Effect.asVoid)
+            : owner
+                .moveSession({
+                  operationId: kind,
+                  sessionId: started.sessionId,
+                  projectId: "other",
+                })
+                .pipe(Effect.asVoid);
+      const attempt = yield* operation.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      assert.isTrue(fixture.bindings.has(started.sessionId));
+      assert.isFalse(fixture.state.archived);
+      assert.strictEqual(fixture.bindings.get(started.sessionId)?.project_id, "project");
+      assert.notInclude(fixture.order, `core.${kind}`);
+      assert.isFalse(fixture.applied.some((value) => value.intent.kind === "move_session"));
+      assert.deepEqual(yield* owner.stop({ sessionId: started.sessionId, runId: "active" }), {
+        stopped: true,
+      });
+      assert.isTrue(
+        fixture.calls.some(
+          (call) =>
+            call.method === "command.dispatch" &&
+            (call.input as AgentCommand).type === "run.interrupt",
+        ),
+      );
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(handoff);
+      yield* Fiber.join(attempt);
+      if (kind === "archive") assert.isTrue(fixture.state.archived);
+      if (kind === "delete") assert.isFalse(fixture.bindings.has(started.sessionId));
+      if (kind === "move")
+        assert.strictEqual(fixture.bindings.get(started.sessionId)?.project_id, "other");
+    }
+  }),
+);
+
+it.effect(
+  "durable handoff recovery rejects destructive Session lifecycle before Core mutation",
+  () =>
+    Effect.gen(function* () {
+      for (const kind of ["archive", "delete", "move"] as const) {
+        const fixture = setup();
+        const owner = yield* fixture.owner;
+        const started = yield* owner.launch(launch);
+        setExecutionHold(fixture, started.threadId, true);
+        const operation =
+          kind === "archive"
+            ? owner
+                .archiveSession({ operationId: kind, payload: { sessionId: started.sessionId } })
+                .pipe(Effect.asVoid)
+            : kind === "delete"
+              ? owner
+                  .deleteSession({ operationId: kind, payload: { sessionId: started.sessionId } })
+                  .pipe(Effect.asVoid)
+              : owner
+                  .moveSession({
+                    operationId: kind,
+                    sessionId: started.sessionId,
+                    projectId: "other",
+                  })
+                  .pipe(Effect.asVoid);
+        assert.strictEqual((yield* operation.pipe(Effect.result))._tag, "Failure");
+        assert.isTrue(fixture.bindings.has(started.sessionId));
+        assert.isFalse(fixture.state.archived);
+        assert.strictEqual(fixture.bindings.get(started.sessionId)?.project_id, "project");
+        assert.notInclude(fixture.order, `core.${kind}`);
+        assert.isFalse(fixture.applied.some((value) => value.intent.kind === "move_session"));
+        setExecutionHold(fixture, started.threadId, false);
+        yield* operation;
+        if (kind === "archive") assert.isTrue(fixture.state.archived);
+        if (kind === "delete") assert.isFalse(fixture.bindings.has(started.sessionId));
+        if (kind === "move")
+          assert.strictEqual(fixture.bindings.get(started.sessionId)?.project_id, "other");
+      }
+    }),
 );
 
 it.effect(

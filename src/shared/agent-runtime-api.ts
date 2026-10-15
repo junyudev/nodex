@@ -65,6 +65,8 @@ export interface AgentRuntimeConversation {
 export const AGENT_RUNTIME_CONTROL_EVENT_TYPES = [
   "run.created",
   "run.updated",
+  "run.execution-retired",
+  "node.updated",
   "runtime-request.updated",
   "subagent.updated",
   "provider-thread.updated",

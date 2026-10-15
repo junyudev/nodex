@@ -89,7 +89,7 @@ export const make = Effect.gen(function* () {
       caller === undefined ? undefined : yield* bridge.preparedTurn(caller.threadId, profile);
     const incarnations =
       caller === undefined ? [] : yield* bridge.nativeSessions(caller.providerSessionId);
-    const native = incarnations.find((candidate) =>
+    const capturedNative = incarnations.find((candidate) =>
       sameNativeSession(candidate, profile ?? profileActor),
     );
     const body =
@@ -97,6 +97,16 @@ export const make = Effect.gen(function* () {
         ? undefined
         : yield* request.json.pipe(Effect.orElseSucceed(() => undefined));
     const payload = yield* decodeRequest(body).pipe(Effect.orElseSucceed(() => undefined));
+    // Native MCP initialization can precede the first prepared Run. Its bearer still
+    // identifies one registered physical incarnation; ambiguity must stay unresolved.
+    const native =
+      capturedNative ??
+      (payload?.method === "initialize" &&
+      profileId === undefined &&
+      profileActor === undefined &&
+      incarnations.length === 1
+        ? incarnations[0]
+        : undefined);
     const token = payload?.params?.arguments?.__nodexExecutionCall;
     const tagged =
       typeof token === "string" ? yield* bridge.resolveNativeToolCall(token) : undefined;
@@ -135,6 +145,9 @@ export const make = Effect.gen(function* () {
           : { threadId: caller.threadId, ...native, ...sourceCall };
     const nativeCall =
       callLookup === undefined ? undefined : yield* bridge.awaitNativeCallById(callLookup);
+    // Stateless native clients attest through the exact registered call. An explicit
+    // HTTP session ID must still resolve to its own live physical incarnation.
+    const transportSource = profileId === undefined ? nativeCall : profile;
     const sourceLess =
       driver !== undefined &&
       !usesNativeMetadata &&
@@ -164,7 +177,7 @@ export const make = Effect.gen(function* () {
         (isOpenCode && (nativeExecution === undefined || nativeCall === undefined)) ||
         (!isOpenCode && actor.threadId !== caller.threadId) ||
         actor.providerInstanceId !== caller.providerInstanceId ||
-        !sameNativeSession(profile, native) ||
+        !sameNativeSession(transportSource, native) ||
         (!isOpenCode && !sameNativeSession(actor, native))
       )
         return yield* Effect.fail(refuse("This MCP client has no captured execution identity."));
@@ -216,7 +229,7 @@ export const make = Effect.gen(function* () {
       );
     if (guarded) {
       const admitted = yield* assertCurrent().pipe(Effect.result);
-      if (admitted._tag === "Failure")
+      if (admitted._tag === "Failure") {
         return HttpServerResponse.jsonUnsafe({
           jsonrpc: "2.0",
           id: payload.id ?? null,
@@ -225,6 +238,7 @@ export const make = Effect.gen(function* () {
             content: [{ type: "text", text: admitted.failure.message }],
           },
         });
+      }
     }
     const response = yield* requestEffect.pipe(
       Effect.provideService(HttpServerRequest.HttpServerRequest, semanticRequest(request, body)),

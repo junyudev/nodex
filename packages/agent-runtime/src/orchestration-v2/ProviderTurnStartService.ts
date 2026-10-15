@@ -1,5 +1,6 @@
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
+import { readExecutionHandoff } from "./ExecutionHandoff.ts";
 import {
   CommandId,
   type OrchestrationV2DomainEvent,
@@ -144,11 +145,19 @@ export const layer: Layer.Layer<
       // `false` means the run moved on or is gone. A failed read is an error,
       // so the caller fails the start or the run instead of skipping it.
       const isCurrentAttemptInStatus = (expectedStatus: OrchestrationV2Run["status"]) =>
-        projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
-          Effect.map((current) => {
-            const run = current.runs.find((candidate) => candidate.id === input.runId);
-            return run?.activeAttemptId === input.attemptId && run.status === expectedStatus;
-          }),
+        readExecutionHandoff(projectionStore, input.threadId).pipe(
+          Effect.flatMap((hold) =>
+            hold
+              ? Effect.succeed(false)
+              : projectionStore.getRuntimeRecoveryProjection(input.threadId).pipe(
+                  Effect.map((current) => {
+                    const run = current.runs.find((candidate) => candidate.id === input.runId);
+                    return (
+                      run?.activeAttemptId === input.attemptId && run.status === expectedStatus
+                    );
+                  }),
+                ),
+          ),
         );
       return {
         isCurrentAttemptInStatus,
@@ -236,6 +245,7 @@ export const layer: Layer.Layer<
       readonly willRetry?: boolean;
     }) {
       const { runId } = input;
+      if (yield* readExecutionHandoff(projectionStore, input.threadId)) return;
       const projection = yield* projectionStore.getTurnStartContext(input.threadId, runId);
       const run = projection.runs.find((candidate) => candidate.id === runId);
       if (run === undefined) {

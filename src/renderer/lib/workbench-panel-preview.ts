@@ -88,7 +88,7 @@ export function makeWorkbenchTabProjectionDraft(
   }
 
   if (kind === "review") {
-    if (!session.thread) return null;
+    if (!session.executionRef && !session.thread) return null;
     return {
       kind,
       title: "Review",

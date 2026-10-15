@@ -49,6 +49,8 @@ export const live: Layer.Layer<
         terminalSessionId: session.sessionId,
         projectSessionId: session.projectSessionId,
       }));
+      if (activity.executionHandoff)
+        blockers.push({ kind: "execution-handoff", ...activity.executionHandoff });
       if (activity.run)
         blockers.push({ kind: "active-turn", threadId: activity.run.threadId, label: null });
       if (activity.runtimeRequest)

@@ -361,6 +361,21 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 );
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
+export const OrchestrationV2ExecutionLocation = Schema.Struct({
+  hostId: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+  workspaceRoots: Schema.Array(TrimmedNonEmptyString).check(Schema.isMaxLength(128)),
+  managedWorktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  projectId: Schema.NullOr(TrimmedNonEmptyString),
+  projectlessOutputDirectory: Schema.NullOr(TrimmedNonEmptyString),
+  projectlessWorkspaceBrowserRoot: Schema.NullOr(TrimmedNonEmptyString),
+});
+const ExecutionHandoff = Schema.Struct({
+  operationId: TrimmedNonEmptyString,
+  recoveryRequired: Schema.Boolean,
+  sourceLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+});
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -372,6 +387,9 @@ export const OrchestrationV2AppThread = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  executionLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+  /** A durable workspace transaction seals execution, including after process replacement. */
+  executionHandoff: Schema.optional(Schema.NullOr(ExecutionHandoff)),
   /** Pull request the user linked to this thread (#8160); optional so
       pre-linking servers still decode. */
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
@@ -516,6 +534,18 @@ export const OrchestrationV2RunBackgroundWorkCancelled = Schema.Struct({
 });
 export type OrchestrationV2RunBackgroundWorkCancelled =
   typeof OrchestrationV2RunBackgroundWorkCancelled.Type;
+
+/** Settles an execution whose exact native source has acknowledged retirement. */
+export const OrchestrationV2RunExecutionRetired = Schema.Struct({
+  runId: RunId,
+  attemptId: Schema.NullOr(RunAttemptId),
+  rootNodeId: Schema.NullOr(NodeId),
+  providerThreadId: Schema.NullOr(ProviderThreadId),
+  cohortParentRunId: RunId,
+  deliveryRunId: Schema.NullOr(RunId),
+  operationId: TrimmedNonEmptyString,
+  retirementEffectId: Schema.NullOr(TrimmedNonEmptyString),
+});
 
 export const OrchestrationV2ThreadLaunchWorkspaceStrategy = Schema.Union([
   Schema.Struct({
@@ -1785,6 +1815,11 @@ export const OrchestrationV2DomainEvent = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2EventBase.fields,
+    type: Schema.Literal("run.execution-retired"),
+    payload: OrchestrationV2RunExecutionRetired,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2EventBase.fields,
     type: Schema.Literal("run.background-work-cancelled"),
     payload: OrchestrationV2RunBackgroundWorkCancelled,
   }),
@@ -1943,6 +1978,8 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   interactionMode: ProviderInteractionMode,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  executionLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+  executionHandoff: Schema.optional(Schema.NullOr(ExecutionHandoff)),
   /** Pull request the user linked to this thread (#8160). */
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   pullRequests: Schema.optional(Schema.Array(ThreadPullRequestLink)),
@@ -2604,6 +2641,11 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2JsonEventBaseFields,
+    type: Schema.Literal("run.execution-retired"),
+    payload: OrchestrationV2RunExecutionRetired,
+  }),
+  Schema.Struct({
+    ...OrchestrationV2JsonEventBaseFields,
     type: Schema.Literal("run.background-work-cancelled"),
     payload: OrchestrationV2RunBackgroundWorkCancelled,
   }),
@@ -2847,6 +2889,9 @@ export const OrchestrationV2Command = Schema.Union([
     branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     expectedWorktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+    executionLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+    executionHandoff: Schema.optional(Schema.NullOr(ExecutionHandoff)),
+    expectedExecutionHandoffId: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     /** Reject unless no message or run has landed on this thread. */
     expectedEmpty: Schema.optional(Schema.Boolean),
     limitRecovery: Schema.optional(Schema.NullOr(OrchestrationV2LimitRecoveryUpdate)),
@@ -2927,6 +2972,8 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     providerSessionId: ProviderSessionId,
+    /** Captured Run proves a formerly attached native source during workspace recovery. */
+    retirementRunId: Schema.optional(RunId),
     reason: Schema.optional(Schema.String),
     /** Project cleanup refuses live work at the canonical command writer. */
     onlyIfIdle: Schema.optional(Schema.Boolean),
@@ -3023,6 +3070,11 @@ export const OrchestrationV2Command = Schema.Union([
     commandId: CommandId,
     threadId: ThreadId,
     runId: RunId,
+    /** Internal execution transaction proof; ordinary Stop keeps its existing path. */
+    sourceRetirement: Schema.optional(Schema.Struct({
+      operationId: Schema.String,
+      effectId: Schema.NullOr(Schema.String),
+    })),
     reason: Schema.optional(Schema.String),
     /**
      * Set by the Stop button. Stop also holds the queue, ends the thread's pull request

@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
+import { readExecutionHandoff } from "../orchestration-v2/ExecutionHandoff.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { RuntimePolicyV2 } from "../orchestration-v2/RuntimePolicy.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
@@ -113,6 +114,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
 
   const current = Effect.fn("NativeInteraction.current")(function* (source: AgentNativeSource) {
     if (source.runtimeGeneration !== runtimeGeneration) return false;
+    if (yield* readExecutionHandoff(store, ThreadId.make(source.threadId))) return false;
     const runtime = yield* sessions.get(ProviderSessionId.make(source.providerSessionId));
     if (Option.isNone(runtime) || runtime.value.nativeGeneration !== source.nativeGeneration)
       return false;
@@ -137,6 +139,8 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
       Effect.flatMap((live) => (live ? Effect.void : fail("Native source retired"))),
     );
   const resolve = Effect.fn("NativeInteraction.resolve")(function* (threadId: string) {
+    if (yield* readExecutionHandoff(store, ThreadId.make(threadId)))
+      return yield* fail("The conversation is moving its execution workspace");
     const thread = yield* store.getThread(ThreadId.make(threadId));
     if (thread.deletedAt || thread.archivedAt || !thread.activeProviderThreadId)
       return yield* fail("Native thread is unavailable");

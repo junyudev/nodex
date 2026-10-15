@@ -88,6 +88,7 @@ export const layer: Layer.Layer<ThreadForkServiceV2> = Layer.succeed(
         }
         const targetThread: OrchestrationV2AppThread = {
           ...input.sourceProjection.thread,
+          executionHandoff: null,
           createdBy: input.createdBy,
           creationSource: input.creationSource,
           id: input.targetThreadId,

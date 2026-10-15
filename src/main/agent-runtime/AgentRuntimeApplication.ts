@@ -16,6 +16,8 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Option from "effect/Option";
+import * as RcMap from "effect/RcMap";
+import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import { stableStringifyBlockPropertyJson } from "../../shared/block-property-mutations";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
@@ -23,6 +25,7 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId, createStableOperationId } from "../core-runtime/operation-identity";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
@@ -132,6 +135,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const core = yield* CoreModules;
   const lifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const workspace = yield* ProjectWorkspace;
+  const sessionLanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
   if (!validId(options.projectless.engineProjectId) || !options.projectless.workspaceRoot.trim())
     return yield* failure("configuration", "A projectless execution workspace is required");
   const host = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
@@ -146,6 +150,45 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     owned(operation, options.withWriter ? options.withWriter(effect) : effect);
+  const withSessionLane = <A, E, R>(
+    sessionId: string,
+    use: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lane = yield* RcMap.get(sessionLanes, sessionId);
+        return yield* lane.withPermit(use);
+      }),
+    );
+  const assertSessionLifecycleAvailable = Effect.fn(
+    "AgentRuntimeApplication.assertSessionLifecycleAvailable",
+  )(function* (sessionId: string) {
+    if (!validId(sessionId)) return yield* failure("session", "Session identity is invalid");
+    yield* authorizeSession(sessionId);
+    const found = yield* host(
+      core.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }),
+    );
+    if (found.value.kind !== "agent_runtime_session_binding")
+      return yield* failure("session", "Session execution metadata is unavailable");
+    if (!found.value.binding) return;
+    const connection = yield* options.connect;
+    if (found.value.binding.runtime_id !== connection.identity.runtimeId)
+      return yield* failure("session", "Session belongs to another runtime");
+    const thread = yield* connection.request("thread.read", {
+      threadId: found.value.binding.runtime_thread_id,
+    });
+    if (thread?.executionHandoff)
+      return yield* failure("session", "The Session workspace requires handoff recovery");
+  });
+  const withSessionLifecycle = <A, E, R>(
+    operation: string,
+    sessionId: string,
+    use: Effect.Effect<A, E, R>,
+  ) =>
+    withSessionLane(
+      sessionId,
+      ownedWrite(operation, assertSessionLifecycleAvailable(sessionId).pipe(Effect.andThen(use))),
+    );
   const afterCommit = <A, E, R>(
     operationId: string,
     operation: string,
@@ -275,6 +318,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       workspaceRoot: scope.workspaceRoot,
     });
   });
+
+  const lookupDestinationBinding = Effect.fn("AgentRuntimeApplication.lookupDestinationBinding")(
+    function* (sessionId: string) {
+      const result = yield* host(
+        core.workspace.read({ kind: "agent_runtime_session_binding", session_id: sessionId }),
+      ).pipe(
+        Effect.catch((error) =>
+          // Creation precedes the product Session record. Only an exact missing-record
+          // response admits creation; uncertain reads must not start engine mutations.
+          error.cause instanceof CoreModuleResponseError &&
+          error.cause.coreError.code === "not_found"
+            ? Effect.succeed(null)
+            : Effect.fail(error),
+        ),
+      );
+      if (result === null) return null;
+      if (result.value.kind !== "agent_runtime_session_binding")
+        return yield* failure("session", "Session execution binding is unavailable");
+      return result.value.binding ?? null;
+    },
+  );
 
   const readBinding = Effect.fn("AgentRuntimeApplication.readBinding")(function* (
     connection: AgentRuntimeApplicationConnection,
@@ -559,15 +623,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       launch_request_id: input.launchId,
     };
     yield* validateCaller();
-    const previous = yield* host(
-      core.workspace.read({ kind: "agent_runtime_session_binding", session_id: input.sessionId }),
-    );
-    if (
-      previous.value.kind !== "agent_runtime_session_binding" ||
-      (previous.value.binding && !matchesBinding(previous.value.binding, binding))
-    )
+    const previousBinding = yield* lookupDestinationBinding(input.sessionId);
+    if (previousBinding && !matchesBinding(previousBinding, binding))
       return yield* failure("launch", "Session is already bound to another launch request");
-    const previousBinding = previous.value.binding;
     const projectId = previousBinding ? (previousBinding.project_id ?? null) : input.projectId;
     const scope = yield* lifecycle.runExclusive(
       projectId,
@@ -727,13 +785,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       launch_request_id: input.requestId,
     };
     yield* validateCaller();
-    const previous = yield* host(
-      core.workspace.read({ kind: "agent_runtime_session_binding", session_id: input.sessionId }),
-    );
-    if (
-      previous.value.kind !== "agent_runtime_session_binding" ||
-      (previous.value.binding && !matchesBinding(previous.value.binding, binding))
-    )
+    const previous = yield* lookupDestinationBinding(input.sessionId);
+    if (previous && !matchesBinding(previous, binding))
       return yield* failure("fork", "Session is already bound to another fork request");
     const existing = yield* connection.request("thread.read", { threadId });
     if (!existing && input.environment === "worktree" && !options.prepareWorkspace)
@@ -1250,6 +1303,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return { connection, thread, sessionId: binding.value.binding.session_id };
         }),
       ),
+    withExecutionLocationWriter: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>
+      withSessionLane(sessionId, ownedWrite("execution-handoff", use)),
     generateStructured: (
       input: import("../../shared/agent-runtime-api").AgentRuntimeStructuredGenerationInput,
     ) =>
@@ -1293,11 +1348,19 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     renameSession: (command: ProjectSessionRenameCommandInput) =>
       ownedWrite("rename-session", renameSession(command)),
     archiveSession: (command: ProjectSessionArchiveCommandInput) =>
-      ownedWrite("archive-session", archiveSession(command, true)),
+      withSessionLifecycle(
+        "archive-session",
+        command.payload.sessionId,
+        archiveSession(command, true),
+      ),
     unarchiveSession: (command: ProjectSessionArchiveCommandInput) =>
-      ownedWrite("unarchive-session", archiveSession(command, false)),
+      withSessionLifecycle(
+        "unarchive-session",
+        command.payload.sessionId,
+        archiveSession(command, false),
+      ),
     deleteSession: (command: ProjectSessionDeleteCommandInput) =>
-      ownedWrite("delete-session", deleteSession(command)),
+      withSessionLifecycle("delete-session", command.payload.sessionId, deleteSession(command)),
     setPinnedSession: (command: ProjectSessionPinnedCommandInput) =>
       ownedWrite("pin-session", workspace.setProjectSessionPinned(command)),
     moveSession: (input: {
@@ -1305,8 +1368,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       readonly sessionId: string;
       readonly projectId: string | null;
     }) =>
-      ownedWrite(
+      withSessionLifecycle(
         "move-session",
+        input.sessionId,
         Effect.gen(function* () {
           if (
             !validId(input.operationId) ||

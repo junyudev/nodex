@@ -175,6 +175,8 @@ export const make = Effect.fn("AgentRuntime.makeStorageSnapshot")(function* (
         message: "Execution must be idle before taking a Profile snapshot.",
       });
     const rows = yield* sql<{ readonly busy: number }>`SELECT
+      EXISTS(SELECT 1 FROM orchestration_v2_projection_threads
+        WHERE json_extract(payload_json,'$.executionHandoff.operationId') IS NOT NULL) OR
       EXISTS(SELECT 1 FROM orchestration_v2_projection_runs
         WHERE status NOT IN ('completed', 'interrupted', 'failed', 'cancelled', 'rolled_back')) OR
       EXISTS(SELECT 1 FROM orchestration_v2_effect_outbox

@@ -7,6 +7,7 @@ import type {
 } from "../../shared/nodex-app-tools/workbench";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import { makeTestTurnPresentation } from "../codex-application/CodexTurnPresentation.test-support";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
@@ -97,6 +98,7 @@ const setup = (
     titleChanged?: boolean;
     withdraw?: () => void;
     anchor?: PresentationAnchor;
+    presentation?: CodexTurnPresentation["Service"];
   } = {},
 ) =>
   make.pipe(
@@ -107,7 +109,10 @@ const setup = (
     Effect.provideService(CodexTurnAuthority, {
       capture: () => Effect.succeed(authority),
     } as never),
-    Effect.provideService(CodexTurnPresentation, { read: () => options.anchor ?? anchor } as never),
+    Effect.provideService(
+      CodexTurnPresentation,
+      options.presentation ?? ({ read: () => options.anchor ?? anchor } as never),
+    ),
     Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
     Effect.provideService(ProjectWorkspace, {
       getThread: () =>
@@ -118,7 +123,7 @@ const setup = (
           executionHostId: "local",
         }),
     } as never),
-    Effect.provideService(WorkbenchAgentBridge, {} as never),
+    Effect.provideService(WorkbenchAgentBridge, { registered: () => [] } as never),
     Effect.provideService(NodexAppToolAuthority, {
       bind: () => Effect.succeed({ authority }),
     } as never),
@@ -291,5 +296,66 @@ it.effect("Session-only native actors expose Session context without a fabricate
     assert.equal(result.structuredContent?.sessionId, "session");
     assert.isNull(result.structuredContent?.runId);
     assert.notProperty(result.structuredContent, "turnId");
+    assert.deepEqual(result.structuredContent?.presentation, {
+      status: "unavailable",
+      candidates: [],
+    });
   }),
+);
+
+it.effect(
+  "reads the submitted Scene using the Runtime Run rather than Core lease coordinates",
+  () =>
+    Effect.gen(function* () {
+      const presentation = yield* makeTestTurnPresentation;
+      const target = { kind: "session", sessionId: "session", launchId: "launch" } as const;
+      const ticket = yield* presentation.capture(11, {
+        target,
+        presentation: {
+          rendererGeneration: "renderer-a",
+          sceneOwner: anchor.sceneOwner,
+          presentationRevision: anchor.presentationRevision,
+          focusedTarget: anchor.focusedTarget,
+          selectedTabs: anchor.selectedTabs,
+        },
+      });
+      yield* presentation.admitRuntimeMessage(ticket, target, "engine-thread", "message");
+      yield* presentation.observeRuntimeMessage("engine-thread", "engine-run", "message", {
+        runtimeId: "runtime",
+        runtimeGeneration: "lease",
+        providerSessionId: "native",
+        nativeGeneration: 1,
+      });
+      const hostedAuthority = {
+        ...authority,
+        threadId: "runtime:lease",
+        turnId: "runtime-run:lease",
+      };
+      const caller = createHostedAppToolCaller({
+        backend: "codex",
+        authority: hostedAuthority,
+        callId: "call",
+        generation: 1,
+        isActive: () => true,
+        capture: Effect.succeed(hostedAuthority),
+        sessionContext: {
+          sessionId: "session",
+          projectId: "project",
+          runtimeId: "runtime",
+          rootThreadId: "engine-thread",
+          threadId: "engine-thread",
+          runId: "engine-run",
+          cwd: "/workspace",
+        },
+      });
+      const execute = yield* setup({ presentation });
+      const result = yield* execute({ ...input, caller });
+      const observed = result.structuredContent?.presentation as {
+        selectedTabs: Record<string, unknown>[];
+      };
+      assert.isUndefined(result.isError);
+      assert.equal(result.structuredContent?.threadId, "engine-thread");
+      assert.equal(result.structuredContent?.runId, "engine-run");
+      assert.equal(observed.selectedTabs[0]?.pageId, "page-A");
+    }),
 );

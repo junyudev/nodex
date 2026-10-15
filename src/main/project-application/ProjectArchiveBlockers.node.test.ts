@@ -16,6 +16,7 @@ it.effect(
     const activity = vi.fn(() =>
       Effect.succeed({
         snapshotSequence: 12,
+        executionHandoff: { threadId: "root:moving", operationId: "move" },
         run: { threadId: "child:active", runId: "run:child", status: "running" },
         runtimeRequest: { threadId: "child:waiting", requestId: "request" },
         nativeBackground: { threadId: "root:completed", taskId: "native:background" },
@@ -32,6 +33,7 @@ it.effect(
       const blockers = yield* ProjectArchiveBlockers;
       assert.deepEqual(yield* blockers.list({ project: { id: "project" }, sessions: [root] }), [
         { kind: "terminal", terminalSessionId: "terminal", projectSessionId: "session" },
+        { kind: "execution-handoff", threadId: "root:moving", operationId: "move" },
         { kind: "active-turn", threadId: "child:active", label: null },
         { kind: "pending-request", threadId: "child:waiting", label: null },
         {

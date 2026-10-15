@@ -205,6 +205,7 @@ import {
   make as makeCodexThreadHandoffRuntime,
 } from "../codex-application/CodexThreadHandoffRuntime";
 import { live as threadExecutionLive } from "../host-runtime/ThreadExecution";
+import { live as runtimeThreadExecutionLive } from "../agent-runtime/AgentRuntimeThreadExecution";
 import {
   AgentImportRuntime,
   make as makeAgentImportRuntime,
@@ -580,7 +581,10 @@ const crossHostThreadHandoff = Layer.unwrap(
 const managedWorktreeHandoff = managedWorktreeHandoffLive.pipe(
   Layer.provideMerge(crossHostThreadHandoff),
 );
-const handoffExecution = threadExecutionLive.pipe(Layer.provideMerge(managedWorktreeHandoff));
+const handoffExecution = threadExecutionLive.pipe(
+  Layer.provideMerge(runtimeThreadExecutionLive),
+  Layer.provideMerge(managedWorktreeHandoff),
+);
 const threadHandoff = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;
@@ -679,8 +683,8 @@ const conversationResume = Layer.effect(
   makeCodexConversationResumeRuntime,
 ).pipe(Layer.provideMerge(connectionLifecycle));
 
-/** Canonical Conversation projections and semantic command capabilities. */
-export const live = nodexAgentProtocolTools;
+/** Native filesystem and conversation foundations needed before execution construction. */
+export const live = managedWorktreeHandoff;
 
 /** Native interaction owners are acquired only after the canonical execution facade exists. */
 export const interactions = Layer.mergeAll(

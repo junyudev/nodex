@@ -121,6 +121,12 @@ const makeExecutionHosts = Effect.gen(function* () {
 
 const makeHarness = (input: {
   readonly calls: string[];
+  readonly operationIds?: string[];
+  readonly reconciliations?: Array<
+    readonly { readonly threadId: string; readonly operationId: string }[]
+  >;
+  readonly reconcileStarted?: Deferred.Deferred<void>;
+  readonly reconcileGate?: Deferred.Deferred<void>;
   readonly canonical?: CodexThreadExecutionLocation;
   readonly failAt?: string;
   readonly initial?: readonly CodexThreadHandoffJournalEntry[];
@@ -157,8 +163,15 @@ const makeHarness = (input: {
         ),
       );
     const execution = ThreadExecution.of({
-      setRecoveryRequired: (_threadId, required) =>
+      reconcileRecovery: (operations) =>
+        Effect.gen(function* () {
+          input.reconciliations?.push(operations);
+          if (input.reconcileStarted) yield* Deferred.succeed(input.reconcileStarted, undefined);
+          if (input.reconcileGate) yield* Deferred.await(input.reconcileGate);
+        }),
+      setRecoveryRequired: (_threadId, required, operationId) =>
         Effect.sync(() => {
+          input.operationIds?.push(operationId ?? "missing");
           safety.required = required;
           safety.changes.push(required);
           if (!required)
@@ -179,9 +192,10 @@ const makeHarness = (input: {
             }),
           );
         }),
-      withHandoff: (_threadId, use) =>
+      withHandoff: (_threadId, use, operationId) =>
         Effect.acquireUseRelease(
           Effect.sync(() => {
+            input.operationIds?.push(operationId ?? "missing");
             handoffActive = true;
           }),
           () => use,
@@ -211,8 +225,9 @@ const makeHarness = (input: {
               cause: new Error("Commit reply lost"),
             });
         }),
-      followUp: () =>
+      followUp: (_threadId, _prompt, operationId) =>
         Effect.suspend(() => {
+          input.operationIds?.push(operationId ?? "missing");
           assert.isFalse(
             handoffActive,
             "Follow-up must be admitted after the handoff guard releases",
@@ -342,7 +357,8 @@ it.effect("reads retained handoff outcomes after restart without repeating execu
 it.effect("commits one handoff in semantic order", () =>
   Effect.gen(function* () {
     const calls: string[] = [];
-    const runtime = yield* makeHarness({ calls });
+    const operationIds: string[] = [];
+    const runtime = yield* makeHarness({ calls, operationIds });
     const result = yield* start(runtime);
     assert.strictEqual(result.phase, "completed");
     assert.deepEqual(calls, [
@@ -354,6 +370,8 @@ it.effect("commits one handoff in semantic order", () =>
       "cleanup:committed",
       "follow-up",
     ]);
+    assert.isAtLeast(operationIds.length, 3);
+    assert.deepEqual([...new Set(operationIds)], ["operation-1"]);
   }),
 );
 
@@ -780,4 +798,59 @@ it.effect(
       assert.deepEqual(calls, []);
       assert.notInclude(safety.changes, false);
     }),
+);
+
+it.effect(
+  "reconciles nonterminal journal ownership once after synchronous recovery protection",
+  () =>
+    Effect.gen(function* () {
+      const unfinished = makeEntry();
+      const terminal: CodexThreadHandoffJournalEntry = {
+        ...makeEntry(),
+        operationId: "done",
+        phase: "completed",
+        completedAt: 3,
+      };
+      const reconciliations: Array<
+        readonly { readonly threadId: string; readonly operationId: string }[]
+      > = [];
+      const runtime = yield* makeHarness({
+        calls: [],
+        initial: [unfinished, terminal],
+        reconciliations,
+      });
+      yield* runtime.prepareRecovery;
+      yield* runtime.prepareRecovery;
+      assert.deepEqual(reconciliations, []);
+      yield* runtime.recover();
+      assert.deepEqual(reconciliations, [
+        [{ threadId: unfinished.threadId, operationId: unfinished.operationId }],
+      ]);
+    }),
+);
+
+it.effect("an empty startup journal does not wait for background execution recovery", () =>
+  Effect.gen(function* () {
+    const started = yield* Deferred.make<void>();
+    const ready = yield* Deferred.make<void>();
+    const reconciliations: Array<
+      readonly { readonly threadId: string; readonly operationId: string }[]
+    > = [];
+    const runtime = yield* makeHarness({
+      calls: [],
+      reconciliations,
+      reconcileStarted: started,
+      reconcileGate: ready,
+    });
+    yield* runtime.prepareRecovery;
+    assert.deepEqual(reconciliations, []);
+    const first = yield* runtime.recover().pipe(Effect.forkChild);
+    yield* Deferred.await(started);
+    assert.deepEqual(reconciliations, [[]]);
+    const second = yield* runtime.recover().pipe(Effect.forkChild);
+    yield* Deferred.succeed(ready, undefined);
+    assert.deepEqual(yield* Fiber.join(first), []);
+    assert.deepEqual(yield* Fiber.join(second), []);
+    assert.deepEqual(reconciliations, [[]]);
+  }),
 );

@@ -164,6 +164,30 @@ describe("workbench session shell / panel-commands", () => {
     expect(screen.container.querySelector("[data-review-diff-panel]") !== null).toBe(true);
   });
 
+  test("opens Review through the Runtime Session binding without a native Thread link", async () => {
+    const session = makeAttachedSession({
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "runtime-review-thread" },
+    });
+    const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    const menu = await openPanelMenu(screen, "Open side panel tab");
+    await act(async () => {
+      fireEvent.click(within(menu).getByText("Review"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.container.querySelector("[data-review-diff-panel]")).not.toBeNull(),
+    );
+    const props = (globalThis as { __lastConnectedReviewDiffPanelProps?: Record<string, unknown> })
+      .__lastConnectedReviewDiffPanelProps;
+    expect(props).toMatchObject({
+      threadId: session.executionRef?.threadId,
+      runtimeTarget: { sessionId: session.id, threadId: session.executionRef?.threadId },
+    });
+  });
+
   test("summary Changes action opens Review without routing presentation state through props", async () => {
     (
       globalThis as { __lastConnectedReviewDiffPanelProps?: Record<string, unknown> }

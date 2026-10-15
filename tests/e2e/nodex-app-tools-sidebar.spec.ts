@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -19,7 +20,7 @@ import {
   requireCoreValue,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -61,7 +62,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
     const common = [
       '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 30000}',
       'const unwrap = r => { const v = typeof r === "string" ? JSON.parse(r) : r; return v.structuredContent ?? (v.content ? JSON.parse(v.content[0].text) : v); };',
-      "const call = async (name, args) => { const v = unwrap(await tools[`mcp__nodex_app__${name}`](args)); text({tool:name,result:v}); return v; };",
+      "const call = async (name, args) => { const v = unwrap(await app[name](args)); text({tool:name,result:v}); return v; };",
       'const sections = await call("list_sidebar_sections", {}); const canonical = kind => sections.items.find(section => section.kind === kind).sectionId;',
       'const readOrder = async (sectionId,itemKind) => { let after; let items=[]; let orderRevision; for(let page=0;page<20;page++){const w=await call("list_sidebar_order",{sectionId,itemKind,first:1,...(after?{after}:{})}); if(orderRevision && orderRevision!==w.orderRevision) throw Error("changed order while reading"); orderRevision=w.orderRevision; items.push(...w.items); after=w.nextCursor; if(!after) return {items,orderRevision};} throw Error("incomplete order");};',
     ];
@@ -144,7 +145,12 @@ test("native Sidebar commands converge across two windows with mixed and built-i
               expect(tool).not.toBeNull();
               return responses.stream([
                 responses.created(`sidebar_call_${phase}`),
-                responses.customToolCall(`sidebar_${phase}`, tool!.name, program(phase).join("\n")),
+                nativeAppToolCall(
+                  `sidebar_${phase}`,
+                  tool!.name,
+                  program(phase).join("\n"),
+                  tool!.namespace,
+                ),
                 responses.completed(`sidebar_call_${phase}`),
               ]);
             }
@@ -247,7 +253,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         await second.evaluate(() => window.api?.awaitInitialization?.());
         const windows = [first, second];
         const threadId = await sendAgentPrompt(first, actorId, "SIDEBAR_mixed");
-        await waitForCompletedAgentTurn(first, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(first, { sessionId: actorId, threadId }, 60_000);
         await waitForFinalMarker(first, "SIDEBAR_OK_mixed");
         for (const page of windows)
           await expect
@@ -258,7 +264,7 @@ test("native Sidebar commands converge across two windows with mixed and built-i
           await composer.fill(`SIDEBAR_${phase}`);
           await composer.press("Enter");
           await waitForFinalMarker(first, `SIDEBAR_OK_${phase}`);
-          await waitForCompletedAgentTurn(first, threadId, 60_000);
+          await waitForRuntimeCompletedAgentTurn(first, { sessionId: actorId, threadId }, 60_000);
           for (const page of windows) {
             if (phase === "pinned") {
               await expect

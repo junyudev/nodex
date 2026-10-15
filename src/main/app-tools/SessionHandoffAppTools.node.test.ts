@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import type { NodexAgentTurnContext } from "../../shared/nodex-agent-authority";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import {
@@ -8,10 +9,12 @@ import {
 } from "../codex-application/CodexThreadHandoffRuntime";
 import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
-import { make } from "./SessionHandoffAppTools";
+import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppToolCaller";
+import { make, makeWithCapture } from "./SessionHandoffAppTools";
 
 const authority: NodexAgentTurnContext = {
   threadId: "caller",
@@ -196,5 +199,129 @@ it.effect("does not expose another Thread's operation when an identity is alread
     assert.isTrue(result.isError);
     assert.deepNestedInclude(result.structuredContent, { "error.code": "handoff_binding_changed" });
     assert.isUndefined(result.structuredContent?.operation);
+  }),
+);
+
+const runtimeFixture = (
+  options: { withdrawOnInspect?: boolean; wrongOperation?: boolean } = {},
+) => {
+  let active = true;
+  const starts: CodexLaunchThreadHandoffInput[] = [];
+  const inspections: unknown[] = [];
+  const operations = new Map<string, { sourceThreadId: string; status: string }>();
+  const caller = createHostedAppToolCaller({
+    backend: "claude",
+    authority,
+    callId: "host-call",
+    generation: 3,
+    isActive: () => active,
+    capture: Effect.succeed(authority),
+    sessionContext: {
+      sessionId: "source-session",
+      projectId: "source-project",
+      runtimeId: "runtime",
+      rootThreadId: "source-root",
+      threadId: "source-child",
+      runId: null,
+      cwd: "/source",
+    },
+  });
+  const execute = makeWithCapture(captureHostedAppToolAuthority).pipe(
+    Effect.provideService(CoreAuthority, { identity: { profileId: "profile" } } as never),
+    Effect.provideService(CoreModules, {
+      workspace: {
+        read: () =>
+          Effect.succeed({
+            value: {
+              kind: "agent_session",
+              session: {
+                archived: false,
+                execution_ref: { runtime_id: "runtime", thread_id: "target-root" },
+              },
+              thread: null,
+            },
+          }),
+        apply: () => Effect.die("Runtime handoffs are admitted by the handoff journal"),
+      },
+    } as never),
+    Effect.provideService(AgentRuntimeApplication, {
+      inspect: (target: unknown) =>
+        Effect.gen(function* () {
+          inspections.push({ target, agent: yield* CoreApplicationAgent });
+          if (options.withdrawOnInspect) active = false;
+          return {
+            sessionId: "target",
+            threadId: "target-root",
+            thread: { title: "Runtime target" },
+          };
+        }),
+    } as never),
+    Effect.provideService(CodexThreadHandoffRuntime, {
+      get: (operationId: string) => Effect.succeed(operations.get(operationId) ?? null),
+      launch: (request: CodexLaunchThreadHandoffInput) =>
+        Effect.sync(() => {
+          const previous = operations.get(request.operationId);
+          if (previous) return previous;
+          starts.push(request);
+          const operation = {
+            sourceThreadId: options.wrongOperation ? "other" : request.threadId,
+            status: "running",
+          };
+          operations.set(request.operationId, operation);
+          return operation;
+        }),
+    } as never),
+  );
+  return { caller, execute, starts, inspections };
+};
+
+it.effect("routes hosted handoffs through the bound Runtime root and journal replay", () =>
+  Effect.gen(function* () {
+    const f = runtimeFixture();
+    const execute = yield* f.execute;
+    const first = yield* execute({ ...input, caller: f.caller });
+    assert.isFalse(first.isError ?? false);
+    assert.include(f.starts[0], {
+      threadId: "target-root",
+      requestThreadId: "source-child",
+      threadTitle: "Runtime target",
+    });
+    assert.deepNestedInclude(f.inspections[0], {
+      "target.sessionId": "target",
+      "agent.authority.thread_id": authority.threadId,
+    });
+    const replay = yield* execute({
+      ...input,
+      caller: f.caller,
+      arguments: {
+        ...input.arguments,
+        operationId: first.structuredContent?.operationId,
+      },
+    });
+    assert.deepInclude(replay.structuredContent, { replay: true, deliveryState: "started" });
+    assert.lengthOf(f.starts, 1);
+  }),
+);
+
+it.effect("rejects a hosted child's own Session, withdrawn sources and unrelated outcomes", () =>
+  Effect.gen(function* () {
+    const self = runtimeFixture();
+    const execute = yield* self.execute;
+    const result = yield* execute({
+      ...input,
+      caller: self.caller,
+      arguments: { sessionId: "source-session" },
+    });
+    assert.deepNestedInclude(result.structuredContent, {
+      "error.code": "cannot_handoff_calling_session",
+    });
+    assert.lengthOf(self.starts, 0);
+    for (const options of [{ withdrawOnInspect: true }, { wrongOperation: true }]) {
+      const f = runtimeFixture(options);
+      const run = yield* f.execute;
+      const result = yield* run({ ...input, caller: f.caller });
+      assert.isTrue(result.isError);
+      assert.lengthOf(f.starts, options.withdrawOnInspect ? 0 : 1);
+    }
   }),
 );

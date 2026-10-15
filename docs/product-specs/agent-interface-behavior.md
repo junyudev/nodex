@@ -249,8 +249,9 @@ a supported model is explicitly supplied. The calling Session cannot message its
 an unstarted draft has no execution target. Core verifies the captured caller and exact
 destination binding; the Runtime's stable message identity and durable receipt prevent a
 retry from starting duplicate work. An accepted delivery identifies the Session, Thread and
-operation without claiming completion. Use `read_session` or `wait_sessions` to observe it.
-Explicit remote native Sessions use their own supported execution route.
+operation with `deliveryState: "accepted"` without claiming completion or a replay flag.
+Use `read_session` or `wait_sessions` to observe it. Explicit remote native Sessions use
+their own supported execution route.
 
 `send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
 caller's task, such as a follow-up, an idea, or a question for later. The text becomes the
@@ -266,25 +267,33 @@ and background Agents. See [Inbox Behavior](./inbox-behavior.md).
 `fork_session` captures a Runtime conversation prefix in a separate visible Session.
 The selected Provider uses an exact native fork when possible and bounded portable history
 otherwise; it does not borrow a rebound native incarnation.
-Omitting the source selects the caller's Session. Same-directory forks attach immediately;
-worktree forks return pending work and a client Thread identity. Core first reserves the
-stable destination Session under the captured execution identity and exact Thread binding.
-The normal fork owner attaches its accepted Thread to that destination, including deferred
-worktree execution. Retrying the same operation never forks again: it returns the destination's
-attached Thread or unconfirmed state. Forking does not start a new Turn; an explicit
-follow-up starts work in the child, whose application context uses its own Session identity.
+Omitting the source selects the caller's Session. Both same-directory and worktree forks
+finish workspace preparation and attach the new root to its stable product Session before
+returning `forkState: "attached"` with the Session, Thread and operation identities.
+Core verifies the captured caller and exact execution binding. A retry reconciles that
+same destination and native workspace ownership instead of forking again. Forking does
+not start a new Turn; an explicit follow-up starts work in the child, whose application
+context uses its own Session identity.
 
-`handoff_session` moves another active Codex Session through the existing local or cross-host
-handoff coordinator. Omit the destination host for the current-host checkout/worktree toggle.
-Core checks the captured execution identity and exact Session binding before reserving the
-normalized request. Only fresh admission starts the operation; retries across Turns and
-restarts read its retained progress or report unconfirmed dispatch, never move again. The
-calling Session cannot move itself. A follow-up prompt uses the coordinator's post-commit
-at-most-once dispatch. Threadless and ACP Sessions are unavailable for this command.
+`handoff_session` moves another active Session between its local checkout and managed
+worktree while retaining the same Session, root Thread and conversation history. Runtime
+Sessions use the durable handoff journal and the Runtime's execution hold. The move stops
+active work and waits for native connection retirement before changing Git state or execution
+location. Existing queued messages remain durable; queues explicitly held by the user stay
+held. The next Provider execution resumes through the canonical Runtime owner at the committed
+location. Runtime handoff supports the local host. An explicit remote native Codex Session
+continues through its own supported local or cross-host coordinator.
 
-An admitted native handoff shows live progress in its calling conversation. The activity binds
-the returned operation ID to the calling thread, target thread, and requested host; Main owns
-the progress projection even after the tool call completes.
+Core checks the captured caller and exact Session binding. The calling Session cannot move
+itself, including through a delegated child. Reusing the stable operation ID reads or resumes
+the same journal operation across retries and restarts. Recovery retains the hold while native
+retirement, location or Git restoration is uncertain. A Runtime follow-up uses a stable message
+identity after verified completion, so retrying delivery cannot start duplicate work.
+
+An admitted handoff shows live progress in its calling conversation. The activity binds the
+operation ID to the caller, target root and requested host; Main owns the progress projection
+after the tool call completes. See [Managed worktree lifecycle](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat)
+for Git preservation, compensation and restart recovery.
 
 `get_handoff_status` requires both Session and operation IDs. It checks the captured
 execution identity and the operation's Thread binding before and after waiting. A wait

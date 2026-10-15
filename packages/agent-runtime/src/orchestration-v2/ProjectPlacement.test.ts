@@ -153,6 +153,18 @@ it.effect(
       const plan = yield* sql<{
         detail: string;
       }>`EXPLAIN QUERY PLAN SELECT thread_id FROM orchestration_v2_projection_threads WHERE json_extract(payload_json,'$.lineage.rootThreadId') = ${root}`;
-      assert.isTrue(plan.some((row) => row.detail.includes("root_routing_idx")));
+      assert.isTrue(
+        plan.some(
+          (row) =>
+            row.detail.startsWith("SEARCH orchestration_v2_projection_threads USING ") &&
+            row.detail.includes("INDEX ") &&
+            row.detail.includes("(<expr>=?)"),
+        ),
+        JSON.stringify(plan),
+      );
+      assert.isFalse(
+        plan.some((row) => row.detail.startsWith("SCAN orchestration_v2_projection_threads")),
+        JSON.stringify(plan),
+      );
     }).pipe(Effect.provide(layer)),
 );

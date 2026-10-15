@@ -178,9 +178,10 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           if (!parsed.success) return toolFailure("invalid_arguments");
           const calling = yield* resolveAppToolCallingSession(input.caller, workspace);
           if (!calling) return toolFailure("session_unavailable");
-          const anchor = Option.isSome(presentation)
-            ? presentation.value.read(input.caller.threadId, input.caller.turnId)
-            : null;
+          const anchor =
+            Option.isSome(presentation) && calling.runId !== null
+              ? presentation.value.read(calling.threadId, calling.runId)
+              : null;
           const selected = yield* select({ sessionId: calling.sessionId, anchor, ...parsed.data });
           const execution = {
             ...calling,

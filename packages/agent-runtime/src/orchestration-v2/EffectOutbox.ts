@@ -150,7 +150,7 @@ export const OrchestrationEffectStatusV2 = Schema.Literals([
 export type OrchestrationEffectStatusV2 = typeof OrchestrationEffectStatusV2.Type;
 
 /**
- * How long a succeeded or cancelled effect row is kept after it completes.
+ * How long a succeeded or ordinarily cancelled effect row is kept after it completes.
  * Claiming, recovery, the orchestrator and storage cleanup only ask whether a
  * row is pending, running or failed, so a missing succeeded or cancelled row
  * reads the same as a present one. Its one other use is deduplication: `enqueue`
@@ -158,8 +158,8 @@ export type OrchestrationEffectStatusV2 = typeof OrchestrationEffectStatusV2.Typ
  * run. Command retries are deduplicated by their receipts first, and a run's
  * effects are re-enqueued only around one server restart, so a week is far
  * longer than either and leaves recent history for debugging.
- * Failed rows are kept: storage cleanup keeps a deleted thread's worktree while
- * any of its effects failed.
+ * Failed rows and cancelled provider detach rows are kept: failed cleanup protects
+ * worktrees, and native retirement remains a barrier until explicitly retried.
  */
 export const SETTLED_EFFECT_RETENTION = Duration.days(7);
 const PRUNE_BATCH_SIZE = 500;
@@ -244,12 +244,18 @@ export interface EffectOutboxV2Shape {
     readonly error: string;
     readonly delayMs: number;
   }) => Effect.Effect<boolean, EffectOutboxError>;
+  /** Explicit retry of one terminal replay-safe effect; successful receipts stay immutable. */
+  readonly retryReplaySafe: (input: {
+    readonly effectId: string;
+    readonly effectType: (typeof REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS)[number];
+    readonly expectedStatus: "failed" | "cancelled";
+  }) => Effect.Effect<boolean, EffectOutboxError>;
   readonly fail: (input: {
     readonly effectId: string;
     readonly workerId: string;
     readonly error: string;
   }) => Effect.Effect<boolean, EffectOutboxError>;
-  /** Deletes succeeded and cancelled rows older than `SETTLED_EFFECT_RETENTION`. Returns the count. */
+  /** Prunes settled rows except cancelled native retirement barriers. Returns the count. */
   readonly pruneSettled: Effect.Effect<number, EffectOutboxError>;
 }
 
@@ -638,6 +644,27 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             (cause) => new EffectOutboxError({ operation: "retry", effectId, cause }),
           ),
         ),
+      retryReplaySafe: ({ effectId, effectType, expectedStatus }) =>
+        Effect.gen(function* () {
+          const now = DateTime.formatIso(yield* DateTime.now);
+          const rows = yield* sql<{ readonly effect_id: string }>`
+            UPDATE orchestration_v2_effect_outbox
+            SET status = 'pending', available_at = ${now}, lease_owner = NULL,
+              lease_expires_at = NULL, completed_at = NULL, updated_at = ${now}
+            WHERE effect_id = ${effectId} AND effect_type = ${effectType}
+              AND status = ${expectedStatus}
+            RETURNING effect_id
+          `;
+          if (rows.length === 1) {
+            cancellationSignals.delete(effectId);
+            yield* notifyAvailable();
+          }
+          return rows.length === 1;
+        }).pipe(
+          Effect.mapError(
+            (cause) => new EffectOutboxError({ operation: "retry-replay-safe", effectId, cause }),
+          ),
+        ),
       fail: ({ effectId, workerId, error }) =>
         Effect.gen(function* () {
           const now = DateTime.formatIso(yield* DateTime.now);
@@ -675,6 +702,7 @@ export const layer: Layer.Layer<EffectOutboxV2, never, SqlClient.SqlClient> = La
             SELECT rowid
             FROM orchestration_v2_effect_outbox
             WHERE status IN ('succeeded', 'cancelled')
+              AND NOT (status = 'cancelled' AND effect_type = 'provider-session.detach')
               AND completed_at < ${cutoff}
             LIMIT ${PRUNE_BATCH_SIZE}
           )

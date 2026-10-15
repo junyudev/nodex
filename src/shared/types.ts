@@ -710,6 +710,7 @@ export interface PageChatLinkInput {
 }
 
 export type ProjectArchiveBlocker =
+  | { kind: "execution-handoff"; threadId: string; operationId: string }
   | { kind: "active-turn"; threadId: string; label: string | null }
   | { kind: "pending-request"; threadId: string; label: string | null }
   | {

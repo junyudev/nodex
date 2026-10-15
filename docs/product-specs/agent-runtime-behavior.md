@@ -31,7 +31,7 @@ are approved automatically. Questions requiring the user's information remain op
 Standard ACP information questions belong to the live Session, with Run left null;
 they can arrive after foreground completion or while another Run executes.
 
-Host preparation binds the product Session before its first Run executes. Every
+Host preparation creates and binds the product Session before its first Run executes. Every
 application call carries exact runtime, Thread, native incarnation and connection
 identity. Providers supplying causal tool metadata also carry the captured Run and
 attempt. Standard ACP calls carry their real Session with Run and attempt left null. Model-authored metadata cannot mint that identity. A captured
@@ -39,6 +39,12 @@ request keeps its original Run when another Run starts, including after foregrou
 completion while its native process remains live. Cancelled or retired execution fails
 instead of borrowing replacement credentials. Cancelling source-less native execution
 retires its connection and credential before another prompt is admitted.
+
+Stateless native MCP calls bind to the registered native call and its physical
+incarnation. An explicit HTTP MCP session ID must identify that same live incarnation;
+an unknown or retired ID cannot fall back to native call metadata.
+MCP initialization may bind the credential's sole registered incarnation before the
+first Run is prepared. It never assigns a Run or resolves an ambiguous connection.
 
 Provider utility processes for titles, commit messages and change-request guides use the same
 full-access, automatic-approval native execution policy. Their task prompts and output schemas
@@ -98,6 +104,8 @@ an earlier background call's origin. Queued edits replace the origin only after 
 accepted edit receipt and a point read proving that its exact Run is still unstarted;
 retries retain that edit's origin. Same-Run steering retains the captured Run origin.
 Actual native-source or runtime connection retirement releases these bounded anchors.
+Workbench tools resolve this origin with the verified engine Thread and Run, independently
+of Core's execution lease coordinates. Session-only calls have no Run anchor.
 
 Effect cleanup releases subscriptions and bodies immediately; a render-held lease can
 be retained again without reviving old callbacks. Concurrent readers of the same
@@ -147,6 +155,48 @@ path, and conversation metadata never hydrates image bytes. Workspace creation a
 setup use the same scoped filesystem owner as other native capabilities. The workspace
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
+
+## Execution location and worktree handoff
+
+A local Runtime Session keeps its Core product identity and immutable execution root when
+moving between a checkout and managed worktree. Runtime Thread metadata owns the complete
+execution location; Core owns Session placement and binding. Main coordinates Git effects and
+the durable handoff journal, and holds the Profile snapshot writer lease throughout the move.
+Provider runtime observations cannot overwrite the canonical location.
+Session archive, deletion and Project moves share the handoff's per-Session admission
+lane. They wait for an in-progress move and reject a durable recovery hold before any
+Core lifecycle mutation. Stop and cancellation remain available during that hold.
+
+One durable execution hold seals the root and its delegated tree before filesystem preparation.
+Quiescence stops native root, child and background work, retires its source and tool credentials,
+and waits for native terminal acknowledgments and durable detach effects. Captured source Runs
+remain tracked through restart even if their main turn has already completed. A timeout or lost
+reply leaves the operation sealed for recovery; detached metadata alone does not prove that
+native work stopped. An idle shared Provider process may remain resident.
+Queued messages remain durable, and a queue explicitly held by the user remains held after
+handoff. No replacement Provider starts during preparation.
+
+Prepared source and destination roots drive bounded, metadata-only reconciliation of delegated
+Threads that share the moved workspace. Independent workspaces keep their location. Child
+locations move before the root commits, and rollback restores them even if the root never
+committed. The root's final location commit stays with the canonical Runtime command writer.
+Subsequent Provider execution resumes at that location through the same owner; handoff does
+not start a second native writer or prewarm a provisional connection.
+
+The journal retains source, preparation and commit boundaries across restart. Recovery rereads
+the canonical location and finishes the destination or restores the source before releasing
+execution. Startup protects unfinished journal operations before admitting work. Paged orphan
+hold reconciliation runs in the background without making window readiness wait for the Runtime;
+those durable holds continue to deny execution until reconciliation succeeds. A hold
+without a journal entry can be released after its captured sources retire because Git
+preparation had not started. Pending native retirement still blocks release. Completed
+operation reads do not repeat Git work or follow-up
+messages. Follow-up retries share one durable message identity.
+
+Runtime handoff supports local checkout/worktree moves. Explicit remote native Codex Sessions
+retain their own execution-host path and native location authority. Git transfer, staged and
+untracked state, compensation and progress contracts belong to
+[Managed worktree lifecycle](codex-managed-worktree-lifecycle-behavior.md#moving-a-chat).
 
 ## Native voice and prediction
 

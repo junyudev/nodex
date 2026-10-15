@@ -575,6 +575,184 @@ it.effect(
 );
 
 it.live(
+  "binds Codex MCP before preparation and admits exact sources while rejecting retired sessions and cancellation",
+  () =>
+    Effect.gen(function* () {
+      let bridge!: Effect.Success<ReturnType<typeof makeBridge>>;
+      bridge = yield* makeBridge(
+        { home: "/runtime", cwd: "/workspace", providers: {}, host: { tools: [] } },
+        (notification) =>
+          notification.type === "host.request"
+            ? Effect.suspend(() =>
+                bridge.accept({
+                  type: "host.result",
+                  id: notification.id,
+                  success: true,
+                  output: {},
+                }),
+              ).pipe(Effect.asVoid, Effect.orDie)
+            : Effect.void,
+      );
+      const original = { ...actor, nativeDriver: ProviderDriverKind.make("codex") };
+      yield* bridge.registerNativeSession({
+        credentialId: scope.thread!.providerSessionId,
+        providerSessionId: original.providerSessionId,
+        nativeGeneration: original.nativeGeneration,
+      });
+      const siblingScope = yield* Scope.make();
+      yield* bridge
+        .registerNativeSession({
+          credentialId: scope.thread!.providerSessionId,
+          providerSessionId: "native-session:ambiguous",
+          nativeGeneration: 2,
+        })
+        .pipe(Effect.provideService(Scope.Scope, siblingScope));
+      let cancelled = false;
+      let mutations = 0;
+      let authorityReads = 0;
+      yield* Effect.gen(function* () {
+        const admit = yield* make;
+        const initialize = Effect.fnUntraced(function* (profileId: string) {
+          const incoming = request({ method: "initialize", id: 1 });
+          return yield* send(
+            admit(
+              Effect.succeed(
+                HttpServerResponse.empty({ headers: { "mcp-session-id": profileId } }),
+              ),
+              scope,
+              incoming,
+            ),
+            incoming,
+          );
+        });
+        yield* initialize("profile:ambiguous");
+        yield* Scope.close(siblingScope, Exit.void);
+        yield* initialize("profile:codex");
+        yield* bridge.prepareTurn(original);
+        yield* bridge.captureNativeToolCall({
+          identity: original,
+          nativeCallId: "exec:original",
+          nativeThreadId: "native:thread",
+          nativeTurnId: "native:turn",
+        });
+        yield* bridge.prepareTurn({
+          ...original,
+          runId: RunId.make("run:later"),
+          attemptId: RunAttemptId.make("attempt:later"),
+        });
+        const nativeRequest = (profileId?: string) =>
+          request(
+            {
+              method: "tools/call",
+              id: "native:original",
+              params: {
+                name: "content_write",
+                _meta: {
+                  callId: "exec:original",
+                  threadId: "native:thread",
+                  "x-codex-turn-metadata": { turn_id: "native:turn" },
+                },
+              },
+            },
+            profileId,
+          );
+        const mutate = Effect.gen(function* () {
+          const captured = yield* ExecutionHost.McpTurnAdmission;
+          expect(captured?.actor?.runId).toBe(original.runId);
+          expect(captured?.actor?.attemptId).toBe(original.attemptId);
+          yield* captured!.assertCurrent().pipe(Effect.orDie);
+          mutations++;
+          return HttpServerResponse.empty();
+        });
+        expect((yield* admit(mutate, scope, nativeRequest())).status).toBe(204);
+        expect((yield* admit(mutate, scope, nativeRequest("profile:codex"))).status).toBe(204);
+        const assertRejected = (response: HttpServerResponse.HttpServerResponse) => {
+          expect(response.body._tag).toBe("Uint8Array");
+          if (response.body._tag !== "Uint8Array") return;
+          expect(JSON.parse(new TextDecoder().decode(response.body.body)).result.isError).toBe(
+            true,
+          );
+        };
+        const readsBeforeUnknown = authorityReads;
+        for (const profileId of ["profile:unknown", "profile:ambiguous"])
+          assertRejected(yield* admit(mutate, scope, nativeRequest(profileId)));
+        expect(authorityReads).toBe(readsBeforeUnknown);
+        yield* admit(
+          Effect.succeed(HttpServerResponse.empty()),
+          scope,
+          HttpServerRequest.fromWeb(
+            new Request("http://127.0.0.1/mcp", {
+              method: "DELETE",
+              headers: { "mcp-session-id": "profile:codex" },
+            }),
+          ),
+        );
+        assertRejected(yield* admit(mutate, scope, nativeRequest("profile:codex")));
+        expect(authorityReads).toBe(readsBeforeUnknown);
+        const entered = yield* Deferred.make<void>();
+        const resume = yield* Deferred.make<void>();
+        const pending = yield* admit(
+          Effect.gen(function* () {
+            const captured = yield* ExecutionHost.McpTurnAdmission;
+            expect(captured?.actor?.runId).toBe(original.runId);
+            yield* Deferred.succeed(entered, undefined);
+            yield* Deferred.await(resume);
+            expect((yield* captured!.assertCurrent().pipe(Effect.result))._tag).toBe("Failure");
+            return HttpServerResponse.empty();
+          }),
+          scope,
+          nativeRequest(),
+        ).pipe(Effect.forkChild);
+        yield* Deferred.await(entered);
+        cancelled = true;
+        yield* Deferred.succeed(resume, undefined);
+        yield* Fiber.join(pending);
+        assertRejected(yield* admit(mutate, scope, nativeRequest()));
+        expect(mutations).toBe(2);
+      }).pipe(
+        Effect.provideService(HostBridge, bridge),
+        Effect.provide(
+          Layer.mock(Projections.ProjectionStoreV2)({
+            getHostToolAuthorityContext: (threadId, runId) => {
+              expect(threadId).toBe(original.threadId);
+              expect(runId).toBe(original.runId);
+              authorityReads++;
+              return Effect.succeed({
+                thread: { id: original.threadId, deletedAt: null },
+                runs: [
+                  {
+                    id: original.runId,
+                    status: cancelled ? "cancelled" : "completed",
+                    activeAttemptId: original.attemptId,
+                    providerThreadId: original.providerThreadId,
+                    providerInstanceId: original.providerInstanceId,
+                  },
+                ],
+                providerThreads: [
+                  {
+                    id: original.providerThreadId,
+                    providerSessionId: original.providerSessionId,
+                    providerInstanceId: original.providerInstanceId,
+                    nativeThreadRef: original.nativeThreadRef,
+                  },
+                ],
+                subagents: [],
+              } as never);
+            },
+          }),
+        ),
+      );
+    }).pipe(
+      Effect.provide(NodeServices.layer),
+      Effect.provide(
+        Layer.succeed(Environment.ServerEnvironmentIdentity, {
+          getEnvironmentId: Effect.succeed(EnvironmentId.make(actor.runtimeId)),
+        }),
+      ),
+    ),
+);
+
+it.live(
   "routes shared OpenCode namespaces by native source and invalidates a released call during suspension",
   () =>
     Effect.gen(function* () {

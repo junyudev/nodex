@@ -1,6 +1,7 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
@@ -77,39 +78,43 @@ test("projectless agents use Profile content and Automation tools in both intera
             const common = [
               '// @exec: {"yield_time_ms": 60000, "max_output_tokens": 22000}',
               unwrap,
-              "text({context:unwrap(await tools.mcp__nodex_app__get_context({}))});",
-              `const fetched=unwrap(await tools.mcp__nodex_app__fetch({id:${JSON.stringify(pageId)},prepareFor:[{kind:"title"},{kind:"body"}]})); text({fetched});`,
+              "text({context:unwrap(await app.get_context({}))});",
+              `const fetched=unwrap(await app.fetch({id:${JSON.stringify(pageId)},prepareFor:[{kind:"title"},{kind:"body"}]})); text({fetched});`,
             ];
             const script =
               phase === "write"
                 ? [
                     ...common,
-                    `text({updated:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
-                    'text({created:unwrap(await tools.mcp__nodex_app__create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
-                    'text({sql:unwrap(await tools.mcp__nodex_app__query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
-                    "text({schema:unwrap(await tools.mcp__nodex_app__describe_content_schema({scope:{}}))});",
-                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await tools.mcp__nodex_app__automation_update({mode:"create",...cron})); text({automation});',
-                    'text({automationUpdated:unwrap(await tools.mcp__nodex_app__automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
-                    "const context=unwrap(await tools.mcp__nodex_app__get_session_context({})); text({session:context}); const groups=unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:context.presentation.observationId}));",
-                    `text({opened:unwrap(await tools.mcp__nodex_app__open_tab({observationId:context.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId==="right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
-                    'const current=unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"})); const tabs=unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:current.presentation.observationId}));',
-                    `const target=tabs.items.find(t=>t.viewId===${JSON.stringify(viewId)}); if(!target) throw new Error(JSON.stringify(tabs)); text({view:unwrap(await tools.mcp__nodex_app__query_displayed_view({observationId:current.presentation.observationId,tabId:target.tabId,propertyIds:["status"]}))});`,
+                    `text({updated:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
+                    'text({created:unwrap(await app.create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
+                    'text({sql:unwrap(await app.query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
+                    "text({schema:unwrap(await app.describe_content_schema({scope:{}}))});",
+                    'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await app.automation_update({mode:"create",...cron})); text({automation});',
+                    'text({automationUpdated:unwrap(await app.automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
+                    "const context=unwrap(await app.get_session_context({})); text({session:context}); const groups=unwrap(await app.list_tab_groups({observationId:context.presentation.observationId}));",
+                    `text({opened:unwrap(await app.open_tab({observationId:context.presentation.observationId,panelId:"right",groupId:groups.items.find(g=>g.panelId==="right").groupId,target:{kind:"view",viewId:${JSON.stringify(viewId)}}}))});`,
+                    'const current=unwrap(await app.get_session_context({mode:"refresh"})); const tabs=unwrap(await app.list_session_tabs({observationId:current.presentation.observationId}));',
+                    `const target=tabs.items.find(t=>t.viewId===${JSON.stringify(viewId)}); if(!target) throw new Error(JSON.stringify(tabs)); text({view:unwrap(await app.query_displayed_view({observationId:current.presentation.observationId,tabId:target.tabId,propertyIds:["status"]}))});`,
                   ]
                 : [
                     ...common,
-                    `text({planWrite:unwrap(await tools.mcp__nodex_app__update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Planned content update"}}))});`,
-                    `text({automationRead:unwrap(await tools.mcp__nodex_app__automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
-                    `text({deletedAutomation:unwrap(await tools.mcp__nodex_app__automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
+                    `text({planWrite:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"replace",ifMatch:fetched.data.content.etag,markdown:"Planned content update"}}))});`,
+                    `text({automationRead:unwrap(await app.automation_update({mode:"view",id:${JSON.stringify(automationId)}}))});`,
+                    `text({deletedAutomation:unwrap(await app.automation_update({mode:"delete",id:${JSON.stringify(automationId)},expectedRevision:${automationRevision}}))});`,
                   ];
             return responses.stream([
               responses.created(callId),
-              responses.customToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
+              nativeAppToolCall(callId, tool!.name, script.join("\n"), tool!.namespace),
               responses.completed(callId),
             ]);
           }
-          const records = outputRecords(request.toolCallOutput(callId));
+          const output = request.toolCallOutput(callId);
+          const records = outputRecords(output);
           const result = (label: string) =>
-            requireRecord(records.find((record) => record[label])?.[label], label);
+            requireRecord(
+              records.find((record) => record[label])?.[label],
+              `${label}; tool output: ${JSON.stringify(output).slice(-8_000)}`,
+            );
           expect(result("context")).toMatchObject({ data: { project: null } });
           expect(result("fetched")).toHaveProperty("data.resource");
           if (phase === "write") {
@@ -159,6 +164,7 @@ test("projectless agents use Profile content and Automation tools in both intera
         label: "native-projectless-content",
         cwd: process.cwd(),
         prepareAgentRuntime: false,
+        isolateHostDirectories: true,
         environment: {
           ...model.loopbackEnvironment(),
           OPENAI_API_KEY: "nodex-scripted-model-test-key",
@@ -166,14 +172,19 @@ test("projectless agents use Profile content and Automation tools in both intera
           NODEX_LOG_CONSOLE: "0",
         },
       });
+      const workspaceHome = join(harness.profile.runRoot, "home");
       writeFileSync(
         join(harness.profile.codexHome, "config.toml"),
         `model_provider = "openai"\nopenai_base_url = ${JSON.stringify(`${model.baseUrl}/v1`)}\nrequest_max_retries = 0\nstream_max_retries = 0\n[features]\nrespect_system_proxy = false\n`,
         { mode: 0o600 },
       );
       let threadId: string | null = null;
+      let processDiagnostics = "";
       try {
         const page = await harness.launch();
+        harness.application.process().stderr?.on("data", (chunk: Buffer) => {
+          processDiagnostics = `${processDiagnostics}${chunk.toString("utf8")}`.slice(-16_000);
+        });
         const seedProject = await createAgentSmokeDraft(
           page,
           harness.profile.initialProjectsDirectory,
@@ -235,6 +246,25 @@ test("projectless agents use Profile content and Automation tools in both intera
             return threadId;
           })
           .toBeTruthy();
+        let executionCwd = "";
+        await expect
+          .poll(async () => {
+            const control = requireRecord(
+              await invokeIpc(page, "agent-runtime:session:control", {
+                sessionId: callerSession.id,
+              }),
+              "Projectless Session control",
+            );
+            const snapshot = requireRecord(control.snapshot, "Projectless snapshot");
+            const projection = requireRecord(snapshot.projection, "Projectless projection");
+            const thread = requireRecord(projection.thread ?? {}, "Projectless Thread");
+            executionCwd = typeof thread.worktreePath === "string" ? thread.worktreePath : "";
+            return executionCwd;
+          })
+          .not.toBe("");
+        const workspacePath = relative(workspaceHome, executionCwd);
+        expect(workspacePath).not.toMatch(/^\.\.(?:[/\\]|$)/);
+        expect(isAbsolute(workspacePath)).toBe(false);
         await waitForFinalMarker(page, "PROJECTLESS_write_OK");
         await waitForCompletedSession(page, callerSession.id);
         await composer.focus();
@@ -263,7 +293,7 @@ test("projectless agents use Profile content and Automation tools in both intera
             }).catch(() => null)
           : null;
         throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify({ product, snapshot }).slice(-36_000)}\n${presented.slice(-16_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,
+          `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify({ product, snapshot }).slice(-36_000)}\n${presented.slice(-16_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}\n${processDiagnostics}`,
           { cause: error },
         );
       } finally {

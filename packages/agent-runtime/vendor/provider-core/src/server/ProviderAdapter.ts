@@ -443,6 +443,8 @@ export interface ProviderAdapterV2InterruptInput {
   readonly providerTurnId: ProviderTurnId;
   /** When true, the next `startTurn` may respawn the provider runtime (Grok Stop recovery). */
   readonly requestRuntimeRestart?: boolean;
+  /** Workspace retirement requires native terminal evidence and preserves failed-stop handles. */
+  readonly requireTerminalAcknowledgement?: true;
 }
 
 export interface ProviderAdapterV2RuntimeRequestResponseInput {

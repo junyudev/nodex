@@ -15,6 +15,8 @@ import { toast } from "@/components/ui/toast";
 
 export function describeProjectArchiveBlockers(blockers: readonly ProjectArchiveBlocker[]): string {
   const kinds = new Set(blockers.map((blocker) => blocker.kind));
+  if (kinds.has("execution-handoff"))
+    return "Wait for the chat’s workspace move to finish before removing this project.";
   const hasTask = kinds.has("active-turn") || kinds.has("pending-request");
   const hasProcess = kinds.has("terminal") || kinds.has("background-process");
   if (hasTask && hasProcess) {
@@ -27,6 +29,7 @@ export function describeProjectArchiveBlockers(blockers: readonly ProjectArchive
 }
 
 function blockerAccessibleLabel(blocker: ProjectArchiveBlocker): string {
+  if (blocker.kind === "execution-handoff") return `Workspace move in thread ${blocker.threadId}`;
   if (blocker.kind === "terminal") {
     return `Live terminal ${blocker.terminalSessionId}`;
   }

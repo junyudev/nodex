@@ -119,6 +119,8 @@ const fixture = Effect.fnUntraced(function* () {
   };
   const thread = {
     id: "thread",
+    lineage: { rootThreadId: "thread", parentThreadId: null, relationshipToParent: null },
+    executionHandoff: null as { operationId: string; recoveryRequired: boolean } | null,
     activeProviderThreadId: "provider-thread",
     modelSelection: { instanceId: "codex", model: "parent-model" },
     archivedAt: null,
@@ -208,6 +210,9 @@ const fixture = Effect.fnUntraced(function* () {
     retire: () => {
       generation++;
     },
+    holdWorkspace: () => {
+      thread.executionHandoff = { operationId: "move", recoveryRequired: false };
+    },
     pins: () => pins,
     opened: () => opened,
     helpers,
@@ -233,6 +238,26 @@ const prediction: AgentPredictionInput = {
   generationTrigger: "live",
   configuration: { prompt: "Predict", prompt_version: "1", prediction_reasoning_effort: "low" },
 };
+
+it.effect("a workspace transaction retires native controls and refuses new voice acquisition", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const capture = yield* f.api.prepare({ threadId: "thread", claimId: "before-move" });
+      const opened = f.opened();
+      f.holdWorkspace();
+      assert.isFalse(yield* f.api.current(capture.source));
+      assert.equal(
+        (yield* f.api.prepare({ threadId: "thread", claimId: "during-move" }).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      assert.equal(f.opened(), opened);
+      yield* f.api.release("before-move");
+      assert.equal(f.pins(), 0);
+    }),
+  ),
+);
 
 it.effect("retains exact voice source, adopts native input identity and rejects old controls", () =>
   Effect.scoped(

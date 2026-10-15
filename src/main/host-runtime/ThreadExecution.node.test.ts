@@ -2,6 +2,10 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
+import {
+  AgentRuntimeThreadExecution,
+  AgentRuntimeThreadExecutionError,
+} from "../agent-runtime/AgentRuntimeThreadExecution";
 import { CodexThreadExecution } from "../codex-application/CodexThreadExecution";
 import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import {
@@ -55,7 +59,10 @@ const thread = (backendBinding: AgentBackendBinding): DesktopProjectWorkspaceThr
   linkedAt: "2026-09-30T00:00:00Z",
 });
 
-const harness = (backendBinding: AgentBackendBinding) =>
+const harness = (
+  backendBinding: AgentBackendBinding,
+  runtime?: AgentRuntimeThreadExecution["Service"],
+) =>
   Effect.gen(function* () {
     let authority = thread(backendBinding);
     const calls: string[] = [];
@@ -89,10 +96,13 @@ const harness = (backendBinding: AgentBackendBinding) =>
           return authority;
         }),
     } as unknown as ProjectWorkspace["Service"];
-    const execution = yield* make.pipe(
+    const construction = make.pipe(
       Effect.provideService(ProjectWorkspace, workspace),
       Effect.provideService(CodexThreadExecution, codex),
     );
+    const execution = yield* runtime
+      ? construction.pipe(Effect.provideService(AgentRuntimeThreadExecution, runtime))
+      : construction;
     return {
       execution,
       calls,
@@ -188,4 +198,61 @@ it.effect("recovery seals admission without asking Core to route or starting exe
     assert.deepEqual(f.commits, []);
     assert.deepEqual(f.prompts, []);
   }),
+);
+
+it.effect(
+  "routes a bound Runtime Session through its execution owner with stable operation identity",
+  () =>
+    Effect.gen(function* () {
+      const calls: Array<{ kind: string; operationId?: string }> = [];
+      const record = (kind: string, operationId?: string) =>
+        Effect.sync(() => {
+          calls.push({ kind, operationId });
+        });
+      const port = AgentRuntimeThreadExecution.of({
+        owns: () => Effect.succeed(true),
+        read: () => record("read").pipe(Effect.as(source)),
+        setRecoveryRequired: (_threadId, _required, operationId) => record("recovery", operationId),
+        withHandoff: (_threadId, use, operationId) =>
+          record("handoff", operationId).pipe(
+            Effect.andThen(use),
+            Effect.mapError(
+              (cause) =>
+                new AgentRuntimeThreadExecutionError({
+                  operation: "handoff",
+                  threadId: "thread",
+                  cause,
+                }),
+            ),
+          ),
+        stop: () => record("stop"),
+        withRuntimeLocation: (_threadId, _location, _preparation, use) =>
+          record("location").pipe(Effect.andThen(use)),
+        commit: () => record("commit"),
+        followUp: (_threadId, _prompt, operationId) =>
+          record("follow-up", operationId).pipe(Effect.as(undefined)),
+        reconcileRecovery: () => record("reconcile").pipe(Effect.as(undefined)),
+      });
+      const f = yield* harness({ kind: "claude", instanceConfigId: "work" }, port);
+      assert.deepEqual(yield* f.execution.read("thread"), source);
+      yield* f.execution.withHandoff("thread", Effect.void, "move");
+      yield* f.execution.setRecoveryRequired("thread", true, "move");
+      yield* f.execution.stop("thread");
+      yield* f.execution.withRuntimeLocation("thread", destination, null, Effect.void);
+      yield* f.execution.commit("thread", destination);
+      yield* f.execution.followUp("thread", "continue", "move");
+      yield* f.execution.reconcileRecovery!([]);
+      assert.deepEqual(calls, [
+        { kind: "read", operationId: undefined },
+        { kind: "handoff", operationId: "move" },
+        { kind: "recovery", operationId: "move" },
+        { kind: "stop", operationId: undefined },
+        { kind: "location", operationId: undefined },
+        { kind: "commit", operationId: undefined },
+        { kind: "follow-up", operationId: "move" },
+        { kind: "reconcile", operationId: undefined },
+      ]);
+      assert.deepEqual(f.calls, []);
+      assert.deepEqual(f.safety, []);
+    }),
 );

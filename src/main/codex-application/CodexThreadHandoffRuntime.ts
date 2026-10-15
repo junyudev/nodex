@@ -609,10 +609,14 @@ export const make = (options: {
       detail: string,
       observer?: (progress: CodexThreadHandoffProgress) => void,
     ) =>
-      invoke("seal-recovery", threadExecution.setRecoveryRequired(entry.threadId, true), {
-        operationId: entry.operationId,
-        threadId: entry.threadId,
-      }).pipe(
+      invoke(
+        "seal-recovery",
+        threadExecution.setRecoveryRequired(entry.threadId, true, entry.operationId),
+        {
+          operationId: entry.operationId,
+          threadId: entry.threadId,
+        },
+      ).pipe(
         Effect.andThen(
           patchEntry(
             entry,
@@ -637,7 +641,7 @@ export const make = (options: {
         return Effect.succeed(entry);
       return invoke(
         "release-recovery",
-        threadExecution.setRecoveryRequired(entry.threadId, false),
+        threadExecution.setRecoveryRequired(entry.threadId, false, entry.operationId),
         {
           operationId: entry.operationId,
           threadId: entry.threadId,
@@ -868,7 +872,7 @@ export const make = (options: {
         );
         entry = yield* invoke(
           "send-follow-up",
-          threadExecution.followUp(entry.threadId, followUpPrompt),
+          threadExecution.followUp(entry.threadId, followUpPrompt, entry.operationId),
           { operationId: entry.operationId, threadId: entry.threadId },
         ).pipe(
           Effect.as(entry),
@@ -1187,33 +1191,62 @@ export const make = (options: {
                 yield* save(entry, input.onProgress, null);
                 yield* invoke(
                   "seal-recovery",
-                  threadExecution.setRecoveryRequired(entry.threadId, true),
+                  threadExecution.setRecoveryRequired(entry.threadId, true, entry.operationId),
                   { operationId: entry.operationId, threadId: entry.threadId },
                 );
                 return yield* runTransaction(entry, input.onProgress).pipe(
                   Effect.flatMap((entry) => releaseVerifiedRecovery(entry, input.onProgress)),
                 );
               }),
+              input.operationId,
             ),
             { operationId: input.operationId, threadId: input.threadId },
           ).pipe(Effect.flatMap((entry) => completeHandoff(entry, input.onProgress)));
         }),
       ).pipe(Effect.tap((entry) => requireJournalOwnership(input, entry)));
 
-    const prepareRecovery = Effect.gen(function* () {
-      const entries = yield* listJournal;
-      for (const entry of entries) {
-        if (isTerminalCodexThreadHandoff(entry)) continue;
-        yield* invoke("seal-recovery", threadExecution.setRecoveryRequired(entry.threadId, true), {
-          operationId: entry.operationId,
-          threadId: entry.threadId,
-        });
-      }
-    });
+    let recoveryReconciled = false;
+    const prepareRecoveryGate = yield* Semaphore.make(1);
+    const prepareRecovery = prepareRecoveryGate.withPermit(
+      Effect.gen(function* () {
+        const entries = yield* listJournal;
+        for (const entry of entries) {
+          if (isTerminalCodexThreadHandoff(entry)) continue;
+          yield* invoke(
+            "seal-recovery",
+            threadExecution.setRecoveryRequired(entry.threadId, true, entry.operationId),
+            {
+              operationId: entry.operationId,
+              threadId: entry.threadId,
+            },
+          );
+        }
+      }),
+    );
+
+    // Persisted Runtime holds already seal execution. Their orphan cleanup must not
+    // start or await the execution process on the application readiness path.
+    const reconcileRecovery = prepareRecoveryGate.withPermit(
+      Effect.gen(function* () {
+        if (recoveryReconciled) return;
+        const entries = yield* listJournal;
+        if (threadExecution.reconcileRecovery)
+          yield* invoke(
+            "reconcile-recovery",
+            threadExecution.reconcileRecovery(
+              entries
+                .filter((entry) => !isTerminalCodexThreadHandoff(entry))
+                .map(({ threadId, operationId }) => ({ threadId, operationId })),
+            ),
+          );
+        recoveryReconciled = true;
+      }),
+    );
 
     const recover = (observer?: (progress: CodexThreadHandoffProgress) => void) =>
       Effect.gen(function* () {
         yield* prepareRecovery;
+        yield* reconcileRecovery;
         const entries = yield* listJournal;
         const recovered: CodexThreadHandoffJournalEntry[] = [];
         for (const entry of entries) {
@@ -1233,6 +1266,7 @@ export const make = (options: {
                   recoverEntry(entry, observer).pipe(
                     Effect.flatMap((recovered) => releaseVerifiedRecovery(recovered, observer)),
                   ),
+                  entry.operationId,
                 ),
                 {
                   operationId: entry.operationId,

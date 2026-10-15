@@ -19,6 +19,8 @@ import { makeWithCapture as makeWorkbench } from "../app-tools/WorkbenchAppTools
 import { makeWithCapture as makeAutomation } from "../app-tools/AutomationAppTools";
 import { makeWithCapture as makeInbox } from "../app-tools/InboxAppTools";
 import { make as makeSessionCommands } from "../app-tools/RuntimeSessionCommands";
+import { makeWithCapture as makeHandoff } from "../app-tools/SessionHandoffAppTools";
+import { makeWithCapture as makeHandoffStatus } from "../app-tools/HandoffStatusAppTools";
 import { make as makeObservation } from "../app-tools/RuntimeSessionObservation";
 import { SessionObservation } from "../app-tools/SessionObservation";
 import { SessionWaiter, makeWithSources } from "../app-tools/SessionWaiter";
@@ -37,25 +39,23 @@ import { toolFailure, toolSuccess } from "../app-tools/app-tool-result";
 import { WorkspaceDependencyRuntime } from "../host-runtime/WorkspaceDependencyRuntime";
 
 const queries = new Set(["query_content", "describe_content_schema"]);
-export const runtimeHostToolCatalog: ReadonlyArray<AgentHostTool> = appToolCatalog
-  .filter((tool) => tool.name !== "handoff_session" && tool.name !== "get_handoff_status")
-  .map((tool) => ({
-    name: tool.name,
-    ...(tool.description
-      ? {
-          description:
-            tool.name === "create_session"
-              ? "Create and start a Session using the calling Session's provider and model unless model is supplied. Choose the Project and local or worktree environment explicitly. Reuse operationId with identical arguments for retries."
-              : tool.name === "fork_session"
-                ? "Fork captured conversation history into an independent Session in the source Project. Omit sessionId to fork the exact calling Thread, including an app-owned child. Choose same-directory or worktree explicitly; reuse operationId for retries."
-                : tool.name === "send_message_to_session"
-                  ? "Send a follow-up to another Runtime Session. Omit model to retain its selection. Reuse operationId with identical arguments for retries; a repeated request never dispatches another message. The calling Session cannot message itself."
-                  : tool.description,
-        }
-      : {}),
-    inputSchema: tool.inputSchema,
-    ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
-  }));
+export const runtimeHostToolCatalog: ReadonlyArray<AgentHostTool> = appToolCatalog.map((tool) => ({
+  name: tool.name,
+  ...(tool.description
+    ? {
+        description:
+          tool.name === "create_session"
+            ? "Create and start a Session using the calling Session's provider and model unless model is supplied. Choose the Project and local or worktree environment explicitly. Reuse operationId with identical arguments for retries."
+            : tool.name === "fork_session"
+              ? "Fork captured conversation history into an independent Session in the source Project. Omit sessionId to fork the exact calling Thread, including an app-owned child. Choose same-directory or worktree explicitly; reuse operationId for retries."
+              : tool.name === "send_message_to_session"
+                ? "Send a follow-up to another Runtime Session. Omit model to retain its selection. Reuse operationId with identical arguments for retries; a repeated request never dispatches another message. The calling Session cannot message itself."
+                : tool.description,
+      }
+    : {}),
+  inputSchema: tool.inputSchema,
+  ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
+}));
 const names = new Set(runtimeHostToolCatalog.map((tool) => tool.name));
 
 export type AgentRuntimeHostToolExecutor = (
@@ -90,6 +90,8 @@ export const make = (options: {
       Effect.provideService(SessionWaiter, waiter),
     );
     const commands = yield* makeSessionCommands;
+    const handoff = yield* makeHandoff(captureHostedAppToolAuthority);
+    const handoffStatus = yield* makeHandoffStatus(captureHostedAppToolAuthority);
     return Effect.fn("AgentRuntimeHostTools.execute")(function* (
       caller: AppToolCaller,
       name: string,
@@ -115,6 +117,8 @@ export const make = (options: {
         return yield* workbench(invocation);
       if (name === "automation_update") return yield* automation(invocation);
       if (name === "send_to_inbox") return yield* inbox(invocation);
+      if (name === "handoff_session") return yield* handoff(invocation);
+      if (name === "get_handoff_status") return yield* handoffStatus(invocation);
       if (
         name === "create_session" ||
         name === "fork_session" ||

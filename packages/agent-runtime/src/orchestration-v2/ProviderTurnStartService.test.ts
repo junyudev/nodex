@@ -58,6 +58,7 @@ it("does not commit running state when inherited background routing cannot be re
   const projection = {
     thread: {
       id: threadId,
+      lineage: { rootThreadId: threadId, parentThreadId: null, relationshipToParent: null },
       projectId: ProjectId.make("project_provider_turn_start_projection_failure"),
       branch: "feature/restore",
       worktreePath: "/tmp/missing-provider-turn-start-worktree",
@@ -105,6 +106,7 @@ it("does not commit running state when inherited background routing cannot be re
             ),
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThread: () => Effect.succeed(projection.thread),
           getTurnStartContext: () => {
             projectionReadCount += 1;
             return Effect.succeed({
@@ -238,6 +240,7 @@ function makeLocalCommandHarness(input: {
     thread: {
       id: threadId,
       activeProviderThreadId: providerThreadId,
+      lineage: { rootThreadId: threadId, parentThreadId: null, relationshipToParent: null },
       branch: null,
       worktreePath: null,
     } as OrchestrationV2ThreadProjection["thread"],
@@ -498,6 +501,7 @@ function makeLocalCommandHarness(input: {
         Layer.mock(GitWorkflow.GitWorkflowService)({}),
         Layer.mock(ProjectService.ProjectService)({}),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
+          getThread: () => Effect.succeed(projection.thread),
           getTurnStartContext: () =>
             Effect.succeed({
               ...projection,

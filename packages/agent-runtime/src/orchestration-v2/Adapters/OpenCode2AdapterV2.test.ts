@@ -624,6 +624,47 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter", (it) => {
     }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
   );
 
+  it.effect(
+    "strict retirement waits for a real execution terminal and retries its original source",
+    () =>
+      Effect.gen(function* () {
+        const { runtime, thread } = yield* resumed([
+          out("session.prompt", { sessionID: SESSION, text: "<any>" }),
+          promptAccepted,
+          event("session.execution.started", { sessionID: SESSION }),
+          out("session.interrupt", { sessionID: SESSION }),
+          reply("session.interrupt", { interrupted: true }),
+          out("session.interrupt", { sessionID: SESSION }),
+          reply("session.interrupt", { interrupted: true }),
+          event("session.execution.interrupted", { sessionID: SESSION }),
+        ]);
+        const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
+        yield* runtime.startTurn(turnInput(thread));
+        const sourceTurn = yield* providerTurnId;
+        const stop = yield* runtime
+          .interruptTurn({
+            providerThread: thread,
+            providerTurnId: sourceTurn,
+            requestRuntimeRestart: true,
+            requireTerminalAcknowledgement: true,
+          })
+          .pipe(Effect.forkScoped);
+        yield* TestClock.adjust("11 seconds");
+        assert.isTrue(Exit.isFailure(yield* Fiber.join(stop).pipe(Effect.exit)));
+        assert.isUndefined(
+          terminal.pollUnsafe(),
+          "An RPC reply cannot replace native terminal evidence",
+        );
+        yield* runtime.interruptTurn({
+          providerThread: thread,
+          providerTurnId: sourceTurn,
+          requestRuntimeRestart: true,
+          requireTerminalAcknowledgement: true,
+        });
+        assert.equal((yield* Fiber.join(terminal))?.status, "interrupted");
+      }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+  );
+
   /** A subagent's session as 2.0.18 announced it in the spike's `background` run. */
   const childCreated = (child: string) => ({
     sessionID: child,

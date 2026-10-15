@@ -57,6 +57,7 @@ const dependencies = Layer.mergeAll(
   Layer.mock(Project.ProjectService)({}),
   Layer.mock(Auth.ProviderAuthService)({}),
   Layer.mock(Projection.ProjectionStoreV2)({
+    getThread: () => Effect.succeed(current.thread),
     getThreadProjection: () =>
       Effect.sync(() => {
         fullReads++;
@@ -130,7 +131,13 @@ function fixture(index) {
   );
   refs.push(new WeakRef(history));
   return {
-    thread: { id: "thread", projectId: "project", branch: null, worktreePath: null },
+    thread: {
+      id: "thread",
+      projectId: "project",
+      branch: null,
+      worktreePath: null,
+      lineage: { rootThreadId: "thread", parentThreadId: null, relationshipToParent: null },
+    },
     runs: [
       {
         id: runId,

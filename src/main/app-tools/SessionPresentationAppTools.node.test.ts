@@ -14,6 +14,7 @@ import { WorkbenchAgentBridge } from "./WorkbenchAgentBridge";
 import { WorkbenchContentRouting } from "./WorkbenchContentRouting";
 import { make } from "./SessionPresentationAppTools";
 import type { WorkbenchAppToolContext } from "./WorkbenchControl";
+import { createHostedAppToolCaller } from "./AppToolCaller";
 
 const windowA = { windowSessionId: "window-a", rendererGeneration: "generation-a" };
 const windowB = { windowSessionId: "window-b", rendererGeneration: "generation-b" };
@@ -61,6 +62,7 @@ const fixture = (
     targetProject?: string | null;
     cwd?: string;
     runtimeBound?: boolean;
+    presentation?: CodexTurnPresentation["Service"];
   } = {},
 ) => {
   const requests: Array<{ window: WorkbenchWindowReference; body: WorkbenchAgentRequestBody }> = [];
@@ -85,12 +87,16 @@ const fixture = (
         }),
       getProject: () => Effect.succeed({ primaryWorkspaceRoot: "/workspace", sources: [] }),
     } as never),
-    Effect.provideService(CodexTurnPresentation, {
-      read: () =>
-        options.noAnchor
-          ? null
-          : { ...windowA, ...(options.stale ? { rendererGeneration: "old" } : {}) },
-    } as never),
+    Effect.provideService(
+      CodexTurnPresentation,
+      options.presentation ??
+        ({
+          read: () =>
+            options.noAnchor
+              ? null
+              : { ...windowA, ...(options.stale ? { rendererGeneration: "old" } : {}) },
+        } as never),
+    ),
     Effect.provideService(TerminalSessions, {
       listSnapshotsForOwners: () => Effect.succeed([]),
     } as never),
@@ -134,6 +140,40 @@ const fixture = (
   );
   return { build, requests };
 };
+
+it.effect("opens in the Runtime submission window using its exact engine Run coordinates", () =>
+  Effect.gen(function* () {
+    const subject = fixture({
+      presentation: {
+        read: (threadId: string, runId: string) =>
+          threadId === "engine-thread" && runId === "engine-run" ? windowA : null,
+      } as never,
+    });
+    const execute = yield* subject.build;
+    const leased = { ...authority, threadId: "runtime:lease", turnId: "runtime-run:lease" };
+    const caller = createHostedAppToolCaller({
+      backend: "codex",
+      authority: leased,
+      callId: "call",
+      generation: 1,
+      isActive: () => true,
+      capture: Effect.succeed(leased),
+      sessionContext: {
+        sessionId: "caller-session",
+        projectId: "project-a",
+        runtimeId: "runtime",
+        rootThreadId: "engine-thread",
+        threadId: "engine-thread",
+        runId: "engine-run",
+        cwd: "/workspace",
+      },
+    });
+    const request = context("open_in_nodex", { target: { kind: "page", pageId: "page" } });
+    const result = yield* execute({ ...request, invocation: { ...request.invocation, caller } });
+    assert.equal(result.structuredContent?.status, "queued");
+    assert.isTrue(subject.requests.every((request) => request.window === windowA));
+  }),
+);
 
 it.effect(
   "opens review for a Runtime-bound Session from verified metadata without a legacy Thread",

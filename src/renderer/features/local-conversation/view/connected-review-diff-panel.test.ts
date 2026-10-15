@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import type { CodexConversationSnapshot } from "@/lib/types";
 import { connectedReviewDiffPanelTestHelpers } from "./connected-review-diff-panel";
 import {
@@ -6,6 +6,11 @@ import {
   buildReviewConversationProjection,
   createReviewConversationProjectionSelector,
 } from "@/features/review/model/review-conversation-projection";
+import { CodexTranscriptReadOwner } from "../normalized-transcript-read-owner";
+import type { ConversationRuntime } from "../conversation-runtime";
+import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
+import { buildAgentActivityV2CorpusThread } from "../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
+import { projectCodexTranscript } from "../../../../shared/codex-transcript-projection";
 
 function buildConversation(unifiedDiff: string): CodexConversationSnapshot {
   return {
@@ -73,6 +78,129 @@ function buildConversation(unifiedDiff: string): CodexConversationSnapshot {
 }
 
 describe("connected review diff panel", () => {
+  test("reads the current diff from resident keyed Turns when Runtime metadata contains no bodies", () => {
+    const patch = "--- a/app.ts\n+++ b/app.ts\n@@ -1 +1 @@\n-old\n+new";
+    const state = createCodexCanonicalHydratedConversationState(
+      {
+        ...buildAgentActivityV2CorpusThread([]),
+        id: "thread-1",
+        turns: [
+          {
+            id: "turn-1",
+            rootTurnId: null,
+            status: "completed",
+            items: [],
+            itemsView: "full",
+            error: null,
+            startedAt: 1,
+            completedAt: 2,
+            durationMs: 1000,
+          },
+        ],
+      },
+      {
+        hostId: "local",
+        model: "model",
+        reasoningEffort: null,
+        cwd: "/workspace/nodex",
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "dangerFullAccess" },
+        activePermissionProfile: null,
+        runtimeWorkspaceRoots: ["/workspace/nodex"],
+      },
+    );
+    const reader = new CodexTranscriptReadOwner({ hostId: "local", threadId: "thread-1" });
+    const fullRead = vi.spyOn(reader, "readTurn");
+    reader.applyEvent({
+      type: "reset",
+      value: projectCodexTranscript({ ...state, turns: [{ ...state.turns[0]!, diff: patch }] }),
+    });
+    const metadata = { ...buildConversation(""), turns: [] };
+    const runtime = {
+      read: (id: string | null) => (id === "thread-1" ? metadata : null),
+      transcriptReadOwner: () => reader,
+    } as unknown as ConversationRuntime;
+    const read = () =>
+      buildReviewConversationProjection(
+        connectedReviewDiffPanelTestHelpers.readReviewConversation(runtime, "thread-1"),
+      );
+    expect(read()).toMatchObject({
+      threadId: "thread-1",
+      lastTurnId: "turn-1",
+      lastTurnPatch: patch,
+    });
+    const key = reader.readStructure()!.turnEntityKeys[0]!;
+    const details = reader.readTurnDetails(key)!;
+    const changed = patch.replace("+new", "+changed");
+    reader.applyEvent({
+      type: "changes",
+      changes: [
+        {
+          type: "turn",
+          key: { ...reader.key, entityKey: key },
+          details: { ...details, diff: changed },
+          hasSubagentActivity: false,
+        },
+      ],
+    });
+    expect(read().lastTurnPatch).toBe(changed);
+    expect(
+      connectedReviewDiffPanelTestHelpers.readReviewConversation(runtime, "other-thread"),
+    ).toBeNull();
+    reader.applyEvent({
+      type: "reset",
+      value: projectCodexTranscript({
+        ...state,
+        turns: [
+          {
+            ...state.turns[0]!,
+            diff: null,
+            items: [
+              {
+                type: "agentMessage",
+                id: "prose",
+                text: "Unrelated prose".repeat(4096),
+                phase: "final_answer",
+                memoryCitation: null,
+                delivery: null,
+                questions: null,
+              },
+              {
+                type: "fileChange",
+                id: "file-change",
+                status: "completed",
+                changes: [
+                  {
+                    path: "/workspace/nodex/app.ts",
+                    kind: { type: "update", move_path: null },
+                    diff: changed,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(read().lastTurnPatch).toContain("+changed");
+    const resident = connectedReviewDiffPanelTestHelpers.readReviewConversation(
+      runtime,
+      "thread-1",
+    )!;
+    expect(resident.turns[0]!.items).toHaveLength(1);
+    const item = resident.turns[0]!.items[0]!;
+    const selected = connectedReviewDiffPanelTestHelpers.refreshSelectedTurnDiffTarget(
+      { threadId: "thread-1", turnId: "turn-1", entryId: item.entryId ?? item.itemId },
+      resident,
+      null,
+    );
+    expect(selected?.patch).toContain("+changed");
+    expect(metadata.turns).toHaveLength(0);
+    expect(fullRead).not.toHaveBeenCalled();
+    reader.dispose();
+  });
+
   test("keeps the Review projection stable across unrelated agent prose", () => {
     const patch = "--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new";
     const before = buildConversation(patch);

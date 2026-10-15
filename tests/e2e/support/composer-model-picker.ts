@@ -16,12 +16,19 @@ export const refreshComposerModels = async (page: Page): Promise<void> => {
 };
 
 /** A runtime name in the query disambiguates the same model exposed by multiple instances. */
-export const chooseComposerModel = async (page: Page, query: string): Promise<void> => {
+export const chooseComposerModel = async (
+  page: Page,
+  query: string,
+  optionName?: string,
+): Promise<void> => {
   const search = await openComposerModelPicker(page);
   await search.fill(query);
-  const options = page.getByRole("listbox").getByRole("option");
+  const options = page
+    .getByRole("listbox")
+    .getByRole("option", optionName === undefined ? {} : { name: optionName, exact: true });
   await expect(options).toHaveCount(1);
-  await search.press("Enter");
+  if (optionName === undefined) await search.press("Enter");
+  else await options.click();
   await expect(search).toBeHidden();
 };
 

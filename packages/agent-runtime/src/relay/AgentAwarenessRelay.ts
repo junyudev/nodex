@@ -102,6 +102,7 @@ export function shouldPublishAgentAwarenessEvent(
     case "thread.provider-switched":
     case "run.created":
     case "run.updated":
+    case "run.execution-retired":
     case "runtime-request.updated":
     case "subagent.updated":
     case "provider-thread.updated":

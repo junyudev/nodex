@@ -227,7 +227,7 @@ export function useWorkbenchSessionCatalog({
         ];
       return enforceWorkbenchSessionReviewEligibility(
         persisted ?? materializeInitialWorkbenchScene(owner),
-        session.thread !== null,
+        Boolean(session.executionRef || session.thread),
       );
     },
     [window.scenesByOwnerKey],
@@ -320,7 +320,7 @@ export function useWorkbenchSessionCatalog({
   );
   useEffect(() => {
     for (const presentation of known) {
-      if (presentation.domain.thread !== null) continue;
+      if (presentation.domain.executionRef || presentation.domain.thread) continue;
       const owner = { kind: "session", sessionId: presentation.domain.id } as const;
       const persisted = window.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
       if (!persisted) continue;

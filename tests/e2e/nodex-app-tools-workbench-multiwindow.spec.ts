@@ -1,3 +1,4 @@
+import { nativeAppToolCall } from "./support/native-app-tools";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ import {
   requireRecord,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
 
@@ -47,7 +48,7 @@ const nativeCall = (request: ScriptedModelRequest, callId: string, lines: readon
   expect(tool).not.toBeNull();
   return responses.stream([
     responses.created(callId),
-    responses.customToolCall(
+    nativeAppToolCall(
       callId,
       tool!.name,
       [
@@ -104,18 +105,18 @@ test("native Workbench observations keep two windows independent and preserve th
           respond: (request, index) => {
             if (index === 0)
               return nativeCall(request, "multiwindow_setup", [
-                "const discovery = unwrap(await tools.mcp__nodex_app__get_session_context({})); text({discovery});",
+                "const discovery = unwrap(await app.get_session_context({})); text({discovery});",
                 `const firstTarget = discovery.presentation.candidates.find(target => target.windowSessionId === ${JSON.stringify(firstWindowId)}); const secondTarget = discovery.presentation.candidates.find(target => target.windowSessionId === ${JSON.stringify(secondWindowId)});`,
                 'if (!firstTarget || !secondTarget) throw new Error("Both window candidates are required");',
-                "const context = async target => unwrap(await tools.mcp__nodex_app__get_session_context({target}));",
-                'const openPage = async (target, pageId) => { const observed = await context(target); const groups = unwrap(await tools.mcp__nodex_app__list_tab_groups({observationId:observed.presentation.observationId})); return unwrap(await tools.mcp__nodex_app__open_tab({observationId:observed.presentation.observationId,panelId:"right",groupId:groups.items.find(group => group.panelId === "right").groupId,target:{kind:"page",pageId}})); };',
+                "const context = async target => unwrap(await app.get_session_context({target}));",
+                'const openPage = async (target, pageId) => { const observed = await context(target); const groups = unwrap(await app.list_tab_groups({observationId:observed.presentation.observationId})); return unwrap(await app.open_tab({observationId:observed.presentation.observationId,panelId:"right",groupId:groups.items.find(group => group.panelId === "right").groupId,target:{kind:"page",pageId}})); };',
                 `text({openedOriginal:await openPage(firstTarget, ${JSON.stringify(originalPageId)})});`,
                 `text({openedReplacement:await openPage(firstTarget, ${JSON.stringify(replacementPageId)})});`,
                 `text({openedOther:await openPage(secondTarget, ${JSON.stringify(otherWindowPageId)})});`,
-                "const firstBeforeSelect = await context(firstTarget); const firstTabs = unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:firstBeforeSelect.presentation.observationId})); text({firstTabs});",
-                `text({activatedOriginal:unwrap(await tools.mcp__nodex_app__activate_tab({observationId:firstBeforeSelect.presentation.observationId,tabId:firstTabs.items.find(tab => tab.pageId === ${JSON.stringify(originalPageId)}).tabId}))});`,
+                "const firstBeforeSelect = await context(firstTarget); const firstTabs = unwrap(await app.list_session_tabs({observationId:firstBeforeSelect.presentation.observationId})); text({firstTabs});",
+                `text({activatedOriginal:unwrap(await app.activate_tab({observationId:firstBeforeSelect.presentation.observationId,tabId:firstTabs.items.find(tab => tab.pageId === ${JSON.stringify(originalPageId)}).tabId}))});`,
                 "text({first:await context(firstTarget)}); text({second:await context(secondTarget)});",
-                "const secondObserved = await context(secondTarget); text({secondTabs:unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:secondObserved.presentation.observationId}))});",
+                "const secondObserved = await context(secondTarget); text({secondTabs:unwrap(await app.list_session_tabs({observationId:secondObserved.presentation.observationId}))});",
               ]);
             const records = toolOutputRecords(request, "multiwindow_setup");
             const discovery = namedOutput(records, "discovery");
@@ -197,8 +198,8 @@ test("native Workbench observations keep two windows independent and preserve th
           respond: async (request, index) => {
             if (index === 0)
               return nativeCall(request, "multiwindow_anchor_before", [
-                "const initial = unwrap(await tools.mcp__nodex_app__get_session_context({})); text({initial});",
-                "text({firstPage:unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:initial.presentation.observationId,limit:1}))});",
+                "const initial = unwrap(await app.get_session_context({})); text({initial});",
+                "text({firstPage:unwrap(await app.list_session_tabs({observationId:initial.presentation.observationId,limit:1}))});",
               ]);
             if (index === 1) {
               const records = toolOutputRecords(request, "multiwindow_anchor_before");
@@ -223,11 +224,11 @@ test("native Workbench observations keep two windows independent and preserve th
               expect(typeof cursor).toBe("string");
               await switched;
               return nativeCall(request, "multiwindow_anchor_after", [
-                `text({staleCursor:unwrap(await tools.mcp__nodex_app__list_session_tabs({observationId:${JSON.stringify(observationId)},cursor:${JSON.stringify(cursor)},limit:1}))});`,
-                "text({anchored:unwrap(await tools.mcp__nodex_app__get_session_context({}))});",
-                'text({refreshed:unwrap(await tools.mcp__nodex_app__get_session_context({mode:"refresh"}))});',
-                "text({anchoredAgain:unwrap(await tools.mcp__nodex_app__get_session_context({}))});",
-                `text({other:unwrap(await tools.mcp__nodex_app__get_session_context({target:${JSON.stringify(otherReference)}}))});`,
+                `text({staleCursor:unwrap(await app.list_session_tabs({observationId:${JSON.stringify(observationId)},cursor:${JSON.stringify(cursor)},limit:1}))});`,
+                "text({anchored:unwrap(await app.get_session_context({}))});",
+                'text({refreshed:unwrap(await app.get_session_context({mode:"refresh"}))});',
+                "text({anchoredAgain:unwrap(await app.get_session_context({}))});",
+                `text({other:unwrap(await app.get_session_context({target:${JSON.stringify(otherReference)}}))});`,
               ]);
             }
             const records = toolOutputRecords(request, "multiwindow_anchor_after");
@@ -328,7 +329,7 @@ test("native Workbench observations keep two windows independent and preserve th
         }
         threadId = await sendAgentPrompt(first, sessionId, BOOT_PROMPT);
         await waitForFinalMarker(first, "WORKBENCH_MULTIWINDOW_BOOT_OK");
-        await waitForCompletedAgentTurn(first, threadId, 30_000);
+        await waitForRuntimeCompletedAgentTurn(first, { sessionId: sessionId, threadId }, 30_000);
 
         const opened = harness.application.waitForEvent("window");
         expect(
@@ -353,9 +354,13 @@ test("native Workbench observations keep two windows independent and preserve th
         expect(firstWindowId).not.toBe(secondWindowId);
 
         // This public ingress intentionally has no presentation ticket, as with a non-UI follow-up.
-        await invokeIpc(first, "codex:turn:start", threadId, SETUP_PROMPT);
+        await invokeIpc(first, "agent-runtime:session:message", {
+          sessionId,
+          threadId,
+          message: { messageId: createUuidV7(), text: SETUP_PROMPT },
+        });
         await waitForFinalMarker(first, "WORKBENCH_MULTIWINDOW_SETUP_OK");
-        await waitForCompletedAgentTurn(first, threadId, 30_000);
+        await waitForRuntimeCompletedAgentTurn(first, { sessionId: sessionId, threadId }, 30_000);
         await expect(
           first.getByRole("tab", { name: "Original Page", exact: true }),
         ).toHaveAttribute("aria-selected", "true");
@@ -391,7 +396,7 @@ test("native Workbench observations keep two windows independent and preserve th
 
         await waitForFinalMarker(first, "WORKBENCH_MULTIWINDOW_ANCHOR_OK");
         await waitForFinalMarker(second, "WORKBENCH_MULTIWINDOW_ANCHOR_OK", 10_000);
-        await waitForCompletedAgentTurn(first, threadId, 30_000);
+        await waitForRuntimeCompletedAgentTurn(first, { sessionId: sessionId, threadId }, 30_000);
         await expect(
           first.getByRole("tab", { name: "Replacement Page", exact: true }),
         ).toHaveAttribute("aria-selected", "true");
@@ -423,9 +428,10 @@ test("native Workbench observations keep two windows independent and preserve th
           })),
         );
         const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
-              () => null,
-            )
+          ? await invokeIpc(harness.page, "agent-runtime:session:control", {
+              sessionId: sessionId,
+              threadId,
+            }).catch(() => null)
           : null;
         throw new Error(
           `${error instanceof Error ? error.message : String(error)}\nWINDOWS:${JSON.stringify(windows)}\n${JSON.stringify(snapshot).slice(-36_000)}\n${model.transcript()}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,

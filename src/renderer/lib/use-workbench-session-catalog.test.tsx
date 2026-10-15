@@ -15,6 +15,7 @@ import type { WorkbenchLocation } from "../../shared/workbench-layout";
 import { materializeInitialWorkbenchSessionView } from "../../shared/workbench-session-view";
 import {
   applyLegacySessionViewToWorkbenchScene,
+  createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
 } from "../../shared/workbench-scene";
@@ -194,6 +195,47 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
 }
 
 describe("useWorkbenchSessionCatalog", () => {
+  test("keeps a Runtime Session's persisted Review while hydrating its catalog", async () => {
+    const session = makeAttachedSession({
+      id: "session:runtime-review",
+      thread: null,
+      executionRef: { runtimeId: "runtime", threadId: "runtime-thread" },
+    });
+    const owner = { kind: "session", sessionId: session.id } as const;
+    const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+      panelId: "right",
+      surface: {
+        id: "runtime-review",
+        kind: "review",
+        titleSnapshot: "Review",
+        config: { projectId: session.projectId },
+        stateKey: 0,
+        state: null,
+      },
+    });
+    const window = {
+      ...makeWindowPort({
+        kind: "session",
+        sessionId: session.id,
+        projectContextId: session.projectId,
+      }),
+      scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
+    };
+    invokeMock.mockImplementation(async (channel: string) =>
+      channel === "project-sessions:get" ? session : makeWindow([session]),
+    );
+    const { hook } = createHarness(window);
+    try {
+      await waitFor(() => expect(hook.result.current.activeProjection?.id).toBe(session.id));
+      expect(hook.result.current.activeProjection?.tabs).toEqual([
+        expect.objectContaining({ id: "runtime-review", kind: "review" }),
+      ]);
+      expect(window.setScene).not.toHaveBeenCalled();
+    } finally {
+      hook.unmount();
+    }
+  });
+
   test("forks a Runtime child into an independently bound Session without native writers or transcript reads", async () => {
     const source = makeAttachedSession({
       id: "runtime-source",

@@ -38,6 +38,7 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Predicate from "effect/Predicate";
 import * as FileSystem from "effect/FileSystem";
 import { MCP_APP_OUTPUT_KEY, readMcpAppReference } from "@t3tools/shared/mcpApp";
@@ -6538,6 +6539,170 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       { type: "runtime_exit", status: "success" },
     ],
   });
+
+  it.effect("strict retirement confirms native descendants and background terminals", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeCodexReplayHarness(interruptSubagentCommandTranscript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-codex-strict-descendants"),
+            text: INTERRUPT_PROMPT,
+          }),
+        );
+        yield* awaitUntil(
+          () =>
+            harness.events.some(
+              (event) =>
+                event.type === "turn_item.updated" &&
+                event.turnItem.type === "command_execution" &&
+                event.turnItem.nativeItemRef?.nativeId === INTERRUPT_CHILD_COMMAND_ITEM &&
+                event.turnItem.status === "running",
+            ),
+          "running native child",
+        );
+        const providerTurnId = harness.events.find(
+          (
+            event,
+          ): event is Extract<
+            ProviderAdapter.ProviderAdapterV2Event,
+            { type: "provider_turn.updated" }
+          > => event.type === "provider_turn.updated" && event.threadId === harness.threadId,
+        )!.providerTurn.id;
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId,
+          requestRuntimeRestart: true,
+          requireTerminalAcknowledgement: true,
+        });
+        assert.lengthOf(harness.terminalEvents(), 1);
+        assertChildProviderTerminalBeforeRoot(harness.events, harness.threadId);
+        assert.isFalse(yield* harness.hasPendingBackgroundWork);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect(
+    "strict retirement retries its timed-out native source until its real terminal arrives",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const terminalIndex = interruptTimeoutTranscript.entries.findIndex(
+            (entry) =>
+              entry.type === "expect_outbound" &&
+              entry.label === "thread/backgroundTerminals/terminate/two",
+          );
+          const transcript = makeCodexReplayTranscript({
+            scenario: "strict-retirement-retry",
+            entries: [
+              ...interruptTimeoutTranscript.entries.slice(0, terminalIndex),
+              {
+                type: "expect_outbound",
+                label: "turn/interrupt/retry",
+                frame: {
+                  id: 6,
+                  method: "turn/interrupt",
+                  params: { threadId: INTERRUPT_NATIVE_THREAD, turnId: INTERRUPT_NATIVE_TURN },
+                },
+              },
+              { type: "emit_inbound", label: "turn/interrupt/retry", frame: { id: 6, result: {} } },
+              ...["57680", "57681"].flatMap(
+                (processId, index): CodexReplay.CodexAppServerReplayTranscript["entries"] => [
+                  {
+                    type: "expect_outbound",
+                    label: `terminate/retry/${processId}`,
+                    frame: {
+                      id: 7 + index,
+                      method: "thread/backgroundTerminals/terminate",
+                      params: { threadId: INTERRUPT_NATIVE_THREAD, processId },
+                    },
+                  },
+                  {
+                    type: "emit_inbound",
+                    label: `terminate/retry/${processId}`,
+                    frame: { id: 7 + index, result: { terminated: true } },
+                  },
+                ],
+              ),
+              {
+                type: "emit_inbound",
+                label: "turn/completed/ack",
+                frame: {
+                  method: "turn/completed",
+                  params: {
+                    threadId: INTERRUPT_NATIVE_THREAD,
+                    turn: makeCodexReplayTurn({ id: INTERRUPT_NATIVE_TURN, status: "interrupted" }),
+                  },
+                },
+              },
+            ],
+          });
+          const harness = yield* makeCodexReplayHarness(transcript);
+          yield* harness.runtime.startTurn(
+            makeCodexTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now: yield* DateTime.now,
+              attemptId: RunAttemptId.make("attempt-codex-strict-retirement"),
+              text: INTERRUPT_PROMPT,
+            }),
+          );
+          yield* awaitUntil(
+            () => harness.events.some((event) => event.type === "provider_turn.updated"),
+            "native turn",
+          );
+          const providerTurnId = harness.events.find(
+            (
+              event,
+            ): event is Extract<
+              ProviderAdapter.ProviderAdapterV2Event,
+              { type: "provider_turn.updated" }
+            > => event.type === "provider_turn.updated",
+          )!.providerTurn.id;
+          const interrupt = yield* harness.runtime
+            .interruptTurn({
+              providerThread: harness.providerThread,
+              providerTurnId,
+              requestRuntimeRestart: true,
+              requireTerminalAcknowledgement: true,
+            })
+            .pipe(Effect.forkScoped);
+          yield* awaitUntil(
+            () =>
+              harness.events.filter(
+                (event) =>
+                  event.type === "turn_item.updated" &&
+                  event.turnItem.type === "command_execution" &&
+                  event.turnItem.status === "running",
+              ).length >= 2,
+            "native interrupt boundary",
+          );
+          yield* TestClock.adjust("10 seconds");
+          assert.isTrue(Exit.isFailure(yield* Fiber.join(interrupt).pipe(Effect.exit)));
+          assert.lengthOf(harness.terminalEvents(), 0, "A timeout is not a native terminal");
+          assert.isTrue(yield* harness.hasPendingBackgroundWork);
+          yield* harness.runtime.interruptTurn({
+            providerThread: harness.providerThread,
+            providerTurnId,
+            requestRuntimeRestart: true,
+            requireTerminalAcknowledgement: true,
+          });
+          yield* awaitUntil(() => harness.terminalEvents().length === 1, "real native terminal");
+          assert.isFalse(yield* harness.hasPendingBackgroundWork);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
 
   it.effect("bounds interrupt settlement and drops late completion events", () =>
     Effect.scoped(

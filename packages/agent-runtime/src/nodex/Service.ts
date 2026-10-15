@@ -21,6 +21,7 @@ import {
   ProviderInstanceConfigMap,
   OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
+  OrchestrationV2ExecutionLocation,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
@@ -48,6 +49,7 @@ import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
 import { HostBridge } from "./HostBridge.ts";
 import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
+import * as ExecutionLocation from "./ExecutionLocation.ts";
 import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { make as makeThreadAttachmentReader } from "./Attachment.ts";
@@ -97,6 +99,31 @@ const NativeSource = Schema.Struct({
 });
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
+  request("execution.handoff.pending", Schema.Struct({ cursor: Schema.optional(Schema.String) })),
+  request(
+    "execution.handoff.hold",
+    Schema.Struct({
+      threadId: ThreadId,
+      operationId: Schema.String,
+      action: Schema.Literals(["acquire", "recovery", "release"]),
+      recoveryRequired: Schema.optional(Schema.Boolean),
+      sourceLocation: Schema.optional(OrchestrationV2ExecutionLocation),
+    }),
+  ),
+  request(
+    "execution.handoff.quiesce",
+    Schema.Struct({ threadId: ThreadId, operationId: Schema.String }),
+  ),
+  request(
+    "execution.handoff.commit",
+    Schema.Struct({
+      threadId: ThreadId,
+      operationId: Schema.String,
+      location: OrchestrationV2ExecutionLocation,
+      sourceWorkspaceRoot: Schema.optional(Schema.String),
+      childrenOnly: Schema.optional(Schema.Boolean),
+    }),
+  ),
   request("native.voice.prepare", Schema.Struct({ threadId: ThreadId, claimId: Schema.String })),
   request("native.voice.current", NativeSource),
   request(
@@ -364,6 +391,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const nativeInteraction = yield* NativeInteraction.make(identity.runtimeGeneration, notify).pipe(
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),
   );
+  const executionLocation = yield* ExecutionLocation.make;
   const readAuthority = yield* Authority.make;
   const readNativeSessionAuthority = yield* Authority.makeNativeSession;
   const configuration = yield* Configuration.ServerConfig;
@@ -385,6 +413,14 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     input: typeof AgentRequest.Type,
   ) {
     switch (input.method) {
+      case "execution.handoff.pending":
+        return yield* projections.getExecutionHandoffs(input.input.cursor);
+      case "execution.handoff.hold":
+        return yield* executionLocation.hold(input.input);
+      case "execution.handoff.quiesce":
+        return yield* executionLocation.quiesce(input.input);
+      case "execution.handoff.commit":
+        return yield* executionLocation.commit(input.input);
       case "project.close": {
         const projectId = input.input.projectId;
         if (Option.isNone(yield* projects.getById(projectId))) return { closedBindings: 0 };
@@ -392,7 +428,12 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         let cursor: string | undefined;
         do {
           const activity = yield* projections.getProjectExecutionActivity(projectId);
-          if (activity.run || activity.runtimeRequest || activity.nativeBackground)
+          if (
+            activity.run ||
+            activity.runtimeRequest ||
+            activity.nativeBackground ||
+            activity.executionHandoff
+          )
             return yield* Effect.fail(new Error("The Project has active Agent execution."));
           const page = yield* projections.getProjectProviderSessionBindings(projectId, cursor);
           for (const binding of page.items) {

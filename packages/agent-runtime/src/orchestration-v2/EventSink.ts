@@ -306,28 +306,109 @@ const layerBase: Layer.Layer<
         });
       });
 
-    const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) => {
-      const runOrdinals = new Map(
-        events.flatMap((event) =>
-          event.type === "run.created" || event.type === "run.updated"
-            ? [[event.payload.id, event.payload.ordinal] as const]
-            : [],
-        ),
-      );
-      return Effect.forEach(
-        events,
-        (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> =>
-          event.type === "turn-item.updated"
-            ? turnItemPositions
-                .normalize(
-                  event.payload,
-                  event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
-                )
-                .pipe(Effect.map((payload) => ({ ...event, payload })))
-            : Effect.succeed(event),
-        { concurrency: 1 },
-      );
-    };
+    const normalizeEvents = (events: ReadonlyArray<OrchestrationV2DomainEvent>) =>
+      Effect.gen(function* () {
+        for (const event of events) {
+          if (
+            event.type === "thread.metadata-updated" &&
+            event.payload.lineage.rootThreadId === event.threadId &&
+            event.payload.executionHandoff == null
+          ) {
+            const unreleased = yield* sql<{
+              held: number;
+            }>`SELECT 1 AS held FROM orchestration_v2_projection_threads root
+              WHERE root.thread_id = ${event.threadId}
+                AND json_extract(root.payload_json,'$.executionHandoff.operationId') IS NOT NULL
+                AND (EXISTS(SELECT 1 FROM orchestration_v2_execution_retirement_targets WHERE root_thread_id = root.thread_id)
+                  OR EXISTS(SELECT 1 FROM orchestration_v2_projection_threads actor
+                    CROSS JOIN orchestration_v2_projection_provider_session_bindings binding ON binding.thread_id = actor.thread_id
+                    WHERE json_extract(actor.payload_json,'$.lineage.rootThreadId') = root.thread_id)
+                  OR EXISTS(SELECT 1 FROM orchestration_v2_projection_threads actor
+                    CROSS JOIN orchestration_v2_effect_outbox pending ON pending.thread_id = actor.thread_id
+                    WHERE json_extract(actor.payload_json,'$.lineage.rootThreadId') = root.thread_id
+                      AND pending.effect_type = 'provider-session.detach' AND pending.status IN ('pending','running','failed','cancelled'))) LIMIT 1`;
+            if (unreleased.length !== 0)
+              return yield* Effect.fail(
+                new Error("The execution workspace still has unretired sources"),
+              );
+          }
+          if (event.type !== "run.execution-retired") continue;
+          const proof = event.payload;
+          const allowed = yield* sql<{ ok: number }>`SELECT 1 AS ok
+            FROM orchestration_v2_projection_threads t
+            JOIN orchestration_v2_projection_threads root ON root.thread_id = json_extract(t.payload_json,'$.lineage.rootThreadId')
+            JOIN orchestration_v2_projection_runs r ON r.thread_id = t.thread_id AND r.run_id = ${proof.runId}
+            LEFT JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = r.provider_thread_id
+            WHERE t.thread_id = ${event.threadId}
+              AND json_extract(root.payload_json,'$.executionHandoff.operationId') = ${proof.operationId}
+              AND json_extract(r.payload_json,'$.activeAttemptId') IS ${proof.attemptId}
+              AND json_extract(r.payload_json,'$.rootNodeId') IS ${proof.rootNodeId}
+              AND r.provider_thread_id IS ${proof.providerThreadId}
+              AND EXISTS(SELECT 1 FROM orchestration_v2_execution_retirement_targets target
+                WHERE target.root_thread_id = root.thread_id AND target.thread_id = t.thread_id
+                  AND target.run_id = r.run_id AND target.operation_id = ${proof.operationId})
+              AND NOT EXISTS(SELECT 1 FROM orchestration_v2_projection_provider_session_bindings WHERE thread_id = t.thread_id)
+              AND NOT EXISTS(SELECT 1 FROM orchestration_v2_projection_threads actor
+                CROSS JOIN orchestration_v2_effect_outbox pending ON pending.thread_id = actor.thread_id
+                WHERE json_extract(actor.payload_json,'$.lineage.rootThreadId') = root.thread_id
+                  AND pending.effect_type = 'provider-session.detach' AND pending.status IN ('pending','running','failed','cancelled'))
+              AND ((${proof.retirementEffectId} IS NULL AND (p.provider_session_id IS NULL OR json_extract(p.payload_json,'$.nativeThreadRef') IS NULL)) OR EXISTS(
+                SELECT 1 FROM orchestration_v2_effect_outbox receipt WHERE receipt.effect_id = ${proof.retirementEffectId}
+                  AND receipt.thread_id = t.thread_id AND receipt.effect_type = 'provider-session.detach' AND receipt.status = 'succeeded'
+                  AND json_extract(receipt.payload_json,'$.revokeMcpCredential') = 1
+                  AND (p.provider_session_id IS NULL OR json_extract(receipt.payload_json,'$.providerSessionId') = p.provider_session_id))) LIMIT 1`;
+          if (allowed.length !== 1)
+            return yield* Effect.fail(
+              new Error("Execution retirement proof changed before commit"),
+            );
+        }
+        // This check shares the SQL commit with the events. A child/queue planner can have
+        // started before its root's hold committed under a different Thread lock.
+        const starts = new Set(
+          events.flatMap((event) => {
+            if (
+              event.type === "run.created" ||
+              (event.type === "run.updated" && event.payload.status === "starting")
+            )
+              return [event.threadId];
+            if (event.type === "thread.created" && event.payload.forkedFrom?.type === "run")
+              return [event.payload.forkedFrom.threadId];
+            return [];
+          }),
+        );
+        for (const threadId of starts) {
+          const held = yield* sql<{ held: number }>`SELECT 1 AS held
+          FROM orchestration_v2_projection_threads t
+          JOIN orchestration_v2_projection_threads root
+            ON root.thread_id = json_extract(t.payload_json,'$.lineage.rootThreadId')
+          WHERE t.thread_id = ${threadId}
+            AND json_extract(root.payload_json,'$.executionHandoff.operationId') IS NOT NULL LIMIT 1`;
+          if (held.length > 0)
+            return yield* Effect.fail(
+              new Error("The conversation is moving its execution workspace"),
+            );
+        }
+        const runOrdinals = new Map(
+          events.flatMap((event) =>
+            event.type === "run.created" || event.type === "run.updated"
+              ? [[event.payload.id, event.payload.ordinal] as const]
+              : [],
+          ),
+        );
+        return yield* Effect.forEach(
+          events,
+          (event): Effect.Effect<OrchestrationV2DomainEvent, unknown> =>
+            event.type === "turn-item.updated"
+              ? turnItemPositions
+                  .normalize(
+                    event.payload,
+                    event.payload.runId === null ? undefined : runOrdinals.get(event.payload.runId),
+                  )
+                  .pipe(Effect.map((payload) => ({ ...event, payload })))
+              : Effect.succeed(event),
+          { concurrency: 1 },
+        );
+      });
 
     const applyStoredEvents = (storedEvents: ReadonlyArray<OrchestrationV2StoredEvent>) =>
       Effect.gen(function* () {
