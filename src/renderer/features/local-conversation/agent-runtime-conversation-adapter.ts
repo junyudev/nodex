@@ -48,7 +48,10 @@ import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-e
 import {
   agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
+  stopAgentRuntimeBackgroundTasks,
 } from "./agent-runtime-delegated-tasks";
+import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
+import { useAgentRuntimeSessionActivity } from "../../lib/agent-runtime-session-activity";
 import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import {
   captureCodexTurnPresentation,
@@ -974,6 +977,14 @@ export function useAgentRuntimeConversationAdapter(input: {
       ],
     });
   };
+  // Background status belongs to the Session's root; an opened child shows its own Runs.
+  const activity = useAgentRuntimeSessionActivity(
+    input.executionRef &&
+      (input.threadId === undefined || input.threadId === input.executionRef.threadId)
+      ? input.sessionId
+      : null,
+  );
+  const backgroundMessage = agentRuntimeBackgroundStatus(activity);
   const presentation: ConversationProviderPresentation = {
     resolveRuntimeAttachment: async (reference) => {
       if (!target) throw new Error("Open the conversation before reading its attachment");
@@ -1061,6 +1072,25 @@ export function useAgentRuntimeConversationAdapter(input: {
       },
     },
     error: state.error ?? catalogState.error ?? provider?.message ?? null,
+    status: backgroundMessage
+      ? {
+          message: backgroundMessage,
+          ...(activity && activity.activeTaskCount > 0
+            ? {
+                action: {
+                  label: "Stop",
+                  pendingLabel: "Stopping…",
+                  run: () =>
+                    stopAgentRuntimeBackgroundTasks(
+                      activity.sessionId,
+                      activity.threadId,
+                      agentRuntimeRuntime,
+                    ),
+                },
+              }
+            : {}),
+        }
+      : null,
   };
   return {
     runtime,

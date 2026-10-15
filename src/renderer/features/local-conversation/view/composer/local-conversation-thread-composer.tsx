@@ -89,6 +89,7 @@ import type {
 } from "../../thread-stage-types";
 import { ComposerActionTooltipContent } from "./composer-submit-tooltip";
 import { QueuedFollowUpSendDialog } from "./queued-follow-up-send-dialog";
+import { ComposerProviderStatus } from "./composer-provider-status";
 import {
   isComposerDictationShortcut,
   isComposerDictationShortcutTargetBlocked,
@@ -4399,6 +4400,12 @@ function HydratedThreadComposer({
                   ) : null}
                   {errorMessage ? (
                     <div className="px-3 pb-2 text-xs text-(--destructive)">{errorMessage}</div>
+                  ) : null}
+                  {model.provider?.status ? (
+                    <ComposerProviderStatus
+                      status={model.provider.status}
+                      onErrorMessage={onErrorMessage}
+                    />
                   ) : null}
                 </>
               }

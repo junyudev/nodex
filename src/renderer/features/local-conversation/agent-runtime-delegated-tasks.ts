@@ -19,6 +19,9 @@ export type AgentRuntimeTaskStopTransport = Pick<
   "inspect" | "stop" | "stopTask"
 >;
 
+/** Explicit Stop reads task metadata pages only, never task bodies. */
+const BACKGROUND_STOP_PAGE_LIMIT = 25;
+
 /**
  * An application-owned task runs in its own conversation, so Stop interrupts that
  * conversation's active Run; the Runtime then settles the task as stopped and drops its
@@ -155,4 +158,48 @@ export function createAgentRuntimeDelegatedTaskPort(
     stop: (parentThreadId, task) =>
       requestAgentRuntimeTaskStop(sessionId, { ...task, parentThreadId }, transport, store),
   };
+}
+
+/**
+ * Stops every live delegated task of a root conversation. The task list comes from the
+ * bounded metadata overview; each task stops through its own execution owner.
+ */
+export async function stopAgentRuntimeBackgroundTasks(
+  sessionId: string,
+  rootThreadId: string,
+  transport: AgentRuntimeTaskStopTransport & Pick<AgentRuntimeRendererTransport, "overview">,
+  store: AgentRuntimeDelegatedTaskStore = agentRuntimeDelegatedTasks,
+): Promise<void> {
+  const tasks: AgentRuntimeTaskStopTarget[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < BACKGROUND_STOP_PAGE_LIMIT; page += 1) {
+    const overview = await transport.overview({
+      sessionId,
+      threadId: rootThreadId,
+      ...(cursor === undefined ? {} : { activeCursor: cursor }),
+    });
+    for (const task of overview.active.items)
+      tasks.push({
+        taskId: task.id,
+        parentThreadId: task.threadId,
+        ownerRunId: task.runId,
+        childThreadId: task.childThreadId,
+      });
+    if (!overview.active.nextCursor) break;
+    cursor = overview.active.nextCursor;
+  }
+  const results = await Promise.allSettled(
+    tasks.map((task) => requestAgentRuntimeTaskStop(sessionId, task, transport, store)),
+  );
+  const failed = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failed.length === 0) return;
+  const reason = failed[0]!.reason;
+  const detail = reason instanceof Error ? reason.message : String(reason);
+  throw new Error(
+    failed.length === tasks.length
+      ? `Could not stop background tasks: ${detail}`
+      : `Could not stop ${failed.length} of ${tasks.length} background tasks: ${detail}`,
+  );
 }

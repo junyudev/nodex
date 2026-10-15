@@ -237,8 +237,20 @@ export interface ThreadOpenThreadContext {
   subagent?: ThreadOpenSubagentPayload;
 }
 
+/** A status line beside the composer, such as background work that will resume the chat. */
+export interface ConversationProviderStatus {
+  readonly message: string;
+  readonly tone?: "neutral" | "danger";
+  readonly action?: {
+    readonly label: string;
+    readonly pendingLabel: string;
+    readonly run: () => Promise<void>;
+  };
+}
+
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
+  readonly status?: ConversationProviderStatus | null;
   readonly modelCatalog?: import("@/components/shared/agent-runtime/agent-model-picker").AgentModelCatalogPresentation;
   readonly nativeIntelligence?: import("@/components/shared/agent-runtime/agent-intelligence-dropdown").AgentNativeIntelligencePresentation;
   readonly diagnostics?: () => Promise<

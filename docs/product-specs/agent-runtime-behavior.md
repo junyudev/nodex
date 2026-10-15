@@ -184,6 +184,11 @@ restart continuation — appears as a compact row that opens the one subagent it
 a report starts an automatic Run, that row opens the Run's response, so the reason the
 Agent continued is visible before its answer.
 
+When a chat has no foreground Run but background work is still live, or a delegated result
+will start the Agent again on its own, the composer says so in one line, such as "Waiting
+for 2 background tasks · resumes automatically", with Stop for every live subagent. The line
+belongs to the Session's root conversation; an opened subagent shows its own Runs.
+
 Application tool calls show under the `nodex_app` presentation whatever spelling the
 Provider reports. Execution plumbing — listing available Agent models, polling or waiting
 for subagent status — never appears in the transcript, and delegating or cancelling a

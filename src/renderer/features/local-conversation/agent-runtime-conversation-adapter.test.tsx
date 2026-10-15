@@ -79,6 +79,29 @@ const snapshot = {
   },
 } as unknown as AgentSnapshot;
 beforeEach(() => {
+  // The Profile-wide activity feed is read once per attachment and shared by every adapter.
+  vi.spyOn(agentRuntimeRuntime, "connection").mockResolvedValue({
+    status: "ready",
+    generation: "generation",
+  });
+  vi.spyOn(agentRuntimeRuntime, "activity").mockResolvedValue({
+    sequence: 1,
+    complete: true,
+    items: [
+      {
+        sessionId: "background-session",
+        threadId: "engine-thread",
+        status: "background",
+        activeRunId: null,
+        pendingRequestCount: 0,
+        activeTaskCount: 1,
+        resumesAutomatically: true,
+        providerInstanceId: "codex",
+        model: "model",
+        updatedAt: "2026-10-15T00:00:00Z",
+      },
+    ],
+  });
   vi.spyOn(presentation, "captureCodexTurnPresentation").mockResolvedValue(undefined);
   vi.spyOn(agentRuntimeRuntime, "readQueuePage").mockResolvedValue({
     snapshotSequence: 1,
@@ -254,6 +277,78 @@ describe("Agent Runtime Codex controls", () => {
       ],
     });
     expect(result.current.provider.controls?.goals).toBe(false);
+    await act(async () => unmount());
+  });
+});
+
+describe("Agent Runtime background status", () => {
+  it("explains a root waiting on subagents and stops them all from the composer", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "background-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const overview = vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
+      active: {
+        items: [
+          {
+            id: "native-task",
+            threadId: "engine-thread",
+            runId: "parent-run",
+            parentNodeId: "node",
+            origin: "provider_native",
+            driver: "claudeAgent",
+            providerInstanceId: "codex",
+            providerThreadId: null,
+            childThreadId: null,
+            childRunId: null,
+            title: "Audit",
+            model: "model",
+            status: "running",
+            startedAt: null,
+            completedAt: null,
+            updatedAt: "2026-10-15T00:00:00Z",
+            resultAvailable: false,
+          },
+        ],
+        nextCursor: null,
+        hasMore: false,
+      },
+      terminal: { items: [], nextCursor: null, hasMore: false },
+    });
+    const stopTask = vi.spyOn(agentRuntimeRuntime, "stopTask").mockResolvedValue({ sequence: 3 });
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "background-session",
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "background-session" }),
+        }),
+      { wrapper: RuntimeWorkbench },
+    );
+    await waitFor(() =>
+      expect(result.current.provider.status?.message).toBe(
+        "Waiting for 1 background task · resumes automatically",
+      ),
+    );
+    await act(async () => {
+      await result.current.provider.status!.action!.run();
+    });
+    expect(overview).toHaveBeenCalledWith({
+      sessionId: "background-session",
+      threadId: "engine-thread",
+    });
+    expect(stopTask).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: "parent-run", taskId: "native-task" }),
+    );
     await act(async () => unmount());
   });
 });
