@@ -362,7 +362,8 @@ Profile snapshot control leaves its process cold; its first real request acquire
 supervised connection. An unused endpoint snapshot does not start a provider.
 A launch resumes an existing execution database under the supervised Host after application
 tools are ready unless the process last stopped with no live or pending work (see
-[Execution process supervision](#execution-process-supervision)). Durable Session deletion
+[Execution process supervision](#execution-process-supervision)); recovering interrupted
+execution moves follows the same rule. Durable Session deletion
 intents are reconciled after each connection;
 their acknowledged tombstones prevent a deleted execution from being adopted again.
 

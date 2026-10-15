@@ -281,6 +281,7 @@ const idleSupervisor = (
     quiescence: {
       record: Effect.sync(() => evidence.push("record")),
       clear: Effect.sync(() => evidence.push("clear")),
+      startRequired: Effect.sync(() => evidence.at(-1) !== "record"),
     },
   });
 const released = (f: Effect.Success<typeof fixture>, index: number) =>
@@ -369,6 +370,24 @@ it.effect("records quiescence on quit only when the process is quiet and reports
       assert.isTrue(yield* released(f, 0));
       assert.deepEqual(evidence, live ? ["clear"] : ["clear", "record"]);
     }
+  }).pipe(Effect.scoped),
+);
+
+it.effect("recovery starts the process only when evidence cannot prove its store quiet", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const evidence = ["record"];
+    const supervisor = yield* idleSupervisor(f, evidence);
+    assert.isNull(yield* supervisor.getUnlessQuiet);
+    assert.strictEqual(f.generations.length, 0);
+    // A running process is used as is.
+    const running = yield* supervisor.get();
+    assert.strictEqual(yield* supervisor.getUnlessQuiet, running);
+    // Missing evidence, such as after a crash, starts the process.
+    const crashed = yield* fixture;
+    const unproven = yield* idleSupervisor(crashed, []);
+    assert.isNotNull(yield* unproven.getUnlessQuiet);
+    assert.strictEqual(crashed.generations.length, 1);
   }).pipe(Effect.scoped),
 );
 

@@ -511,7 +511,7 @@ const supervisor = Layer.effectContext(
         );
       },
       idle: { after: AGENT_RUNTIME_IDLE_AFTER, quiescent: reportsNoWork },
-      quiescence: { record: quiescence.record, clear: quiescence.clear },
+      quiescence,
     });
     const refresh = Effect.gen(function* () {
       if (!(yield* runtime.inspect)) return;
@@ -573,11 +573,7 @@ const supervisor = Layer.effectContext(
       Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),
-        resume: quiescence.startRequired.pipe(
-          Effect.flatMap((required) =>
-            required ? runtime.get().pipe(Effect.asVoid) : Effect.void,
-          ),
-        ),
+        resume: runtime.getUnlessQuiet.pipe(Effect.asVoid),
         subscribeExecutionChanges: executionChanges,
       }),
     );

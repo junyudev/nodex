@@ -49,6 +49,8 @@ export interface AgentRuntimeSupervisorOptions<Requirements> {
   readonly quiescence?: {
     readonly record: Effect.Effect<void, unknown, Requirements>;
     readonly clear: Effect.Effect<void, unknown, Requirements>;
+    /** False only while valid evidence proves the stopped store has nothing to resume. */
+    readonly startRequired: Effect.Effect<boolean, unknown, Requirements>;
   };
 }
 
@@ -335,6 +337,15 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     );
   yield* Effect.addFinalizer(() => close);
   const get = () => touch.pipe(Effect.andThen(acquire(false)));
+  const getUnlessQuiet = Effect.gen(function* () {
+    if ((yield* Ref.get(state)).current) return yield* get();
+    const required = options.quiescence
+      ? yield* provide(options.quiescence.startRequired).pipe(
+          Effect.catchCause(() => Effect.succeed(true)),
+        )
+      : true;
+    return required ? yield* get() : null;
+  });
   const withStopped = <A, E, R>(
     operation: Effect.Effect<A, E, R>,
     options: {
@@ -378,6 +389,11 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   });
   return {
     get,
+    /**
+     * The process when it runs or its stopped store may hold live or pending work; null when
+     * durable evidence proves there is nothing to resume, so recovery never starts it for nothing.
+     */
+    getUnlessQuiet,
     request,
     close,
     withStopped,
