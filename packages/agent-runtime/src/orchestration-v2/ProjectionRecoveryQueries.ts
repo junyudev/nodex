@@ -11,7 +11,7 @@ export const OPEN_DELIVERY_RUN_PREDICATE = `CASE WHEN json_valid(payload_json)
 const UNRESOLVED_CHILD_TASK_PREDICATE = `origin = 'app_owned' AND child_thread_id IS NOT NULL
       AND CASE WHEN json_valid(payload_json)
         THEN json_extract(payload_json, '$.result') IS NULL ELSE 0 END`;
-const LIVE_PROVIDER_THREAD_PREDICATE = `status = 'active' OR CASE WHEN json_valid(payload_json)
+export const LIVE_PROVIDER_THREAD_PREDICATE = `status = 'active' OR CASE WHEN json_valid(payload_json)
       THEN json_array_length(payload_json, '$.pendingBackgroundTasks') > 0 ELSE 0 END`;
 
 /**

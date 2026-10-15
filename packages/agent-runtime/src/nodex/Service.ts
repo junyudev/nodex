@@ -54,6 +54,13 @@ import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { make as makeThreadAttachmentReader } from "./Attachment.ts";
 import { compactThread } from "./Compact.ts";
+import {
+  EXECUTION_ACTIVITY_MAX_PAGE_LIMIT,
+  EXECUTION_ACTIVITY_MAX_POINT_READS,
+  readRootActivity,
+} from "../orchestration-v2/ExecutionActivity.ts";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as Duration from "effect/Duration";
 import { rollbackThread } from "./Rollback.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
@@ -294,6 +301,20 @@ const AgentRequest = Schema.Union([
       afterSequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
     }),
   ),
+  request(
+    "execution.activity",
+    Schema.Struct({
+      cursor: Schema.optional(Schema.String),
+      limit: Schema.optional(
+        Schema.Int.check(
+          Schema.isBetween({ minimum: 1, maximum: EXECUTION_ACTIVITY_MAX_PAGE_LIMIT }),
+        ),
+      ),
+      rootThreadIds: Schema.optional(
+        Schema.Array(ThreadId).check(Schema.isMaxLength(EXECUTION_ACTIVITY_MAX_POINT_READS)),
+      ),
+    }),
+  ),
   request("events.unobserve", Schema.Struct({ subscriptionId: Schema.String })),
   request("runtime.identity", Schema.Struct({})),
   request("shutdown", Schema.Struct({})),
@@ -374,6 +395,17 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const threads = yield* ThreadManagementService;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
+  const sql = yield* SqlClient.SqlClient;
+  // A Thread's root never changes; observation resolves it once per Thread.
+  const roots = new Map<string, string>();
+  const rootOf = Effect.fnUntraced(function* (threadId: ThreadId) {
+    const known = roots.get(threadId);
+    if (known !== undefined) return known;
+    const root = (yield* projections.getThread(threadId)).lineage.rootThreadId;
+    if (roots.size >= 4096) roots.delete(roots.keys().next().value!);
+    roots.set(threadId, root);
+    return root;
+  });
   const projects = yield* Projects.ProjectService;
   const projections = yield* ProjectionStoreV2;
   const eventSink = yield* EventSink.EventSinkV2;
@@ -670,6 +702,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           );
         return item;
       }
+      case "execution.activity":
+        return yield* readRootActivity(input.input).pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+        );
       case "events.unobserve": {
         yield* unobserve(input.input.subscriptionId);
         return { unsubscribed: true };
@@ -682,9 +718,16 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           afterSequence,
           ...(input.input.threadId === undefined ? {} : { threadId: input.input.threadId }),
         };
+        // Execution observation also follows every event that can change a root's activity.
         const eventTypes =
           input.method === "execution.observe"
-            ? ["run.updated", "thread.deleted"]
+            ? [
+                "run.updated",
+                "thread.deleted",
+                "runtime-request.updated",
+                "subagent.updated",
+                "provider-thread.updated",
+              ]
             : input.input.eventTypes;
         // Type-specific channels filter before retaining live events or decoding SQL replay.
         const stream =
@@ -699,34 +742,52 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
                 ),
                 { concurrency: "unbounded", bufferSize: 16 },
               );
-        const fiber = yield* stream.pipe(
-          Stream.runForEach((event) =>
-            input.method === "execution.observe"
-              ? notify({
+        const observeExecution = (events: ReadonlyArray<OrchestrationV2StoredEvent>) =>
+          Effect.gen(function* () {
+            const changedRoots = new Map<string, number>();
+            for (const event of events) {
+              if (event.event.type === "run.updated" || event.event.type === "thread.deleted")
+                yield* notify({
                   type: "execution.lifecycle",
                   subscriptionId: input.id,
                   runtimeGeneration: identity.runtimeGeneration,
                   sequence: event.sequence,
                   threadId: event.event.threadId,
-                  eventType: event.event.type as "run.updated" | "thread.deleted",
+                  eventType: event.event.type,
                   ...(event.event.type === "run.updated"
                     ? { runId: event.event.payload.id, runStatus: event.event.payload.status }
                     : {}),
-                })
-              : Effect.try(() => projectStoredEventForWire(event)).pipe(
-                  Effect.flatMap(encodeEvent),
-                  Effect.flatMap((encoded) =>
-                    Effect.try(() => assertPublicWirePayloadBudget(encoded)),
-                  ),
-                  Effect.flatMap((encoded) =>
-                    notify({
-                      type: "event",
-                      subscriptionId: input.id,
-                      event: encoded as AgentEvent,
-                    }),
+                });
+              changedRoots.set(yield* rootOf(event.event.threadId), event.sequence);
+            }
+            // One compact change per root and burst; readers point-read the root's activity.
+            for (const [rootThreadId, sequence] of changedRoots)
+              yield* notify({ type: "activity", rootThreadId, sequence });
+          });
+        const consume: Effect.Effect<void, unknown> =
+          input.method === "execution.observe"
+            ? stream.pipe(
+                Stream.groupedWithin(64, Duration.millis(50)),
+                Stream.runForEach(observeExecution),
+              )
+            : stream.pipe(
+                Stream.runForEach((event) =>
+                  Effect.try(() => projectStoredEventForWire(event)).pipe(
+                    Effect.flatMap(encodeEvent),
+                    Effect.flatMap((encoded) =>
+                      Effect.try(() => assertPublicWirePayloadBudget(encoded)),
+                    ),
+                    Effect.flatMap((encoded) =>
+                      notify({
+                        type: "event",
+                        subscriptionId: input.id,
+                        event: encoded as AgentEvent,
+                      }),
+                    ),
                   ),
                 ),
-          ),
+              );
+        const fiber = yield* consume.pipe(
           Effect.catchCause((cause) =>
             notify({
               type: "event.error",
@@ -768,6 +829,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.attachment":
       case "events.observe":
       case "execution.observe":
+      case "execution.activity":
       case "events.unobserve":
       case "runtime.identity":
       case "shutdown":
