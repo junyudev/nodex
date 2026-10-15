@@ -1,0 +1,19 @@
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_5cd527886c6c64::t_0ec22bebc143dd 146-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16f3e690b65e8996b033e8f54f3ca89a0f58f769",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
