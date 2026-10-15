@@ -1,0 +1,135 @@
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_5cd527886c6c64::t_ab66ef418d14de 365-368
+  s_5cd527886c6c64::t_e3dbc5b5fff289 82,235
+  s_5cd527886c6c64::t_b40a45f3bd138d 117-120,136-137,253-256,411,434
+  s_5cd527886c6c64::t_ab22d245ef4a3a 435-436
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_5cd527886c6c64::t_744b89695da3b2 2767-2768,2775,2809
+  s_5cd527886c6c64::t_10aed12d42bb39 2794-2808,2810-2819
+packages/agent-runtime/src/nodex/Daemon.test.ts
+  s_5cd527886c6c64::t_9d8b1d051ae568 158-174,227-230,233-235,238-243,245-248,251-253,255-258,262-267
+  s_5cd527886c6c64::t_300e20e95f8d07 1-11,33,38-39,43-44,49-52,61-76,118-127,134,138-142,149-157,175-177,181-191,195-196,209-210,212-214,268-273
+  s_5cd527886c6c64::t_6f73bb2a0aa7a0 12-32,34-37,40-42,45-48,53-60,77-117,128-133,135-137,143-148,178-180,192-194,197-208,215-226,231-232,236-237,244,249-250,254,259-261
+  s_5cd527886c6c64::t_a6cd1b4098a5ea 211
+  s_5cd527886c6c64::t_f3af80a6dabecd 274-278
+packages/agent-runtime/src/nodex/StorageSnapshot.ts
+  s_5cd527886c6c64::t_3ea80d95c8e0fa 232
+  s_5cd527886c6c64::t_e9dab0d30ae14f 198-204,206
+  s_5cd527886c6c64::t_9dde293c0be6db 225-228
+  s_5cd527886c6c64::t_2f2a066874cc1a 229
+  s_5cd527886c6c64::t_7a3fdedc73e31a 1-18,25-37,43,59-60,77-86,90-93,97-104,150-172,177-181,193-194,207,212-214,220,240-241
+  s_5cd527886c6c64::t_744b89695da3b2 19-24,38-42,44-58,61-76,87-89,94-96,105-149,173-176,182-192,195-197,205,208-211,215-219,221-224,230-231,233-239
+  s_5cd527886c6c64::t_7be8da2ec886ae 242
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_5cd527886c6c64::t_43b8f6794e0f29 3628
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_5cd527886c6c64::t_0d9b45bf824133 120-123
+  s_5cd527886c6c64::t_d9c2d08182feb5 58
+  s_5cd527886c6c64::t_bf57550a66ac90 49
+packages/agent-runtime/src/nodex/entry.ts
+  s_5cd527886c6c64::t_bf57550a66ac90 10-14
+packages/agent-runtime/src/nodex/RuntimeHomeLease.test.ts
+  s_5cd527886c6c64::t_6f73bb2a0aa7a0 1-29
+  s_5cd527886c6c64::t_b7047ab7405f4d 30-41
+src/main/agent-runtime/AgentRuntimeSupervisor.node.test.ts
+  s_5cd527886c6c64::t_b40a45f3bd138d 36
+packages/agent-runtime/src/nodex/Interface.ts
+  s_5cd527886c6c64::t_7003cf23f2d8b5 114-115
+  s_5cd527886c6c64::t_e45098af18a4c2 19,64,75,120,126-127
+  s_5cd527886c6c64::t_0d9b45bf824133 94-100,102-103,128-135
+  s_5cd527886c6c64::t_3ea80d95c8e0fa 43-63,65-74,101,121-125
+tests/fixtures/agent-runtime-stdio.mjs
+  s_5cd527886c6c64::t_94235ab2de35cf 14,52-53,61-75
+  s_5cd527886c6c64::t_124a698f982172 15,33-41,49-51
+packages/agent-runtime/src/nodex/ApplicationSnapshot.test.ts
+  s_5cd527886c6c64::t_3ea80d95c8e0fa 11-40,44-48,52-60,62-93,95-108,111-127
+  s_5cd527886c6c64::t_38120b367c673c 1-10,94,109-110,128
+  s_5cd527886c6c64::t_e9dab0d30ae14f 41-43,49-51,61
+  s_5cd527886c6c64::t_c2d6864be7a3a7 129-140
+packages/agent-runtime/src/nodex/Authority.test.ts
+  s_5cd527886c6c64::t_e45098af18a4c2 15,64
+  s_5cd527886c6c64::t_ac41b18a0422f4 38
+  s_5cd527886c6c64::t_8eda300fe54496 1-14,16-37,39-63,65-84
+  s_5cd527886c6c64::t_9963dd5cbe7454 85-173
+packages/agent-runtime/src/nodex/Application.ts
+  s_5cd527886c6c64::t_3dba040f13ad41 7,32
+packages/agent-runtime/src/nodex/ProviderConfiguration.test.ts
+  s_5cd527886c6c64::t_16eb39899bd55d 10-13,70
+  s_5cd527886c6c64::t_241c8246053b27 71-116
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_5cd527886c6c64::t_c32258886c0de0 343-378,393,397-398,412
+  s_5cd527886c6c64::t_65d608b9f1bcc4 379-392,394-396,399-411,566-568,1254-1277,4723-4797,5223-5233,5244,5265-5266,5274-5284,6505,6800-6811,7105-7193
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_5cd527886c6c64::t_5bf44564a5c486 106
+packages/agent-runtime/README.md
+  s_5cd527886c6c64::t_3ea80d95c8e0fa 32-34,59-70
+  s_5cd527886c6c64::t_6afcf54aa81362 71
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.test.ts
+  s_5cd527886c6c64::t_59633142d9a9dd 109,122
+  s_5cd527886c6c64::t_1adf0c3f744a87 183-205
+packages/agent-runtime/src/nodex/ProviderConfiguration.ts
+  s_5cd527886c6c64::t_44bf76f011a66b 26,62-67
+  s_5cd527886c6c64::t_9e63df5f6a51dc 68-69
+packages/agent-runtime/src/persistence/Migrations/064_SubagentOverviewIndex.ts
+  s_5cd527886c6c64::t_2741339162be3d 1-10
+packages/agent-runtime/src/nodex/RuntimeHomeLease.ts
+  s_5cd527886c6c64::t_9dde293c0be6db 25-26
+  s_5cd527886c6c64::t_3dba040f13ad41 1-7,14,19,23-24,28,36-39,46,54-65,71-74,78-80,84-85,87-88,95-99
+  s_5cd527886c6c64::t_2f2a066874cc1a 8-13,15-18,20-22,27,29-35,40-45,47-53,66-70,75-77,81-83,86,89-94,100-117
+  s_5cd527886c6c64::t_ab959ae45e9a80 118
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.ts
+  s_5cd527886c6c64::t_ae752d505faf1c 98
+  s_5cd527886c6c64::t_5f8fc600190325 64,97,99
+  s_5cd527886c6c64::t_1916cd20af8364 100-103
+packages/agent-runtime/src/nodex/Service.ts
+  s_5cd527886c6c64::t_f9075f7cb2eb33 28,77-84,168-190,192-194,230-235,250-252,254-269
+  s_5cd527886c6c64::t_e45098af18a4c2 20,166-167,191
+  s_5cd527886c6c64::t_7003cf23f2d8b5 453-457,459-477
+  s_5cd527886c6c64::t_0d9b45bf824133 48,85-86,451-452
+  s_5cd527886c6c64::t_0d61c32be06647 458
+  s_5cd527886c6c64::t_042c6308c54816 478
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_5cd527886c6c64::t_744b89695da3b2 156-157,2103-2114
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_5cd527886c6c64::t_94235ab2de35cf 114-124,151-152
+  s_5cd527886c6c64::t_124a698f982172 11-12,125-150
+packages/agent-runtime/src/nodex/Authority.ts
+  s_5cd527886c6c64::t_7003cf23f2d8b5 67-69
+packages/agent-runtime/src/nodex/StorageSnapshot.test.ts
+  s_5cd527886c6c64::t_3ea80d95c8e0fa 24,32-34,39-41,45-47,58-64,66-69,72-74,80-82,89-97,99-155,157-162
+  s_5cd527886c6c64::t_d4ee1127b338a6 1-23,25-31,35-38,42-44,48-57,65,70-71,75-79,83-88,98,156
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_5cd527886c6c64::t_a8c097a0797931 355-412
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_5cd527886c6c64::t_8bc9adf948f287 226,272
+packages/agent-runtime/src/orchestration-v2/ThreadFork.execution.test.ts
+  s_5cd527886c6c64::t_506e6b7c338bc7 48-57,61-62,230,247-257
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_5cd527886c6c64::t_fe0534ac4a2cd2 80,158
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_7cbb8ffe80d8b6::t_7934aa2b68455b 3089-3090
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e6cca270ee6fddd1da14d54ebc44ace45f2ffffa",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_7cbb8ffe80d8b6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a135ca-f5f4-7251-8449-f9b0df9948c0",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

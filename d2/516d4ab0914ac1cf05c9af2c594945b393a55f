@@ -1,0 +1,117 @@
+crates/nodex-core-server/src/lib.rs
+  s_5cd527886c6c64::t_8af3ed9b1239a6 4037
+crates/nodex-profile/src/codex.rs
+  s_5cd527886c6c64::t_b16c1dda6f66d8 103,111,137,165
+  s_5cd527886c6c64::t_03aaa7e9300897 234-255
+crates/nodex-profile/src/files.rs
+  s_5cd527886c6c64::t_5232ec919d6a45 20
+  s_5cd527886c6c64::t_3dae89568b9f56 21-24
+crates/nodex-profile/src/execution.rs
+  s_5cd527886c6c64::t_e3dbc5b5fff289 109,136
+  s_5cd527886c6c64::t_41431ba148afa0 107
+  s_5cd527886c6c64::t_14fdd9b03f2de3 162-208,210-236
+  s_5cd527886c6c64::t_ecd5e3318f65ee 97,138
+  s_5cd527886c6c64::t_b16c1dda6f66d8 1-29,32-61,68-76,81-83,85-87,89-96,98-106,110-130,137,139-161
+  s_5cd527886c6c64::t_2a843458e726e1 30-31,62-67,84,88,108,131-135,209
+  s_5cd527886c6c64::t_ab66ef418d14de 77-80
+  s_5cd527886c6c64::t_e3602848873f02 237-443
+crates/nodex-core/src/workspace/execution.rs
+  s_5cd527886c6c64::t_9f728cf341693c 277-302
+  s_5cd527886c6c64::t_384913caa25733 303-317,360
+crates/nodex-core/src/administration/tests.rs
+  s_5cd527886c6c64::t_1d407e2fab5a4f 53-54
+  s_5cd527886c6c64::t_562f0c7978632f 28-52,55-88,95-96,102,107,111,117,329
+  s_5cd527886c6c64::t_07ef6127e213a5 89-94,97-101,103-106,108-110,112-116,118-164,378,738,769,837,861,1004-1005,1473,1541,1640-1642,1756,1835
+crates/nodex-profile/src/control.rs
+  s_5cd527886c6c64::t_2ff50ab2089b9b 27
+  s_5cd527886c6c64::t_6dc812a6b27ab1 14-26,38,45-46,89-90,96-97,100-102,104-105,107,118
+  s_5cd527886c6c64::t_8af3ed9b1239a6 28-37
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_5cd527886c6c64::t_acb3d1ae8b6fd5 71
+crates/nodex-profile/src/snapshot.rs
+  s_5cd527886c6c64::t_037e74978eb309 6-8,20-27,29-32,41-44,47-62,64-73,75-83,87-89,95-99,101-115,117-143,148-162,164-165,169-171,175-178,181-186,201-203,206-208,212-219,245-255,260-279,282-285,287-297,299-306,308-315,318-325,329-336,338-345,348-364,374-378,386-392,394-398,403-407,409-411,422-430,433-437,441-445,452-454,456,464-471,475-478,482-487,489-502,507-540,545-551,555-556,560-569,571-582,586-595,603-607,613-620,629-657
+  s_5cd527886c6c64::t_52af20e788b43c 4,258,307,316-317,346,447-451,455,457-463,472-473,479-481,488,503-504,541-544,552-554,557-559,570,583-585,596-597,602,608-612,621-628,658-659
+  s_5cd527886c6c64::t_5232ec919d6a45 28,38-40,45-46,63,74,84-86,91,474
+  s_5cd527886c6c64::t_72c92cae7beb4f 505-506,598-601
+  s_5cd527886c6c64::t_7aa6665c996330 1-3,5,9-19,33-37,90,92-94,100,116,144-147,163,166-168,172-174,179-180,187-200,204-205,209-211,220-244,256-257,259,280-281,286,298,326-328,337,347,365-373,379-385,393,399-402,408,412-421,431-432,438-440,446,660
+  s_5cd527886c6c64::t_4c2626ce64bc85 661-694
+crates/nodex-core/src/workspace/read.rs
+  s_5cd527886c6c64::t_acb3d1ae8b6fd5 352-365
+crates/nodex-core-contracts/src/workspace.rs
+  s_5cd527886c6c64::t_acb3d1ae8b6fd5 110-113,264-266
+crates/nodex-core/src/administration/profile_snapshot.rs
+  s_5cd527886c6c64::t_5232ec919d6a45 16-17,27
+  s_5cd527886c6c64::t_6bd288b40d6f23 1-15,18-26,28-32,34
+  s_5cd527886c6c64::t_a411bc785b958a 33,35-48
+crates/nodex-core/src/administration/restore.rs
+  s_5cd527886c6c64::t_6bd288b40d6f23 48-49,135-136
+crates/nodex-core/src/workspace/agent_runtime_authority.rs
+  s_5cd527886c6c64::t_9f728cf341693c 64,242
+  s_5cd527886c6c64::t_acb3d1ae8b6fd5 237-241,600-650,1268-1279,1281-1289,1292-1295,1302-1305,1312
+  s_5cd527886c6c64::t_f5df5b49641ddf 1280,1290-1291,1296-1301,1306-1311
+  s_5cd527886c6c64::t_ee6fdafcf371d7 1313-1328
+crates/nodex-profile/src/lib.rs
+  s_5cd527886c6c64::t_b16c1dda6f66d8 8,14,62-63,72-74,77,82,94,96-97
+  s_5cd527886c6c64::t_ecd5e3318f65ee 9,76
+  s_5cd527886c6c64::t_8af3ed9b1239a6 10-11
+crates/nodex-core/src/administration/profile_clone.rs
+  s_5cd527886c6c64::t_6bd288b40d6f23 97-99,163-165,171-175,177-179,181-185,187-191
+  s_5cd527886c6c64::t_2ff50ab2089b9b 63-69,77,145,152,162,166-170,176,180,186,192-194
+  s_5cd527886c6c64::t_794497592537db 195
+crates/nodex-core-server/Cargo.toml
+  s_5cd527886c6c64::t_8af3ed9b1239a6 14
+crates/nodex-core/src/administration/mod.rs
+  s_5cd527886c6c64::t_2ff50ab2089b9b 55
+  s_5cd527886c6c64::t_6bd288b40d6f23 4,58,267,286,303-310,783,1005-1006,1616,1694,1708-1709
+  s_5cd527886c6c64::t_8af3ed9b1239a6 1804
+  s_5cd527886c6c64::t_f3dc9fc71c76e5 51-53,56
+crates/nodex-profile/src/execution_relocation.rs
+  s_5cd527886c6c64::t_ecd5e3318f65ee 1-97
+docs/reliability/backup-restore-and-maintenance.md
+  s_5cd527886c6c64::t_1d407e2fab5a4f 5-24,92-94,98-99
+crates/nodex-core-contracts/src/administration.rs
+  s_5cd527886c6c64::t_c5cb7cccad1b66 7-27,133,248-249,263-264
+crates/nodex-core/src/administration/backup.rs
+  s_5cd527886c6c64::t_5232ec919d6a45 237
+  s_5cd527886c6c64::t_3e8d1c6b50b4df 11,23,121-122,141-142,445,457-493,507-508,602-603,619-620,646-647,649-659,719-720,840-841,919-940,964,967,975,1112-1116,1120,1199-1211,1276-1280,1284,2144-2159
+  s_5cd527886c6c64::t_09e8e5cf4967d7 238-245,2160-2169,2173,2177-2181,2229
+docs/product-specs/agent-runtime-behavior.md
+  s_5cd527886c6c64::t_89996252d36054 39-43
+  s_5cd527886c6c64::t_eccb422221e27e 74-107
+crates/nodex-core/src/infrastructure/store_replacement.rs
+  s_5cd527886c6c64::t_cdde4ef585133c 22,48-51,129-134,178-184,203-206,212-217,300-310,312,341,351,484,1046,1063,1099
+  s_5cd527886c6c64::t_273822c453a735 311,313,321-340,342-350,352-360,485-487,1027-1045,1047-1062,1064-1098,1100-1112
+docs/RELIABILITY.md
+  s_5cd527886c6c64::t_1d407e2fab5a4f 212-216,235-236
+crates/nodex-core/src/administration/operation_journal.rs
+  s_5cd527886c6c64::t_6bd288b40d6f23 11-13,32-33
+  s_5cd527886c6c64::t_ec24f07ee7acdc 35,46-47
+Cargo.lock
+  s_5cd527886c6c64::t_6380aa6a6fb3c6 1174
+crates/nodex-cli/src/runtime.rs
+  s_5cd527886c6c64::t_301b9cb942655c 1549
+docs/product-specs/codex-workspace-behavior.md
+  s_5cd527886c6c64::t_c765b9986c9782 15-17,160-168
+packages/core-protocol/openapi.json
+  s_5cd527886c6c64::t_eb0af7c48fc8e4 6027,6053-6057,31712-31721,31796-31805,36023-36041,36712-36732,37610-37650,50687-50704
+packages/core-protocol/src/compatibility.generated.ts
+  s_5cd527886c6c64::t_55e8a466a713f6 32
+packages/core-protocol/src/generated.ts
+  s_5cd527886c6c64::t_3881cb37ca270b 1426-1427,7596,7614,8568-8571,8720-8724,8948-8961,11836-11839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2516d4ab0914ac1cf05c9af2c594945b393a55f",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
