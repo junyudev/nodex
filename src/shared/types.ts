@@ -142,6 +142,11 @@ export type {
   CodexCanonicalUserInputQuestion,
   CodexCanonicalWorktreeInitItem,
   CodexCanonicalWorktreeInitSetup,
+  CodexCanonicalDelegatedTaskItem,
+  CodexDelegatedTaskStatus,
+  CodexRuntimeNotice,
+  CodexUserMessageInputIntent,
+  CodexUserMessageOrigin,
   CodexProtocolRequestId,
   CodexProtocolServerRequest,
   CodexProtocolServerRequestOf,
@@ -2886,6 +2891,8 @@ export type CodexSemanticItemKind =
   | "imageView"
   | "generatedImage"
   | "subAgentActivity"
+  | "delegatedTask"
+  | "runtimeNotice"
   | "workedFor"
   | "mcpServerElicitation"
   | "permissionRequest"
@@ -3154,6 +3161,11 @@ export interface CodexSubagentActivityView {
   isMessage: boolean;
 }
 
+export type CodexDelegatedTaskView = Omit<
+  import("./codex-conversation-state/codex-conversation-state").CodexCanonicalDelegatedTaskItem,
+  "type" | "id"
+>;
+
 export interface CodexContextCompactionView {
   completed: boolean;
   source: "automatic" | "manual";
@@ -3256,6 +3268,10 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   webSearch?: CodexWebSearchView;
   generatedImage?: CodexGeneratedImageView;
   subagentActivity?: CodexSubagentActivityView;
+  delegatedTask?: CodexDelegatedTaskView;
+  runtimeNotice?: import("./codex-conversation-state/codex-conversation-state").CodexRuntimeNotice;
+  userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
+  userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   requestId?: CodexAppServerRequestId;
   fileChange?: CodexFileChangeView;
@@ -3311,6 +3327,10 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   webSearch?: CodexWebSearchView;
   generatedImage?: CodexGeneratedImageView;
   subagentActivity?: CodexSubagentActivityView;
+  delegatedTask?: CodexDelegatedTaskView;
+  runtimeNotice?: import("./codex-conversation-state/codex-conversation-state").CodexRuntimeNotice;
+  userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
+  userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
   requestId?: CodexAppServerRequestId;
   fileChange?: CodexFileChangeView;

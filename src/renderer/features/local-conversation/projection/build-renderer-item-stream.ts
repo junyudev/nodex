@@ -332,6 +332,10 @@ function resolveSemanticRendererType(entry: CodexConversationItem): RendererTran
       return "autoReviewInterruptionWarning";
     case "multiAgentAction":
       return "multiAgentAction";
+    case "delegatedTask":
+      return "delegatedTask";
+    case "runtimeNotice":
+      return "runtimeNotice";
     case "steered":
       return "steered";
     case "userInputResponse":

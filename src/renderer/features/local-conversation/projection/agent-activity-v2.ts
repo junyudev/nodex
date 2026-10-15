@@ -168,6 +168,7 @@ export type ThreadClassifiableActivityTranscriptType =
   | "automaticApprovalReview"
   | "automationUpdate"
   | "contextCompaction"
+  | "delegatedTask"
   | "dynamicToolCall"
   | "exec"
   | "fileChange"
@@ -188,6 +189,7 @@ export type ThreadClassifiableActivityTranscriptType =
   | "realtimeTranscript"
   | "reasoning"
   | "remoteTaskCreated"
+  | "runtimeNotice"
   | "steered"
   | "streamError"
   | "subagentActivityInlineGroup"
@@ -210,6 +212,7 @@ const THREAD_CLASSIFIABLE_ACTIVITY_TYPES = new Set<ThreadTranscriptBlockModel["t
   "automaticApprovalReview",
   "automationUpdate",
   "contextCompaction",
+  "delegatedTask",
   "dynamicToolCall",
   "exec",
   "fileChange",
@@ -230,6 +233,7 @@ const THREAD_CLASSIFIABLE_ACTIVITY_TYPES = new Set<ThreadTranscriptBlockModel["t
   "realtimeTranscript",
   "reasoning",
   "remoteTaskCreated",
+  "runtimeNotice",
   "steered",
   "streamError",
   "subagentActivityInlineGroup",
@@ -322,9 +326,11 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
     case "assistantMessage":
     case "autoReviewInterruptionWarning":
     case "contextCompaction":
+    case "delegatedTask":
     case "hook":
     case "imageView":
     case "multiAgentAction":
+    case "runtimeNotice":
     case "realtimeTranscript":
     case "streamError":
     case "subagentActivityInlineGroup":
@@ -546,6 +552,8 @@ function resolveThreadAgentActivityBundleType(
       return "automation-update";
     case "contextCompaction":
       return "context-compaction";
+    case "delegatedTask":
+      return "delegated-task";
     case "dynamicToolCall":
       return "dynamic-tool-call";
     case "exec":
@@ -584,6 +592,8 @@ function resolveThreadAgentActivityBundleType(
       return "reasoning";
     case "remoteTaskCreated":
       return "remote-task-created";
+    case "runtimeNotice":
+      return "runtime-notice";
     case "steered":
       return "steered";
     case "streamError":
@@ -617,6 +627,7 @@ const PROJECTED_ID_ACTIVITY_TYPES = new Set<ThreadClassifiableActivityItem["type
   "autoReviewInterruptionWarning",
   "automaticApprovalReview",
   "contextCompaction",
+  "delegatedTask",
   "forkedFromConversation",
   "generatedImage",
   "imageView",
@@ -628,6 +639,7 @@ const PROJECTED_ID_ACTIVITY_TYPES = new Set<ThreadClassifiableActivityItem["type
   "realtimeTranscript",
   "reasoning",
   "remoteTaskCreated",
+  "runtimeNotice",
   "steered",
   "streamError",
   "subagentActivityInlineGroup",

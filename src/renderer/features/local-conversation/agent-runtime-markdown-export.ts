@@ -4,7 +4,10 @@ import type {
   AgentRuntimeThread,
   AgentRuntimeRun,
 } from "./agent-runtime-transcript-projection";
-import { projectAgentRuntimeExportTurns } from "./agent-runtime-transcript-projection";
+import {
+  isAgentRuntimeItemHidden,
+  projectAgentRuntimeExportTurns,
+} from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeRuntime,
   type AgentRuntimeRendererTransport,
@@ -47,6 +50,7 @@ export function createAgentRuntimeMarkdownReader(
     const complete: AgentRuntimeProjectedItem[] = [];
     for (const row of rows) {
       const item = row.item;
+      if (isAgentRuntimeItemHidden(item)) continue;
       if (!("outputOmitted" in item) || !item.outputOmitted) {
         complete.push(row);
         continue;

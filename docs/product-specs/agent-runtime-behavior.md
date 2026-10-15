@@ -156,6 +156,31 @@ setup use the same scoped filesystem owner as other native capabilities. The wor
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
 
+## Delegated work in the conversation
+
+Product surfaces call delegated children subagents. Each one appears in the parent Run that
+created it as one row: its title, the configured Agent label and model that run it, and its
+current status — running, waiting, stopping, stopped, cancelled, failed or done. The row
+updates in place from the task's own item and metadata events; it never reads the child's
+history. An application-owned subagent can be opened; any live subagent can be stopped from
+its row. Stop shows Stopping immediately and keeps it until the subagent reports how it
+ended. A provider-native subagent is stopped through its owning parent Run. An
+application-owned subagent's own conversation ends with a Stopped marker.
+
+Input the user did not type names its sender: Sent by another agent links to the sending
+conversation, and messages Nodex sends itself say so. Steered and queued input carries a
+Steer or Queued marker. Reported work — a subagent's result, finished background work or a
+restart continuation — appears as a compact row that opens the one subagent it names. When
+a report starts an automatic Run, that row opens the Run's response, so the reason the
+Agent continued is visible before its answer.
+
+Application tool calls show under the `nodex_app` presentation whatever spelling the
+Provider reports. Execution plumbing — listing available Agent models, polling or waiting
+for subagent status — never appears in the transcript, and delegating or cancelling a
+subagent appears only as that subagent's row unless the call itself failed. Request
+bookkeeping such as pending questions, approvals and interrupt requests stays out of the
+transcript; pending questions remain answerable from their request card.
+
 ## Execution location and worktree handoff
 
 A local Runtime Session keeps its Core product identity and immutable execution root when

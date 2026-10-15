@@ -86,6 +86,8 @@ function isRenderableAgentItem(item: ThreadRendererItemModel): item is ThreadAge
     case "automaticApprovalReview":
     case "multiAgentAction":
     case "subagentActivityInlineGroup":
+    case "delegatedTask":
+    case "runtimeNotice":
     case "streamError":
     case "systemError":
     case "contextCompaction":
@@ -160,6 +162,18 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
 
     if (beforeAgentSequence && item.type === "userMessage") {
       buckets.userItems.push(item);
+      continue;
+    }
+
+    // A Run started by reported work, not by the user, opens its response with that report.
+    if (
+      beforeAgentSequence &&
+      buckets.userItems.length === 0 &&
+      item.type === "runtimeNotice" &&
+      item.entry.runtimeNotice?.kind === "report"
+    ) {
+      buckets.preUserItems.push(item);
+      beforeAgentSequence = false;
       continue;
     }
 

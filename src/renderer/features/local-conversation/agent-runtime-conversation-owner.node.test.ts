@@ -13,7 +13,6 @@ import {
   AgentRuntimeConversationOwner,
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
-import { projectAgentRuntimeItem } from "./agent-runtime-transcript-projection";
 import { hasDurableCanonicalFirstSubmission } from "../conversation-launch/session-first-submission-owner";
 
 const target = { sessionId: "session", threadId: "thread" };
@@ -624,9 +623,10 @@ test("retires only live resident keys and the addressed delivery without rereadi
     contentItems: [{ text: '{"partial":"retained"}' }],
   });
   expect(owner.readOwner.readItem(key, "native-item")).toMatchObject({
-    status: "failed",
+    type: "delegatedTask",
+    status: "stopped",
     prompt: "Keep this prompt",
-    agentsStates: { "native-task": { status: "interrupted", message: "Partial result" } },
+    summary: "Partial result",
   });
   expect(owner.readOwner.readTurnDetails(key)?.status).toBe("interrupted");
   expect(owner.readOwner.readTurnDetails(deliveryKey)?.status).toBe("interrupted");
@@ -1380,14 +1380,19 @@ describe("Agent Runtime keyed transcript reads", () => {
       type: "approval",
     });
     expect(owner.getSnapshot().view?.canonicalRequests).toEqual([]);
-    expect(projectAgentRuntimeItem(task)).toMatchObject({
-      type: "collabAgentToolCall",
-      receiverThreadIds: ["child"],
-      status: "inProgress",
+    const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    // The approval is request state only; it never occupies a transcript slot.
+    expect(owner.readOwner.readItem(key, "approval")).toBeNull();
+    expect(owner.readOwner.readItem(key, "task")).toMatchObject({
+      type: "delegatedTask",
+      childThreadId: "child",
+      status: "running",
     });
+    wire.emit(event({ ...task, status: "interrupted", completedAt: at }, 2));
+    expect(owner.readOwner.readItem(key, "task")).toMatchObject({ status: "stopped" });
     const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
     wire.emit({
-      sequence: 2,
+      sequence: 3,
       commandId: null,
       event: {
         id: "completed",
@@ -1400,6 +1405,31 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(
       owner.readOwner.readTurnDetails(owner.readOwner.readStructure()!.turnEntityKeys[0]!)?.status,
     ).toBe("completed");
+    release();
+  });
+
+  test("execution plumbing never occupies a slot, including when it streams in", async () => {
+    const polling: AgentTurnItem = {
+      ...base("polling", 2),
+      type: "dynamic_tool",
+      toolName: "nodex_app.task_status",
+      input: { taskId: "task" },
+    };
+    const { owner, wire, release } = await open(conversation([polling, command(3)]));
+    const before = owner.readOwner.readStructure()!;
+    const key = before.turnEntityKeys[0]!;
+    expect(owner.readOwner.readItemSlots(key)?.length).toBe(1);
+    wire.emit(
+      event({
+        ...base("waiting", 4),
+        type: "dynamic_tool",
+        toolName: "mcp__nodex_app__task_wait",
+        input: {},
+      }),
+    );
+    expect(owner.readOwner.readStructure()).toBe(before);
+    expect(owner.readOwner.readItemSlots(key)?.length).toBe(1);
+    expect(owner.readOwner.readItem(key, "waiting")).toBeNull();
     release();
   });
 });
@@ -1579,8 +1609,8 @@ test("preserves a native Session question's unknown Run across display and physi
     turnId: null,
     type: "userInput",
   });
-  const key = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
-  expect(owner.readOwner.readTurnDetails(key)?.turnId).toBeNull();
+  // A pending question is answered from its request card, not repeated in the transcript.
+  expect(owner.readOwner.readStructure()!.turnEntityKeys).toEqual([]);
   wire.emit({
     sequence: 2,
     commandId: null,

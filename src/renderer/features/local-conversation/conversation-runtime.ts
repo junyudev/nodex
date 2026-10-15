@@ -14,8 +14,30 @@ export interface ConversationContentSource {
   readonly isCurrent: () => boolean;
 }
 
+/** Delegated task rows read Agent labels and request Stop through their conversation's owner. */
+export interface ConversationDelegatedTaskPort {
+  /** Notifies when labels or unsettled Stop requests change. */
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly providerLabel: (providerInstanceId: string) => string | null;
+  readonly modelLabel: (providerInstanceId: string, model: string) => string | null;
+  /** A Stop request stays visible until the task settles or the request fails. */
+  readonly isStopping: (taskId: string) => boolean;
+  /** Releases a settled task's Stop request. */
+  readonly settle: (taskId: string) => void;
+  readonly stop: (
+    parentThreadId: string,
+    task: {
+      readonly taskId: string;
+      readonly ownerRunId: string | null;
+      readonly childThreadId: string | null;
+    },
+  ) => Promise<void>;
+}
+
 /** Product conversation reads and lifecycle; protocol ownership stays in each Adapter. */
 export interface ConversationRuntime {
+  /** Present only where delegated tasks have an execution owner that can stop them. */
+  readonly delegatedTasks?: ConversationDelegatedTaskPort;
   readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly hostId: string;
   /** App-owned execution descendants share this Core Session. Native observation IDs do not. */

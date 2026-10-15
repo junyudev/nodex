@@ -3,6 +3,8 @@ import {
   ThreadAutomaticApprovalReviewBlock,
   ThreadAgentActivityGroupBlock,
   ThreadMultiAgentActionBlock,
+  ThreadDelegatedTaskBlock,
+  ThreadRuntimeNoticeBlock,
   ThreadAssistantActionsBlock,
   ThreadAssistantBodyBlock,
   ThreadContextCompactionBlock,
@@ -184,6 +186,29 @@ export function ThreadBlockRenderer({
     );
   }
 
+  if (block.type === "delegatedTask") {
+    return (
+      <ThreadDelegatedTaskBlock
+        block={block}
+        isLatestTurn={isLatestTurn}
+        isStreamingTurn={isStreamingTurn}
+        childMemberships={childMemberships}
+        onOpenThread={onOpenThread}
+      />
+    );
+  }
+
+  if (block.type === "runtimeNotice") {
+    return (
+      <ThreadRuntimeNoticeBlock
+        block={block}
+        isLatestTurn={isLatestTurn}
+        isStreamingTurn={isStreamingTurn}
+        onOpenThread={onOpenThread}
+      />
+    );
+  }
+
   if (block.type === "subagentActivityInlineGroup") {
     return (
       <ThreadSubagentActivityInlineGroupBlock
@@ -224,6 +249,7 @@ export function ThreadBlockRenderer({
         onEditLastUserTurn={onEditLastUserTurn}
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
+        onOpenThread={onOpenThread}
         threadCwd={threadCwd}
         compactUserMessageActions={compactUserMessageActions}
         hideUserMessageActions={hideUserMessageActions}

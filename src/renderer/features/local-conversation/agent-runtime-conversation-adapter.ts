@@ -41,6 +41,10 @@ import type { AgentModelPickerEntry } from "../../components/shared/agent-runtim
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 import { setLocalConversationComposerIntent } from "./local-conversation-store";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
+import {
+  agentRuntimeDelegatedTasks,
+  createAgentRuntimeDelegatedTaskPort,
+} from "./agent-runtime-delegated-tasks";
 import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import {
   captureCodexTurnPresentation,
@@ -99,6 +103,14 @@ export function createAgentRuntimeConversationRuntime(
     },
     connection: () => connected,
     role: (id) => (matches(id) ? "follower" : null),
+    ...(target
+      ? {
+          delegatedTasks: createAgentRuntimeDelegatedTaskPort(
+            target.sessionId,
+            agentRuntimeRuntime,
+          ),
+        }
+      : {}),
     primaryRequest: (id) => (matches(id) ? (owner!.getSnapshot().view?.requests[0] ?? null) : null),
     children: (id) => (matches(id) ? owner!.children() : emptyChildren),
     retain: () => owner?.retain() ?? (() => {}),
@@ -115,6 +127,19 @@ export function createAgentRuntimeConversationRuntime(
     runtimePorts.set(owner, ports);
   }
   return runtime;
+}
+
+/** The configured Agent name the user chose, then the provider's own name. */
+export function agentRuntimeProviderLabel(
+  provider: Pick<AgentRuntimeProvider, "instanceId" | "displayName">,
+  instances: readonly { readonly binding: AgentBackendBinding; readonly label: string }[],
+): string {
+  return (
+    instances.find((entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId)
+      ?.label ??
+    provider.displayName ??
+    (provider.instanceId === "codex" ? "Codex" : "Agent")
+  );
 }
 
 export function projectAgentRuntimeModel(
@@ -503,6 +528,19 @@ export function useAgentRuntimeConversationAdapter(input: {
       active = false;
     };
   }, [catalogRevision, input.instances]);
+  useEffect(() => {
+    agentRuntimeDelegatedTasks.publishLabels(
+      new Map(
+        catalogState.providers.map((provider) => [
+          provider.instanceId,
+          {
+            label: agentRuntimeProviderLabel(provider, input.instances),
+            models: new Map(provider.models.map((model) => [model.slug, model.name])),
+          },
+        ]),
+      ),
+    );
+  }, [catalogState.providers, input.instances]);
   const draftKey = JSON.stringify([input.sessionId, input.modelProjectId]);
   const draft = useSyncExternalStore(
     (listener) => agentRuntimeDraftOwner.subscribe(draftKey, listener),
@@ -553,12 +591,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       return [];
     return provider.models.map((model) => ({
       binding,
-      label:
-        provider.displayName ??
-        input.instances.find(
-          (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
-        )?.label ??
-        "Codex",
+      label: agentRuntimeProviderLabel(provider, input.instances),
       model: projectAgentRuntimeModel(provider, model),
       selection: { binding, model: model.slug },
     }));

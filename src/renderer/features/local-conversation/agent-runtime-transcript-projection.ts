@@ -3,8 +3,12 @@ import type { CommandAction, UserInput } from "@nodex/codex-app-server-protocol/
 import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,
+  CodexDelegatedTaskStatus,
   CodexItemStatus,
   CodexConversationTurn,
+  CodexRuntimeNotice,
+  CodexUserMessageInputIntent,
+  CodexUserMessageOrigin,
 } from "../../../shared/types";
 import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
@@ -51,6 +55,7 @@ export function projectAgentRuntimeExportTurns(
   let runlessKey = "";
   for (const row of rows) {
     const item = row.item;
+    if (isAgentRuntimeItemHidden(item)) continue;
     if (item.runId === null && (item.type === "user_message" || !runlessKey))
       runlessKey = JSON.stringify([row.sourceThreadId, "native-history", item.id]);
     const key = item.runId === null ? runlessKey : JSON.stringify([row.sourceThreadId, item.runId]);
@@ -71,7 +76,9 @@ export function projectAgentRuntimeExportTurns(
     const canonical = {
       ...details,
       turnId: first.item.runId ?? entityKey,
-      items: group.map((row) => projectAgentRuntimeItem(row.item, thread.worktreePath ?? "")),
+      items: group.flatMap(
+        (row) => projectAgentRuntimeItem(row.item, thread.worktreePath ?? "") ?? [],
+      ),
     };
     const items = projectCodexCanonicalTurnViews({
       threadId: first.sourceThreadId,
@@ -99,14 +106,142 @@ function jsonValue(value: unknown): JsonValue {
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
 }
 
-const notice = (item: AgentTurnItem, message: string): CodexCanonicalItem => ({
+const notice = (
+  item: AgentTurnItem,
+  message: string,
+  detail: CodexRuntimeNotice = { kind: "info" },
+): CodexCanonicalItem => ({
   type: "runtimeNotice",
   id: item.id,
   message,
+  notice: detail,
 });
 
-/** A presentation conversion only. Provider requests and execution remain engine-owned. */
-export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCanonicalItem {
+const NODEX_APP_SERVER = /^nodex[-_ ]?app$/iu;
+/**
+ * Runtime execution plumbing: model listing and task polling explain nothing a delegated
+ * task row does not already show, so these calls never reach the transcript.
+ */
+const HIDDEN_TASK_TOOLS = new Set(["list_agent_models", "task_status", "task_wait"]);
+/** Task lifecycle calls are represented by the task's own row unless the call failed. */
+const TASK_ROW_TOOLS = new Set(["delegate_task", "task_cancel"]);
+
+/**
+ * Providers spell application tools differently (Claude `mcp__server__tool`, Codex
+ * `server.tool`); presentation keys on one namespace and the bare tool name.
+ */
+export function parseAgentRuntimeToolName(toolName: string | null): {
+  readonly namespace: string | null;
+  readonly tool: string;
+} {
+  const name = toolName?.trim() || "Tool";
+  const qualified = /^mcp__(.+?)__(.+)$/u.exec(name);
+  const dot = name.indexOf(".");
+  const [namespace, tool] = qualified
+    ? [qualified[1]!, qualified[2]!]
+    : dot > 0 && dot < name.length - 1
+      ? [name.slice(0, dot), name.slice(dot + 1)]
+      : [null, name];
+  return {
+    namespace:
+      namespace === null ? null : NODEX_APP_SERVER.test(namespace) ? "nodex_app" : namespace,
+    tool,
+  };
+}
+
+const isLive = (status: AgentTurnItem["status"]) =>
+  status === "pending" || status === "running" || status === "waiting";
+
+/** Execution bookkeeping with no conversation meaning stays out of the transcript. */
+export function isAgentRuntimeItemHidden(item: AgentTurnItem): boolean {
+  switch (item.type) {
+    case "dynamic_tool": {
+      const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
+      if (namespace !== "nodex_app") return false;
+      return HIDDEN_TASK_TOOLS.has(tool) || (TASK_ROW_TOOLS.has(tool) && item.status !== "failed");
+    }
+    case "run_interrupt_request":
+    case "checkpoint":
+    case "approval_request":
+      return true;
+    case "user_input_request":
+      return isLive(item.status);
+    default:
+      return false;
+  }
+}
+
+export function agentRuntimeDelegatedTaskStatus(
+  status: AgentTurnItem["status"],
+): CodexDelegatedTaskStatus {
+  switch (status) {
+    case "pending":
+    case "running":
+      return "running";
+    case "waiting":
+      return "waiting";
+    case "failed":
+      return "failed";
+    case "interrupted":
+      return "stopped";
+    case "cancelled":
+      return "cancelled";
+    case "idle":
+    case "completed":
+      return "completed";
+  }
+}
+
+const firstLine = (text: string) => text.trim().split("\n", 1)[0]!.trim();
+
+function userMessageOrigin(
+  item: Extract<AgentTurnItem, { type: "user_message" }>,
+): CodexUserMessageOrigin | undefined {
+  if (item.scheduledTaskId !== undefined) return { kind: "automation" };
+  if (item.createdBy === "user") return undefined;
+  return item.createdBy === "agent" && item.creationSource !== "server"
+    ? { kind: "agent", senderThreadId: item.senderThreadId ?? null }
+    : { kind: "nodex" };
+}
+
+const INPUT_INTENT = {
+  turn_start: undefined,
+  queued_turn: "queued",
+  steer: "steer",
+  promoted_queued_to_steer: "promotedToSteer",
+} as const satisfies Record<
+  Extract<AgentTurnItem, { type: "user_message" }>["inputIntent"],
+  CodexUserMessageInputIntent | undefined
+>;
+
+function notificationNotice(
+  source: Extract<AgentTurnItem, { type: "notification" }>["source"],
+  outcome: Extract<AgentTurnItem, { type: "notification" }>["outcome"],
+): CodexRuntimeNotice {
+  switch (source.kind) {
+    case "delegated_task":
+    case "subagent":
+      return {
+        kind: "report",
+        source: "subagent",
+        outcome,
+        childThreadId: source.childThreadId ?? null,
+      };
+    case "command":
+    case "monitor":
+    case "system":
+      return { kind: "report", source: source.kind, outcome, childThreadId: null };
+    default:
+      return { kind: "report", source: "background", outcome, childThreadId: null };
+  }
+}
+
+/**
+ * A presentation conversion only. Provider requests and execution remain engine-owned.
+ * Hidden execution bookkeeping projects to null and never occupies a transcript slot.
+ */
+export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCanonicalItem | null {
+  if (isAgentRuntimeItemHidden(item)) return null;
   const id = item.id;
   const status = agentRuntimeItemStatus(item.status);
   const durationMs =
@@ -117,11 +252,15 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         )
       : null;
   switch (item.type) {
-    case "user_message":
+    case "user_message": {
+      const origin = userMessageOrigin(item);
+      const inputIntent = INPUT_INTENT[item.inputIntent];
       return {
         type: "userMessage",
         id,
         clientId: item.messageId,
+        ...(origin ? { origin } : {}),
+        ...(inputIntent ? { inputIntent } : {}),
         content: [
           { type: "text", text: item.text, text_elements: emptyTextElements },
           ...item.attachments
@@ -136,6 +275,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
             })),
         ],
       };
+    }
     case "assistant_message":
       return {
         type: "agentMessage",
@@ -194,12 +334,13 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       };
     case "file_search":
       return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
-    case "dynamic_tool":
+    case "dynamic_tool": {
+      const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
       return {
         type: "dynamicToolCall",
         id,
-        namespace: null,
-        tool: item.toolName ?? "Tool",
+        namespace,
+        tool,
         arguments: jsonValue(item.input),
         status: status === "inProgress" || status === "completed" ? status : "failed",
         contentItems:
@@ -214,35 +355,24 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         success: status === "inProgress" ? null : status === "completed",
         durationMs,
       };
-    case "subagent": {
-      const child = item.childThreadId ?? item.subagentId;
-      return {
-        type: "collabAgentToolCall",
-        id,
-        tool: "spawnAgent",
-        status:
-          status === "inProgress" ? "inProgress" : status === "completed" ? "completed" : "failed",
-        senderThreadId: item.threadId,
-        receiverThreadIds: [child],
-        prompt: item.prompt,
-        model: null,
-        reasoningEffort: null,
-        agentsStates: {
-          [child]: {
-            status:
-              status === "inProgress"
-                ? "running"
-                : status === "completed"
-                  ? "completed"
-                  : status === "failed"
-                    ? "errored"
-                    : "interrupted",
-            message: item.result ?? item.progress ?? null,
-          },
-        },
-        receiverThreads: [{ threadId: child, thread: null }],
-      };
     }
+    case "subagent":
+      return {
+        type: "delegatedTask",
+        id,
+        taskId: item.subagentId,
+        ownerRunId: item.runId,
+        childThreadId: item.childThreadId,
+        title: item.title?.trim() || firstLine(item.prompt) || "Subagent",
+        providerInstanceId: item.providerInstanceId,
+        status: agentRuntimeDelegatedTaskStatus(item.status),
+        prompt: item.prompt,
+        summary:
+          (isLive(item.status)
+            ? (item.progress ?? item.result)
+            : (item.result ?? item.progress)
+          )?.trim() || null,
+      };
     case "thread_created":
       return {
         type: "subAgentActivity",
@@ -285,24 +415,24 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         additionalDetails: null,
       };
     case "notification":
-      return notice(item, item.summary);
-    case "run_interrupt_request":
+      return notice(item, item.summary, notificationNotice(item.source, item.outcome));
     case "run_interrupt_result":
+      return notice(item, "Stopped", { kind: "stopped" });
     case "system_notice":
       return notice(item, item.message);
     case "handoff":
       return notice(
         item,
-        item.summary ?? `Continue with ${item.toModel ?? item.toProviderInstanceId}`,
+        item.summary ?? `Continued with ${item.toModel ?? item.toProviderInstanceId}`,
       );
-    case "checkpoint":
-      return notice(item, "Checkpoint saved");
-    case "approval_request":
-      return notice(item, item.prompt ?? "Approval requested");
     case "user_input_request":
       return notice(item, item.questions.map((question) => question.question).join("\n"));
     case "secret_request":
       return notice(item, item.reason);
+    case "run_interrupt_request":
+    case "checkpoint":
+    case "approval_request":
+      return null;
   }
 }
 

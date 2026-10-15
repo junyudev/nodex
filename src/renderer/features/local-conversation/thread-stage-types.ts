@@ -687,6 +687,8 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
     | "autoReviewInterruptionWarning"
     | "multiAgentAction"
     | "subagentActivityInlineGroup"
+    | "delegatedTask"
+    | "runtimeNotice"
     | "steered"
     | "systemEvent"
     | "userInputResponse"

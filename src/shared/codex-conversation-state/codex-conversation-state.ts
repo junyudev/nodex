@@ -397,12 +397,68 @@ export interface CodexCanonicalTurnErrorItem {
   readonly additionalDetails: string | null;
 }
 
+/** What an execution notice reports; it decides the row's icon, tone and link. */
+export type CodexRuntimeNotice =
+  /** Delegated, background or system work reported back. An automatic Run opens with it. */
+  | {
+      readonly kind: "report";
+      readonly source: "subagent" | "command" | "monitor" | "background" | "system";
+      readonly outcome: "completed" | "failed" | "cancelled" | "updated" | "unknown";
+      /** The one delegated conversation the report concerns, when it names exactly one. */
+      readonly childThreadId: string | null;
+    }
+  /** A Run stopped before finishing; it ends that Run's visible history. */
+  | { readonly kind: "stopped" }
+  | { readonly kind: "info" };
+
 /** Read-only execution history that has no native provider item equivalent. */
 export interface CodexCanonicalRuntimeNoticeItem {
   readonly type: "runtimeNotice";
   readonly id: string;
   readonly message: string;
+  readonly notice: CodexRuntimeNotice;
 }
+
+export type CodexDelegatedTaskStatus =
+  | "running"
+  | "waiting"
+  | "completed"
+  | "failed"
+  | "stopped"
+  | "cancelled";
+
+/** A delegated child task, shown as one row in the parent Run that created it. */
+export interface CodexCanonicalDelegatedTaskItem {
+  readonly type: "delegatedTask";
+  readonly id: string;
+  readonly taskId: string;
+  /** The parent Run that owns the task; stopping addresses this exact owner. */
+  readonly ownerRunId: string | null;
+  /** The task's own conversation. Provider-native observations have none. */
+  readonly childThreadId: string | null;
+  readonly title: string;
+  readonly providerInstanceId: string;
+  readonly status: CodexDelegatedTaskStatus;
+  /** Bounded instruction preview from the transcript window. */
+  readonly prompt: string;
+  /** Latest bounded progress or result preview. */
+  readonly summary: string | null;
+}
+
+/** Who sent user-role input that the user did not type. */
+export type CodexUserMessageOrigin =
+  | { readonly kind: "agent"; readonly senderThreadId: string | null }
+  | { readonly kind: "automation" }
+  | { readonly kind: "nodex" };
+
+/** How input entered execution when it did not start an ordinary Turn. */
+export type CodexUserMessageInputIntent = "queued" | "steer" | "promotedToSteer";
+
+/** App-side delivery context carried beside a generated user message. */
+export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMessage" }> & {
+  readonly origin?: CodexUserMessageOrigin;
+  readonly inputIntent?: CodexUserMessageInputIntent;
+};
 
 export interface CodexCanonicalTodoListItem {
   readonly type: "todo-list";
@@ -507,9 +563,10 @@ export type CodexCanonicalGeneratedItem =
   | Exclude<
       ThreadItem,
       {
-        type: "imageGeneration" | "collabAgentToolCall" | "contextCompaction";
+        type: "imageGeneration" | "collabAgentToolCall" | "contextCompaction" | "userMessage";
       }
     >
+  | CodexCanonicalUserMessageItem
   | CodexCanonicalImageGenerationItem
   | CodexCanonicalCollabAgentToolCallItem
   | CodexCanonicalContextCompactionItem;
@@ -521,6 +578,7 @@ export type CodexCanonicalLifecycleSyntheticItem =
   | CodexCanonicalWorktreeInitItem
   | CodexCanonicalTurnErrorItem
   | CodexCanonicalRuntimeNoticeItem
+  | CodexCanonicalDelegatedTaskItem
   | CodexCanonicalTodoListItem
   | CodexCanonicalModelReroutedItem
   | CodexCanonicalAutomaticApprovalReviewItem

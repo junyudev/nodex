@@ -131,19 +131,9 @@ function retireItem(
       return { ...item, status: "declined" };
     case "dynamicToolCall":
       return { ...item, status: "failed", success: false, durationMs };
-    case "collabAgentToolCall":
-      return {
-        ...item,
-        status: "failed",
-        agentsStates: Object.fromEntries(
-          Object.entries(item.agentsStates).map(([id, state]) => [
-            id,
-            state && (state.status === "running" || state.status === "pendingInit")
-              ? { ...state, status: "interrupted" as const }
-              : state,
-          ]),
-        ),
-      };
+    // A provider-native task dies with its Run; an application-owned child reports its own end.
+    case "delegatedTask":
+      return item.childThreadId === null ? { ...item, status: "stopped" } : item;
     default:
       return item;
   }
@@ -384,16 +374,18 @@ export class AgentRuntimeConversationOwner {
     });
     if (generation !== this.#generation || !this.#transcriptActive || !item) return item;
     this.#rememberItem(source, item);
-    this.readOwner.applyEvent({
-      type: "changes",
-      changes: [
-        {
-          type: "item",
-          key: { ...this.readOwner.key, entityKey: source.entityKey, itemId },
-          value: projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? ""),
-        },
-      ],
-    });
+    const value = projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "");
+    if (value)
+      this.readOwner.applyEvent({
+        type: "changes",
+        changes: [
+          {
+            type: "item",
+            key: { ...this.readOwner.key, entityKey: source.entityKey, itemId },
+            value,
+          },
+        ],
+      });
     return item;
   };
   dispose(): void {
@@ -738,6 +730,8 @@ export class AgentRuntimeConversationOwner {
       const row = rows[index]!;
       if (this.#items.has(row.sourceItemId)) continue;
       const item = row.item;
+      const value = projectAgentRuntimeItem(item, thread.worktreePath ?? "");
+      if (!value) continue;
       if (item.type === "subagent") this.#residentTaskIds.add(item.subagentId);
       let entityKey: string;
       if (item.runId !== null) entityKey = runKey(item.threadId, item.runId);
@@ -773,7 +767,7 @@ export class AgentRuntimeConversationOwner {
       itemChanges.push({
         type: "item",
         key: { ...this.readOwner.key, entityKey, itemId: item.id },
-        value: projectAgentRuntimeItem(item, thread.worktreePath ?? ""),
+        value,
       });
       if (isTurnOpening(item) && item.runId === null)
         runlessKey = JSON.stringify(["agent-history", row.sourceThreadId, "before", item.id]);
@@ -1090,18 +1084,22 @@ export class AgentRuntimeConversationOwner {
       const item = event.payload;
       if (this.#transcriptActive && this.#transcriptHydrated) {
         const resident = this.#items.get(item.id);
+        const value = resident
+          ? projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? "")
+          : null;
         if (resident) {
           this.#rememberItem(resident, item);
-          this.readOwner.applyEvent({
-            type: "changes",
-            changes: [
-              {
-                type: "item",
-                key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
-                value: projectAgentRuntimeItem(item, this.#thread()?.worktreePath ?? ""),
-              },
-            ],
-          });
+          if (value)
+            this.readOwner.applyEvent({
+              type: "changes",
+              changes: [
+                {
+                  type: "item",
+                  key: { ...this.readOwner.key, entityKey: resident.entityKey, itemId: item.id },
+                  value,
+                },
+              ],
+            });
         } else {
           const changes = this.#admit(
             [
@@ -1115,12 +1113,14 @@ export class AgentRuntimeConversationOwner {
             ],
             false,
           );
-          changes.push({
-            type: "structure",
-            timeline: this.#timeline(),
-            turnEntityKeys: this.#turnKeys,
-          });
-          this.readOwner.applyEvent({ type: "changes", changes });
+          if (changes.length > 0) {
+            changes.push({
+              type: "structure",
+              timeline: this.#timeline(),
+              turnEntityKeys: this.#turnKeys,
+            });
+            this.readOwner.applyEvent({ type: "changes", changes });
+          }
         }
       }
       if (

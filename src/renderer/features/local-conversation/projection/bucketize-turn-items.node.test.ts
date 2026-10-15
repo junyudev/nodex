@@ -2008,4 +2008,56 @@ describe("bucketizeTurnItems", () => {
     expect(buckets.agentItems.map((item) => item.id).join(",")).toBe("assistant,worked_for");
     expect(turn.agentBodyUnits.map((unit) => unit.block.type).join(",")).toBe("assistantMessage");
   });
+
+  test("a report that started an automatic Run opens that response", () => {
+    const report = (id: string) =>
+      buildItem({
+        id,
+        type: "runtimeNotice",
+        entry: {
+          ...buildItem({}).entry,
+          itemId: id,
+          type: "runtimeNotice",
+          kind: "systemEvent",
+          semanticKind: "runtimeNotice",
+          markdownText: 'Subagent "Audit" finished',
+          runtimeNotice: {
+            kind: "report",
+            source: "subagent",
+            outcome: "completed",
+            childThreadId: "child",
+          },
+        },
+      });
+    const wake = bucketizeTurnItems({ items: [report("wake"), buildItem({ id: "answer" })] });
+    expect(wake.preUserItems.map((item) => item.id)).toEqual(["wake"]);
+    expect(wake.assistantItem?.id).toBe("answer");
+
+    const user = buildItem({
+      id: "user",
+      type: "userMessage",
+      entry: { ...buildItem({}).entry, itemId: "user", kind: "userMessage" },
+    });
+    const midTurn = bucketizeTurnItems({
+      items: [user, report("update"), buildItem({ id: "answer" })],
+    });
+    expect(midTurn.preUserItems).toEqual([]);
+    expect(midTurn.userItems.map((item) => item.id)).toEqual(["user"]);
+    expect(midTurn.agentItems.map((item) => item.id)).toEqual(["update"]);
+  });
+
+  test("Runtime stop markers and task rows stay visible in the response body", () => {
+    const buckets = bucketizeTurnItems({
+      items: [
+        buildItem({ id: "task", type: "delegatedTask" }),
+        buildItem({
+          id: "stopped",
+          type: "runtimeNotice",
+          entry: { ...buildItem({}).entry, runtimeNotice: { kind: "stopped" } },
+        }),
+      ],
+      turnStatus: "interrupted",
+    });
+    expect(buckets.agentItems.map((item) => item.id)).toEqual(["task", "stopped"]);
+  });
 });
