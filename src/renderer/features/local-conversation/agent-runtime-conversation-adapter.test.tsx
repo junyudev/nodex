@@ -18,6 +18,10 @@ import { CodexTranscriptReadOwnerContext } from "./normalized-transcript-hooks";
 import { ConversationMarkdownSourceProvider } from "./view/conversation-markdown-source";
 import { MarkdownCore } from "./view/shared/markdown/markdown-core";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
+import { CodexThreadSettingsProvider } from "../../lib/use-codex-thread-settings";
+import { CodexServiceTierSettingsProvider } from "../../lib/use-codex-service-tier-settings";
+import { THREAD_SETTINGS_STORAGE_KEY } from "../../lib/codex-thread-settings";
+import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-tier-settings";
 
 function RuntimeWorkbench({ children }: PropsWithChildren) {
   const [store] = useState(createMaitaiStore);
@@ -88,6 +92,170 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   sessionFirstSubmissionOwner.dispose();
+});
+
+const codexModel = (slug: string, isDefault = false) => ({
+  slug,
+  name: slug.toUpperCase(),
+  isCustom: false,
+  ...(isDefault ? { isDefault: true } : {}),
+  capabilities: {
+    optionDescriptors: [
+      {
+        id: "reasoningEffort",
+        label: "Reasoning",
+        type: "select" as const,
+        options: ["low", "medium", "high"].map((id) => ({ id, label: id })),
+        currentValue: "medium",
+      },
+      {
+        id: "serviceTier",
+        label: "Service Tier",
+        type: "select" as const,
+        options: [
+          { id: "default", label: "Standard", isDefault: true },
+          { id: "fast", label: "Fast" },
+        ],
+        currentValue: "default",
+      },
+    ],
+  },
+});
+const codexProvider = {
+  ...provider,
+  models: [codexModel("gpt", true), codexModel("gpt-mini")],
+} as unknown as AgentRuntimeProvider;
+
+function SavedSettingsWorkbench({ children }: PropsWithChildren) {
+  return (
+    <RuntimeWorkbench>
+      <CodexThreadSettingsProvider>
+        <CodexServiceTierSettingsProvider>{children}</CodexServiceTierSettingsProvider>
+      </CodexThreadSettingsProvider>
+    </RuntimeWorkbench>
+  );
+}
+
+describe("Agent Runtime Codex controls", () => {
+  afterEach(() => {
+    localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
+    localStorage.removeItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY);
+  });
+
+  it("starts a new chat from the saved model, effort and speed", async () => {
+    localStorage.setItem(
+      THREAD_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ model: "gpt-mini", reasoningEffort: "high" }),
+    );
+    localStorage.setItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY, "fast");
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
+    const launch = vi
+      .spyOn(agentRuntimeRuntime, "launch")
+      .mockResolvedValue({ sessionId: "saved-draft", projectId: "project", threadId: "thread" });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "saved-draft",
+      projectId: "project",
+      threadId: "thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "saved-draft",
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "saved-draft" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    await waitFor(() => expect(result.current.selectedModel).toBe("gpt-mini"));
+    expect(result.current.selectedEffort).toBe("high");
+    expect(result.current.provider.serviceTier).toBe("fast");
+    await act(async () => {
+      await result.current.actions.onStartThreadForSession!({
+        projectId: "project",
+        sessionId: "saved-draft",
+        prompt: "Go",
+      });
+    });
+    expect(launch.mock.calls[0]![0].modelSelection).toEqual({
+      instanceId: "codex",
+      model: "gpt-mini",
+      options: [
+        { id: "reasoningEffort", value: "high" },
+        { id: "serviceTier", value: "fast" },
+      ],
+    });
+    await act(async () => unmount());
+  });
+
+  it("applies model, effort and speed in one selection change under Codex's own option ids", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "codex-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection: { instanceId: "codex", model: "gpt" },
+          },
+        },
+      } as AgentSnapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const setModel = vi.spyOn(agentRuntimeRuntime, "setModel").mockResolvedValue({ sequence: 2 });
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "codex-session",
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "codex-session" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    await act(async () => {
+      await result.current.actions.onReasoningEffortChange!("high");
+    });
+    expect(setModel.mock.calls[0]![0].modelSelection).toEqual({
+      instanceId: "codex",
+      model: "gpt",
+      options: [{ id: "reasoningEffort", value: "high" }],
+    });
+    await act(async () => {
+      await result.current.actions.onIntelligenceSelectionChange!({
+        kind: "codex",
+        model: "gpt-mini",
+        reasoningEffort: "low",
+        serviceTier: "fast",
+      });
+    });
+    expect(setModel).toHaveBeenCalledTimes(2);
+    expect(setModel.mock.calls[1]![0].modelSelection).toEqual({
+      instanceId: "codex",
+      model: "gpt-mini",
+      options: [
+        { id: "reasoningEffort", value: "low" },
+        { id: "serviceTier", value: "fast" },
+      ],
+    });
+    expect(result.current.provider.controls?.goals).toBe(false);
+    await act(async () => unmount());
+  });
 });
 
 describe("Agent Runtime conversation adapter", () => {

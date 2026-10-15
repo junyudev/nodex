@@ -268,6 +268,8 @@ export interface ConversationProviderPresentation {
     readonly nativeTaskDetails?: boolean;
     /** Delegated subagents open the Subagents panel. */
     readonly subagents?: boolean;
+    /** False where the conversation cannot run in Goal mode. */
+    readonly goals?: boolean;
     readonly images?: boolean;
     readonly stopTask?: boolean;
   };
@@ -275,6 +277,8 @@ export interface ConversationProviderPresentation {
   readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;
   readonly kind: "codex" | "claude" | "acp" | "opencode";
+  /** The conversation's own speed tier, when it owns one instead of the saved default. */
+  readonly serviceTier?: CodexServiceTier;
   readonly label: string;
   readonly selection: string;
   readonly options: readonly { value: string; label: string }[];

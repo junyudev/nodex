@@ -2,6 +2,7 @@ import type { AgentRuntimeLaunchResult, AgentRuntimeLaunch } from "../../shared/
 import type { CodexPromptInput, CodexThreadSettings, CodexServiceTier } from "../../shared/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { prepareAgentPrompt } from "../../shared/agent-prompt";
+import { applyAgentRuntimeOptionIntent } from "../../shared/agent-runtime-provider";
 import { readPastedTextAttachment } from "./api";
 import { agentRuntimeRuntime, type AgentRuntimeRendererTransport } from "./agent-runtime-runtime";
 import { agentRuntimePromptImages } from "./agent-runtime-prompt";
@@ -55,19 +56,16 @@ export async function launchAgentRuntimeSession(
     messageId: createUuidV7(),
     acceptedAt: Date.now(),
   };
-  const options = (model.capabilities?.optionDescriptors ?? []).flatMap((descriptor) => {
-    if (descriptor.type !== "select") return [];
-    const requested =
-      descriptor.id === "reasoningEffort"
-        ? input.codexDefaults?.reasoningEffort
-        : descriptor.id === "serviceTier"
-          ? (input.codexDefaults?.serviceTier ?? "default")
-          : undefined;
-    if (requested === undefined) return [];
-    const value = descriptor.options.find((entry) => entry.id === requested)?.id;
-    if (!value) return [];
-    return [{ id: descriptor.id, value }];
-  });
+  const options = applyAgentRuntimeOptionIntent(
+    model.capabilities?.optionDescriptors ?? [],
+    undefined,
+    {
+      ...(input.codexDefaults?.reasoningEffort
+        ? { reasoningEffort: input.codexDefaults.reasoningEffort }
+        : {}),
+      serviceTier: input.codexDefaults?.serviceTier ?? null,
+    },
+  );
   return await transport.launch({
     sessionId: input.sessionId,
     projectId: input.projectId,

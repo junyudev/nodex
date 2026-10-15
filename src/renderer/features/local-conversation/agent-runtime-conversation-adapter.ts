@@ -15,7 +15,11 @@ import type { AgentRuntimeSessionTarget } from "../../../shared/agent-runtime-ap
 import {
   agentRuntimeModelSelection,
   agentRuntimeProviderId,
+  applyAgentRuntimeOptionIntent,
+  readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
+import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
+import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { prepareAgentPrompt } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type {
@@ -128,6 +132,45 @@ export function createAgentRuntimeConversationRuntime(
   }
   return runtime;
 }
+
+/**
+ * A new Codex chat starts from the user's saved model, effort and speed when the catalog
+ * offers them, then from the catalog default.
+ */
+export function seedAgentRuntimeCodexSelection(
+  provider: AgentRuntimeProvider | undefined,
+  saved: {
+    readonly model?: string;
+    readonly reasoningEffort?: string;
+    readonly serviceTier?: string | null;
+  },
+): AgentModelSelection | null {
+  if (!provider || !isAgentRuntimeProviderAvailable(provider)) return null;
+  const model =
+    provider.models.find((entry) => entry.slug === saved.model) ??
+    provider.models.find((entry) => entry.isDefault) ??
+    provider.models[0];
+  if (!model) return null;
+  const options = applyAgentRuntimeOptionIntent(
+    model.capabilities?.optionDescriptors ?? [],
+    undefined,
+    {
+      ...(saved.reasoningEffort ? { reasoningEffort: saved.reasoningEffort } : {}),
+      ...(saved.serviceTier !== undefined ? { serviceTier: saved.serviceTier } : {}),
+    },
+  );
+  return {
+    binding: { kind: "codex" },
+    model: model.slug,
+    ...(options.length > 0 ? { options } : {}),
+  };
+}
+
+export const isAgentRuntimeProviderAvailable = (provider: AgentRuntimeProvider): boolean =>
+  provider.enabled &&
+  provider.installed &&
+  provider.status !== "error" &&
+  provider.status !== "disabled";
 
 /** The configured Agent name the user chose, then the provider's own name. */
 export function agentRuntimeProviderLabel(
@@ -541,6 +584,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       ),
     );
   }, [catalogState.providers, input.instances]);
+  const { settings: savedCodexSettings } = useCodexThreadSettings();
+  const { serviceTierSettings: savedServiceTier } = useCodexServiceTierSettings();
   const draftKey = JSON.stringify([input.sessionId, input.modelProjectId]);
   const draft = useSyncExternalStore(
     (listener) => agentRuntimeDraftOwner.subscribe(draftKey, listener),
@@ -581,14 +626,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         : input.instances.find(
             (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
           )?.binding;
-    if (
-      !binding ||
-      !provider.enabled ||
-      !provider.installed ||
-      provider.status === "error" ||
-      provider.status === "disabled"
-    )
-      return [];
+    if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
     return provider.models.map((model) => ({
       binding,
       label: agentRuntimeProviderLabel(provider, input.instances),
@@ -610,7 +648,10 @@ export function useAgentRuntimeConversationAdapter(input: {
         options: observed.modelSelection.options,
       }
     : (draft.selection ??
-      entries.find((entry) => entry.model.isDefault && entry.binding.kind === "codex")?.selection ??
+      seedAgentRuntimeCodexSelection(
+        catalogState.providers.find((entry) => entry.instanceId === "codex"),
+        { ...savedCodexSettings, serviceTier: savedServiceTier.serviceTier },
+      ) ??
       entries[0]?.selection ?? { binding: { kind: "codex" as const }, model: "" });
   const provider = catalogState.providers.find(
     (entry) => entry.instanceId === agentRuntimeProviderId(selection.binding),
@@ -643,10 +684,19 @@ export function useAgentRuntimeConversationAdapter(input: {
       chosen.model !== selection.model
         ? { ...claudeIntent, model: chosen.model }
         : readRuntimeClaudeSelection(chosen));
+    const sameProvider =
+      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(chosen.binding);
     const fitted =
       chosen.binding.kind === "claude"
         ? applyRuntimeClaudeIntent(chosen, nextIntent, chosenModel)
-        : chosen;
+        : {
+            ...chosen,
+            options: applyAgentRuntimeOptionIntent(
+              chosenModel?.capabilities?.optionDescriptors ?? [],
+              chosen.options ?? (sameProvider ? selection.options : undefined),
+              {},
+            ),
+          };
     const modelSelection = agentRuntimeModelSelection(fitted.binding, fitted.model, fitted.options);
     if (!modelSelection || !chosenModel) throw new Error("Choose an available model");
     if (target && observed && modelSelection.instanceId !== observed.modelSelection.instanceId)
@@ -783,11 +833,37 @@ export function useAgentRuntimeConversationAdapter(input: {
         ? chooseModel(selection, { ...claudeIntent, effort, thinking: true })
         : chooseModel({
             ...selection,
-            options: [
-              ...(selection.options ?? []).filter((option) => option.id !== "effort"),
-              { id: "effort", value: effort },
-            ],
+            options: applyAgentRuntimeOptionIntent(modelOptions, selection.options, {
+              reasoningEffort: effort,
+            }),
           }),
+    // Model, effort and speed land in one selection change so none overwrites another.
+    onIntelligenceSelectionChange: async (candidate) => {
+      const model = candidate.model || selection.model;
+      if (selection.binding.kind === "claude") {
+        const effortChanged = candidate.reasoningEffort !== resolvedEffort;
+        await chooseModel(
+          { ...selection, model },
+          effortChanged && isClaudeEffortLevel(candidate.reasoningEffort)
+            ? { ...claudeIntent, model, effort: candidate.reasoningEffort, thinking: true }
+            : undefined,
+        );
+        return;
+      }
+      await chooseModel({
+        ...selection,
+        model,
+        options: applyAgentRuntimeOptionIntent(
+          provider?.models.find((entry) => entry.slug === model)?.capabilities?.optionDescriptors ??
+            [],
+          selection.options,
+          {
+            reasoningEffort: candidate.reasoningEffort,
+            ...(selection.binding.kind === "codex" ? { serviceTier: candidate.serviceTier } : {}),
+          },
+        ),
+      });
+    },
     onCollaborationModeChange: async (interactionMode) => {
       if (!target) {
         agentRuntimeDraftOwner.write(draftKey, { interactionMode });
@@ -833,9 +909,22 @@ export function useAgentRuntimeConversationAdapter(input: {
   const selectedEffort = selection.options?.find((option) =>
     /effort|reasoning/i.test(option.id),
   )?.value;
+  const resolvedEffort =
+    typeof selectedEffort === "string"
+      ? selectedEffort
+      : (models.find((model) => model.id === selectedModel)?.defaultReasoningEffort ?? "default");
   const modelOptions =
     provider?.models.find((model) => model.slug === selectedModel)?.capabilities
       ?.optionDescriptors ?? [];
+  const serviceTierDescriptor = modelOptions.find((option) => option.id === "serviceTier");
+  const selectedServiceTier =
+    readAgentRuntimeServiceTier(selection.options) ??
+    readAgentRuntimeServiceTier(
+      serviceTierDescriptor?.type === "select" && serviceTierDescriptor.currentValue
+        ? [{ id: "serviceTier", value: serviceTierDescriptor.currentValue }]
+        : undefined,
+    ) ??
+    null;
   const configOptions: import("../../../shared/agent-conversation").AgentSessionConfigOption[] =
     modelOptions.map((option) => {
       const chosen = selection.options?.find((value) => value.id === option.id)?.value;
@@ -917,6 +1006,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           }
         : undefined,
     kind: selection.binding.kind,
+    ...(selection.binding.kind === "codex" ? { serviceTier: selectedServiceTier } : {}),
     label: provider?.displayName ?? (selection.binding.kind === "codex" ? "Codex" : "Agent"),
     selection: agentRuntimeProviderId(selection.binding) ?? "",
     options: [],
@@ -946,6 +1036,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       images: true,
       skills: true,
       subagents: true,
+      goals: false,
     },
     skills:
       provider?.skills
@@ -980,10 +1071,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     provider: presentation,
     models,
     selectedModel,
-    selectedEffort:
-      typeof selectedEffort === "string"
-        ? selectedEffort
-        : (models.find((model) => model.id === selectedModel)?.defaultReasoningEffort ?? "default"),
+    selectedEffort: resolvedEffort,
     reasoningEffortOptions: modelOptions.flatMap((option) =>
       option.type === "select" && /effort|reasoning/i.test(option.id)
         ? option.options.map((choice) => ({

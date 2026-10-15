@@ -156,6 +156,16 @@ setup use the same scoped filesystem owner as other native capabilities. The wor
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
 
+## Model choices
+
+Effort and speed are written under each model's own option names: Codex reasoning effort
+and service tier, Claude effort with its thinking, speed and context choices. A model,
+effort and speed change from the composer is one selection update, so concurrent choices
+never overwrite each other, and options a newly chosen model does not offer fall back to
+its defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
+Fast in a Runtime chat changes that chat's own speed rather than the saved default. Goal
+mode is not offered for Runtime chats.
+
 ## Delegated work in the conversation
 
 Product surfaces call delegated children subagents. Each one appears in the parent Run that
