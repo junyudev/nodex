@@ -88,6 +88,7 @@ import Migration0071 from "./Migrations/071_AddressedUserMessageIndex.ts";
 import Migration0072 from "./Migrations/072_HandoffHistoryIndexes.ts";
 import Migration0073 from "./Migrations/073_TurnStartMetadata.ts";
 import Migration0074 from "./Migrations/074_ExecutionLocationActors.ts";
+import Migration0075 from "./Migrations/075_AttachmentReferences.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -176,6 +177,7 @@ export const migrationEntries = [
   [72, "HandoffHistoryIndexes", Migration0072],
   [73, "TurnStartMetadata", Migration0073],
   [74, "ExecutionLocationActors", Migration0074],
+  [75, "AttachmentReferences", Migration0075],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

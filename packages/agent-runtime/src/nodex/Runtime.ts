@@ -51,6 +51,7 @@ import type { AnyProviderDriver } from "@t3tools/provider-core/server/driver";
 import * as CodexAdapter from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as ClaudeAdapter from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as RuntimeLayer from "../orchestration-v2/runtimeLayer.ts";
+import * as ResourceCleanup from "../orchestration-v2/ResourceCleanupService.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as Recovery from "../orchestration-v2/ProviderRuntimeRecoveryService.ts";
@@ -219,6 +220,7 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     RuntimeLayer.layerEventSink,
     RuntimeLayer.layerStores,
   ).pipe(
+    Layer.provide(ResourceCleanup.layer),
     Layer.provide(layerServerActivation),
     Layer.provideMerge(layerActivation),
     Layer.provideMerge(ProjectionStore.layer),

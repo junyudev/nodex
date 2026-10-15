@@ -100,7 +100,6 @@ import {
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 
-import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   isThreadHistoryUserTurn,
@@ -2732,6 +2731,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       END
     `;
 
+    const insertAttachmentRefs = (
+      ownerId: string,
+      threadId: ThreadId,
+      runId: RunId | null,
+      attachmentIds: ReadonlyArray<string>,
+    ) =>
+      Effect.forEach(
+        new Set(attachmentIds),
+        (attachmentId) => sql`
+          INSERT OR IGNORE INTO orchestration_v2_projection_attachment_refs(
+            owner_id, attachment_id, thread_id, run_id)
+          VALUES (${ownerId}, ${attachmentId}, ${threadId}, ${runId})
+        `,
+        { discard: true },
+      );
+
     const apply: ProjectionStoreV2Shape["apply"] = (event) =>
       Effect.gen(function* () {
         switch (event.type) {
@@ -3520,6 +3535,19 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 updated_at = excluded.updated_at,
                 payload_json = excluded.payload_json
             `;
+            // Shared attachment files are deleted only after their last live reference.
+            if (event.payload.role === "user" || event.payload.attachments.length > 0) {
+              yield* sql`
+                DELETE FROM orchestration_v2_projection_attachment_refs
+                WHERE owner_id = ${event.payload.id}
+              `;
+              yield* insertAttachmentRefs(
+                event.payload.id,
+                event.payload.threadId,
+                event.payload.runId,
+                event.payload.attachments.map((attachment) => attachment.id),
+              );
+            }
             break;
           }
           case "plan.updated": {
@@ -3613,6 +3641,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 native_attachment_allowance = excluded.native_attachment_allowance,
                 payload_json = excluded.payload_json
             `;
+            if (event.payload.type === "dynamic_tool" && event.payload.status === "completed") {
+              yield* insertAttachmentRefs(
+                event.payload.id,
+                event.payload.threadId,
+                event.payload.runId,
+                threadHtmlRenderAttachmentIds(event.payload.threadId, [event.payload]),
+              );
+            }
             break;
           }
           case "checkpoint-scope.created": {
@@ -7467,39 +7503,29 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
+    // Every attachment visible in the Thread: its own references and those captured from fork
+    // sources up to each fork point. Shared files are removed only after their last live user.
     const getThreadAttachmentIds: ProjectionStoreV2Shape["getThreadAttachmentIds"] = (threadId) =>
-      Effect.all([
-        sql<{ id: string }>`
-      SELECT DISTINCT json_extract(attachment.value, '$.id') AS id
-      FROM orchestration_v2_projection_messages AS message,
-        json_each(message.payload_json, '$.attachments') AS attachment
-      WHERE message.thread_id = ${threadId}
-    `,
-        // Pages published by html_render, and captured MCP App documents,
-        // live in the attachment store too.
-        sql<{ payload_json: string }>`
-      SELECT payload_json
-      FROM orchestration_v2_projection_turn_items
-      WHERE thread_id = ${threadId}
-        AND type = 'dynamic_tool'
-        AND (payload_json LIKE '%htmlRender%' OR payload_json LIKE ${`%${MCP_APP_OUTPUT_KEY}%`})
-    `,
-      ]).pipe(
-        Effect.map(([messages, renders]) => [
-          ...new Set([
-            ...messages.map((row) => row.id),
-            ...threadHtmlRenderAttachmentIds(
-              threadId,
-              renders.map((row) => {
-                const item = parseEncodedPayload(row.payload_json);
-                return {
-                  toolName: typeof item.toolName === "string" ? item.toolName : null,
-                  output: item.output,
-                };
-              }),
-            ),
-          ]),
-        ]),
+      sql<{ readonly attachment_id: string }>`
+        WITH RECURSIVE visible_sources(thread_id, max_run_ordinal) AS (
+          SELECT ${threadId}, NULL
+          UNION
+          SELECT json_extract(thread.payload_json, '$.forkedFrom.threadId'), COALESCE((
+            SELECT ordinal FROM orchestration_v2_projection_runs
+            WHERE run_id = json_extract(thread.payload_json, '$.forkedFrom.runId')), -1)
+          FROM orchestration_v2_projection_threads AS thread
+          INNER JOIN visible_sources ON visible_sources.thread_id = thread.thread_id
+          WHERE json_extract(thread.payload_json, '$.forkedFrom.type') = 'run'
+        )
+        SELECT DISTINCT ref.attachment_id
+        FROM visible_sources AS source
+        INNER JOIN orchestration_v2_projection_attachment_refs AS ref
+          ON ref.thread_id = source.thread_id
+        LEFT JOIN orchestration_v2_projection_runs AS run ON run.run_id = ref.run_id
+        WHERE source.max_run_ordinal IS NULL OR run.ordinal IS NULL
+          OR run.ordinal <= source.max_run_ordinal
+      `.pipe(
+        Effect.map((rows) => rows.map((row) => row.attachment_id)),
         Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
       );
 

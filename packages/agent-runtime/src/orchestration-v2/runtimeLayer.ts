@@ -56,8 +56,9 @@ const layerEventStoreProvided = EventStore.layerFromOrchestrationEventStore.pipe
   Layer.provide(layerEventInfrastructure),
 );
 
-const layerCommandReceiptStoreProvided =
-  CommandReceiptStore.layerFromApplicationReceipts.pipe(Layer.provide(layerEventInfrastructure));
+const layerCommandReceiptStoreProvided = CommandReceiptStore.layerFromApplicationReceipts.pipe(
+  Layer.provide(layerEventInfrastructure),
+);
 
 export const layerStores = Layer.mergeAll(
   layerEventInfrastructure,

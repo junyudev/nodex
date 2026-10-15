@@ -89,3 +89,146 @@ it.live("prunes settled outbox receipts after recovery in the production composi
     expect(remaining).toEqual(["old-failed", "recent-succeeded"]);
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.live("deletes a shared attachment only after its last live Session is deleted", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-runtime-cleanup-" });
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        const request = (method: string, input: unknown) =>
+          runtime.handle({
+            id: `${method}:${JSON.stringify(input).length}:${Math.random()}`,
+            method,
+            input,
+          });
+        yield* request("project.upsert", {
+          id: "project:cleanup",
+          title: "Cleanup",
+          workspaceRoot: home,
+        });
+        yield* request("command.dispatch", {
+          type: "thread.create",
+          commandId: "create:source",
+          threadId: "thread:source",
+          projectId: "project:cleanup",
+          title: "Source",
+          modelSelection: { instanceId: "codex", model: "gpt-5.4" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const persisted = (yield* request("attachments.persist", {
+          threadId: "thread:source",
+          messageId: "message:source",
+          attachments: [
+            {
+              type: "image",
+              name: "capture.png",
+              mimeType: "image/png",
+              sizeBytes: 3,
+              dataUrl: "data:image/png;base64,AQID",
+            },
+          ],
+        })) as { readonly attachments: ReadonlyArray<{ readonly id: string }> };
+        const image = persisted.attachments[0]!;
+        const file = path.join(home, "userdata", "attachments", `${image.id}.png`);
+        yield* request("command.dispatch", {
+          type: "message.dispatch",
+          commandId: "send:source",
+          threadId: "thread:source",
+          messageId: "message:source",
+          text: "Look at this",
+          attachments: persisted.attachments,
+          createdBy: "user",
+          creationSource: "web",
+          dispatchMode: { type: "start_immediately" },
+        });
+        const outcome = (yield* request("run.outcome", {
+          threadId: "thread:source",
+          messageId: "message:source",
+        }).pipe(
+          Effect.repeat({
+            until: (value) =>
+              value !== null &&
+              !["preparing", "queued", "starting", "running"].includes(
+                (value as { readonly status: string }).status,
+              ),
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        )) as { readonly runId: string };
+        yield* request("command.dispatch", {
+          type: "thread.fork",
+          commandId: "fork:source",
+          sourceThreadId: "thread:source",
+          targetThreadId: "thread:fork",
+          sourcePoint: { type: "run", runId: outcome.runId },
+          rootPolicy: "independent_root",
+          createdBy: "user",
+          creationSource: "web",
+        });
+        const cleanupSettled = (commandId: string) =>
+          Effect.sync(() => {
+            const reader = new DatabaseSync(runtime.identity.databasePath, { readOnly: true });
+            try {
+              return reader
+                .prepare("SELECT status FROM orchestration_v2_effect_outbox WHERE effect_id = ?")
+                .get(`effect:${commandId}:attachment.cleanup`)?.status;
+            } finally {
+              reader.close();
+            }
+          }).pipe(
+            Effect.repeat({
+              until: (status) => status === "succeeded",
+              schedule: Schedule.spaced("20 millis"),
+            }),
+            Effect.timeout("10 seconds"),
+          );
+
+        expect(yield* fs.exists(file)).toBe(true);
+        yield* request("command.dispatch", {
+          type: "thread.delete",
+          commandId: "delete:source",
+          threadId: "thread:source",
+        });
+        yield* cleanupSettled("delete:source");
+        // The fork still shows the captured message, so the shared file survives.
+        expect(yield* fs.exists(file)).toBe(true);
+
+        yield* request("command.dispatch", {
+          type: "thread.delete",
+          commandId: "delete:fork",
+          threadId: "thread:fork",
+        });
+        yield* cleanupSettled("delete:fork");
+        expect(yield* fs.exists(file)).toBe(false);
+      }).pipe(
+        Effect.provide(
+          Application.layer(
+            {
+              home,
+              cwd: home,
+              // An unavailable native binary fails the Run after its user message is recorded.
+              providers: {
+                codex: {
+                  driver: "codex",
+                  config: {
+                    binaryPath: path.join(home, "missing-codex"),
+                    homePath: path.join(home, "codex"),
+                  },
+                },
+              },
+            },
+            () => Effect.void,
+          ),
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

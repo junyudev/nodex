@@ -57,6 +57,9 @@ bounded command queue so native execution can await host decisions without
 blocking its replies.
 `attachments.persist` validates image payloads and retains snapshot source metadata. Stable
 content identities and atomic file publication preserve original assets across retries.
+Deleting a Thread removes an attachment file only when no live Thread still shows it, including
+forks whose captured Run prefix contains the referencing message; an indexed reference table
+proves this without reading message bodies.
 
 `storage.snapshot.acquire` drains admitted public writes, rejects new writes, verifies that no
 active, queued, native background or unknown work remains, and suspends idle providers. It holds
