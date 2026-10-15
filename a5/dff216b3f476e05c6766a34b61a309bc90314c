@@ -1,0 +1,42 @@
+src/renderer/features/local-conversation/view/composer/composer-provider-status.tsx
+  s_1ca65ffa5958ee::t_3dda923c6a462d 1-35,37-47
+  s_1ca65ffa5958ee::t_bd68a9cd85cb3b 36
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_1ca65ffa5958ee::t_f0429096431119 82-104
+  s_1ca65ffa5958ee::t_d8f6264964bba7 284-354
+  s_1ca65ffa5958ee::t_e4e5b42404a2ce 283
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_1ca65ffa5958ee::t_78af40ea565308 92
+  s_1ca65ffa5958ee::t_3dda923c6a462d 4404-4409
+src/renderer/features/local-conversation/view/composer/composer-provider-status.test.tsx
+  s_1ca65ffa5958ee::t_d8f6264964bba7 1-39
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_1ca65ffa5958ee::t_3dda923c6a462d 240-250,253
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.node.test.ts
+  s_1ca65ffa5958ee::t_2f4f939511d0d0 1-100,102-156
+  s_1ca65ffa5958ee::t_0960157bc4a989 101
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_6b3d54880ff89b 187-191
+src/renderer/features/local-conversation/agent-runtime-composer-status.ts
+  s_1ca65ffa5958ee::t_372ef634672c17 1-42
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1ca65ffa5958ee::t_16e26e219178e5 51,53-54,980-987,1075-1093
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.ts
+  s_1ca65ffa5958ee::t_597ea43862f1c7 22-24,162-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a5dff216b3f476e05c6766a34b61a309bc90314c",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
