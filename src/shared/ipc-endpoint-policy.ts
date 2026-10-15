@@ -446,6 +446,7 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:compact"
   | "agent-runtime:session:rollback"
   | "agent-runtime:session:stop-task"
+  | "agent-runtime:session:retry-preparation"
   | "agent-runtime:session:move"
   | "agent-import:apply"
   | "native-sessions:attach"

@@ -340,7 +340,7 @@ describe("Agent Runtime background status", () => {
       ),
     );
     await act(async () => {
-      await result.current.provider.status!.action!.run();
+      await result.current.provider.status!.actions![0]!.run();
     });
     expect(overview).toHaveBeenCalledWith({
       sessionId: "background-session",

@@ -16,6 +16,21 @@ requested Page Linked chats. The operation checks current
 Project lifecycle, resource existence and captured execution identity. Repeating the
 same stable command returns the original Session without launching duplicate work.
 
+Core admits the Session before any execution or workspace effect exists, so a Session
+Core refuses never gains a Thread or worktree, and invalid Agent configuration is refused
+before either. The binding names a deterministic root Thread that each later step creates
+idempotently. A checkout or projectless workspace is ready immediately. A new managed
+worktree is prepared after the first message is durable: its Run waits as preparing,
+shows worktree progress in the transcript and starts once the Thread records the new
+location. A failed preparation leaves the Run failed with Retry, which prepares the
+worktree again, and Work locally, which starts the Run in the source checkout. A
+preparation interrupted by an application restart fails with that reason; Retry then
+creates the worktree from the source checkout's current branch.
+
+Forks follow the same order and retain their source Session's title as "Fork of …". A
+worktree fork that stopped before recording its new location completes that move when
+retried; a same-directory fork never claims its source's managed worktree.
+
 Page links and sidebar placement refer to Session identity. They do not own its Thread
 history, title, model selection, queue, Run status or delegated tasks. Delegated Threads
 remain within the bound root's lineage and do not implicitly create ordinary sidebar

@@ -238,14 +238,16 @@ export interface ThreadOpenThreadContext {
 }
 
 /** A status line beside the composer, such as background work that will resume the chat. */
+export interface ConversationProviderStatusAction {
+  readonly label: string;
+  readonly pendingLabel: string;
+  readonly run: () => Promise<void>;
+}
+
 export interface ConversationProviderStatus {
   readonly message: string;
   readonly tone?: "neutral" | "danger";
-  readonly action?: {
-    readonly label: string;
-    readonly pendingLabel: string;
-    readonly run: () => Promise<void>;
-  };
+  readonly actions?: readonly ConversationProviderStatusAction[];
 }
 
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */

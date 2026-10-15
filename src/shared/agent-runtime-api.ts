@@ -128,6 +128,12 @@ export interface AgentRuntimeSessionMoveInput {
   readonly sessionId: string;
   readonly projectId: string | null;
 }
+/** Retry a failed workspace preparation, or start the Run in the source checkout instead. */
+export type AgentRuntimePreparationRetryInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+  readonly runId: string;
+  readonly workLocally: boolean;
+};
 export type AgentRuntimeQueueInput = AgentRuntimeSessionTarget & { readonly requestId: string } & (
     | { readonly action: "resume" }
     | { readonly action: "cancel"; readonly runId: string }
@@ -300,6 +306,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:rollback": {
     args: [input: AgentRuntimeRollbackInput];
     result: { readonly rolledBack: true };
+  };
+  "agent-runtime:session:retry-preparation": {
+    args: [input: AgentRuntimePreparationRetryInput];
+    result: { readonly retried: true };
   };
   "agent-runtime:session:stop-task": {
     args: [input: AgentRuntimeTaskStopInput];

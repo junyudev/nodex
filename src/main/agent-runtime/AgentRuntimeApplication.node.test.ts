@@ -350,7 +350,49 @@ const setup = (
           });
           if (state.archiveAfterThreadCreate) state.lifecycle = "archived";
         }
-        if (command.type === "message.dispatch") order.push("engine.message.dispatch");
+        if (command.type === "message.dispatch") {
+          order.push("engine.message.dispatch");
+          if (command.dispatchMode.type === "defer_start") {
+            const current = snapshots.get(command.threadId)!;
+            snapshots.set(command.threadId, {
+              ...current,
+              projection: {
+                ...current.projection,
+                runs: [
+                  ...current.projection.runs,
+                  {
+                    id: `run:${command.messageId}`,
+                    userMessageId: command.messageId,
+                    status: "preparing",
+                    ordinal: current.projection.runs.length + 1,
+                  } as never,
+                ],
+              },
+            });
+          }
+        }
+        if (
+          command.type === "prepared-run.release" ||
+          command.type === "prepared-run.fail" ||
+          command.type === "prepared-run.retry"
+        ) {
+          const current = snapshots.get(command.threadId)!;
+          const status =
+            command.type === "prepared-run.release"
+              ? "starting"
+              : command.type === "prepared-run.fail"
+                ? "failed"
+                : "preparing";
+          snapshots.set(command.threadId, {
+            ...current,
+            projection: {
+              ...current.projection,
+              runs: current.projection.runs.map((run) =>
+                run.id === command.runId ? ({ ...run, status } as never) : run,
+              ),
+            },
+          });
+        }
         if (
           command.type === "thread.archive" ||
           command.type === "thread.unarchive" ||
@@ -466,6 +508,38 @@ const setup = (
           sequence: 1,
         } as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "thread.authority") {
+        const request = input as { threadId: string; runId: string };
+        const run = snapshots
+          .get(request.threadId)
+          ?.projection.runs.find((candidate) => candidate.id === request.runId);
+        return (run ? { status: run.status } : null) as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "execution.activity")
+        return {
+          snapshotSequence: 1,
+          items: [...snapshots.values()].flatMap((value) => {
+            const active = value.projection.runs.find((run) =>
+              ["preparing", "starting", "running", "waiting"].includes(run.status),
+            );
+            return active
+              ? [
+                  {
+                    rootThreadId: value.projection.thread.id,
+                    status: "running",
+                    activeRunId: active.id,
+                    pendingRequestCount: 0,
+                    activeTaskCount: 0,
+                    resumesAutomatically: false,
+                    providerInstanceId: "codex",
+                    model: "model-a",
+                    updatedAt: "2026-10-14T00:00:00Z",
+                  },
+                ]
+              : [];
+          }),
+          nextCursor: null,
+        } as unknown as AgentRuntimeOperations[M]["output"];
       if (method === "run.outcome") {
         const request = input as AgentRuntimeOperations["run.outcome"]["input"];
         const run = snapshots
@@ -633,6 +707,17 @@ const setup = (
   );
   return { owner, bindings, snapshots, commands, calls, applied, actors, order, state, cleanups };
 };
+
+/** Background preparation dispatches on its own fiber; yield until the command lands. */
+const awaitCommand = (fixture: ReturnType<typeof setup>, type: AgentCommand["type"]) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      const found = [...fixture.commands.values()].find((command) => command.type === type);
+      if (found) return found;
+      yield* Effect.yieldNow;
+    }
+    return yield* Effect.die(new Error(`${type} was never dispatched`));
+  });
 
 it.effect("creates and binds an absent product Session before dispatch and reuses its launch", () =>
   Effect.gen(function* () {
@@ -816,7 +901,7 @@ it.effect(
 );
 
 it.effect(
-  "creates metadata before Core promotion and starts one execution after binding on retry",
+  "binds the product Session before execution metadata and starts one execution on retry",
   () =>
     Effect.gen(function* () {
       const fixture = setup();
@@ -825,8 +910,8 @@ it.effect(
       assert.isTrue((yield* owner.launch(launch).pipe(Effect.result))._tag === "Failure");
       const bound = fixture.bindings.get(launch.sessionId)!;
       assert.isBelow(
-        fixture.order.indexOf("engine.thread.create"),
         fixture.order.indexOf("core.bind"),
+        fixture.order.indexOf("engine.thread.create"),
       );
       assert.equal(fixture.commands.size, 1);
       const result = yield* owner.launch(launch);
@@ -1150,10 +1235,8 @@ it.effect("Core Page refusal and Project lifecycle changes prevent execution adm
     fixture.state.failCore = true;
     assert.equal((yield* owner.launch(launch).pipe(Effect.result))._tag, "Failure");
     assert.equal(fixture.bindings.size, 0);
-    assert.deepEqual(
-      [...fixture.commands.values()].map((command) => command.type),
-      ["thread.create"],
-    );
+    // A Session Core refuses never gains execution metadata or a workspace.
+    assert.deepEqual([...fixture.commands.values()], []);
     fixture.state.failCore = false;
     yield* owner.launch(launch);
     const before = fixture.commands.size;
@@ -1195,23 +1278,16 @@ it.effect("another Session's execution binding cannot acknowledge a failed launc
     fixture.state.failCoreAcknowledgment = true;
     fixture.state.replaceBindingProof = true;
     assert.equal((yield* owner.launch(launch).pipe(Effect.result))._tag, "Failure");
-    assert.deepEqual(
-      [...fixture.commands.values()].map((command) => command.type),
-      ["thread.create"],
-    );
+    assert.deepEqual([...fixture.commands.values()], []);
   }),
 );
 
 it.effect(
-  "unavailable Core proof retains metadata and workspace for the same request without executing",
+  "an unproven Core binding admits no workspace or execution until the same request succeeds",
   () =>
     Effect.gen(function* () {
       const events: string[] = [];
       const fixture = setup({
-        reconcileWorkspace: ({ cwd, threadId }) =>
-          Effect.sync(() => {
-            events.push(`reconcile:${cwd}:${threadId}`);
-          }),
         prepareWorkspace: () =>
           Effect.succeed({
             location: {
@@ -1235,30 +1311,27 @@ it.effect(
       fixture.state.failBindingProof = true;
       const input = { ...launch, runInTarget: "newWorktree" as const };
       assert.equal((yield* owner.launch(input).pipe(Effect.result))._tag, "Failure");
-      assert.deepEqual(events, ["retain"]);
-      assert.deepEqual(
-        [...fixture.commands.values()].map((command) => command.type),
-        ["thread.create"],
-      );
+      assert.deepEqual(events, []);
+      assert.deepEqual([...fixture.commands.values()], []);
       fixture.state.failBindingProof = false;
       fixture.state.failCoreAcknowledgment = false;
       const result = yield* owner.launch(input);
       assert.equal(result.threadId, fixture.bindings.get(launch.sessionId)!.runtime_thread_id);
-      assert.equal(fixture.commands.size, 2);
       assert.equal(fixture.applied.length, 1);
-      assert.deepEqual(events, ["retain", `reconcile:/worktrees/uncertain:${result.threadId}`]);
+      yield* awaitCommand(fixture, "prepared-run.release");
+      assert.deepEqual(events, [`attach:${result.threadId}`]);
       assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
     }),
 );
 
-it.effect("Project archive between metadata creation and Core binding admits no Run", () =>
+it.effect("a Project archived while its launch is in flight admits no Run", () =>
   Effect.gen(function* () {
     const fixture = setup();
     const owner = yield* fixture.owner;
     fixture.state.archiveAfterThreadCreate = true;
     assert.equal((yield* owner.launch(launch).pipe(Effect.result))._tag, "Failure");
-    assert.equal(fixture.bindings.size, 0);
-    assert.equal(fixture.applied.length, 0);
+    // The bound Session keeps its deterministic Thread; nothing executes in an archived Project.
+    assert.equal(fixture.bindings.size, 1);
     assert.deepEqual(
       [...fixture.commands.values()].map((command) => command.type),
       ["thread.create"],
@@ -1517,7 +1590,7 @@ it.effect("Agent-authored launch retains its provenance for Core Session and Pag
 );
 
 it.effect(
-  "launch prepares one scoped workspace and reconciles its durable execution before attachment",
+  "a worktree launch keeps its prompt durable while one workspace is prepared and released",
   () =>
     Effect.gen(function* () {
       const events: string[] = [];
@@ -1558,12 +1631,29 @@ it.effect(
         worktreeStartingState: { type: "branch" as const, branchName: "feature" },
       };
       const result = yield* owner.launch(input);
-      assert.deepEqual(events, ["retain", `attach:${result.threadId}`, "release"]);
+      yield* awaitCommand(fixture, "prepared-run.release");
+      const types = [...fixture.commands.values()].map((command) => command.type);
+      // The prompt is durable before any filesystem work; the Run starts after relocation.
+      assert.deepEqual(types, [
+        "thread.create",
+        "message.dispatch",
+        "prepared-run.progress",
+        "thread.metadata.update",
+        "prepared-run.release",
+      ]);
+      const dispatched = [...fixture.commands.values()][1] as Extract<
+        AgentCommand,
+        { type: "message.dispatch" }
+      >;
+      assert.deepEqual(dispatched.dispatchMode, {
+        type: "defer_start",
+        workspaceStrategy: { type: "worktree", baseRef: "feature" },
+      });
+      assert.deepEqual(events, [`attach:${result.threadId}`, "release"]);
       assert.equal(prepared[0]!.sourceCwd, "/workspace");
       assert.equal(prepared[0]!.localEnvironmentConfigPath, "environment.toml");
       assert.equal(
-        (fixture.commands.values().next().value as Extract<AgentCommand, { type: "thread.create" }>)
-          .worktreePath,
+        fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
         "/worktrees/task/packages/app",
       );
       assert.isFalse(
@@ -1571,8 +1661,72 @@ it.effect(
         "Launch must not hydrate transcript bodies",
       );
       yield* owner.launch(input);
-      assert.equal(prepared.length, 1, "Receipt replay reuses the saved workspace");
+      assert.equal(prepared.length, 1, "Receipt replay never prepares a second workspace");
     }),
+);
+
+it.effect(
+  "a failed worktree preparation can be retried or started in the source checkout",
+  () =>
+    Effect.gen(function* () {
+      let attempts = 0;
+      const fixture = setup({
+        prepareWorkspace: () =>
+          Effect.suspend(() =>
+            (attempts += 1) === 1
+              ? Effect.fail(new Error("Branch feature is checked out elsewhere"))
+              : Effect.succeed({
+                  location: {
+                    cwd: "/worktrees/retried",
+                    workspaceRoots: ["/worktrees/retried"],
+                    managedWorktreePath: "/worktrees/retried",
+                    projectlessOutputDirectory: null,
+                    projectlessWorkspaceBrowserRoot: null,
+                  },
+                  retain: Effect.void,
+                  attach: () => Effect.void,
+                }),
+          ) as never,
+      });
+      const owner = yield* fixture.owner;
+      const result = yield* owner.launch({ ...launch, runInTarget: "newWorktree" });
+      const failed = (yield* awaitCommand(fixture, "prepared-run.fail")) as Extract<
+        AgentCommand,
+        { type: "prepared-run.fail" }
+      >;
+      assert.include(failed.failure.message, "checked out elsewhere");
+      const runId = failed.runId;
+      yield* owner.retryPreparation({
+        sessionId: result.sessionId,
+        requestId: "retry-one",
+        runId,
+        workLocally: false,
+      });
+      yield* awaitCommand(fixture, "prepared-run.release");
+      assert.equal(
+        fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
+        "/worktrees/retried",
+      );
+      assert.equal(attempts, 2);
+    }),
+);
+
+it.effect("a preparation interrupted by a restart fails readably instead of waiting forever", () =>
+  Effect.gen(function* () {
+    const fixture = setup({
+      prepareWorkspace: () => Effect.never as never,
+    });
+    const owner = yield* fixture.owner;
+    const result = yield* owner.launch({ ...launch, runInTarget: "newWorktree" });
+    // A fresh Main process has no live preparation for the waiting Run.
+    const restarted = yield* fixture.owner;
+    yield* restarted.settleInterruptedPreparations();
+    const failed = [...fixture.commands.values()].find(
+      (command) => command.type === "prepared-run.fail",
+    ) as Extract<AgentCommand, { type: "prepared-run.fail" }> | undefined;
+    assert.include(failed?.failure.message ?? "", "interrupted");
+    assert.equal(failed?.threadId, result.threadId);
+  }),
 );
 
 it.effect(
@@ -2089,7 +2243,7 @@ it.effect(
 );
 
 it.effect(
-  "captures NFM intelligence and planning before workspace creation and retries one submission",
+  "captures NFM intelligence and planning before binding and workspace creation and retries once",
   () =>
     Effect.gen(function* () {
       let workspaceCalls = 0;
@@ -2101,7 +2255,8 @@ it.effect(
               fixture.calls.filter((call) => call.method === "providers.read").length,
               1,
             );
-            assert.equal(fixture.applied.length, 0);
+            // The product Session is admitted before any workspace work starts.
+            assert.equal(fixture.applied.length, 1);
             return {
               location: { cwd: "/workspace", branch: null, worktreePath: null },
               retain: Effect.void,

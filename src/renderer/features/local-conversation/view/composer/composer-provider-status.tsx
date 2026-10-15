@@ -10,8 +10,7 @@ export function ComposerProviderStatus({
   status: ConversationProviderStatus;
   onErrorMessage: (message: string | null) => void;
 }) {
-  const [pending, setPending] = useState(false);
-  const action = status.action;
+  const [pendingLabel, setPendingLabel] = useState<string | null>(null);
   return (
     <div
       role="status"
@@ -21,13 +20,14 @@ export function ComposerProviderStatus({
       )}
     >
       <span className="min-w-0 truncate">{status.message}</span>
-      {action ? (
+      {status.actions?.map((action) => (
         <button
+          key={action.label}
           type="button"
-          disabled={pending}
+          disabled={pendingLabel !== null}
           className="shrink-0 cursor-interaction rounded-sm text-token-text-secondary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:opacity-60"
           onClick={() => {
-            setPending(true);
+            setPendingLabel(action.label);
             onErrorMessage(null);
             void action
               .run()
@@ -36,12 +36,12 @@ export function ComposerProviderStatus({
                   cause instanceof Error ? cause.message : `Could not ${action.label}`,
                 ),
               )
-              .finally(() => setPending(false));
+              .finally(() => setPendingLabel(null));
           }}
         >
-          {pending ? action.pendingLabel : action.label}
+          {pendingLabel === action.label ? action.pendingLabel : action.label}
         </button>
-      ) : null}
+      ))}
     </div>
   );
 }
