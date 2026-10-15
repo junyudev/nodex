@@ -150,7 +150,12 @@ it.effect("opens in the Runtime submission window using its exact engine Run coo
       } as never,
     });
     const execute = yield* subject.build;
-    const leased = { ...authority, threadId: "runtime:lease", turnId: "runtime-run:lease" };
+    const leased = {
+      ...authority,
+      threadId: "engine-thread",
+      turnId: "engine-run",
+      runtime: { sessionId: "caller-session", runtimeId: "runtime", turnKind: "run" as const },
+    };
     const caller = createHostedAppToolCaller({
       backend: "codex",
       authority: leased,

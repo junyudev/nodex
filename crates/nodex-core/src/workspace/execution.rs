@@ -305,11 +305,7 @@ fn resolve_authority_record(
         });
     };
     let mut authority = validate_authority_row(&row)?;
-    authority.actor_project_id = if thread_id.starts_with("runtime:") {
-        super::agent_runtime_authority::validate_admission(connection, library_id, &authority)?
-    } else {
-        require_visible_thread(connection, library_id, root_thread_id)?
-    };
+    authority.actor_project_id = require_visible_thread(connection, library_id, root_thread_id)?;
     let matches_current_coordinates = authority.root_thread_id == root_thread_id
         && authority.library_id == coordinates.library_id
         && row.profile_id == coordinates.profile_id
@@ -353,17 +349,17 @@ pub(crate) fn validate_persisted_turn_authority(
             "Agent Turn provenance no longer matches current Profile authority",
         ));
     }
-    if supplied.thread_id.starts_with("runtime:") {
-        super::agent_runtime_authority::validate_admission(connection, library_id, supplied)?;
-    } else {
-        require_visible_thread(connection, library_id, &supplied.thread_id)?;
-        require_visible_thread(connection, library_id, &supplied.root_thread_id)?;
+    let mut identity = supplied.clone();
+    identity.actor_project_id = None;
+    if let Some(runtime) = &supplied.runtime {
+        super::agent_runtime_authority::validate(connection, library_id, supplied, runtime)?;
+        return authority_fingerprint(&identity);
     }
+    require_visible_thread(connection, library_id, &supplied.thread_id)?;
+    require_visible_thread(connection, library_id, &supplied.root_thread_id)?;
     let row = read_authority_row(connection, &supplied.thread_id, &supplied.turn_id)?
         .ok_or_else(|| unauthorized("Agent Turn has no persisted authority"))?;
     let persisted = validate_authority_row(&row)?;
-    let mut identity = supplied.clone();
-    identity.actor_project_id = None;
     if persisted != identity || row.profile_id != provenance.profile_id {
         return Err(unauthorized(
             "Agent Turn provenance does not match its persisted authority",
@@ -525,6 +521,7 @@ pub(super) fn admit_turn_authority(
         actor_project_id: current_project_id.clone(),
         library_id: coordinates.library_id,
         store_epoch: coordinates.store_epoch,
+        runtime: None,
     };
     persist_turn_authority(connection, &coordinates.profile_id, &authority)?;
     finish_execution_mutation(
@@ -813,6 +810,7 @@ fn validate_authority_row(row: &AuthorityRow) -> Result<ProjectWorkspaceTurnAuth
         actor_project_id: None,
         library_id: row.library_id.clone(),
         store_epoch: row.store_epoch.clone(),
+        runtime: None,
     };
     if authority_fingerprint(&authority)? != row.authority_fingerprint {
         return Err(corrupt("Turn execution fingerprint is invalid"));
@@ -857,15 +855,23 @@ pub(super) fn persist_turn_authority(
 }
 
 fn authority_fingerprint(authority: &ProjectWorkspaceTurnAuthority) -> Result<String, StoreError> {
-    let bytes = serde_json::to_vec(&json!([
-        AUTHORITY_PROVENANCE_VERSION,
-        authority.thread_id,
-        authority.turn_id,
-        authority.root_thread_id,
-        authority.library_id,
-        authority.store_epoch
-    ]))
-    .map_err(|_| internal("Turn execution identity cannot be fingerprinted"))?;
+    let mut identity = vec![
+        json!(AUTHORITY_PROVENANCE_VERSION),
+        json!(authority.thread_id),
+        json!(authority.turn_id),
+        json!(authority.root_thread_id),
+        json!(authority.library_id),
+        json!(authority.store_epoch),
+    ];
+    if let Some(runtime) = &authority.runtime {
+        identity.push(json!([
+            runtime.session_id,
+            runtime.runtime_id,
+            runtime.turn_kind
+        ]));
+    }
+    let bytes = serde_json::to_vec(&identity)
+        .map_err(|_| internal("Turn execution identity cannot be fingerprinted"))?;
     Ok(sha256(&bytes))
 }
 

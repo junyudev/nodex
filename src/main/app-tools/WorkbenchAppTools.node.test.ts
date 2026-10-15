@@ -328,8 +328,9 @@ it.effect(
       });
       const hostedAuthority = {
         ...authority,
-        threadId: "runtime:lease",
-        turnId: "runtime-run:lease",
+        threadId: "engine-thread",
+        turnId: "engine-run",
+        runtime: { sessionId: "session", runtimeId: "runtime", turnKind: "run" as const },
       };
       const caller = createHostedAppToolCaller({
         backend: "codex",

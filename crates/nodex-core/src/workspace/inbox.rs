@@ -14,6 +14,7 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxPageBasis,
     ProjectWorkspaceInboxProposalOrigin,
 };
+use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -410,42 +411,34 @@ fn require_turn_capacity(
     Ok(())
 }
 
-/// Core resolves provenance from the admitted credential, never from a foreground Run.
-/// A native connection without causal Run evidence keeps that coordinate empty.
+/// Runtime callers name their Session and engine coordinates, never a foreground Run guessed by
+/// Core. A native connection without causal Run evidence keeps that coordinate empty.
 fn agent_source(
     connection: &Connection,
     provenance: &AgentTurnProvenance,
 ) -> Result<EntrySource, StoreError> {
     let authority = &provenance.authority;
-    let runtime = connection
-        .query_row(
-            "SELECT session_id, runtime_id, runtime_thread_id, runtime_run_id, NULL \
-         FROM nodex_agent_runtime_turn_admissions \
-         WHERE authority_thread_id=?1 AND authority_turn_id=?2 AND active=1 \
-         UNION ALL \
-         SELECT session_id, runtime_id, runtime_thread_id, NULL, incarnation_id \
-         FROM nodex_agent_runtime_native_session_admissions \
-         WHERE authority_thread_id=?1 AND authority_turn_id=?2 AND active=1 LIMIT 1",
-            params![authority.thread_id, authority.turn_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                ))
-            },
-        )
-        .optional()?;
-    let (session_id, thread_id, turn_id, budget_key) = match runtime {
-        Some((session, runtime, thread, run, incarnation)) => {
-            let key = if let Some(run) = &run {
-                serde_json::json!(["runtime-run", runtime, thread, run])
+    let (session_id, thread_id, turn_id, budget_key) = match &authority.runtime {
+        Some(runtime) => {
+            let run = (runtime.turn_kind == ProjectWorkspaceAgentRuntimeTurnKind::Run)
+                .then(|| authority.turn_id.clone());
+            let kind = if run.is_some() {
+                "runtime-run"
             } else {
-                serde_json::json!(["native-connection", runtime, thread, incarnation])
+                "native-connection"
             };
-            (Some(session), thread, run, key.to_string())
+            let key = serde_json::json!([
+                kind,
+                runtime.runtime_id,
+                authority.thread_id,
+                authority.turn_id
+            ]);
+            (
+                Some(runtime.session_id.clone()),
+                authority.thread_id.clone(),
+                run,
+                key.to_string(),
+            )
         }
         None => {
             let session = connection

@@ -354,10 +354,6 @@ fn set_session_archived(
     authority: &SessionAuthority,
     archived: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    if archived {
-        super::agent_runtime_native_session::retire_session(connection, session_id)?;
-        connection.execute("UPDATE nodex_agent_runtime_turn_admissions SET active=0 WHERE session_id=?1 AND active=1",[session_id])?;
-    }
     let now = sqlite_now(connection)?;
     let changed = if archived {
         connection.execute(

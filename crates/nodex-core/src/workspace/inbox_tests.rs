@@ -561,6 +561,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
                 actor_project_id: Some("project:default".into()),
                 library_id: "library-1".into(),
                 store_epoch: "epoch-1".into(),
+                runtime: None,
             },
         }),
         intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
@@ -959,44 +960,42 @@ fn agent_send(
     )
 }
 
+fn runtime_provenance(
+    thread_id: &str,
+    turn_id: &str,
+    turn_kind: nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind,
+) -> AgentTurnProvenance {
+    AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: ProjectWorkspaceTurnAuthority {
+            thread_id: thread_id.into(),
+            turn_id: turn_id.into(),
+            root_thread_id: "thread:runtime-root".into(),
+            actor_project_id: Some("project:default".into()),
+            library_id: "library-1".into(),
+            store_epoch: "epoch-1".into(),
+            runtime: Some(
+                nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeAuthority {
+                    session_id: "session:runtime-source".into(),
+                    runtime_id: "runtime:inbox".into(),
+                    turn_kind,
+                },
+            ),
+        },
+    }
+}
+
 #[test]
-fn runtime_child_capture_uses_its_admitted_session_and_run_after_other_sessions_start() {
-    use nodex_core_contracts::workspace::{
-        ProjectWorkspaceAgentRuntimeNativeSource, ProjectWorkspaceAgentRuntimeTurnIdentity,
-    };
+fn runtime_child_capture_uses_its_bound_session_and_run_after_other_sessions_start() {
+    use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
     let workspace = seeded_workspace();
     let module = &workspace.module;
     runtime_session(module);
-    let identity = ProjectWorkspaceAgentRuntimeTurnIdentity {
-        runtime_id: "runtime:inbox".into(),
-        thread_id: "thread:child-without-sidebar-session".into(),
-        run_id: "run:child".into(),
-        lease_id: "lease:first".into(),
-    };
-    let admit = |id: ProjectWorkspaceAgentRuntimeTurnIdentity| {
-        ProjectWorkspaceIntent::AdmitAgentRuntimeTurnAuthority {
-            session_id: "session:runtime-source".into(),
-            identity: id,
-            native_source: ProjectWorkspaceAgentRuntimeNativeSource {
-                provider_session_id: "provider:child".into(),
-                native_generation: 1,
-            },
-            parent: None,
-        }
-    };
-    apply_host(module, "runtime-admit", admit(identity.clone()));
-    let ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority { resolution } = read_host(
-        module,
-        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
-            identity: identity.clone(),
-        },
-    ) else {
-        panic!("authority")
-    };
-    let provenance = AgentTurnProvenance {
-        profile_id: "profile-1".into(),
-        authority: resolution.authority.expect("admitted"),
-    };
+    let provenance = runtime_provenance(
+        "thread:child-without-sidebar-session",
+        "run:child",
+        ProjectWorkspaceAgentRuntimeTurnKind::Run,
+    );
     create_session_thread(module, "other", "session:other", "thread:other", None, 2);
     agent_send(module, &provenance, "runtime-child")
         .expect("child can capture while another Session runs");
@@ -1005,8 +1004,8 @@ fn runtime_child_capture_uses_its_admitted_session_and_run_after_other_sessions_
         item.source,
         ProjectWorkspaceInboxSource::Agent {
             session_id: Some("session:runtime-source".into()),
-            thread_id: Some(identity.thread_id.clone()),
-            run_id: Some(identity.run_id.clone()),
+            thread_id: Some("thread:child-without-sidebar-session".into()),
+            run_id: Some("run:child".into()),
             project_id: Some("project:default".into()),
             label: "Background work".into()
         }
@@ -1014,28 +1013,9 @@ fn runtime_child_capture_uses_its_admitted_session_and_run_after_other_sessions_
     for i in 1..super::inbox::MAX_AGENT_MESSAGES_PER_TURN {
         agent_send(module, &provenance, &format!("runtime-child:{i}")).expect("within cap");
     }
-    let mut retried_identity = identity.clone();
-    retried_identity.lease_id = "lease:retry".into();
-    apply_host(
-        module,
-        "runtime-admit-retry",
-        admit(retried_identity.clone()),
-    );
-    let ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority { resolution } = read_host(
-        module,
-        ProjectWorkspaceRead::AgentRuntimeTurnAuthority {
-            identity: retried_identity,
-        },
-    ) else {
-        panic!("authority")
-    };
-    let retry = AgentTurnProvenance {
-        profile_id: "profile-1".into(),
-        authority: resolution.authority.unwrap(),
-    };
     assert_eq!(
-        agent_send(module, &retry, "runtime-over")
-            .expect_err("same Run retains capture capacity across retry leases")
+        agent_send(module, &provenance, "runtime-over")
+            .expect_err("one Run keeps one capture budget across engine restarts")
             .code,
         CoreErrorCode::ResourceExhausted
     );
@@ -1049,51 +1029,30 @@ fn runtime_child_capture_uses_its_admitted_session_and_run_after_other_sessions_
     );
     apply_host(
         module,
-        "runtime-revoke",
-        ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity },
+        "runtime-delete",
+        ProjectWorkspaceIntent::DeleteSession {
+            session_id: "session:runtime-source".into(),
+        },
     );
     assert_eq!(
         agent_send(module, &provenance, "runtime-stale")
-            .expect_err("cancelled credential is stale")
+            .expect_err("a deleted Session ends its executions")
             .code,
         CoreErrorCode::Unauthorized
     );
 }
 
 #[test]
-fn native_connection_capture_keeps_unknown_run_empty_and_retires_with_the_connection() {
-    use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeNativeSessionIdentity;
+fn native_connection_capture_keeps_unknown_run_empty_with_its_own_budget() {
+    use nodex_core_contracts::workspace::ProjectWorkspaceAgentRuntimeTurnKind;
     let workspace = seeded_workspace();
     let module = &workspace.module;
     runtime_session(module);
-    let identity = ProjectWorkspaceAgentRuntimeNativeSessionIdentity {
-        runtime_id: "runtime:inbox".into(),
-        thread_id: "thread:acp-child".into(),
-        lease_id: "lease:native".into(),
-        provider_session_id: "provider:acp".into(),
-        native_generation: 1,
-        incarnation_id: "connection:one".into(),
-    };
-    apply_host(
-        module,
-        "native-admit",
-        ProjectWorkspaceIntent::AdmitAgentRuntimeNativeSessionAuthority {
-            session_id: "session:runtime-source".into(),
-            identity: identity.clone(),
-        },
+    let provenance = runtime_provenance(
+        "thread:acp-child",
+        "connection:one",
+        ProjectWorkspaceAgentRuntimeTurnKind::NativeConnection,
     );
-    let ProjectWorkspaceReadValue::AgentRuntimeNativeSessionAuthority { resolution } = read_host(
-        module,
-        ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority {
-            identity: identity.clone(),
-        },
-    ) else {
-        panic!("authority")
-    };
-    let provenance = AgentTurnProvenance {
-        profile_id: "profile-1".into(),
-        authority: resolution.authority.unwrap(),
-    };
     agent_send(module, &provenance, "native-unknown").expect("native caller");
     let ProjectWorkspaceInboxSource::Agent {
         session_id,
@@ -1118,25 +1077,12 @@ fn native_connection_capture_keeps_unknown_run_empty_and_retires_with_the_connec
             .code,
         CoreErrorCode::ResourceExhausted
     );
-    assert!(
-        agent_send(module, &provenance, "native-unknown")
-            .unwrap()
-            .committed
-            .receipt
-            .mutation
-            .duplicate
+    let next_connection = runtime_provenance(
+        "thread:acp-child",
+        "connection:two",
+        ProjectWorkspaceAgentRuntimeTurnKind::NativeConnection,
     );
-    apply_host(
-        module,
-        "native-revoke",
-        ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSessionAuthority { identity },
-    );
-    assert_eq!(
-        agent_send(module, &provenance, "native-stale")
-            .unwrap_err()
-            .code,
-        CoreErrorCode::Unauthorized
-    );
+    agent_send(module, &next_connection, "native-next").expect("a new connection has its own cap");
 }
 
 #[test]

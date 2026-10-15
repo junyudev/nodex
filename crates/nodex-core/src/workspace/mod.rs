@@ -1,9 +1,7 @@
 mod agent_command;
-mod agent_runtime_admission_window;
 mod agent_runtime_authority;
 mod agent_runtime_binding;
 mod agent_runtime_cleanup;
-mod agent_runtime_native_session;
 mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;

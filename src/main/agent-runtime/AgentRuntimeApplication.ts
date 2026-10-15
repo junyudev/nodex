@@ -275,11 +275,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       undefined,
       provenance.authority.actor_project_id ?? null,
     );
-    if (
-      result.value.kind !== "agent_authority" ||
-      !result.value.resolution.persisted ||
-      !result.value.resolution.authority
-    )
+    if (result.value.kind !== "agent_authority" || !result.value.resolution.authority)
       return yield* failure("caller", "The Agent connection is no longer available");
   });
 
@@ -484,7 +480,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const projectId = binding.project_id ?? null;
     const scope = yield* projectScope(projectId, false);
     const session = yield* host(
-      core.workspace.read({ kind: "session", session_id: binding.session_id }, undefined, projectId),
+      core.workspace.read(
+        { kind: "session", session_id: binding.session_id },
+        undefined,
+        projectId,
+      ),
     );
     const title =
       session.value.kind === "session" ? session.value.session.display_title.trim() : "";

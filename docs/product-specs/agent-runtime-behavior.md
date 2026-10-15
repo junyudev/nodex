@@ -74,8 +74,8 @@ frames retain their larger input budget. Continuation notifications use a shared
 accepted notifications and returns an explicit failure. Durable pending deliveries
 remain in SQL for restart recovery rather than spawning unbounded retry waiters.
 
-Connection closure revokes only its leases. Restart admits new leases while old calls
-remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
+Connection closure invalidates only its own calls. After a restart, new calls are proven
+against the new process while old calls remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
 integrity and exact execution routing apply to every operation. Project membership,
 working directories and list filters organize content and execution.
 
@@ -344,7 +344,7 @@ Run, a pending runtime request, and active provider-native background work. Desc
 archived and deleted Threads remain relevant while their execution is active; terminal
 foreground work does not hide a live native background task.
 Closing an idle Project detaches its native provider bindings through durable Runtime
-commands and revokes their tool credentials. The close waits for provider cleanup to
+commands, which ends their tool calls. The close waits for provider cleanup to
 finish and preserves Session and Thread history. An active execution blocks detaching;
 an empty Project does not start an execution process just to close it.
 

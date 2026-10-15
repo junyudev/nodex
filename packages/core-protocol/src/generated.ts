@@ -1543,20 +1543,6 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
-        readonly CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission: {
-            readonly authority: components["schemas"]["CollectionWindowAuthority"];
-            readonly items: readonly ({
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-                /** @enum {string} */
-                readonly kind: "run";
-                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
-            } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-                /** @enum {string} */
-                readonly kind: "native_session";
-            })[];
-            readonly next_cursor?: string | null;
-        };
         readonly CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
@@ -7285,37 +7271,6 @@ export interface components {
                 readonly thread_id: string;
                 readonly turn_id: string;
             } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-                /** @enum {string} */
-                readonly kind: "admit_agent_runtime_turn_authority";
-                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
-                readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-                readonly session_id: string;
-            } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-                /** @enum {string} */
-                readonly kind: "revoke_agent_runtime_turn_authority";
-            } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-                /** @enum {string} */
-                readonly kind: "admit_agent_runtime_native_session_authority";
-                readonly session_id: string;
-            } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-                /** @enum {string} */
-                readonly kind: "revoke_agent_runtime_native_session_authority";
-            } | {
-                /** @enum {string} */
-                readonly kind: "revoke_agent_runtime_native_source_authorities";
-                readonly lease_id: string;
-                readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
-                readonly runtime_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "revoke_agent_runtime_authorities";
-                readonly lease_id?: string | null;
-                readonly runtime_id: string;
-            } | {
                 readonly cleanup_id: string;
                 /** @enum {string} */
                 readonly kind: "acknowledge_agent_runtime_execution_cleanup";
@@ -8365,20 +8320,6 @@ export interface components {
                 readonly runtime_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-                /** @enum {string} */
-                readonly kind: "agent_runtime_turn_authority";
-            } | {
-                readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-                /** @enum {string} */
-                readonly kind: "agent_runtime_native_session_authority";
-            } | {
-                /** @enum {string} */
-                readonly kind: "agent_runtime_admission_window";
-                readonly lease_id: string;
-                readonly runtime_id: string;
-                readonly window: components["schemas"]["CollectionWindowRequest"];
-            } | {
                 /** @enum {string} */
                 readonly kind: "agent_authority";
                 readonly provenance: components["schemas"]["AgentTurnProvenance"];
@@ -8937,23 +8878,13 @@ export interface components {
         };
         readonly ProjectWorkspaceAgentConfigValue: string | boolean;
         /**
-         * @description Exact native connection lifetime for calls that supply no causal Run metadata.
-         *     Incarnations are unique within a runtime and can never be recycled after retirement.
+         * @description The bound Session of one Agent Runtime execution. `thread_id` and `root_thread_id` are engine
+         *     Thread ids; `turn_id` is the Run, or the native connection when the caller names no Run.
          */
-        readonly ProjectWorkspaceAgentRuntimeNativeSessionIdentity: {
-            readonly incarnation_id: string;
-            readonly lease_id: string;
-            /** Format: int32 */
-            readonly native_generation: number;
-            readonly provider_session_id: string;
+        readonly ProjectWorkspaceAgentRuntimeAuthority: {
             readonly runtime_id: string;
-            readonly thread_id: string;
-        };
-        /** @description Native source captured by the authenticated Host, independent of foreground completion. */
-        readonly ProjectWorkspaceAgentRuntimeNativeSource: {
-            /** Format: int32 */
-            readonly native_generation: number;
-            readonly provider_session_id: string;
+            readonly session_id: string;
+            readonly turn_kind: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnKind"];
         };
         readonly ProjectWorkspaceAgentRuntimeOptions: {
             readonly config_options: readonly components["schemas"]["ProjectWorkspaceAgentConfigOption"][];
@@ -8972,13 +8903,8 @@ export interface components {
             readonly runtime_thread_id: string;
             readonly session_id: string;
         };
-        /** @description Persistent engine and execution identity plus one Host-authenticated credential lifetime. */
-        readonly ProjectWorkspaceAgentRuntimeTurnIdentity: {
-            readonly lease_id: string;
-            readonly run_id: string;
-            readonly runtime_id: string;
-            readonly thread_id: string;
-        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceAgentRuntimeTurnKind: "run" | "native_connection";
         readonly ProjectWorkspaceApplyRequest: components["schemas"]["ModuleApplyRequest_ProjectWorkspaceIntent"];
         readonly ProjectWorkspaceApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_ProjectWorkspaceCommitValue_ProjectWorkspaceReceipt"];
         readonly ProjectWorkspaceBackgroundProcess: {
@@ -9619,37 +9545,6 @@ export interface components {
             readonly thread_id: string;
             readonly turn_id: string;
         } | {
-            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-            /** @enum {string} */
-            readonly kind: "admit_agent_runtime_turn_authority";
-            readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
-            readonly parent?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-            readonly session_id: string;
-        } | {
-            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeTurnIdentity"];
-            /** @enum {string} */
-            readonly kind: "revoke_agent_runtime_turn_authority";
-        } | {
-            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-            /** @enum {string} */
-            readonly kind: "admit_agent_runtime_native_session_authority";
-            readonly session_id: string;
-        } | {
-            readonly identity: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
-            /** @enum {string} */
-            readonly kind: "revoke_agent_runtime_native_session_authority";
-        } | {
-            /** @enum {string} */
-            readonly kind: "revoke_agent_runtime_native_source_authorities";
-            readonly lease_id: string;
-            readonly native_source: components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSource"];
-            readonly runtime_id: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "revoke_agent_runtime_authorities";
-            readonly lease_id?: string | null;
-            readonly runtime_id: string;
-        } | {
             readonly cleanup_id: string;
             /** @enum {string} */
             readonly kind: "acknowledge_agent_runtime_execution_cleanup";
@@ -10269,6 +10164,7 @@ export interface components {
             readonly actor_project_id?: string | null;
             readonly library_id: string;
             readonly root_thread_id: string;
+            readonly runtime?: null | components["schemas"]["ProjectWorkspaceAgentRuntimeAuthority"];
             readonly store_epoch: string;
             readonly thread_id: string;
             readonly turn_id: string;
@@ -10280,6 +10176,10 @@ export interface components {
              */
             readonly admitted_at_ms?: number | null;
             readonly authority?: null | components["schemas"]["ProjectWorkspaceTurnAuthority"];
+            /**
+             * @description Core holds a durable record of this Turn. Agent Runtime authorities are derived from their
+             *     Session binding and never persisted.
+             */
             readonly persisted: boolean;
         };
         readonly QueryReadRequest: components["schemas"]["ModuleReadRequest_QueryRead"];
@@ -11575,18 +11475,6 @@ export interface components {
                     readonly cleanups: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup"];
                     /** @enum {string} */
                     readonly kind: "agent_runtime_execution_cleanup_window";
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "agent_runtime_turn_authority";
-                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "agent_runtime_native_session_authority";
-                    readonly resolution: components["schemas"]["ProjectWorkspaceTurnAuthorityResolution"];
-                } | {
-                    readonly admissions: components["schemas"]["CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission"];
-                    /** @enum {string} */
-                    readonly kind: "agent_runtime_admission_window";
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_authority";

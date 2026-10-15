@@ -957,10 +957,11 @@ Replacement, timeout, renderer loss, server resolution, and Scope close settle t
 at most once. Automatic user-input resolution is a policy over this state, not a second responder
 or timer registry.
 
-Application tools have full access to the current authenticated Profile. Main captures
-exact runtime and Run identities; Core validates their execution leases and transaction
-preconditions. Plan is an Agent planning mode. Parent completion does not revoke child
-or background execution; cancellation, native Scope exit and generation retirement do.
+Application tools have full access to the current authenticated Profile. Main re-proves
+each Agent Runtime call live with the engine; Core validates the named Session binding and
+transaction preconditions without persisting per-Run credentials. Plan is an Agent planning
+mode. Parent completion does not end child or background execution; cancellation, native
+Scope exit and process replacement do.
 
 Each authenticated execution host has ordinary conversation managers in Main and its windows.
 Their shared stream owns role selection, follow intent, canonical snapshots, patches and revision

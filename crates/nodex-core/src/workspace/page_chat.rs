@@ -1072,7 +1072,11 @@ mod tests {
             Some(("runtime:primary", "root:runtime"))
         );
         assert!(runtime.status.is_none());
-        assert!(runtime.conversation_recency_at.is_some_and(|recency| recency > 10));
+        assert!(
+            runtime
+                .conversation_recency_at
+                .is_some_and(|recency| recency > 10)
+        );
         let second = window(first.next_cursor.clone());
         assert_eq!(second.items[0].session_id, "session:native");
         assert!(second.items[0].execution_ref.is_none());

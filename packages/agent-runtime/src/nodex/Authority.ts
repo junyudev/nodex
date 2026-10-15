@@ -1,4 +1,5 @@
 import { ProviderSessionId, type RunId, type ThreadId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Projections from "../orchestration-v2/ProjectionStore.ts";
@@ -61,6 +62,7 @@ export const make = Effect.gen(function* () {
       projectId: state.thread.projectId,
       threadId: state.thread.id,
       runId: run.id,
+      admittedAtMs: DateTime.toEpochMillis(run.requestedAt),
       userMessageId: run.userMessageId,
       attemptId: run.activeAttemptId,
       rootThreadId: state.thread.lineage.rootThreadId,

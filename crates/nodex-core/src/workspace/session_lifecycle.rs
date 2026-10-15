@@ -220,7 +220,6 @@ pub(super) fn delete_session(
         session_id,
         authority.project_id.as_deref(),
     )?;
-    super::agent_runtime_native_session::retire_session(connection, session_id)?;
     let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during deletion"));

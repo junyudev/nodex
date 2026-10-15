@@ -233,7 +233,7 @@ pub(super) fn read_binding(
         .map_err(Into::into)
 }
 
-fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
+pub(super) fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
     if matches!(
         context.adapter,
         AdapterKind::ElectronHost | AdapterKind::Test

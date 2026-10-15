@@ -42,15 +42,17 @@ Parents, children and background work share this model. Plan selects planning be
 Native execution uses full access and automatically approves permission requests;
 questions requiring user information remain interactive.
 
-Desktop Host invocation identity belongs to an exact native connection lease.
-Providers supplying causal call metadata also identify the original Run and attempt.
-Standard ACP calls retain accurate Session identity with an unknown Run left null.
-Host preparation completes before execution starts. Each tool admission verifies the
-captured Session, runtime and native generation, plus the causal Run when supplied. Completion does not
-retire a live background process. Cancellation, process exit and Session deletion
-invalidate their original calls. Replacement execution cannot revive them. Project
-placement determines presentation, working directories and lifecycle, while Profile
-and Store identity determine the physical resources a call addresses.
+Desktop Host invocation identity belongs to an exact native connection of the current
+engine process. Providers supplying causal call metadata also identify the original Run
+and attempt. Standard ACP calls retain accurate Session identity with an unknown Run left
+null. Host preparation completes before execution starts. Each tool use re-proves the
+execution live with the engine and names its engine coordinates and bound Session; Core
+validates that binding inside the same use and keeps no per-Run credential record.
+Completion does not retire a live background process. Cancellation, native connection
+close, process replacement, Session archive and deletion fail the next use of the
+original calls, and replacement execution cannot revive them. Project placement
+determines presentation, working directories and lifecycle, while Profile and Store
+identity determine the physical resources a call addresses.
 
 Conversation reads stay bounded before transcript bodies are decoded. The renderer
 retains keyed item observations and incremental updates; metadata views do not attach

@@ -6429,71 +6429,6 @@
           }
         }
       },
-      "CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "required": [
-                    "identity",
-                    "native_source",
-                    "kind"
-                  ],
-                  "properties": {
-                    "identity": {
-                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "run"
-                      ]
-                    },
-                    "native_source": {
-                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "identity",
-                    "kind"
-                  ],
-                  "properties": {
-                    "identity": {
-                      "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-                    },
-                    "kind": {
-                      "type": "string",
-                      "enum": [
-                        "native_session"
-                      ]
-                    }
-                  }
-                }
-              ]
-            }
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "CollectionWindow_ProjectWorkspaceAgentRuntimeExecutionCleanup": {
         "type": "object",
         "required": [
@@ -30329,154 +30264,6 @@
               },
               {
                 "type": "object",
-                "description": "Host binds authenticated runtime execution identity to one Session.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
-                "required": [
-                  "session_id",
-                  "identity",
-                  "native_source",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "admit_agent_runtime_turn_authority"
-                    ]
-                  },
-                  "native_source": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
-                  },
-                  "parent": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                      }
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "identity",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "revoke_agent_runtime_turn_authority"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Host binds the exact native connection to its product Session, without inventing a Run.",
-                "required": [
-                  "session_id",
-                  "identity",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "admit_agent_runtime_native_session_authority"
-                    ]
-                  },
-                  "session_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "identity",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "revoke_agent_runtime_native_session_authority"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Retires every captured Run and native-session actor for one physical native source.",
-                "required": [
-                  "runtime_id",
-                  "lease_id",
-                  "native_source",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "revoke_agent_runtime_native_source_authorities"
-                    ]
-                  },
-                  "lease_id": {
-                    "type": "string"
-                  },
-                  "native_source": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
-                  },
-                  "runtime_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Revokes outstanding credentials when an engine connection is replaced or stopped.",
-                "required": [
-                  "runtime_id",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "revoke_agent_runtime_authorities"
-                    ]
-                  },
-                  "lease_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "runtime_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
                 "description": "Host acknowledges execution settlement only for the exact durable cleanup identity.",
                 "required": [
                   "cleanup_id",
@@ -35173,70 +34960,6 @@
               },
               {
                 "type": "object",
-                "required": [
-                  "identity",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "agent_runtime_turn_authority"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "An authenticated native connection with no causal Run evidence.",
-                "required": [
-                  "identity",
-                  "kind"
-                ],
-                "properties": {
-                  "identity": {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "agent_runtime_native_session_authority"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "description": "Active execution leases for bounded Host lifecycle reconciliation.",
-                "required": [
-                  "runtime_id",
-                  "lease_id",
-                  "window",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "agent_runtime_admission_window"
-                    ]
-                  },
-                  "lease_id": {
-                    "type": "string"
-                  },
-                  "runtime_id": {
-                    "type": "string"
-                  },
-                  "window": {
-                    "$ref": "#/components/schemas/CollectionWindowRequest"
-                  }
-                }
-              },
-              {
-                "type": "object",
                 "description": "Authenticates current Turn credentials before creating a new execution root.",
                 "required": [
                   "provenance",
@@ -37206,55 +36929,23 @@
           }
         ]
       },
-      "ProjectWorkspaceAgentRuntimeNativeSessionIdentity": {
+      "ProjectWorkspaceAgentRuntimeAuthority": {
         "type": "object",
-        "description": "Exact native connection lifetime for calls that supply no causal Run metadata.\nIncarnations are unique within a runtime and can never be recycled after retirement.",
+        "description": "The bound Session of one Agent Runtime execution. `thread_id` and `root_thread_id` are engine\nThread ids; `turn_id` is the Run, or the native connection when the caller names no Run.",
         "required": [
+          "session_id",
           "runtime_id",
-          "thread_id",
-          "lease_id",
-          "provider_session_id",
-          "native_generation",
-          "incarnation_id"
+          "turn_kind"
         ],
         "properties": {
-          "incarnation_id": {
-            "type": "string"
-          },
-          "lease_id": {
-            "type": "string"
-          },
-          "native_generation": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "provider_session_id": {
-            "type": "string"
-          },
           "runtime_id": {
             "type": "string"
           },
-          "thread_id": {
+          "session_id": {
             "type": "string"
-          }
-        }
-      },
-      "ProjectWorkspaceAgentRuntimeNativeSource": {
-        "type": "object",
-        "description": "Native source captured by the authenticated Host, independent of foreground completion.",
-        "required": [
-          "provider_session_id",
-          "native_generation"
-        ],
-        "properties": {
-          "native_generation": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
           },
-          "provider_session_id": {
-            "type": "string"
+          "turn_kind": {
+            "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnKind"
           }
         }
       },
@@ -37318,29 +37009,12 @@
           }
         }
       },
-      "ProjectWorkspaceAgentRuntimeTurnIdentity": {
-        "type": "object",
-        "description": "Persistent engine and execution identity plus one Host-authenticated credential lifetime.",
-        "required": [
-          "runtime_id",
-          "thread_id",
-          "run_id",
-          "lease_id"
-        ],
-        "properties": {
-          "lease_id": {
-            "type": "string"
-          },
-          "run_id": {
-            "type": "string"
-          },
-          "runtime_id": {
-            "type": "string"
-          },
-          "thread_id": {
-            "type": "string"
-          }
-        }
+      "ProjectWorkspaceAgentRuntimeTurnKind": {
+        "type": "string",
+        "enum": [
+          "run",
+          "native_connection"
+        ]
       },
       "ProjectWorkspaceApplyRequest": {
         "$ref": "#/components/schemas/ModuleApplyRequest_ProjectWorkspaceIntent"
@@ -40206,154 +39880,6 @@
           },
           {
             "type": "object",
-            "description": "Host binds authenticated runtime execution identity to one Session.\nRead the resolution after every apply: receipt replay never reactivates revoked authority.",
-            "required": [
-              "session_id",
-              "identity",
-              "native_source",
-              "kind"
-            ],
-            "properties": {
-              "identity": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "admit_agent_runtime_turn_authority"
-                ]
-              },
-              "native_source": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
-              },
-              "parent": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-                  }
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "identity",
-              "kind"
-            ],
-            "properties": {
-              "identity": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeTurnIdentity"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "revoke_agent_runtime_turn_authority"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Host binds the exact native connection to its product Session, without inventing a Run.",
-            "required": [
-              "session_id",
-              "identity",
-              "kind"
-            ],
-            "properties": {
-              "identity": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "admit_agent_runtime_native_session_authority"
-                ]
-              },
-              "session_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "identity",
-              "kind"
-            ],
-            "properties": {
-              "identity": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSessionIdentity"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "revoke_agent_runtime_native_session_authority"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Retires every captured Run and native-session actor for one physical native source.",
-            "required": [
-              "runtime_id",
-              "lease_id",
-              "native_source",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "revoke_agent_runtime_native_source_authorities"
-                ]
-              },
-              "lease_id": {
-                "type": "string"
-              },
-              "native_source": {
-                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeNativeSource"
-              },
-              "runtime_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "description": "Revokes outstanding credentials when an engine connection is replaced or stopped.",
-            "required": [
-              "runtime_id",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "revoke_agent_runtime_authorities"
-                ]
-              },
-              "lease_id": {
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "runtime_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Host acknowledges execution settlement only for the exact durable cleanup identity.",
             "required": [
               "cleanup_id",
@@ -43082,6 +42608,17 @@
           "root_thread_id": {
             "type": "string"
           },
+          "runtime": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceAgentRuntimeAuthority",
+                "description": "Present for Agent Runtime executions, whose engine coordinates are used verbatim.\nCore validates them against the bound Session on every use and persists nothing per Run."
+              }
+            ]
+          },
           "store_epoch": {
             "type": "string"
           },
@@ -43118,7 +42655,8 @@
             ]
           },
           "persisted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Core holds a durable record of this Turn. Agent Runtime authorities are derived from their\nSession binding and never persisted."
           }
         }
       },
@@ -49497,60 +49035,6 @@
                             "type": "string",
                             "enum": [
                               "agent_runtime_execution_cleanup_window"
-                            ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "resolution",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "agent_runtime_turn_authority"
-                            ]
-                          },
-                          "resolution": {
-                            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityResolution"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "resolution",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "agent_runtime_native_session_authority"
-                            ]
-                          },
-                          "resolution": {
-                            "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthorityResolution"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "admissions",
-                          "kind"
-                        ],
-                        "properties": {
-                          "admissions": {
-                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceAgentRuntimeAdmission"
-                          },
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "agent_runtime_admission_window"
                             ]
                           }
                         }

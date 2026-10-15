@@ -1767,6 +1767,7 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
+            runtime: None,
         };
         AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
@@ -1963,6 +1964,7 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
+            runtime: None,
         };
         let authorization = AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
@@ -2209,6 +2211,7 @@ mod tests {
             actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
+            runtime: None,
         };
         let authorization = AgentExecutionAuthorization {
             provenance: AgentTurnProvenance {
