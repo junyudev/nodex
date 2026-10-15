@@ -661,6 +661,9 @@ describe("task tools", () => {
             Effect.orDie,
           );
           expect(retried.taskId).toBe(started.taskId);
+          // Agents copy the task id into every task tool call; it stays short and unescaped.
+          expect(started.taskId.length).toBeLessThanOrEqual(32);
+          expect(started.taskId).not.toContain("%");
 
           const waited = yield* decodeTaskView(
             yield* call("task_wait", { taskId: started.taskId, timeoutMs: 30_000 }),

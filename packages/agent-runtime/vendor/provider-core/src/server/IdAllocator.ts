@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   CheckpointId,
   CheckpointScopeId,
@@ -193,6 +194,13 @@ const encodePart = (part: string | number): string => encodeURIComponent(String(
 const joinId = (prefix: string, ...parts: ReadonlyArray<string | number>): string =>
   [prefix, ...parts.map(encodePart)].join(":");
 
+/**
+ * Agents address delegated tasks by id and copy it into every task tool call, so it is a short
+ * digest of the delegating command instead of the command id's nested, escaped coordinates.
+ */
+const delegatedTask = (prefix: string, commandId: CommandId): string =>
+  joinId(prefix, "task", createHash("sha256").update(commandId).digest("base64url").slice(0, 22));
+
 export function deriveThreadFromProviderThread(input: {
   readonly driver: ProviderDriverKind;
   readonly providerInstanceId?: ProviderInstanceId;
@@ -257,13 +265,10 @@ export const derive: IdAllocatorV2Derive = {
     ProviderSessionId.make(
       joinId("provider-session", "provider-instance", input.providerInstanceId, "shared"),
     ),
-  delegatedTaskNode: (input) => NodeId.make(joinId("node", "delegated-task", input.commandId)),
-  delegatedTaskThread: (input) =>
-    ThreadId.make(joinId("thread", "delegated-task", input.commandId)),
-  delegatedTaskMessage: (input) =>
-    MessageId.make(joinId("message", "delegated-task", input.commandId)),
-  delegatedTaskTurnItem: (input) =>
-    TurnItemId.make(joinId("turn-item", "delegated-task", input.commandId)),
+  delegatedTaskNode: (input) => NodeId.make(delegatedTask("node", input.commandId)),
+  delegatedTaskThread: (input) => ThreadId.make(delegatedTask("thread", input.commandId)),
+  delegatedTaskMessage: (input) => MessageId.make(delegatedTask("message", input.commandId)),
+  delegatedTaskTurnItem: (input) => TurnItemId.make(delegatedTask("turn-item", input.commandId)),
   createdThreadTurnItem: (input) =>
     TurnItemId.make(joinId("turn-item", "created-thread", input.commandId)),
   threadFromProviderThread: deriveThreadFromProviderThread,
