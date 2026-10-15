@@ -8,7 +8,10 @@ import { CodexMainConversationSettings } from "./CodexMainConversationSettings";
 import { CodexMainConversationHistory } from "./CodexMainConversationHistory";
 import { CodexManualCompactionRuntime } from "./CodexManualCompactionRuntime";
 import { CodexServerRequestResponses } from "./CodexServerRequestResponses";
-import { conversationFixture, turnFixture } from "./conversation-test-fixture";
+import {
+  conversationFixture as hostConversationFixture,
+  turnFixture,
+} from "./conversation-test-fixture";
 import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import {
   CodexAppServerCapabilities,
@@ -81,6 +84,13 @@ import {
   live as conversationRuntimeMapLive,
 } from "./internal/ConversationEntityMap";
 
+/** Main executes native Turns only for explicit remote owners. */
+const OWNER_HOST = "ssh:owner";
+const conversationFixture = (
+  id: string,
+  turns: Parameters<typeof hostConversationFixture>[1] = [],
+) => hostConversationFixture(id, turns, OWNER_HOST);
+
 const response = (): TurnStartResponse =>
   ({
     turn: {
@@ -101,7 +111,7 @@ const missingThread = () =>
     operation: "gateway.request",
     reason: "request",
     retryable: false,
-    hostId: "local",
+    hostId: OWNER_HOST,
     method: "turn/start",
     cause: new CodexAppServerRequestError({
       code: -32600,
@@ -158,6 +168,7 @@ const makeHarness = (input: {
   readonly beforeDispatch?: (method: string) => void;
   readonly queueList?: (params: ThreadQueueListParams) => Effect.Effect<ThreadQueueListResponse>;
   readonly steerPlan?: SteerFixture;
+  readonly threadHost?: string;
   readonly steerRequest?: (
     expectedTurnId: string,
     options: CodexGatewayRequestOptions | undefined,
@@ -252,13 +263,13 @@ const makeHarness = (input: {
         Effect.suspend(() => {
           dispatchFences.push({ method, options });
           input.beforeDispatch?.(method);
-          if (options?.expectedHostId !== "local" || options.expectedGeneration !== generation)
+          if (options?.expectedHostId !== OWNER_HOST || options.expectedGeneration !== generation)
             return Effect.fail(
               codexRuntimeError({
                 operation: "gateway.generation-fence",
                 reason: "session-lost",
                 retryable: true,
-                hostId: "local",
+                hostId: OWNER_HOST,
                 generation,
                 method,
               }),
@@ -429,7 +440,7 @@ const makeHarness = (input: {
         Effect.sync(() => {
           input.onManagerGet?.(++managerGets);
           return {
-            hostId: "local",
+            hostId: OWNER_HOST,
             get generation() {
               return generation;
             },
@@ -542,13 +553,15 @@ const makeHarness = (input: {
         forHost: () =>
           Effect.succeed(
             createCodexAppServerCapabilitySnapshot({
-              hostId: "local",
+              hostId: OWNER_HOST,
               generation,
               userAgent: `Codex/${input.appServerVersion ?? "0.0.0"}`,
             }),
           ),
       } as unknown as CodexAppServerCapabilities["Service"]),
-      Effect.provideService(CodexThreadHostResolver, { resolve: () => Effect.succeed("local") }),
+      Effect.provideService(CodexThreadHostResolver, {
+        resolve: () => Effect.succeed(input.threadHost ?? OWNER_HOST),
+      }),
       Effect.provideService(CodexMainConversationManagers, managers),
       Effect.provideService(CodexTurnAuthority, authority),
       Effect.provideService(CodexTurnPreparation, preparation),
@@ -1094,7 +1107,7 @@ it.effect("adopts an exact fresh native Thread before the first Main Turn", () =
     harness.clearRole();
 
     const result = yield* harness.commands.start("thread-a", "ship", {
-      freshNativeThread: { hostId: "local", generation: 1 },
+      freshNativeThread: { hostId: OWNER_HOST, generation: 1 },
     });
 
     assert.strictEqual(result?.turnId, "turn-accepted");
@@ -1113,7 +1126,7 @@ it.effect("rejects a fresh native Thread from a retired generation", () =>
 
     const result = yield* harness.commands
       .start("thread-a", "ship", {
-        freshNativeThread: { hostId: "local", generation: 2 },
+        freshNativeThread: { hostId: OWNER_HOST, generation: 2 },
       })
       .pipe(Effect.result);
 
@@ -1280,7 +1293,7 @@ for (const message of ["SteerTurnInactiveError: active turn not steerable"]) {
               operation: "gateway.request",
               reason: "request",
               retryable: false,
-              hostId: "local",
+              hostId: OWNER_HOST,
               method: "turn/steer",
               cause: new CodexAppServerRequestError({ code: -32600, errorMessage: message }),
             }),
@@ -1342,7 +1355,7 @@ for (const mismatchMessage of [
                   operation: "gateway.request",
                   reason: "request",
                   retryable: false,
-                  hostId: "local",
+                  hostId: OWNER_HOST,
                   method: "turn/steer",
                   cause: new CodexAppServerRequestError({
                     code: -32600,
@@ -1368,11 +1381,25 @@ for (const mismatchMessage of [
       assert.strictEqual(item.type, "steeringUserMessage");
       if (item.type === "steeringUserMessage") {
         assert.strictEqual(item.targetTurnId, "corrected-turn");
-        assert.strictEqual(item.status, "accepted");
+        // A remote owner confirms the steer through its own item echo.
+        assert.strictEqual(item.status, "pending");
       }
       yield* Scope.close(harness.scope, Exit.void);
     }),
   );
+
+it.effect("a local conversation Turn is refused before any native request", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      threadHost: "local",
+      request: () => Effect.die("A local Turn reached the native app-server"),
+    });
+    const result = yield* harness.commands.start("thread-a", "ship").pipe(Effect.result);
+    assert.strictEqual(result._tag, "Failure");
+    assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
 
 for (const accepted of [true, false]) {
   it.effect(
@@ -1444,7 +1471,7 @@ it.effect("retains a dispatched question reply when its outcome is unknown", () 
             operation: "scheduler.execution",
             reason: "outcome-unknown",
             retryable: false,
-            hostId: "local",
+            hostId: OWNER_HOST,
             method: "turn/steer",
             cause: new CodexTurnDeliveryError("Steering delivery is unknown", {
               requestId: "native-steer-unknown",
@@ -1581,7 +1608,7 @@ for (const outcome of ["accepted", "unknown", "rejected", "unavailable"] as cons
                   operation: "gateway.request",
                   reason: outcome === "unknown" ? "outcome-unknown" : "request",
                   retryable: false,
-                  hostId: "local",
+                  hostId: OWNER_HOST,
                   method: "turn/steer",
                   cause:
                     outcome === "unknown"
@@ -1813,7 +1840,7 @@ it.effect("rejects a follower that changes the admitted native queue receipt", (
         },
       );
       const result = yield* harness
-        .dispatchFollower("local", {
+        .dispatchFollower(OWNER_HOST, {
           method: "thread-follower-steer-turn",
           params: { ...prepared.steer, serverQueuedSubmission: { ...raw, id: "another-row" } },
         })
@@ -2130,7 +2157,7 @@ it.effect(
           ...conversationFixture("thread-a", [turnFixture("busy", "inProgress")]),
           threadRuntimeStatus: { type: "active", activeFlags: [] },
         },
-        readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+        readPassiveContext: () => Effect.succeed(passiveContextFixture(OWNER_HOST, "thread-a", 1)),
         request: () => Effect.succeed(response()),
       });
       const operation = yield* harness.commands.prepareNativeStart(
@@ -2154,7 +2181,7 @@ it.effect("failed passive injection never marks model context as confirmed or st
   Effect.gen(function* () {
     const harness = yield* makeHarness({
       initialState: conversationFixture("thread-a"),
-      readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+      readPassiveContext: () => Effect.succeed(passiveContextFixture(OWNER_HOST, "thread-a", 1)),
       inject: Effect.fail(missingThread()),
       request: () => Effect.succeed(response()),
     });
@@ -2185,7 +2212,7 @@ it.effect(
       const release = yield* Deferred.make<void>();
       const harness = yield* makeHarness({
         initialState: conversationFixture("thread-a"),
-        readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+        readPassiveContext: () => Effect.succeed(passiveContextFixture(OWNER_HOST, "thread-a", 1)),
         inject: Deferred.succeed(entered, undefined).pipe(
           Effect.andThen(Deferred.await(release)),
           Effect.as({}),
@@ -2219,7 +2246,7 @@ it.effect(
   "passive injection receipts admit only the exact retained context and a nonempty native request",
   () =>
     Effect.gen(function* () {
-      const context = passiveContextFixture("local", "thread-a", 1);
+      const context = passiveContextFixture(OWNER_HOST, "thread-a", 1);
       let next = context;
       const harness = yield* makeHarness({
         initialState: conversationFixture("thread-a"),
@@ -2590,7 +2617,7 @@ for (const method of ["turn/start", "turn/steer", "thread/inject_items"] as cons
           hostId: options?.expectedHostId,
           generation: options?.expectedGeneration,
         })),
-        [{ method, hostId: "local", generation: 1 }],
+        [{ method, hostId: OWNER_HOST, generation: 1 }],
       );
       assert.strictEqual(harness.requests(), 0);
       assert.isFalse(harness.events.includes("inject"));
@@ -2692,7 +2719,7 @@ it.effect(
           requestId: "peer-request",
           sourceClientId: "follower",
           targetClientId: "renderer-owner",
-          hostId: "local",
+          hostId: OWNER_HOST,
           version: 3,
           method: "thread-follower-start-turn",
           params: { conversationId: "thread-a", turnStart: prepared.start },
@@ -2923,7 +2950,8 @@ for (const replacement of ["role", "entity"] as const)
         const release = yield* Deferred.make<void>();
         const harness = yield* makeHarness({
           initialState: conversationFixture("thread-a"),
-          readPassiveContext: () => Effect.succeed(passiveContextFixture("local", "thread-a", 1)),
+          readPassiveContext: () =>
+            Effect.succeed(passiveContextFixture(OWNER_HOST, "thread-a", 1)),
           inject: Deferred.succeed(entered, undefined).pipe(
             Effect.andThen(Deferred.await(release)),
             Effect.as({}),

@@ -18,3 +18,4 @@ export type {
 
 export type * from "./Interface.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
+export { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "./CodexThreadSource.ts";

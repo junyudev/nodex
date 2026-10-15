@@ -146,6 +146,7 @@ import {
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
+import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "../../nodex/CodexThreadSource.ts";
 
 const CODEX_PROVIDER = ProviderDriverKind.make("codex");
 export const CODEX_DRIVER_KIND = CODEX_PROVIDER;
@@ -6340,14 +6341,14 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             ensureInitialized.pipe(
               Effect.andThen(mcpSessions.read(threadInput.threadId)),
               Effect.flatMap((mcpSession) =>
-                client.request(
-                  "thread/start",
-                  codexThreadRuntimeParams({
+                client.request("thread/start", {
+                  ...codexThreadRuntimeParams({
                     mcpSession,
                     modelSelection: threadInput.modelSelection,
                     runtimePolicy: threadInput.runtimePolicy,
                   }),
-                ),
+                  threadSource: AGENT_RUNTIME_CODEX_THREAD_SOURCE,
+                }),
               ),
               Effect.map((response): OrchestrationV2ProviderThread =>
                 providerThreadFromCodexThread({
@@ -7201,6 +7202,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 Effect.andThen(
                   client.request("thread/fork", {
                     threadId,
+                    threadSource: AGENT_RUNTIME_CODEX_THREAD_SOURCE,
                     ...(boundary.lastTurnId === undefined
                       ? {}
                       : { lastTurnId: boundary.lastTurnId }),

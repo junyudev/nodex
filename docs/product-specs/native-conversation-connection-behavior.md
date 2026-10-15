@@ -9,7 +9,8 @@ read in bounded pages. Older conversations remain available through pagination. 
 connection do not submit a prompt, start a model request, replay messages, or fork history.
 
 Codex discovery reads active persistent root conversations from the active native home through the
-official app-server. Claude discovery uses the official Agent SDK with the selected profile's
+official app-server. Conversations the Agent Runtime created in that home already belong to a Nodex
+chat and are never offered. Claude discovery uses the official Agent SDK with the selected profile's
 environment. Subagent conversations are not independently admitted as root chats. A missing
 workspace or unavailable native conversation reports an error rather than substituting a new one.
 
@@ -27,6 +28,8 @@ Nodex Thread ID and binds it to the canonical native history directory. Changing
 history directory cannot redirect a saved chat to another conversation with the same UUID.
 Existing bindings acquire their native directory when their saved identity is first verified.
 Native history remains authoritative; connecting does not create a replacement transcript store.
+A connected local conversation opens as read-only history in bounded pages, without a composer:
+new work in Nodex starts a Runtime chat, and Nodex never resumes the native conversation locally.
 Reopening uses the native recovery and bounded presentation rules in
 [Agent Backend Behavior](agent-backend-behavior.md) and
 [Codex Transcript Behavior](codex-thread-transcript-behavior.md).

@@ -172,11 +172,27 @@ const RENDERER_NATIVE_REQUEST_METHODS = new Set([
   ...RENDERER_NATIVE_THREAD_QUEUE_METHODS,
 ]);
 
+/** Local Codex chats are imported history; they execute only in the Agent Runtime. */
+const RENDERER_NATIVE_LOCAL_READ_METHODS = new Set([
+  "thread/read",
+  "thread/turns/list",
+  "thread/items/list",
+  "thread/goal/get",
+  "thread/backgroundTerminals/list",
+  "thread/unsubscribe",
+  "model/list",
+  "collaborationMode/list",
+  "plugin/installed",
+  "config/read",
+]);
+
 export function codexRendererNativeRequestAdmission(
   method: string,
   capabilities: { readonly threadQueue: boolean },
-): "allowed" | "requires-thread-queue" | "requires-application-capability" {
+  host: "local" | "remote" = "remote",
+): "allowed" | "requires-thread-queue" | "requires-application-capability" | "local-read-only" {
   if (!RENDERER_NATIVE_REQUEST_METHODS.has(method)) return "requires-application-capability";
+  if (host === "local" && !RENDERER_NATIVE_LOCAL_READ_METHODS.has(method)) return "local-read-only";
   if (RENDERER_NATIVE_THREAD_QUEUE_METHODS.has(method) && !capabilities.threadQueue)
     return "requires-thread-queue";
   return "allowed";
@@ -1690,16 +1706,24 @@ export const live = Layer.effectDiscard(
           try: manager.assertCurrent,
           catch: (cause) => new CodexIpcError({ operation: "native-renderer-request", cause }),
         });
-        if (RENDERER_NATIVE_THREAD_QUEUE_METHODS.has(method)) {
-          const capability = yield* nativeCapabilities.forHost(input.hostId);
-          if (codexRendererNativeRequestAdmission(method, capability.flags) !== "allowed")
-            return yield* Effect.fail(
-              new CodexIpcError({
-                operation: "native-renderer-request",
-                cause: new Error("Native renderer queue method requires threadQueue capability"),
-              }),
-            );
-        }
+        const admission = codexRendererNativeRequestAdmission(
+          method,
+          RENDERER_NATIVE_THREAD_QUEUE_METHODS.has(method)
+            ? (yield* nativeCapabilities.forHost(input.hostId)).flags
+            : { threadQueue: true },
+          input.hostId === gateway.localHostId ? "local" : "remote",
+        );
+        if (admission !== "allowed")
+          return yield* Effect.fail(
+            new CodexIpcError({
+              operation: "native-renderer-request",
+              cause: new Error(
+                admission === "local-read-only"
+                  ? "Local conversations run in the Agent Runtime; their native history is read-only"
+                  : "Native renderer queue method requires threadQueue capability",
+              ),
+            }),
+          );
         const key = `${event.sender.id}:${caller.requestId}`;
         let abandonmentReason: "timeout" | "disposed" | undefined;
         const fiber = yield* requestLifetimes.start(

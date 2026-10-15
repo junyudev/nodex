@@ -147,6 +147,7 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
           nativeThread(cwd, { id: "child", parentThreadId: SESSION_ID }),
           nativeThread(cwd, { id: "review", source: { subAgent: "review" } }),
           nativeThread(cwd, { id: "temporary", ephemeral: true }),
+          nativeThread(cwd, { id: "runtime-chat", threadSource: "agent_runtime" }),
           nativeThread(join(root, "missing"), { id: "missing-workspace" }),
         ],
         durableThreads: [

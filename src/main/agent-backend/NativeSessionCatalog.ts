@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -51,10 +52,12 @@ const fail = (operation: string, cause: unknown) =>
         : "Native conversation operation failed.",
     cause,
   });
-const isPersistentRoot = (thread: Thread): boolean => {
+/** A user's own persistent root conversation; Runtime chats already have a Nodex Session. */
+const isImportableRoot = (thread: Thread): boolean => {
   const metadata = extractCodexThreadSubagentMetadata(thread);
   return (
     !thread.ephemeral &&
+    thread.threadSource !== AGENT_RUNTIME_CODEX_THREAD_SOURCE &&
     !metadata.parentThreadId &&
     !metadata.hasAnySubagentSource &&
     !hasCodexSubagentSource(thread.source)
@@ -105,7 +108,7 @@ export const make = Effect.gen(function* () {
     const entries: NativeSessionCatalogEntry[] = [];
     for (const metadata of response.data) {
       const thread = projectCodexGatewayThreadReadThread(metadata);
-      if (!isPersistentRoot(thread)) continue;
+      if (!isImportableRoot(thread)) continue;
       const available = yield* Effect.tryPromise({
         try: () => nativeSessionCwdAvailable(thread.cwd),
         catch: (cause) => fail("catalog.cwd", cause),
@@ -156,7 +159,7 @@ export const make = Effect.gen(function* () {
       { priority: "interactive", source: "native_session_attach", timeoutMs: 15_000 },
     );
     const thread = projectCodexGatewayThreadReadThread(response.thread);
-    if (thread.id !== input.nativeSessionId || !isPersistentRoot(thread))
+    if (thread.id !== input.nativeSessionId || !isImportableRoot(thread))
       return yield* fail(
         "attach.identity",
         new Error("This native conversation cannot be connected."),
