@@ -1,0 +1,19 @@
+docs/ENGINEERING_LEARNINGS.md
+  s_1ca65ffa5958ee::t_dea79705bb29d5 302-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "28ee91fc60bd6700a5c8a989edb1a85a2606a062",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
