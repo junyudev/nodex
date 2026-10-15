@@ -1,6 +1,8 @@
 import type { AgentRuntimeRendererTransport } from "../../lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { ConversationDelegatedTaskPort } from "./conversation-runtime";
+import { delegatedTaskAgentLabel } from "./delegated-task-presentation";
+import { formatCodexModelLabel } from "../../lib/codex-thread-settings";
 
 /** The identities needed to stop one delegated task through its real execution owner. */
 export interface AgentRuntimeTaskStopTarget {
@@ -57,7 +59,7 @@ export interface AgentRuntimeProviderLabel {
 
 export function createAgentRuntimeDelegatedTaskStore() {
   let labels: ReadonlyMap<string, AgentRuntimeProviderLabel> = new Map();
-  const stopping = new Set<string>();
+  let stopping: ReadonlySet<string> = new Set();
   const listeners = new Set<() => void>();
   const notify = () => {
     for (const listener of [...listeners]) listener();
@@ -85,21 +87,37 @@ export function createAgentRuntimeDelegatedTaskStore() {
       labels = new Map([...labels, ...changed]);
       notify();
     },
-    providerLabel: (providerInstanceId: string) => labels.get(providerInstanceId)?.label ?? null,
-    modelLabel: (providerInstanceId: string, model: string) =>
-      labels.get(providerInstanceId)?.models.get(model) ?? null,
+    readLabels: () => labels,
+    /** Immutable snapshot of unsettled Stop requests; it changes only when they change. */
+    readStopping: () => stopping,
     isStopping: (sessionId: string, taskId: string) => stopping.has(key(sessionId, taskId)),
     markStopping: (sessionId: string, taskId: string) => {
       const entry = key(sessionId, taskId);
       if (stopping.has(entry)) return false;
-      stopping.add(entry);
+      stopping = new Set([...stopping, entry]);
       notify();
       return true;
     },
     settle: (sessionId: string, taskId: string) => {
-      if (stopping.delete(key(sessionId, taskId))) notify();
+      const entry = key(sessionId, taskId);
+      if (!stopping.has(entry)) return;
+      stopping = new Set([...stopping].filter((candidate) => candidate !== entry));
+      notify();
     },
   };
+}
+
+/** "Codex · GPT-5.5", "Claude Opus 5.5": the configured Agent and the model it runs. */
+export function agentRuntimeAgentLabel(
+  labels: ReadonlyMap<string, AgentRuntimeProviderLabel>,
+  providerInstanceId: string,
+  model: string | null,
+): string | null {
+  const provider = labels.get(providerInstanceId);
+  return delegatedTaskAgentLabel(
+    provider?.label ?? null,
+    model === null ? null : (provider?.models.get(model) ?? formatCodexModelLabel(model, [])),
+  );
 }
 
 export type AgentRuntimeDelegatedTaskStore = ReturnType<
@@ -130,8 +148,8 @@ export function createAgentRuntimeDelegatedTaskPort(
 ): ConversationDelegatedTaskPort {
   return {
     subscribe: store.subscribe,
-    providerLabel: store.providerLabel,
-    modelLabel: store.modelLabel,
+    agentLabel: (providerInstanceId, model) =>
+      agentRuntimeAgentLabel(store.readLabels(), providerInstanceId, model),
     isStopping: (taskId) => store.isStopping(sessionId, taskId),
     settle: (taskId) => store.settle(sessionId, taskId),
     stop: (parentThreadId, task) =>

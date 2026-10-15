@@ -4505,6 +4505,8 @@ export interface CodexSubagentOverviewRow {
   displayName: string;
   actorName: string | null;
   agentRole: string | null;
+  /** The Agent and model running this subagent, when the execution owner reports them. */
+  agentLabel?: string | null;
   spawnModel: string | null;
   objective: string | null;
   status: CodexSubagentOverviewStatus;

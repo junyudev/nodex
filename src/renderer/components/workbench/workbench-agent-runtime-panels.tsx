@@ -7,7 +7,7 @@ import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
 import type { Project, ProjectSession, CodexComposerIntent } from "@/lib/types";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSessionDetailQueryOptions } from "@/lib/query-options";
 import {
@@ -20,12 +20,20 @@ import type { AgentSubagentOverview } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import {
   appendAgentRuntimeOverviewPage,
+  applyAgentRuntimeOverviewTask,
   projectAgentRuntimeSubagentOverview,
+  type AgentRuntimeTaskRecord,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
+import {
+  agentRuntimeAgentLabel,
+  agentRuntimeDelegatedTasks,
+  requestAgentRuntimeTaskStop,
+} from "@/features/local-conversation/agent-runtime-delegated-tasks";
+import { useAgentRuntimeConnectionState } from "@/lib/agent-runtime-session-activity";
+import type { CodexSubagentOverviewRow } from "../../../shared/types";
 import { SubagentsPanelOverviewContent } from "@/features/local-conversation/view/subagents-panel/subagents-panel";
 import { projectSubagentOverviewRowToOpenPayload } from "./workbench-subagent-status";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
-import { createUuidV7 } from "../../../shared/uuid-v7";
 
 /** A child keeps its product Session and reads only its own bounded engine history. */
 export function AgentRuntimeChildPanel(input: {
@@ -240,7 +248,10 @@ export function AgentRuntimeSideChatPanel(input: {
   );
 }
 
-/** The overview observes only task metadata, independently of transcript ownership. */
+/**
+ * The overview observes only task metadata, independently of transcript ownership. Task
+ * events patch the loaded pages in place; a delivery gap or Runtime restart attaches again.
+ */
 export function AgentRuntimeSubagentsOverviewPanel(input: {
   readonly sessionId: string;
   readonly threadId: string;
@@ -250,69 +261,101 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
     source: AgentSubagentOverview | null;
     error: string | null;
   }>({ source: null, error: null });
-  const [stoppingTaskId, setStoppingTaskId] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState(0);
+  const loadingMore = useRef(new Set<"active" | "terminal">());
+  const connection = useAgentRuntimeConnectionState();
+  const readyGeneration = connection.status === "ready" ? connection.generation : null;
+  const labels = useSyncExternalStore(
+    agentRuntimeDelegatedTasks.subscribe,
+    agentRuntimeDelegatedTasks.readLabels,
+  );
+  // Subscribing re-renders rows when a Stop request is made or settles.
+  useSyncExternalStore(
+    agentRuntimeDelegatedTasks.subscribe,
+    agentRuntimeDelegatedTasks.readStopping,
+  );
+  // A replacement Runtime process has no memory of earlier subscriptions; attach again.
+  const attachedGeneration = useRef<string | null>(null);
+  useEffect(() => {
+    if (readyGeneration === null) return;
+    const previous = attachedGeneration.current;
+    attachedGeneration.current = readyGeneration;
+    if (previous !== null && previous !== readyGeneration) setAttachment((current) => current + 1);
+  }, [readyGeneration]);
   useEffect(() => {
     let active = true;
     let release: (() => void) | undefined;
-    let loading = false;
-    let pending = false;
-    const refresh = async () => {
-      pending = true;
-      if (loading) return;
-      loading = true;
-      try {
-        while (pending) {
-          if (!active) return;
-          pending = false;
-          const source = await agentRuntimeRuntime.overview({
-            sessionId: input.sessionId,
-            threadId: input.threadId,
-          });
-          if (active) setState({ source, error: null });
-        }
-      } catch (cause) {
-        if (active)
-          setState({ source: null, error: cause instanceof Error ? cause.message : String(cause) });
-      } finally {
-        loading = false;
-      }
+    // Events that race the initial read are applied after it, newest report winning.
+    let pending: AgentRuntimeTaskRecord[] | null = [];
+    const fail = (cause: unknown) => {
+      if (active)
+        setState((current) => ({
+          ...current,
+          error: cause instanceof Error ? cause.message : String(cause),
+        }));
     };
     void agentRuntimeRuntime
       .subscribe(
         { sessionId: input.sessionId, threadId: input.threadId, eventTypes: ["subagent.updated"] },
-        () => void refresh(),
+        (notification) => {
+          if (!active) return;
+          if (notification.type === "reset-required") {
+            active = false;
+            release?.();
+            release = undefined;
+            setAttachment((current) => current + 1);
+            return;
+          }
+          if (notification.event.event.type !== "subagent.updated") return;
+          const task = notification.event.event.payload;
+          if (pending) pending.push(task);
+          else
+            setState((current) =>
+              current.source
+                ? { ...current, source: applyAgentRuntimeOverviewTask(current.source, task) }
+                : current,
+            );
+        },
       )
-      .then((unsubscribe) => {
+      .then(async (unsubscribe) => {
         if (!active) {
           unsubscribe();
           return;
         }
         release = unsubscribe;
-        return refresh();
+        const read = await agentRuntimeRuntime.overview({
+          sessionId: input.sessionId,
+          threadId: input.threadId,
+        });
+        if (!active) return;
+        const source = (pending ?? []).reduce(applyAgentRuntimeOverviewTask, read);
+        pending = null;
+        setState({ source, error: null });
       })
-      .catch((cause: unknown) => {
-        if (active)
-          setState({ source: null, error: cause instanceof Error ? cause.message : String(cause) });
-      });
+      .catch(fail);
     return () => {
       active = false;
       release?.();
     };
-  }, [input.sessionId, input.threadId]);
+  }, [input.sessionId, input.threadId, attachment]);
+  useEffect(() => {
+    for (const task of state.source?.terminal.items ?? [])
+      agentRuntimeDelegatedTasks.settle(input.sessionId, task.id);
+  }, [input.sessionId, state.source]);
   const loadMore = async (section: "active" | "done") => {
     const key = section === "active" ? "active" : "terminal";
-    const source = state.source;
-    const cursor = source?.[key].nextCursor;
-    if (!source || !cursor) return;
+    const cursor = state.source?.[key].nextCursor;
+    if (!cursor || loadingMore.current.has(key)) return;
+    loadingMore.current.add(key);
     try {
-      const next = await agentRuntimeRuntime.overview({
+      const page = await agentRuntimeRuntime.overview({
         sessionId: input.sessionId,
         threadId: input.threadId,
         ...(key === "active" ? { activeCursor: cursor } : { terminalCursor: cursor }),
       });
       setState((current) =>
-        current.source === source
-          ? { source: appendAgentRuntimeOverviewPage(source, next, key), error: null }
+        current.source
+          ? { source: appendAgentRuntimeOverviewPage(current.source, page, key), error: null }
           : current,
       );
     } catch (cause) {
@@ -320,52 +363,81 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
         ...current,
         error: cause instanceof Error ? cause.message : String(cause),
       }));
+    } finally {
+      loadingMore.current.delete(key);
     }
   };
-  if (state.error)
-    return (
-      <div role="alert" className="p-4 text-sm text-token-text-secondary">
-        {state.error}
-      </div>
-    );
+  const error = state.error ? (
+    <div
+      role="alert"
+      className="flex items-center gap-2 px-5 pt-4 text-sm text-token-text-secondary"
+    >
+      <span className="min-w-0 flex-1">{state.error}</span>
+      <button
+        type="button"
+        className="shrink-0 cursor-interaction rounded-md px-1 text-token-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2"
+        onClick={() => {
+          setState((current) => ({ ...current, error: null }));
+          setAttachment((current) => current + 1);
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  ) : null;
   if (!state.source)
     return (
-      <div role="status" className="p-4 text-sm text-token-text-tertiary">
-        Loading subagents…
-      </div>
+      error ?? (
+        <div role="status" className="p-4 text-sm text-token-text-tertiary">
+          Loading subagents…
+        </div>
+      )
     );
+  const source = state.source;
+  const taskForRow = (row: CodexSubagentOverviewRow) =>
+    source.active.items.find((task) => (task.childThreadId ?? task.id) === row.threadId);
   return (
-    <SubagentsPanelOverviewContent
-      rootThreadId={input.threadId}
-      overview={projectAgentRuntimeSubagentOverview(input.threadId, state.source)}
-      onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
-      stoppingTaskId={stoppingTaskId}
-      onStop={(row) => {
-        const task = state.source?.active.items.find(
-          (task) =>
-            task.id === row.threadId &&
-            task.origin === "provider_native" &&
-            task.childThreadId === null,
-        );
-        if (!task?.runId) return;
-        setStoppingTaskId(task.id);
-        void agentRuntimeRuntime
-          .stopTask({
-            sessionId: input.sessionId,
-            threadId: input.threadId,
-            requestId: createUuidV7(),
-            runId: task.runId,
-            taskId: task.id,
-          })
-          .catch((cause: unknown) =>
-            setState((current) => ({
-              ...current,
-              error: cause instanceof Error ? cause.message : String(cause),
-            })),
-          )
-          .finally(() => setStoppingTaskId(null));
-      }}
-      onLoadMore={(section) => void loadMore(section)}
-    />
+    <div className="flex h-full min-h-0 flex-col">
+      {error}
+      <div className="min-h-0 flex-1">
+        <SubagentsPanelOverviewContent
+          rootThreadId={input.threadId}
+          overview={projectAgentRuntimeSubagentOverview(input.threadId, source, (task) =>
+            agentRuntimeAgentLabel(
+              labels,
+              task.providerInstanceId,
+              task.modelSelection?.model ?? task.model,
+            ),
+          )}
+          onSelect={(row) => input.onSelect(projectSubagentOverviewRowToOpenPayload(row))}
+          isStopping={(row) => {
+            const task = taskForRow(row);
+            return (
+              task !== undefined && agentRuntimeDelegatedTasks.isStopping(input.sessionId, task.id)
+            );
+          }}
+          onStop={(row) => {
+            const task = taskForRow(row);
+            if (!task) return;
+            void requestAgentRuntimeTaskStop(
+              input.sessionId,
+              {
+                taskId: task.id,
+                parentThreadId: task.threadId,
+                ownerRunId: task.runId,
+                childThreadId: task.childThreadId,
+              },
+              agentRuntimeRuntime,
+            ).catch((cause: unknown) =>
+              setState((current) => ({
+                ...current,
+                error: cause instanceof Error ? cause.message : String(cause),
+              })),
+            );
+          }}
+          onLoadMore={(section) => void loadMore(section)}
+        />
+      </div>
+    </div>
   );
 }

@@ -1293,12 +1293,13 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         select: () => {},
         commands: [],
         error: null,
-        controls: { nativeTaskDetails: true },
+        controls: { subagents: true },
       },
     });
     await openNodexMenu(view.getByRole("button", { name: "Task actions" }));
+    expect(view.queryByRole("menuitem", { name: "Tasks" })).toBeNull();
     await act(async () => {
-      fireEvent.click(await view.findByRole("menuitem", { name: "Tasks" }));
+      fireEvent.click(await view.findByRole("menuitem", { name: "Subagents" }));
       await Promise.resolve();
     });
     await waitFor(() => expect(openTasks).toHaveBeenCalledExactlyOnceWith());

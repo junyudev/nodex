@@ -1,7 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { InfoIcon, StopIcon, TerminalActivityIcon } from "@/components/shared/icons";
-import { formatCodexModelLabel } from "@/lib/codex-thread-settings";
 import { cn } from "@/lib/utils";
 import type {
   CodexConversationChildMembership,
@@ -11,7 +10,6 @@ import type {
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import {
   canStopDelegatedTask,
-  delegatedTaskAgentLabel,
   delegatedTaskStatusLabel,
   isDelegatedTaskLive,
   resolveDelegatedTaskRowStatus,
@@ -40,15 +38,10 @@ export function DelegatedTaskRow({
 }) {
   const port = useConversationRuntimeOverride()?.delegatedTasks;
   const subscribe = port?.subscribe ?? noSubscription;
-  const providerLabel = useSyncExternalStore(
-    subscribe,
-    () => port?.providerLabel(task.providerInstanceId) ?? null,
-  );
   const model = membership?.thread?.model ?? null;
-  const modelLabel = useSyncExternalStore(subscribe, () =>
-    model === null
-      ? null
-      : (port?.modelLabel(task.providerInstanceId, model) ?? formatCodexModelLabel(model, [])),
+  const agent = useSyncExternalStore(
+    subscribe,
+    () => port?.agentLabel(task.providerInstanceId, model) ?? null,
   );
   const stopRequested = useSyncExternalStore(
     subscribe,
@@ -60,7 +53,6 @@ export function DelegatedTaskRow({
   }, [live, port, stopRequested, task.taskId]);
   const [expanded, setExpanded] = useState(false);
   const status = resolveDelegatedTaskRowStatus(task.status, stopRequested);
-  const agent = delegatedTaskAgentLabel(providerLabel, modelLabel);
   const childThreadId = task.childThreadId;
   const stop = () => {
     if (!port) return;

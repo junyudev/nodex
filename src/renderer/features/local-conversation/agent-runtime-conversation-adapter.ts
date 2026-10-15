@@ -945,7 +945,7 @@ export function useAgentRuntimeConversationAdapter(input: {
 
       images: true,
       skills: true,
-      nativeTaskDetails: true,
+      subagents: true,
     },
     skills:
       provider?.skills

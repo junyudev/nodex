@@ -50,8 +50,11 @@ function ThreadStageHeaderComponent({
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
   const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
+  const opensSubagents = provider?.controls?.subagents === true;
   const canOpenNativeTasks = Boolean(
-    model.threadId && provider?.controls?.nativeTaskDetails && actions.onOpenSubagentsPanel,
+    model.threadId &&
+    (provider?.controls?.nativeTaskDetails || opensSubagents) &&
+    actions.onOpenSubagentsPanel,
   );
   const hasTopActions =
     canTogglePin ||
@@ -192,11 +195,14 @@ function ThreadStageHeaderComponent({
                   leftSlot={<ProjectTaskIcon className={menuIconClassName} />}
                   onSelect={() => {
                     pendingModal.current = () => {
-                      void handleAction(actions.onOpenSubagentsPanel, "Could not open tasks");
+                      void handleAction(
+                        actions.onOpenSubagentsPanel,
+                        opensSubagents ? "Could not open subagents" : "Could not open tasks",
+                      );
                     };
                   }}
                 >
-                  Tasks
+                  {opensSubagents ? "Subagents" : "Tasks"}
                 </NodexDropdownItem>
               ) : null}
               {provider?.diagnostics ? (

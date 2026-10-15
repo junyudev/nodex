@@ -264,7 +264,10 @@ export interface ConversationProviderPresentation {
     readonly steer?: boolean;
 
     readonly skills?: boolean;
+    /** Native background tasks open the Tasks dialog. */
     readonly nativeTaskDetails?: boolean;
+    /** Delegated subagents open the Subagents panel. */
+    readonly subagents?: boolean;
     readonly images?: boolean;
     readonly stopTask?: boolean;
   };

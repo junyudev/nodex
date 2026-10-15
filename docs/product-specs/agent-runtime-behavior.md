@@ -302,6 +302,12 @@ metadata come from bounded engine readers. A task overview admits four active an
 terminal tasks initially, with independent continuation cursors. It omits prompts,
 results, item bodies and native workflow payloads. Native task observations without an
 application-owned child Thread never acquire Thread navigation or command authority.
+The Subagents panel shows each subagent's Agent label and model and can stop any live
+subagent the same way its transcript row does. Task metadata events update the pages already
+loaded in place, so later status changes never discard pages the user loaded; a newer report
+always wins over an older one. A delivery gap or Runtime restart attaches the panel again,
+and a failed read keeps the last pages visible with Retry, which also happens automatically
+when the Runtime is ready again.
 
 Project lifecycle checks read one metadata-only blocker for each category: an active
 Run, a pending runtime request, and active provider-native background work. Descendant,

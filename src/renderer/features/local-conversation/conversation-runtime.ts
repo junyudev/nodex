@@ -18,8 +18,8 @@ export interface ConversationContentSource {
 export interface ConversationDelegatedTaskPort {
   /** Notifies when labels or unsettled Stop requests change. */
   readonly subscribe: (listener: () => void) => () => void;
-  readonly providerLabel: (providerInstanceId: string) => string | null;
-  readonly modelLabel: (providerInstanceId: string, model: string) => string | null;
+  /** The configured Agent label and model display name, as one label. */
+  readonly agentLabel: (providerInstanceId: string, model: string | null) => string | null;
   /** A Stop request stays visible until the task settles or the request fails. */
   readonly isStopping: (taskId: string) => boolean;
   /** Releases a settled task's Stop request. */
