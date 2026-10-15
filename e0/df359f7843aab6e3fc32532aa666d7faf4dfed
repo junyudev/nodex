@@ -1,0 +1,32 @@
+packages/agent-runtime/src/nodex/Service.ts
+  s_1ca65ffa5958ee::t_f939d860613b3d 767,789-790
+  s_1ca65ffa5958ee::t_f0429096431119 57-63,304-317,398-408,705-708,721,724-730,745-750,756,760-766,768-786,832
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.test.ts
+  s_1ca65ffa5958ee::t_82c5c4455094f5 269-280
+  s_1ca65ffa5958ee::t_a275cc2fdec912 1-220,222-268,281-358
+  s_1ca65ffa5958ee::t_b0fa3de51b5098 221
+packages/agent-runtime/src/orchestration-v2/ExecutionActivity.ts
+  s_1ca65ffa5958ee::t_0bf6100ffa3feb 32,39-44,48-49,108
+  s_1ca65ffa5958ee::t_b0fa3de51b5098 146
+  s_1ca65ffa5958ee::t_b66d934c2d3174 33-38,87,89,102,109,148
+  s_1ca65ffa5958ee::t_0eb3cfdbe07847 1-31,45-47,50-75,79-86,88,90-101,103-106,110-145,147,149-176,178-184
+  s_1ca65ffa5958ee::t_f40f8fd16ae564 76-78,107,177
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_1ca65ffa5958ee::t_f40f8fd16ae564 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0df359f7843aab6e3fc32532aa666d7faf4dfed",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
