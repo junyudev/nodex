@@ -1,6 +1,9 @@
 import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { AgentRuntimeConfiguration } from "@nodex/agent-runtime/contracts";
+import type {
+  AgentRuntimeConfiguration,
+  AgentRuntimeIdentity,
+} from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -59,10 +62,7 @@ import {
   agentRuntimeEntrypoint,
   agentRuntimeNodeExecutable,
 } from "../platform/node/AgentRuntimeEntrypoint";
-import {
-  acquireAgentRuntimeProcess,
-  type AgentRuntimeProcessConnection,
-} from "../platform/node/AgentRuntimeProcess";
+import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
 import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
 import { shellQuote } from "../platform/node/NodexCliShell";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -158,9 +158,10 @@ const supervisor = Layer.effectContext(
       Deferred.await(toolsReady).pipe(Effect.flatMap((tools) => tools(caller, name, input)));
     const acpProbe = yield* AcpAgentLaunchProbe;
     const projectlessId = `nodex:projectless:${core.identity.profileId}`;
-    const prepared = new WeakMap<AgentRuntimeProcessConnection, AgentRuntimeConfiguration>();
+    // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
+    const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();
     const preparedEnvironment = new WeakMap<
-      AgentRuntimeProcessConnection,
+      AgentRuntimeIdentity,
       Readonly<Record<string, string | undefined>>
     >();
     const drivers = new Map<string, string>();
@@ -396,12 +397,12 @@ const supervisor = Layer.effectContext(
             environment,
             host,
           });
-          prepared.set(connection, configuration);
-          preparedEnvironment.set(connection, environment);
+          prepared.set(connection.identity, configuration);
+          preparedEnvironment.set(connection.identity, environment);
           return connection;
         }),
       activate: (connection) => {
-        const configuration = prepared.get(connection);
+        const configuration = prepared.get(connection.identity);
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
           presentation,
@@ -428,7 +429,7 @@ const supervisor = Layer.effectContext(
       const connection = yield* runtime.get();
       const { configuration } = yield* readConfiguration;
       yield* connection.request("providers.configure", { providers: configuration.providers });
-      prepared.set(connection, configuration);
+      prepared.set(connection.identity, configuration);
     }).pipe(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.asVoid,
@@ -453,8 +454,8 @@ const supervisor = Layer.effectContext(
         }),
       nativeHistories: (connection) =>
         Effect.try(() => {
-          const configuration = prepared.get(connection);
-          const environment = preparedEnvironment.get(connection);
+          const configuration = prepared.get(connection.identity);
+          const environment = preparedEnvironment.get(connection.identity);
           if (!configuration || !environment)
             throw new Error("Physical provider configuration is unavailable");
           return nativeHistorySources({

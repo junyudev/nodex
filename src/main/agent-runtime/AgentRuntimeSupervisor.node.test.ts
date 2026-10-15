@@ -383,3 +383,22 @@ it.effect("a stopped store for restore is not trusted as quiet afterwards", () =
     assert.deepEqual(evidence, ["clear", "record", "clear"]);
   }).pipe(Effect.scoped),
 );
+
+it.effect("activation and callers share the acquired generation's identity object", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const activated: AgentRuntimeProcessConnection[] = [];
+    const supervisor = yield* make({
+      acquire: () => f.acquire,
+      activate: (connection) =>
+        Effect.sync(() => {
+          activated.push(connection);
+          return () => Effect.succeed({});
+        }),
+    });
+    const connection = yield* supervisor.get();
+    const acquired = yield* Queue.take(f.started);
+    assert.strictEqual(activated[0]?.identity, acquired.identity);
+    assert.strictEqual(connection.identity, acquired.identity);
+  }).pipe(Effect.scoped),
+);

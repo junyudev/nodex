@@ -25,7 +25,11 @@ export interface AgentRuntimeSupervisorOptions<Requirements> {
   readonly acquire: (
     host: HostHandler,
   ) => Effect.Effect<AgentRuntimeProcessConnection, unknown, Scope.Scope | Requirements>;
-  /** Activated after readiness; restored Runs may await this without blocking boot. */
+  /**
+   * Activated after readiness; restored Runs may await this without blocking boot. It and every
+   * `get()` caller receive a usage-tracking view of the acquired process that shares its
+   * `identity` object, so per-generation state must be keyed by `identity`.
+   */
   readonly activate: (
     connection: AgentRuntimeProcessConnection,
   ) => Effect.Effect<HostHandler, unknown, Scope.Scope | Requirements>;
