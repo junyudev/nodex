@@ -58,6 +58,7 @@ crates/nodex-core-contracts/src/workspace.rs
   s_5cd527886c6c64::t_59966457c4d111 1239,1475
   s_5cd527886c6c64::t_68c9c2b69df906 104-109,256-258
   s_84bf5c78324d85::t_c8633d4bec22ab 1254,1472-1474
+  s_5cd527886c6c64::t_4ff6e2b115c9b2 15
 CONTEXT.md
   s_5cd527886c6c64::t_5baabbef640e1f 26-50,149
 crates/nodex-core/src/workspace/mod.rs
@@ -67,6 +68,7 @@ crates/nodex-core/src/infrastructure/migration.rs
   s_5cd527886c6c64::t_30a0f5d35707d7 6479-6485,6505,6507-6514,6518-6544
   s_5cd527886c6c64::t_903c2bd0f474ef 289-293,2315-2319,2335-2339
   s_5cd527886c6c64::t_1ca818f72b3055 2340-2344,6478
+  s_5cd527886c6c64::t_4ff6e2b115c9b2 299-303,2330-2334,6486-6504,6506,6515-6517
 docs/product-specs/agent-runtime-behavior.md
   s_5cd527886c6c64::t_5baabbef640e1f 1-28,32-44
   s_5cd527886c6c64::t_7e92c11dfe949c 29-31
