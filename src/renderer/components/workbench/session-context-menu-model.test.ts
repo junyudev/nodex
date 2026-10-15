@@ -220,6 +220,45 @@ describe("session context menu model", () => {
     expect(flattenActionIds(items)).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.copyDeeplink);
   });
 
+  test("offers Runtime Sessions every conversation action from their execution owner", () => {
+    const runtimeSession = makeSession({
+      executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
+    });
+    const projects = [makeProject("project-1", "Current"), makeProject("project-2", "Destination")];
+    const located = buildSessionContextMenuItems({
+      session: runtimeSession,
+      projects,
+      openInTargets: [{ id: "vscode", label: "VS Code" }],
+      location: { cwd: "/repo/worktree", managedWorktreePath: "/repo/worktree" },
+    });
+    const ids = flattenActionIds(located);
+    expect(ids).toContain(sessionMoveToProjectActionId("project-2"));
+    expect(ids).toContain(SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject);
+    expect(ids).toContain("session.openIn:vscode");
+    const copy = located.find((item) => item.type === "submenu" && item.id === "session.copy");
+    expect(copy?.type === "submenu" ? copy.submenu : []).toMatchObject([
+      { label: "Copy working directory", enabled: true },
+      { label: "Copy deeplink", enabled: true },
+      { label: "Copy as Markdown", enabled: true },
+    ]);
+
+    // An unknown Runtime location never borrows another source's working directory.
+    const unlocated = buildSessionContextMenuItems({
+      session: runtimeSession,
+      projects,
+      openInTargets: [{ id: "vscode", label: "VS Code" }],
+      location: null,
+    });
+    expect(flattenActionIds(unlocated)).not.toContain("session.openIn");
+    const unlocatedCopy = unlocated.find(
+      (item) => item.type === "submenu" && item.id === "session.copy",
+    );
+    expect(unlocatedCopy?.type === "submenu" ? unlocatedCopy.submenu[0] : null).toMatchObject({
+      label: "Copy working directory",
+      enabled: false,
+    });
+  });
+
   test("parses Open in targets and preserves pin state across Project moves", () => {
     expect(readSessionOpenInActionId("session.openIn:cursor")).toBe("cursor");
     expect(

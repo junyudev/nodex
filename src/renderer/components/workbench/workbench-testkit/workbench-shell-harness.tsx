@@ -2725,6 +2725,11 @@ export function renderWorkbench({
         },
       };
     }
+    if (channel === "agent-runtime:activity:read")
+      return { sequence: 0, items: [], complete: true };
+    if (channel === "agent-runtime:connection:read") return { status: "idle" };
+    if (channel === "thread-execution:location")
+      return { hostId: "local", cwd: "/tmp/project", managedWorktreePath: null };
     if (channel === "agent-runtime:session:inspect") {
       const input = args[0] as { sessionId: string; threadId?: string };
       const session = Object.values(sessionState)

@@ -163,7 +163,8 @@ export interface WorkbenchSceneNavigatorPort {
     input: PresentWorkbenchPanelSurfaceInput,
     surface: WorkbenchSurfaceDescriptor,
   ) => Promise<PresentWorkbenchPanelSurfaceResult>;
-  readonly hasAttachedThread: (sessionId: string) => boolean;
+  /** Runtime-bound and native Sessions both have a conversation; unstarted drafts do not. */
+  readonly hasConversation: (sessionId: string) => boolean;
   readonly setScene: (
     owner: WorkbenchSceneOwner,
     update: (previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot,
@@ -457,11 +458,11 @@ function validateSceneSurfaceRequest(
   if (
     input.owner.kind === "session" &&
     input.request.kind === "review" &&
-    !port.hasAttachedThread(input.owner.sessionId)
+    !port.hasConversation(input.owner.sessionId)
   ) {
     return {
       status: "unavailable",
-      reason: "Review requires an attached Thread",
+      reason: "Review requires a started conversation",
     };
   }
   if (input.owner.kind !== "pages") return null;

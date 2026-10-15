@@ -28,6 +28,7 @@ import type {
   CodexAppHandoffOperation,
   CodexThreadHandoffSnapshot,
   ThreadExecutionHandoffInput,
+  ThreadExecutionLocationView,
 } from "./codex-thread-handoff";
 import type {
   CodexTurnPresentationCaptureInput,
@@ -2448,6 +2449,10 @@ export interface IpcApi extends AgentRuntimeIpcApi {
   "thread-execution:handoff": {
     args: [input: ThreadExecutionHandoffInput];
     result: CodexAppHandoffOperation;
+  };
+  "thread-execution:location": {
+    args: [input: { readonly threadId: string }];
+    result: ThreadExecutionLocationView;
   };
   "codex:pending-worktrees:list": {
     args: [];

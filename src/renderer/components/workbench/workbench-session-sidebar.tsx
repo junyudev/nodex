@@ -87,6 +87,7 @@ import {
 } from "@/lib/codex-sidebar-thread-sync";
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { projectActivitySummariesQueryOptions } from "@/lib/query-options";
+import { runtimeSessionTarget } from "@/lib/session-execution";
 import {
   listExpandedVisibleProjectGroupIds,
   listReopenableVisibleProjectGroupIds,
@@ -1369,6 +1370,7 @@ function SidebarThreadOrganizerSections({
         <CodexSidebarThreadRow
           key={item.key}
           item={item}
+          runtime={runtimeSessionTarget(session)}
           grouped={options.grouped}
           active={
             (item.clientThreadId ?? item.threadId) === activePendingClientThreadId ||
@@ -1444,11 +1446,18 @@ function SidebarThreadOrganizerSections({
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
       .filter((item): item is CodexSidebarThreadItem => item != null);
+    const runtimeSessions = projectThreadItems.flatMap((item) => {
+      const session = resolveSessionForItem(item);
+      return session?.executionRef && !session.archived
+        ? [{ sessionId: session.id, unread: session.unread }]
+        : [];
+    });
 
     return (
       <CodexProjectRow
         key={project.id}
         project={project}
+        runtimeSessions={runtimeSessions}
         activity={
           projectActivityQuery.isPending
             ? undefined

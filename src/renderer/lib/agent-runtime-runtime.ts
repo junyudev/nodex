@@ -26,6 +26,7 @@ import type {
   AgentRuntimeSessionEvent,
   AgentRuntimeObserveInput,
   AgentRuntimeSessionActivitySnapshot,
+  AgentRuntimeSessionMoveInput,
   AgentRuntimeConnectionState,
 } from "../../shared/agent-runtime-api";
 import type {
@@ -139,6 +140,15 @@ const stopTask = defineRendererCommand({
   trace: { scopeKind: "session" },
 });
 
+const moveSession = defineRendererCommand({
+  key: "agent_runtime.session.move",
+  channel: "agent-runtime:session:move",
+  authority: "main",
+  owner: "WorkbenchSidebarController",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+
 export interface AgentRuntimeRendererTransport {
   readonly launch: (input: AgentRuntimeLaunch) => Promise<AgentRuntimeLaunchResult>;
   readonly read: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
@@ -164,6 +174,9 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeOperations["thread.compact"]["output"]>;
   readonly rollback: (input: AgentRuntimeRollbackInput) => Promise<{ readonly rolledBack: true }>;
   readonly stopTask: (input: AgentRuntimeTaskStopInput) => Promise<{ readonly sequence: number }>;
+  readonly moveSession: (
+    input: AgentRuntimeSessionMoveInput,
+  ) => Promise<{ readonly sessionId: string; readonly projectId: string | null }>;
   readonly catalog: (
     input?: AgentRuntimeOperations["providers.read"]["input"],
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
@@ -206,6 +219,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   compact: (input) => invokePlainCommand(compact, input),
   rollback: (input) => invokePlainCommand(rollback, input),
   stopTask: (input) => invokePlainCommand(stopTask, input),
+  moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
   readQueuePage: (input) => invokeRendererQuery("agent-runtime:session:queue-read", input),

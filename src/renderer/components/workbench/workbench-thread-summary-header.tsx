@@ -3,6 +3,8 @@ import type { Project } from "@/lib/types";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
 import type { WorkbenchThreadSummaryModel } from "@/lib/use-workbench-thread-summary";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import { resolveSessionExecution } from "@/lib/session-execution";
+import { useRuntimeExecutionLocation } from "@/lib/use-session-execution";
 
 interface WorkbenchThreadSummaryHeaderProps {
   readonly activeProject: Project | null;
@@ -21,13 +23,23 @@ export function WorkbenchThreadSummaryHeader({
   onOpenSubagentsPanel,
   summary,
 }: WorkbenchThreadSummaryHeaderProps) {
-  if (summary.mode === "hidden" || !activeSession) return null;
+  const execution = activeSession ? resolveSessionExecution(activeSession) : null;
+  const runtimeLocation = useRuntimeExecutionLocation(
+    execution?.kind === "runtime" && summary.mode !== "hidden" ? execution.rootThreadId : null,
+    "on-demand",
+  );
+  if (summary.mode === "hidden" || !activeSession || !execution || execution.kind === "unstarted")
+    return null;
 
   return (
     <ThreadSummaryPanelHeaderAction
-      activeThreadId={activeSession.thread?.threadId ?? null}
-      preferredHostId={activeSession.thread?.executionHostId}
-      activeThreadIsManagedWorktree={Boolean(activeSession.thread?.managedWorktreePath)}
+      activeThreadId={execution.rootThreadId}
+      preferredHostId={execution.kind === "native" ? execution.hostId : undefined}
+      activeThreadIsManagedWorktree={Boolean(
+        execution.kind === "native"
+          ? execution.location.managedWorktreePath
+          : runtimeLocation?.managedWorktreePath,
+      )}
       onPopoverOpenChange={summary.setPopoverOpen}
       projectWorkspacePath={projectWorkspaceRootOrNull(activeProject)}
       mode={summary.mode}

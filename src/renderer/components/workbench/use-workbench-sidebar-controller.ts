@@ -65,7 +65,17 @@ import { RenameChatDialog } from "./rename-chat-dialog";
 import { SIDEBAR_SECTIONS_QUERY_KEY } from "./sidebar-custom-sections";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import type { SidebarThreadDropCommit, SidebarThreadDropRequest } from "./sidebar-thread-reorder";
-import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
+import { copySessionConversationMarkdown } from "@/lib/session-conversation-markdown";
+import {
+  resolveSessionExecution,
+  resolveSessionExecutionLocation,
+  resolveSessionProjectMove,
+  runtimeExecutionLocation,
+  type SessionExecutionLocation,
+} from "@/lib/session-execution";
+import { threadExecutionLocationQueryOptions } from "@/lib/use-session-execution";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { createUuidV7 } from "../../../shared/uuid-v7";
 import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
 import { FILE_LINK_OPENER_ICON_URLS } from "@/lib/file-link-opener-icons";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
@@ -739,6 +749,22 @@ export function useWorkbenchSidebarController({
     [],
   );
 
+  /** Native location is Core metadata; Runtime location is read once from its execution owner. */
+  const readSessionLocation = useCallback(
+    async (session: ProjectSessionDomain): Promise<SessionExecutionLocation | null> => {
+      const execution = resolveSessionExecution(session);
+      if (execution.kind !== "runtime") return resolveSessionExecutionLocation(execution, null);
+      try {
+        return runtimeExecutionLocation(
+          await queryClient.fetchQuery(threadExecutionLocationQueryOptions(execution.rootThreadId)),
+        );
+      } catch {
+        return null;
+      }
+    },
+    [queryClient],
+  );
+
   const handleSessionContextMenuAction = useCallback(
     async (session: ProjectSessionDomain, actionId: string) => {
       const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
@@ -777,13 +803,30 @@ export function useWorkbenchSidebarController({
       }
       const moveTargetProjectId = readSessionMoveToProjectActionId(actionId);
       if (moveTargetProjectId || actionId === SESSION_CONTEXT_MENU_ACTION_IDS.removeFromProject) {
-        if (!session.thread || !isCodexAgentBackendBinding(session.thread.backendBinding)) return;
-        const threadId = session.thread?.threadId;
-        if (!threadId) return;
+        const move = resolveSessionProjectMove(resolveSessionExecution(session));
+        if (move?.kind === "runtime") {
+          try {
+            await agentRuntimeRuntime.moveSession({
+              operationId: `session-move:${createUuidV7()}`,
+              sessionId: move.sessionId,
+              projectId: moveTargetProjectId,
+            });
+          } catch {
+            toast.danger("Couldn’t move chat");
+            return;
+          }
+          await Promise.all(
+            [...new Set([session.projectId, moveTargetProjectId])].map((projectId) =>
+              catalog.refresh(projectId).catch(() => undefined),
+            ),
+          );
+          return;
+        }
+        if (move?.kind !== "codex-thread") return;
         const containers = resolveSessionProjectMoveContainers(session, moveTargetProjectId);
         await moveSidebarThreadInputForSidebar({
           hostId: "local",
-          threadId,
+          threadId: move.threadId,
           ...containers,
           beforeThreadId: null,
         });
@@ -807,7 +850,7 @@ export function useWorkbenchSidebarController({
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory) {
         await copySessionText(
-          session.thread?.cwd ?? "",
+          (await readSessionLocation(session))?.cwd ?? "",
           "Copied working directory",
           "Failed to copy working directory",
         );
@@ -822,20 +865,17 @@ export function useWorkbenchSidebarController({
         return;
       }
       if (actionId === SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown) {
-        if (!session.thread || !isCodexAgentBackendBinding(session.thread.backendBinding)) return;
-        const conversationId = session.thread?.threadId;
-        if (!conversationId) return;
-        await copyConversationMarkdown({
-          conversationId,
-          executionHostId: session.thread.executionHostId,
-          title: session.displayTitle || session.noThreadFallbackTitle,
-        });
+        await copySessionConversationMarkdown(
+          session,
+          session.displayTitle || session.noThreadFallbackTitle,
+          (await readSessionLocation(session))?.cwd ?? null,
+        );
         return;
       }
       const openerId = readSessionOpenInActionId(actionId);
       if (openerId) {
         if (!FILE_LINK_OPENER_OPTIONS.some((option) => option.id === openerId)) return;
-        const cwd = session.thread?.cwd?.trim();
+        const cwd = (await readSessionLocation(session))?.cwd;
         if (!cwd) return;
         const opened = await openFileLink({ path: cwd }, openerId);
         if (!opened) toast.danger("Failed to open working directory");
@@ -858,6 +898,7 @@ export function useWorkbenchSidebarController({
       onOpenProjectSessionInNewWindow,
       openRenameSessionDialog,
       queryClient,
+      readSessionLocation,
       toggleSessionPin,
       toggleSessionUnread,
     ],
@@ -867,13 +908,14 @@ export function useWorkbenchSidebarController({
     async (session: ProjectSessionDomain, event: ReactMouseEvent<HTMLElement>) => {
       event.preventDefault();
       event.stopPropagation();
-      const [sections, directSectionId, availableOpeners] = await Promise.all([
+      const [sections, directSectionId, availableOpeners, location] = await Promise.all([
         listAllSidebarSections().catch(() => []),
         readSidebarSectionItemPlacement({
           kind: "session",
           sessionId: session.id,
         }).catch(() => null),
         listAvailableFileLinkOpeners().catch(() => []),
+        readSessionLocation(session),
       ]);
       const customSections = sections.filter(
         (section) => section.kind === "custom" && section.lifecycle === "active",
@@ -895,6 +937,7 @@ export function useWorkbenchSidebarController({
         sections: customSections,
         directSectionId,
         openInTargets,
+        location,
       });
 
       beginContextMenu(session.id);
@@ -908,7 +951,13 @@ export function useWorkbenchSidebarController({
         finishContextMenu();
       }
     },
-    [beginContextMenu, finishContextMenu, handleSessionContextMenuAction, projects],
+    [
+      beginContextMenu,
+      finishContextMenu,
+      handleSessionContextMenuAction,
+      projects,
+      readSessionLocation,
+    ],
   );
 
   return {

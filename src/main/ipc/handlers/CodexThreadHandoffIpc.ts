@@ -5,6 +5,7 @@ import * as Stream from "effect/Stream";
 import { z } from "zod";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexThreadHandoffRuntime } from "../../codex-application/CodexThreadHandoffRuntime";
+import { ThreadExecution } from "../../host-runtime/ThreadExecution";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -19,11 +20,12 @@ export class CodexThreadHandoffIpcError extends Schema.TaggedError<CodexThreadHa
 export const live: Layer.Layer<
   never,
   never,
-  MainConfig | CodexThreadHandoffRuntime | ElectronIpc | WindowRuntime
+  MainConfig | CodexThreadHandoffRuntime | ElectronIpc | ThreadExecution | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const handoffs = yield* CodexThreadHandoffRuntime;
+    const threadExecution = yield* ThreadExecution;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
     const authorize = (event: import("electron").IpcMainInvokeEvent) =>
@@ -65,6 +67,31 @@ export const live: Layer.Layer<
             followUpPrompt: null,
           }),
         ),
+      ),
+    );
+    // Location surfaces classify a chat exactly as handoff admission will.
+    yield* ipc.handleQuery("thread-execution:location", (event, input) =>
+      authorize(event).pipe(
+        Effect.andThen(
+          Effect.try({
+            try: () =>
+              z
+                .object({ threadId: z.string().trim().min(1).max(1024) })
+                .strict()
+                .parse(input),
+            catch: (cause) => new CodexThreadHandoffIpcError({ cause }),
+          }),
+        ),
+        Effect.flatMap((parsed) =>
+          threadExecution
+            .read(parsed.threadId)
+            .pipe(Effect.mapError((cause) => new CodexThreadHandoffIpcError({ cause }))),
+        ),
+        Effect.map((location) => ({
+          hostId: location.hostId,
+          cwd: location.cwd,
+          managedWorktreePath: location.managedWorktreePath,
+        })),
       ),
     );
     yield* handoffs.changes.pipe(

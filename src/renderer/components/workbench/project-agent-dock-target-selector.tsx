@@ -8,10 +8,19 @@ import {
 import { NodexDropdownButtonTrigger } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
+  resolveProjectAgentDockLiveIndicator,
   type ProjectAgentDockChatIndicator,
   type ProjectAgentDockModel,
   type ProjectAgentDockTargetRow,
 } from "@/lib/project-agent-dock-model";
+import {
+  useAgentRuntimeSessionActivity,
+  type AgentRuntimeActivityStore,
+} from "@/lib/agent-runtime-session-activity";
+import {
+  runtimeSessionLiveIndicator,
+  SESSION_LIVE_INDICATOR_LABELS,
+} from "@/lib/session-execution";
 import { cn } from "@/lib/utils";
 
 export interface ProjectAgentDockTargetSelectorProps {
@@ -21,17 +30,32 @@ export interface ProjectAgentDockTargetSelectorProps {
   readonly onSelect: (row: ProjectAgentDockTargetRow) => void;
   readonly onLoadMore: () => void;
   readonly onRetry: () => void;
+  /** Live Session activity; tests inject an isolated store. */
+  readonly activityStore?: AgentRuntimeActivityStore;
 }
 
 function indicatorLabel(indicator: ProjectAgentDockChatIndicator): string | null {
-  if (indicator === "running") return "Running";
+  if (indicator === "running") return SESSION_LIVE_INDICATOR_LABELS.running;
+  if (indicator === "background") return SESSION_LIVE_INDICATOR_LABELS.background;
   if (indicator === "unread") return "Unread";
   if (indicator === "needs-attention") return "Needs attention";
   return null;
 }
 
-function targetRowAccessibleLabel(row: ProjectAgentDockTargetRow): string {
-  const status = row.kind === "session" ? indicatorLabel(row.indicator) : null;
+/** Each row subscribes only to its own Session's activity. */
+function useLiveIndicator(
+  row: ProjectAgentDockTargetRow,
+  store: AgentRuntimeActivityStore | undefined,
+): ProjectAgentDockChatIndicator {
+  const activity = useAgentRuntimeSessionActivity(row.runtimeSessionId, store);
+  return resolveProjectAgentDockLiveIndicator(row, runtimeSessionLiveIndicator(activity));
+}
+
+function targetRowAccessibleLabel(
+  row: ProjectAgentDockTargetRow,
+  indicator: ProjectAgentDockChatIndicator,
+): string {
+  const status = row.kind === "session" ? indicatorLabel(indicator) : null;
   return [status, row.label, row.preview]
     .filter((value): value is string => Boolean(value))
     .join(", ");
@@ -51,8 +75,14 @@ function ProjectAgentDockChatIndicatorView({
       aria-label={label ?? undefined}
       aria-hidden={label ? undefined : true}
     >
-      {indicator === "running" ? (
-        <ActivitySpinnerIcon className="icon-2xs shrink-0" animationDurationMs={2_000} />
+      {indicator === "running" || indicator === "background" ? (
+        <ActivitySpinnerIcon
+          className={cn(
+            "icon-2xs shrink-0",
+            indicator === "background" && "text-token-description-foreground opacity-70",
+          )}
+          animationDurationMs={indicator === "background" ? 5_000 : 2_000}
+        />
       ) : (
         <span
           className={cn(
@@ -68,6 +98,62 @@ function ProjectAgentDockChatIndicatorView({
   );
 }
 
+function ProjectAgentDockTargetOption({
+  row,
+  optionId,
+  active,
+  activityStore,
+  onActivate,
+  onAccept,
+}: {
+  readonly row: ProjectAgentDockTargetRow;
+  readonly optionId: string;
+  readonly active: boolean;
+  readonly activityStore: AgentRuntimeActivityStore | undefined;
+  readonly onActivate: () => void;
+  readonly onAccept: () => void;
+}) {
+  const indicator = useLiveIndicator(row, activityStore);
+  return (
+    <button
+      id={optionId}
+      type="button"
+      role="option"
+      aria-label={targetRowAccessibleLabel(row, indicator)}
+      aria-selected={row.selected}
+      className={cn(
+        "flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-lg px-2 py-1 text-left",
+        active && "bg-token-foreground/5",
+      )}
+      onPointerMove={onActivate}
+      onClick={onAccept}
+    >
+      {row.kind === "new" ? (
+        <PlusIcon
+          className="size-3.5 shrink-0 text-token-description-foreground"
+          aria-hidden="true"
+        />
+      ) : (
+        <ProjectAgentDockChatIndicatorView indicator={indicator} />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-center">
+          <span className="min-w-0 flex-1 truncate text-sm text-token-foreground">{row.label}</span>
+        </span>
+        {row.preview ? (
+          <span className="block truncate text-xs text-token-description-foreground">
+            {row.preview}
+          </span>
+        ) : null}
+      </span>
+      <CheckmarkIcon
+        aria-hidden="true"
+        className={cn("size-3.5 shrink-0", row.selected ? "opacity-100" : "opacity-0")}
+      />
+    </button>
+  );
+}
+
 export function ProjectAgentDockTargetSelector({
   model,
   query,
@@ -75,6 +161,7 @@ export function ProjectAgentDockTargetSelector({
   onSelect,
   onLoadMore,
   onRetry,
+  activityStore,
 }: ProjectAgentDockTargetSelectorProps) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -83,8 +170,9 @@ export function ProjectAgentDockTargetSelector({
   const listboxId = useId();
   const activeRow = model.rows[activeIndex] ?? model.rows[0] ?? null;
   const activeDescendantId = activeRow ? `${listboxId}-option-${activeIndex}` : undefined;
+  const triggerIndicator = useLiveIndicator(model.trigger, activityStore);
   const triggerIndicatorLabel =
-    model.trigger.kind === "session" ? indicatorLabel(model.trigger.indicator) : null;
+    model.trigger.kind === "session" ? indicatorLabel(triggerIndicator) : null;
 
   useEffect(() => {
     if (!open) return;
@@ -162,7 +250,7 @@ export function ProjectAgentDockTargetSelector({
               className="size-3.5 shrink-0 text-token-description-foreground"
             />
           ) : (
-            <ProjectAgentDockChatIndicatorView indicator={model.trigger.indicator} />
+            <ProjectAgentDockChatIndicatorView indicator={triggerIndicator} />
           )}
           <span className="min-w-0 truncate font-normal">{model.trigger.label}</span>
         </NodexDropdownButtonTrigger>
@@ -205,45 +293,15 @@ export function ProjectAgentDockTargetSelector({
           className="notion-scroller vertical max-h-72 overflow-y-auto py-0.5"
         >
           {model.rows.map((row, index) => (
-            <button
+            <ProjectAgentDockTargetOption
               key={row.id}
-              id={`${listboxId}-option-${index}`}
-              type="button"
-              role="option"
-              aria-label={targetRowAccessibleLabel(row)}
-              aria-selected={row.selected}
-              className={cn(
-                "flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-lg px-2 py-1 text-left",
-                index === activeIndex && "bg-token-foreground/5",
-              )}
-              onPointerMove={() => setActiveIndex(index)}
-              onClick={() => accept(row)}
-            >
-              {row.kind === "new" ? (
-                <PlusIcon
-                  className="size-3.5 shrink-0 text-token-description-foreground"
-                  aria-hidden="true"
-                />
-              ) : (
-                <ProjectAgentDockChatIndicatorView indicator={row.indicator} />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="flex min-w-0 items-center">
-                  <span className="min-w-0 flex-1 truncate text-sm text-token-foreground">
-                    {row.label}
-                  </span>
-                </span>
-                {row.preview ? (
-                  <span className="block truncate text-xs text-token-description-foreground">
-                    {row.preview}
-                  </span>
-                ) : null}
-              </span>
-              <CheckmarkIcon
-                aria-hidden="true"
-                className={cn("size-3.5 shrink-0", row.selected ? "opacity-100" : "opacity-0")}
-              />
-            </button>
+              row={row}
+              optionId={`${listboxId}-option-${index}`}
+              active={index === activeIndex}
+              activityStore={activityStore}
+              onActivate={() => setActiveIndex(index)}
+              onAccept={() => accept(row)}
+            />
           ))}
           {model.collectionMessage ? (
             <div className="flex min-h-8 items-center justify-between gap-2 px-2 text-xs text-token-description-foreground">

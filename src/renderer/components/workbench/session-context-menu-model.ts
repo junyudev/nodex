@@ -6,7 +6,13 @@ import {
 import type { Project, ProjectSession } from "@/lib/types";
 import type { SidebarSectionSummary } from "../../../shared/sidebar-sections";
 import type { FileLinkOpenerId } from "../../../shared/file-link-openers";
-import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
+import {
+  resolveSessionExecution,
+  resolveSessionExecutionLocation,
+  resolveSessionMarkdownExport,
+  resolveSessionProjectMove,
+  type SessionExecutionLocation,
+} from "@/lib/session-execution";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
@@ -44,6 +50,8 @@ export interface SessionContextMenuInput {
   sections?: readonly SidebarSectionSummary[];
   directSectionId?: string | null;
   openInTargets?: readonly SessionContextMenuOpenInTarget[];
+  /** Runtime location comes from its execution owner; native location defaults to Core metadata. */
+  location?: SessionExecutionLocation | null;
 }
 
 export function sessionMoveToProjectActionId(projectId: string): SessionContextMenuActionId {
@@ -100,12 +108,18 @@ export function buildSessionContextMenuItems(
   input: SessionContextMenuInput,
 ): NativeContextMenuItem[] {
   const { session } = input;
-  const hasCodexThread =
-    session.thread !== null && isCodexAgentBackendBinding(session.thread.backendBinding);
-  const supportsCodexConversationActions =
-    session.thread === null || session.thread?.backendBinding.kind === "codex";
+  const execution = resolveSessionExecution(session);
+  const canMoveProject = resolveSessionProjectMove(execution) !== null;
+  const markdownExport = resolveSessionMarkdownExport(execution);
+  // Native non-Codex history exports from its open conversation, not from the Session menu.
+  const offersMarkdownExport = execution.kind !== "native" || markdownExport !== null;
+  const cwd =
+    (input.location === undefined
+      ? resolveSessionExecutionLocation(execution, null)
+      : input.location
+    )?.cwd ?? null;
   const currentProject = input.projects?.find((project) => project.id === session.projectId);
-  const projectMoveItems: NativeContextMenuItem[] = hasCodexThread
+  const projectMoveItems: NativeContextMenuItem[] = canMoveProject
     ? (input.projects ?? [])
         .filter((project) => project.lifecycle === "active" && project.id !== session.projectId)
         .map((project) => ({
@@ -117,7 +131,7 @@ export function buildSessionContextMenuItems(
     : [];
   const projectSubmenuItems: NativeContextMenuItem[] = [
     ...projectMoveItems,
-    ...(hasCodexThread && session.projectId
+    ...(canMoveProject && session.projectId
       ? [
           ...(projectMoveItems.length > 0 ? [{ type: "separator" as const }] : []),
           {
@@ -170,7 +184,7 @@ export function buildSessionContextMenuItems(
     {
       id: SESSION_CONTEXT_MENU_ACTION_IDS.copyWorkingDirectory,
       label: "Copy working directory",
-      enabled: Boolean(session.thread?.cwd),
+      enabled: cwd !== null,
       iconKey: "copy",
     },
     {
@@ -179,12 +193,12 @@ export function buildSessionContextMenuItems(
       enabled: true,
       iconKey: "copy",
     },
-    ...(supportsCodexConversationActions
+    ...(offersMarkdownExport
       ? [
           {
             id: SESSION_CONTEXT_MENU_ACTION_IDS.copyConversationMarkdown,
             label: "Copy as Markdown",
-            enabled: hasCodexThread,
+            enabled: markdownExport !== null,
             iconKey: "copy" as const,
           },
         ]
@@ -192,7 +206,7 @@ export function buildSessionContextMenuItems(
   ];
 
   const windowItems: NativeContextMenuItem[] = [
-    ...(session.thread?.cwd && (input.openInTargets?.length ?? 0) > 0
+    ...(cwd && (input.openInTargets?.length ?? 0) > 0
       ? [
           {
             id: "session.openIn",

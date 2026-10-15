@@ -155,6 +155,10 @@ export const queryKeys = {
     window: (filter: string) => ["inbox", "window", filter] as const,
     settings: () => ["inbox", "settings"] as const,
   },
+  threadExecution: {
+    all: () => ["threadExecution"] as const,
+    location: (threadId: string) => ["threadExecution", "location", threadId] as const,
+  },
   pageChats: {
     all: () => ["pageChats"] as const,
     activity: (pageAccessProjectId: string, pageIds: readonly string[]) =>

@@ -6,6 +6,13 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { render, textContent } from "@/test/dom";
 import type { CodexSidebarThreadItem } from "@/lib/types";
 import { CodexSidebarThreadRow } from "./codex-sidebar";
+import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
+import { queryKeys } from "@/lib/query-keys";
+import { createTestQueryClient, TestQueryProvider } from "@/test/query";
+import type {
+  AgentRuntimeSessionActivity,
+  AgentRuntimeSessionActivityChange,
+} from "../../../shared/agent-runtime-api";
 
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1_000;
 
@@ -197,6 +204,80 @@ describe("codex sidebar thread hover card", () => {
 });
 
 describe("codex sidebar thread row", () => {
+  test("shows a Runtime chat's live status and location from its execution owner", async () => {
+    const listeners = new Set<(change: AgentRuntimeSessionActivityChange) => void>();
+    const store = createAgentRuntimeActivityStore({
+      read: async () => ({ sequence: 0, items: [], complete: true }),
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      // An idle Runtime is never started by a passive row read.
+      readConnection: async () => ({ status: "idle" }),
+      subscribeConnection: () => () => {},
+    });
+    const client = createTestQueryClient();
+    client.setQueryData(queryKeys.threadExecution.location("root-1"), {
+      hostId: "local",
+      cwd: "/managed/feature/app",
+      managedWorktreePath: "/managed/feature",
+    });
+    const activity = (
+      status: AgentRuntimeSessionActivity["status"],
+    ): AgentRuntimeSessionActivity => ({
+      sessionId: "session-test",
+      threadId: "root-1",
+      status,
+      activeRunId: status === "running" ? "run-1" : null,
+      pendingRequestCount: status === "waiting" ? 1 : 0,
+      activeTaskCount: status === "background" ? 1 : 0,
+      resumesAutomatically: status === "background",
+      providerInstanceId: "claude",
+      model: "claude-sonnet",
+      updatedAt: "2026-10-15T00:00:00.000Z",
+    });
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <TestQueryProvider client={client}>
+          <NodexTooltipProvider>
+            <CodexSidebarThreadRow
+              item={makeThreadItem({ statusType: "notLoaded", cwd: null })}
+              runtime={{ sessionId: "session-test", rootThreadId: "root-1" }}
+              activityStore={store}
+              active={false}
+              onSelect={() => {}}
+            />
+          </NodexTooltipProvider>
+        </TestQueryProvider>,
+      );
+    });
+    const row = () =>
+      view.container.querySelector<HTMLElement>("[data-app-action-sidebar-thread-row]")!;
+    expect(
+      view.container.querySelector("[data-app-action-sidebar-thread-worktree-icon]"),
+    ).not.toBeNull();
+    expect(row().dataset.appActionSidebarThreadRunning).toBe("false");
+
+    const push = async (change: AgentRuntimeSessionActivityChange) => {
+      await act(async () => {
+        for (const listener of listeners) listener(change);
+        await Promise.resolve();
+      });
+    };
+    await push({ type: "upsert", sequence: 1, activity: activity("running") });
+    await waitFor(() => expect(row().dataset.appActionSidebarThreadRunning).toBe("true"));
+    await push({ type: "upsert", sequence: 2, activity: activity("background") });
+    await waitFor(() =>
+      expect(view.getByRole("img", { name: "Working in background" })).not.toBeNull(),
+    );
+    expect(row().dataset.appActionSidebarThreadRunning).toBe("false");
+    await push({ type: "upsert", sequence: 3, activity: activity("waiting") });
+    await waitFor(() => expect(view.getByLabelText("Needs attention")).not.toBeNull());
+    await push({ type: "remove", sequence: 4, sessionId: "session-test" });
+    await waitFor(() => expect(view.queryByLabelText("Needs attention")).toBeNull());
+  });
+
   test("shows the worktree glyph without changing the row accessible name", async () => {
     let view!: ReturnType<typeof render>;
     await act(async () => {

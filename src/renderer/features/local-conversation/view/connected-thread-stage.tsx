@@ -111,6 +111,7 @@ import {
   useSessionFirstSubmissionTurns,
 } from "../../conversation-launch/use-session-first-submission";
 import type { CodexConversationTurn } from "../../../lib/types";
+import { useRuntimeExecutionLocation } from "@/lib/use-session-execution";
 
 export type ConnectedThreadStageInput = Omit<
   ThreadStageRouteInput,
@@ -1351,15 +1352,25 @@ function ConnectedThreadStageContent({
     ? summaryFields.projectId === null
     : input.activeThreadSummary?.projectId === null;
   const activeThreadTitle = resolveThreadTitle(input, summaryFields, activeThreadId);
-  const activeManagedWorktreePath =
-    summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath ?? null;
+  // App-owned Sessions read the location their move admission classifies; native Threads
+  // carry it in their Core summary.
+  const runtimeSession = runtime.sessionId !== undefined;
+  const runtimeLocation = useRuntimeExecutionLocation(
+    runtimeSession && summaryPanelMounted ? activeThreadId : null,
+    "on-demand",
+  );
+  const activeManagedWorktreePath = runtimeSession
+    ? (runtimeLocation?.managedWorktreePath ?? null)
+    : (summaryFields.managedWorktreePath ?? input.activeThreadSummary?.managedWorktreePath ?? null);
   const activeThreadIsManagedWorktree = Boolean(activeManagedWorktreePath);
   const managedWorktreeAvailability = useManagedWorktreeAvailability(
     activeThreadId,
-    activeThreadIsManagedWorktree && routeActive,
+    activeThreadIsManagedWorktree && routeActive && !runtimeSession,
   );
   const worktreeRuntimeAvailable =
-    !activeThreadIsManagedWorktree || managedWorktreeAvailability.data?.state === "available";
+    !activeThreadIsManagedWorktree ||
+    runtimeSession ||
+    managedWorktreeAvailability.data?.state === "available";
   const activeThreadHasRuntimeWork = Boolean(
     (statusType ?? input.activeThreadSummary?.statusType) === "active" ||
     statusActiveFlags.length > 0 ||
@@ -1403,17 +1414,19 @@ function ConnectedThreadStageContent({
       browserRows: input.summaryBrowserRows ?? [],
       scheduledAutomation: input.summaryScheduledAutomation ?? null,
       computerUsePip: input.summaryComputerUsePip ?? null,
-      executionLocation: activeThreadId
-        ? {
-            threadId: activeThreadId,
-            kind: activeThreadIsManagedWorktree ? ("worktree" as const) : ("local" as const),
-            canMove:
-              executionAvailable &&
-              !activeThreadProjectless &&
-              runtime.kind !== "acp" &&
-              runtime.hostId === "local",
-          }
-        : null,
+      executionLocation:
+        activeThreadId && (!runtimeSession || runtimeLocation)
+          ? {
+              threadId: activeThreadId,
+              kind: activeThreadIsManagedWorktree ? ("worktree" as const) : ("local" as const),
+              // Runtime handoff serves every local provider; native ACP has no move owner.
+              canMove:
+                executionAvailable &&
+                !activeThreadProjectless &&
+                (runtimeSession || runtime.kind !== "acp") &&
+                runtime.hostId === "local",
+            }
+          : null,
       actions,
       taskDetailsKind: runtime.kind === "codex" ? ("thread" as const) : ("observation" as const),
       onOpenThread: actions.onOpenThread,
@@ -1429,6 +1442,8 @@ function ConnectedThreadStageContent({
       activeThreadIsManagedWorktree,
       activeThreadProjectless,
       executionAvailable,
+      runtimeSession,
+      runtimeLocation,
       backgroundTerminalRows,
       backgroundAgentRows,
       childMemberships,

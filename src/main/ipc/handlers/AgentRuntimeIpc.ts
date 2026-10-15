@@ -172,6 +172,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:stop-task", (event, value) =>
       handle(event, Inputs.AgentRuntimeTaskStopSchema, value, application.stopTask),
     );
+    yield* ipc.handlePlainCommand("agent-runtime:session:move", (event, value) =>
+      handle(event, Inputs.AgentRuntimeSessionMoveSchema, value, application.moveSession),
+    );
     yield* ipc.handleQuery("agent-runtime:session:history", (event, value) =>
       handle(event, Inputs.AgentRuntimeHistorySchema, value, application.history),
     );

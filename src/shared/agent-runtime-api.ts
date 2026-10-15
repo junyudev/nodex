@@ -122,6 +122,12 @@ export type AgentRuntimeTaskStopInput = AgentRuntimeSessionTarget & {
   readonly runId: string;
   readonly taskId: string;
 };
+/** Changes product placement; the Session keeps its execution root and working directory. */
+export interface AgentRuntimeSessionMoveInput {
+  readonly operationId: string;
+  readonly sessionId: string;
+  readonly projectId: string | null;
+}
 export type AgentRuntimeQueueInput = AgentRuntimeSessionTarget & { readonly requestId: string } & (
     | { readonly action: "resume" }
     | { readonly action: "cancel"; readonly runId: string }
@@ -298,6 +304,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:stop-task": {
     args: [input: AgentRuntimeTaskStopInput];
     result: { readonly sequence: number };
+  };
+  "agent-runtime:session:move": {
+    args: [input: AgentRuntimeSessionMoveInput];
+    result: { readonly sessionId: string; readonly projectId: string | null };
   };
   "agent-runtime:session:history": {
     args: [input: AgentRuntimeHistoryInput];

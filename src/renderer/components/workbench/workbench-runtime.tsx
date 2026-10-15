@@ -208,14 +208,22 @@ import {
   getCachedProjectSessionDetail,
   projectSessionToSummary,
 } from "@/lib/project-session-query-cache";
+import {
+  hasSessionConversation,
+  runtimeSessionLiveIndicator,
+  sessionExecutionThreadId,
+} from "@/lib/session-execution";
 import { useWorkbenchCodexNavigation } from "@/features/local-conversation/use-workbench-codex-navigation";
 import { presentPageStageRelatedChatCandidates } from "@/lib/page-stage-related-chat-candidates";
 import {
+  attentionForIndicator,
   buildProjectAgentDockPendingWorktreeModel,
   buildProjectAgentDockModel,
+  resolveProjectAgentDockLiveIndicator,
   resolveProjectAgentDockPendingWorktree,
   type ProjectAgentDockTargetRow,
 } from "@/lib/project-agent-dock-model";
+import { useAgentRuntimeSessionActivity } from "@/lib/agent-runtime-session-activity";
 import {
   createProjectAgentDockDraftSession,
   createProjectAgentDockMaterializer,
@@ -758,8 +766,10 @@ export function WorkbenchRuntime({
             return Promise.resolve({ status: "unavailable", reason: "Workbench is starting" });
           return capability.present(input, surface);
         },
-        hasAttachedThread(sessionId) {
-          return (sessionCatalogRef.current.findById(sessionId)?.domain.thread ?? null) !== null;
+        hasConversation(sessionId) {
+          return hasSessionConversation(
+            sessionCatalogRef.current.findById(sessionId)?.domain ?? null,
+          );
         },
         setScene(owner, update) {
           workbenchWindowRef.current.setScene(owner, update);
@@ -4154,9 +4164,19 @@ export function WorkbenchRuntime({
         }}
       />
     ) : null;
+  const projectAgentDockTriggerActivity = useAgentRuntimeSessionActivity(
+    projectAgentDockModel?.trigger.runtimeSessionId ?? null,
+  );
   const projectAgentDockAttention = projectAgentDockPendingWorktreeModel
     ? projectAgentDockPendingWorktreeModel.attention
-    : (projectAgentDockModel?.trigger.attention ?? "none");
+    : projectAgentDockModel
+      ? attentionForIndicator(
+          resolveProjectAgentDockLiveIndicator(
+            projectAgentDockModel.trigger,
+            runtimeSessionLiveIndicator(projectAgentDockTriggerActivity),
+          ),
+        )
+      : "none";
   const projectAgentDock =
     selectedProjectSceneId &&
     projectSceneKey &&
@@ -4581,7 +4601,7 @@ export function WorkbenchRuntime({
               />
               <WorkbenchProcessManagerDialog
                 open={processManagerOpen}
-                activeThreadId={activeSession?.thread?.threadId ?? null}
+                activeThreadId={sessionExecutionThreadId(activeSession)}
                 threads={processManagerThreads}
                 control={workbenchCodexControl}
                 onOpenChange={setProcessManagerOpen}

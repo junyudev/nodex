@@ -121,6 +121,9 @@ export const AgentRuntimeRollbackSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   runId: id,
 });
+export const AgentRuntimeSessionMoveSchema = z
+  .object({ operationId: id, sessionId: id, projectId: id.nullable() })
+  .strict();
 export const AgentRuntimeTaskStopSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   runId: id,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildProjectHoverCardMetadataRows,
   formatProjectActivitySummary,
+  mergeRuntimeProjectActivity,
 } from "./project-hover-card-model";
 
 describe("project hover card model", () => {
@@ -65,5 +66,32 @@ describe("project hover card model", () => {
         pathContext: null,
       }),
     ).toEqual([{ kind: "source", label: "C:\\work\\nested", path: "C:\\work\\nested" }]);
+  });
+
+  it("adds Runtime activity to Core counts with the same exclusive buckets", () => {
+    const core = {
+      projectId: "project-1",
+      taskCount: 5,
+      waitingCount: 1,
+      unreadCount: 2,
+      activeCount: 0,
+    };
+    const merged = mergeRuntimeProjectActivity(
+      core,
+      [
+        { sessionId: "waiting-unread", unread: true },
+        { sessionId: "running", unread: false },
+        { sessionId: "background-unread", unread: true },
+        { sessionId: "idle", unread: false },
+      ],
+      new Map([
+        ["waiting-unread", { status: "waiting" as const }],
+        ["running", { status: "running" as const }],
+        ["background-unread", { status: "background" as const }],
+      ]),
+    );
+    expect(merged).toEqual({ ...core, waitingCount: 2, unreadCount: 1, activeCount: 1 });
+    expect(mergeRuntimeProjectActivity(undefined, [], new Map())).toBeUndefined();
+    expect(mergeRuntimeProjectActivity(null, [], new Map())).toBeNull();
   });
 });

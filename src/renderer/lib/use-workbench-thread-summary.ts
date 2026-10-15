@@ -36,6 +36,7 @@ import type { WorkbenchSessionRenderProjection } from "./workbench-session-prese
 import type { WorkbenchEphemeralPanelState } from "./workbench-ephemeral-panel-state";
 import { buildAutomationsPath } from "@/components/workbench/workbench-automations-routes";
 import { buildProcessOutputTargetFromSummaryRow } from "./workbench-process-output-target";
+import { sessionExecutionThreadId } from "./session-execution";
 
 export interface WorkbenchThreadSummaryCommands {
   readonly selectPanelTab: (panelId: PanelId, tabId: string, leafId?: string) => Promise<void>;
@@ -114,7 +115,8 @@ export function useWorkbenchThreadSummary({
   scheduledAutomations,
   commands,
 }: WorkbenchThreadSummaryInput): WorkbenchThreadSummaryModel {
-  const available = Boolean(activeSession?.thread);
+  const conversationThreadId = sessionExecutionThreadId(activeSession);
+  const available = conversationThreadId !== null;
   const mounted = available && !rightPanelFullWidth;
   const open = mounted && layoutMode !== "overlay" && pinnedOpen;
   const mode = !mounted ? "hidden" : layoutMode === "overlay" ? "popover" : "pinned";
@@ -206,7 +208,7 @@ export function useWorkbenchThreadSummary({
       }),
     [activeSession?.id, scheduledAutomations],
   );
-  const pip = useRemoteHostedPipSummaryControl(activeSession?.thread?.threadId ?? null);
+  const pip = useRemoteHostedPipSummaryControl(conversationThreadId);
   const onOpenSideChatRow = useCallback<
     NonNullable<ThreadStageActions["onOpenSummarySideChatRow"]>
   >(
@@ -248,12 +250,12 @@ export function useWorkbenchThreadSummary({
     NonNullable<ThreadStageActions["onOpenBackgroundTerminalOutput"]>
   >(
     async (row) => {
-      if (!activeSession?.thread) return;
+      if (!conversationThreadId) return;
       await commands.openProcessOutput(
-        buildProcessOutputTargetFromSummaryRow(activeSession.thread.threadId, row),
+        buildProcessOutputTargetFromSummaryRow(conversationThreadId, row),
       );
     },
-    [activeSession?.thread, commands],
+    [conversationThreadId, commands],
   );
   const headerActions = useMemo<WorkbenchThreadSummaryModel["headerActions"]>(
     () => ({

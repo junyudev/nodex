@@ -33,7 +33,7 @@ afterEach(() => {
   for (const dispose of disposers.splice(0).reverse()) dispose();
 });
 
-function createHarness(options: { readonly sessionHasAttachedThread?: boolean } = {}) {
+function createHarness(options: { readonly sessionHasConversation?: boolean } = {}) {
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
   const windowOwner = getWorkbenchWindowOwner(
@@ -61,7 +61,7 @@ function createHarness(options: { readonly sessionHasAttachedThread?: boolean } 
   );
   const port: WorkbenchSceneNavigatorPort = {
     presentDurable: createWorkbenchSceneSurfacePresenter(windowOwner, executor),
-    hasAttachedThread: () => options.sessionHasAttachedThread ?? true,
+    hasConversation: () => options.sessionHasConversation ?? true,
     setScene(owner, update) {
       windowOwner.setScene(owner, update);
     },
@@ -298,7 +298,7 @@ describe("WorkbenchSceneNavigator", () => {
   });
 
   test("rejects Review surfaces in a threadless Session Scene", async () => {
-    const harness = createHarness({ sessionHasAttachedThread: false });
+    const harness = createHarness({ sessionHasConversation: false });
 
     await expect(
       harness.navigator.presentPanelSurface({
@@ -313,7 +313,7 @@ describe("WorkbenchSceneNavigator", () => {
       }),
     ).resolves.toEqual({
       status: "unavailable",
-      reason: "Review requires an attached Thread",
+      reason: "Review requires a started conversation",
     });
     expect(harness.scenes).toEqual({});
   });

@@ -17,6 +17,7 @@ import {
   type CodexLaunchThreadHandoffInput,
   type CodexThreadHandoffRuntimeError,
 } from "../../codex-application/CodexThreadHandoffRuntime";
+import { ThreadExecution } from "../../host-runtime/ThreadExecution";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -29,6 +30,11 @@ vi.mock("electron", () => ({
   screen: {},
   session: {},
 }));
+
+const unusedThreadExecution = Layer.succeed(
+  ThreadExecution,
+  {} as unknown as ThreadExecution["Service"],
+);
 
 const rendererEvent = (id: number, url = "app://-/index.html"): IpcMainInvokeEvent => {
   const frame = { url };
@@ -81,6 +87,7 @@ it.effect(
                   },
                 ],
               } as unknown as WindowRuntime["Service"]),
+              unusedThreadExecution,
               mainConfigLayer(),
             ),
           ),
@@ -168,6 +175,7 @@ it.effect("admits only a trusted, bounded attached-thread destination intent", (
               has: (id: number) => id === 7,
               all: () => [],
             } as unknown as WindowRuntime["Service"]),
+            unusedThreadExecution,
             mainConfigLayer(),
           ),
         ),
@@ -204,5 +212,71 @@ it.effect("admits only a trusted, bounded attached-thread destination intent", (
     assert.lengthOf(launches, 1);
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(handlers.size, 0);
+  }),
+);
+
+it.effect("reads the location that handoff admission classifies, for trusted windows only", () =>
+  Effect.gen(function* () {
+    const handlers = new Map<
+      string,
+      (event: IpcMainInvokeEvent, input: unknown) => Effect.Effect<unknown, unknown>
+    >();
+    const reads: string[] = [];
+    const ipc = makeTestElectronIpc({
+      handle: (channel, handler) =>
+        Effect.acquireRelease(
+          Effect.sync(() => handlers.set(channel, handler as never)),
+          () => Effect.sync(() => handlers.delete(channel)),
+        ).pipe(Effect.asVoid),
+      on: () => Effect.die("unused"),
+    });
+    const scope = yield* Scope.make();
+    yield* Layer.buildWithScope(
+      live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(CodexThreadHandoffRuntime, {
+              snapshot: Effect.succeed({ revision: 0, operations: [] }),
+              changes: Stream.empty,
+            } as unknown as CodexThreadHandoffRuntime["Service"]),
+            Layer.succeed(ThreadExecution, {
+              read: (threadId: string) =>
+                Effect.sync(() => {
+                  reads.push(threadId);
+                  return {
+                    hostId: "local",
+                    cwd: "/managed/feature/app",
+                    workspaceRoots: ["/managed/feature"],
+                    managedWorktreePath: "/managed/feature",
+                    projectId: "project-1",
+                    projectlessOutputDirectory: null,
+                    projectlessWorkspaceBrowserRoot: null,
+                  };
+                }),
+            } as unknown as ThreadExecution["Service"]),
+            Layer.succeed(WindowRuntime, {
+              has: (id: number) => id === 7,
+              all: () => [],
+            } as unknown as WindowRuntime["Service"]),
+            mainConfigLayer(),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const location = handlers.get("thread-execution:location")!;
+    assert.deepEqual(yield* location(rendererEvent(7), { threadId: " root-1 " }), {
+      hostId: "local",
+      cwd: "/managed/feature/app",
+      managedWorktreePath: "/managed/feature",
+    });
+    for (const input of [{ threadId: " " }, { threadId: "root-1", extra: true }, null])
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(location(rendererEvent(7), input))));
+    assert.isTrue(
+      Exit.isFailure(yield* Effect.exit(location(rendererEvent(8), { threadId: "root-1" }))),
+    );
+    assert.deepEqual(reads, ["root-1"]);
+    yield* Scope.close(scope, Exit.void);
   }),
 );
