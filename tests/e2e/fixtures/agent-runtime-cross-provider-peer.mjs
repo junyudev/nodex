@@ -22,6 +22,8 @@ const load = () => {
 let state = load();
 const persist = () => fs.writeFileSync(path.join(home, "codex-state.json"), JSON.stringify(state));
 const servers = new Map();
+/** Input steered into an active turn, read by that turn before it finishes. */
+const steered = new Map();
 const mcpProfiles = new WeakMap();
 const config = Object.fromEntries([
   "model", "review_model", "model_context_window", "model_auto_compact_token_limit", "model_auto_compact_token_limit_scope", "model_provider",
@@ -122,22 +124,42 @@ async function answer(prompt, server, native) {
   const plan = JSON.parse(fs.readFileSync(path.join(home, "plan.json"), "utf8"));
   const delegation = plan[prompt];
   if (!delegation) {
-    const terminalNotice = /^Delegated task (\S+) reached a terminal state\./u.exec(prompt);
+    // One finished task or a batch of siblings that finished before the parent woke.
+    const terminalNotice = /^Delegated tasks? (\S+(?:, \S+)*) reached (?:a terminal state|terminal states)\./u.exec(prompt);
     if (terminalNotice) {
-      const result = await callTool(server, "task_status", { taskId: terminalNotice[1] }, native);
-      if (result.status !== "completed" || typeof result.summary !== "string")
-        throw new Error(`Delegated completion has no completed result: ${JSON.stringify(result)}`);
-      record({ event: "task.result-read", taskId: result.taskId, summary: result.summary });
-      return `${kind === "claude" ? "Claude" : "Codex"} received async ${result.summary}`;
+      const summaries = [];
+      for (const taskId of terminalNotice[1].split(", ")) {
+        const result = await callTool(server, "task_status", { taskId }, native);
+        if (result.status !== "completed" || typeof result.summary !== "string")
+          throw new Error(`Delegated completion has no completed result: ${JSON.stringify(result)}`);
+        record({ event: "task.result-read", taskId: result.taskId, summary: result.summary });
+        summaries.push(result.summary);
+      }
+      return summaries.length === 1
+        ? `${kind === "claude" ? "Claude" : "Codex"} received async ${summaries[0]}`
+        : `${kind === "claude" ? "Claude" : "Codex"} received ${summaries.length} async results`;
     }
     if (prompt === "Follow up after async completion") return "Codex follow-up complete";
     return `${kind === "claude" ? "Claude" : "Codex"} child report`;
   }
   record({ event: "delegate.started", prompt });
   await callTool(server, "list_agent_models", {}, native);
+  if (delegation.fanout) {
+    const taskIds = [];
+    for (let index = 1; index <= delegation.fanout; index++) {
+      const task = `${delegation.task} ${index}`;
+      const result = await callTool(server, "delegate_task", {
+        task, title: task, target: delegation.target, mode: "async", timeoutMs: 30_000,
+        clientRequestId: `fixture:${nativeSessionId}:${prompt}:${index}`,
+      }, native);
+      taskIds.push(result.taskId);
+    }
+    record({ event: "fanout.delegated", taskIds });
+    return `${kind === "claude" ? "Claude" : "Codex"} delegated ${taskIds.length} async children`;
+  }
   const input = {
-    task: delegation.task, title: delegation.task, target: delegation.target, mode: delegation.mode ?? "wait", timeoutMs: 30_000,
-    clientRequestId: `fixture:${nativeSessionId}:${prompt}`,
+    task: delegation.task, title: delegation.task, target: delegation.target, mode: delegation.mode ?? "wait",
+    timeoutMs: delegation.timeoutMs ?? 30_000, clientRequestId: `fixture:${nativeSessionId}:${prompt}`,
   };
   const result = await callTool(server, "delegate_task", input, native);
   if (delegation.mode !== "async") {
@@ -153,8 +175,11 @@ function finishCodex(threadId, turnId, status, text) {
   const thread = state.threads[threadId];
   const turn = thread?.turns.find((value) => value.id === turnId);
   if (!turn || turn.status !== "inProgress") return;
-  if (text) {
-    const item = { type: "agentMessage", id: randomUUID(), text, phase: "final_answer", delivery: null, memoryCitation: null, questions: null };
+  steered.delete(turnId);
+  const texts = (Array.isArray(text) ? text : [text]).filter(Boolean);
+  for (const [index, value] of texts.entries()) {
+    const phase = index === texts.length - 1 ? "final_answer" : "commentary";
+    const item = { type: "agentMessage", id: randomUUID(), text: value, phase, delivery: null, memoryCitation: null, questions: null };
     turn.items.push(item);
     notify("item/started", { threadId, turnId, item, startedAtMs: Date.now() });
     notify("item/completed", { threadId, turnId, item, completedAtMs: Date.now() });
@@ -231,8 +256,29 @@ async function handleCodex(message) {
         }, 25);
         return;
       }
-      const text = await answer(prompt, servers.get(params.threadId), { threadId: params.threadId, turnId });
-      finishCodex(params.threadId, turnId, "completed", text); return;
+      const native = { threadId: params.threadId, turnId };
+      const texts = [await answer(prompt, servers.get(params.threadId), native)];
+      // Like Codex, the turn answers what was steered into it before it finishes.
+      for (let next = steered.get(turnId)?.shift(); next !== undefined; next = steered.get(turnId)?.shift())
+        texts.push(await answer(next, servers.get(params.threadId), native));
+      finishCodex(params.threadId, turnId, "completed", texts); return;
+    }
+    case "turn/steer": {
+      // A steer joins the active turn as one more user message, as Codex reports it.
+      state = load();
+      const active = state.threads[params.threadId]?.turns.find((value) => value.id === params.expectedTurnId);
+      if (active?.status !== "inProgress") {
+        emit({ id, error: { code: -32600, message: "expectedTurnId does not match an active turn" } });
+        return;
+      }
+      const text = params.input?.filter((value) => value.type === "text").map((value) => value.text).join("\n") ?? "";
+      record({ event: "steer", threadId: params.threadId, turnId: params.expectedTurnId, text });
+      steered.set(params.expectedTurnId, [...(steered.get(params.expectedTurnId) ?? []), text]);
+      reply({ turnId: params.expectedTurnId });
+      const item = { type: "userMessage", id: randomUUID(), clientId: params.clientUserMessageId ?? null, content: params.input ?? [] };
+      notify("item/started", { threadId: params.threadId, turnId: params.expectedTurnId, item, startedAtMs: Date.now() });
+      notify("item/completed", { threadId: params.threadId, turnId: params.expectedTurnId, item, completedAtMs: Date.now() });
+      return;
     }
     case "turn/interrupt": reply({}); finishCodex(params.threadId, params.turnId, "interrupted"); return;
     default: reply({});
