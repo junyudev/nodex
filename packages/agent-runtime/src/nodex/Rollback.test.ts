@@ -28,7 +28,11 @@ import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterReg
 import * as ProviderReplayHarness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import type { ProjectionCheckpointContext } from "../orchestration-v2/ProjectionStore.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import { rollbackThread } from "./Rollback.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { rollbackThread as rollbackWithAllocator } from "./Rollback.ts";
+
+const rollbackThread = (input: Parameters<typeof rollbackWithAllocator>[0]) =>
+  rollbackWithAllocator(input).pipe(Effect.provide(IdAllocator.layer));
 
 const threadId = ThreadId.make("thread:rollback");
 const firstRunId = RunId.make("run:first");
@@ -76,155 +80,168 @@ const context: ProjectionCheckpointContext = {
   ],
 };
 
-it.effect("replays an accepted rewind after its Run is discarded", () => {
-  const instanceId = ProviderInstanceId.make("codex");
-  const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
-    instanceId,
-    driver: ProviderDriverKind.make("codex"),
-    getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
-    planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
-    openSession: () => Effect.die("Native rewind is exercised by CheckpointRollbackService tests."),
-  };
-  return Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    const events = yield* EventSinkV2;
-    yield* orchestrator.dispatch({
-      type: "thread.create",
-      commandId: CommandId.make("create:rewind"),
-      threadId,
-      projectId: ProjectId.make("project:rewind"),
-      title: "Rewind",
-      modelSelection: { instanceId, model: "gpt-5.4" },
-      runtimeMode: "full-access",
-      interactionMode: "default",
-      branch: null,
-      worktreePath: null,
-      createdBy: "user",
-      creationSource: "web",
-    });
-    yield* orchestrator.dispatch({
-      type: "message.dispatch",
-      commandId: CommandId.make("dispatch:rewind"),
-      threadId,
-      messageId: MessageId.make("message:rewind"),
-      text: "Original",
-      attachments: [],
-      dispatchMode: { type: "defer_start" },
-      createdBy: "user",
-      creationSource: "web",
-    });
-    const projection = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
-    const run = { ...projection.runs[0]!, status: "completed" as const, queuePosition: null };
-    const now = yield* DateTime.now;
-    const providerThreadId = ProviderThreadId.make("provider-thread:rewind");
-    const nodeId = NodeId.make("node:rewind");
-    const eventFields = { threadId, providerInstanceId: instanceId, occurredAt: now };
-    yield* events.write({
-      events: [
-        {
-          ...eventFields,
-          id: EventId.make("event:rewind:run"),
-          type: "run.updated",
-          payload: run,
-        },
-        {
-          ...eventFields,
-          id: EventId.make("event:rewind:thread"),
-          type: "thread.metadata-updated",
-          payload: { ...projection.thread, activeProviderThreadId: providerThreadId },
-        },
-        {
-          ...eventFields,
-          id: EventId.make("event:rewind:provider"),
-          type: "provider-thread.updated",
-          payload: {
-            id: providerThreadId,
-            driver: ProviderDriverKind.make("codex"),
-            providerInstanceId: instanceId,
-            providerSessionId: ProviderSessionId.make("session:rewind"),
-            appThreadId: threadId,
-            ownerNodeId: nodeId,
-            nativeThreadRef: null,
-            nativeConversationHeadRef: null,
-            status: "idle",
-            firstRunOrdinal: 1,
-            lastRunOrdinal: 1,
-            handoffIds: [],
-            forkedFrom: null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        },
-        {
-          ...eventFields,
-          id: EventId.make("event:rewind:scope"),
-          type: "checkpoint-scope.created",
-          payload: {
-            id: scopeId,
-            threadId,
-            runId: run.id,
-            nodeId,
-            parentScopeId: null,
-            providerThreadId,
-            kind: "root_run",
-            ordinalWithinParent: 0,
-            advancesAppRunCount: true,
-            cwd: "/workspace",
-            createdAt: now,
-          },
-        },
-        {
-          ...eventFields,
-          id: EventId.make("event:rewind:checkpoint"),
-          type: "checkpoint.captured",
-          payload: {
-            ...context.checkpoints[0]!,
-            threadId,
-            nodeId,
-            parentCheckpointId: null,
-            files: [],
-            capturedAt: now,
-          },
-        },
-      ],
-    });
-    yield* Effect.gen(function* () {
-      const request = { threadId, requestId: CommandId.make("rewind-once"), runId: run.id };
-      const accepted = yield* rollbackThread(request);
+it.effect.each([true, false])(
+  "replays an accepted rewind after its Run is discarded (recorded anchor: %s)",
+  (recordedAnchor) => {
+    const instanceId = ProviderInstanceId.make("codex");
+    const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
+      instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
+      planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
+      openSession: () =>
+        Effect.die("Native rewind is exercised by CheckpointRollbackService tests."),
+    };
+    return Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const events = yield* EventSinkV2;
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make("create:rewind"),
+        threadId,
+        projectId: ProjectId.make("project:rewind"),
+        title: "Rewind",
+        modelSelection: { instanceId, model: "gpt-5.4" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdBy: "user",
+        creationSource: "web",
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("dispatch:rewind"),
+        threadId,
+        messageId: MessageId.make("message:rewind"),
+        text: "Original",
+        attachments: [],
+        dispatchMode: { type: "defer_start" },
+        createdBy: "user",
+        creationSource: "web",
+      });
+      const projection = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
+      const run = { ...projection.runs[0]!, status: "completed" as const, queuePosition: null };
+      const now = yield* DateTime.now;
+      const providerThreadId = ProviderThreadId.make("provider-thread:rewind");
+      const nodeId = NodeId.make("node:rewind");
+      const eventFields = { threadId, providerInstanceId: instanceId, occurredAt: now };
       yield* events.write({
         events: [
           {
             ...eventFields,
-            id: EventId.make("event:rewind:discarded"),
+            id: EventId.make("event:rewind:run"),
             type: "run.updated",
-            payload: { ...run, status: "rolled_back" },
+            payload: run,
           },
+          {
+            ...eventFields,
+            id: EventId.make("event:rewind:thread"),
+            type: "thread.metadata-updated",
+            payload: { ...projection.thread, activeProviderThreadId: providerThreadId },
+          },
+          {
+            ...eventFields,
+            id: EventId.make("event:rewind:provider"),
+            type: "provider-thread.updated",
+            payload: {
+              id: providerThreadId,
+              driver: ProviderDriverKind.make("codex"),
+              providerInstanceId: instanceId,
+              providerSessionId: ProviderSessionId.make("session:rewind"),
+              appThreadId: threadId,
+              ownerNodeId: nodeId,
+              nativeThreadRef: null,
+              nativeConversationHeadRef: null,
+              status: "idle",
+              firstRunOrdinal: 1,
+              lastRunOrdinal: 1,
+              handoffIds: [],
+              forkedFrom: null,
+              createdAt: now,
+              updatedAt: now,
+            },
+          },
+          {
+            ...eventFields,
+            id: EventId.make("event:rewind:scope"),
+            type: "checkpoint-scope.created",
+            payload: {
+              id: scopeId,
+              threadId,
+              runId: run.id,
+              nodeId,
+              parentScopeId: null,
+              providerThreadId,
+              kind: "root_run",
+              ordinalWithinParent: 0,
+              advancesAppRunCount: true,
+              cwd: "/workspace",
+              createdAt: now,
+            },
+          },
+          // Without a recorded anchor, the rewind records the thread start itself.
+          ...(recordedAnchor
+            ? [
+                {
+                  ...eventFields,
+                  id: EventId.make("event:rewind:checkpoint"),
+                  type: "checkpoint.captured" as const,
+                  payload: {
+                    ...context.checkpoints[0]!,
+                    threadId,
+                    nodeId,
+                    parentCheckpointId: null,
+                    files: [],
+                    capturedAt: now,
+                  },
+                },
+              ]
+            : []),
         ],
       });
-      expect(yield* rollbackThread(request)).toEqual(accepted);
-      expect((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]?.status).toBe(
-        "rolled_back",
+      yield* Effect.gen(function* () {
+        const request = { threadId, requestId: CommandId.make("rewind-once"), runId: run.id };
+        const accepted = yield* rollbackThread(request);
+        yield* events.write({
+          events: [
+            {
+              ...eventFields,
+              id: EventId.make("event:rewind:discarded"),
+              type: "run.updated",
+              payload: { ...run, status: "rolled_back" },
+            },
+          ],
+        });
+        expect(yield* rollbackThread(request)).toEqual(accepted);
+        expect((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]?.status).toBe(
+          "rolled_back",
+        );
+        const anchors = (yield* orchestrator.getCheckpointContext(threadId)).checkpoints;
+        expect(anchors.map((anchor) => [anchor.ordinalWithinScope, anchor.appRunOrdinal])).toEqual([
+          [0, null],
+        ]);
+      }).pipe(
+        Effect.provide(
+          Layer.mock(ThreadManagementService)({
+            getReceipt: orchestrator.getReceipt,
+            getCheckpointContext: orchestrator.getCheckpointContext,
+            getThreadRecords: orchestrator.getThreadRecords,
+            dispatch: orchestrator.dispatch,
+          }),
+        ),
       );
     }).pipe(
       Effect.provide(
-        Layer.mock(ThreadManagementService)({
-          getReceipt: orchestrator.getReceipt,
-          getCheckpointContext: orchestrator.getCheckpointContext,
-          getThreadRecords: orchestrator.getThreadRecords,
-          dispatch: orchestrator.dispatch,
-        }),
+        ProviderReplayHarness.layerWithRegistry(
+          { name: "rewind-receipt" },
+          ProviderAdapterRegistry.layerSingle(adapter),
+          { runEffectWorker: false },
+        ),
       ),
     );
-  }).pipe(
-    Effect.provide(
-      ProviderReplayHarness.layerWithRegistry(
-        { name: "rewind-receipt" },
-        ProviderAdapterRegistry.layerSingle(adapter),
-        { runEffectWorker: false },
-      ),
-    ),
-  );
-});
+  },
+);
 
 it.effect.each([
   ["first message", firstRunId, baselineId],
@@ -314,20 +331,48 @@ it.effect("skips discarded Run checkpoints when editing after a previous rewind"
   );
 });
 
-it.effect.each(["foreign Run", "missing checkpoint", "stale checkpoint"] as const)(
-  "refuses %s before dispatch",
-  (failure) => {
+it.effect("refuses a foreign Run before dispatch", () => {
+  const dispatch = vi.fn((_command: OrchestrationV2ServerCommand) =>
+    Effect.die("Invalid targets must never dispatch."),
+  );
+  return Effect.gen(function* () {
+    const result = yield* rollbackThread({
+      threadId,
+      requestId: CommandId.make("foreign Run"),
+      runId: RunId.make("run:foreign"),
+    }).pipe(Effect.result);
+    expect(result._tag).toBe("Failure");
+    expect(dispatch).not.toHaveBeenCalled();
+  }).pipe(
+    Effect.provide(
+      Layer.mock(ThreadManagementService)({
+        getReceipt: () => Effect.succeed(Option.none()),
+        getCheckpointContext: () => Effect.succeed(context),
+        getThreadRecords: (_threadId, _fields, filter) => readRunRecords(filter?.runIds ?? []),
+        dispatch,
+      }),
+    ),
+  );
+});
+
+it.effect.each(["no", "only discarded"] as const)(
+  "anchors on the thread start when %s earlier Run anchors exist",
+  (anchors) => {
     const dispatch = vi.fn((_command: OrchestrationV2ServerCommand) =>
-      Effect.die("Invalid targets must never dispatch."),
+      Effect.succeed({ sequence: 44, storedEvents: [] }),
     );
     return Effect.gen(function* () {
-      const result = yield* rollbackThread({
-        threadId,
-        requestId: CommandId.make(failure),
-        runId: failure === "foreign Run" ? RunId.make("run:foreign") : lastRunId,
-      }).pipe(Effect.result);
-      expect(result._tag).toBe("Failure");
-      expect(dispatch).not.toHaveBeenCalled();
+      yield* rollbackThread({ threadId, requestId: CommandId.make(anchors), runId: lastRunId });
+      const threadStart = yield* IdAllocator.IdAllocatorV2.use((ids) =>
+        ids.allocate.checkpoint({ checkpointScopeId: scopeId, name: "0" }),
+      ).pipe(Effect.provide(IdAllocator.layer));
+      expect(dispatch.mock.calls[0]?.[0]).toMatchObject({
+        type: "checkpoint.rollback",
+        beforeRunId: lastRunId,
+        scopeId,
+        checkpointId: threadStart,
+        restoreFiles: false,
+      });
     }).pipe(
       Effect.provide(
         Layer.mock(ThreadManagementService)({
@@ -336,14 +381,12 @@ it.effect.each(["foreign Run", "missing checkpoint", "stale checkpoint"] as cons
             Effect.succeed({
               ...context,
               checkpoints:
-                failure === "missing checkpoint"
+                anchors === "no"
                   ? []
-                  : failure === "stale checkpoint"
-                    ? context.checkpoints.map((checkpoint) => ({
-                        ...checkpoint,
-                        status: "stale" as const,
-                      }))
-                    : context.checkpoints,
+                  : context.checkpoints.map((checkpoint) => ({
+                      ...checkpoint,
+                      status: "stale" as const,
+                    })),
             }),
           getThreadRecords: (_threadId, _fields, filter) => readRunRecords(filter?.runIds ?? []),
           dispatch,

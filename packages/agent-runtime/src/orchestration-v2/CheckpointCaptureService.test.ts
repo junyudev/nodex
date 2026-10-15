@@ -735,7 +735,10 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
       );
       assert.equal(projected.rootNode?.status, "cancelled");
       assert.deepEqual(
-        [...projected.readyCheckpointOrdinals].toSorted((left, right) => left - right),
+        (yield* projectionStore.getCheckpointContext(cancelledThreadId)).checkpoints
+          .filter((checkpoint) => checkpoint.status === "ready")
+          .map((checkpoint) => checkpoint.ordinalWithinScope)
+          .toSorted((left, right) => left - right),
         [0, 1],
       );
     }),

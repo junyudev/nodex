@@ -200,3 +200,30 @@ export const make = Effect.gen(function* () {
 });
 
 export const layer = Layer.effect(CheckpointStore, make);
+
+const workspaceStateUnavailable = (operation: string) =>
+  Effect.fail(
+    new VcsUnsupportedOperationError({
+      operation,
+      kind: "unknown",
+      detail: "Checkpoints in this host are conversation anchors and record no workspace state.",
+    }),
+  );
+
+/**
+ * A host that never captures workspace state: every workspace reads as non-checkpointable, so
+ * each Run still receives its conversation anchor but no Git ref, commit or index is written
+ * into the user's repository, and files are never restored.
+ */
+export const layerWithoutWorkspaceState = Layer.succeed(
+  CheckpointStore,
+  CheckpointStore.of({
+    isGitRepository: () => Effect.succeed(false),
+    hasCheckpointRef: () => Effect.succeed(false),
+    captureCheckpoint: () => workspaceStateUnavailable("captureCheckpoint"),
+    restoreCheckpoint: () => Effect.succeed(false),
+    diffCheckpoints: () => workspaceStateUnavailable("diffCheckpoints"),
+    listAuthoredPaths: () => Effect.succeed(null),
+    deleteCheckpointRefs: () => Effect.void,
+  }),
+);

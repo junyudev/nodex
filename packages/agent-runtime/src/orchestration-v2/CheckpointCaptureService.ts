@@ -65,7 +65,7 @@ export const layer: Layer.Layer<
       readonly runId: RunId;
       readonly scopeId: CheckpointScopeId;
     }) {
-      const { run, rootNode, scope, providerThread, readyCheckpointOrdinals } =
+      const { run, rootNode, scope, providerThread, baselineCheckpoints } =
         yield* projections.getCheckpointCaptureContext(input.threadId, input);
       // A stopped run is already terminal. Its checkpoint is the rollback point
       // for the message after it, so capture leaves its status alone.
@@ -105,21 +105,30 @@ export const layer: Layer.Layer<
 
       const capturedAt = yield* DateTime.now;
       const baselineOrdinalWithinScope = Math.max(0, run.ordinal - 1);
-      const hasReadyCheckpoint = (ordinalWithinScope: number) =>
-        readyCheckpointOrdinals.includes(ordinalWithinScope);
-      const threadStartCheckpoint =
-        baselineOrdinalWithinScope === 0 || hasReadyCheckpoint(0)
-          ? null
-          : yield* checkpoints.materializeBaselineCheckpoint({
-              scope,
-              ordinalWithinScope: 0,
-            });
-      const baselineCheckpoint = hasReadyCheckpoint(baselineOrdinalWithinScope)
-        ? null
-        : yield* checkpoints.materializeBaselineCheckpoint({
-            scope,
-            ordinalWithinScope: baselineOrdinalWithinScope,
-          });
+      // A baseline fills an ordinal without a ready checkpoint. A Run's anchor at that ordinal
+      // keeps its identity and Run ordinal; captured workspace state may only upgrade it.
+      const baselineAt = Effect.fnUntraced(function* (ordinalWithinScope: number) {
+        const recorded = baselineCheckpoints.find(
+          (candidate) => candidate.ordinalWithinScope === ordinalWithinScope,
+        );
+        if (recorded?.status === "ready") return null;
+        const baseline = yield* checkpoints.materializeBaselineCheckpoint({
+          scope,
+          ordinalWithinScope,
+        });
+        if (recorded === undefined || recorded.runId === null) return baseline;
+        return baseline.status === "ready"
+          ? {
+              ...baseline,
+              runId: recorded.runId,
+              nodeId: recorded.nodeId,
+              parentCheckpointId: recorded.parentCheckpointId,
+              appRunOrdinal: recorded.appRunOrdinal,
+            }
+          : null;
+      });
+      const threadStartCheckpoint = baselineOrdinalWithinScope === 0 ? null : yield* baselineAt(0);
+      const baselineCheckpoint = yield* baselineAt(baselineOrdinalWithinScope);
       const checkpoint = yield* checkpoints.capture({
         scope,
         runId: run.id,

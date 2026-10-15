@@ -9920,9 +9920,25 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
       );
 
-      const targetCheckpoint = projection.checkpoints.find(
-        (candidate) => candidate.id === command.checkpointId,
-      );
+      // A conversation rewind that keeps files may anchor on the thread start before any Run
+      // finished; that anchor is recorded here instead of at the first capture.
+      const threadStartAnchor =
+        command.restoreFiles === false &&
+        !projection.checkpoints.some((candidate) => candidate.id === command.checkpointId)
+          ? yield* Effect.gen(function* () {
+              const scope = projection.checkpointScopes.find(
+                (candidate) => candidate.id === command.scopeId && candidate.kind === "root_run",
+              );
+              if (scope === undefined) return undefined;
+              const anchor = yield* checkpointService
+                .materializeBaselineCheckpoint({ scope, ordinalWithinScope: 0 })
+                .pipe(mapDispatchError(command));
+              return anchor.id === command.checkpointId ? anchor : undefined;
+            })
+          : undefined;
+      const targetCheckpoint =
+        threadStartAnchor ??
+        projection.checkpoints.find((candidate) => candidate.id === command.checkpointId);
       if (targetCheckpoint === undefined) {
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -10010,6 +10026,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
 
       const now = yield* DateTime.now;
+      if (threadStartAnchor !== undefined)
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "checkpoint.captured",
+          threadId: command.threadId,
+          nodeId: threadStartAnchor.nodeId,
+          providerInstanceId: projection.thread.providerInstanceId,
+          occurredAt: now,
+          payload: threadStartAnchor,
+        });
       // This rollback becomes the only one whose failure the thread records.
       yield* emit(
         events,

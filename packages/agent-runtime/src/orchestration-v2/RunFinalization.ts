@@ -60,14 +60,15 @@ const make = Effect.gen(function* () {
           (cause) => new RunFinalizationError({ ...input, operation: "capture-checkpoint", cause }),
         ),
       );
-    const projection = yield* projections
-      .getCheckpointContext(input.threadId)
+    // Only the finished Run's scope is needed; its Thread's checkpoint history is not.
+    const capture = yield* projections
+      .getCheckpointCaptureContext(input.threadId, input)
       .pipe(
         Effect.mapError(
           (cause) => new RunFinalizationError({ ...input, operation: "refresh-workspace", cause }),
         ),
       );
-    const cwd = projection.checkpointScopes.find((scope) => scope.id === input.scopeId)?.cwd;
+    const cwd = capture.scope?.cwd;
     if (cwd !== undefined) {
       yield* observer
         .refresh({ cwd, threadId: input.threadId, runId: input.runId })

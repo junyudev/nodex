@@ -29,7 +29,6 @@ import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import * as SourceControlRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
-import * as SourceControlDrivers from "../sourceControl/builtInDrivers.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as ProviderHost from "../provider/ProviderHostLive.ts";
 import * as ProviderInstances from "../provider/ProviderInstanceRegistry.ts";
@@ -136,13 +135,8 @@ const layerBackground = BackgroundPolicy.layer.pipe(
   Layer.provide(layerPower),
   Layer.provide(layerSettings),
 );
-const layerVcs = VcsRegistry.layer.pipe(Layer.provide(VcsProcess.layer));
-const layerSourceControl = SourceControlRegistry.layer.pipe(
-  Layer.provide(SourceControlDrivers.layer),
-  Layer.provide(GitVcsDriver.layer),
-  Layer.provide(layerVcs),
-  Layer.provide(VcsProcess.layer),
-);
+// Title generation resolves forge links through this registry; Nodex ships no forge drivers.
+const layerSourceControl = SourceControlRegistry.layerWithoutHosts;
 const layerProjectEnrichment = ProjectEnrichment.layer.pipe(
   Layer.provide(
     ProjectFavicon.layer.pipe(
@@ -226,7 +220,8 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     Layer.provideMerge(ProjectionStore.layer),
     Layer.provideMerge(layerProjectEnrichment),
     Layer.provideMerge(WorkspacePaths.layer),
-    Layer.provideMerge(CheckpointStore.layer.pipe(Layer.provide(layerVcs))),
+    // Rewind anchors on Run ordinals; nothing is written into user repositories.
+    Layer.provideMerge(CheckpointStore.layerWithoutWorkspaceState),
     Layer.provideMerge(GitVcsDriver.layer),
     Layer.provideMerge(TextGeneration.layer.pipe(Layer.provide(layerSourceControl))),
     Layer.provideMerge(layerSourceControl),

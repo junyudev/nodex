@@ -56,6 +56,7 @@ import { make as makeThreadAttachmentReader } from "./Attachment.ts";
 import { compactThread } from "./Compact.ts";
 import { rollbackThread } from "./Rollback.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Providers from "../provider/ProviderRegistry.ts";
 import * as Configuration from "../config.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
@@ -372,6 +373,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
 ) {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const threads = yield* ThreadManagementService;
+  const idAllocator = yield* IdAllocator.IdAllocatorV2;
   const projects = yield* Projects.ProjectService;
   const projections = yield* ProjectionStoreV2;
   const eventSink = yield* EventSink.EventSinkV2;
@@ -576,6 +578,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.rollback":
         return yield* rollbackThread(input.input).pipe(
           Effect.provideService(ThreadManagementService, threads),
+          Effect.provideService(IdAllocator.IdAllocatorV2, idAllocator),
         );
       case "project.upsert": {
         const { id, ...properties } = input.input;

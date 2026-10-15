@@ -21,11 +21,13 @@ it.effect("refreshes workspace after checkpoint capture without reading history"
   const scopeId = CheckpointScopeId.make("scope_finalize");
   const capture = vi.fn(() => Effect.void);
   const refresh = vi.fn(() => Effect.void);
-  const checkpointContext = {
-    runs: [],
-    checkpointScopes: [{ id: scopeId, runId, kind: "root_run" as const, cwd: "/repo" }],
-    checkpoints: [],
-  };
+  const captureContext = {
+    run: undefined,
+    rootNode: undefined,
+    providerThread: undefined,
+    scope: { id: scopeId, runId, kind: "root_run" as const, cwd: "/repo" },
+    baselineCheckpoints: [],
+  } as unknown as ProjectionStore.ProjectionCheckpointCaptureContext;
   const layer = RunFinalization.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -33,7 +35,9 @@ it.effect("refreshes workspace after checkpoint capture without reading history"
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThreadProjection: () =>
             Effect.die("workspace refresh must not load transcript history"),
-          getCheckpointContext: () => Effect.succeed(checkpointContext),
+          getCheckpointContext: () =>
+            Effect.die("workspace refresh must not read the Thread's checkpoint history"),
+          getCheckpointCaptureContext: () => Effect.succeed(captureContext),
         }),
         Layer.succeed(RunFinalization.RunFinalizationObserver, {
           refresh,

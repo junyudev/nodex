@@ -197,6 +197,8 @@ export function runOrchestratorV2ProviderReplayScenario<
     // as server startup does after a crash or restart.
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
+    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
   } = {},
 ): Effect.Effect<
   OrchestratorV2ScenarioResult,
@@ -238,6 +240,8 @@ export function layerProviderReplay<Transcript extends ProviderReplayTranscript,
     // as server startup does after a crash or restart.
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
+    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
     readonly replayGate?: ProviderReplayGate;
   } = {},
 ): Layer.Layer<
@@ -275,6 +279,8 @@ export function layerWithRegistry<Error>(
     // as server startup does after a crash or restart.
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    /** Workspace checkpoint persistence; defaults to hidden Git refs in the run's workspace. */
+    readonly checkpointStoreLayer?: Layer.Layer<CheckpointStore.CheckpointStore>;
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -337,10 +343,12 @@ export function layerWithRegistry<Error>(
     Layer.provide(layerServerConfig),
     Layer.provide(NodeServices.layer),
   );
-  const layerCheckpointStore = CheckpointStore.layer.pipe(
-    Layer.provide(layerVcsDriverRegistry),
-    Layer.provide(NodeServices.layer),
-  );
+  const layerCheckpointStore =
+    options.checkpointStoreLayer ??
+    CheckpointStore.layer.pipe(
+      Layer.provide(layerVcsDriverRegistry),
+      Layer.provide(NodeServices.layer),
+    );
   const layerCheckpointServiceProvided = CheckpointService.layer.pipe(
     Layer.provide(Layer.mergeAll(layerCheckpointStore, IdAllocator.layer)),
   );
