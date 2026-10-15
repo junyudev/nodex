@@ -1,0 +1,169 @@
+packages/agent-runtime/src/mcp/McpInvocationContext.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 115
+packages/agent-runtime/src/orchestration-v2/CheckpointService.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 26
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_nested/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/vcs/GitVcsDriver.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 821,825-828
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_merge_back_siblings/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_fork_native_continue/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_d88ec3d966fd63 720
+  s_1ca65ffa5958ee::t_58c505bf3f5b3a 1552,2694
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/queued_turn/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/turn_interrupt/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/proposed_plan/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/telemetry/AnalyticsService.ts
+  s_1ca65ffa5958ee::t_7b657b05f1b2ae 6-7,18,21,25
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/delegated_task_status/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_continue/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/web_search/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_rollback_to_stopped_turn/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_approval/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/provider/ModelManifest.ts
+  s_1ca65ffa5958ee::t_422d6b1db61045 149,151,153,155,160,170-174,176
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2_nested_approval/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/provider/ProviderAuthService.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 83
+packages/agent-runtime/src/provider/CodexProvider.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 614,709
+  s_1ca65ffa5958ee::t_6c420a49edfc27 75-77,433
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/multi_turn/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/plan_questions/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/vcs/VcsProjectConfig.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 75
+packages/agent-runtime/src/provider/codexLaunchArgs.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 3,8
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/turn_interrupt_mid_tool/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/config.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 124,126
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/tool_call_workspace_never/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent_v2/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_fork_native_siblings/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts
+  s_1ca65ffa5958ee::t_58c505bf3f5b3a 2614,2647
+packages/agent-runtime/src/provider/CodexAuthCallbackPage.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 21-23,26,40
+packages/agent-runtime/src/provider/ClaudeProvider.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 527,721
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/simple/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/textGeneration/ClaudeTextGeneration.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 182
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_merge_back_continue/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/persistence/Sqlite.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 40
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/todo_list/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/provider/CodexManagedRuntime.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 98
+packages/agent-runtime/src/orchestration-v2/RestartContinuation.test.ts
+  s_1ca65ffa5958ee::t_58c505bf3f5b3a 762
+packages/agent-runtime/src/mcp/AcpMcpStdioBridge.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 113,131,137,154,218,230
+docs/SECURITY.md
+  s_1ca65ffa5958ee::t_af55a77428b7ff 202-206
+packages/agent-runtime/src/provider/providerCompatibility.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 29,63,66,88,90,92
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_fork_native_prior_turn/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_fork_native/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/provider/CodexChatGptAuth.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 523
+packages/agent-runtime/src/provider/CodexInstallation.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 285
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 92
+packages/agent-runtime/src/vcs/GitVcsDriverCore.ts
+  s_1ca65ffa5958ee::t_403a6204a58544 648,2209,2621,3642
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/provider_thread_resume/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2,35
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_rollback/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/subagent/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/thread_rollback_after_restart/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2,48
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/message_steering/codex_transcript.ndjson
+  s_1ca65ffa5958ee::t_6c420a49edfc27 2
+packages/agent-runtime/vendor/effect-acp/src/client.ts
+  s_1ca65ffa5958ee::t_91538d05cd114d 739
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_1ca65ffa5958ee::t_6b6889286d4879 74
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.ts
+  s_1ca65ffa5958ee::t_09ed6730bd9270 302,331
+packages/agent-runtime/vendor/provider-acp-registry/src/server/probe.ts
+  s_1ca65ffa5958ee::t_b4df89e69ca87a 345,478
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_1ca65ffa5958ee::t_52236227f04f27 2069
+packages/agent-runtime/vendor/provider-acp/src/server/mcpOverAcpBridge.ts
+  s_1ca65ffa5958ee::t_d8a20e54ddf460 152,185
+packages/agent-runtime/vendor/provider-core/src/server/handoffBudget.ts
+  s_1ca65ffa5958ee::t_ee989e7b64fa1f 17,19
+packages/agent-runtime/vendor/provider-core/src/server/textGenerationPrompts.ts
+  s_1ca65ffa5958ee::t_d7e5c386ff649e 388,416
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts
+  s_1ca65ffa5958ee::t_80d6ada012facc 167,175
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeServerLedger.ts
+  s_1ca65ffa5958ee::t_766b24845052e4 285
+packages/agent-runtime/vendor/provider-opencode/src/server/status.ts
+  s_1ca65ffa5958ee::t_9fa70d262e0189 360-361,661-662
+packages/agent-runtime/vendor/provider-opencode/src/server/textGeneration.ts
+  s_1ca65ffa5958ee::t_d7e603f8360fe8 192
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
+  s_1ca65ffa5958ee::t_2c2801dee240fe 598,678,1832,2041,2056,2821
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/textGeneration.ts
+  s_1ca65ffa5958ee::t_f68abb0285a4ba 130
+packages/agent-runtime/vendor/provider-opencode/src/server/versionProbe.ts
+  s_1ca65ffa5958ee::t_222ec0e1e74928 90,162
+packages/agent-runtime/vendor/provider-opencode/src/settings.ts
+  s_1ca65ffa5958ee::t_e761d90df7ee5c 38
+packages/agent-runtime/vendor/shared/src/codexAuthHandoff.ts
+  s_1ca65ffa5958ee::t_2486f939884a5b 88,98,121
+packages/agent-runtime/vendor/shared/src/git.ts
+  s_1ca65ffa5958ee::t_9b915189991e7b 25
+packages/agent-runtime/vendor/shared/src/otelEnvironment.test.ts
+  s_1ca65ffa5958ee::t_4bb550452a140a 13,15,17,44-45,48,52,55,61,67,69,73,199
+packages/agent-runtime/vendor/shared/src/otelEnvironment.ts
+  s_1ca65ffa5958ee::t_7c95ac6145d3ea 6,103-104,212,295-298,308,344-345
+packages/agent-runtime/vendor/shared/src/providerAuthReturnUrl.ts
+  s_1ca65ffa5958ee::t_6a46ede63b43bd 8
+packages/agent-runtime/vendor/shared/src/shell.ts
+  s_1ca65ffa5958ee::t_0b9bbb969b2485 228,232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09c974dc517e5f84327f11371ebc54261c34a23e",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
