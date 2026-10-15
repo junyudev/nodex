@@ -202,7 +202,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
     const claudeChild = firstOverview.terminal.items.find((task) => task.origin === "app_owned");
     if (!claudeChild?.childThreadId) throw new Error("Claude child missing from bounded metadata");
     await page.getByRole("button", { name: "Task actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Subagents", exact: true }).click();
     await page
       .getByRole("button", {
         name: `Open subagent ${claudeChild.title ?? "Subagent"}`,
@@ -280,7 +280,7 @@ test("delegates across Codex and Claude through the Session UI and restores chil
     const held = heldOverview.active.items.find((task) => task.title?.includes("Hold child"));
     if (!held?.childThreadId) throw new Error("Held child missing");
     await page.getByRole("button", { name: "Task actions", exact: true }).first().click();
-    await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Subagents", exact: true }).click();
     await page.getByRole("button", { name: `Open subagent ${held.title}`, exact: true }).click();
     const detail = page.locator("[data-subagents-side-panel-tab]").last();
     await detail.getByRole("button", { name: "Stop", exact: true }).click();
