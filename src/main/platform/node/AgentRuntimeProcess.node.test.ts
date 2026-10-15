@@ -8,7 +8,11 @@ import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AgentCommand } from "@nodex/agent-runtime/contracts";
-import { acquireAgentRuntimeProcess, AgentRuntimeProcessError } from "./AgentRuntimeProcess";
+import {
+  acquireAgentRuntimeProcess,
+  AGENT_RUNTIME_NODE_FLAGS,
+  AgentRuntimeProcessError,
+} from "./AgentRuntimeProcess";
 import * as Schema from "effect/Schema";
 
 const entryPath = fileURLToPath(
@@ -280,6 +284,7 @@ it.live("configures providers over stdin so credentials never enter the process 
       readonly providers: Readonly<Record<string, unknown>>;
       readonly hostTools: ReadonlyArray<{ readonly name: string }>;
       readonly environment: Readonly<Record<string, string>>;
+      readonly execArgv: readonly string[];
     };
     assert.deepEqual(Object.keys(received.providers), ["claude"]);
     assert.deepEqual(
@@ -287,6 +292,7 @@ it.live("configures providers over stdin so credentials never enter the process 
       ["read_page"],
     );
     assert.strictEqual(received.environment.FIXTURE_VISIBLE, "1");
+    assert.includeMembers([...received.execArgv], [...AGENT_RUNTIME_NODE_FLAGS]);
     assert.isFalse(
       Object.entries(received.environment).some(
         ([name, value]) => name.startsWith("NODEX_AGENT_RUNTIME") || value.includes("fixture-secret"),

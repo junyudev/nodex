@@ -24,6 +24,11 @@ import { z } from "zod";
 import { createAgentRuntimeFrameDecoder } from "./agent-runtime-framing";
 
 const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
+/**
+ * An 8 MiB young generation keeps ready memory about 60 MiB below V8's default sizing without
+ * measurable streaming cost; smaller spaces double scavenge CPU under sustained deltas.
+ */
+export const AGENT_RUNTIME_NODE_FLAGS = ["--max-semi-space-size=8"] as const;
 const MAXIMUM_PENDING_REQUESTS = 64;
 const MAXIMUM_PENDING_HOST_REQUESTS = 128;
 const identitySchema = z.object({
@@ -250,6 +255,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
       ChildProcess.make(
         options.executable,
         [
+          ...AGENT_RUNTIME_NODE_FLAGS,
           options.entryPath,
           "--home",
           options.configuration.home,
