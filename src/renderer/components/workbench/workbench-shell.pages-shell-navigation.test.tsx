@@ -2044,7 +2044,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         );
       }),
     ).toBe(false);
-    expect(screen.queryByRole("button", { name: "Restore panel width" }) !== null).toBe(true);
+    expect(screen.queryByRole("button", { name: "Exit full view" }) !== null).toBe(true);
   });
 
   test("opens pages from a split database tab in the nearest right tab group", async () => {
@@ -2448,7 +2448,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
 
       expect(globalHeader.contains(leftSlot)).toBe(true);
       expect(globalHeader.contains(collapseButton)).toBe(true);
-      expect(visibleLeftLabels).toBe("Show sidebar,Back,Forward,New chat");
+      expect(visibleLeftLabels).toBe("Back,Forward,Show sidebar,New chat");
       expect(
         leftSlot.className.includes("ps-[max(var(--spacing-token-safe-header-left),0.5rem)]"),
       ).toBe(true);
@@ -2487,7 +2487,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       ) as HTMLElement | null;
       const floatingHeader = floatingAside?.querySelector(".app-header-tint") as HTMLElement | null;
       expect(floatingShell !== null).toBe(true);
-      expect(floatingShell?.getAttribute("data-sidebar-floating-focus-area")).toBe("true");
+      expect(floatingShell?.getAttribute("data-workbench-sidebar-peek-surface")).toBe("home");
       expect(floatingShell?.style.width).toBe("296px");
       expect(floatingAside !== null).toBe(true);
       expect(floatingHeader).toBeNull();
@@ -2545,8 +2545,12 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
     await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
     await hoverSidebarDestination(screen, "Home");
-    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
     await hoverSidebarDestination(screen, "Home", false);
+    await moveSidebarPointer(
+      WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12,
+      80,
+      screen.getByTestId("floating-project-session-sidebar-shell"),
+    );
 
     const expandStrip = screen.getByTestId("sidebar-resize-strip");
 
@@ -2638,8 +2642,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
       search.blur();
       await Promise.resolve();
     });
-    await settleAsyncRender();
-    expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
+    });
     expect(screen.getByRole("button", { name: "Home" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Space" })).toBeTruthy();
   });

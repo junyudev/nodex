@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { SettingsGeneralIcon } from "@/components/shared/icons";
+import { UserRound } from "@/components/shared/icons/generic-icons";
+import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { WORKBENCH_RAIL_BUTTON_CLASS } from "./workbench-app-rail";
 import { AccountRateLimitRing } from "@/features/local-conversation/view/shared/account-rate-limit-ring";
 import { AuthPopover } from "@/features/local-conversation/view/shared/auth-controls";
 import type {
@@ -13,7 +16,7 @@ import type { IpcApi } from "../../../shared/ipc-api";
 
 type CodexLoginStartResult = IpcApi["codex:account:login:start"]["result"];
 
-export interface LeftSidebarFooterProps {
+export interface WorkbenchRailAccountControlsProps {
   onOpenSettings: () => void;
   account?: CodexAccountSnapshot | null;
   connection?: CodexConnectionState;
@@ -26,7 +29,12 @@ export interface LeftSidebarFooterProps {
   onErrorMessage?: (message: string | null) => void;
 }
 
-export function LeftSidebarFooter({
+/**
+ * App-wide controls at the foot of the navigation rail: the account control
+ * (usage ring when signed in, sign-in when signed out), then Settings. Settings
+ * stays last so it never moves when the account state becomes known.
+ */
+export function WorkbenchRailAccountControls({
   onOpenSettings,
   account,
   connection,
@@ -37,7 +45,7 @@ export function LeftSidebarFooter({
   onCancelLogin,
   onLogout,
   onErrorMessage,
-}: LeftSidebarFooterProps) {
+}: WorkbenchRailAccountControlsProps) {
   const [loginBusy, setLoginBusy] = useState(false);
   const showQuotaRing = Boolean(account?.account && connection && onRefreshAccount && onLogout);
   const showSignIn = Boolean(
@@ -90,37 +98,54 @@ export function LeftSidebarFooter({
   };
 
   return (
-    <div className="flex items-center justify-between border-t border-(--sidebar-border) px-(--sidebar-shell-padding-x) py-(--sidebar-row-padding-y)">
-      <NodexTooltip tooltipContent="Settings" side="top">
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-(--sidebar-foreground-secondary) hover:bg-(--sidebar-accent) hover:text-(--sidebar-foreground)"
+    <div
+      data-workbench-rail-account-controls=""
+      className="mt-auto flex flex-col items-center gap-2"
+    >
+      <div data-workbench-rail-account="" className="contents">
+        {showQuotaRing && connection && onRefreshAccount && onLogout ? (
+          <AccountRateLimitRing
+            account={account ?? null}
+            connection={connection}
+            onRefreshAccount={onRefreshAccount}
+            onConsumeRateLimitReset={onConsumeRateLimitReset}
+            onLogout={onLogout}
+            onErrorMessage={onErrorMessage}
+            className="h-9 w-9"
+          />
+        ) : showSignIn && onCancelLogin ? (
+          <AuthPopover
+            account={account ?? null}
+            busy={loginBusy}
+            side="right"
+            sideOffset={8}
+            trigger={
+              <NodexButton
+                variant="ghost"
+                size="icon"
+                aria-label="Sign in"
+                className={WORKBENCH_RAIL_BUTTON_CLASS}
+              >
+                <UserRound className="icon-sm" />
+              </NodexButton>
+            }
+            onChatGptLogin={() => void handleChatGptLogin()}
+            onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
+            onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
+          />
+        ) : null}
+      </div>
+      <NodexTooltip tooltipContent="Settings" side="right">
+        <NodexButton
+          variant="ghost"
+          size="icon"
           aria-label="Settings"
+          className={WORKBENCH_RAIL_BUTTON_CLASS}
+          onClick={onOpenSettings}
         >
-          <SettingsGeneralIcon className="size-3.5" />
-        </button>
+          <SettingsGeneralIcon className="icon-sm" />
+        </NodexButton>
       </NodexTooltip>
-      {showQuotaRing && connection && onRefreshAccount && onLogout ? (
-        <AccountRateLimitRing
-          account={account ?? null}
-          connection={connection}
-          onRefreshAccount={onRefreshAccount}
-          onConsumeRateLimitReset={onConsumeRateLimitReset}
-          onLogout={onLogout}
-          onErrorMessage={onErrorMessage}
-        />
-      ) : showSignIn && onCancelLogin ? (
-        <AuthPopover
-          account={account ?? null}
-          busy={loginBusy}
-          side="top"
-          sideOffset={8}
-          onChatGptLogin={() => void handleChatGptLogin()}
-          onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
-          onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
-        />
-      ) : null}
     </div>
   );
 }

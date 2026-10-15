@@ -12,28 +12,6 @@ describe("Codex sidebar motion controller helpers", () => {
     expect(resolveCodexSidebarMotionMounted({ logicalOpen: false, progress: 0 })).toBe(false);
   });
 
-  test("defaults collapse to hover suppression and allows explicit opt-out", () => {
-    expect(
-      resolveCodexSidebarMotionSetOpen({
-        nextOpen: false,
-        reducedMotion: false,
-      }).suppressHoverOpen,
-    ).toBe(true);
-    expect(
-      resolveCodexSidebarMotionSetOpen({
-        nextOpen: false,
-        reducedMotion: false,
-        suppressHoverOpen: false,
-      }).suppressHoverOpen,
-    ).toBe(false);
-    expect(
-      resolveCodexSidebarMotionSetOpen({
-        nextOpen: true,
-        reducedMotion: false,
-      }).suppressHoverOpen,
-    ).toBe(false);
-  });
-
   test("snaps reduced-motion and animate false updates to the target progress", () => {
     const reducedMotionResolution = resolveCodexSidebarMotionSetOpen({
       nextOpen: true,

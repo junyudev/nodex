@@ -162,12 +162,11 @@ export function resolveApplicationWindowShellAppearance(
 ): BrowserWindowConstructorOptions {
   return {
     backgroundColor: backdrop.backgroundColor,
+    // Native material comes from vibrancy alone; a transparent NSWindow would also
+    // drop the window shadow and pass clicks through clear pixels. The first click
+    // on an inactive window must reach the titlebar control under the pointer.
     ...(platform === "darwin"
-      ? {
-          transparent: true,
-          vibrancy: backdrop.vibrancy ?? undefined,
-          visualEffectState: "followWindow" as const,
-        }
+      ? { acceptFirstMouse: true, vibrancy: backdrop.vibrancy ?? undefined }
       : {}),
     ...(platform === "win32" ? { backgroundMaterial: backdrop.backgroundMaterial ?? "none" } : {}),
   };

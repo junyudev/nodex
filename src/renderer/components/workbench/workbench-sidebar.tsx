@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, type MotionValue, type Transition } from "motion/react";
+import { AnimatePresence, motion, type MotionValue } from "motion/react";
 import {
   ProjectSessionSidebar,
   type ProjectSessionSidebarProps,
@@ -7,6 +7,11 @@ import { cn } from "@/lib/utils";
 import { WorkbenchSpaceSidebar } from "./workbench-space-sidebar";
 import type { SidebarPagesSectionProps } from "./sidebar-pages-section";
 import { WORKBENCH_SURFACE_GUTTER_PX } from "@/lib/workbench-shell-geometry";
+import {
+  CODEX_SIDEBAR_FLOATING_PANEL_EXIT_TRANSITION,
+  CODEX_SIDEBAR_FLOATING_PANEL_TRANSITION,
+} from "@/lib/codex-sidebar-auto-reveal";
+import { WORKBENCH_SIDEBAR_PEEK_SURFACE_ATTRIBUTE } from "@/lib/workbench-sidebar-peek";
 
 type WorkbenchSidebarPlacementProp =
   | "animatedWidth"
@@ -41,8 +46,6 @@ interface WorkbenchFloatingSidebarPlacement {
   readonly outerClassName: string;
   readonly resizing: boolean;
   readonly reducedMotion: boolean;
-  readonly exitX: number;
-  readonly transition: Transition;
   readonly onResizeActiveChange: (active: boolean) => void;
   readonly onHoverSurfaceOpenChange: (open: boolean) => void;
 }
@@ -87,14 +90,25 @@ export function WorkbenchSidebar({ destination, body, inline, floating }: Workbe
         {floating.visible ? (
           <motion.div
             key="codex-floating-left-panel"
-            data-sidebar-floating-focus-area="true"
+            {...{ [WORKBENCH_SIDEBAR_PEEK_SURFACE_ATTRIBUTE]: floating.destination ?? destination }}
             data-testid="floating-project-session-sidebar-shell"
             className={cn(floating.outerClassName, floating.resizing && "cursor-col-resize")}
             style={{ width: body.width - WORKBENCH_SURFACE_GUTTER_PX }}
-            initial={floating.reducedMotion ? false : { opacity: 0, x: -8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: floating.exitX }}
-            transition={floating.transition}
+            initial={floating.reducedMotion ? false : { opacity: 0, x: -6 }}
+            animate={{
+              opacity: 1,
+              x: 0,
+              transition: floating.reducedMotion
+                ? { duration: 0 }
+                : CODEX_SIDEBAR_FLOATING_PANEL_TRANSITION,
+            }}
+            exit={{
+              opacity: 0,
+              x: floating.reducedMotion ? 0 : -3,
+              transition: floating.reducedMotion
+                ? { duration: 0 }
+                : CODEX_SIDEBAR_FLOATING_PANEL_EXIT_TRANSITION,
+            }}
           >
             {renderSidebar(
               {

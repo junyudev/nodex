@@ -18,6 +18,7 @@ function renderControl(props: Partial<WorkspaceTabsControlProps> = {}) {
         tabs={tabs}
         activeTabId="file"
         onToggle={() => undefined}
+        onFullViewChange={() => undefined}
         onSelect={() => undefined}
         {...props}
       />
@@ -112,11 +113,9 @@ describe("WorkspaceTabsControl", () => {
             mode={mode}
             tabs={tabs}
             onToggle={() => setMode((current) => (current === "split" ? "chat" : "split"))}
+            onFullViewChange={(full) => setMode(full ? "full" : "split")}
             onSelect={(_id, next) => setMode(next)}
           />
-          <button type="button" onClick={() => setMode("full")}>
-            Enter full view
-          </button>
         </NodexTooltipProvider>
       );
     }
@@ -129,10 +128,47 @@ describe("WorkspaceTabsControl", () => {
     expect(view.getByRole("button", { name: "Show tabs" }).getAttribute("aria-description")).toBe(
       "2 open tabs",
     );
+    // Full view is reachable directly from hidden tabs and returns to split from either control.
     await click(view.getByRole("button", { name: "Enter full view" }));
-    expect(view.getByRole("button", { name: "Enter split view" })).not.toBeNull();
+    expect(view.getByRole("button", { name: "Exit full view" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
     await click(view.getByRole("button", { name: "Enter split view" }));
     expect(view.getByRole("button", { name: "Hide tabs" })).not.toBeNull();
+    await click(view.getByRole("button", { name: "Enter full view" }));
+    await click(view.getByRole("button", { name: "Exit full view" }));
+    expect(view.getByRole("button", { name: "Hide tabs" })).not.toBeNull();
+  });
+
+  test("hiding tabs under a resting pointer waits for a fresh hover to list them", async () => {
+    function Presentation() {
+      const [mode, setMode] = useState<WorkspaceTabsControlProps["mode"]>("split");
+      return (
+        <NodexTooltipProvider>
+          <WorkspaceTabsControl
+            mode={mode}
+            tabs={tabs}
+            onToggle={() => setMode((current) => (current === "split" ? "chat" : "split"))}
+            onFullViewChange={(full) => setMode(full ? "full" : "split")}
+            onSelect={(_id, next) => setMode(next)}
+          />
+        </NodexTooltipProvider>
+      );
+    }
+    const view = render(<Presentation />);
+    await click(view.getByRole("button", { name: "Hide tabs" }));
+    const trigger = view.getByRole("button", { name: "Show tabs" });
+    await hover(trigger);
+    expect(view.queryByRole("menu", { name: "Open tabs" })).toBeNull();
+
+    const group = trigger.closest("div");
+    if (!group) throw new Error("Expected the workspace control group");
+    await act(async () => {
+      fireEvent.pointerLeave(group, { pointerType: "mouse" });
+      await settleAsyncRender();
+    });
+    await hover(view.getByRole("button", { name: "Show tabs" }));
+    expect(await view.findByRole("menu", { name: "Open tabs" })).not.toBeNull();
   });
 
   test("keyboard enters the chooser and Escape returns focus to its control", async () => {

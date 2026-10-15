@@ -84,6 +84,11 @@ export function WorkbenchPaneTitlebar({
       chrome.style.clipPath = `inset(0px ${Math.max(0, anchorBounds.right - visibleRight) / zoom}px 0px ${Math.max(0, visibleLeft - anchorBounds.left) / zoom}px)`;
       chrome.style.opacity = String(opacity);
       chrome.style.visibility = visibleRight > visibleLeft && opacity > 0 ? "visible" : "hidden";
+      // A pane that starts inside the main surface continues its column divider into the titlebar.
+      const mainSurface = anchor.closest("[data-app-shell-main-surface]");
+      const startsInsideSurface =
+        mainSurface !== null && anchorBounds.left - mainSurface.getBoundingClientRect().left > 1;
+      chrome.toggleAttribute("data-workbench-pane-titlebar-divider", startsInsideSurface);
       projectPaneScope(anchor, chrome);
     };
     syncGeometry();
@@ -127,7 +132,7 @@ export function WorkbenchPaneTitlebar({
         <div
           ref={chromeRef}
           data-workbench-pane-titlebar
-          className="pointer-events-none absolute top-0 h-full min-w-0 bg-transparent [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[data-panel-tab-row]]:pointer-events-auto"
+          className="pointer-events-none absolute top-0 h-full min-w-0 bg-transparent before:absolute before:inset-y-3 before:start-0 before:hidden before:w-px before:bg-token-border before:content-[''] data-workbench-pane-titlebar-divider:before:block [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto [&_[data-panel-tab-row]]:pointer-events-auto"
           style={{ visibility: "hidden" }}
         >
           {children}

@@ -309,6 +309,17 @@ show each start path is conditional, but only the whole app shows who actually
 starts them, so record the caller at the start seam when an unexpected start
 appears.
 
+### Window chrome hits are decided below the page
+
+Page-level clicks from CDP or Playwright enter the renderer directly, so they
+cannot reveal a control covered by a native drag region, a native window button,
+or a swallowed first click in an inactive window. Electron folds `app-region`
+boxes in layout order, `drag` adding and `no-drag` subtracting, and the property
+inherits: a later descendant that inherits `drag` silently re-covers an earlier
+control, whatever its z-order. Give the titlebar one drag owner with control-only
+holes, and prove titlebar hits with the shell scenario's AppKit click probe or
+drag-region fold rather than with a page click.
+
 ### Trace reachability before trusting names
 
 A retained UI module, selector, fallback, test ID, or helper is not evidence

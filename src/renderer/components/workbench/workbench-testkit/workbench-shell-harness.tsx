@@ -2,6 +2,10 @@ import { afterEach, beforeAll, beforeEach, expect, vi } from "vite-plus/test";
 import { initPrefersReducedMotion } from "motion";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
 import {
+  WORKBENCH_SIDEBAR_PEEK_CLOSE_DELAY_MS,
+  WORKBENCH_SIDEBAR_PEEK_OPEN_DELAY_MS,
+} from "@/lib/workbench-sidebar-peek";
+import {
   Fragment,
   createElement,
   createRef,
@@ -246,8 +250,6 @@ export let pendingWorktreeWarningListener:
   | null = null;
 export const PANEL_VISIBLE_ICON_PREFIX = "M16.835 8.66301";
 export const BOTTOM_PANEL_HIDDEN_ICON_PREFIX = "M13.334 12.2529";
-export const EXPAND_PANEL_ICON_PREFIX = "M16.0299 3.0293";
-export const RESTORE_PANEL_ICON_PREFIX = "M4.33496 11";
 export const NEW_CHAT_ICON_PREFIX = "M2.6687 11.333";
 export const TITLEBAR_NEW_CHAT_ICON_PREFIX = "M6.33325 1.88379";
 
@@ -1617,7 +1619,7 @@ vi.mock("@/features/local-conversation", () => ({
       "div",
       {
         className:
-          "draggable grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
+          "grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
       },
       createElement(
         "div",
@@ -4901,15 +4903,25 @@ export function installShellBodyMeasurementForTest({
   };
 }
 
-export async function moveSidebarPointer(clientX: number, clientY = 80): Promise<void> {
+function dispatchMousePointer(type: string, target: EventTarget, init: MouseEventInit) {
+  const event = new MouseEvent(type, { bubbles: true, ...init });
+  Object.defineProperty(event, "pointerType", { value: "mouse" });
+  target.dispatchEvent(event);
+}
+
+function waitForSidebarPeek(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs + 20));
+}
+
+/** Move the pointer onto `target` (the content area by default) and let the peek grace elapse. */
+export async function moveSidebarPointer(
+  clientX: number,
+  clientY = 80,
+  target: Element = document.body,
+): Promise<void> {
   await act(async () => {
-    window.dispatchEvent(
-      new MouseEvent("pointermove", {
-        clientX,
-        clientY,
-      }),
-    );
-    await Promise.resolve();
+    dispatchMousePointer("pointermove", target, { clientX, clientY });
+    await waitForSidebarPeek(WORKBENCH_SIDEBAR_PEEK_CLOSE_DELAY_MS);
   });
   await settleAsyncRender();
 }
@@ -4922,9 +4934,12 @@ export async function hoverSidebarDestination(
 ): Promise<void> {
   const button = screen.getByRole("button", { name: destination });
   await act(async () => {
-    if (hovered) fireEvent.pointerOver(button, { pointerType: "mouse" });
-    else fireEvent.pointerOut(button, { pointerType: "mouse", relatedTarget: document.body });
-    await Promise.resolve();
+    if (hovered) {
+      dispatchMousePointer("pointerover", button, {});
+      await waitForSidebarPeek(WORKBENCH_SIDEBAR_PEEK_OPEN_DELAY_MS);
+    } else {
+      dispatchMousePointer("pointerout", button, { relatedTarget: document.body });
+    }
   });
   await settleAsyncRender();
 }

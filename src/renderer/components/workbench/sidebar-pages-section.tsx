@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  DatabaseIcon,
-  PageIcon,
-  ProjectActionsIcon,
-  PlusIcon,
-  CanvasIcon,
-} from "@/components/shared/icons";
+import { DatabaseIcon, PageIcon, ProjectActionsIcon, CanvasIcon } from "@/components/shared/icons";
 import type {
   LibraryNavigationNode,
   LibraryPlacedResourceTarget,
@@ -16,12 +10,10 @@ import { useInfiniteLibraryChildren } from "@/lib/use-library-navigation";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
   CODEX_SIDEBAR_ROW_LABEL_CLASS,
-  CodexSidebarActionButton,
   CodexSidebarRowLayout,
   CodexSidebarSection,
   CodexSidebarTreeRow,
 } from "./codex-sidebar";
-import { LibraryNewMenu } from "../library/library-new-menu";
 import {
   LibraryResourceActions,
   type LibraryProjectOption,
@@ -269,26 +261,7 @@ export function SidebarPagesSection({
   const rootDropTarget = useSidebarLibraryRootDropTarget();
 
   return (
-    <CodexSidebarSection
-      heading="Content"
-      collapsed={collapsed}
-      onToggle={onToggle}
-      actions={
-        mutationsEnabled ? (
-          <LibraryNewMenu
-            onCreated={(target) => {
-              if (target.kind === "view") return;
-              onOpenRoot(target);
-            }}
-            triggerButton={
-              <CodexSidebarActionButton label="New Page or Database">
-                <PlusIcon className="icon-sm" />
-              </CodexSidebarActionButton>
-            }
-          />
-        ) : null
-      }
-    >
+    <CodexSidebarSection heading="Content" collapsed={collapsed} onToggle={onToggle}>
       <div
         ref={rootDropTarget.setNodeRef}
         className={cn(rootDropTarget.isOver && "rounded-lg ring-1 ring-token-border")}

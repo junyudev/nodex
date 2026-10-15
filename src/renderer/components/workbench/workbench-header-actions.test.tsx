@@ -165,12 +165,9 @@ describe("workbench header actions", () => {
     if (!(slot instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
       throw new Error("Expected visible header shell slot");
     }
-
-    expect(slot.className.includes("no-drag")).toBe(true);
     expect(slot.className.includes("pointer-events-none")).toBe(true);
     expect(slot.getAttribute("style")?.includes("width: 144px")).toBe(true);
     expect(slot.getAttribute("style")?.includes("min-width: 70px")).toBe(true);
-    expect(rail.className.includes("no-drag")).toBe(true);
     expect(textContent(rail)).toBe("FirstSecondThird");
     expect(measuredWidths[measuredWidths.length - 1]).toBe(70);
     expect(measuredRailWidths[measuredRailWidths.length - 1]).toBe(62);

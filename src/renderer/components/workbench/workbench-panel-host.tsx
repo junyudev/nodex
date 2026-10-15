@@ -47,7 +47,6 @@ interface WorkbenchPanelHostProps {
   renderAfterList?: (leafId: string) => ReactNode;
   headerStartInsetPx?: number;
   headerEndInsetPx?: number;
-  tabScrollEndPaddingPx?: number;
   renderNewTab?: (leafId: string) => ReactNode;
   renderEmptyLeaf?: (leafId: string) => ReactNode;
 }
@@ -68,7 +67,6 @@ export function WorkbenchPanelHost({
   renderAfterList,
   headerStartInsetPx,
   headerEndInsetPx,
-  tabScrollEndPaddingPx,
   renderNewTab,
   renderEmptyLeaf,
 }: WorkbenchPanelHostProps) {
@@ -97,7 +95,6 @@ export function WorkbenchPanelHost({
       renderAfterList={renderAfterList}
       headerStartInsetPx={headerStartInsetPx}
       headerEndInsetPx={headerEndInsetPx}
-      tabScrollEndPaddingPx={tabScrollEndPaddingPx}
       renderEmptyLeaf={(leafId) =>
         renderEmptyLeaf?.(leafId) ?? (
           <EmptyRightPane

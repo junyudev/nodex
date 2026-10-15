@@ -3,7 +3,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexAccountSnapshot } from "@/lib/types";
 import { render, textContent } from "@/test/dom";
-import { LeftSidebarFooter } from "./left-sidebar-footer";
+import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
 const authenticatedAccount: CodexAccountSnapshot = {
   account: { type: "chatgpt", email: "dev@example.com", planType: "Plus" },
@@ -42,11 +42,11 @@ const signedOutAccount: CodexAccountSnapshot = {
   rateLimits: null,
 };
 
-describe("LeftSidebarFooter", () => {
+describe("WorkbenchRailAccountControls", () => {
   test("renders authenticated quota as a double ring without the old text chip", async () => {
     const view = render(
       <NodexTooltipProvider>
-        <LeftSidebarFooter
+        <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
@@ -66,7 +66,7 @@ describe("LeftSidebarFooter", () => {
     let refreshCount = 0;
     const view = render(
       <NodexTooltipProvider>
-        <LeftSidebarFooter
+        <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
@@ -104,7 +104,7 @@ describe("LeftSidebarFooter", () => {
     const attempts: Array<{ idempotencyKey: string; creditId?: string | null }> = [];
     const view = render(
       <NodexTooltipProvider>
-        <LeftSidebarFooter
+        <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
@@ -173,7 +173,7 @@ describe("LeftSidebarFooter", () => {
     let chatGptLoginCount = 0;
     const view = render(
       <NodexTooltipProvider>
-        <LeftSidebarFooter
+        <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           account={signedOutAccount}
           connection={{ status: "connected", retries: 0 }}
@@ -201,12 +201,12 @@ describe("LeftSidebarFooter", () => {
     });
   });
 
-  test("keeps the account slot empty until the account snapshot hydrates", () => {
-    const view = render(
+  test("keeps Settings last while the account slot hydrates above it", () => {
+    const renderControls = (account: typeof signedOutAccount | null) => (
       <NodexTooltipProvider>
-        <LeftSidebarFooter
+        <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
-          account={null}
+          account={account}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => signedOutAccount}
           onStartChatGptLogin={async () => ({ type: "apiKey" })}
@@ -214,10 +214,16 @@ describe("LeftSidebarFooter", () => {
           onCancelLogin={async () => ({ status: "canceled" })}
           onLogout={async () => undefined}
         />
-      </NodexTooltipProvider>,
+      </NodexTooltipProvider>
     );
+    const view = render(renderControls(null));
+    const labels = () =>
+      view.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
 
-    expect(Boolean(view.queryByRole("button", { name: "Sign in" }))).toBe(false);
     expect(Boolean(view.queryByTestId("sidebar-account-rate-limit-ring"))).toBe(false);
+    expect(labels()).toEqual(["Settings"]);
+
+    view.rerender(renderControls(signedOutAccount));
+    expect(labels()).toEqual(["Sign in", "Settings"]);
   });
 });

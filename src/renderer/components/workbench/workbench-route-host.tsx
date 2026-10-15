@@ -29,18 +29,33 @@ function WorkbenchRouteMain({
   return (
     <main
       data-workbench-main-surface
+      data-app-shell-main-surface="default"
       data-contextual-sidebar-open={sidebarMounted}
-      className={cn(
-        "main-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden !rounded-none",
-        sidebarMounted && "border-s-[0.5px] border-token-border",
-      )}
-      style={{
-        clipPath: sidebarMounted ? "inset(0 0 0 -12px round 12px)" : "inset(0 round 12px)",
-      }}
+      className={cn("flex-col", workbenchMainSurfaceClassName(sidebarMounted))}
+      style={{ clipPath: resolveWorkbenchMainSurfaceClip(sidebarMounted) }}
     >
       {children}
     </main>
   );
+}
+
+/** The one opaque content surface inside the window frame, shared by every route. */
+export function workbenchMainSurfaceClassName(sidebarMounted: boolean): string {
+  return cn(
+    "relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-(--color-surface)",
+    sidebarMounted &&
+      "border-s-[length:var(--border-width-hairline)] border-(--app-shell-sidebar-divider)",
+  );
+}
+
+/**
+ * A pinned sidebar owns the outer start corners; the main surface owns the end
+ * corners and extends its clip under the shared flat divider.
+ */
+export function resolveWorkbenchMainSurfaceClip(sidebarMounted: boolean): string {
+  return sidebarMounted
+    ? "inset(0 0 0 calc(-1 * var(--app-shell-surface-radius)) round var(--app-shell-surface-radius))"
+    : "inset(0 round var(--app-shell-surface-radius))";
 }
 
 /**

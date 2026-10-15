@@ -1,24 +1,30 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { WORKBENCH_SIDEBAR_PEEK_OPEN_DELAY_MS } from "@/lib/workbench-sidebar-peek";
 import { useWorkbenchSidebarChrome } from "./use-workbench-sidebar-chrome";
 
-afterEach(cleanup);
+beforeEach(() => {
+  document.body.innerHTML = `
+    <nav data-app-navigation-rail>
+      <button data-workbench-sidebar-peek-area="home">Home</button>
+      <button data-workbench-sidebar-peek-area="space">Space</button>
+    </nav>
+  `;
+});
 
-async function movePointer(x: number, y: number) {
-  await act(async () => {
-    window.dispatchEvent(new MouseEvent("pointermove", { clientX: x, clientY: y }));
-    await Promise.resolve();
-  });
-}
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  document.body.innerHTML = "";
+});
 
-function renderChrome(zoom = 1, onWidthChange = vi.fn()) {
+function renderChrome({ collapsed = true, onWidthChange = vi.fn() } = {}) {
   const root = document.createElement("div");
-  root.style.setProperty("--codex-window-zoom", String(zoom));
   return {
     onWidthChange,
     ...renderHook(() =>
       useWorkbenchSidebarChrome({
-        persistedCollapsed: true,
+        persistedCollapsed: collapsed,
         persistedWidth: 300,
         reducedMotion: true,
         workbenchRootRef: { current: root },
@@ -28,55 +34,51 @@ function renderChrome(zoom = 1, onWidthChange = vi.fn()) {
   };
 }
 
+async function hoverDestination(destination: "home" | "space") {
+  const button = document.querySelector(`[data-workbench-sidebar-peek-area="${destination}"]`)!;
+  await act(async () => {
+    const event = new MouseEvent("pointerover", { bubbles: true, clientX: 26, clientY: 70 });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    button.dispatchEvent(event);
+    vi.advanceTimersByTime(WORKBENCH_SIDEBAR_PEEK_OPEN_DELAY_MS);
+    await Promise.resolve();
+  });
+}
+
 describe("contextual sidebar peek", () => {
-  test.each([1, 2])(
-    "opens from navigation and stays below the titlebar at zoom %s",
-    async (zoom) => {
-      const { result } = renderChrome(zoom);
-      await movePointer(64 * zoom, 80 * zoom);
-      expect(result.current.floatingSidebarVisible).toBe(false);
-
-      await act(async () => {
-        result.current.setSidebarNavigationHovered(true);
-        await Promise.resolve();
-      });
-      expect(result.current.floatingSidebarVisible).toBe(true);
-
-      await movePointer(150 * zoom, 80 * zoom);
-      await act(async () => {
-        result.current.setSidebarNavigationHovered(false);
-        await Promise.resolve();
-      });
-      expect(result.current.floatingSidebarVisible).toBe(true);
-
-      await movePointer(150 * zoom, 20 * zoom);
-      expect(result.current.floatingSidebarVisible).toBe(false);
-    },
-  );
-
-  test("a collapse click stays suppressed until the navigation trigger is left", async () => {
+  test("a collapsed sidebar peeks the hovered destination and keeps it through exit", async () => {
+    vi.useFakeTimers();
     const { result } = renderChrome();
-    await act(async () => {
-      result.current.setSidebarNavigationHovered(true);
-      await Promise.resolve();
-    });
-    expect(result.current.floatingSidebarVisible).toBe(true);
+    expect(result.current.peekArea).toBe(null);
+
+    await hoverDestination("space");
+    expect(result.current.peekArea).toBe("space");
+    expect(result.current.peekDestination).toBe("space");
 
     await act(async () => {
-      result.current.setSidebarCollapsed(true, { animate: false });
+      document.documentElement.dispatchEvent(new MouseEvent("pointerleave"));
+      vi.runAllTimers();
       await Promise.resolve();
     });
-    expect(result.current.floatingSidebarVisible).toBe(false);
+    expect(result.current.peekArea).toBe(null);
+    expect(result.current.peekDestination).toBe("space");
+  });
 
+  test("a pinned sidebar never peeks, and pinning closes an open peek", async () => {
+    vi.useFakeTimers();
+    const pinned = renderChrome({ collapsed: false });
+    await hoverDestination("home");
+    expect(pinned.result.current.peekArea).toBe(null);
+    pinned.unmount();
+
+    const { result } = renderChrome();
+    await hoverDestination("home");
+    expect(result.current.peekArea).toBe("home");
     await act(async () => {
-      result.current.setSidebarNavigationHovered(false);
+      result.current.setSidebarCollapsed(false, { animate: false });
       await Promise.resolve();
     });
-    await act(async () => {
-      result.current.setSidebarNavigationHovered(true);
-      await Promise.resolve();
-    });
-    expect(result.current.floatingSidebarVisible).toBe(true);
+    expect(result.current.peekArea).toBe(null);
   });
 
   test("floating resize preserves the pinned right edge and the ordinary reset width", async () => {

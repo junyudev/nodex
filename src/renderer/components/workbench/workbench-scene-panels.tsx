@@ -44,7 +44,6 @@ export interface WorkbenchScenePanelsProps {
   readonly rightPanelHeaderAfterList: ReactNode;
   readonly rightPanelHeaderStartInsetWidth: number;
   readonly bottomPanelGlobalHeaderInsetWidth: number;
-  readonly panelTabScrollEndPaddingPx: number;
   readonly renderNewTab?: (panelId: PanelId, leafId: string) => ReactNode;
   readonly renderEmptyLeaf?: (panelId: PanelId, leafId: string) => ReactNode;
   readonly renderSurface: (
@@ -173,7 +172,6 @@ export function buildWorkbenchScenePanels({
   rightPanelHeaderAfterList,
   rightPanelHeaderStartInsetWidth,
   bottomPanelGlobalHeaderInsetWidth,
-  panelTabScrollEndPaddingPx,
   renderNewTab,
   renderEmptyLeaf,
   renderSurface,
@@ -215,7 +213,6 @@ export function buildWorkbenchScenePanels({
         renderAfterList={panelId === "right" ? () => rightPanelHeaderAfterList : undefined}
         headerStartInsetPx={panelId === "right" ? rightPanelHeaderStartInsetWidth : undefined}
         headerEndInsetPx={panelId === "bottom" ? bottomPanelGlobalHeaderInsetWidth : undefined}
-        tabScrollEndPaddingPx={panelTabScrollEndPaddingPx}
         renderNewTab={renderNewTab ? (leafId) => renderNewTab(panelId, leafId) : undefined}
         renderEmptyLeaf={renderEmptyLeaf ? (leafId) => renderEmptyLeaf(panelId, leafId) : undefined}
         commands={{

@@ -269,6 +269,8 @@ unresolved rather than treating a transport failure as a signed-out account.
 ## Task actions and export
 
 Chat actions support the applicable Pin/Unpin, Rename, Archive, Side chat,
-working-directory/thread/deeplink copy, and Markdown export operations. Export
+working-directory/thread/deeplink copy, and Markdown export operations. The menu
+groups them as Rename, Generate title, and Pin; New side chat; Copy; Tasks and
+Status; then Archive. Export
 first obtains complete canonical visible history, then serializes that view; it
 does not introduce another transcript store or app-server export endpoint.

@@ -120,16 +120,6 @@ export function resolveCodexHeaderEdgeScroll({
   return mainContentWidth >= CODEX_THREAD_EDGE_SCROLL_MIN_WIDTH_REM * normalizedRootFontSize;
 }
 
-export function resolveCodexMainContentFrameBorder({
-  rightPanelOpen,
-  headerEdgeScroll,
-}: {
-  rightPanelOpen: boolean;
-  headerEdgeScroll: boolean;
-}): boolean {
-  return rightPanelOpen || !headerEdgeScroll;
-}
-
 export function shouldSnapCodexMotion(
   reducedMotion: boolean | null,
   animateLayout = true,

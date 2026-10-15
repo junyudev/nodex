@@ -29,8 +29,6 @@ import {
 } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   BOTTOM_PANEL_HIDDEN_ICON_PREFIX,
-  EXPAND_PANEL_ICON_PREFIX,
-  RESTORE_PANEL_ICON_PREFIX,
   clickMenuItem,
   discardSideChatCalls,
   executeCommandPaletteCommand,
@@ -752,7 +750,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const threadPage = screen.container.querySelector('[data-testid="session-thread-page"]');
     const globalHeader = screen.getByTestId("workbench-global-header");
     const headerCenterSurface = screen.getByTestId("app-shell-header-context-menu-surface");
-    const restoreButton = screen.getByRole("button", { name: "Restore panel width" });
+    const restoreButton = screen.getByRole("button", { name: "Exit full view" });
     expect(globalHeader.className.includes(APP_SHELL_GLOBAL_HEADER_LAYER_CLASS)).toBe(true);
     expect(headerCenterSurface.getAttribute("aria-hidden")).toBe("true");
     expect(headerCenterSurface.className.includes("invisible")).toBe(true);
@@ -775,33 +773,31 @@ describe("workbench session shell / layout-panel-actions", () => {
       const leftSlot = getHeaderShellSlot(screen, "left");
       const rightSlot = getHeaderShellSlot(screen, "right");
       const rightPanel = screen.getByTestId("session-right-panel");
-      const tabHeader = rightPanel.querySelector('[role="tablist"]')?.parentElement?.parentElement;
+      const tabHeader =
+        rightPanel.querySelector('[role="tablist"]')?.parentElement?.parentElement?.parentElement;
       if (!tabHeader) throw new Error("Expected right-panel tab header");
       const leadingSpacer = tabHeader.firstElementChild?.firstElementChild;
       const tabRow = tabHeader.children.item(1);
       const trailingSpacer = screen.container.querySelector(
         '[data-testid="right-panel-tab-bar-header-spacer"]',
       );
-      const restoreButton = screen.getByRole("button", { name: "Restore panel width" });
+      const restoreButton = screen.getByRole("button", { name: "Exit full view" });
 
       expect(leftSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
       expect(leftSlot.getAttribute("style")?.includes("min-width: 224px")).toBe(true);
-      expect(leftSlot.className.includes("no-drag")).toBe(true);
       expect(tabHeader.className.includes("draggable")).toBe(false);
       expect(within(leftSlot).getByRole("button", { name: "New chat" }) !== null).toBe(true);
       expect(rightSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
       expect(rightSlot.getAttribute("style")?.includes("min-width: 70px")).toBe(true);
-      expect(rightSlot.className.includes("no-drag")).toBe(true);
       expect(
         Number.parseFloat((leadingSpacer as HTMLElement | null)?.style.width ?? "0") +
           WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
       ).toBe(Number.parseFloat(leftSlot.style.minWidth));
       expect(leadingSpacer?.className.includes("pointer-events-none")).toBe(true);
-      expect(leadingSpacer?.className.includes("no-drag")).toBe(true);
       expect(tabRow?.querySelector('[role="tablist"]') !== null).toBe(true);
-      expect(tabHeader.contains(restoreButton)).toBe(true);
+      expect(tabHeader.contains(restoreButton)).toBe(false);
+      expect(rightSlot.contains(restoreButton)).toBe(true);
       expect(trailingSpacer?.getAttribute("style")?.includes("width: calc(70px)")).toBe(true);
-      expect(trailingSpacer?.className.includes("no-drag")).toBe(true);
       expect(
         screen.container.querySelector('[data-testid="right-panel-global-header-actions"]') ===
           null,
@@ -848,7 +844,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       await settleAsyncRender();
 
       expect(
-        screen.getByRole("button", { name: "Expand panel" }).getAttribute("aria-pressed"),
+        screen.getByRole("button", { name: "Enter full view" }).getAttribute("aria-pressed"),
       ).toBe("false");
       expect(
         screen.container.querySelector('[data-testid="floating-project-session-sidebar-shell"]'),
@@ -1050,7 +1046,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       .__lastConnectedThreadStageProps;
     expect(props?.rightPanelComposerOverlayEnabled).toBe(true);
 
-    await pointerActivate(screen.getByRole("button", { name: "Restore panel width" }));
+    await pointerActivate(screen.getByRole("button", { name: "Exit full view" }));
 
     expect(
       invokeCalls.some((call) => {
@@ -1289,16 +1285,16 @@ describe("workbench session shell / layout-panel-actions", () => {
     const globalHeader = screen.container.querySelector('[data-testid="workbench-global-header"]');
     const rightPanel = screen.container.querySelector('[data-testid="session-right-panel"]');
     const headerCenterSurface = screen.getByTestId("app-shell-header-context-menu-surface");
-    const tabHeader = rightPanel?.querySelector('[role="tablist"]')?.parentElement?.parentElement;
+    const tabHeader =
+      rightPanel?.querySelector('[role="tablist"]')?.parentElement?.parentElement?.parentElement;
     const headerShellSlot = getHeaderShellSlot(screen, "right");
     if (!tabHeader) throw new Error("Expected right-panel tab header");
 
     const sidePanelToggle = screen.getByRole("button", { name: "Hide tabs" });
-    const expandButton = screen.getByRole("button", { name: "Expand panel" });
+    const expandButton = screen.getByRole("button", { name: "Enter full view" });
     const rightPanelHeaderSpacer = screen.container.querySelector(
       '[data-testid="right-panel-tab-bar-header-spacer"]',
     );
-    const expandIconPath = expandButton.querySelector("path")?.getAttribute("d") ?? "";
     const visibleGlobalHeaderButtons = Array.from(
       headerShellSlot?.querySelectorAll("button") ?? [],
     );
@@ -1306,30 +1302,24 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(headerShellSlot?.contains(sidePanelToggle)).toBe(true);
     expect(
       visibleGlobalHeaderButtons.map((button) => button.getAttribute("aria-label")).join(","),
-    ).toBe("Toggle bottom panel,Hide tabs");
+    ).toBe("Toggle bottom panel,Enter full view,Hide tabs");
     expect(rightPanel?.className.includes(APP_SHELL_RIGHT_PANEL_LAYER_CLASS)).toBe(true);
     expect(globalHeader?.className.includes(APP_SHELL_GLOBAL_HEADER_LAYER_CLASS)).toBe(true);
     expect(headerCenterSurface.getAttribute("aria-hidden")).toBe(null);
     expect(headerCenterSurface.className.includes("invisible")).toBe(false);
-    expect(headerShellSlot?.className.includes("no-drag")).toBe(true);
     await waitFor(() => {
       expect(headerShellSlot?.getAttribute("style")?.includes("width: 372px")).toBe(true);
     });
     expect(headerShellSlot?.getAttribute("style")?.includes("min-width: 70px")).toBe(true);
     expect(sidePanelToggle.getAttribute("aria-pressed")).toBe("true");
-    expect(globalHeader?.contains(expandButton)).toBe(false);
-    expect(tabHeader.contains(expandButton)).toBe(true);
-    expect(tabHeader.className.includes("draggable")).toBe(false);
-    expect(expandButton.parentElement?.className.includes("pointer-events-auto")).toBe(true);
+    expect(headerShellSlot?.contains(expandButton)).toBe(true);
+    expect(tabHeader.contains(expandButton)).toBe(false);
     expect(rightPanelHeaderSpacer?.className.includes("pointer-events-none")).toBe(true);
-    expect(rightPanelHeaderSpacer?.className.includes("no-drag")).toBe(true);
     expect(rightPanelHeaderSpacer?.parentElement?.className.includes("pointer-events-auto")).toBe(
       false,
     );
-    expect(rightPanelHeaderSpacer?.parentElement?.className.includes("no-drag")).toBe(true);
     expect(rightPanelHeaderSpacer?.parentElement?.getAttribute("role")).toBe("presentation");
     expect(expandButton.className.includes("no-drag")).toBe(true);
-    expect(expandIconPath.startsWith(EXPAND_PANEL_ICON_PREFIX)).toBe(true);
     expect(rightPanelHeaderSpacer?.getAttribute("style")?.includes("width: calc(70px)")).toBe(true);
     expect(
       screen.container.querySelector('[data-testid="right-panel-global-header-actions"]') === null,
@@ -1354,17 +1344,14 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(headerShellSlot?.getAttribute("style")?.includes("width: 0px")).toBe(true);
     expect(screen.queryByRole("separator", { name: "Resize right panel" })).toBe(null);
     const fullWidthTabHeader =
-      rightPanel?.querySelector('[role="tablist"]')?.parentElement?.parentElement;
+      rightPanel?.querySelector('[role="tablist"]')?.parentElement?.parentElement?.parentElement;
     expect(fullWidthTabHeader?.firstElementChild?.querySelector('[role="tablist"]') !== null).toBe(
       true,
     );
-    const restoreButton = screen.getByRole("button", { name: "Restore panel width" });
-    expect(globalHeader?.contains(restoreButton)).toBe(false);
-    expect(fullWidthTabHeader?.contains(restoreButton)).toBe(true);
+    const restoreButton = screen.getByRole("button", { name: "Exit full view" });
+    expect(globalHeader?.contains(restoreButton)).toBe(true);
+    expect(fullWidthTabHeader?.contains(restoreButton)).toBe(false);
     expect(restoreButton.getAttribute("aria-pressed")).toBe("true");
-    expect(
-      restoreButton.querySelector("path")?.getAttribute("d")?.startsWith(RESTORE_PANEL_ICON_PREFIX),
-    ).toBe(true);
   });
 
   test("right panel resize previews the dragged width before persistence", async () => {
@@ -1726,14 +1713,14 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Restore panel width" }));
+      fireEvent.click(screen.getByRole("button", { name: "Exit full view" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
 
     const regularRightPanel = screen.getByTestId("session-right-panel");
     const regularThreadPage = screen.container.querySelector('[data-testid="session-thread-page"]');
-    const expandButton = screen.getByRole("button", { name: "Expand panel" });
+    const expandButton = screen.getByRole("button", { name: "Enter full view" });
     expect(regularRightPanel.getAttribute("data-right-panel-width-mode")).toBe("regular");
     expect(regularThreadPage?.getAttribute("data-session-thread-page-hidden")).toBe("false");
     expect(regularThreadPage?.className.split(/\s+/).includes("w-0")).toBe(false);
@@ -1745,7 +1732,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
-    expect(screen.queryByRole("button", { name: "Restore panel width" })).toBe(null);
+    expect(screen.queryByRole("button", { name: "Exit full view" })).toBe(null);
     expect(screen.queryByRole("separator", { name: "Resize right panel" })).toBe(null);
 
     await act(async () => {
@@ -1758,7 +1745,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const restoredThreadPage = screen.container.querySelector(
       '[data-testid="session-thread-page"]',
     );
-    const restoredExpandButton = screen.getByRole("button", { name: "Expand panel" });
+    const restoredExpandButton = screen.getByRole("button", { name: "Enter full view" });
     expect(restoredRightPanel.getAttribute("data-right-panel-width-mode")).toBe("regular");
     expect(restoredThreadPage?.getAttribute("data-session-thread-page-hidden")).toBe("false");
     expect(restoredThreadPage?.className.split(/\s+/).includes("w-0")).toBe(false);

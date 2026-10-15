@@ -127,6 +127,10 @@ import {
   APPEARANCE_ADVANCED_ANCHOR,
   shouldExpandAppearanceAdvanced,
 } from "./workbench-settings-search-catalog";
+import {
+  resolveWorkbenchMainSurfaceClip,
+  workbenchMainSurfaceClassName,
+} from "./workbench-route-host";
 
 const OpenSourceLicensesSettingsPage = lazy(async () => {
   const module = await import("./open-source-licenses-settings-page");
@@ -2106,7 +2110,11 @@ export function SettingsRouteShell({
           }}
         />
 
-        <div className="relative flex min-w-0 flex-1 overflow-hidden">
+        <div
+          data-app-shell-main-surface="default"
+          className={workbenchMainSurfaceClassName(true)}
+          style={{ clipPath: resolveWorkbenchMainSurfaceClip(true) }}
+        >
           <SettingsMobileHeader
             activeSectionId={activeSectionId}
             sections={visibleSections}

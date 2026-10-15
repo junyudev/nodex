@@ -17,7 +17,8 @@
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
-  --color-border: var(--border);
+  /* Borders follow the theme's translucent ink so dividers stay light on every surface. */
+  --color-border: var(--app-color-border, var(--border));
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);

@@ -285,6 +285,19 @@ test("renders compact subagent activity, expands the overview, and reads only th
     );
     await expect(portal.getByRole("button", { name: "Open subagents" })).toHaveCount(0);
     await expect(portal.getByRole("button", { name: "Stop all" })).toHaveCount(0);
+    const chatActionsBox = await page
+      .getByRole("button", { name: "Chat actions", exact: true })
+      .boundingBox();
+    const summaryToggleBox = await page
+      .getByRole("button", { name: "Toggle summary", exact: true })
+      .boundingBox();
+    // Chat actions trail the growing title and sit directly before the summary toggle on one row.
+    expect(chatActionsBox && summaryToggleBox).toBeTruthy();
+    expect(summaryToggleBox!.x - (chatActionsBox!.x + chatActionsBox!.width)).toBeCloseTo(6, 0);
+    expect(chatActionsBox!.y + chatActionsBox!.height / 2).toBeCloseTo(
+      summaryToggleBox!.y + summaryToggleBox!.height / 2,
+      0,
+    );
     await page.screencast.start({
       path: path.join(artifactDirectory, "review.webm"),
       size: { width: 1440, height: 960 },

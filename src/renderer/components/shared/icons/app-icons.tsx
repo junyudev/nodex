@@ -1873,6 +1873,55 @@ export function SidePanelTerminalIcon({ className }: IconProps) {
   return <TerminalIcon className={className ?? "icon-md"} />;
 }
 
+const CHAT_ACTIONS_PATHS = [
+  "M3.33362 6.80811C3.99161 6.80828 4.52502 7.34246 4.52502 8.00049C4.52485 8.65837 3.9915 9.19172 3.33362 9.19189C2.67559 9.19189 2.14141 8.65848 2.14124 8.00049C2.14124 7.34235 2.67548 6.80811 3.33362 6.80811Z",
+  "M8.00061 6.80811C8.65849 6.80841 9.19202 7.34254 9.19202 8.00049C9.19184 8.65829 8.65838 9.19159 8.00061 9.19189C7.34258 9.19189 6.8084 8.65848 6.80823 8.00049C6.80823 7.34235 7.34247 6.80811 8.00061 6.80811Z",
+  "M12.6666 6.80811C13.3246 6.80828 13.858 7.34246 13.858 8.00049C13.8579 8.65837 13.3245 9.19172 12.6666 9.19189C12.0088 9.1917 11.4744 8.65836 11.4742 8.00049C11.4742 7.34247 12.0087 6.8083 12.6666 6.80811Z",
+] as const;
+
+/** Titlebar overflow for the active chat, drawn on the 16px toolbar grid. */
+export function ChatActionsIcon({ className }: IconProps) {
+  return <ToolbarGlyph paths={CHAT_ACTIONS_PATHS} className={cn("icon-xs", className)} />;
+}
+
+const FULL_VIEW_ENTER_PATHS = [
+  "M4.6582 7.83984C4.94815 7.83984 5.18359 8.07528 5.18359 8.36523V10.7998H7.67676C7.96671 10.7998 8.20215 11.0352 8.20215 11.3252C8.20215 11.6151 7.96671 11.8506 7.67676 11.8506H4.9082C4.48018 11.8506 4.13281 11.5032 4.13281 11.0752V8.36523C4.13281 8.07528 4.36825 7.83984 4.6582 7.83984Z",
+  "M11.0918 4.14941C11.5197 4.14955 11.8672 4.49687 11.8672 4.9248V7.63477C11.8672 7.92463 11.6316 8.16002 11.3418 8.16016C11.0518 8.16016 10.8164 7.92472 10.8164 7.63477V5.2002H8.32324C8.03329 5.2002 7.79785 4.96475 7.79785 4.6748C7.79785 4.38486 8.03329 4.14941 8.32324 4.14941H11.0918Z",
+] as const;
+
+const FULL_VIEW_EXIT_PATHS = [
+  "M6.75391 8.48828C7.18193 8.48828 7.5293 8.83565 7.5293 9.26367V11.9736C7.5293 12.2636 7.29386 12.499 7.00391 12.499C6.71396 12.499 6.47852 12.2636 6.47852 11.9736V9.53906H3.98535C3.6954 9.53906 3.45996 9.30362 3.45996 9.01367C3.45996 8.72372 3.6954 8.48828 3.98535 8.48828H6.75391Z",
+  "M8.99609 3.50098C9.28604 3.50098 9.52148 3.73642 9.52148 4.02637V6.46094H12.0146C12.3046 6.46094 12.54 6.69638 12.54 6.98633C12.54 7.27628 12.3046 7.51172 12.0146 7.51172H9.24609C8.81807 7.51172 8.4707 7.16435 8.4707 6.73633V4.02637C8.4707 3.73642 8.70614 3.50098 8.99609 3.50098Z",
+] as const;
+
+function ToolbarGlyph({ paths, className }: IconProps & { paths: readonly string[] }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      className={className}
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      {paths.map((d) => (
+        <path key={d} d={d} fill="currentColor" />
+      ))}
+    </svg>
+  );
+}
+
+/** Workspace content fills the window; corners point outward. */
+export function EnterFullViewIcon({ className }: IconProps) {
+  return <ToolbarGlyph paths={FULL_VIEW_ENTER_PATHS} className={cn("icon-xs", className)} />;
+}
+
+/** Workspace content returns to split view; corners point inward. */
+export function ExitFullViewIcon({ className }: IconProps) {
+  return <ToolbarGlyph paths={FULL_VIEW_EXIT_PATHS} className={cn("icon-xs", className)} />;
+}
+
 export function PanelRightVisibleIcon({ className }: IconProps) {
   return <PanelHiddenGlyph className={cn("size-5 rotate-180", className)} />;
 }

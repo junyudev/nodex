@@ -136,7 +136,7 @@ export function PagesSceneBreadcrumb({ scene }: { readonly scene: WorkbenchScene
   return (
     <AppShellHeaderContentRegistrar
       content={
-        <div className="no-drag flex h-full min-w-0 items-center gap-1.5 text-sm">
+        <div className="flex h-full min-w-0 items-center gap-1.5 text-sm">
           <span
             className={
               surface ? "shrink-0 text-token-text-secondary" : "shrink-0 text-token-text-primary"

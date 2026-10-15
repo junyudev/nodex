@@ -6,6 +6,11 @@ import {
   PAGE_RELOCATION_SCENARIO_ID,
   requirePageRelocationScenarioFacts,
 } from "../../scripts/scenarios/scenarios/page-relocation";
+import {
+  buildNativePointerProbe,
+  clickThroughNativeWindow,
+  readNativeDragRegions,
+} from "./support/native-window-input";
 
 interface EvidenceClaim {
   name: string;
@@ -77,12 +82,22 @@ const readGeometry = async (page: Page) =>
       throw new Error("Missing Workbench geometry surface");
     const railBounds = navigation.getBoundingClientRect();
     const paneBounds = pane.getBoundingClientRect();
+    const railButtons = Array.from(navigation.querySelectorAll("button"));
     return {
       rail: { width: railBounds.width, top: railBounds.top },
-      buttons: Array.from(navigation.querySelectorAll("button")).map((button) => {
-        const bounds = button.getBoundingClientRect();
-        return { width: bounds.width, height: bounds.height };
-      }),
+      // The account control appears above Settings only once the account state is known.
+      buttons: railButtons
+        .filter((button) => !button.closest("[data-workbench-rail-account]"))
+        .map((button) => {
+          const bounds = button.getBoundingClientRect();
+          return {
+            label: button.getAttribute("aria-label"),
+            width: bounds.width,
+            height: bounds.height,
+          };
+        }),
+      railFootBottomInset:
+        window.innerHeight - (railButtons.at(-1)?.getBoundingClientRect().bottom ?? 0),
       headerHeight: header.getBoundingClientRect().height,
       surfaceTop: paneBounds.top,
       tabHeaderTop: pill.closest("[data-workbench-pane-titlebar]")?.getBoundingClientRect().top,
@@ -102,27 +117,56 @@ const readPaint = async (page: Page) =>
     const navigation = document.querySelector("[data-app-navigation-rail]");
     const shell = document.querySelector("[data-workbench-shell]");
     const header = document.querySelector('[data-testid="workbench-global-header"]');
-    const main = document.querySelector(".main-surface");
+    const main = document.querySelector("[data-app-shell-main-surface]");
     if (!navigation || !shell || !header || !main)
       throw new Error("Missing Workbench paint surface");
     const background = getComputedStyle(main).backgroundColor;
     const sidebarRole = getComputedStyle(shell)
       .getPropertyValue("--color-token-side-bar-background")
       .trim();
-    const alpha = background.startsWith("rgba(")
-      ? background.slice(background.lastIndexOf(",") + 1, -1).trim()
-      : (background.split("/")[1]?.replace(")", "").trim() ?? "1");
+    const alphaOf = (color: string) =>
+      Number.parseFloat(
+        color.startsWith("rgba(")
+          ? color.slice(color.lastIndexOf(",") + 1, -1).trim()
+          : (color.split("/")[1]?.replace(")", "").trim() ?? "1"),
+      );
+    const alpha = alphaOf(background);
     return {
       windowType: document.documentElement.getAttribute("data-codex-window-type"),
       electronOpaque: document.documentElement.classList.contains("electron-opaque"),
-      shellBackground: getComputedStyle(shell).backgroundColor,
+      shellBackgroundAlpha: alphaOf(getComputedStyle(shell).backgroundColor),
       railBackground: getComputedStyle(navigation).backgroundColor,
       headerBackground: getComputedStyle(header).backgroundColor,
       sidebarRole,
       sidebarRoleDefined: sidebarRole.length > 0,
       mainBackground: background,
-      mainOpaque: alpha === "100%" || Number.parseFloat(alpha) === 1,
+      mainOpaque: alpha === 1,
       dark: document.documentElement.classList.contains("dark"),
+    };
+  });
+
+const readSidebarHeader = async (page: Page) =>
+  page.evaluate(() => {
+    const header = document.querySelector("[data-app-action-sidebar-scroll-header]");
+    const title = header?.querySelector("[data-workbench-sidebar-title-row] h2");
+    const search = header?.querySelector(
+      '[data-workbench-sidebar-title-row] button[aria-label="Search"]',
+    );
+    const firstRow = header?.querySelector(":scope > div:last-child button");
+    if (!title || !search || !firstRow) throw new Error("Missing contextual sidebar header");
+    const box = (element: Element) => {
+      const bounds = element.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    };
+    const titleStyle = getComputedStyle(title);
+    return {
+      title: {
+        x: box(title).x,
+        y: box(title).y,
+        font: `${titleStyle.fontSize}/${titleStyle.lineHeight}`,
+      },
+      search: box(search),
+      firstRow: box(firstRow),
     };
   });
 
@@ -226,11 +270,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expectHomeProject();
           const lightPaint = await readPaint(page);
           claim(
-            "Light chrome preserves native sidebar material and opaque content",
+            "Light chrome tints native material once and keeps content opaque",
             {
               windowType: "electron",
               electronOpaque: false,
-              shellBackground: "rgba(0, 0, 0, 0)",
+              shellBackgroundAlpha: 0.85,
               railBackground: "rgba(0, 0, 0, 0)",
               headerBackground: "rgba(0, 0, 0, 0)",
               sidebarRole: lightPaint.sidebarRole,
@@ -250,11 +294,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expectHomeProject();
           const darkPaint = await readPaint(page);
           claim(
-            "Dark chrome preserves native material with a distinct sidebar role",
+            "Dark chrome tints native material once with a distinct sidebar role",
             {
               windowType: "electron",
               electronOpaque: false,
-              shellBackground: "rgba(0, 0, 0, 0)",
+              shellBackgroundAlpha: 0.8,
               railBackground: "rgba(0, 0, 0, 0)",
               headerBackground: "rgba(0, 0, 0, 0)",
               sidebarRole: darkPaint.sidebarRole,
@@ -274,9 +318,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             {
               rail: { width: 52, top: 44 },
               buttons: [
-                { width: 36, height: 36 },
-                { width: 36, height: 36 },
+                { label: "Home", width: 36, height: 36 },
+                { label: "Space", width: 36, height: 36 },
+                { label: "Settings", width: 36, height: 36 },
               ],
+              railFootBottomInset: 8,
               headerHeight: 44,
               surfaceTop: 44,
               tabHeaderTop: 0,
@@ -326,11 +372,89 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               });
             }),
           );
+          const homeHeader = await readSidebarHeader(page);
+          claim(
+            "Project titlebar keeps every control clickable and empty chrome draggable",
+            { blockedControls: [], draggableAt: [true, true] },
+            await readNativeDragRegions(page, [
+              { x: 300, y: 22 },
+              { x: 720, y: 22 },
+            ]),
+          );
+          if (process.platform === "darwin") {
+            const probe = buildNativePointerProbe();
+            const bottomToggle = page.getByRole("button", {
+              name: "Toggle bottom panel",
+              exact: true,
+            });
+            const toggleBox = await bottomToggle.boundingBox();
+            if (!toggleBox) throw new Error("Missing bottom panel toggle");
+            const toggleCenter = {
+              x: toggleBox.x + toggleBox.width / 2,
+              y: toggleBox.y + toggleBox.height / 2,
+            };
+            const nativeToggle = await clickThroughNativeWindow(
+              nativeWindow,
+              page,
+              probe,
+              toggleCenter,
+            );
+            await expect(bottomToggle).toHaveAttribute("aria-pressed", "true");
+            const nativeEmptyTitlebar = await clickThroughNativeWindow(nativeWindow, page, probe, {
+              x: 720,
+              y: 22,
+            });
+            await nativeWindow.evaluate((window) => window.blur());
+            await expect.poll(async () => (await readPaint(page)).electronOpaque).toBe(true);
+            const firstClick = await clickThroughNativeWindow(
+              nativeWindow,
+              page,
+              probe,
+              toggleCenter,
+            );
+            await expect(bottomToggle).toHaveAttribute("aria-pressed", "false");
+            claim(
+              "AppKit clicks reach titlebar controls, empty titlebar drags, and an inactive window takes the first click",
+              {
+                toggle: { reachedRenderer: true, target: "Toggle bottom panel" },
+                emptyTitlebar: { reachedRenderer: false, target: null },
+                inactiveFirstClick: { reachedRenderer: true, target: "Toggle bottom panel" },
+              },
+              {
+                toggle: nativeToggle,
+                emptyTitlebar: nativeEmptyTitlebar,
+                inactiveFirstClick: firstClick,
+              },
+            );
+            await nativeWindow.evaluate((window) => window.focus());
+          }
           await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
           await page.mouse.move(900, 700);
           await expect(
             page.getByRole("button", { name: "Show sidebar", exact: true }),
           ).toBeVisible();
+          const peek = page.getByTestId("app-shell-floating-left-panel");
+          await page.mouse.move(26, 70);
+          await expect(peek).toBeVisible();
+          // Cross the rail-to-surface gap slower than the close grace period.
+          for (const x of [40, 44, 48, 52, 56, 64, 96, 160]) {
+            await page.mouse.move(x, 74);
+            await page.waitForTimeout(70);
+          }
+          await page.waitForTimeout(400);
+          const peekBounds = await peek.boundingBox();
+          claim(
+            "A rail peek survives the gap into its surface and keeps the pinned geometry",
+            { visible: true, x: 56, y: 48, width: 284 },
+            {
+              visible: await peek.isVisible(),
+              x: peekBounds?.x,
+              y: peekBounds?.y,
+              width: peekBounds?.width,
+            },
+          );
+          await page.mouse.move(900, 700);
+          await expect(peek).toHaveCount(0);
           if (process.platform === "darwin") {
             const windowId = await nativeWindow.evaluate((window) => window.id);
             const zoomCommand = async (id: "view.zoomIn" | "view.resetZoom") => {
@@ -476,6 +600,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           const retainedTabs = await readTabIdentities(page);
           expect(retainedTabs.every((tab) => tab.id)).toBe(true);
           expect(retainedTabs.some((tab) => tab.title === "Files")).toBe(true);
+          claim(
+            "Split Session titlebar keeps tabs, plus and workspace controls clickable",
+            { blockedControls: [] },
+            { blockedControls: (await readNativeDragRegions(page)).blockedControls },
+          );
           await capture("session-split");
           await page.getByRole("button", { name: "Hide tabs", exact: true }).click();
           await page.mouse.move(900, 700);
@@ -510,7 +639,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             retainedTabs,
             await readTabIdentities(page),
           );
-          await page.getByRole("button", { name: "Expand panel", exact: true }).click();
+          await page.getByRole("button", { name: "Enter full view", exact: true }).click();
           await expect(
             page.getByRole("button", { name: "Enter split view", exact: true }),
           ).toBeVisible();
@@ -555,6 +684,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           await rail(page).getByRole("button", { name: "Space", exact: true }).click();
           await expect(content(page)).toBeVisible();
+          claim(
+            "Home and Space share the sidebar title, search and first-row positions",
+            homeHeader,
+            await readSidebarHeader(page),
+          );
           const standaloneRow = content(page).getByRole("listitem").filter({ hasText: PAGE_TITLE });
           if (!(await standaloneRow.isVisible())) {
             await content(page).getByRole("button", { name: "Show more", exact: true }).click();

@@ -181,7 +181,9 @@ describe("workbench session shell / routes-threads", () => {
     const settingsSidebar = screen.container.querySelector(".app-shell-left-panel");
     expect(settingsSidebar !== null).toBe(true);
     expect(
-      screen.container.querySelector('[data-testid="settings-route-shell"] .main-surface') !== null,
+      screen.container.querySelector(
+        '[data-testid="settings-route-shell"] [data-app-shell-main-surface]',
+      ) !== null,
     ).toBe(true);
 
     await act(async () => {
@@ -225,7 +227,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(globalHeader.contains(headerContextSurface)).toBe(true);
     expect(headerContextSurface.getAttribute("aria-hidden")).toBe(null);
     expect(headerContextSurface.className.includes("invisible")).toBe(false);
-    expect(leftLabels).toBe("Hide sidebar,Back,Forward");
+    expect(leftLabels).toBe("Back,Forward,Hide sidebar");
     expect(rightSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
     expect(rightSlot.getAttribute("style")?.includes("min-width: 0")).toBe(true);
     expect(within(globalHeader).queryByRole("button", { name: "Toggle bottom panel" })).toBe(null);
@@ -334,8 +336,8 @@ describe("workbench session shell / routes-threads", () => {
     });
     expect(screen.getByRole("tab", { name: "Tasks", selected: true }) !== null).toBe(true);
     expect(screen.queryByRole("button", { name: "Toggle side panel" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Restore panel width" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Expand panel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exit full view" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enter full view" })).toBeNull();
     expect(screen.queryByText("Library")).toBeNull();
   });
 
@@ -451,7 +453,7 @@ describe("workbench session shell / routes-threads", () => {
       const restoredThreadPage = screen.container.querySelector(
         '[data-testid="session-thread-page"]',
       );
-      const restoreButton = screen.getByRole("button", { name: "Restore panel width" });
+      const restoreButton = screen.getByRole("button", { name: "Exit full view" });
       expect(restoredRightPanel.getAttribute("data-right-panel-width-mode")).toBe("full");
       await waitFor(() => {
         expect(restoredRightPanel.style.width).toBe(fullWidthBeforeSettings);

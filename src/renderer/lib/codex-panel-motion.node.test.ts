@@ -5,7 +5,6 @@ import {
   clampCodexPanelProgress,
   resolveCodexAnimatedPanelSize,
   resolveCodexHeaderEdgeScroll,
-  resolveCodexMainContentFrameBorder,
   resolveCodexMainContentTargetWidth,
   resolveCodexSummaryContentShift,
   resolveCodexSummaryPanelLayoutMode,
@@ -78,7 +77,7 @@ describe("Codex panel motion helpers", () => {
     ).toBe(0);
   });
 
-  test("matches Codex thread edge-scroll and frame border guards", () => {
+  test("matches Codex thread edge-scroll guards", () => {
     expect(
       resolveCodexHeaderEdgeScroll({
         layout: "thread-edge-scroll",
@@ -104,24 +103,6 @@ describe("Codex panel motion helpers", () => {
         mainContentWidth: 1536,
       }),
     ).toBe(false);
-    expect(
-      resolveCodexMainContentFrameBorder({
-        rightPanelOpen: false,
-        headerEdgeScroll: true,
-      }),
-    ).toBe(false);
-    expect(
-      resolveCodexMainContentFrameBorder({
-        rightPanelOpen: true,
-        headerEdgeScroll: true,
-      }),
-    ).toBe(true);
-    expect(
-      resolveCodexMainContentFrameBorder({
-        rightPanelOpen: false,
-        headerEdgeScroll: false,
-      }),
-    ).toBe(true);
   });
 
   test("applies Codex shift only for pinned shift mode", () => {

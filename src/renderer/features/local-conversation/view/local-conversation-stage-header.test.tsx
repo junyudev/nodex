@@ -65,7 +65,7 @@ describe("ThreadStageHeader", () => {
       />,
     );
     expect(generateTitle).not.toHaveBeenCalled();
-    await openNodexMenu(view.getByRole("button", { name: "Task actions" }));
+    await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
     expect(generateTitle).not.toHaveBeenCalled();
     await act(async () => {
       fireEvent.click(view.getByRole("menuitem", { name: "Generate title" }));
@@ -83,12 +83,10 @@ describe("ThreadStageHeader", () => {
     );
 
     const title = container.querySelector('[data-testid="thread-stage-title"]');
-    const header = container.firstElementChild;
     expect(title?.textContent).toBe("Review shell header parity");
-    expect(header?.className.includes("draggable")).toBe(true);
   });
 
-  test("keeps thread actions left-aligned immediately after the title", async () => {
+  test("places chat actions at the trailing edge after the growing title", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const actions = {
       ...buildActions(),
@@ -103,14 +101,15 @@ describe("ThreadStageHeader", () => {
     );
 
     const title = container.querySelector('[data-testid="thread-stage-title"]');
-    const threadActions = container.querySelector('button[aria-label="Task actions"]');
-    const actionGroup = threadActions?.parentElement;
-    expect(Boolean(title)).toBe(true);
-    expect(Boolean(actionGroup)).toBe(true);
-    expect(actionGroup?.previousElementSibling === title).toBe(true);
+    const threadActions = container.querySelector('button[aria-label="Chat actions"]');
+    if (!title || !threadActions) throw new Error("Expected the title and chat actions");
+    expect(
+      title.compareDocumentPosition(threadActions) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(title.parentElement?.lastElementChild?.contains(threadActions)).toBe(true);
   });
 
-  test("renders the Codex task action ordering before the Copy flyout", async () => {
+  test("renders the chat action ordering before the Copy flyout", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     let renameCalls = 0;
     const actions = {
@@ -128,13 +127,13 @@ describe("ThreadStageHeader", () => {
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "Task actions" });
+    const trigger = screen.getByRole("button", { name: "Chat actions" });
     await openNodexMenu(trigger);
 
     const bodyText = textContent(document.body);
     expect(bodyText.indexOf("Rename") >= 0).toBe(true);
-    expect(bodyText.indexOf("Rename") < bodyText.indexOf("Open side task")).toBe(true);
-    expect(bodyText.indexOf("Open side task") < bodyText.indexOf("Copy")).toBe(true);
+    expect(bodyText.indexOf("Rename") < bodyText.indexOf("New side chat")).toBe(true);
+    expect(bodyText.indexOf("New side chat") < bodyText.indexOf("Copy")).toBe(true);
 
     await act(async () => {
       fireEvent.click(screen.getByText("Rename"));
@@ -157,7 +156,7 @@ describe("ThreadStageHeader", () => {
       />,
     );
 
-    const trigger = screen.getByRole("button", { name: "Task actions" });
+    const trigger = screen.getByRole("button", { name: "Chat actions" });
     await openNodexMenu(trigger);
     await act(async () => {
       fireEvent.keyDown(screen.getByRole("menuitem", { name: "Copy" }), { key: "ArrowRight" });

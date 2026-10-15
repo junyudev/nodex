@@ -14,7 +14,6 @@ import {
   useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type ComponentType,
-  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type RefObject,
@@ -205,7 +204,6 @@ interface AppShellTabsProps {
   afterListSticky?: ReactNode;
   afterList?: ReactNode;
   bodyOverlay?: ReactNode;
-  tabScrollEndPaddingPx?: number;
   headerEndInsetPx?: number;
   headerHeight?: "pane" | "toolbar";
   titlebar?: boolean;
@@ -235,6 +233,31 @@ export function shouldShowAppShellTabSeparator({
   return true;
 }
 
+const TAB_ROW_EDGE_FADE_PX = 40;
+const TAB_TITLE_FADE_MASK = "linear-gradient(to right, #000 calc(100% - 28px), transparent 100%)";
+
+export function resolveTabRowEdgeFade(
+  startClipped: boolean,
+  endClipped: boolean,
+): "none" | "start" | "end" | "both" {
+  if (startClipped && endClipped) return "both";
+  if (startClipped) return "start";
+  return endClipped ? "end" : "none";
+}
+
+/**
+ * Overflowing tabs fade through an alpha mask, so the row blends with whatever
+ * surface hosts it: the pane header or the translucent window titlebar.
+ */
+export function buildTabRowEdgeMask(startClipped: boolean, endClipped: boolean): string {
+  if (!startClipped && !endClipped) return "none";
+  const start = startClipped ? `transparent 0, #000 ${TAB_ROW_EDGE_FADE_PX}px` : "#000 0";
+  const end = endClipped
+    ? `#000 calc(100% - ${TAB_ROW_EDGE_FADE_PX}px), transparent 100%`
+    : "#000 100%";
+  return `linear-gradient(to right, ${start}, ${end})`;
+}
+
 export function AppShellTabs({
   tabs,
   activeTabId,
@@ -252,7 +275,6 @@ export function AppShellTabs({
   afterListSticky,
   afterList,
   bodyOverlay,
-  tabScrollEndPaddingPx = 0,
   headerEndInsetPx = 0,
   headerHeight = "pane",
   titlebar = false,
@@ -365,7 +387,6 @@ export function AppShellTabs({
       };
     }
 
-    const trailingInsetPx = Math.max(0, Math.ceil(afterTabsInlineWidthPx + tabScrollEndPaddingPx));
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -379,7 +400,6 @@ export function AppShellTabs({
       },
       {
         root: tabRow,
-        rootMargin: `0px -${trailingInsetPx}px 0px 0px`,
         threshold: 0.99,
       },
     );
@@ -388,7 +408,7 @@ export function AppShellTabs({
     return () => {
       observer.disconnect();
     };
-  }, [afterTabsInlineWidthPx, tabScrollEndPaddingPx, tabs.length]);
+  }, [tabs.length]);
 
   useLayoutEffect(() => {
     if (!resolvedActiveTabId) return;
@@ -530,68 +550,58 @@ export function AppShellTabs({
             )}
           >
             {beforeList ? (
-              <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+              <div role="presentation" className="my-auto flex shrink-0 items-center">
                 {beforeList}
               </div>
             ) : null}
-            <div
-              ref={tabRowRef}
-              data-panel-tab-row={
-                panelTabDnd ? `${panelTabDnd.panelId}:${panelTabDnd.leafId}` : undefined
-              }
-              data-app-shell-tab-close-mode={lockedTabWidthPx !== null ? "true" : undefined}
-              className="hide-scrollbar relative isolate flex h-full min-w-0 flex-1 scroll-px-1 items-center overflow-x-auto overflow-y-hidden [contain:layout_paint]"
-              style={{
-                scrollPaddingInlineEnd: tabScrollEndPaddingPx,
-              }}
-              onPointerLeave={exitTabCloseMode}
-            >
+            <div className="flex h-full min-w-0 flex-1 items-center [container-type:inline-size]">
               <div
-                aria-hidden="true"
-                data-app-shell-tab-edge-fade="start"
-                data-clipped={leftEdgeClipped ? "true" : "false"}
-                className={cn(
-                  "pointer-events-none sticky start-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:start-0 after:inset-y-0 after:w-10 after:bg-linear-to-l after:from-transparent after:to-(--color-background-panel) after:content-['']",
-                  leftEdgeClipped ? "opacity-100" : "opacity-0",
+                ref={tabRowRef}
+                data-panel-tab-row={
+                  panelTabDnd ? `${panelTabDnd.panelId}:${panelTabDnd.leafId}` : undefined
+                }
+                data-app-shell-tab-close-mode={lockedTabWidthPx !== null ? "true" : undefined}
+                data-app-shell-tab-edge-fade={resolveTabRowEdgeFade(
+                  leftEdgeClipped,
+                  rightEdgeClipped,
                 )}
-              />
-              <span ref={leftEdgeSentinelRef} aria-hidden="true" className="h-px w-px shrink-0" />
-              {tabList}
-              <span ref={rightEdgeSentinelRef} aria-hidden="true" className="h-px w-px shrink-0" />
+                className="hide-scrollbar relative isolate flex h-full min-w-0 flex-initial scroll-px-1 items-center overflow-x-auto overflow-y-hidden [contain:layout_paint]"
+                style={{ maskImage: buildTabRowEdgeMask(leftEdgeClipped, rightEdgeClipped) }}
+                onPointerLeave={exitTabCloseMode}
+              >
+                <span ref={leftEdgeSentinelRef} aria-hidden="true" className="h-px w-px shrink-0" />
+                {tabList}
+                <span
+                  ref={rightEdgeSentinelRef}
+                  aria-hidden="true"
+                  className="h-px w-px shrink-0"
+                />
+                {tabRowPreview ? <PanelTabInsertionIndicator intent={tabRowPreview} /> : null}
+              </div>
               {afterTabsInline ? (
                 <div
                   ref={afterTabsInlineRef}
-                  className="no-drag sticky right-0 z-10 flex h-full shrink-0 items-center bg-(--color-background-panel)"
+                  role="presentation"
+                  className="flex h-full shrink-0 items-center"
                 >
                   {afterTabsInline}
                 </div>
               ) : null}
-              {tabRowPreview ? <PanelTabInsertionIndicator intent={tabRowPreview} /> : null}
-              <div
-                aria-hidden="true"
-                data-app-shell-tab-edge-fade="end"
-                data-clipped={rightEdgeClipped ? "true" : "false"}
-                className={cn(
-                  "pointer-events-none sticky end-0 z-20 h-full w-0 transition-opacity duration-100 after:absolute after:end-0 after:inset-y-0 after:w-10 after:bg-linear-to-r after:from-transparent after:to-(--color-background-panel) after:content-['']",
-                  rightEdgeClipped ? "opacity-100" : "opacity-0",
-                )}
-                style={{ right: tabScrollEndPaddingPx }}
-              />
             </div>
             {afterListSticky ? (
-              <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+              <div role="presentation" className="my-auto flex shrink-0 items-center">
                 {afterListSticky}
               </div>
             ) : null}
             {afterList ? (
-              <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+              <div role="presentation" className="my-auto flex shrink-0 items-center">
                 {afterList}
               </div>
             ) : null}
             {headerEndInsetPx > 0 ? (
               <div
                 aria-hidden="true"
-                className="no-drag pointer-events-none h-full shrink-0"
+                className="pointer-events-none h-full shrink-0"
                 style={{ width: headerEndInsetPx }}
               />
             ) : null}
@@ -812,7 +822,11 @@ function AppShellTab({
     </span>
   );
   const label = (
-    <span className="relative min-w-0 flex-1 overflow-hidden">
+    <span
+      data-app-shell-tab-title-fade={titleOverflows ? tab.id : undefined}
+      className="relative min-w-0 flex-1 overflow-hidden"
+      style={titleOverflows ? { maskImage: TAB_TITLE_FADE_MASK } : undefined}
+    >
       <NodexTooltip
         tooltipContent={tooltipContent}
         disabled={isDragging}
@@ -840,18 +854,6 @@ function AppShellTab({
           {title}
         </span>
       </NodexTooltip>
-      {titleOverflows ? (
-        <span
-          aria-hidden="true"
-          data-app-shell-tab-title-fade={tab.id}
-          className={cn(
-            "pointer-events-none absolute inset-y-0 end-0 z-20 w-7 bg-linear-to-r from-transparent to-[85%]",
-            isActive
-              ? "to-[var(--app-shell-tab-background)]"
-              : "to-(--color-background-panel) group-hover/tab:to-[var(--app-shell-tab-background)]",
-          )}
-        />
-      ) : null}
     </span>
   );
 
@@ -987,12 +989,6 @@ function AppShellTab({
         data-tab-id={dataTabId}
         data-app-shell-tab-surface="true"
         className="group group/tab relative flex h-8 w-full max-w-39 shrink-0 items-center overflow-hidden rounded-lg"
-        style={
-          {
-            "--app-shell-tab-background":
-              "color-mix(in srgb, var(--color-token-foreground) 8%, var(--color-background-panel))",
-          } as CSSProperties
-        }
         onMouseDown={(event) => {
           if (event.button !== 1 || !onClose) return;
           event.preventDefault();
@@ -1002,9 +998,10 @@ function AppShellTab({
       >
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-0 rounded-md border-[0.5px] border-transparent group-hover/tab:bg-[var(--app-shell-tab-background)]",
-            (isActive || isDragging) &&
-              "border-token-border bg-[var(--app-shell-tab-background)] shadow-sm",
+            "pointer-events-none absolute inset-0 z-0 rounded-md border-[length:var(--border-width-hairline)]",
+            isActive || isDragging
+              ? "border-(--color-border) bg-(--app-shell-tab-selected-background) shadow-[0px_1px_2px_-1px_#00000014]"
+              : "border-transparent group-hover/tab:bg-(--color-background-primary-ghost-hover)",
           )}
         />
         <button
@@ -1016,9 +1013,9 @@ function AppShellTab({
           aria-label={accessibleLabel}
           disabled={tab.disabled}
           className={cn(
-            "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 py-1 text-xs",
+            "no-drag relative z-10 flex h-full min-w-0 flex-1 items-center gap-2 py-1 ps-2.5 pe-1.75 text-sm",
             onClose && (isActive ? "pe-8" : "group-focus-within/tab:pe-8 group-hover/tab:pe-8"),
-            isActive ? "text-token-text-primary" : "text-token-text-tertiary",
+            isActive ? "text-(--color-text)" : "text-tertiary",
           )}
           onMouseDown={(event) => {
             if (event.button !== 0) return;
@@ -1056,7 +1053,7 @@ function AppShellTab({
             data-app-shell-tab-no-drag="true"
             aria-label={`Close ${accessibleLabel} tab`}
             className={cn(
-              "no-drag absolute end-1 top-1/2 z-30 flex size-5 -translate-y-1/2 cursor-interaction items-center justify-center rounded-md text-token-text-tertiary hover:bg-token-foreground/8 hover:text-token-text-primary focus-visible:bg-token-foreground/8 focus-visible:text-token-text-primary",
+              "no-drag absolute end-1.75 top-1/2 z-30 flex size-5 -translate-y-1/2 cursor-interaction items-center justify-center rounded-md p-0.5 text-tertiary hover:bg-(--color-background-primary-ghost-hover) hover:text-(--color-text) focus-visible:bg-(--color-background-primary-ghost-hover) focus-visible:text-(--color-text)",
               !isActive &&
                 "pointer-events-none opacity-0 group-focus-within/tab:pointer-events-auto group-focus-within/tab:opacity-100 group-hover/tab:pointer-events-auto group-hover/tab:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100",
             )}
@@ -1070,7 +1067,7 @@ function AppShellTab({
               closeCurrentTabFromDirectInteraction();
             }}
           >
-            <CloseIcon className="icon-xs relative" />
+            <CloseIcon className="icon-2xs relative" />
           </button>
         ) : null}
       </div>

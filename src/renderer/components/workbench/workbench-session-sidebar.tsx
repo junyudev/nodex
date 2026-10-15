@@ -23,12 +23,13 @@ import {
   resolveCodexPageSearchShortcutLabel,
   type CodexProjectRowDndCapability,
 } from "./codex-sidebar";
-import { LeftSidebarFooter } from "./left-sidebar-footer";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
 import type { SidebarLibraryDragResource } from "./sidebar-library-dnd";
 import {
   SIDEBAR_SCROLL_AREA_CLASS,
-  SidebarExpandedHeader,
+  SidebarInboxButton,
+  SidebarNewChatButton,
+  WorkbenchSidebarHeader,
   useSidebarScrollChrome,
 } from "./sidebar-new-chat-controls";
 import {
@@ -1792,16 +1793,6 @@ export interface ProjectSessionSidebarProps extends Omit<
   ) => Promise<void>;
   onMoveSidebarThread: (drop: SidebarThreadDropRequest) => Promise<SidebarThreadDropCommit | null>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
-  onOpenSettings: () => void;
-  account: CodexAccountSnapshot | null;
-  connection: CodexConnectionState;
-  onRefreshAccount: () => Promise<CodexAccountSnapshot>;
-  onConsumeRateLimitReset: ReturnType<typeof useCodexAccountActions>["consumeRateLimitReset"];
-  onStartChatGptLogin: ReturnType<typeof useCodexAccountActions>["startChatGptLogin"];
-  onStartApiKeyLogin: ReturnType<typeof useCodexAccountActions>["startApiKeyLogin"];
-  onCancelLogin: ReturnType<typeof useCodexAccountActions>["cancelLogin"];
-  onLogout: () => Promise<void>;
-  onAccountErrorMessage: (message: string | null) => void;
   sidebarArchivePendingKeys: ReadonlySet<string>;
   hasMoreProjects: boolean;
   loadingMoreProjects: boolean;
@@ -1872,16 +1863,6 @@ export function ProjectSessionSidebar({
   onReorderSessions,
   onMoveSidebarThread,
   onReorderPinnedThreads,
-  onOpenSettings,
-  account,
-  connection,
-  onRefreshAccount,
-  onConsumeRateLimitReset,
-  onStartChatGptLogin,
-  onStartApiKeyLogin,
-  onCancelLogin,
-  onLogout,
-  onAccountErrorMessage,
   sidebarArchivePendingKeys,
   hasMoreProjects,
   loadingMoreProjects,
@@ -2115,20 +2096,25 @@ export function ProjectSessionSidebar({
           role="navigation"
           aria-label="Home"
         >
-          <SidebarExpandedHeader
-            productName="Nodex"
+          <WorkbenchSidebarHeader
+            title="Nodex"
             searchShortcutLabel={resolveCodexPageSearchShortcutLabel()}
-            newChatShortcutLabel={resolveCodexNewChatShortcutLabel()}
             scrolledContentUnderHeader={sidebarScrollChrome.scrolledContentUnderHeader}
             onSearch={onOpenCommandPalette}
-            onNewChat={() => void onStartNewChatInProject(activeProjectId)}
-            inbox={{
-              active: inboxActive,
-              count: inboxCount,
-              shortcutLabel: resolveCodexInboxShortcutLabel(),
-              onOpen: onOpenInbox,
-            }}
-          />
+          >
+            <SidebarInboxButton
+              entry={{
+                active: inboxActive,
+                count: inboxCount,
+                shortcutLabel: resolveCodexInboxShortcutLabel(),
+                onOpen: onOpenInbox,
+              }}
+            />
+            <SidebarNewChatButton
+              shortcutLabel={resolveCodexNewChatShortcutLabel()}
+              onClick={() => void onStartNewChatInProject(activeProjectId)}
+            />
+          </WorkbenchSidebarHeader>
 
           <div
             ref={sidebarScrollChrome.scrollAreaRef}
@@ -2222,19 +2208,6 @@ export function ProjectSessionSidebar({
               />
             </SidebarReorderDndProvider>
           </div>
-
-          <LeftSidebarFooter
-            onOpenSettings={onOpenSettings}
-            account={account}
-            connection={connection}
-            onRefreshAccount={onRefreshAccount}
-            onConsumeRateLimitReset={onConsumeRateLimitReset}
-            onStartChatGptLogin={onStartChatGptLogin}
-            onStartApiKeyLogin={onStartApiKeyLogin}
-            onCancelLogin={onCancelLogin}
-            onLogout={onLogout}
-            onErrorMessage={onAccountErrorMessage}
-          />
         </nav>
       </div>
     </WorkbenchSidebarFrame>

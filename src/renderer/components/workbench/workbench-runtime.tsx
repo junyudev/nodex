@@ -17,6 +17,7 @@ import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-sidebar";
 import { WorkbenchAppRail } from "./workbench-app-rail";
+import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 import { WorkspaceTabsControl } from "./workspace-tabs-control";
 import {
@@ -269,17 +270,12 @@ type ProjectSession = WorkbenchSessionRenderProjection;
 
 import { type RecentPageSession } from "@/lib/use-workbench-profile-preferences";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
-import {
-  getCodexSidebarFloatingOuterClassName,
-  getCodexSidebarFloatingTransition,
-} from "@/lib/codex-sidebar-auto-reveal";
+import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-reveal";
 import { useSyncedMotionValue } from "@/lib/resize-observer-motion-values";
 import {
   CloseIcon,
-  ExpandPanelIcon,
   PanelBottomHiddenIcon,
   PanelBottomVisibleIcon,
-  RestorePanelIcon,
   SidebarHiddenIcon,
   SidebarVisibleIcon,
 } from "@/components/shared/icons";
@@ -875,7 +871,6 @@ export function WorkbenchRuntime({
   const panelTabPresentationControllerKeysRef = useRef(new Set<string>());
   const [headerLeftWidth, setHeaderLeftWidth] = useState(0);
   const [titlebarHost, setTitlebarHost] = useState<HTMLElement | null>(null);
-  const [peekDestination, setPeekDestination] = useState<"home" | "space" | null>(null);
   const [, setHeaderLeftRailWidth] = useState(0);
   const [headerRightWidth, setHeaderRightWidth] = useState(
     RIGHT_PANEL_HEADER_FALLBACK_SPACER_WIDTH_PX,
@@ -1008,17 +1003,14 @@ export function WorkbenchRuntime({
   const {
     applySidebarWidth,
     floatingSidebarResizing,
-    floatingSidebarVisible,
     getWindowZoom,
     motion: realSidebarMotion,
-    setFloatingSidebarFocusActive,
-    setFloatingSidebarHoverSurfaceActive,
+    peekArea,
+    peekDestination,
     setFloatingSidebarResizing,
+    setPeekMenuOpen,
     setSidebarCollapsed: setSidebarCollapsedWithCodexState,
     setSidebarClickInFlight,
-    setSidebarHoverSuppressed,
-    setSidebarTriggerHovered,
-    setSidebarNavigationHovered,
     sidebarAnimating,
     sidebarClickInFlight,
     sidebarLogicalCollapsed,
@@ -1643,7 +1635,6 @@ export function WorkbenchRuntime({
     typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
   const {
     appShellHeaderEdgeScroll,
-    appShellMainContentFrameBorderVisible,
     appShellMainContentLayout,
     bottomPanelAnimatedHeightCss,
     bottomPanelHeight,
@@ -2459,7 +2450,6 @@ export function WorkbenchRuntime({
             panels: { right: rightPanel, bottom: bottomPanel },
           }
         : null,
-    rightPanelFullWidth,
     controller: panelController,
     lifecycle: {
       setActivePanelCollapsed: setActiveWorkbenchPanelCollapsed,
@@ -2481,7 +2471,7 @@ export function WorkbenchRuntime({
     hideActiveRightPanel,
     showActiveBottomPanel,
     hideActiveBottomPanel,
-    toggleActiveRightPanelFullWidth,
+    setActiveRightPanelFullWidth,
     executeShellNavigation,
     resizeRightPanel,
     resizeAutomationDetailRail,
@@ -2634,7 +2624,6 @@ export function WorkbenchRuntime({
       ((crossedMediumWidth && atMediumWidth && sidebarOpen && sidePanelOpen) ||
         (crossedNarrowWidth && atNarrowWidth && sidePanelOpen));
     if (shouldClearRightPanel) {
-      setFloatingSidebarFocusActive(false);
       const overrideKey = makeWorkbenchPanelSlotKey(activePanelOwnerKey, "right");
       panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
         ...current,
@@ -2661,16 +2650,12 @@ export function WorkbenchRuntime({
     }
 
     if (crossedNarrowWidth && atNarrowWidth && sidebarOpen) {
-      setSidebarCollapsedWithCodexState(true, {
-        animate: false,
-        suppressHoverOpen: true,
-      });
+      setSidebarCollapsedWithCodexState(true, { animate: false });
     }
   }, [
     activePanelOwnerKey,
     activeOwnedSceneOwner,
     rightPanel,
-    setFloatingSidebarFocusActive,
     setSidebarCollapsedWithCodexState,
     settingsPath,
     sidePanelOpen,
@@ -2981,15 +2966,7 @@ export function WorkbenchRuntime({
           setSidebarClickInFlight(true);
           toggleSidebarCollapsed();
         }}
-        onPointerEnter={() => {
-          setPeekDestination(null);
-          setSidebarTriggerHovered(true);
-        }}
-        onPointerLeave={() => {
-          setSidebarTriggerHovered(false);
-          setSidebarHoverSuppressed(false);
-          setSidebarClickInFlight(false);
-        }}
+        onPointerLeave={() => setSidebarClickInFlight(false)}
         aria-label={sidebarCollapseControlLabel}
         className={SIDEBAR_COLLAPSED_CHROME_BUTTON_CLASS}
         style={{ viewTransitionName: "sidebar-trigger" }}
@@ -3094,6 +3071,7 @@ export function WorkbenchRuntime({
                 ? panelGroupTabs.right.activeTabIdsByLeafId[rightPanel.layout.activeLeafId]
                 : null
             }
+            onFullViewChange={setActiveRightPanelFullWidth}
             onToggle={() => {
               if (sidePanelOpen && !rightPanelFullWidth) {
                 void hideActiveRightPanel();
@@ -3158,33 +3136,15 @@ export function WorkbenchRuntime({
     activePanelOwnerKey && rightPanelFullWidth && sidebarLogicalCollapsed
       ? Math.max(0, effectiveHeaderLeftWidth - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX)
       : 0;
-  const panelTabScrollEndPaddingPx = activePanelOwnerKey ? 28 : 0;
   const bottomPanelGlobalHeaderInsetWidth = activePanelOwnerKey ? 40 : 0;
 
   const rightPanelHeaderAfterList = activePanelOwnerKey ? (
-    <>
-      {!activeOwnedSceneOwner ? (
-        <div className="no-drag pointer-events-auto flex h-full shrink-0 items-center">
-          <ToolbarIconButton
-            label={rightPanelFullWidth ? "Restore panel width" : "Expand panel"}
-            pressed={rightPanelFullWidth}
-            onClick={toggleActiveRightPanelFullWidth}
-          >
-            {rightPanelFullWidth ? (
-              <RestorePanelIcon className="icon-xs" />
-            ) : (
-              <ExpandPanelIcon className="icon-xs" />
-            )}
-          </ToolbarIconButton>
-        </div>
-      ) : null}
-      <div
-        aria-hidden="true"
-        data-testid="right-panel-tab-bar-header-spacer"
-        className="no-drag pointer-events-none h-full shrink-0"
-        style={{ width: `calc(${headerRightWidth}px)` }}
-      />
-    </>
+    <div
+      aria-hidden="true"
+      data-testid="right-panel-tab-bar-header-spacer"
+      className="pointer-events-none h-full shrink-0"
+      style={{ width: `calc(${headerRightWidth}px)` }}
+    />
   ) : null;
 
   const bottomPanelGlobalHeaderControls = activePanelOwnerKey ? (
@@ -3198,10 +3158,8 @@ export function WorkbenchRuntime({
   const showFloatingSidebar =
     sidebarLogicalCollapsed &&
     !realSidebarMounted &&
-    (floatingSidebarVisible || floatingSidebarResizing);
+    (peekArea !== null || floatingSidebarResizing);
   const showInlineSidebar = realSidebarMounted;
-  const floatingSidebarTransition = getCodexSidebarFloatingTransition(Boolean(reducedMotion));
-  const floatingSidebarExitX = reducedMotion ? 0 : -8;
   const applicationMenuBarEnabled =
     typeof document !== "undefined" &&
     document.documentElement.getAttribute("data-codex-window-chrome") === "application-menu";
@@ -3992,7 +3950,6 @@ export function WorkbenchRuntime({
           rightPanelHeaderAfterList,
           rightPanelHeaderStartInsetWidth,
           bottomPanelGlobalHeaderInsetWidth,
-          panelTabScrollEndPaddingPx,
           renderSurface: renderProjectSceneSurface,
           onFocusGroup: (panelId, leafId) => {
             panelCommands.rememberFocusedPanelGroup(panelId, leafId);
@@ -4100,7 +4057,6 @@ export function WorkbenchRuntime({
           rightPanelHeaderAfterList,
           rightPanelHeaderStartInsetWidth,
           bottomPanelGlobalHeaderInsetWidth,
-          panelTabScrollEndPaddingPx,
           renderSurface: renderPagesSceneSurface,
           renderNewTab: (panelId, leafId) => (
             <PagesTabPicker
@@ -4312,7 +4268,6 @@ export function WorkbenchRuntime({
           bottomPanelTestId="project-bottom-panel"
           layout={{
             appShellMainContentLayout: "default",
-            frameBorderVisible: appShellMainContentFrameBorderVisible,
             rightPanelTargetWidth,
             bottomPanelHeight,
             rightPanel: {
@@ -4357,7 +4312,6 @@ export function WorkbenchRuntime({
           bottomPanelTestId="pages-bottom-panel"
           layout={{
             appShellMainContentLayout: "default",
-            frameBorderVisible: appShellMainContentFrameBorderVisible,
             rightPanelTargetWidth,
             bottomPanelHeight,
             rightPanel: {
@@ -4396,13 +4350,11 @@ export function WorkbenchRuntime({
         panelCommands={panelCommands}
         layout={{
           appShellMainContentLayout,
-          frameBorderVisible: appShellMainContentFrameBorderVisible,
           rightPanelTargetWidth,
           bottomPanelHeight,
           rightPanel: rightPanelMotion,
           bottomPanel: bottomPanelMotion,
           rightPanelHeaderStartInsetWidth,
-          panelTabScrollEndPaddingPx,
           bottomPanelGlobalHeaderInsetWidth,
         }}
         chrome={{
@@ -4587,16 +4539,6 @@ export function WorkbenchRuntime({
     onReorderSessions: sessionCatalog.reorder,
     onMoveSidebarThread: moveSidebarThreadForSidebar,
     onReorderPinnedThreads: reorderPinnedSidebarThreads,
-    onOpenSettings: openSettings,
-    account: codexAccount,
-    connection: codexConnection,
-    onRefreshAccount: codexAccountActions.refreshAccount,
-    onConsumeRateLimitReset: codexAccountActions.consumeRateLimitReset,
-    onStartChatGptLogin: codexAccountActions.startChatGptLogin,
-    onStartApiKeyLogin: codexAccountActions.startApiKeyLogin,
-    onCancelLogin: codexAccountActions.cancelLogin,
-    onLogout: handleCodexAccountLogout,
-    onAccountErrorMessage: handleCodexAccountErrorMessage,
     sidebarArchivePendingKeys,
   };
 
@@ -4658,7 +4600,9 @@ export function WorkbenchRuntime({
                 }
                 tabIndex={-1}
                 data-workbench-shell
-                className="window-fx-sidebar-surface relative flex flex-col bg-token-side-bar-background text-token-text-primary"
+                data-app-shell-frame
+                data-app-shell-page-surface="true"
+                className="relative flex flex-col text-token-text-primary browser:bg-token-side-bar-background"
                 style={
                   {
                     "--height-toolbar": `${WORKBENCH_TITLEBAR_HEIGHT_PX}px`,
@@ -4694,6 +4638,7 @@ export function WorkbenchRuntime({
                   <header
                     ref={setTitlebarHost}
                     data-testid="workbench-global-header"
+                    data-workbench-titlebar
                     data-app-shell-header-edge-scroll={appShellHeaderEdgeScroll ? "true" : "false"}
                     className={cn(
                       "app-header-tint draggable pointer-events-none fixed inset-x-0 top-0 flex h-toolbar min-w-0 items-center",
@@ -4716,11 +4661,16 @@ export function WorkbenchRuntime({
                         }
                         data-testid="app-shell-header-context-menu-surface"
                         className={cn(
-                          "pointer-events-none ms-4 flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
+                          "group/titlebar-main pointer-events-none flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
                           automationsRouteShell == null && rightPanelFullWidth && "invisible",
                         )}
                         style={{ marginRight: automationsDetailRailResolvedWidth }}
                       >
+                        <span
+                          aria-hidden="true"
+                          data-workbench-titlebar-divider=""
+                          className="me-1.5 hidden h-5 w-px shrink-0 bg-token-border group-has-[[data-testid=thread-stage-header-content]>*]/titlebar-main:block"
+                        />
                         <div
                           data-testid="thread-stage-header-content"
                           className="pointer-events-none w-full min-w-0 flex-1 [&_a]:pointer-events-auto [&_button]:pointer-events-auto [&_input]:pointer-events-auto [&_select]:pointer-events-auto [&_textarea]:pointer-events-auto"
@@ -4755,21 +4705,30 @@ export function WorkbenchRuntime({
                     data-workbench-workspace-row
                     className="relative flex min-h-0 min-w-0 flex-1 pt-(--height-toolbar)"
                   >
+                    <div
+                      aria-hidden="true"
+                      data-app-shell-page-surface-shadow
+                      className="pointer-events-none absolute top-(--height-toolbar) right-1 bottom-1 left-(--app-shell-navigation-rail-width) rounded-(--app-shell-surface-radius) shadow-[var(--app-shell-page-surface-shadow)]"
+                    />
                     <div className="shrink-0 pb-1">
                       <WorkbenchAppRail
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
-                        onHome={() => {
-                          setPeekDestination(null);
-                          workbenchWindow.selectHome();
-                        }}
-                        onSpace={() => {
-                          setPeekDestination(null);
-                          workbenchWindow.selectPages();
-                        }}
-                        onDestinationHover={(destination) => {
-                          if (destination) setPeekDestination(destination);
-                          setSidebarNavigationHovered(destination !== null);
-                        }}
+                        onHome={workbenchWindow.selectHome}
+                        onSpace={workbenchWindow.selectPages}
+                        footer={
+                          <WorkbenchRailAccountControls
+                            onOpenSettings={openSettings}
+                            account={codexAccount}
+                            connection={codexConnection}
+                            onRefreshAccount={codexAccountActions.refreshAccount}
+                            onConsumeRateLimitReset={codexAccountActions.consumeRateLimitReset}
+                            onStartChatGptLogin={codexAccountActions.startChatGptLogin}
+                            onStartApiKeyLogin={codexAccountActions.startApiKeyLogin}
+                            onCancelLogin={codexAccountActions.cancelLogin}
+                            onLogout={handleCodexAccountLogout}
+                            onErrorMessage={handleCodexAccountErrorMessage}
+                          />
+                        }
                       />
                     </div>
                     <div className="relative flex min-h-0 min-w-0 flex-1 pr-1 pb-1">
@@ -4801,10 +4760,8 @@ export function WorkbenchRuntime({
                                 outerClassName: floatingSidebarOuterClassName,
                                 resizing: floatingSidebarResizing,
                                 reducedMotion: Boolean(reducedMotion),
-                                exitX: floatingSidebarExitX,
-                                transition: floatingSidebarTransition,
                                 onResizeActiveChange: setFloatingSidebarResizing,
-                                onHoverSurfaceOpenChange: setFloatingSidebarHoverSurfaceActive,
+                                onHoverSurfaceOpenChange: setPeekMenuOpen,
                               }}
                             />
                           }

@@ -28,7 +28,7 @@ export function buildAppShellTabListWidth({
   const minimumWidthPx = count * APP_SHELL_TAB_MIN_WIDTH_PX + gapWidthPx;
   const maximumWidthPx = count * APP_SHELL_TAB_MAX_WIDTH_PX + gapWidthPx;
   const normalizedTrailingWidthPx = normalizeNonNegativeWidth(trailingWidthPx);
-  return `clamp(${minimumWidthPx}px, calc(100% - ${normalizedTrailingWidthPx}px), ${maximumWidthPx}px)`;
+  return `clamp(${minimumWidthPx}px, calc(100cqw - ${normalizedTrailingWidthPx}px), ${maximumWidthPx}px)`;
 }
 
 export function buildAppShellTabFlexSizing(lockedWidthPx: number | null): AppShellTabFlexSizing {

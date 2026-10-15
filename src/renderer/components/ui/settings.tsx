@@ -215,7 +215,7 @@ export function NodexSettingsPageSurface({
   return (
     <main
       aria-labelledby={titleId}
-      className={cn("main-surface flex h-full min-h-0 w-full flex-col", className)}
+      className={cn("flex h-full min-h-0 w-full flex-col", className)}
       style={CODEX_SETTINGS_SHELL_STYLE}
     >
       {backSlot ? <div className="flex items-center px-panel">{backSlot}</div> : null}

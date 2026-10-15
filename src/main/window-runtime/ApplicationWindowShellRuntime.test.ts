@@ -80,7 +80,7 @@ const session = (id: string, lastFocusedAt: number): WindowSessionRecord =>
   }) as unknown as WindowSessionRecord;
 
 describe("ApplicationWindowShellRuntime", () => {
-  test("constructs focused macOS shells as transparent native material windows", () => {
+  test("constructs focused macOS shells as first-click native material windows", () => {
     const backdrop = resolveElectronWindowBackdrop({
       bounds: { width: 1_400, height: 900 },
       isFocused: true,
@@ -90,12 +90,13 @@ describe("ApplicationWindowShellRuntime", () => {
       scaleFactor: 2,
     });
 
-    expect(resolveApplicationWindowShellAppearance("darwin", backdrop)).toMatchObject({
+    const appearance = resolveApplicationWindowShellAppearance("darwin", backdrop);
+    expect(appearance).toMatchObject({
+      acceptFirstMouse: true,
       backgroundColor: "#00000000",
-      transparent: true,
       vibrancy: "menu",
-      visualEffectState: "followWindow",
     });
+    expect(appearance).not.toHaveProperty("transparent");
   });
 
   test("keeps Reduce transparency opaque without changing window identity", () => {
@@ -109,8 +110,8 @@ describe("ApplicationWindowShellRuntime", () => {
     });
 
     expect(resolveApplicationWindowShellAppearance("darwin", backdrop)).toMatchObject({
+      acceptFirstMouse: true,
       backgroundColor: "#000000",
-      transparent: true,
       vibrancy: undefined,
     });
   });

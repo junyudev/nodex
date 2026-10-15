@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import {
   InboxIcon,
@@ -25,10 +26,10 @@ export const SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS =
 export const SIDEBAR_COLLAPSED_CHROME_BUTTON_CLASS =
   "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square justify-center !px-0 text-token-text-tertiary enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border-transparent";
 export const SIDEBAR_SCROLL_AREA_CLASS =
-  "sidebar-scroll-fade-mask relative isolate flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto -mt-[var(--sidebar-scroll-header-spacing,8px)] pt-[var(--sidebar-scroll-content-top-padding,var(--sidebar-scroll-header-spacing,8px))] [contain:layout_paint]";
+  "sidebar-scroll-fade-mask relative isolate flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto pt-1 [contain:layout_paint]";
 
-const SIDEBAR_HEADER_SEARCH_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction ml-auto flex items-center justify-center gap-1 whitespace-nowrap rounded-md border border-transparent p-1 text-token-foreground select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background";
+const SIDEBAR_HEADER_TOOL_BUTTON_CLASS =
+  "no-drag flex size-7 cursor-interaction items-center justify-center rounded-lg text-token-text-secondary select-none outline-none hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border data-[state=open]:bg-token-list-hover-background";
 
 interface SidebarScrollChromeState {
   scrolledContentUnderHeader: boolean;
@@ -47,12 +48,10 @@ function getSidebarScrollChromeStyle({
   return {
     "--sidebar-footer-height": "0px",
     "--sidebar-scroll-footer-edge-offset": hasContentBelow ? "0px" : "calc(var(--spacing) * 10)",
-    "--sidebar-scroll-content-top-padding": "1px",
     "--sidebar-scroll-header-fade-distance": scrolledContentUnderHeader
       ? "calc(var(--spacing) * 4)"
       : "1px",
     "--sidebar-scroll-header-fade-start": scrolledContentUnderHeader ? "var(--spacing)" : "0px",
-    "--sidebar-scroll-header-spacing": scrolledContentUnderHeader ? "var(--spacing)" : "1px",
   } as CSSProperties;
 }
 
@@ -109,61 +108,56 @@ export interface SidebarInboxEntry {
   readonly onOpen: () => void;
 }
 
-export function SidebarExpandedHeader({
-  productName,
-  productStatusLabel,
+/**
+ * One header for every contextual sidebar destination: a 52px title row with
+ * trailing tool buttons, then the destination's primary rows. Home and Space
+ * keep the same title, search, and first-row positions, so switching
+ * destinations never shifts the chrome.
+ */
+export function WorkbenchSidebarHeader({
+  title,
   searchShortcutLabel,
-  newChatShortcutLabel,
   scrolledContentUnderHeader,
   onSearch,
-  onNewChat,
-  inbox,
+  children,
 }: {
-  productName: string;
-  productStatusLabel?: string;
-  searchShortcutLabel: string;
-  newChatShortcutLabel: string;
+  title: string;
+  searchShortcutLabel?: string;
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
-  onNewChat: () => void;
-  inbox?: SidebarInboxEntry;
+  children: ReactNode;
 }) {
   return (
     <div
       data-app-action-sidebar-scroll-header=""
       data-scrolled-content-under-header={scrolledContentUnderHeader}
       className={cn(
-        "relative z-10 flex shrink-0 flex-col gap-2 px-row-x pb-[var(--sidebar-scroll-header-spacing)]",
+        "relative z-10 flex shrink-0 flex-col px-row-x pb-2",
         scrolledContentUnderHeader &&
           "after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-token-foreground/10 after:content-['']",
       )}
     >
-      <div className="ml-2 flex items-center">
-        <div className="-ml-2 flex h-8 min-w-0 items-center gap-1.5 rounded-xl border border-transparent px-2 text-base leading-6 font-medium select-none">
-          <span className="min-w-0 truncate font-semibold text-token-foreground">
-            {productName}
-          </span>
-          {productStatusLabel ? (
-            <span className="inline-flex h-4.5 shrink-0 items-center rounded-sm bg-token-foreground/5 px-1.5 text-xs font-medium leading-none text-token-description-foreground">
-              {productStatusLabel}
-            </span>
-          ) : null}
+      <div
+        data-workbench-sidebar-title-row=""
+        className="ms-2 flex h-(--sidebar-navigation-header-height) min-w-0 items-center pe-1"
+      >
+        <h2 className="min-w-0 flex-1 truncate text-[length:var(--text-heading-sm)] leading-6 font-semibold text-token-foreground select-none">
+          {title}
+        </h2>
+        <div className="flex shrink-0 items-center gap-1">
+          <NodexTooltip tooltipContent="Search" shortcutLabel={searchShortcutLabel} side="bottom">
+            <button
+              type="button"
+              className={SIDEBAR_HEADER_TOOL_BUTTON_CLASS}
+              aria-label="Search"
+              onClick={onSearch}
+            >
+              <SettingsSearchIcon className="icon-xs" />
+            </button>
+          </NodexTooltip>
         </div>
-        <NodexTooltip tooltipContent="Search" shortcutLabel={searchShortcutLabel} side="right">
-          <button
-            type="button"
-            className={SIDEBAR_HEADER_SEARCH_BUTTON_CLASS}
-            aria-label="Search"
-            onClick={onSearch}
-          >
-            <SettingsSearchIcon className="icon-xs" />
-          </button>
-        </NodexTooltip>
       </div>
-      <div className="flex flex-col gap-px">
-        {inbox ? <SidebarInboxButton entry={inbox} /> : null}
-        <SidebarNewChatButton shortcutLabel={newChatShortcutLabel} onClick={onNewChat} />
-      </div>
+      <div className="flex flex-col gap-px">{children}</div>
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { useRef, useState, type KeyboardEvent } from "react";
-import { ExpandPanelIcon, PanelRightVisibleIcon } from "@/components/shared/icons";
+import {
+  EnterFullViewIcon,
+  ExitFullViewIcon,
+  PanelRightVisibleIcon,
+} from "@/components/shared/icons";
 import { OpenTabsIcon } from "@/components/shared/icons/open-tabs-icon";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -20,29 +24,87 @@ export interface WorkspaceTabsControlProps {
   mode: "chat" | "split" | "full";
   tabs: readonly AppShellTabPresentation[];
   activeTabId?: string | null;
+  /** Hide the content pane from split view, or restore split view. */
   onToggle: () => void;
+  /** Show the content pane at full width, or return it to split view. */
+  onFullViewChange: (full: boolean) => void;
   onSelect: (tabId: string, mode: "split" | "full") => void;
 }
 
-/** Workspace presentation is independent of the retained tabs and their leaf placement. */
+/**
+ * The workspace presentation group: a full-view toggle and the tabs toggle. Both
+ * change presentation only; the retained tabs and their leaf placement persist.
+ */
 export function WorkspaceTabsControl(props: WorkspaceTabsControlProps) {
-  const { mode, tabs, onToggle } = props;
-  if (mode === "chat" && tabs.length > 0) return <RetainedWorkspaceTabsControl {...props} />;
+  const { mode, tabs, onToggle, onFullViewChange } = props;
+  // A toggle click can leave the pointer resting on the retained-tabs button;
+  // its chooser opens on a later hover, not as a side effect of hiding tabs.
+  const [hoverOpenSuppressed, setHoverOpenSuppressed] = useState(false);
+  const toggle = () => {
+    setHoverOpenSuppressed(true);
+    onToggle();
+  };
 
+  return (
+    <div
+      className="flex shrink-0 items-center gap-1.5"
+      onPointerLeave={() => setHoverOpenSuppressed(false)}
+    >
+      {tabs.length > 0 ? (
+        <>
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-token-border" />
+          <NodexTooltip tooltipContent={mode === "full" ? "Exit full view" : "Enter full view"}>
+            <button
+              type="button"
+              aria-label={mode === "full" ? "Exit full view" : "Enter full view"}
+              aria-pressed={mode === "full"}
+              className={cn(
+                TOOLBAR_BUTTON_BASE_CLASS,
+                mode === "full" ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
+              )}
+              onClick={() => onFullViewChange(mode !== "full")}
+            >
+              {mode === "full" ? <ExitFullViewIcon /> : <EnterFullViewIcon />}
+            </button>
+          </NodexTooltip>
+        </>
+      ) : null}
+      {mode === "chat" && tabs.length > 0 ? (
+        <RetainedWorkspaceTabsControl
+          {...props}
+          onToggle={toggle}
+          hoverOpenEnabled={!hoverOpenSuppressed}
+        />
+      ) : (
+        <WorkspaceTabsToggle mode={mode} tabCount={tabs.length} onToggle={toggle} />
+      )}
+    </div>
+  );
+}
+
+function WorkspaceTabsToggle({
+  mode,
+  tabCount,
+  onToggle,
+}: {
+  mode: WorkspaceTabsControlProps["mode"];
+  tabCount: number;
+  onToggle: () => void;
+}) {
   const label = mode === "chat" ? "New tab" : mode === "full" ? "Enter split view" : "Hide tabs";
   return (
     <NodexTooltip tooltipContent={label}>
       <button
         type="button"
         aria-label={label}
-        aria-description={`${tabs.length} open ${tabs.length === 1 ? "tab" : "tabs"}`}
+        aria-description={`${tabCount} open ${tabCount === 1 ? "tab" : "tabs"}`}
         aria-pressed={mode === "split"}
         data-workbench-workspace-tabs-control=""
         className={cn(
           TOOLBAR_BUTTON_BASE_CLASS,
           mode === "split" ? TOOLBAR_BUTTON_SECONDARY_CLASS : TOOLBAR_BUTTON_GHOST_CLASS,
         )}
-        onClick={() => onToggle()}
+        onClick={onToggle}
       >
         {mode === "chat" ? (
           <OpenTabsIcon count={0} />
@@ -59,7 +121,8 @@ function RetainedWorkspaceTabsControl({
   activeTabId,
   onToggle,
   onSelect,
-}: WorkspaceTabsControlProps) {
+  hoverOpenEnabled,
+}: WorkspaceTabsControlProps & { hoverOpenEnabled: boolean }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -86,7 +149,7 @@ function RetainedWorkspaceTabsControl({
       }}
     >
       <NodexPopoverTrigger
-        openOnHover
+        openOnHover={hoverOpenEnabled}
         delay={0}
         closeDelay={100}
         onClick={(event) => {
@@ -206,7 +269,7 @@ function WorkspaceTabMenuRow({
         )}
         onClick={() => onSelect(tab.id, "full")}
       >
-        <ExpandPanelIcon className="size-4" />
+        <EnterFullViewIcon />
       </button>
     </div>
   );

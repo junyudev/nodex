@@ -15,19 +15,16 @@ import {
   isCodexSidebarExpandedMounted,
   resolveCodexSidebarToggleTargetProgress,
   shouldAnimateCodexSidebarToggle,
-  shouldSuppressCodexSidebarHoverOpen,
 } from "./codex-sidebar-auto-reveal";
 import { useDistinctState } from "./use-distinct-state";
 
 export interface CodexSidebarMotionSetOpenOptions {
   animate?: boolean;
-  suppressHoverOpen?: boolean;
 }
 
 export interface CodexSidebarMotionSetOpenResolution {
   targetProgress: 0 | 1;
   shouldAnimate: boolean;
-  suppressHoverOpen: boolean;
 }
 
 export interface CodexSidebarMotionState {
@@ -60,22 +57,16 @@ export function resolveCodexSidebarMotionSetOpen({
   nextOpen,
   animate: animateLayout,
   reducedMotion,
-  suppressHoverOpen,
 }: {
   nextOpen: boolean;
   animate?: boolean;
   reducedMotion: boolean | null;
-  suppressHoverOpen?: boolean;
 }): CodexSidebarMotionSetOpenResolution {
   return {
     targetProgress: resolveCodexSidebarToggleTargetProgress(nextOpen),
     shouldAnimate: shouldAnimateCodexSidebarToggle({
       animate: animateLayout,
       reducedMotion,
-    }),
-    suppressHoverOpen: shouldSuppressCodexSidebarHoverOpen({
-      nextOpen,
-      suppressHoverOpen,
     }),
   };
 }
@@ -149,7 +140,6 @@ export function useCodexSidebarMotionState({
         nextOpen,
         animate: options.animate,
         reducedMotion: reducedMotionRef.current,
-        suppressHoverOpen: options.suppressHoverOpen,
       });
       const { targetProgress, shouldAnimate } = resolution;
 

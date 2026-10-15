@@ -5,6 +5,7 @@ import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
   AppShellTabs,
+  buildTabRowEdgeMask,
   shouldShowAppShellTabSeparator,
   type AppShellTabItem,
 } from "./app-shell-tabs";
@@ -68,7 +69,6 @@ function renderAppShellTabs(props: {
   afterListSticky?: ReactNode;
   afterList?: ReactNode;
   bodyOverlay?: ReactNode;
-  tabScrollEndPaddingPx?: number;
   headerEndInsetPx?: number;
 }) {
   return render(
@@ -88,7 +88,6 @@ function renderAppShellTabs(props: {
         afterListSticky={props.afterListSticky}
         afterList={props.afterList}
         bodyOverlay={props.bodyOverlay}
-        tabScrollEndPaddingPx={props.tabScrollEndPaddingPx}
         headerEndInsetPx={props.headerEndInsetPx}
       />
     </NodexTooltipProvider>,
@@ -516,62 +515,42 @@ describe("AppShellTabs", () => {
   test("renders body overlays inside the tabpanel instead of the tab header", () => {
     const view = renderAppShellTabs({
       bodyOverlay: <div data-testid="body-overlay">Drop zones</div>,
-      headerEndInsetPx: 48,
     });
 
-    const header = view.getByRole("tablist").parentElement?.parentElement;
+    const header = view.getByRole("tablist").parentElement?.parentElement?.parentElement;
     const tabpanel = view.getByRole("tabpanel");
-    const headerInsetSpacer = header?.lastElementChild;
 
     expect(tabpanel.contains(view.getByTestId("body-overlay"))).toBe(true);
     expect(header?.contains(view.getByTestId("body-overlay"))).toBe(false);
-    expect(header?.className.includes("draggable")).toBe(false);
-    expect(headerInsetSpacer?.className.includes("no-drag")).toBe(true);
-    expect(headerInsetSpacer?.getAttribute("style")?.includes("width: 48px")).toBe(true);
   });
 
-  test("renders tab header slots in before, sticky, after order", () => {
+  test("renders tab header slots in before, inline, sticky, after order", () => {
     const view = renderAppShellTabs({
       beforeList: <span data-testid="before-list">Before</span>,
       afterTabsInline: <span data-testid="after-tabs-inline">Inline</span>,
       afterListSticky: <span data-testid="after-list-sticky">Sticky</span>,
       afterList: <span data-testid="after-list">After</span>,
-      tabScrollEndPaddingPx: 28,
     });
-    const header = view.getByRole("tablist").parentElement?.parentElement;
-    if (!header) throw new Error("Expected tab header");
-    const tabRow = view.getByRole("tablist").parentElement;
+    const tabList = view.getByRole("tablist");
+    const tabRow = tabList.parentElement;
     if (!(tabRow instanceof HTMLElement)) throw new Error("Expected tab row");
+    const order = [
+      view.getByTestId("before-list"),
+      tabList,
+      view.getByTestId("after-tabs-inline"),
+      view.getByTestId("after-list-sticky"),
+      view.getByTestId("after-list"),
+    ];
 
-    const text = textContent(header);
-    expect(header.className.includes("draggable")).toBe(false);
-    expect(text.indexOf("Before") < text.indexOf("One")).toBe(true);
-    expect(text.indexOf("Inline") > text.indexOf("History")).toBe(true);
-    expect(text.indexOf("Inline") < text.indexOf("Sticky")).toBe(true);
-    expect(text.indexOf("Sticky") > text.indexOf("History")).toBe(true);
-    expect(text.indexOf("Sticky") < text.indexOf("After")).toBe(true);
-    expect(tabRow.style.scrollPaddingInlineEnd).toBe("28px");
-    expect(view.getByTestId("before-list").parentElement?.getAttribute("role")).toBe(
-      "presentation",
-    );
-    expect(view.getByTestId("before-list").parentElement?.className.includes("no-drag")).toBe(true);
-    expect(view.getByTestId("after-tabs-inline").parentElement?.className.includes("sticky")).toBe(
-      true,
-    );
-    expect(view.getByTestId("after-tabs-inline").parentElement?.className.includes("no-drag")).toBe(
-      true,
-    );
-    expect(view.getByTestId("after-tabs-inline").parentElement?.className.includes("right-0")).toBe(
-      true,
-    );
-    expect(view.getByTestId("after-list-sticky").parentElement?.getAttribute("role")).toBe(
-      "presentation",
-    );
-    expect(view.getByTestId("after-list-sticky").parentElement?.className.includes("no-drag")).toBe(
-      true,
-    );
-    expect(view.getByTestId("after-list").parentElement?.getAttribute("role")).toBe("presentation");
-    expect(view.getByTestId("after-list").parentElement?.className.includes("no-drag")).toBe(true);
+    for (let index = 1; index < order.length; index += 1) {
+      expect(
+        order[index - 1]!.compareDocumentPosition(order[index]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // The inline action follows the last tab outside the scrolling row, so it never covers a
+    // scrolled tab and needs no backdrop of its own.
+    expect(tabRow.contains(view.getByTestId("after-tabs-inline"))).toBe(false);
+    expect(tabRow.nextElementSibling?.contains(view.getByTestId("after-tabs-inline"))).toBe(true);
   });
 
   test("does not render the title fade when the tab title fits", () => {
@@ -997,16 +976,10 @@ describe("AppShellTabs", () => {
         await Promise.resolve();
       });
 
-      expect(
-        view.container
-          .querySelector('[data-app-shell-tab-edge-fade="start"]')
-          ?.getAttribute("data-clipped"),
-      ).toBe("true");
-      expect(
-        view.container
-          .querySelector('[data-app-shell-tab-edge-fade="end"]')
-          ?.getAttribute("data-clipped"),
-      ).toBe("false");
+      const tabRow = view.getByRole("tablist").parentElement;
+      expect(tabRow?.getAttribute("data-app-shell-tab-edge-fade")).toBe("start");
+      expect(buildTabRowEdgeMask(true, false)).toContain("transparent 0");
+      expect(tabRow?.style.maskImage).toContain("transparent");
     } finally {
       globalThis.IntersectionObserver = OriginalIntersectionObserver;
     }

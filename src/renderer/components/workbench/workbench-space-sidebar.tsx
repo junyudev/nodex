@@ -1,7 +1,15 @@
-import { SettingsSearchIcon } from "@/components/shared/icons";
-import { NodexTooltip } from "@/components/ui/tooltip";
-import { LeftSidebarFooter } from "./left-sidebar-footer";
-import { SIDEBAR_SCROLL_AREA_CLASS, useSidebarScrollChrome } from "./sidebar-new-chat-controls";
+import { PageIcon, PlusIcon } from "@/components/shared/icons";
+import { LibraryNewMenu, useLibraryCreateCommands } from "@/components/library/library-new-menu";
+import type {
+  LibraryPlacedResourceTarget,
+  LibraryRouteTarget,
+} from "../../../shared/library-module";
+import {
+  SIDEBAR_NEW_CHAT_ROW_CLASS,
+  SIDEBAR_SCROLL_AREA_CLASS,
+  WorkbenchSidebarHeader,
+  useSidebarScrollChrome,
+} from "./sidebar-new-chat-controls";
 import { WorkbenchSidebarFrame, type WorkbenchSidebarFrameProps } from "./workbench-sidebar-frame";
 import { WorkbenchSpaceSidebarContent } from "./workbench-space-sidebar-content";
 import type { WorkbenchSidebarBodyProps } from "./workbench-sidebar";
@@ -14,7 +22,8 @@ export function WorkbenchSpaceSidebar({
   body: WorkbenchSidebarBodyProps;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
 }) {
-  const { scrollAreaRef, scrollChromeStyle, syncScrollChrome } = useSidebarScrollChrome();
+  const { scrollAreaRef, scrollChromeStyle, scrolledContentUnderHeader, syncScrollChrome } =
+    useSidebarScrollChrome();
 
   return (
     <WorkbenchSidebarFrame
@@ -29,19 +38,13 @@ export function WorkbenchSpaceSidebar({
         className="sidebar-foreground-muted flex h-full min-h-0 flex-col overflow-hidden [--height-token-nav-row:30px] [--padding-row-cell-x:8px] [--padding-row-x:8px] [--radius-token-row:10px]"
         style={scrollChromeStyle}
       >
-        <div className="flex h-13 shrink-0 items-center justify-between px-4">
-          <span className="text-base font-medium text-default">Space</span>
-          <NodexTooltip tooltipContent="Search" side="right">
-            <button
-              type="button"
-              aria-label="Search"
-              onClick={body.onOpenCommandPalette}
-              className="no-drag flex size-7 items-center justify-center rounded-md text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-foreground"
-            >
-              <SettingsSearchIcon className="icon-xs" />
-            </button>
-          </NodexTooltip>
-        </div>
+        <WorkbenchSidebarHeader
+          title="Space"
+          scrolledContentUnderHeader={scrolledContentUnderHeader}
+          onSearch={body.onOpenCommandPalette}
+        >
+          <SpaceNewPageRow onCreated={body.onOpenResourceTarget} />
+        </WorkbenchSidebarHeader>
         <div
           ref={scrollAreaRef}
           data-app-action-sidebar-scroll=""
@@ -61,19 +64,53 @@ export function WorkbenchSpaceSidebar({
             onHoverSurfaceOpenChange={onHoverSurfaceOpenChange}
           />
         </div>
-        <LeftSidebarFooter
-          onOpenSettings={body.onOpenSettings}
-          account={body.account}
-          connection={body.connection}
-          onRefreshAccount={body.onRefreshAccount}
-          onConsumeRateLimitReset={body.onConsumeRateLimitReset}
-          onStartChatGptLogin={body.onStartChatGptLogin}
-          onStartApiKeyLogin={body.onStartApiKeyLogin}
-          onCancelLogin={body.onCancelLogin}
-          onLogout={body.onLogout}
-          onErrorMessage={body.onAccountErrorMessage}
-        />
       </nav>
     </WorkbenchSidebarFrame>
+  );
+}
+
+/**
+ * Space's primary row creates a root Page directly; its trailing menu offers every
+ * Library root kind. It occupies the same first-row slot as Home's Inbox.
+ */
+function SpaceNewPageRow({
+  onCreated,
+}: {
+  onCreated: (target: LibraryPlacedResourceTarget) => void;
+}) {
+  const openRoot = (target: LibraryRouteTarget) => {
+    if (target.kind === "view") return;
+    onCreated(target);
+  };
+  const commands = useLibraryCreateCommands({ onCreated: openRoot });
+
+  return (
+    <div className="group/new-page relative shrink-0">
+      <button
+        type="button"
+        className={SIDEBAR_NEW_CHAT_ROW_CLASS}
+        disabled={commands.isPending}
+        onClick={() => void commands.createPage()}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-base text-token-foreground">
+          <PageIcon className="icon-xs" />
+          <span className="truncate">New page</span>
+        </div>
+      </button>
+      <div className="absolute end-2 top-1/2 flex -translate-y-1/2 items-center opacity-0 group-focus-within/new-page:opacity-100 group-hover/new-page:opacity-100 has-[[data-state=open]]:opacity-100">
+        <LibraryNewMenu
+          onCreated={openRoot}
+          triggerButton={
+            <button
+              type="button"
+              aria-label="New Page or Database"
+              className="no-drag flex size-5 cursor-interaction items-center justify-center rounded-md text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-foreground"
+            >
+              <PlusIcon className="icon-2xs" />
+            </button>
+          }
+        />
+      </div>
+    </div>
   );
 }

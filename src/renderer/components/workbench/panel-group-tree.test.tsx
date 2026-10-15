@@ -179,7 +179,6 @@ describe("PanelGroupTree", () => {
         )}
         headerStartInsetPx={208}
         headerEndInsetPx={102}
-        tabScrollEndPaddingPx={28}
         onSelectTab={() => undefined}
         onCloseTab={() => undefined}
         onReorderTab={() => undefined}
@@ -193,10 +192,6 @@ describe("PanelGroupTree", () => {
     const leftLeaf = view.container.querySelector('[data-app-shell-panel-id="right:main"]');
     const rightLeaf = view.container.querySelector('[data-app-shell-panel-id="right:leaf:right"]');
     const leftHeader = leftLeaf?.querySelector('[role="tablist"]')?.parentElement?.parentElement;
-    const rightTabRow = rightLeaf?.querySelector('[role="tablist"]')?.parentElement;
-    const startSpacer = leftLeaf?.querySelector('[style*="width: 208px"]');
-    const endSpacer = rightLeaf?.querySelector('[style*="width: 102px"]');
-    const afterList = rightLeaf?.querySelector('[data-testid="after-list:leaf:right"]');
 
     expect(view.container.querySelectorAll('[style*="width: 208px"]').length).toBe(1);
     expect(view.container.querySelectorAll('[style*="width: 102px"]').length).toBe(1);
@@ -205,14 +200,8 @@ describe("PanelGroupTree", () => {
     expect(leftLeaf?.querySelectorAll('[style*="width: 102px"]').length ?? 0).toBe(0);
     expect(rightLeaf?.querySelectorAll('[style*="width: 208px"]').length ?? 0).toBe(0);
     expect(rightLeaf?.querySelectorAll('[style*="width: 102px"]').length ?? 0).toBe(1);
-    expect(rightTabRow instanceof HTMLElement ? rightTabRow.style.scrollPaddingInlineEnd : "").toBe(
-      "28px",
-    );
     expect(leftLeaf?.querySelector('[data-testid="after-list:main"]') === null).toBe(true);
     expect(rightLeaf?.querySelector('[data-testid="after-list:leaf:right"]') !== null).toBe(true);
-    expect(startSpacer?.className.includes("no-drag")).toBe(true);
-    expect(endSpacer?.className.includes("no-drag")).toBe(true);
-    expect(afterList?.parentElement?.className.includes("no-drag")).toBe(true);
   });
 
   test("applies header start and after-list slots to empty top-left and top-right headers", () => {
@@ -275,9 +264,6 @@ describe("PanelGroupTree", () => {
     const leftLeaf = view.container.querySelector('[data-panel-group-leaf-id="main"]');
     const rightLeaf = view.container.querySelector('[data-panel-group-leaf-id="leaf:right"]');
     const leftHeader = leftLeaf?.querySelector('[data-panel-tab-row="right:main"]')?.parentElement;
-    const startSpacer = leftLeaf?.querySelector('[style*="width: 208px"]');
-    const afterTabs = leftLeaf?.querySelector('[data-testid="after-tabs:main"]');
-    const afterList = rightLeaf?.querySelector('[data-testid="after-list:leaf:right"]');
 
     expect(view.container.querySelectorAll('[style*="width: 208px"]').length).toBe(1);
     expect(leftHeader?.className.includes("draggable")).toBe(false);
@@ -287,8 +273,5 @@ describe("PanelGroupTree", () => {
     expect(rightLeaf?.querySelector('[data-testid="after-list:leaf:right"]') !== null).toBe(true);
     expect(leftLeaf?.querySelector('[data-testid="after-tabs:main"]') !== null).toBe(true);
     expect(rightLeaf?.querySelector('[data-testid="after-tabs:leaf:right"]') !== null).toBe(true);
-    expect(startSpacer?.className.includes("no-drag")).toBe(true);
-    expect(afterTabs?.parentElement?.className.includes("no-drag")).toBe(true);
-    expect(afterList?.parentElement?.className.includes("no-drag")).toBe(true);
   });
 });

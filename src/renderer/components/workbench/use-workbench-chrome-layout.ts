@@ -14,7 +14,6 @@ import {
   CODEX_SHELL_NARROW_WIDTH_PX,
   resolveCodexAnimatedPanelSize,
   resolveCodexHeaderEdgeScroll,
-  resolveCodexMainContentFrameBorder,
   resolveCodexMainContentTargetWidth,
   resolveCodexSummaryPanelLayoutMode,
   useCodexAnimatedPanelState,
@@ -258,10 +257,6 @@ export function useWorkbenchChromeLayout({
         : 0,
   );
   const appShellHeaderEdgeScroll = useMotionValueState(appShellHeaderEdgeScrollValue) > 0;
-  const appShellMainContentFrameBorderVisible = resolveCodexMainContentFrameBorder({
-    rightPanelOpen,
-    headerEdgeScroll: appShellHeaderEdgeScroll,
-  });
   const threadSummaryPanelLayoutModeValue = useTransform(
     mainContentTargetWidth,
     resolveCodexSummaryPanelLayoutMode,
@@ -299,7 +294,6 @@ export function useWorkbenchChromeLayout({
 
   return {
     appShellHeaderEdgeScroll,
-    appShellMainContentFrameBorderVisible,
     appShellMainContentLayout,
     bottomPanelAnimatedHeightCss,
     bottomPanelHeight,

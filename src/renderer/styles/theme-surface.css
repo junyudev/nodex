@@ -77,30 +77,50 @@ mark.codex-thread-find-active {
   height: 100vh;
 }
 
-.main-surface:where([data-codex-window-type="electron"] .main-surface) {
-  border-top-left-radius: var(--radius-lg);
-  border-bottom-left-radius: var(--radius-lg);
-  background-color: var(--color-token-main-surface-primary);
-  --tw-shadow: 0px 2px 4px -1px var(--tw-shadow-color, #00000014);
-  box-shadow:
-    var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow),
-    var(--tw-ring-shadow), var(--tw-shadow);
-  overflow: hidden;
+/*
+ * Window shell. The frame paints the backdrop tint (generated page-surface rule)
+ * over native material or the opaque window color; titlebar and rail stay
+ * transparent. Only the contextual sidebar and the main surface paint inside the
+ * frame, and one shadow owner outlines the pair as a single rounded page.
+ */
+:root,
+:host {
+  --height-titlebar: calc(var(--spacing) * 11);
+  --border-width-hairline: 0.5px;
+  --shadow-card: 0px 4px 16px 0px #0000000d;
+  --elevation-stroke-subtle: 0 0 0 0.5px
+    var(--lightningcss-light, rgb(from var(--color-border-strong) r g b / 0.04))
+    var(--lightningcss-dark, rgb(from var(--color-border-strong) r g b / 0.06));
+  --app-shell-surface-radius: var(--radius-xl-base);
+  --app-shell-page-surface-shadow: var(--elevation-stroke-subtle), var(--shadow-card);
+  --app-shell-sidebar-divider: var(--color-border);
+  --sidebar-navigation-header-height: calc(var(--spacing) * 13);
+  --app-shell-sidebar-background: color-mix(in oklab, var(--color-surface) 65%, transparent);
+  --app-shell-sidebar-popover-radius: calc(var(--radius-xl-base) - var(--spacing));
+  --app-shell-sidebar-popover-background: rgb(
+    from var(--color-surface-elevated-secondary) r g b / 1
+  );
+  --app-shell-sidebar-popover-border: var(--color-token-border);
+  --app-shell-tab-selected-background: var(
+      --lightningcss-light,
+      var(--color-surface-elevated-secondary)
+    )
+    var(--lightningcss-dark, var(--color-background-primary-ghost-hover));
 }
 
-.window-fx-sidebar-surface:where([data-codex-window-type="electron"] .window-fx-sidebar-surface) {
-  background-color: transparent;
+/*
+ * Native drag regions fold in layout order (drag adds, no-drag subtracts) and
+ * app-region inherits, so a titlebar descendant that inherits `drag` can
+ * re-cover an earlier control. Only the titlebar box drags; descendants carry no
+ * region except controls, which punch no-drag holes wherever they render.
+ */
+[data-workbench-titlebar] :where(*) {
+  -webkit-app-region: initial;
 }
 
-.window-fx-sidebar-surface:where(
-  [data-codex-window-type="electron"].electron-opaque .window-fx-sidebar-surface
-) {
-  background-color: var(--color-token-side-bar-background);
-}
-
-.main-surface:where([data-codex-window-type="browser"] .main-surface) {
-  background-color: var(--color-token-bg-primary);
-  overflow: hidden;
+[data-workbench-titlebar]
+  :where(button, a[href], input, select, textarea, [role="tab"], [role="button"], .no-drag) {
+  -webkit-app-region: no-drag;
 }
 
 .electron\:bg-token-side-bar-background:where(

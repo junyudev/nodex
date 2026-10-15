@@ -9,7 +9,7 @@ describe("app shell tab sizing", () => {
         trailingWidthPx: 28,
         lockedWidthPx: null,
       }),
-    ).toBe("clamp(276px, calc(100% - 28px), 486px)");
+    ).toBe("clamp(276px, calc(100cqw - 28px), 486px)");
 
     const flexSizing = buildAppShellTabFlexSizing(null);
     expect(flexSizing.flexBasis).toBe(0);

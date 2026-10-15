@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { handleFormSubmit } from "@/lib/forms";
@@ -77,6 +78,7 @@ export function AuthPopover({
   busy,
   side = "bottom",
   sideOffset,
+  trigger,
   onChatGptLogin,
   onApiKeyLogin,
   onCancelLogin,
@@ -85,6 +87,8 @@ export function AuthPopover({
   busy: boolean;
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
+  /** Replaces the compact `Sign in` pill, for example with a rail icon button. */
+  trigger?: ReactElement;
   onChatGptLogin: () => void;
   onApiKeyLogin: (key: string) => void;
   onCancelLogin: (loginId: string) => void;
@@ -107,12 +111,14 @@ export function AuthPopover({
   return (
     <NodexPopover>
       <NodexPopoverTrigger>
-        <button
-          type="button"
-          className="h-5 shrink-0 rounded-full bg-(--foreground) px-2 text-xs font-medium text-(--background) outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--ring)"
-        >
-          Sign in
-        </button>
+        {trigger ?? (
+          <button
+            type="button"
+            className="h-5 shrink-0 rounded-full bg-(--foreground) px-2 text-xs font-medium text-(--background) outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--ring)"
+          >
+            Sign in
+          </button>
+        )}
       </NodexPopoverTrigger>
       <NodexPopoverContent align="end" side={side} sideOffset={sideOffset} className="w-64 p-3">
         {account?.pendingLogin ? (

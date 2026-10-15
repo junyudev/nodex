@@ -64,7 +64,6 @@ interface WorkbenchChromeCommandsInput {
     readonly key: string;
     readonly panels: Readonly<Record<"right" | "bottom", WorkbenchPanelState>>;
   } | null;
-  readonly rightPanelFullWidth: boolean;
   readonly controller: WorkbenchPanelController;
   readonly lifecycle: PanelLifecycle;
   readonly navigateBack: () => void;
@@ -86,7 +85,6 @@ interface WorkbenchChromeCommandsInput {
  */
 export function useWorkbenchChromeCommands({
   activePanelOwner,
-  rightPanelFullWidth,
   controller,
   lifecycle,
   navigateBack,
@@ -123,34 +121,37 @@ export function useWorkbenchChromeCommands({
     await setActivePanelCollapsed("bottom", true);
   }, [activePanelOwner, setActivePanelCollapsed]);
 
-  const toggleActiveRightPanelFullWidth = useCallback(() => {
-    if (!activePanelOwner) return;
-    const overrideKey = makeWorkbenchPanelSlotKey(activePanelOwner.key, "right");
-    panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
-      ...current,
-      [overrideKey]: false,
-    }));
-    void (async () => {
-      try {
-        await updateActivePanel("right", {
-          collapsed: false,
-          size: {
-            ...activePanelOwner.panels.right.size,
-            fullWidth: !rightPanelFullWidth,
-          },
-        });
-      } catch (error) {
-        toast.danger(error instanceof Error ? error.message : "Unable to update panel");
-      } finally {
-        panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
-          if (!(overrideKey in current)) return current;
-          const next = { ...current };
-          delete next[overrideKey];
-          return next;
-        });
-      }
-    })();
-  }, [activePanelOwner, rightPanelFullWidth, updateActivePanel]);
+  const setActiveRightPanelFullWidth = useCallback(
+    (fullWidth: boolean) => {
+      if (!activePanelOwner) return;
+      const overrideKey = makeWorkbenchPanelSlotKey(activePanelOwner.key, "right");
+      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
+        ...current,
+        [overrideKey]: false,
+      }));
+      void (async () => {
+        try {
+          await updateActivePanel("right", {
+            collapsed: false,
+            size: {
+              ...activePanelOwner.panels.right.size,
+              fullWidth,
+            },
+          });
+        } catch (error) {
+          toast.danger(error instanceof Error ? error.message : "Unable to update panel");
+        } finally {
+          panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
+            if (!(overrideKey in current)) return current;
+            const next = { ...current };
+            delete next[overrideKey];
+            return next;
+          });
+        }
+      })();
+    },
+    [activePanelOwner, updateActivePanel],
+  );
 
   const executeShellNavigation = useCallback(
     (direction: "back" | "forward") => {
@@ -413,7 +414,7 @@ export function useWorkbenchChromeCommands({
     hideActiveRightPanel,
     showActiveBottomPanel,
     hideActiveBottomPanel,
-    toggleActiveRightPanelFullWidth,
+    setActiveRightPanelFullWidth,
     executeShellNavigation,
     resizeRightPanel,
     resizeAutomationDetailRail,

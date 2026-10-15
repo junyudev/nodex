@@ -23,6 +23,7 @@ import {
   type SettingsSectionId,
 } from "./workbench-settings-sections";
 import { buildSettingsPath } from "./workbench-settings-routes";
+import { WORKBENCH_PINNED_SIDEBAR_CLIP } from "./workbench-sidebar-frame";
 
 interface SettingsSidebarProps {
   activeSectionId: SettingsSectionId;
@@ -261,7 +262,10 @@ export function SettingsSidebar({
     onSelect: (result) => onSelectSection(result.sectionId, query),
   });
   return (
-    <aside className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex">
+    <aside
+      className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden bg-(--app-shell-sidebar-background) md:flex"
+      style={{ clipPath: WORKBENCH_PINNED_SIDEBAR_CLIP }}
+    >
       <nav className="flex min-h-0 flex-1 flex-col select-none px-row-x" aria-label="Settings">
         <div className="flex min-h-0 flex-1 flex-col">
           <button

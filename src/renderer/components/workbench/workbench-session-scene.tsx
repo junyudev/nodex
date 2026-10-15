@@ -62,7 +62,6 @@ interface WorkbenchSessionSceneProps {
   readonly panelCommands: PanelCommands;
   readonly layout: {
     readonly appShellMainContentLayout: AppShellMainContentLayout;
-    readonly frameBorderVisible: boolean;
     readonly rightPanelTargetWidth: MotionValue<number>;
     readonly bottomPanelHeight: MotionValue<number>;
     readonly rightPanel: {
@@ -76,7 +75,6 @@ interface WorkbenchSessionSceneProps {
       readonly animatedSize: MotionValue<number>;
     };
     readonly rightPanelHeaderStartInsetWidth: number;
-    readonly panelTabScrollEndPaddingPx: number;
     readonly bottomPanelGlobalHeaderInsetWidth: number;
   };
   readonly chrome: {
@@ -193,7 +191,6 @@ export function WorkbenchSessionScene({
         headerEndInsetPx={
           panelId === "bottom" ? layout.bottomPanelGlobalHeaderInsetWidth : undefined
         }
-        tabScrollEndPaddingPx={layout.panelTabScrollEndPaddingPx}
         commands={{
           selectTab: (leafId, tabId) => {
             void selectPanelTab(panelId, tabId, leafId);
@@ -275,7 +272,6 @@ export function WorkbenchSessionScene({
         }
         layout={{
           appShellMainContentLayout: layout.appShellMainContentLayout,
-          frameBorderVisible: layout.frameBorderVisible,
           rightPanelTargetWidth: layout.rightPanelTargetWidth,
           bottomPanelHeight: layout.bottomPanelHeight,
           rightPanel: {

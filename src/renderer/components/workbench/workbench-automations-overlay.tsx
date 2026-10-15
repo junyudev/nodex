@@ -1656,7 +1656,7 @@ function AutomationsRouteHeader({
 }) {
   const className =
     placement === "shell"
-      ? "draggable grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 electron:h-toolbar extension:py-row-y"
+      ? "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 electron:h-toolbar extension:py-row-y"
       : "draggable grid h-toolbar w-full shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-token-border px-panel";
 
   return (
@@ -1664,7 +1664,7 @@ function AutomationsRouteHeader({
       <div className="min-w-0 text-base">
         <AutomationPageTabs selectedTab={selectedTab} onSelectTab={onSelectTab} />
       </div>
-      <div className="no-drag flex items-center justify-end">
+      <div className="flex items-center justify-end">
         {detailMode === "create" ? null : (
           <CreateAutomationSplitControl
             onCreateManually={onCreateManually}
@@ -3801,7 +3801,7 @@ export function WorkbenchAutomationsRouteShell({
   return (
     <div
       data-testid="automations-route-shell"
-      className="main-surface flex h-full min-h-0 w-full overflow-hidden text-token-text-primary"
+      className="flex h-full min-h-0 w-full overflow-hidden text-token-text-primary"
     >
       {externalHeader ? <AppShellHeaderContentRegistrar content={routeHeader} /> : null}
       {detailRailContent && detailRailPortalTarget

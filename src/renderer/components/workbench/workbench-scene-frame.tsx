@@ -13,7 +13,6 @@ export interface WorkbenchSceneFrameProps {
   readonly bottomPanelTestId?: string;
   readonly layout: {
     readonly appShellMainContentLayout: AppShellMainContentLayout;
-    readonly frameBorderVisible: boolean;
     readonly rightPanelTargetWidth: MotionValue<number>;
     readonly bottomPanelHeight: MotionValue<number>;
     readonly rightPanel: {
@@ -73,12 +72,7 @@ export function WorkbenchSceneFrame({
             primaryHidden ? "w-0 flex-none overflow-hidden" : "flex-1",
           )}
         >
-          <div
-            className={cn(
-              "app-shell-main-content-frame relative mt-(--app-shell-main-content-frame-top-offset) flex min-h-0 flex-1 flex-col border-t",
-              layout.frameBorderVisible ? "border-token-border-default" : "border-transparent",
-            )}
-          >
+          <div className="app-shell-main-content-frame relative mt-(--app-shell-main-content-frame-top-offset) flex min-h-0 flex-1 flex-col">
             <div
               aria-hidden="true"
               data-app-shell-main-content-top-fade="full-bleed"

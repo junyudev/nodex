@@ -69,8 +69,8 @@ function InboxHeader({
   readonly onOpenSettings: () => void;
 }) {
   return (
-    <header className="draggable grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 electron:h-toolbar">
-      <div role="tablist" aria-label="Inbox view" className="no-drag flex min-w-0 items-center">
+    <header className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 electron:h-toolbar">
+      <div role="tablist" aria-label="Inbox view" className="flex min-w-0 items-center">
         {(["inbox", "processed"] as const).map((option) => (
           <button
             key={option}
@@ -94,7 +94,7 @@ function InboxHeader({
           </button>
         ))}
       </div>
-      <div className="no-drag flex items-center gap-0.5">
+      <div className="flex items-center gap-0.5">
         {databaseId ? (
           <NodexTooltip tooltipContent="Open Inbox as a Database" side="bottom">
             <NodexButton
@@ -363,7 +363,7 @@ export function InboxRoute({
   ) : null;
 
   return (
-    <div data-testid="inbox-route" className="main-surface flex h-full min-h-0 w-full flex-col">
+    <div data-testid="inbox-route" className="flex h-full min-h-0 w-full flex-col">
       <AppShellHeaderContentRegistrar
         content={
           <InboxHeader

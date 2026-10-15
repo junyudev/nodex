@@ -280,7 +280,7 @@ export function HeaderShellSlot({
         data-test-id="header-shell-slot"
         data-workbench-header-shell-slot={side}
         className={cn(
-          "no-drag pointer-events-none relative h-full shrink-0 [container-type:inline-size]",
+          "pointer-events-none relative h-full shrink-0 [container-type:inline-size]",
           paddingClassName,
         )}
         style={{ width: slotWidth, minWidth }}
@@ -311,7 +311,7 @@ function HeaderActionRail({
       data-workbench-header-action-rail={railKind}
       className={cn(
         "inline-flex h-full items-center gap-1.5",
-        fillSlot ? "no-drag pointer-events-none w-full" : "no-drag pointer-events-auto w-auto",
+        fillSlot ? "pointer-events-none w-full" : "pointer-events-auto w-auto",
       )}
     >
       {startEntries.map((entry) => renderHeaderActionEntry(entry, false))}

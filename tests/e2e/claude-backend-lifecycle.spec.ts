@@ -350,7 +350,7 @@ test("runs Claude in the selected worktree environment and restores its native c
       ]),
     );
     await expect(page.getByText("Native child workspace report", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Task actions", exact: true }).click();
+    await page.getByRole("button", { name: "Chat actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
     const taskDialog = page.getByRole("dialog", { name: "Tasks", exact: true });
     await expect(taskDialog).toBeVisible();

@@ -13,6 +13,10 @@ import {
 } from "@/lib/codex-sidebar-auto-reveal";
 import { cn } from "@/lib/utils";
 
+/** A pinned sidebar owns the outer start corners of the shared page surface. */
+export const WORKBENCH_PINNED_SIDEBAR_CLIP =
+  "inset(0 calc(-1 * var(--app-shell-surface-radius)) 0 0 round var(--app-shell-surface-radius))";
+
 export type SidebarResizePhase = "live" | "end" | "reset";
 export type SidebarResizeSurface = "inline" | "floating";
 
@@ -163,13 +167,13 @@ export function WorkbenchSidebarFrame({
       <motion.div
         className={cn(
           "max-w-full min-h-0 flex-1 overflow-hidden",
-          !floating && "bg-token-main-surface-primary/65",
+          !floating && "bg-(--app-shell-sidebar-background)",
         )}
         style={{
           minWidth: width,
           width,
           opacity: floating ? undefined : contentOpacity,
-          clipPath: floating ? undefined : "inset(0 -12px 0 0 round 12px)",
+          clipPath: floating ? undefined : WORKBENCH_PINNED_SIDEBAR_CLIP,
         }}
       >
         {children}

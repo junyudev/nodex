@@ -1,8 +1,8 @@
 import { memo, useCallback, useRef, useState } from "react";
 import {
   ArchiveIcon,
+  ChatActionsIcon,
   EditIcon,
-  ProjectActionsIcon,
   SessionPinFilledIcon,
   SessionPinIcon,
   SidePanelSideChatIcon,
@@ -19,8 +19,12 @@ import {
 } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { writeTextToClipboardStrict } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
+import {
+  TOOLBAR_BUTTON_BASE_CLASS,
+  TOOLBAR_BUTTON_GHOST_CLASS,
+} from "@/lib/workbench-toolbar-control-styles";
 import { buildSessionDeepLink } from "../../../../shared/nodex-deeplink";
-import { cn } from "../../../lib/utils";
 import type {
   ConversationProviderPresentation,
   ThreadStageActions,
@@ -56,13 +60,9 @@ function ThreadStageHeaderComponent({
     (provider?.controls?.nativeTaskDetails || opensSubagents) &&
     actions.onOpenSubagentsPanel,
   );
-  const hasTopActions =
-    canTogglePin ||
-    canRenameThread ||
-    canArchiveThread ||
-    canGenerateTitle ||
-    canOpenNativeTasks ||
-    provider?.diagnostics;
+  // Groups follow the shared chat-actions order: identity, new work, copy, runtime, Archive.
+  const hasIdentityActions = canRenameThread || canGenerateTitle || canTogglePin;
+  const hasRuntimeActions = canOpenNativeTasks || Boolean(provider?.diagnostics);
   const showThreadActions = Boolean(
     model.threadId || model.cwd || model.showSideChatAction || actions.onCopyConversationMarkdown,
   );
@@ -101,177 +101,169 @@ function ThreadStageHeaderComponent({
   };
 
   return (
-    <div
-      className={cn(
-        "draggable grid w-full min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-4 electron:h-toolbar extension:py-row-y",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-2 truncate font-sans text-base leading-6 electron:font-medium">
-        <span
-          data-testid="thread-stage-title"
-          className="inline-flex max-w-[320px] min-w-[2ch] items-center overflow-hidden text-token-foreground"
+    <div className="flex w-full min-w-0 items-center gap-2 electron:h-toolbar extension:py-row-y">
+      <span
+        data-testid="thread-stage-title"
+        className="inline-flex min-w-[2ch] flex-1 items-center overflow-hidden font-sans text-base leading-6 text-token-foreground electron:font-medium"
+      >
+        <span className="min-w-0 truncate">{model.title}</span>
+      </span>
+      {showThreadActions ? (
+        <NodexDropdownMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          finalFocus={() => {
+            if (!pendingModal.current) return true;
+            const showDiagnostics = pendingModal.current;
+            pendingModal.current = null;
+            showDiagnostics();
+            return false;
+          }}
+          align="start"
+          sideOffset={2}
+          contentWidth="menu"
+          motion="none"
+          triggerTooltipContent="Chat actions"
+          triggerButton={
+            <button
+              type="button"
+              data-state={menuOpen ? "open" : "closed"}
+              className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS, "shrink-0")}
+              aria-label="Chat actions"
+            >
+              <ChatActionsIcon />
+            </button>
+          }
         >
-          <span className="min-w-0 truncate">{model.title}</span>
-        </span>
-        <div className="no-drag flex items-center gap-2">
-          {showThreadActions ? (
-            <NodexDropdownMenu
-              open={menuOpen}
-              onOpenChange={setMenuOpen}
-              finalFocus={() => {
-                if (!pendingModal.current) return true;
-                const showDiagnostics = pendingModal.current;
-                pendingModal.current = null;
-                showDiagnostics();
-                return false;
-              }}
-              align="start"
-              sideOffset={1}
-              contentWidth="menu"
-              motion="none"
-              triggerTooltipContent="Task actions"
-              triggerButton={
-                <button
-                  type="button"
-                  className={cn(
-                    "no-drag inline-flex size-7 items-center justify-center rounded-lg border border-transparent p-1 text-token-text-tertiary outline-hidden",
-                    "hover:bg-token-list-hover-background hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
-                    menuOpen && "bg-token-list-hover-background text-token-text-primary",
-                  )}
-                  aria-label="Task actions"
-                >
-                  <ProjectActionsIcon className="icon-sm" />
-                </button>
+          {canRenameThread ? (
+            <NodexDropdownItem
+              leftSlot={<EditIcon className={menuIconClassName} />}
+              keyboardShortcut={model.shortcuts?.rename}
+              onSelect={() => actions.onRequestRenameThread?.()}
+            >
+              Rename
+            </NodexDropdownItem>
+          ) : null}
+          {canGenerateTitle ? (
+            <NodexDropdownItem
+              leftSlot={<SlashModelIcon className={menuIconClassName} />}
+              disabled={generatingTitle}
+              onSelect={() => void generateTitle()}
+            >
+              {generatingTitle ? "Generating title…" : "Generate title"}
+            </NodexDropdownItem>
+          ) : null}
+          {canTogglePin ? (
+            <NodexDropdownItem
+              leftSlot={
+                model.pinned ? (
+                  <SessionPinFilledIcon className={menuIconClassName} />
+                ) : (
+                  <SessionPinIcon className={menuIconClassName} />
+                )
+              }
+              keyboardShortcut={model.shortcuts?.togglePin}
+              onSelect={() =>
+                void handleAction(actions.onToggleThreadPin, "Failed to update task pin")
               }
             >
-              {canTogglePin ? (
-                <NodexDropdownItem
-                  leftSlot={
-                    model.pinned ? (
-                      <SessionPinFilledIcon className={menuIconClassName} />
-                    ) : (
-                      <SessionPinIcon className={menuIconClassName} />
-                    )
-                  }
-                  keyboardShortcut={model.shortcuts?.togglePin}
-                  onSelect={() =>
-                    void handleAction(actions.onToggleThreadPin, "Failed to update task pin")
-                  }
-                >
-                  {model.pinned ? "Unpin" : "Pin"}
-                </NodexDropdownItem>
-              ) : null}
-              {canRenameThread ? (
-                <NodexDropdownItem
-                  leftSlot={<EditIcon className={menuIconClassName} />}
-                  keyboardShortcut={model.shortcuts?.rename}
-                  onSelect={() => actions.onRequestRenameThread?.()}
-                >
-                  Rename
-                </NodexDropdownItem>
-              ) : null}
-              {canArchiveThread ? (
-                <NodexDropdownItem
-                  leftSlot={<ArchiveIcon className={menuIconClassName} />}
-                  keyboardShortcut={model.shortcuts?.archive}
-                  onSelect={() =>
-                    void handleAction(actions.onArchiveThread, "Failed to archive task")
-                  }
-                >
-                  Archive
-                </NodexDropdownItem>
-              ) : null}
-              {canGenerateTitle ? (
-                <NodexDropdownItem
-                  leftSlot={<SlashModelIcon className={menuIconClassName} />}
-                  disabled={generatingTitle}
-                  onSelect={() => void generateTitle()}
-                >
-                  {generatingTitle ? "Generating title…" : "Generate title"}
-                </NodexDropdownItem>
-              ) : null}
-              {canOpenNativeTasks ? (
-                <NodexDropdownItem
-                  leftSlot={<ProjectTaskIcon className={menuIconClassName} />}
-                  onSelect={() => {
-                    pendingModal.current = () => {
-                      void handleAction(
-                        actions.onOpenSubagentsPanel,
-                        opensSubagents ? "Could not open subagents" : "Could not open tasks",
-                      );
-                    };
-                  }}
-                >
-                  {opensSubagents ? "Subagents" : "Tasks"}
-                </NodexDropdownItem>
-              ) : null}
-              {provider?.diagnostics ? (
-                <NativeStatusMenuItem
-                  read={provider.diagnostics}
-                  onSelect={(show) => {
-                    pendingModal.current = show;
-                  }}
-                />
-              ) : null}
-              {hasTopActions ? <NodexDropdownSeparator /> : null}
-              {model.showSideChatAction ? (
-                <NodexDropdownItem
-                  leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
-                  keyboardShortcut={model.shortcuts?.openSideTask}
-                  onSelect={() =>
-                    void handleAction(actions.onOpenSideChat, "Failed to open side task")
-                  }
-                >
-                  Open side task
-                </NodexDropdownItem>
-              ) : null}
-              <NodexDropdownFlyoutSubmenuItem
-                label="Copy"
-                leftSlot={<CopyIcon className={menuIconClassName} />}
-                contentMotion="none"
-              >
-                <NodexDropdownItem
-                  disabled={!model.cwd}
-                  leftSlot={<CopyIcon className={menuIconClassName} />}
-                  onSelect={() => void handleCopyText(model.cwd, "Working directory copied")}
-                >
-                  Copy working directory
-                </NodexDropdownItem>
-                {model.threadId ? (
-                  <NodexDropdownItem
-                    leftSlot={<CopyIcon className={menuIconClassName} />}
-                    onSelect={() => void handleCopyText(model.threadId, "Session ID copied")}
-                  >
-                    Copy session ID
-                  </NodexDropdownItem>
-                ) : null}
-                {model.sessionId ? (
-                  <NodexDropdownItem
-                    leftSlot={<CopyIcon className={menuIconClassName} />}
-                    onSelect={() =>
-                      void handleCopyText(
-                        buildSessionDeepLink({ sessionId: model.sessionId as string }),
-                        "Deeplink copied",
-                      )
-                    }
-                  >
-                    Copy deeplink
-                  </NodexDropdownItem>
-                ) : null}
-                {model.threadId && actions.onCopyConversationMarkdown ? (
-                  <NodexDropdownItem
-                    leftSlot={<CopyIcon className={menuIconClassName} />}
-                    keyboardShortcut={model.shortcuts?.copyConversationMarkdown}
-                    onSelect={() => void actions.onCopyConversationMarkdown?.()}
-                  >
-                    Copy as Markdown
-                  </NodexDropdownItem>
-                ) : null}
-              </NodexDropdownFlyoutSubmenuItem>
-            </NodexDropdownMenu>
+              {model.pinned ? "Unpin" : "Pin"}
+            </NodexDropdownItem>
           ) : null}
-        </div>
-      </div>
+          {hasIdentityActions && model.showSideChatAction ? <NodexDropdownSeparator /> : null}
+          {model.showSideChatAction ? (
+            <NodexDropdownItem
+              leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
+              keyboardShortcut={model.shortcuts?.openSideTask}
+              onSelect={() => void handleAction(actions.onOpenSideChat, "Failed to open side chat")}
+            >
+              New side chat
+            </NodexDropdownItem>
+          ) : null}
+          {hasIdentityActions || model.showSideChatAction ? <NodexDropdownSeparator /> : null}
+          <NodexDropdownFlyoutSubmenuItem
+            label="Copy"
+            leftSlot={<CopyIcon className={menuIconClassName} />}
+            contentMotion="none"
+          >
+            <NodexDropdownItem
+              disabled={!model.cwd}
+              leftSlot={<CopyIcon className={menuIconClassName} />}
+              onSelect={() => void handleCopyText(model.cwd, "Working directory copied")}
+            >
+              Copy working directory
+            </NodexDropdownItem>
+            {model.threadId ? (
+              <NodexDropdownItem
+                leftSlot={<CopyIcon className={menuIconClassName} />}
+                onSelect={() => void handleCopyText(model.threadId, "Session ID copied")}
+              >
+                Copy session ID
+              </NodexDropdownItem>
+            ) : null}
+            {model.sessionId ? (
+              <NodexDropdownItem
+                leftSlot={<CopyIcon className={menuIconClassName} />}
+                onSelect={() =>
+                  void handleCopyText(
+                    buildSessionDeepLink({ sessionId: model.sessionId as string }),
+                    "Deeplink copied",
+                  )
+                }
+              >
+                Copy deeplink
+              </NodexDropdownItem>
+            ) : null}
+            {model.threadId && actions.onCopyConversationMarkdown ? (
+              <NodexDropdownItem
+                leftSlot={<CopyIcon className={menuIconClassName} />}
+                keyboardShortcut={model.shortcuts?.copyConversationMarkdown}
+                onSelect={() => void actions.onCopyConversationMarkdown?.()}
+              >
+                Copy as Markdown
+              </NodexDropdownItem>
+            ) : null}
+          </NodexDropdownFlyoutSubmenuItem>
+          {hasRuntimeActions ? <NodexDropdownSeparator /> : null}
+          {canOpenNativeTasks ? (
+            <NodexDropdownItem
+              leftSlot={<ProjectTaskIcon className={menuIconClassName} />}
+              onSelect={() => {
+                pendingModal.current = () => {
+                  void handleAction(
+                    actions.onOpenSubagentsPanel,
+                    opensSubagents ? "Could not open subagents" : "Could not open tasks",
+                  );
+                };
+              }}
+            >
+              {opensSubagents ? "Subagents" : "Tasks"}
+            </NodexDropdownItem>
+          ) : null}
+          {provider?.diagnostics ? (
+            <NativeStatusMenuItem
+              read={provider.diagnostics}
+              onSelect={(show) => {
+                pendingModal.current = show;
+              }}
+            />
+          ) : null}
+          {canArchiveThread ? (
+            <>
+              <NodexDropdownSeparator />
+              <NodexDropdownItem
+                leftSlot={<ArchiveIcon className={menuIconClassName} />}
+                keyboardShortcut={model.shortcuts?.archive}
+                onSelect={() =>
+                  void handleAction(actions.onArchiveThread, "Failed to archive task")
+                }
+              >
+                Archive
+              </NodexDropdownItem>
+            </>
+          ) : null}
+        </NodexDropdownMenu>
+      ) : null}
     </div>
   );
 }

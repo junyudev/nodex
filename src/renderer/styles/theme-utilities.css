@@ -142,10 +142,7 @@
   --sidebar-scroll-footer-fade-start: calc(
     var(--sidebar-scroll-footer-edge) - var(--sidebar-scroll-footer-fade-distance)
   );
-  --sidebar-scroll-header-mask-distance: var(
-    --sidebar-scroll-header-fade-distance,
-    var(--sidebar-scroll-header-spacing, calc(var(--spacing) * 2))
-  );
+  --sidebar-scroll-header-mask-distance: var(--sidebar-scroll-header-fade-distance, 1px);
   --sidebar-scroll-header-mask-start: var(--sidebar-scroll-header-fade-start, 0px);
   --sidebar-scroll-mask-image: linear-gradient(
     to bottom,

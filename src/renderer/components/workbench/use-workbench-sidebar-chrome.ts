@@ -1,22 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { WORKBENCH_SURFACE_GUTTER_PX } from "@/lib/workbench-shell-geometry";
 import {
-  WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
-  WORKBENCH_SURFACE_GUTTER_PX,
-  WORKBENCH_TITLEBAR_HEIGHT_PX,
-} from "@/lib/workbench-shell-geometry";
-import {
-  CODEX_SIDEBAR_POINTER_DEFAULT,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
   clampCodexSidebarWidth,
-  deriveCodexSidebarFloatingVisibility,
-  normalizeCodexSidebarPointer,
   shouldCollapseCodexSidebarResizeWidth,
-  shouldClearCodexSidebarHoverSuppression,
-  shouldResetCodexSidebarPointerOnWindowMouseOut,
-  type CodexSidebarPointerSnapshot,
 } from "@/lib/codex-sidebar-auto-reveal";
 import { useCodexSidebarMotionState } from "@/lib/codex-sidebar-motion";
 import { useDistinctState } from "@/lib/use-distinct-state";
+import {
+  WORKBENCH_SIDEBAR_PEEK_SURFACE_ATTRIBUTE,
+  createWorkbenchSidebarPeekController,
+  type WorkbenchSidebarPeekArea,
+  type WorkbenchSidebarPeekController,
+} from "@/lib/workbench-sidebar-peek";
 import type { SidebarResizePhase, SidebarResizeSurface } from "./workbench-session-sidebar";
 
 interface WorkbenchSidebarChromeInput {
@@ -30,8 +26,8 @@ interface WorkbenchSidebarChromeInput {
 
 /**
  * Owns transient sidebar geometry, persisted-state synchronization, and the
- * document-level auto-reveal Adapter. Pointer coordinates remain outside React
- * state so editor gestures do not cause full Workbench re-renders.
+ * collapsed-sidebar hover peek. Pointer tracking lives in the peek controller,
+ * outside React state, so editor gestures do not cause Workbench re-renders.
  */
 export function useWorkbenchSidebarChrome({
   persistedCollapsed,
@@ -43,28 +39,14 @@ export function useWorkbenchSidebarChrome({
 }: WorkbenchSidebarChromeInput) {
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
   const [localSidebarWidth, setLocalSidebarWidth] = useState(CODEX_SIDEBAR_WIDTH_DEFAULT_PX);
-  const [floatingSidebarVisible, setFloatingSidebarVisible, getFloatingSidebarVisible] =
-    useDistinctState(false);
+  const [peekArea, setPeekArea] = useDistinctState<WorkbenchSidebarPeekArea | null>(null);
   const [floatingSidebarResizing, setFloatingSidebarResizing] = useDistinctState(false);
-  const [sidebarHoverSuppressed, setSidebarHoverSuppressed] = useDistinctState(false);
-  const [sidebarTriggerHovered, setSidebarTriggerHovered] = useDistinctState(false);
-  const [sidebarNavigationHovered, setSidebarNavigationHovered] = useDistinctState(false);
   const [sidebarClickInFlight, setSidebarClickInFlight] = useState(false);
-  const [floatingSidebarFocusActive, setFloatingSidebarFocusActive] = useDistinctState(false);
-  const [floatingSidebarHoverSurfaceActive, setFloatingSidebarHoverSurfaceActive] =
-    useDistinctState(false);
   const [sidebarDragWidth, setSidebarDragWidth] = useState<number | null>(null);
-  const sidebarPointerRef = useRef(CODEX_SIDEBAR_POINTER_DEFAULT);
-  const sidebarVisibilityInputsRef = useRef({
-    sidebarWidth: CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
-    sidebarCollapsed: false,
-    sidebarAnimating: false,
-    floatingSidebarFocusActive: false,
-    floatingSidebarHoverSurfaceActive: false,
-    sidebarHoverSuppressed: false,
-    sidebarTriggerHovered: false,
-    sidebarNavigationHovered: false,
-  });
+  const peekControllerRef = useRef<WorkbenchSidebarPeekController | null>(null);
+  // The floating surface keeps its last destination through its exit animation.
+  const [peekDestination, setPeekDestination] = useState<WorkbenchSidebarPeekArea | null>(null);
+  const peekAvailabilityRef = useRef({ collapsed: false, animating: false });
   const pendingSidebarPersistedOpenRef = useRef<boolean | null>(null);
 
   const sidebarCollapsed = persistedCollapsed ?? localSidebarCollapsed;
@@ -95,27 +77,15 @@ export function useWorkbenchSidebarChrome({
       collapsed: boolean,
       options: {
         animate?: boolean;
-        suppressHoverOpen?: boolean;
       } = {},
     ) => {
       const nextOpen = !collapsed;
-      const motionResolution = motion.setOpen(nextOpen, {
-        animate: options.animate,
-        suppressHoverOpen: options.suppressHoverOpen,
-      });
-      setSidebarTriggerHovered(false);
-      setSidebarHoverSuppressed(motionResolution.suppressHoverOpen);
-      setFloatingSidebarVisible(false);
+      motion.setOpen(nextOpen, { animate: options.animate });
+      peekControllerRef.current?.close();
       pendingSidebarPersistedOpenRef.current = nextOpen;
       applySidebarCollapsed(collapsed);
     },
-    [
-      applySidebarCollapsed,
-      motion,
-      setFloatingSidebarVisible,
-      setSidebarHoverSuppressed,
-      setSidebarTriggerHovered,
-    ],
+    [applySidebarCollapsed, motion],
   );
 
   const applySidebarWidth = useCallback(
@@ -134,9 +104,6 @@ export function useWorkbenchSidebarChrome({
         surface === "floating" && phase !== "reset" ? width + WORKBENCH_SURFACE_GUTTER_PX : width;
       const nextWidth = clampCodexSidebarWidth(requestedWidth);
       motion.setTargetWidth(nextWidth);
-      if (surface === "floating") {
-        setFloatingSidebarVisible(true);
-      }
       if (phase === "live") {
         setSidebarDragWidth(nextWidth);
         return;
@@ -149,7 +116,7 @@ export function useWorkbenchSidebarChrome({
       }
       setLocalSidebarWidth(nextWidth);
     },
-    [motion, onWidthChange, setFloatingSidebarVisible, setSidebarCollapsed],
+    [motion, onWidthChange, setSidebarCollapsed],
   );
 
   const toggleSidebarCollapsed = useCallback(() => {
@@ -157,10 +124,7 @@ export function useWorkbenchSidebarChrome({
   }, [motion, setSidebarCollapsed]);
 
   const showRealSidebarFromFloatingPanel = useCallback(() => {
-    setSidebarCollapsed(false, {
-      animate: false,
-      suppressHoverOpen: false,
-    });
+    setSidebarCollapsed(false, { animate: false });
   }, [setSidebarCollapsed]);
 
   useEffect(() => {
@@ -178,12 +142,6 @@ export function useWorkbenchSidebarChrome({
     motion.setOpen(persistedOpen);
   }, [motion, sidebarCollapsed]);
 
-  useEffect(() => {
-    if (sidebarLogicalCollapsed) return;
-    setFloatingSidebarVisible(false);
-    setSidebarHoverSuppressed(false);
-  }, [setFloatingSidebarVisible, setSidebarHoverSuppressed, sidebarLogicalCollapsed]);
-
   const getWindowZoom = useCallback(() => {
     const root = workbenchRootRef.current;
     if (!root) return 1;
@@ -192,162 +150,63 @@ export function useWorkbenchSidebarChrome({
     return Number.isFinite(value) && value > 0 ? value : 1;
   }, [workbenchRootRef]);
 
-  const recomputeFloatingSidebarVisibility = useCallback(
-    (pointer: Pick<CodexSidebarPointerSnapshot, "x" | "y">) => {
-      const inputs = sidebarVisibilityInputsRef.current;
-      const insideWorkspace =
-        pointer.y !== null &&
-        pointer.y >= WORKBENCH_TITLEBAR_HEIGHT_PX + WORKBENCH_SURFACE_GUTTER_PX &&
-        pointer.y <= window.innerHeight / getWindowZoom() - WORKBENCH_SURFACE_GUTTER_PX * 2;
-      const sidebarPointerX =
-        !insideWorkspace || pointer.x === null || pointer.x < WORKBENCH_NAVIGATION_RAIL_WIDTH_PX
-          ? null
-          : pointer.x - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX;
-      if (inputs.sidebarHoverSuppressed) {
-        if (
-          !shouldClearCodexSidebarHoverSuppression({
-            triggerHovered: inputs.sidebarTriggerHovered,
-            navigationHovered: inputs.sidebarNavigationHovered,
-          })
-        ) {
-          setFloatingSidebarVisible(false);
-          return;
-        }
-        setSidebarHoverSuppressed(false);
-        return;
-      }
-
-      setFloatingSidebarVisible(
-        deriveCodexSidebarFloatingVisibility({
-          pointerX: sidebarPointerX,
-          leftPanelWidthPx: inputs.sidebarWidth,
-          sidebarOpen: !inputs.sidebarCollapsed,
-          sidebarAnimating: inputs.sidebarAnimating,
-          hoverSuppressed: false,
-          navigationHovered: inputs.sidebarNavigationHovered,
-          focusOverride: inputs.floatingSidebarFocusActive,
-          hoverSurfaceActive: inputs.floatingSidebarHoverSurfaceActive,
-          currentlyVisible: getFloatingSidebarVisible(),
-        }),
-      );
-    },
-    [
-      getFloatingSidebarVisible,
-      getWindowZoom,
-      setFloatingSidebarVisible,
-      setSidebarHoverSuppressed,
-    ],
-  );
-
   useEffect(() => {
-    const handlePointerMove = (event: PointerEvent) => {
-      const nextPointer = normalizeCodexSidebarPointer(
-        {
-          clientX: event.clientX,
-          clientY: event.clientY,
-          updatedAt: event.timeStamp || performance.now(),
-        },
-        sidebarPointerRef.current,
-        getWindowZoom(),
-      );
-      sidebarPointerRef.current = nextPointer;
-      recomputeFloatingSidebarVisibility(nextPointer);
-    };
-
-    const handleWindowMouseOut = (event: MouseEvent) => {
-      if (
-        !shouldResetCodexSidebarPointerOnWindowMouseOut({
-          clientX: event.clientX,
-          clientY: event.clientY,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight,
-          relatedTarget: event.relatedTarget,
-        })
-      )
-        return;
-
-      sidebarPointerRef.current = CODEX_SIDEBAR_POINTER_DEFAULT;
-      recomputeFloatingSidebarVisibility(CODEX_SIDEBAR_POINTER_DEFAULT);
-    };
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("mouseout", handleWindowMouseOut, {
-      capture: true,
-      passive: true,
+    const controller = createWorkbenchSidebarPeekController({
+      document,
+      isEnabled: () =>
+        peekAvailabilityRef.current.collapsed && !peekAvailabilityRef.current.animating,
+      onPeekChange: (area) => {
+        setPeekArea(area);
+        if (area !== null) setPeekDestination(area);
+      },
     });
-    return () => {
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("mouseout", handleWindowMouseOut, {
-        capture: true,
-      });
-    };
-  }, [getWindowZoom, recomputeFloatingSidebarVisibility]);
-
-  useEffect(() => {
-    const updateFloatingSidebarFocusActive = () => {
+    peekControllerRef.current = controller;
+    const syncFocusWithin = () => {
       const activeElement = document.activeElement;
-      setFloatingSidebarFocusActive(
-        activeElement instanceof HTMLElement &&
-          Boolean(activeElement.closest('[data-sidebar-floating-focus-area="true"]')),
+      controller.setFocusWithin(
+        activeElement instanceof Element &&
+          activeElement.closest(`[${WORKBENCH_SIDEBAR_PEEK_SURFACE_ATTRIBUTE}]`) !== null,
       );
     };
-
-    document.addEventListener("focusin", updateFloatingSidebarFocusActive);
-    document.addEventListener("focusout", updateFloatingSidebarFocusActive);
-    updateFloatingSidebarFocusActive();
+    document.addEventListener("focusin", syncFocusWithin);
+    document.addEventListener("focusout", syncFocusWithin);
     return () => {
-      document.removeEventListener("focusin", updateFloatingSidebarFocusActive);
-      document.removeEventListener("focusout", updateFloatingSidebarFocusActive);
+      document.removeEventListener("focusin", syncFocusWithin);
+      document.removeEventListener("focusout", syncFocusWithin);
+      controller.dispose();
+      peekControllerRef.current = null;
     };
-  }, [setFloatingSidebarFocusActive]);
+  }, [setPeekArea]);
 
   useEffect(() => {
-    sidebarVisibilityInputsRef.current = {
-      sidebarWidth,
-      sidebarCollapsed: sidebarLogicalCollapsed,
-      sidebarAnimating,
-      floatingSidebarFocusActive,
-      floatingSidebarHoverSurfaceActive,
-      sidebarHoverSuppressed,
-      sidebarTriggerHovered,
-      sidebarNavigationHovered,
+    peekAvailabilityRef.current = {
+      collapsed: sidebarLogicalCollapsed,
+      animating: sidebarAnimating,
     };
-    recomputeFloatingSidebarVisibility(sidebarPointerRef.current);
-  }, [
-    floatingSidebarFocusActive,
-    floatingSidebarHoverSurfaceActive,
-    recomputeFloatingSidebarVisibility,
-    sidebarAnimating,
-    sidebarHoverSuppressed,
-    sidebarLogicalCollapsed,
-    sidebarNavigationHovered,
-    sidebarTriggerHovered,
-    sidebarWidth,
-  ]);
+    peekControllerRef.current?.reconcile();
+  }, [sidebarAnimating, sidebarLogicalCollapsed]);
+
+  const setPeekMenuOpen = useCallback((open: boolean) => {
+    peekControllerRef.current?.setMenuOpen(open);
+  }, []);
 
   return {
     applySidebarWidth,
-    floatingSidebarFocusActive,
-    floatingSidebarHoverSurfaceActive,
     floatingSidebarResizing,
-    floatingSidebarVisible,
     getWindowZoom,
     motion,
-    setFloatingSidebarFocusActive,
-    setFloatingSidebarHoverSurfaceActive,
+    peekArea,
+    peekDestination,
     setFloatingSidebarResizing,
+    setPeekMenuOpen,
     setSidebarCollapsed,
     setSidebarClickInFlight,
-    setSidebarHoverSuppressed,
-    setSidebarTriggerHovered,
-    setSidebarNavigationHovered,
     showRealSidebarFromFloatingPanel,
     sidebarAnimating,
     sidebarClickInFlight,
     sidebarCollapsed,
     sidebarLogicalCollapsed,
     sidebarOpen,
-    sidebarTriggerHovered,
     sidebarWidth,
     toggleSidebarCollapsed,
   };
