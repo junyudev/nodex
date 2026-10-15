@@ -1,0 +1,120 @@
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_1ca65ffa5958ee::t_027052aacd72ca 1-53
+src/renderer/lib/use-thread-execution-location.ts
+  s_1ca65ffa5958ee::t_11f5d7b00fdb63 1-2,7,12,23-32
+src/shared/ipc-endpoint-policy.ts
+  s_1ca65ffa5958ee::t_3b6b5090a3e78d 164
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 449
+src/renderer/lib/session-conversation-markdown.ts
+  s_1ca65ffa5958ee::t_1d4e80463a7c13 1-30
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 1364
+  s_1ca65ffa5958ee::t_ef2176bf189cc4 114,1355-1363,1368,1371-1373,1417-1429,1445-1446
+src/renderer/lib/project-agent-dock-model.ts
+  s_1ca65ffa5958ee::t_7f0dffc8028b2c 5,8-13,19-20,119,123-124,128-136,146,160
+src/renderer/components/workbench/project-agent-dock-target-selector.test.tsx
+  s_1ca65ffa5958ee::t_6aa109cdfcde42 5-9,16,27,38,184-245
+  s_1ca65ffa5958ee::t_9d2ae48f82fda5 246
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_1ca65ffa5958ee::t_e59bc1b847c0ec 68-78,752-767,806-825,829,853,868-872,878,901,911,918,940
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 954-960
+src/shared/ipc-api.ts
+  s_1ca65ffa5958ee::t_3b6b5090a3e78d 31,2453-2455
+  s_1ca65ffa5958ee::t_776fe5f5352b20 2456
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_1ca65ffa5958ee::t_59595ad8a0d4f2 223-261
+src/renderer/lib/session-execution.ts
+  s_1ca65ffa5958ee::t_9d1fe04878b67a 84-92
+  s_1ca65ffa5958ee::t_3c40236d73d4be 1-83,93-177,179-182,185-228
+  s_1ca65ffa5958ee::t_8580a8538a06f3 178,183-184
+src/renderer/lib/workbench-scene-navigator.node.test.ts
+  s_1ca65ffa5958ee::t_917a61778f9503 36,64,301,316
+src/renderer/lib/use-session-execution.ts
+  s_1ca65ffa5958ee::t_9c37b1eed28860 1-75
+src/renderer/lib/query-keys.ts
+  s_1ca65ffa5958ee::t_12b77990235de9 158-161
+src/renderer/components/workbench/workbench-command-palette-host.tsx
+  s_1ca65ffa5958ee::t_7b2104b6e8ff38 8,30-34,134-136,175-176
+src/shared/codex-thread-handoff.ts
+  s_1ca65ffa5958ee::t_91c084955bd772 10-16
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_1ca65ffa5958ee::t_59595ad8a0d4f2 11,53,116-120
+  s_1ca65ffa5958ee::t_07f5a03e065cc1 9-10,12-15,54,111-115,122,134,187,196,201,209
+src/renderer/lib/sidebar-thread-row-live-view.test.ts
+  s_1ca65ffa5958ee::t_115014f69650e2 1-74
+src/renderer/components/workbench/project-agent-dock-target-selector.tsx
+  s_1ca65ffa5958ee::t_54b01c8a30c139 11,16-23,33-34,38-39,45-58,78-85,101-140,142-156,164,173,175,253,296,298-304
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 141
+src/shared/schemas/agent-runtime-api.ts
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 124-126
+src/renderer/lib/workbench-scene-navigator.ts
+  s_1ca65ffa5958ee::t_917a61778f9503 166-167,461,465
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_1ca65ffa5958ee::t_d075f11812fd6d 93-96,818-819,822-823,831-832,838-843,966,993,1173
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 1632-1635
+  s_1ca65ffa5958ee::t_811290a07fb7e4 66-69,97-100,1602,1606-1607,1626-1631,1636-1653,1655-1673
+  s_1ca65ffa5958ee::t_9d1fe04878b67a 70,2035
+  s_1ca65ffa5958ee::t_556fb41cb5f98f 65,1604-1605,1654,1674,1681,1780,1783,1821,1829,1865-1877
+  s_1ca65ffa5958ee::t_c17fb46ab30b96 1878-1879
+src/main/ipc/handlers/CodexThreadHandoffIpc.ts
+  s_1ca65ffa5958ee::t_393b4b94202732 8,23,28,72-94
+  s_1ca65ffa5958ee::t_7aabd93586d526 95-96
+src/renderer/lib/use-workbench-thread-summary.ts
+  s_1ca65ffa5958ee::t_388e0a256b146a 39,118-119,211,253,255,258
+src/main/ipc/handlers/CodexThreadHandoffIpc.node.test.ts
+  s_1ca65ffa5958ee::t_f7f9d9dfa3bd82 20,34-38,90,178,217-280,282
+  s_1ca65ffa5958ee::t_19e46ae29d08b2 281
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 175-177
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_1ca65ffa5958ee::t_2c9dff6e05f56d 2730-2732
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 2728-2729
+src/renderer/lib/agent-runtime-runtime.ts
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 29,143-151,177-179,222
+src/renderer/lib/project-agent-dock-model.node.test.ts
+  s_1ca65ffa5958ee::t_f89c07df96d7c3 4,7,225-253
+  s_1ca65ffa5958ee::t_24d5370ec3f88d 254
+src/renderer/lib/session-execution.test.ts
+  s_1ca65ffa5958ee::t_2755ce7cf701b7 1-150
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_1ca65ffa5958ee::t_d075f11812fd6d 1449-1454,1460
+  s_1ca65ffa5958ee::t_9d1fe04878b67a 1373
+  s_1ca65ffa5958ee::t_dc440fd50acc93 90
+src/renderer/components/workbench/project-hover-card-model.ts
+  s_1ca65ffa5958ee::t_868226b4cf7c55 7,19-47
+  s_1ca65ffa5958ee::t_023eed0dc40680 48
+src/renderer/components/workbench/project-hover-card-model.test.ts
+  s_1ca65ffa5958ee::t_f89c07df96d7c3 5,70-95
+  s_1ca65ffa5958ee::t_f5066d15179582 96
+src/renderer/lib/thread-handoff-runtime.ts
+  s_1ca65ffa5958ee::t_00fac46a3eccf2 24-26
+  s_1ca65ffa5958ee::t_9d7502fb2b827e 6,23,27
+  s_1ca65ffa5958ee::t_4bcb592c5e69b7 28-29
+src/shared/agent-runtime-api.ts
+  s_1ca65ffa5958ee::t_8f4ec9af2d4671 125-130,308-310
+  s_1ca65ffa5958ee::t_f0ed39ad154ab8 311
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1ca65ffa5958ee::t_04d4efc37d3843 211-215,219,222,226,4167-4169,4172-4179
+  s_1ca65ffa5958ee::t_691694456f9e79 4604
+  s_1ca65ffa5958ee::t_917a61778f9503 769-772
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_1ca65ffa5958ee::t_04d4951105bbfa 9-15,207-280
+src/renderer/components/workbench/workbench-thread-summary-header.tsx
+  s_1ca65ffa5958ee::t_44b3c1e50c4159 6-7,26-32,36-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b9756f67122020381a7a1dee54f27203effa37a",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
