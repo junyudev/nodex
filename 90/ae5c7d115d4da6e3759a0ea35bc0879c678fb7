@@ -1,0 +1,29 @@
+src/renderer/components/workbench/left-sidebar-projects-section.test.tsx
+  s_1ca65ffa5958ee::t_5cd3d9427f783c 46
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_1ca65ffa5958ee::t_cadd8946eba6c7 11,62-66,664-673
+  s_1ca65ffa5958ee::t_2c19ebd57783bf 15-18,33,89-106,130-137,148
+  s_1ca65ffa5958ee::t_53ab78266a6d87 1137-1142
+  s_1ca65ffa5958ee::t_38796d437c2cfe 2,831,873,881-893
+  s_1ca65ffa5958ee::t_5fc844835cc801 894
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_1ca65ffa5958ee::t_53ab78266a6d87 183,186,188-190,192-209
+src/renderer/features/local-conversation/agent-runtime-connection.node.test.ts
+  s_1ca65ffa5958ee::t_ba5f79e270a95e 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90ae5c7d115d4da6e3759a0ea35bc0879c678fb7",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
