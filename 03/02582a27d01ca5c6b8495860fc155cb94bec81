@@ -1,0 +1,21 @@
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_1ca65ffa5958ee::t_e02fc36ac267d8 664-666
+packages/agent-runtime/vendor/provider-core/src/server/IdAllocator.ts
+  s_1ca65ffa5958ee::t_d840feeb871930 1,197-203,268-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0302582a27d01ca5c6b8495860fc155cb94bec81",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
