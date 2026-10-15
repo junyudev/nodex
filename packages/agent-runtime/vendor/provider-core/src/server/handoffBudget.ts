@@ -14,9 +14,9 @@ import * as Config from "effect/Config";
 export const DEFAULT_HANDOFF_TOKEN_CAP = 16_000;
 export const CONVERSATION_SUMMARY_CHAR_CAP = 32_000;
 export const CONVERSATION_SUMMARY_HEADER =
-  "Imported conversation history from the previous T3 Code orchestrator. Use it as context; do not repeat it unless the user asks.";
+  "Imported earlier conversation history. Use it as context; do not repeat it unless the user asks.";
 const HANDOFF_BYTE_CAP = 64_000;
-export const handoffTokenCapConfig = Config.Int("T3CODE_CONTEXT_HANDOFF_TOKEN_CAP").pipe(
+export const handoffTokenCapConfig = Config.Int("NODEX_CONTEXT_HANDOFF_TOKEN_CAP").pipe(
   Config.withDefault(DEFAULT_HANDOFF_TOKEN_CAP),
   Config.map((value) => Math.max(1_024, Math.min(HANDOFF_BYTE_CAP, value))),
 );

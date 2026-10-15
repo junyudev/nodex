@@ -37,7 +37,7 @@ export const layerFromPath = Effect.fn("makeSqlitePersistenceLive")(function* (d
       filename: dbPath,
       spanAttributes: {
         "db.name": path.basename(dbPath),
-        "service.name": "t3code-server",
+        "service.name": "nodex-agent-runtime",
       },
     }),
   );

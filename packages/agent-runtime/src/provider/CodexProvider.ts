@@ -72,7 +72,9 @@ type CodexRateLimitsProbe =
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
 const CODEX_CATALOG_REFRESH_TIMEOUT = "3 seconds" as const;
 const CODEX_CATALOG_REFRESH_POLL = "100 millis" as const;
-const CODEX_CLIENT_NAME = "T3 Code";
+/** Matches the identity Nodex uses for every native Codex connection. */
+const CODEX_CLIENT_NAME = "nodex";
+const CODEX_CLIENT_TITLE = "Nodex";
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -428,7 +430,7 @@ export function buildCodexInitializeParams(): CodexSchema.V1InitializeParams {
   return {
     clientInfo: {
       name: CODEX_CLIENT_NAME,
-      title: CODEX_CLIENT_NAME,
+      title: CODEX_CLIENT_TITLE,
       version: packageJson.version,
     },
     capabilities: {
@@ -609,7 +611,7 @@ const makePendingCodexProvider = (
           version: null,
           status: "warning",
           auth: { status: "unknown" },
-          message: "Codex is disabled in T3 Code settings.",
+          message: "Codex is disabled in Nodex settings.",
         },
       });
     }
@@ -704,7 +706,7 @@ export const checkCodexProviderStatus = Effect.fn("checkCodexProviderStatus")(fu
         version: null,
         status: "warning",
         auth: { status: "unknown" },
-        message: "Codex is disabled in T3 Code settings.",
+        message: "Codex is disabled in Nodex settings.",
       },
     });
   }

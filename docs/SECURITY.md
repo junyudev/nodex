@@ -199,6 +199,11 @@ read through the authenticated Profile and exact execution identity boundary.
   process's arguments or environment, which is exactly the launch environment Main composes
   rather than an extension of Main's own.
 
+- The Agent Runtime makes network requests only through the configured providers and the
+  tools Agents invoke. It sends no product analytics, and its model manifest ships with each
+  release instead of being fetched or cached from a remote source. It never writes Git refs or
+  commits into a user's repository for its own bookkeeping.
+
 - Native Claude Code instances run user-managed executables through the official Agent SDK.
   Inherited user/project/local settings may execute hooks, skills, subagents, and MCP servers as the
   current user. Nodex starts Claude Code with bypass permissions and automatically approves

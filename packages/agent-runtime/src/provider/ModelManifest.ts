@@ -18,35 +18,15 @@ import {
   TrimmedNonEmptyString,
   type ProviderDriverKind,
 } from "@t3tools/contracts";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Semaphore from "effect/Semaphore";
-import { HttpClient, HttpClientResponse } from "effect/http";
 
-import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
-import { ServerConfig } from "../config.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import { hasValidClaudeManifestAdapters } from "./ClaudeModelManifest.ts";
 import bundledManifestJson from "./model-manifest.json" with { type: "json" };
 import { ProviderCompatibilityPolicy } from "./providerCompatibility.ts";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
-
-const MODEL_MANIFEST_URL =
-  "https://raw.githubusercontent.com/pingdotgg/t3code/main/apps/server/src/provider/model-manifest.json";
-
-/** How long a fetched manifest stays fresh before the next probe re-fetches. */
-const MANIFEST_TTL_MS = 60 * 60 * 1000;
-
-/** Minimum gap between fetch attempts after a failure, so an offline server
- * does not pay a network timeout on every provider check. */
-const MANIFEST_RETRY_MS = 5 * 60 * 1000;
-
-const FETCH_TIMEOUT_MS = 10_000;
 
 const ManifestModelStatus = Schema.Literals(["current", "legacy"]);
 
@@ -121,17 +101,8 @@ const ModelManifestSchema = ModelManifestEnvelopeSchema.pipe(
 );
 export type ModelManifestData = typeof ModelManifestSchema.Type;
 
-const decodeManifest = Schema.decodeUnknownEffect(ModelManifestSchema);
-
 export const BUNDLED_MODEL_MANIFEST: ModelManifestData =
   Schema.decodeUnknownSync(ModelManifestSchema)(bundledManifestJson);
-
-/** Epoch millis of the manifest's `updatedAt`, or 0 when absent or unparsable. */
-function manifestUpdatedAtMs(manifest: ModelManifestData): number {
-  if (manifest.updatedAt === undefined) return 0;
-  const parsed = Date.parse(manifest.updatedAt);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
 
 /**
  * A driver's catalog entry as provider packages see it, or `null` when the
@@ -172,41 +143,21 @@ export function resolveProviderCatalog(
   return { models, defaultChatModel: catalog.defaults?.chat };
 }
 
-/** On-disk shape of the last successfully fetched manifest. */
-const ManifestCacheFile = Schema.Struct({
-  fetchedAtMs: Schema.Number,
-  manifest: ModelManifestSchema,
-});
-const decodeManifestCache = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(
-    ManifestCacheFile as unknown as Schema.Codec<typeof ManifestCacheFile.Type>,
-  ),
-);
-/** Exported for tests that seed the disk cache. */
-export const encodeManifestCache = Schema.encodeEffect(
-  Schema.fromJsonString(
-    ManifestCacheFile as unknown as Schema.Codec<typeof ManifestCacheFile.Type>,
-  ),
-);
-
 export class ModelManifest extends Context.Service<
   ModelManifest,
   {
-    /** Manifest already in memory (disk cache or bundle); never fetches.
-     * Snapshot classification reads this, so it never waits on the network. */
+    /** The manifest in effect; snapshot classification reads it without waiting. */
     readonly current: Effect.Effect<ModelManifestData>;
-    /** Manifest after a TTL-gated remote refresh; never fails. */
+    /** The manifest after any refresh the service supports; never fails. */
     readonly refresh: Effect.Effect<ModelManifestData>;
-    /** Explicit refresh bypasses freshness and retry timers, retaining last-good data. */
+    /** An explicit refresh; retains last-good data. */
     readonly forceRefresh: Effect.Effect<ModelManifestData>;
-    /** Forks `refresh` into the service's own scope. Drivers call this from
-     * provider checks: the fetch is process-shared state, so it must survive
-     * the teardown of whichever instance happened to trigger it. */
+    /** Refresh without waiting; drivers call this from provider checks. */
     readonly refreshInBackground: Effect.Effect<void>;
   }
 >()("t3/provider/ModelManifest") {}
 
-/** Constant service backing the bundled-data test layer. */
+/** The release's manifest; every read and refresh returns it unchanged. */
 const BundledOnlyModelManifest: ModelManifest["Service"] = {
   current: Effect.succeed(BUNDLED_MODEL_MANIFEST),
   refresh: Effect.succeed(BUNDLED_MODEL_MANIFEST),
@@ -216,102 +167,13 @@ const BundledOnlyModelManifest: ModelManifest["Service"] = {
 
 const layerBundledOnly = Layer.succeed(ModelManifest, BundledOnlyModelManifest);
 
-export const make = Effect.gen(function* () {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const config = yield* ServerConfig;
-  const settingsService = yield* ServerSettings.ServerSettingsService;
-  const httpClient = yield* HttpClient.HttpClient;
-  const serviceScope = yield* Effect.scope;
+/**
+ * Nodex ships the manifest with each release and never fetches or caches a remote copy, so
+ * model availability changes only with an application update.
+ */
+export const layer = layerBundledOnly;
 
-  const cachePath = path.join(config.stateDir, "model-manifest.json");
-  let manifest = BUNDLED_MODEL_MANIFEST;
-  let fetchedAtMs: number | null = null;
-  let lastAttemptMs: number | null = null;
-  const refreshSemaphore = yield* Semaphore.make(1);
-
-  // `Effect.cached` makes concurrent first readers await the same disk load
-  // rather than racing a "loaded" flag. Only `refreshed` takes the fetch
-  // semaphore; `current` must never wait behind an in-flight network refresh.
-  const ensureDiskCacheLoaded = yield* Effect.cached(
-    Effect.gen(function* () {
-      const fromDisk = yield* fileSystem.readFileString(cachePath).pipe(
-        Effect.flatMap((raw) => decodeManifestCache(raw)),
-        Effect.catchCause(() => Effect.succeed(null)),
-      );
-      if (fromDisk === null) return;
-      // The disk copy is the last-seen remote manifest, so it outranks the
-      // bundle even when stale, unless the bundle's own edit date is newer
-      // than the cached manifest's. Then the release carries data the cache
-      // has not seen and the cache is dropped so the next refresh replaces
-      // it. Comparing edit dates, not fetch time, keeps this independent of
-      // when the cache was written relative to the release.
-      if (manifestUpdatedAtMs(BUNDLED_MODEL_MANIFEST) > manifestUpdatedAtMs(fromDisk.manifest)) {
-        return;
-      }
-      manifest = fromDisk.manifest;
-      fetchedAtMs = fromDisk.fetchedAtMs;
-    }),
-  );
-
-  const refresh = Effect.fn("ModelManifest.refresh")(function* (force = false) {
-    yield* ensureDiskCacheLoaded;
-    const now = yield* Clock.currentTimeMillis;
-    // A timestamp in the future means the wall clock moved backwards (the
-    // disk cache crosses restarts, so monotonic time cannot cover it). Treat
-    // it as expired: the refetch rewrites both timestamps and self-heals.
-    const isWithin = (sinceMs: number | null, windowMs: number) =>
-      sinceMs !== null && now >= sinceMs && now - sinceMs < windowMs;
-    if (!force && isWithin(fetchedAtMs, MANIFEST_TTL_MS)) return manifest;
-    if (!force && isWithin(lastAttemptMs, MANIFEST_RETRY_MS)) return manifest;
-
-    // The same switch that gates provider CLI update checks. It stops network
-    // fetches only: a manifest already cached on disk from an earlier fetch
-    // stays in effect, since the setting is about phoning home, not about
-    // discarding data the server already holds.
-    const settings = yield* settingsService.getSettings.pipe(
-      Effect.catchCause(() => Effect.succeed(null)),
-    );
-    if (settings !== null && !settings.enableProviderUpdateChecks) return manifest;
-
-    lastAttemptMs = now;
-    const fetched = yield* httpClient.get(MODEL_MANIFEST_URL).pipe(
-      Effect.flatMap(HttpClientResponse.filterStatusOk),
-      Effect.flatMap((response) => response.json),
-      Effect.flatMap((json) => decodeManifest(json)),
-      Effect.timeout(FETCH_TIMEOUT_MS),
-      Effect.catchCause(() => Effect.succeed(null)),
-    );
-    // A CDN can still serve an earlier edit after a release. Apply the same
-    // freshness rule as the disk cache so it cannot undo bundled version gates.
-    if (fetched === null || manifestUpdatedAtMs(fetched) < manifestUpdatedAtMs(manifest)) {
-      return manifest;
-    }
-
-    manifest = fetched;
-    fetchedAtMs = now;
-    yield* encodeManifestCache({ fetchedAtMs: now, manifest: fetched }).pipe(
-      Effect.flatMap((contents) => writeFileStringAtomically({ filePath: cachePath, contents })),
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-      Effect.ignoreCause,
-    );
-    return manifest;
-  });
-
-  const guardedRefresh = refreshSemaphore.withPermits(1)(refresh());
-
-  return ModelManifest.of({
-    current: ensureDiskCacheLoaded.pipe(Effect.map(() => manifest)),
-    refresh: guardedRefresh,
-    forceRefresh: refreshSemaphore.withPermits(1)(refresh(true)),
-    refreshInBackground: Effect.forkIn(guardedRefresh, serviceScope).pipe(Effect.asVoid),
-  });
-});
-
-export const layer = Layer.effect(ModelManifest, make);
-
-/** Bundled data only, with the provider catalog port drivers read; for tests. */
+/** Bundled data with the provider catalog port drivers read. */
 export const layerTest = Layer.suspend(() =>
   layerModelCatalog.pipe(Layer.provideMerge(layerBundledOnly)),
 );
