@@ -295,7 +295,8 @@ it.live("configures providers over stdin so credentials never enter the process 
     assert.includeMembers([...received.execArgv], [...AGENT_RUNTIME_NODE_FLAGS]);
     assert.isFalse(
       Object.entries(received.environment).some(
-        ([name, value]) => name.startsWith("NODEX_AGENT_RUNTIME") || value.includes("fixture-secret"),
+        ([name, value]) =>
+          name.startsWith("NODEX_AGENT_RUNTIME") || value.includes("fixture-secret"),
       ),
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

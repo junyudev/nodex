@@ -285,7 +285,9 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
             resolved.set(rootThreadId, sessionId);
         const sessionOf = (rootThreadId: string) =>
           known.get(rootThreadId) ?? resolved.get(rootThreadId) ?? null;
-        const roots = new Map(items.map((item) => [item.rootThreadId, sessionOf(item.rootThreadId)]));
+        const roots = new Map(
+          items.map((item) => [item.rootThreadId, sessionOf(item.rootThreadId)]),
+        );
         const sessions = new Map<string, SessionActivity>();
         for (const item of items) {
           const sessionId = roots.get(item.rootThreadId);
@@ -304,7 +306,8 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
                   const sessionId = current.roots.get(rootThreadId);
                   return sessionId ? (current.sessions.get(sessionId) ?? null) : null;
                 },
-                (rootThreadId) => roots.get(rootThreadId) ?? previous.roots.get(rootThreadId) ?? null,
+                (rootThreadId) =>
+                  roots.get(rootThreadId) ?? previous.roots.get(rootThreadId) ?? null,
               )
             : null,
         );

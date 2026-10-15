@@ -61,7 +61,11 @@ const fakeRuntime = (generation: string) =>
         Effect.sync(() => {
           requests.push({ method, input });
           if (method === "execution.observe")
-            return { subscribed: true, subscriptionId: `observation:${generation}`, afterSequence: 0 };
+            return {
+              subscribed: true,
+              subscriptionId: `observation:${generation}`,
+              afterSequence: 0,
+            };
           if (method === "events.unobserve") return { unsubscribed: true };
           if (method !== "execution.activity") throw new Error(`Unexpected ${method}`);
           const request = input as {
@@ -174,13 +178,14 @@ it.live("follows running, waiting, background and idle with ordered Session chan
     yield* runtime.commit("thread:a", null);
     yield* f.until(() => f.changes.length === 5);
     assert.deepEqual(
-      f.changes.map((change) =>
-        change.type === "upsert" ? change.activity.status : change.type,
-      ),
+      f.changes.map((change) => (change.type === "upsert" ? change.activity.status : change.type)),
       ["reset", "running", "waiting", "background", "remove"],
     );
     const sequences = f.changes.map((change) => change.sequence);
-    assert.deepEqual(sequences, [...sequences].sort((left, right) => left - right));
+    assert.deepEqual(
+      sequences,
+      [...sequences].sort((left, right) => left - right),
+    );
     assert.deepEqual((yield* f.activity.read).items, []);
     assert.deepEqual(
       f.transitions.map((transition) => [

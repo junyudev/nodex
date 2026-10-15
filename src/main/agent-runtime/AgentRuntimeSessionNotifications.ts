@@ -81,7 +81,9 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
     Effect.gen(function* () {
       const { before, after, rootThreadId, sessionId } = transition;
       const endedRun = transition.endedRun;
-      const status = endedRun ? terminalStatus(yield* endedStatus(transition, endedRun.runId)) : null;
+      const status = endedRun
+        ? terminalStatus(yield* endedStatus(transition, endedRun.runId))
+        : null;
       const questionStarted =
         after?.status === "waiting" &&
         (before?.status !== "waiting" || after.pendingRequestCount > before.pendingRequestCount);

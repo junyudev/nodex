@@ -183,8 +183,7 @@ it.effect("publishes each connection transition and reports a failed start with 
     const states: AgentRuntimeConnectionState[] = [];
     let failStart = true;
     const supervisor = yield* make({
-      acquire: () =>
-        failStart ? Effect.fail(new Error("executable missing")) : f.acquire,
+      acquire: () => (failStart ? Effect.fail(new Error("executable missing")) : f.acquire),
       activate: () => Effect.succeed(() => Effect.succeed({})),
     });
     yield* supervisor.connectionChanges.pipe(
@@ -341,20 +340,22 @@ it.effect("keeps a generation while requests, observers or live work remain", ()
   }).pipe(Effect.scoped),
 );
 
-it.effect("activity restarts the quiet period and a retained operation never starts a process", () =>
-  Effect.gen(function* () {
-    const f = yield* fixture;
-    const supervisor = yield* idleSupervisor(f, []);
-    yield* supervisor.retained(Effect.void);
-    assert.strictEqual(f.generations.length, 0);
-    const connection = yield* supervisor.get();
-    yield* TestClock.adjust("2 minutes");
-    yield* connection.request("runtime.identity", {}).pipe(Effect.exit);
-    yield* TestClock.adjust("2 minutes");
-    assert.isFalse(yield* released(f, 0));
-    yield* TestClock.adjust("1 minute");
-    assert.isTrue(yield* released(f, 0));
-  }).pipe(Effect.scoped),
+it.effect(
+  "activity restarts the quiet period and a retained operation never starts a process",
+  () =>
+    Effect.gen(function* () {
+      const f = yield* fixture;
+      const supervisor = yield* idleSupervisor(f, []);
+      yield* supervisor.retained(Effect.void);
+      assert.strictEqual(f.generations.length, 0);
+      const connection = yield* supervisor.get();
+      yield* TestClock.adjust("2 minutes");
+      yield* connection.request("runtime.identity", {}).pipe(Effect.exit);
+      yield* TestClock.adjust("2 minutes");
+      assert.isFalse(yield* released(f, 0));
+      yield* TestClock.adjust("1 minute");
+      assert.isTrue(yield* released(f, 0));
+    }).pipe(Effect.scoped),
 );
 
 it.effect("records quiescence on quit only when the process is quiet and reports no work", () =>

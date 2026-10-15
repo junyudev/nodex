@@ -295,9 +295,11 @@ it("starts only from a stdin bootstrap whose provider instances stay out of the 
     const providers = await runtime.request("providers.read");
     expect(providers.success).toBe(true);
     if (providers.success)
-      expect((providers.output as ReadonlyArray<{ readonly instanceId: string }>).map(
-        (provider) => provider.instanceId,
-      )).toContain("codex");
+      expect(
+        (providers.output as ReadonlyArray<{ readonly instanceId: string }>).map(
+          (provider) => provider.instanceId,
+        ),
+      ).toContain("codex");
     expect(await runtime.close()).toBe(0);
   } finally {
     runtime.child.kill("SIGKILL");
@@ -308,7 +310,13 @@ it("starts only from a stdin bootstrap whose provider instances stay out of the 
   try {
     const child = spawn(
       process.execPath,
-      ["--import", "tsx", fileURLToPath(new URL("./entry.ts", import.meta.url)), "--home", unconfigured],
+      [
+        "--import",
+        "tsx",
+        fileURLToPath(new URL("./entry.ts", import.meta.url)),
+        "--home",
+        unconfigured,
+      ],
       { cwd: fileURLToPath(new URL("../..", import.meta.url)), stdio: ["pipe", "pipe", "pipe"] },
     );
     let stdout = "";
