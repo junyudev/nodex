@@ -323,8 +323,10 @@ link Sessions, or reconcile missing native Threads implicitly. Provider history 
 imports remain explicit operations. Registering the local account/catalog endpoint or
 Profile snapshot control leaves its process cold; its first real request acquires one
 supervised connection. An unused endpoint snapshot does not start a provider.
-An existing execution database resumes under the supervised Host after application
-tools are ready. Durable Session deletion intents are reconciled after each connection;
+A launch resumes an existing execution database under the supervised Host after application
+tools are ready unless the process last stopped with no live or pending work (see
+[Execution process supervision](#execution-process-supervision)). Durable Session deletion
+intents are reconciled after each connection;
 their acknowledged tombstones prevent a deleted execution from being adopted again.
 
 ## Session activity
@@ -355,3 +357,12 @@ start within any five-minute window, whether automatic or requested by an Agent 
 crash loop cannot restart once per user action. When the budget is spent the state stays
 failed until the window moves on; the next Agent action after that starts the process again.
 Failed requests are never resubmitted automatically.
+
+The process runs only while needed. It stops after three quiet minutes once it reports no
+active Run, pending question, live delegated or background task, delegated result waiting to
+wake a root, or execution handoff hold, and while no request, Host call, Session or voice
+observer, product write or Profile snapshot is using it. An idle stop is not a crash and the
+next Agent action starts the process again. After such a stop, and after quitting while quiet,
+Main keeps durable evidence bound to the exact execution store files; a launch starts the
+process at once whenever that evidence is missing or no longer matches, including after a
+crash, restore or copy.

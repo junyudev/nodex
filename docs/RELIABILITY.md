@@ -400,6 +400,11 @@ gaps recover from persisted cursors. Local voice and prediction use the Session'
 managed native connection. Their source checks, pins and late-response cleanup do
 not create another execution owner. See [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
+The execution process is started lazily and stops when quiet, but recovery stays conservative:
+a launch skips starting it only with durable evidence, bound to the exact store files, that it
+last stopped with no live or pending work. Unexpected exits restart it within a bounded
+sliding-window budget rather than once per user action.
+
 ### Explicit remote Codex conversations
 
 For an explicitly attached remote conversation, the app-server endpoint generation

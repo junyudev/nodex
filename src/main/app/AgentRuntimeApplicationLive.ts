@@ -71,10 +71,14 @@ import { CodexRendererPresentationRegistry } from "../codex-application/CodexRen
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
+import { make as makeQuiescence, reportsNoWork } from "../agent-runtime/AgentRuntimeQuiescence";
 import { CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
+
+/** A quiet execution process with no live or pending work stops after this period. */
+const AGENT_RUNTIME_IDLE_AFTER = "3 minutes";
 
 /** Custom capabilities use the execution catalog's option IDs. */
 export function runtimeClaudeModels(instance: ClaudeAgentInstanceConfig) {
@@ -155,7 +159,11 @@ const supervisor = Layer.effectContext(
       prepareWorkspace: workspace.prepare,
       presentation,
       reconcileWorkspace: workspace.reconcile,
-      withWriter: admission.withWriter,
+      // Product writers span Core admission through execution acknowledgement; hold the process.
+      withWriter: (operation) =>
+        admission.withWriter(
+          Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.retained(operation))),
+        ),
       runtimeExists: fs.exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite")),
       subscribeExecutionChanges: executionChanges,
     });
@@ -176,7 +184,11 @@ const supervisor = Layer.effectContext(
         projects.getProjectSession(sessionId).pipe(
           Effect.map((session) =>
             session
-              ? { title: session.displayTitle, archived: session.archived, unread: session.unread }
+              ? {
+                  title: session.displayTitle,
+                  archived: session.archived,
+                  unread: session.unread,
+                }
               : null,
           ),
         ),
@@ -408,6 +420,7 @@ const supervisor = Layer.effectContext(
       for (const [id, provider] of Object.entries(providers)) drivers.set(id, provider.driver);
       return { configuration, environment, executable };
     });
+    const quiescence = yield* makeQuiescence(join(config.nodexHome, "agent-runtime"));
     const runtime = yield* makeSupervisor<
       Exclude<
         | Effect.Services<ReturnType<typeof makeHost>>
@@ -469,6 +482,8 @@ const supervisor = Layer.effectContext(
           ),
         );
       },
+      idle: { after: AGENT_RUNTIME_IDLE_AFTER, quiescent: reportsNoWork },
+      quiescence: { record: quiescence.record, clear: quiescence.clear },
     });
     const refresh = Effect.gen(function* () {
       if (!(yield* runtime.inspect)) return;
@@ -481,7 +496,13 @@ const supervisor = Layer.effectContext(
       Effect.asVoid,
     );
     yield* Deferred.succeed(ready, runtime);
-    const profileSnapshot = yield* makeProfileSnapshot(runtime, admission, {
+    // A held storage lease spans the capture with no request in flight.
+    const snapshotAdmission = {
+      withWriter: admission.withWriter,
+      withSnapshot: <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+        admission.withSnapshot(runtime.retained(operation)),
+    };
+    const profileSnapshot = yield* makeProfileSnapshot(runtime, snapshotAdmission, {
       isUnused: fs
         .exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite"))
         .pipe(Effect.map((exists) => !exists)),
@@ -524,11 +545,11 @@ const supervisor = Layer.effectContext(
       Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),
       Context.add(HostActivation, {
         activate: (tools) => Deferred.succeed(toolsReady, tools).pipe(Effect.asVoid),
-        resume: fs
-          .exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite"))
-          .pipe(
-            Effect.flatMap((exists) => (exists ? runtime.get().pipe(Effect.asVoid) : Effect.void)),
+        resume: quiescence.startRequired.pipe(
+          Effect.flatMap((required) =>
+            required ? runtime.get().pipe(Effect.asVoid) : Effect.void,
           ),
+        ),
         subscribeExecutionChanges: executionChanges,
       }),
     );
