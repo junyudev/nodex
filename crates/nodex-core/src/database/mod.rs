@@ -991,7 +991,6 @@ mod tests {
                         turn_id: "turn:database-agent".to_owned(),
                         root_thread_id: "thread:database-agent".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-
                     },
                 },
             )

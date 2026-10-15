@@ -514,7 +514,6 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
                     turn_id: "turn:query".into(),
                     root_thread_id: "thread:query".into(),
                     actor_project_id: Some("project-1".into()),
-
                 },
             },
         )

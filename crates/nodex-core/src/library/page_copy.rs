@@ -1756,7 +1756,6 @@ mod tests {
                         turn_id: "turn:agent-move".to_owned(),
                         root_thread_id: "thread:agent-move".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-
                     },
                 },
             )
@@ -1952,7 +1951,6 @@ mod tests {
                         turn_id: "turn:agent-copy".to_owned(),
                         root_thread_id: "thread:agent-copy".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-
                     },
                 },
             )
@@ -2200,7 +2198,6 @@ mod tests {
                         turn_id: "turn:agent-create".to_owned(),
                         root_thread_id: "thread:agent-create".to_owned(),
                         actor_project_id: Some("project-1".to_owned()),
-
                     },
                 },
             )
@@ -2782,7 +2779,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_page_move_preserves_library_owned_closure_in_call_granted_page() {
+    fn agent_page_move_preserves_library_owned_closure_in_target_page() {
         let (_directory, kernel) = seeded_kernel();
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         create_page(
@@ -3805,7 +3802,7 @@ mod tests {
     }
 
     #[test]
-    fn copies_library_owned_closure_into_granted_data_source() {
+    fn copies_library_owned_closure_into_another_projects_data_source() {
         let (_directory, kernel) = seeded_kernel();
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         create_page(
@@ -3884,7 +3881,7 @@ mod tests {
                     },
                 ),
             )
-            .expect("copy into granted Data Source");
+            .expect("copy into target Data Source");
         let result = copied
             .committed
             .value
@@ -3996,7 +3993,7 @@ mod tests {
             .apply(
                 &context(),
                 copy_request(
-                    "operation:copy-with-write-grant",
+                    "operation:copy-across-project-routes",
                     1,
                     LibraryPageCopyDestination::Page {
                         page_id: "page:target".to_owned(),
@@ -4006,7 +4003,7 @@ mod tests {
                     },
                 ),
             )
-            .expect("write grant copies into target Page");
+            .expect("copy into target Page");
         let result = copied
             .committed
             .value
@@ -4021,7 +4018,7 @@ mod tests {
                        document.library_id, target.head_seq, \
                        (SELECT count(*) FROM core_module_receipts \
                          WHERE module_name = 'library' \
-                           AND operation_id = 'operation:copy-with-read-grant') \
+                           AND operation_id = 'operation:copy-across-project-routes') \
                      FROM blocks copied \
                      JOIN document_block_index entry ON entry.block_id = copied.id \
                      JOIN documents document ON document.id = ?2 \
@@ -4045,12 +4042,12 @@ mod tests {
                         "document:target".to_owned(),
                         "library-1".to_owned(),
                         2,
-                        0,
+                        1,
                     )
                 );
                 Ok(())
             })
-            .expect("Page grant copy evidence");
+            .expect("cross-Project Page copy evidence");
     }
 
     #[test]

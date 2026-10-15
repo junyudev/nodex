@@ -1052,7 +1052,6 @@ describe("Library Module transport", () => {
         page_id: "page-1",
         revision: 3,
         body_usage_revision: 4,
-        can_write: true,
         files: [{ file, logical_path: "images/diagram.png", body_count: 2 }],
         next_cursor: null,
         has_more: false,
@@ -1067,7 +1066,6 @@ describe("Library Module transport", () => {
         value: {
           value: {
             body_usage_revision: 4,
-            can_write: true,
             files: [{ body_count: 2 }],
           },
         },

@@ -114,7 +114,7 @@ the user config, then the default home. `--expect-profile ID` asserts that the
 connected Core has that identity; it does not select a directory or resolve
 a Profile name. A mismatch returns `PROFILE_MISMATCH` with the expected ID,
 actual ID, and selected home before content operations. Refresh the host
-connection context before retrying. A command that needs Project authority
+connection context before retrying. A command that needs a Project execution context
 accepts explicit identity or resolves the longest containing managed-worktree
 or source root; ambiguous matches fail with stable candidates.
 

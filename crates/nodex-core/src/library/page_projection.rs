@@ -249,12 +249,6 @@ pub(super) fn page_draft_projection(
         None,
         None,
         Some(100),
-        super::page_file_inventory::write_capability(
-            connection,
-            library_id,
-            requesting_project_id,
-            page_id,
-        )?,
     )?;
     let tree_json: String = connection.query_row(
         "SELECT block_tree_json FROM document_materializations WHERE document_id = ?1 AND generation = ?2 AND projected_seq = ?3",

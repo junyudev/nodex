@@ -1955,7 +1955,6 @@ mod tests {
             body_nested_markdown: body.to_owned(),
             body_blocks: fixture_blocks(body.len()),
             page_files: nodex_core_contracts::library::LibraryPageFileInventory {
-                can_write: true,
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,
@@ -2013,7 +2012,6 @@ mod tests {
             base_title_etag: "title-etag".to_owned(),
             base_body_etag: "body-etag".to_owned(),
             base_page_files: nodex_core_contracts::library::LibraryPageFileInventory {
-                can_write: true,
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,

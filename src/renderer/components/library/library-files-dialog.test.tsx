@@ -18,8 +18,7 @@ const mocks = vi.hoisted(() => ({
     created_at: "2026-09-05T00:00:00Z",
     updated_at: "2026-09-05T00:00:00Z",
   },
-  denied: false,
-  pageWrite: false,
+  unavailable: false,
   fork: vi.fn(),
   rename: vi.fn(),
   attach: vi.fn(),
@@ -42,13 +41,13 @@ vi.mock("@/lib/use-library-files", () => ({
     refresh: mocks.refresh,
   }),
   usePageFiles: () => ({
-    inventory: { page_id: "page-a", can_write: mocks.pageWrite, revision: 7, files: [] },
+    inventory: { page_id: "page-a", revision: 7, files: [] },
     refresh: mocks.refresh,
   }),
   useLibraryFile: (_access: unknown, id: string) => ({
-    file: mocks.denied ? null : { ...mocks.file, file_id: id },
+    file: mocks.unavailable ? null : { ...mocks.file, file_id: id },
     loading: false,
-    error: mocks.denied ? new Error("Direct access required") : null,
+    error: mocks.unavailable ? new Error("File is unavailable") : null,
   }),
   useLibraryFileCatalog: () => ({
     files: [{ ...mocks.file, file_id: "other", default_name: "other.txt" }],
@@ -70,7 +69,6 @@ vi.mock("@/lib/use-library-files", () => ({
       byte_length: 10,
       occurred_at: "2026-09-05T00:00:00Z",
     })),
-    canWrite: true,
     canTrash: false,
     loading: false,
     hasMoreUsages: true,
@@ -92,7 +90,7 @@ import { LibraryFilesDialog, ManagedFilePreview } from "./library-files-dialog";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.denied = false;
+  mocks.unavailable = false;
   mocks.rename.mockResolvedValue(mocks.file);
   mocks.fork.mockResolvedValue({ ...mocks.file, file_id: "copy" });
   mocks.open.mockResolvedValue(true);
@@ -123,10 +121,10 @@ test("keeps a requested identity even when it is outside the loaded catalog", ()
   expect(screen.getByRole("button", { name: /other.txt/ })).toBeTruthy();
 });
 
-test("does not substitute another File for a denied requested identity", () => {
-  mocks.denied = true;
+test("does not substitute another File for a unavailable requested identity", () => {
+  mocks.unavailable = true;
   mount();
-  expect(screen.getByText(/requires direct File access/)).toBeTruthy();
+  expect(screen.getByText(/no longer available/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: /Copy v/ })).toBeNull();
 });
 
@@ -174,7 +172,7 @@ test("picker asks for the Page path and hides global mutations", async () => {
   );
 });
 
-test("opens an authorized titled usage through the Workbench", async () => {
+test("opens a titled usage through the Workbench", async () => {
   const close = vi.fn();
   mount({ onClose: close });
   await act(async () => {
@@ -183,28 +181,6 @@ test("opens an authorized titled usage through the Workbench", async () => {
   expect(mocks.open).toHaveBeenCalledWith({ kind: "page", pageId: "page-a" });
   expect(close).toHaveBeenCalledOnce();
   expect(screen.getByText(/more are available/)).toBeTruthy();
-});
-
-test("read-only Page permits saving but exposes no path mutation", async () => {
-  const { PageFilesDialog } = await import("../board/page-stage/page-files-row");
-  render(
-    <PageFilesDialog
-      routingContext={{ kind: "project", projectId: "p" }}
-      pageId="page-a"
-      initialFileId="target"
-      onChanged={mocks.refresh}
-      onClose={vi.fn()}
-    />,
-  );
-  expect(screen.getByRole("button", { name: "Save" })).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Add files" }) as HTMLButtonElement).disabled).toBe(
-    true,
-  );
-  expect(
-    (screen.getByRole("button", { name: "images/current.png" }) as HTMLButtonElement).disabled,
-  ).toBe(true);
-  expect(screen.queryByRole("button", { name: "Remove Page path" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Replace path entry…" })).toBeNull();
 });
 
 test("renaming closes the draft only after a successful command", async () => {

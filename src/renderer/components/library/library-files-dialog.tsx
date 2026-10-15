@@ -48,9 +48,7 @@ import {
   renameFile,
   replaceFileContent,
 } from "@/lib/library-file-commands";
-import { appScope, useScopeHandle } from "@/lib/maitai";
 import type { ModalCloseProps } from "@/lib/modal-registry";
-import { openModal } from "@/lib/modal-registry";
 import { queryKeys } from "@/lib/query-keys";
 import {
   useLibraryFile,
@@ -94,7 +92,7 @@ export function ManagedFilePreview({ file }: { readonly file: LibraryFile }) {
   if (snapshot.contentError || snapshot.metadataError) {
     return (
       <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-token-description-foreground">
-        This File is no longer available in the current access context.
+        This File is no longer available.
       </div>
     );
   }
@@ -165,7 +163,6 @@ function LibraryFilesDialogContent({
   initialFileId,
   onClose,
 }: LibraryFilesDialogProps) {
-  const appHandle = useScopeHandle(appScope);
   const openLocation = useFileLocationNavigator();
   const queryClient = useQueryClient();
   const metadata = useLibraryMetadata();
@@ -461,7 +458,7 @@ function LibraryFilesDialogContent({
                     {identity.loading
                       ? "Loading File…"
                       : identity.error
-                        ? "This File is unavailable or requires direct File access. Open its Page to preview or save it."
+                        ? "This File is no longer available."
                         : "Select a File"}
                   </span>
                 </div>
@@ -488,7 +485,7 @@ function LibraryFilesDialogContent({
                       ) : (
                         <button
                           type="button"
-                          disabled={Boolean(pageTarget) || mutating || !detail.canWrite}
+                          disabled={Boolean(pageTarget) || mutating}
                           className="group flex max-w-full items-center gap-1 text-left"
                           onClick={() => {
                             setName(selected.default_name);
@@ -499,9 +496,7 @@ function LibraryFilesDialogContent({
                           <span className="truncate text-base font-medium text-token-text-primary">
                             {selected.default_name}
                           </span>
-                          {detail.canWrite ? (
-                            <EditIcon className="size-3 opacity-0 group-hover:opacity-60" />
-                          ) : null}
+                          <EditIcon className="size-3 opacity-0 group-hover:opacity-60" />
                         </button>
                       )}
                       <FileDetailsMetadata
@@ -537,11 +532,6 @@ function LibraryFilesDialogContent({
                       {selected.head_version}.
                     </p>
                   ) : null}
-                  {!pageTarget && !detail.loading && !detail.error && !detail.canWrite ? (
-                    <p className="px-4 pb-2 text-xs text-token-description-foreground">
-                      Read-only File. Save or make an independent copy to work with this content.
-                    </p>
-                  ) : null}
                   {authority && previewVersion !== null ? (
                     <FileReadBoundary
                       authority={{
@@ -564,7 +554,6 @@ function LibraryFilesDialogContent({
                           </p>
                           {!detail.loading &&
                           !detail.error &&
-                          detail.canWrite &&
                           (selected.lifecycle === "live" ? !detail.canTrash : !detail.canPurge) ? (
                             <p>
                               {selected.lifecycle === "live"
@@ -585,7 +574,7 @@ function LibraryFilesDialogContent({
                         disabled={mutating}
                         onClick={() => void saveSelected()}
                       />
-                      {selected.lifecycle === "live" && detail.canWrite ? (
+                      {selected.lifecycle === "live" ? (
                         <NodexIconButton
                           icon={ReplaceIcon}
                           ariaLabel="Update shared content…"

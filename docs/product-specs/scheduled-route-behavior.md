@@ -19,7 +19,9 @@ remain unavailable. An unavailable Profile or runtime never selects another back
 
 Every Agent can read and manage Cron tasks and Heartbeats across Projects and
 Sessions in the current Profile, including in Plan mode. Core retains exact
-captured execution identity and validates target existence and lifecycle.
+captured execution identity and validates target existence and lifecycle. Page
+occurrence completion, skipping and schedule changes also accept projectless
+actors, preserving the absent actor Project in their content transactions.
 Updating a task checks its current and proposed target; moving a Heartbeat
 Session changes execution routing without changing access. Mutation retries
 revalidate the live execution identity before replaying their receipt. Agent

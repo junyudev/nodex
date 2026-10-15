@@ -19982,7 +19982,6 @@
         "required": [
           "items",
           "has_more",
-          "can_write",
           "can_trash",
           "can_restore",
           "can_purge"
@@ -19995,9 +19994,6 @@
             "type": "boolean"
           },
           "can_trash": {
-            "type": "boolean"
-          },
-          "can_write": {
             "type": "boolean"
           },
           "has_more": {
@@ -21408,7 +21404,6 @@
       "LibraryPageFileInventory": {
         "type": "object",
         "required": [
-          "can_write",
           "page_id",
           "revision",
           "body_usage_revision",
@@ -21422,9 +21417,6 @@
           "body_usage_revision": {
             "type": "integer",
             "format": "int64"
-          },
-          "can_write": {
-            "type": "boolean"
           },
           "files": {
             "type": "array",

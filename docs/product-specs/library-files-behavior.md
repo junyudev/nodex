@@ -38,7 +38,7 @@ preview action row uses accessible icon buttons with action tooltips. A
 right-aligned information tooltip explains sharing and retention rules without
 occupying the details body. Versions precede Uses in full-width stacked sections;
 their headings use normal capitalization. Action failures and the selected
-historical/read-only state remain visible in context.
+historical version remain visible in context.
 
 The catalog covers the current Profile Library in every Project context. When the surface is opened for a particular Page, `Add to Page`
 creates only that Page's entry after asking for a path. The picker supplies the
@@ -80,7 +80,9 @@ has no owner-Page disclosure.
 
 The current authenticated Profile can read and manage all Files in its Library.
 Project routing does not filter catalogs or usage locations. Missing, deleted
-and cross-Library File identities remain unavailable. Canvas and historical
+and cross-Library File identities remain unavailable. File management has no
+resource permission flags; lifecycle and retained uses determine available
+Trash, restore and permanent deletion actions. Canvas and historical
 reads preserve their exact captured version and name; current Page reads follow
 the File head. A URI alone exposes no physical Profile path.
 

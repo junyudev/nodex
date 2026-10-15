@@ -754,6 +754,10 @@ batch size alone must not force a rebalance through repeated gap subdivision.
 
 ## Page creation
 
+Current-Profile Page creation accepts both Project and projectless actors. The
+selected Data Source determines content placement; it does not grant access or
+supply a missing actor Project.
+
 Every eligible `New page` entry point opens one app-owned composer bound to the
 exact writable View and semantic insertion target. Unmounting the originating
 Board does not discard the draft or move authority to another Board.

@@ -4867,7 +4867,6 @@ export interface components {
             readonly can_purge: boolean;
             readonly can_restore: boolean;
             readonly can_trash: boolean;
-            readonly can_write: boolean;
             readonly has_more: boolean;
             readonly items: readonly components["schemas"]["LibraryFileUsage"][];
             readonly next_cursor?: string | null;
@@ -5230,7 +5229,6 @@ export interface components {
         readonly LibraryPageFileInventory: {
             /** Format: int64 */
             readonly body_usage_revision: number;
-            readonly can_write: boolean;
             readonly files: readonly components["schemas"]["LibraryPageFileItem"][];
             readonly has_more: boolean;
             readonly next_cursor?: string | null;

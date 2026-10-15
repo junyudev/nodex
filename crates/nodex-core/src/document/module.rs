@@ -6390,7 +6390,6 @@ mod tests {
                         turn_id: turn_id.clone(),
                         root_thread_id: thread_id.clone(),
                         actor_project_id: Some(actor_project_id.to_owned()),
-
                     },
                 },
             )

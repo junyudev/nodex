@@ -14,7 +14,7 @@ use crate::database::{
 use crate::document::{ContentRoutingContext, DocumentHeadRevision};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 54;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 55;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1767,7 +1767,6 @@ pub struct LibraryFileUsagePage {
     pub items: Vec<LibraryFileUsage>,
     pub next_cursor: Option<String>,
     pub has_more: bool,
-    pub can_write: bool,
     pub can_trash: bool,
     pub can_restore: bool,
     pub can_purge: bool,
@@ -1796,7 +1795,6 @@ pub struct LibraryPageFileItem {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageFileInventory {
-    pub can_write: bool,
     pub page_id: String,
     pub revision: i64,
     pub body_usage_revision: i64,

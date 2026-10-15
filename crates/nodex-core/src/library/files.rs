@@ -896,44 +896,7 @@ mod tests {
     }
 
     #[test]
-    fn page_file_inventory_reports_read_only_authority() {
-        use nodex_core_contracts::{
-            ModuleReadRequest,
-            library::{LibraryRead, LibraryReadValue},
-        };
-        let fixture = fixture();
-        let library = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
-
-        let read = |context| {
-            library
-                .read(
-                    &context,
-                    ModuleReadRequest {
-                        contract_version: LIBRARY_CONTRACT_VERSION,
-                        read: LibraryRead::PageFileInventory {
-                            page_id: "page-a".to_owned(),
-                            query: None,
-                            cursor: None,
-                            limit: Some(50),
-                        },
-                    },
-                )
-                .unwrap()
-        };
-        let LibraryReadValue::PageFileInventory { value } =
-            read(bound_context(Some("project-1"))).value
-        else {
-            panic!("inventory")
-        };
-        assert!(value.can_write);
-        let LibraryReadValue::PageFileInventory { value } = read(bound_context(None)).value else {
-            panic!("inventory")
-        };
-        assert!(value.can_write);
-    }
-
-    #[test]
-    fn library_file_usages_paginate_only_authorized_owners_and_revoke_cached_dependencies() {
+    fn library_file_usages_paginate_all_profile_owners() {
         use nodex_core_contracts::ModuleReadRequest;
         use nodex_core_contracts::library::{LibraryRead, LibraryReadValue};
         let fixture = fixture();
@@ -941,9 +904,9 @@ mod tests {
         create_image(&fixture, &library);
         place_image(&fixture, &library, "page-a");
         place_image(&fixture, &library, "page-b");
-        let read = |cursor| {
+        let read = |project_id: Option<&str>, cursor| {
             library.read(
-                &bound_context(Some("project-1")),
+                &bound_context(project_id),
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::FileUsages {
@@ -954,7 +917,7 @@ mod tests {
                 },
             )
         };
-        let first = read(None).unwrap();
+        let first = read(Some("project-1"), None).unwrap();
         let LibraryReadValue::FileUsages { value: first_page } = first.value else {
             panic!("usages")
         };
@@ -972,12 +935,11 @@ mod tests {
             nodex_core_contracts::library::LibraryPageLifecycleState::Active
         );
         assert!(first_page.has_more);
-        assert!(first_page.can_write);
         assert!(!first_page.can_trash);
         let cursor = first_page.next_cursor.unwrap();
 
         let LibraryReadValue::FileUsages { value: remaining } =
-            read(Some(cursor.clone())).unwrap().value
+            read(None, Some(cursor.clone())).unwrap().value
         else {
             panic!("usages")
         };
@@ -985,7 +947,8 @@ mod tests {
         assert!(!remaining.has_more);
         assert!(remaining.next_cursor.is_none());
 
-        assert!(read(Some(cursor)).is_ok());
+        assert_eq!(remaining.items[0].title, "page-b");
+        assert!(read(Some("project-1"), Some(cursor)).is_ok());
     }
 
     #[test]
@@ -1316,8 +1279,8 @@ mod tests {
             assert_eq!((target_version, name.as_str()), (2, "current.png"));
             Ok(())
         }).unwrap();
-        // Exact historical use is authorized by the Page, independently of a
-        // direct File grant; restoration only grants the newly created File.
+        // Historical reads use the exact version and name captured by the Page;
+        // restoration creates an independent File when its live head changed.
         let source = LibraryFileReadSource::DocumentRevision {
             document_id: page.document_id.clone(),
             revision_id: version_id.clone(),
@@ -2255,7 +2218,7 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_page_copy_keeps_captured_paths_and_shared_files_without_direct_grants() {
+    fn clipboard_page_copy_keeps_captured_paths_and_shared_files() {
         use nodex_core_contracts::library::{
             LibraryDocumentHead, LibraryFileChange, LibraryFileReadSource,
             LibraryPageFileCollisionPolicy, LibraryPageFileEntryChange,
@@ -2757,7 +2720,7 @@ mod tests {
     }
 
     #[test]
-    fn page_file_import_rolls_back_identity_grant_and_receipt_then_local_replace_forks() {
+    fn page_file_import_rolls_back_identity_and_receipt_then_local_replace_forks() {
         use nodex_core_contracts::library::{
             LibraryPageFileCollisionPolicy, LibraryPageFileEntryChange as Change,
         };
@@ -2861,7 +2824,7 @@ mod tests {
     }
 
     #[test]
-    fn library_file_public_commands_consume_once_grant_creator_and_preserve_versions() {
+    fn library_file_public_commands_consume_once_and_preserve_versions() {
         use nodex_core_contracts::ModuleReadRequest;
         use nodex_core_contracts::library::{
             LibraryFileChange, LibraryFileReadSource, LibraryPageFileCollisionPolicy,
@@ -3036,7 +2999,7 @@ mod tests {
             .unwrap();
         assert_eq!(fs::read(current_bytes.physical_path).unwrap(), b"beta");
         assert_eq!(fs::read(old_bytes.physical_path).unwrap(), b"alpha");
-        write(&fixture, "assert-created-grant", |context| {
+        write(&fixture, "assert-created-file", |context| {
             super::super::file_access::require_direct(
                 context.connection,
                 &bound_context(Some("project-1")),

@@ -93,12 +93,6 @@ pub(super) fn list(
     requested_limit: Option<u32>,
 ) -> Result<LibraryPageFileInventory, StoreError> {
     require_page(connection, context, page_id, false)?;
-    let can_write = write_capability(
-        connection,
-        &context.library_id.0,
-        context.project_id.as_ref().map(|id| id.0.as_str()),
-        page_id,
-    )?;
     list_current_page(
         connection,
         &context.library_id.0,
@@ -106,7 +100,6 @@ pub(super) fn list(
         query,
         requested_cursor,
         requested_limit,
-        can_write,
     )
 }
 
@@ -119,7 +112,6 @@ pub(super) fn list_current_page(
     query: Option<&str>,
     requested_cursor: Option<&str>,
     requested_limit: Option<u32>,
-    can_write: bool,
 ) -> Result<LibraryPageFileInventory, StoreError> {
     let (revision, body_usage_revision) = revisions(connection, library_id, page_id)?;
     let query = query.unwrap_or_default().trim();
@@ -202,7 +194,6 @@ pub(super) fn list_current_page(
         None
     };
     Ok(LibraryPageFileInventory {
-        can_write,
         page_id: page_id.to_owned(),
         revision,
         body_usage_revision,
@@ -217,18 +208,4 @@ pub(super) fn list_current_page(
 
 fn error(code: StoreErrorCode, message: &'static str) -> StoreError {
     StoreError::new(code, message, false)
-}
-
-/// Reports the current owner lifecycle; archived Pages remain readable.
-pub(super) fn write_capability(
-    connection: &Connection,
-    library_id: &str,
-    _project_id: Option<&str>,
-    page_id: &str,
-) -> Result<bool, StoreError> {
-    match super::require_page_write_access(connection, library_id, page_id) {
-        Ok(()) => Ok(true),
-        Err(error) if error.code == StoreErrorCode::NotFound => Ok(false),
-        Err(error) => Err(error),
-    }
 }

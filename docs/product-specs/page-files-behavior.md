@@ -56,7 +56,9 @@ repeating every attachment or image. When the quiet Properties disclosure owns
 the row, body-only changes do not make the surrounding Property layout jump
 while the Page remains mounted.
 
-The open surface provides a bounded, searchable inventory. It distinguishes the
+The open surface provides a bounded, searchable inventory. All current-Profile
+Page relationships can be managed once their inventory is loaded; Page lifecycle
+and manifest revisions remain the mutation boundary. It distinguishes the
 optional Page path from body usage and exposes actions appropriate to each
 relationship:
 

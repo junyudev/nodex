@@ -1364,6 +1364,12 @@ mod tests {
 
     #[test]
     fn persistent_page_lifecycle_create_commits_document_database_and_projection_authority_once() {
+        for project_id in [Some(ProjectId("project-1".to_owned())), None] {
+            assert_persistent_page_create(project_id);
+        }
+    }
+
+    fn assert_persistent_page_create(project_id: Option<ProjectId>) {
         const NOW: &str = "2026-07-20T08:10:00.000Z";
         const DATABASE: &str = "019b1000-0000-7000-8000-000000000001";
         const SOURCE: &str = "019b1000-0000-7000-8000-000000000002";
@@ -1374,7 +1380,7 @@ mod tests {
             editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
-            project_id: Some(ProjectId("project-1".to_owned())),
+            project_id,
             connection_id: "connection:page-lifecycle-create".to_owned(),
             adapter: AdapterKind::Test,
         };

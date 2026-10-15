@@ -4261,6 +4261,12 @@ mod tests {
 
     #[test]
     fn occurrence_mutations_clone_advance_reject_and_replay_atomically() {
+        for projectless in [false, true] {
+            assert_occurrence_mutations(projectless);
+        }
+    }
+
+    fn assert_occurrence_mutations(projectless: bool) {
         let harness = harness();
         let start = "2026-07-17T09:00:00Z"
             .parse::<chrono::DateTime<Utc>>()
@@ -4277,7 +4283,10 @@ mod tests {
             json!({ "frequency": "daily", "interval": 1 }),
             json!([{ "offsetMinutes": 30 }]),
         );
-        let context = project_context(&harness);
+        let mut context = project_context(&harness);
+        if projectless {
+            context.project_id = None;
+        }
         let created_page_id = "018f1000-0000-7000-8000-000000000101";
         let completed = apply_with_context(
             &harness,

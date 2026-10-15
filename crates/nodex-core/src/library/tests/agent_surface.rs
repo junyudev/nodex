@@ -83,7 +83,6 @@ impl Fixture {
                 turn_id: "turn:actor".into(),
                 root_thread_id: "thread:actor".into(),
                 actor_project_id: actor_project_id.map(str::to_owned),
-
             },
         );
         fixture.apply(

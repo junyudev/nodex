@@ -43,7 +43,6 @@ const model = (logicalPath: string | null, bodyCount: number): PageFilesReadMode
     page_id: "page-1",
     revision: 8,
     body_usage_revision: 3,
-    can_write: true,
     files: [{ file, logical_path: logicalPath, body_count: bodyCount }],
     next_cursor: null,
     has_more: false,

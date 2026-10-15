@@ -250,7 +250,6 @@ export function useLibraryFileCatalog(
 export interface LibraryFileDetailReadModel {
   readonly usages: readonly LibraryFileUsage[];
   readonly versions: readonly LibraryFileVersion[];
-  readonly canWrite: boolean;
   readonly canTrash: boolean;
   readonly canRestore: boolean;
   readonly canPurge: boolean;
@@ -341,7 +340,6 @@ export function useLibraryFileDetail(
   return {
     usages: usages.data?.pages.flatMap((page) => page.value.items) ?? [],
     versions: versions.data?.pages.flatMap((page) => page.value.items) ?? [],
-    canWrite: capabilities?.can_write ?? false,
     canTrash: capabilities?.can_trash ?? false,
     canRestore: capabilities?.can_restore ?? false,
     canPurge: capabilities?.can_purge ?? false,

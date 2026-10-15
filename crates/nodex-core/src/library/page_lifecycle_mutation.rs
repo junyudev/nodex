@@ -340,8 +340,7 @@ fn create_page(
     let project_id = context
         .project_id
         .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page creation requires a bound Project"))?;
+        .map(|project_id| project_id.0.as_str());
     database::read::read(
         connection,
         library_id,
@@ -512,7 +511,7 @@ fn create_page(
                 connection,
                 PersistYjsGenesis {
                     authority: &authority,
-                    actor_project_id: Some(project_id),
+                    actor_project_id: project_id,
                     materialization: &prepared.materialization,
                     update_id: &genesis_update_id,
                     client_session_id: "page-lifecycle-v2-create",
@@ -661,7 +660,7 @@ fn create_page(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: Some(project_id.to_owned()),
+                    project_id: project_id.map(str::to_owned),
                     operation_kind: "create_page",
                     change_kind: "library.changed",
                     did_mutate: true,
@@ -3384,10 +3383,6 @@ fn invalid(message: &str) -> StoreError {
 
 fn conflict(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::RevisionConflict, message, true)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn corrupt(message: &str) -> StoreError {

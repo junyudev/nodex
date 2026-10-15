@@ -77,12 +77,10 @@ pub(super) fn apply(
         assets_root,
         committed_at,
     } = input;
-    let project_id = context
-        .project_id
-        .as_ref()
-        .map(|value| value.0.as_str())
-        .ok_or_else(|| unauthorized("Page occurrence mutation requires a bound Project"))?;
-    require_active_project(connection, library_id, project_id)?;
+    let project_id = context.project_id.as_ref().map(|value| value.0.as_str());
+    if let Some(project_id) = project_id {
+        require_active_project(connection, library_id, project_id)?;
+    }
     match intent {
         AutomationIntent::CompletePageOccurrence {
             page_id,
@@ -106,9 +104,7 @@ pub(super) fn apply(
             occurrence_start_ms,
         } => skip(
             connection,
-            commit_context,
             library_id,
-            project_id,
             operation_id,
             page_id,
             *occurrence_start_ms,
@@ -146,7 +142,7 @@ fn complete(
     connection: &Connection,
     commit_context: &CommitContext,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     page_id: &str,
@@ -204,7 +200,7 @@ fn complete(
         assets_root,
         OccurrencePageCloneInput {
             commit_context,
-            actor_project_id: Some(requesting_project_id),
+            actor_project_id: requesting_project_id,
             operation_id,
             source_page_id: page_id,
             new_page_id: created_page_id,
@@ -249,9 +245,7 @@ fn complete(
 #[allow(clippy::too_many_arguments)]
 fn skip(
     connection: &Connection,
-    _commit_context: &CommitContext,
     library_id: &str,
-    _requesting_project_id: &str,
     operation_id: &str,
     page_id: &str,
     occurrence_start_ms: i64,
@@ -308,7 +302,7 @@ fn update(
     connection: &Connection,
     commit_context: &CommitContext,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     page_id: &str,
@@ -412,7 +406,7 @@ fn update(
             assets_root,
             OccurrencePageCloneInput {
                 commit_context,
-                actor_project_id: Some(requesting_project_id),
+                actor_project_id: requesting_project_id,
                 operation_id,
                 source_page_id: page_id,
                 new_page_id: created_page_id,
@@ -539,7 +533,7 @@ fn update(
         assets_root,
         OccurrencePageCloneInput {
             commit_context,
-            actor_project_id: Some(requesting_project_id),
+            actor_project_id: requesting_project_id,
             operation_id,
             source_page_id: page_id,
             new_page_id: created_page_id,

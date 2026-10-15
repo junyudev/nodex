@@ -35,7 +35,6 @@ beforeEach(() => {
             page_id: request.read.page_id,
             revision: 3,
             body_usage_revision: 2,
-            can_write: true,
             files: [],
             next_cursor: null,
             has_more: false,
