@@ -1,0 +1,19 @@
+tests/e2e/agent-runtime-cross-provider.spec.ts
+  s_5cd527886c6c64::t_054ebc5f01f30f 17,184-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8bd524724b6acc1a5a5871563ea411971ab49d6d",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
