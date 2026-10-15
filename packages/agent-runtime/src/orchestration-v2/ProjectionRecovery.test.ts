@@ -26,7 +26,13 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { recoveryCandidateThreadIds } from "./ProjectionRecoveryQueries.ts";
 import { restartContinuationRun } from "./RestartContinuation.ts";
+import {
+  fullHistoryScans,
+  HISTORICAL_RUN_COUNT,
+  seedUndecodableHistory,
+} from "./testkit/HistoryPressure.ts";
 
 const layerTest = Layer.mergeAll(ProjectionStore.layer, EffectOutbox.layer).pipe(
   Layer.provideMerge(SqlitePersistence.layerMemory),
@@ -237,6 +243,34 @@ it.effect("recovers terminal subagent results until their cross-thread transfer 
         forkedFrom: { type: "node", nodeId: NodeId.make(`node:${name}`) },
         archivedAt: name === "archived" ? now : null,
         deletedAt: name === "deleted" ? now : null,
+      });
+      // Every delegated child is owned by an app task whose result is still pending.
+      yield* projections.apply({
+        id: EventId.make(`event:task:${name}`),
+        type: "subagent.updated",
+        threadId: parent,
+        occurredAt: now,
+        payload: {
+          id: NodeId.make(`node:${name}`),
+          threadId: parent,
+          runId: null,
+          parentNodeId: NodeId.make("node:parent"),
+          origin: "app_owned",
+          createdBy: "agent",
+          driver,
+          providerInstanceId,
+          providerThreadId: null,
+          childThreadId: child,
+          nativeTaskRef: null,
+          prompt: `Run ${name}.`,
+          title: null,
+          model: null,
+          status: "running",
+          result: null,
+          startedAt: now,
+          completedAt: null,
+          updatedAt: now,
+        },
       });
       yield* createRun(child, name === "running" ? "running" : "completed");
       // A wake queued behind the result: held by Stop or a restart, or still deliverable.
@@ -610,4 +644,40 @@ it.effect("marks fork descendants unreadable when their source is missing or cor
       new Set([fork, descendant]),
     );
   }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect(
+  "keeps every startup recovery query on live-state indexes at 10,000 historical Runs",
+  () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const sql = yield* SqlClient.SqlClient;
+      const now = yield* DateTime.now;
+      const settled = yield* createThread("pressure-settled");
+      yield* seedUndecodableHistory({ threadId: settled, at: DateTime.formatIso(now) });
+      const live = yield* createThread("pressure-live");
+      yield* createRun(live, "running", { ordinal: HISTORICAL_RUN_COUNT + 1 });
+
+      for (const kind of [
+        "queued-runs",
+        "runtime",
+        "subagent-results",
+        "delegated-completions",
+      ] as const) {
+        const [text, params] = recoveryCandidateThreadIds(sql, kind).compile();
+        const plan = yield* sql.unsafe<{ readonly detail: string }>(
+          `EXPLAIN QUERY PLAN ${text}`,
+          params,
+        );
+        assert.deepEqual(
+          fullHistoryScans(plan, ["pending_provider_threads", "unresolved"]),
+          [],
+          kind,
+        );
+      }
+      assert.deepEqual(yield* projections.getRecoveryThreadIds("runtime"), [live]);
+      assert.deepEqual(yield* projections.getRecoveryThreadIds("queued-runs"), []);
+      assert.deepEqual(yield* projections.getRecoveryThreadIds("subagent-results"), []);
+      assert.deepEqual(yield* projections.getRecoveryThreadIds("delegated-completions"), []);
+    }).pipe(Effect.provide(layerTest)),
 );

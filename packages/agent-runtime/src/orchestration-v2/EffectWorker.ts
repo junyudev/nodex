@@ -223,8 +223,8 @@ export const layerExecutor: Layer.Layer<
                     const messageId = effect.request.messageId;
                     const projection = yield* threads.getThreadRecords(
                       effect.threadId,
-                      ["messages", "runs"],
-                      { messageIds: [effect.request.messageId] },
+                      ["messages"],
+                      { messageIds: [messageId] },
                     );
                     const message = projection.messages.find((row) => row.id === messageId);
                     if (message?.delegatedCompletion === undefined) return;
@@ -245,14 +245,20 @@ export const layerExecutor: Layer.Layer<
                     ) {
                       return yield* error;
                     }
-                    const projection = yield* threads.getThreadRecords(
-                      effect.threadId,
-                      ["messages", "runs"],
-                      { messageIds: [effect.request.messageId] },
-                    );
                     const messageId = effect.request.messageId;
-                    const message = projection.messages.find((item) => item.id === messageId);
-                    const run = projection.runs.find((item) => item.id === message?.runId);
+                    const { messages } = yield* threads.getThreadRecords(
+                      effect.threadId,
+                      ["messages"],
+                      { messageIds: [messageId] },
+                    );
+                    const message = messages.find((item) => item.id === messageId);
+                    // Read the steered message's Run by identity, never the Thread's history.
+                    const run =
+                      message?.runId === null || message?.runId === undefined
+                        ? undefined
+                        : (yield* threads.getThreadRecords(effect.threadId, ["runs"], {
+                            runIds: [message.runId],
+                          })).runs[0];
                     if (message === undefined || run === undefined) return yield* error;
                     // Reuse the message identity and a stable command receipt so an outbox
                     // retry cannot append a duplicate message or start a second follow-up.

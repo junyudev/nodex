@@ -1,7 +1,12 @@
 import { assert, it } from "@effect/vitest";
 import {
   CommandId,
+  EventId,
+  MessageId,
   NodeId,
+  type OrchestrationV2ServerCommand,
+  ProjectId,
+  ProviderInstanceId,
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
@@ -31,6 +36,14 @@ import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import {
+  explainExecutedSql,
+  HISTORICAL_RUN_COUNT,
+  historyWideReads,
+  seedUndecodableHistory,
+} from "./testkit/HistoryPressure.ts";
 
 const threadId = ThreadId.make("thread:effect-worker-restart");
 const oldSessionId = ProviderSessionId.make("provider-session:effect-worker-restart:old");
@@ -83,6 +96,7 @@ function layerExecutorFor(input: {
   readonly threads?: Partial<ThreadManagementService.ThreadManagementService["Service"]>;
   readonly continueAfterRestart?: boolean;
   readonly interrupt?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["interrupt"];
+  readonly steer?: ProviderTurnControlService.ProviderTurnControlServiceV2Shape["steer"];
 }) {
   const record = (event: string) => Ref.update(input.events, (events) => [...events, event]);
   const layerDependencies = Layer.mergeAll(
@@ -90,7 +104,7 @@ function layerExecutorFor(input: {
       ProviderTurnControlService.ProviderTurnControlServiceV2,
       ProviderTurnControlService.ProviderTurnControlServiceV2.of({
         interrupt: input.interrupt ?? (() => Effect.void),
-        steer: () => Effect.void,
+        steer: input.steer ?? (() => Effect.void),
         interruptAndAwaitTerminal: (request) =>
           record(
             request.replacementProviderSessionId === undefined
@@ -868,4 +882,138 @@ it.effect("a native subagent stop does not settle its owner's background work", 
     }).pipe(Effect.provide(layer));
     assert.deepEqual(yield* Ref.get(events), ["stop-child"]);
   }),
+);
+
+it.effect(
+  "follows up a steer that lost its turn from 10,000 historical Runs without reading them",
+  () =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const steeredThreadId = ThreadId.make("thread:steer-pressure");
+      const steeredRunId = RunId.make("run:steer-pressure");
+      const messageId = MessageId.make("message:steer-pressure");
+      const modelSelection = { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" };
+      yield* store.apply({
+        id: EventId.make("event:steer-pressure:thread"),
+        type: "thread.created",
+        threadId: steeredThreadId,
+        occurredAt: now,
+        payload: {
+          id: steeredThreadId,
+          projectId: ProjectId.make("project:steer-pressure"),
+          title: "Steer pressure",
+          providerInstanceId: modelSelection.instanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: null,
+          lineage: {
+            parentThreadId: null,
+            relationshipToParent: null,
+            rootThreadId: steeredThreadId,
+          },
+          forkedFrom: null,
+          createdBy: "user",
+          creationSource: "web",
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+      });
+      yield* store.apply({
+        id: EventId.make("event:steer-pressure:run"),
+        type: "run.created",
+        threadId: steeredThreadId,
+        runId: steeredRunId,
+        occurredAt: now,
+        payload: {
+          id: steeredRunId,
+          threadId: steeredThreadId,
+          ordinal: HISTORICAL_RUN_COUNT + 1,
+          providerInstanceId: modelSelection.instanceId,
+          modelSelection,
+          providerThreadId: null,
+          userMessageId: MessageId.make("message:steer-pressure-start"),
+          rootNodeId: null,
+          activeAttemptId: null,
+          status: "completed",
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        },
+      });
+      yield* store.apply({
+        id: EventId.make("event:steer-pressure:message"),
+        type: "message.updated",
+        threadId: steeredThreadId,
+        runId: steeredRunId,
+        occurredAt: now,
+        payload: {
+          id: messageId,
+          threadId: steeredThreadId,
+          runId: steeredRunId,
+          nodeId: null,
+          role: "user",
+          text: "Also check the tests.",
+          attachments: [],
+          streaming: false,
+          createdBy: "user",
+          creationSource: "web",
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      yield* seedUndecodableHistory({ threadId: steeredThreadId, at: DateTime.formatIso(now) });
+
+      const events = yield* Ref.make<ReadonlyArray<string>>([]);
+      const commands = yield* Ref.make<ReadonlyArray<OrchestrationV2ServerCommand>>([]);
+      const layer = layerExecutorFor({
+        events,
+        steer: () =>
+          new ProviderTurnControlService.ProviderTurnControlError({
+            threadId: steeredThreadId,
+            operation: "steer",
+            providerTurnId,
+            turnCompleted: true,
+          }),
+        threads: {
+          getThreadRecords: (id, fields, filter) =>
+            store.getThreadRecords(id, fields, filter).pipe(Effect.orDie),
+          dispatch: (command) =>
+            Ref.update(commands, (current) => [...current, command]).pipe(
+              Effect.as({ sequence: 1, storedEvents: [] }),
+            ),
+        },
+      });
+      const steer = Effect.gen(function* () {
+        const executor = yield* EffectWorker.OrchestrationEffectExecutorV2;
+        yield* executor.execute({
+          ...restartEffect(now, { type: "detach" }),
+          id: "effect:steer-pressure",
+          threadId: steeredThreadId,
+          request: {
+            type: "provider-turn.steer",
+            providerSessionId: oldSessionId,
+            providerThreadId,
+            providerTurnId,
+            messageId,
+          },
+        });
+      }).pipe(Effect.provide(layer));
+      assert.deepEqual(historyWideReads((yield* explainExecutedSql(steer)).plans), []);
+      const [followUp] = yield* Ref.get(commands);
+      assert.equal(followUp?.type, "message.dispatch");
+      assert.equal(followUp?.type === "message.dispatch" ? followUp.messageId : null, messageId);
+    }).pipe(
+      Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
+    ),
 );

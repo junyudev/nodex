@@ -39,6 +39,13 @@ import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 import * as RuntimeLayer from "./runtimeLayer.ts";
+import * as ProjectionStore from "./ProjectionStore.ts";
+import {
+  explainExecutedSql,
+  HISTORICAL_RUN_COUNT,
+  historyWideReads,
+  seedUndecodableHistory,
+} from "./testkit/HistoryPressure.ts";
 import * as ProviderTurnStartServiceTestkit from "./ProviderTurnStartService.testkit.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -150,6 +157,7 @@ const seedParentWithTerminalTask = (input: {
   readonly deliveryState: "delivered" | "claimed" | "acknowledged" | "disposed";
   readonly completionWake?: "always" | "settled_only";
   readonly deliveryTaskIds?: ReadonlyArray<NodeId>;
+  readonly runOrdinal?: number;
   readonly now: DateTime.Utc;
 }) =>
   Effect.gen(function* () {
@@ -206,8 +214,8 @@ const seedParentWithTerminalTask = (input: {
             },
             nativeConversationHeadRef: null,
             status: "active",
-            firstRunOrdinal: 1,
-            lastRunOrdinal: 1,
+            firstRunOrdinal: input.runOrdinal ?? 1,
+            lastRunOrdinal: input.runOrdinal ?? 1,
             handoffIds: [],
             forkedFrom: null,
             createdAt: input.now,
@@ -225,7 +233,7 @@ const seedParentWithTerminalTask = (input: {
           payload: {
             id: input.runId,
             threadId: input.threadId,
-            ordinal: 1,
+            ordinal: input.runOrdinal ?? 1,
             providerInstanceId: modelSelection.instanceId,
             modelSelection,
             providerThreadId,
@@ -1818,6 +1826,127 @@ it.layer(layerTest)("delegated tasks across a server restart", (it) => {
       assert.deepEqual(
         projection.runs.find((row) => row.id === runId)?.delegatedCompletion?.delivery?.taskIds,
         [child.taskId],
+      );
+    }),
+  );
+});
+
+// The same memoized database and store as the runtime, exposed for scale seeding and exact reads.
+const layerPressure = Layer.mergeAll(layerTest, ProjectionStore.layer).pipe(
+  Layer.provideMerge(SqlitePersistence.layerMemory),
+);
+
+it.layer(layerPressure)("delegated completion delivery at history scale", (it) => {
+  it.effect("wakes and accepts a delivery without reading 10,000 historical Runs", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const sink = yield* EventSink.EventSinkV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:delivery-pressure");
+      const runId = RunId.make("run:delivery-pressure");
+      const taskId = NodeId.make("node:delivery-pressure-task");
+      yield* seedParentWithTerminalTask({
+        threadId,
+        projectId: ProjectId.make("project:delivery-pressure"),
+        runId,
+        rootNodeId: NodeId.make("node:delivery-pressure-root"),
+        taskId,
+        deliveryState: "delivered",
+        runOrdinal: HISTORICAL_RUN_COUNT + 1,
+        now,
+      });
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("event:delivery-pressure-pending"),
+            type: "subagent.updated",
+            threadId,
+            runId,
+            nodeId: taskId,
+            occurredAt: now,
+            payload: {
+              ...(yield* store.getThreadRecords(threadId, ["subagents"], { subagentIds: [taskId] }))
+                .subagents[0]!,
+              completionDelivery: { state: "pending", observedByRunId: null },
+            },
+          },
+        ],
+      });
+      yield* seedUndecodableHistory({ threadId, at: DateTime.formatIso(now) });
+
+      // A wait timeout upgrades the finished task, which claims a delivery for the live Run.
+      const wake = yield* explainExecutedSql(
+        orchestrator.dispatch({
+          type: "delegated_task.wake-policy",
+          commandId: CommandId.make("command:delivery-pressure-wake"),
+          parentThreadId: threadId,
+          taskId,
+          completionWake: "always",
+        }),
+      );
+      assert.deepEqual(historyWideReads(wake.plans), []);
+      const claimed = yield* store.getThreadRecords(threadId, ["runs", "subagents"], {
+        runIds: [runId],
+        subagentIds: [taskId],
+      });
+      const delivery = claimed.runs[0]?.delegatedCompletion?.delivery;
+      assert.deepEqual(delivery?.taskIds, [taskId]);
+      assert.equal(claimed.subagents[0]?.completionDelivery?.state, "claimed");
+
+      yield* sink.write({
+        events: [
+          {
+            id: EventId.make("event:delivery-pressure-message"),
+            type: "message.updated",
+            threadId,
+            runId,
+            occurredAt: now,
+            payload: {
+              id: delivery!.messageId,
+              threadId,
+              runId,
+              nodeId: null,
+              role: "user",
+              text: "Background task finished",
+              attachments: [],
+              streaming: false,
+              createdBy: "agent",
+              creationSource: "server",
+              createdAt: now,
+              updatedAt: now,
+              delegatedCompletion: {
+                parentRunId: runId,
+                generation: delivery!.generation,
+                taskIds: [taskId],
+              },
+            },
+          },
+        ],
+      });
+      const accept = yield* explainExecutedSql(
+        orchestrator.dispatch({
+          type: "notification.delivery.accept",
+          commandId: CommandId.make("command:delivery-pressure-accept"),
+          threadId,
+          messageId: delivery!.messageId,
+        }),
+      );
+      assert.deepEqual(historyWideReads(accept.plans), []);
+      const accepted = yield* store.getThreadRecords(threadId, ["runs", "subagents"], {
+        runIds: [runId],
+        subagentIds: [taskId],
+      });
+      assert.isNull(accepted.runs[0]?.delegatedCompletion?.delivery);
+      assert.equal(accepted.subagents[0]?.completionDelivery?.state, "delivered");
+      // Restart recovery settles open cohorts through the same bounded reads.
+      const recovery = yield* explainExecutedSql(orchestrator.recoverDelegatedTasks);
+      // Candidate selection has its own plan contract in ProjectionRecovery.test.ts.
+      assert.deepEqual(
+        historyWideReads(
+          recovery.plans.filter(({ statement }) => !statement.includes("WITH unresolved")),
+        ),
+        [],
       );
     }),
   );

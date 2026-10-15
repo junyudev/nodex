@@ -267,6 +267,10 @@ it.effect.each(["sqlite", "memory"] as const)(
       if (storage === "sqlite") {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE orchestration_v2_projection_messages SET payload_json = json_object('text', ${"x".repeat(512_000)}, 'attachments', json_array(json_object('id', 'attachment:old'))) WHERE message_id = 'obsolete-history'`;
+        // References are indexed when messages are written; deletion never reparses bodies.
+        assert.deepEqual(yield* store.getThreadAttachmentIds(threadId), []);
+        yield* sql`INSERT INTO orchestration_v2_projection_attachment_refs(owner_id, attachment_id, thread_id, run_id)
+          VALUES ('obsolete-history', 'attachment:old', ${threadId}, NULL)`;
         assert.deepEqual(yield* store.getThreadAttachmentIds(threadId), ["attachment:old"]);
       }
       const page = yield* store.getTimelinePage(threadId, { view: "activity", limit: 1 });
