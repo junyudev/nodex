@@ -320,6 +320,8 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               buttons: [
                 { label: "Home", width: 36, height: 36 },
                 { label: "Space", width: 36, height: 36 },
+                { label: "Scheduled", width: 36, height: 36 },
+                { label: "Plugins", width: 36, height: 36 },
                 { label: "Settings", width: 36, height: 36 },
               ],
               railFootBottomInset: 8,
@@ -333,6 +335,33 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               paneInsets: { right: 4, bottom: 4 },
             },
             await readGeometry(page),
+          );
+          const currentRailEntries = () =>
+            rail(page)
+              .locator('button[aria-current="page"]')
+              .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
+          await rail(page).getByRole("button", { name: "Scheduled", exact: true }).click();
+          await expect(page.getByTestId("automations-route-shell")).toBeVisible();
+          claim(
+            "Scheduled is a rail destination beside Home's sidebar",
+            { current: ["Scheduled"], homeSidebar: true },
+            {
+              current: await currentRailEntries(),
+              homeSidebar: await page
+                .getByRole("navigation", { name: "Home", exact: true })
+                .isVisible(),
+            },
+          );
+          await page.screenshot({ path: path.join(artifacts, "scheduled-rail.png") });
+          await rail(page).getByRole("button", { name: "Home", exact: true }).click();
+          await expectHomeProject();
+          claim(
+            "Home leaves Scheduled for its remembered Project",
+            { current: ["Home"], scheduledOpen: false },
+            {
+              current: await currentRailEntries(),
+              scheduledOpen: await page.getByTestId("automations-route-shell").isVisible(),
+            },
           );
           const nativeWindow = await harness.application.browserWindow(page);
           const nativeChrome = await nativeWindow.evaluate((window) => ({

@@ -793,10 +793,16 @@ const PersistedWorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
   WorkbenchInboxLocationSchema,
 ]);
 
-const WorkbenchHomeLocationSchema = z.discriminatedUnion("kind", [
-  ...WorkbenchSceneLocationV5Schema.options,
-  WorkbenchAutomationsLocationSchema,
-  WorkbenchInboxLocationSchema,
+const WorkbenchHomeLocationSchema = z.union([
+  z.discriminatedUnion("kind", [
+    ...WorkbenchSceneLocationV5Schema.options,
+    WorkbenchInboxLocationSchema,
+  ]),
+  // Scheduled was once remembered as a Home route; Home resumes from its origin instead.
+  WorkbenchAutomationsLocationSchema.transform(
+    (location): WorkbenchHomeLocation =>
+      getWorkbenchHomeLocation(location.returnTo) ?? { kind: "empty" },
+  ),
 ]) satisfies z.ZodType<WorkbenchHomeLocation>;
 
 const WorkbenchStableLocationSchema = z.discriminatedUnion("kind", [

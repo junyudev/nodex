@@ -554,19 +554,22 @@ describe("WorkbenchLayoutSnapshotV6Schema", () => {
 
 describe("WorkbenchLayoutSnapshotV8Schema", () => {
   test.each([
-    { kind: "inbox" as const, returnTo: { kind: "pages" as const } },
+    { returnTo: { kind: "inbox" as const, returnTo: { kind: "pages" as const } }, home: "origin" },
     {
-      kind: "automations" as const,
-      path: "/automations/edit/a",
-      returnTo: { kind: "pages" as const },
+      returnTo: {
+        kind: "automations" as const,
+        path: "/automations/edit/a",
+        returnTo: { kind: "pages" as const },
+      },
+      home: "unchanged",
     },
-  ])("round trips Settings with its stable $kind origin and normalizes Home", (returnTo) => {
+  ])("round trips Settings with its stable $returnTo.kind origin", ({ returnTo, home }) => {
     const parsed = WorkbenchLayoutSnapshotSchema.parse({
       ...createDefaultWorkbenchLayoutSnapshot(),
       location: { kind: "settings", path: "/settings/general", returnTo },
     });
     expect(parsed.location).toEqual({ kind: "settings", path: "/settings/general", returnTo });
-    expect(parsed.homeLocation).toEqual(returnTo);
+    expect(parsed.homeLocation).toEqual(home === "origin" ? returnTo : { kind: "empty" });
     expect(WorkbenchLayoutSnapshotSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(parsed);
     expect(
       WorkbenchLayoutSnapshotV7Schema.safeParse({
@@ -592,7 +595,6 @@ describe("WorkbenchLayoutSnapshotV8Schema", () => {
     { kind: "project", projectId: "alpha" },
     { kind: "session", sessionId: "session-a", projectContextId: "alpha" },
     { kind: "inbox", returnTo: { kind: "pages" } },
-    { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "empty" } },
   ])("derives the Home checkpoint from an active legacy Home route: $kind", (location) => {
     const parsed = WorkbenchLayoutSnapshotSchema.parse({
       ...createDefaultWorkbenchLayoutSnapshotV7(),
@@ -620,10 +622,41 @@ describe("WorkbenchLayoutSnapshotV8Schema", () => {
     ).toEqual({ kind: "project", projectId: "alpha" });
   });
 
-  test("retains the saved Home route through Space and Settings restoration", () => {
-    const homeLocation = {
+  test("legacy Scheduled starts Home from the route Scheduled returns to", () => {
+    const location = {
       kind: "automations",
       path: "/automations/edit/a",
+      returnTo: { kind: "project", projectId: "alpha" },
+    } as const;
+    const parsed = WorkbenchLayoutSnapshotSchema.parse({
+      ...createDefaultWorkbenchLayoutSnapshotV7(),
+      location,
+    });
+    expect(parsed.location).toEqual(location);
+    expect(parsed.homeLocation).toEqual(location.returnTo);
+  });
+
+  test.each([
+    {
+      returnTo: { kind: "session", sessionId: "session-a", projectContextId: null },
+      home: "origin",
+    },
+    { returnTo: { kind: "pages" }, home: "empty" },
+  ] as const)(
+    "decodes a saved Scheduled Home checkpoint from its $returnTo.kind origin",
+    ({ returnTo, home }) => {
+      const parsed = WorkbenchLayoutSnapshotSchema.parse({
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "pages" },
+        homeLocation: { kind: "automations", path: "/automations", returnTo },
+      });
+      expect(parsed.homeLocation).toEqual(home === "origin" ? returnTo : { kind: "empty" });
+    },
+  );
+
+  test("retains the saved Home route through Space and Settings restoration", () => {
+    const homeLocation = {
+      kind: "inbox",
       returnTo: { kind: "project", projectId: "alpha" },
     } as const;
     const space = {

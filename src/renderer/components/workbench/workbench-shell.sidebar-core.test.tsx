@@ -441,7 +441,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(getMountedSessionIds(screen.container)).toEqual(["session:alpha:thread-b"]);
   });
 
-  test("renders Codex sidebar route rows inside the scroll area in captured order", async () => {
+  test("keeps Scheduled and Plugins on the rail and scrolls only sidebar content", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
@@ -469,21 +469,19 @@ describe("workbench session shell / sidebar-core", () => {
       throw new Error("Expected sidebar scroll area");
     }
 
-    const routeActions = scrollArea.querySelector("[data-app-action-sidebar-scroll-top-actions]");
-    if (!(routeActions instanceof HTMLElement)) {
-      throw new Error("Expected scroll-owned route actions");
-    }
-
-    expect(scrollArea.firstElementChild === routeActions).toBe(true);
-    expect(within(routeActions).getByRole("button", { name: "Scheduled" }) !== null).toBe(true);
-    expect(within(routeActions).getByRole("button", { name: "Plugins" }) !== null).toBe(true);
+    expect(within(nav).queryByRole("button", { name: "Scheduled" })).toBeNull();
+    expect(within(nav).queryByRole("button", { name: "Plugins" })).toBeNull();
+    const rail = screen.getByRole("navigation", { name: "App navigation" });
+    expect(
+      within(rail)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label"))
+        .slice(0, 4),
+    ).toEqual(["Home", "Space", "Scheduled", "Plugins"]);
     expect(scrollArea.getAttribute("data-content-below")).toBe("false");
     expect(scrollChrome.style.getPropertyValue("--sidebar-scroll-footer-edge-offset")).toBe(
       "calc(var(--spacing) * 10)",
     );
-
-    const routeActionsText = textContent(routeActions);
-    expect(routeActionsText.indexOf("Scheduled") < routeActionsText.indexOf("Plugins")).toBe(true);
 
     Object.defineProperties(scrollArea, {
       clientHeight: { configurable: true, value: 100 },

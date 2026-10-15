@@ -2,14 +2,17 @@ import { act, render } from "@testing-library/react";
 import { useState } from "react";
 import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
+import type { WorkbenchRailDestination } from "../../../shared/workbench-layout";
 import { WorkbenchAppRail } from "./workbench-app-rail";
 
-test("Home and Space remain keyboard reachable and reflect the selected destination", async () => {
+test("rail entries remain keyboard reachable and reflect the selected destination", async () => {
   const onHome = vi.fn();
   const onSpace = vi.fn();
+  const onScheduled = vi.fn();
+  const onPlugins = vi.fn();
 
   function RailHarness() {
-    const [destination, setDestination] = useState<"home" | "space">("home");
+    const [destination, setDestination] = useState<WorkbenchRailDestination>("home");
     return (
       <WorkbenchAppRail
         destination={destination}
@@ -21,6 +24,11 @@ test("Home and Space remain keyboard reachable and reflect the selected destinat
           onSpace();
           setDestination("space");
         }}
+        onScheduled={() => {
+          onScheduled();
+          setDestination("scheduled");
+        }}
+        onPlugins={onPlugins}
       />
     );
   }
@@ -28,8 +36,13 @@ test("Home and Space remain keyboard reachable and reflect the selected destinat
   const view = render(<RailHarness />);
   const home = view.getByRole("button", { name: "Home" });
   const space = view.getByRole("button", { name: "Space" });
-  expect(home.getAttribute("aria-current")).toBe("page");
-  expect(space.hasAttribute("aria-current")).toBe(false);
+  const scheduled = view.getByRole("button", { name: "Scheduled" });
+  const plugins = view.getByRole("button", { name: "Plugins" });
+  const current = () =>
+    [home, space, scheduled, plugins]
+      .filter((button) => button.getAttribute("aria-current") === "page")
+      .map((button) => button.getAttribute("aria-label"));
+  expect(current()).toEqual(["Home"]);
 
   await act(async () => {
     await userEvent.tab();
@@ -43,16 +56,32 @@ test("Home and Space remain keyboard reachable and reflect the selected destinat
   expect(document.activeElement).toBe(space);
   expect(onSpace).toHaveBeenCalledOnce();
   expect(onHome).not.toHaveBeenCalled();
-  expect(space.getAttribute("aria-current")).toBe("page");
-  expect(home.hasAttribute("aria-current")).toBe(false);
+  expect(current()).toEqual(["Space"]);
 
   await act(async () => {
+    await userEvent.tab();
+    await userEvent.keyboard("{Enter}");
+  });
+  expect(document.activeElement).toBe(scheduled);
+  expect(onScheduled).toHaveBeenCalledOnce();
+  expect(current()).toEqual(["Scheduled"]);
+
+  // Plugins is an entry point, not a destination: it never takes the current marker.
+  await act(async () => {
+    await userEvent.tab();
+    await userEvent.keyboard("{Enter}");
+  });
+  expect(document.activeElement).toBe(plugins);
+  expect(onPlugins).toHaveBeenCalledOnce();
+  expect(current()).toEqual(["Scheduled"]);
+
+  await act(async () => {
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
     await userEvent.tab({ shift: true });
     await userEvent.keyboard("{Enter}");
   });
   expect(document.activeElement).toBe(home);
   expect(onHome).toHaveBeenCalledOnce();
-  expect(onSpace).toHaveBeenCalledOnce();
-  expect(home.getAttribute("aria-current")).toBe("page");
-  expect(space.hasAttribute("aria-current")).toBe(false);
+  expect(current()).toEqual(["Home"]);
 });

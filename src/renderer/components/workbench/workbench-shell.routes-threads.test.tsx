@@ -196,7 +196,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.container.querySelector('[data-thread-stage="true"]') !== null).toBe(true);
   });
 
-  test("opens scheduled task management as a full-window route shell from the sidebar", async () => {
+  test("opens scheduled task management as a full-window route shell from the rail", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
@@ -240,11 +240,14 @@ describe("workbench session shell / routes-threads", () => {
     ).toBe(true);
     expect(routeShell.contains(headerContextSurface)).toBe(false);
     expect(routeShell.querySelector("main > header") === null).toBe(true);
+    const rail = screen.getByRole("navigation", { name: "App navigation" });
     expect(
-      within(screen.getByRole("navigation", { name: "Home" }))
-        .getByRole("button", { name: "Scheduled" })
-        .getAttribute("aria-current"),
+      within(rail).getByRole("button", { name: "Scheduled" }).getAttribute("aria-current"),
     ).toBe("page");
+    expect(
+      within(rail).getByRole("button", { name: "Home" }).getAttribute("aria-current"),
+    ).toBeNull();
+    expect(screen.getByTestId("project-session-sidebar") !== null).toBe(true);
     expect(
       textContent(screen.container).includes(
         "Ask ChatGPT to schedule tasks, set reminders, or monitor for updates.",

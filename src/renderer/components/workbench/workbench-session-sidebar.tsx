@@ -17,7 +17,6 @@ import {
   CodexSidebarActionButton,
   CodexSidebarSection,
   CodexSidebarThreadRow,
-  CodexSidebarTopActionButton,
   resolveCodexNewChatShortcutLabel,
   resolveCodexInboxShortcutLabel,
   resolveCodexPageSearchShortcutLabel,
@@ -56,7 +55,7 @@ import {
 } from "./sidebar-thread-reorder";
 import type { StableWorktreeEntry } from "./stable-worktree-production";
 import { StableWorktreeSidebarRows } from "./stable-worktree-sidebar-row";
-import { AutomationsIcon, NewChatIcon, ThreadIcon, PluginsIcon } from "@/components/shared/icons";
+import { NewChatIcon, ThreadIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import { setPendingWorktreePinnedBeforeThread } from "@/lib/pending-worktree-runtime";
 import { workspaceSidebarCommands } from "@/lib/workspace-catalog-commands";
@@ -1773,10 +1772,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   onOpenStableWorktree: (pendingWorktreeId: string) => void;
   onCreateStableWorktree: (project: Project, projectName: string) => Promise<void>;
   onOpenCommandPalette: () => void;
-  onShowUnavailableProduct: (label: string) => void;
-  onOpenAutomations: () => void;
   onOpenInbox: () => void;
-  automationsActive: boolean;
   inboxActive: boolean;
   /** Suggestions waiting for the user's decision. */
   inboxCount: number;
@@ -1847,12 +1843,9 @@ export function ProjectSessionSidebar({
   onOpenStableWorktree,
   onCreateStableWorktree,
   onOpenCommandPalette,
-  onShowUnavailableProduct,
-  onOpenAutomations,
   onOpenInbox,
   inboxActive,
   inboxCount,
-  automationsActive,
   projectPickerOpenTick = 0,
   onCreateProject,
   onUpdateProject,
@@ -2123,28 +2116,6 @@ export function ProjectSessionSidebar({
             className={SIDEBAR_SCROLL_AREA_CLASS}
             onScroll={sidebarScrollChrome.syncScrollChrome}
           >
-            <div
-              className="flex shrink-0 flex-col gap-2"
-              data-app-action-sidebar-scroll-top-actions=""
-            >
-              <div className="shrink-0 px-row-x">
-                <div className="flex flex-col gap-1">
-                  <div className="flex flex-col gap-px">
-                    <CodexSidebarTopActionButton
-                      label="Scheduled"
-                      icon={<AutomationsIcon />}
-                      active={automationsActive}
-                      onClick={() => onOpenAutomations()}
-                    />
-                    <CodexSidebarTopActionButton
-                      label="Plugins"
-                      icon={<PluginsIcon className="icon-xs" />}
-                      onClick={() => onShowUnavailableProduct("Plugins")}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
             <SidebarReorderDndProvider
               getThreadIdByThreadKey={getSidebarThreadIdByKey}
               homeContainerIdByThreadId={homeContainerIdByThreadId}

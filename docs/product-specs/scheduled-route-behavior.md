@@ -39,9 +39,10 @@ original committed result.
 
 ## Entry points and route state
 
-Sidebar `Scheduled`, command palette `Manage automations`, and Thread Summary
-Scheduled rows all open `/automations` while keeping the ordinary
-Project/Session sidebar mounted.
+The rail's `Scheduled` entry, command palette `Manage automations`, and Thread
+Summary Scheduled rows all open `/automations` while keeping the ordinary
+Project/Session sidebar mounted. The rail marks Scheduled as current for the
+route and while Settings returns to it; Home resumes its own last location.
 
 Route state is canonical URL state:
 

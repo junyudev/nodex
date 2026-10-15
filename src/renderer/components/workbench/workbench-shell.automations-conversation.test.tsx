@@ -328,9 +328,9 @@ describe("workbench session shell / automations-conversation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const sidebar = screen.getByTestId("project-session-sidebar");
+    const rail = screen.getByRole("navigation", { name: "App navigation" });
     await act(async () => {
-      fireEvent.click(within(sidebar).getByRole("button", { name: "Scheduled" }));
+      fireEvent.click(within(rail).getByRole("button", { name: "Scheduled" }));
       await Promise.resolve();
     });
     const routeShell = await screen.findByTestId("automations-route-shell");

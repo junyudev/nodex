@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   createDefaultWorkbenchLayoutSnapshot,
   getWorkbenchPrimaryDestination,
+  getWorkbenchRailDestination,
   getWorkbenchSceneReturnLocation,
   type WorkbenchHomeLocation,
 } from "../../shared/workbench-layout";
@@ -30,77 +31,101 @@ import {
 } from "./workbench-window-state";
 
 describe("WorkbenchWindowState", () => {
-  test.each([
-    { kind: "inbox" as const },
-    { kind: "automations" as const, path: "/automations/edit/a" },
-  ])("Settings retains its stable $kind origin after leaving Space", (route) => {
-    const pages = selectWorkbenchPages(
-      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
-    );
-    const home = openWorkbenchRoute(pages, route);
-    const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
+  test.each([{ kind: "inbox" as const }])(
+    "Settings retains its stable $kind origin after leaving Space",
+    (route) => {
+      const pages = selectWorkbenchPages(
+        createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      );
+      const home = openWorkbenchRoute(pages, route);
+      const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
 
-    expect(settings.location).toEqual({
-      kind: "settings",
-      path: "/settings/general",
-      returnTo: home.location,
-    });
-    expect(getWorkbenchPrimaryDestination(settings.location)).toBe("home");
-    expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual(pages.location);
-    expect(settings.homeLocation).toEqual(home.location);
-    expect(closeWorkbenchRoute(settings).location).toEqual(home.location);
-    const back = navigateBackInWorkbenchWindow(settings);
-    expect(back.location).toEqual(home.location);
-    expect(navigateForwardInWorkbenchWindow(back).location).toEqual(settings.location);
-    const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
-    expect(closeWorkbenchRoute(reopened).location).toEqual(home.location);
-    expect(selectWorkbenchHome(selectWorkbenchPages(reopened)).location).toEqual(home.location);
-    expect(
-      openWorkbenchRoute(settings, { kind: "settings", path: "/settings/appearance" }).location,
-    ).toEqual({
-      kind: "settings",
-      path: "/settings/appearance",
-      returnTo: home.location,
-    });
-  });
+      expect(settings.location).toEqual({
+        kind: "settings",
+        path: "/settings/general",
+        returnTo: home.location,
+      });
+      expect(getWorkbenchPrimaryDestination(settings.location)).toBe("home");
+      expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual(pages.location);
+      expect(settings.homeLocation).toEqual(home.location);
+      expect(closeWorkbenchRoute(settings).location).toEqual(home.location);
+      const back = navigateBackInWorkbenchWindow(settings);
+      expect(back.location).toEqual(home.location);
+      expect(navigateForwardInWorkbenchWindow(back).location).toEqual(settings.location);
+      const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
+      expect(closeWorkbenchRoute(reopened).location).toEqual(home.location);
+      expect(selectWorkbenchHome(selectWorkbenchPages(reopened)).location).toEqual(home.location);
+      expect(
+        openWorkbenchRoute(settings, { kind: "settings", path: "/settings/appearance" }).location,
+      ).toEqual({
+        kind: "settings",
+        path: "/settings/appearance",
+        returnTo: home.location,
+      });
+    },
+  );
 
-  test.each([
-    { kind: "inbox" as const },
-    { kind: "automations" as const, path: "/automations/edit/a" },
-  ])("missing-owner repair retains Settings and its $kind return route", (route) => {
+  test("Scheduled is a rail destination outside the remembered Home route", () => {
     const session = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
-      {
-        id: "session-a",
-        projectId: "alpha",
-      },
+      { id: "session-a", projectId: "alpha" },
     );
-    const home = openWorkbenchRoute(session, route);
-    const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
-    const withoutSession = reconcileMissingWorkbenchSession(settings, "session-a");
-    const repairedHome = { ...home.location, returnTo: { kind: "project", projectId: "alpha" } };
-    expect(withoutSession.location).toEqual({ ...settings.location, returnTo: repairedHome });
-    expect(withoutSession.homeLocation).toEqual(repairedHome);
-    expect(getWorkbenchPrimaryDestination(withoutSession.location)).toBe("home");
-    const withoutProject = removeWorkbenchScene(withoutSession, {
-      kind: "project",
-      projectId: "alpha",
+    const scheduled = openWorkbenchRoute(session, {
+      kind: "automations",
+      path: "/automations/edit/a",
     });
-    expect(closeWorkbenchRoute(withoutProject).location).toEqual({
-      ...home.location,
-      returnTo: { kind: "empty" },
-    });
-    expect(navigateBackInWorkbenchWindow(withoutProject).location).toEqual({
-      ...home.location,
-      returnTo: { kind: "empty" },
-    });
+    expect(getWorkbenchRailDestination(scheduled.location)).toBe("scheduled");
+    expect(getWorkbenchPrimaryDestination(scheduled.location)).toBe("home");
+    expect(scheduled.homeLocation).toEqual(session.location);
+
+    const home = selectWorkbenchHome(scheduled);
+    expect(home.location).toEqual(session.location);
+    expect(navigateBackInWorkbenchWindow(home).location).toEqual(scheduled.location);
+
+    const settings = openWorkbenchRoute(scheduled, { kind: "settings", path: "/settings/general" });
+    expect(getWorkbenchRailDestination(settings.location)).toBe("scheduled");
+    expect(closeWorkbenchRoute(settings).location).toEqual(scheduled.location);
+    const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
+    expect(reopened.homeLocation).toEqual(session.location);
+    expect(selectWorkbenchHome(reopened).location).toEqual(session.location);
   });
+
+  test.each([{ kind: "inbox" as const }])(
+    "missing-owner repair retains Settings and its $kind return route",
+    (route) => {
+      const session = selectWorkbenchSession(
+        createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+        {
+          id: "session-a",
+          projectId: "alpha",
+        },
+      );
+      const home = openWorkbenchRoute(session, route);
+      const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
+      const withoutSession = reconcileMissingWorkbenchSession(settings, "session-a");
+      const repairedHome = { ...home.location, returnTo: { kind: "project", projectId: "alpha" } };
+      expect(withoutSession.location).toEqual({ ...settings.location, returnTo: repairedHome });
+      expect(withoutSession.homeLocation).toEqual(repairedHome);
+      expect(getWorkbenchPrimaryDestination(withoutSession.location)).toBe("home");
+      const withoutProject = removeWorkbenchScene(withoutSession, {
+        kind: "project",
+        projectId: "alpha",
+      });
+      expect(closeWorkbenchRoute(withoutProject).location).toEqual({
+        ...home.location,
+        returnTo: { kind: "empty" },
+      });
+      expect(navigateBackInWorkbenchWindow(withoutProject).location).toEqual({
+        ...home.location,
+        returnTo: { kind: "empty" },
+      });
+    },
+  );
 
   test.each<WorkbenchHomeLocation>([
     { kind: "project", projectId: "alpha" },
     { kind: "session", sessionId: "session-a", projectContextId: "alpha" },
     { kind: "inbox", returnTo: { kind: "project", projectId: "alpha" } },
-    { kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } },
   ])("restores the previous Home route after reopening Space: $kind", (location) => {
     const initial = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),

@@ -4,7 +4,9 @@ import {
   createDefaultWorkbenchLayoutSnapshotV3,
   getWorkbenchActiveSessionId,
   getWorkbenchPrimaryDestination,
+  getWorkbenchRailDestination,
   type WorkbenchLocation,
+  type WorkbenchRailDestination,
   type WorkbenchLayoutSnapshot,
 } from "./workbench-layout";
 
@@ -84,5 +86,25 @@ describe("getWorkbenchPrimaryDestination", () => {
     ],
   ])("derives %s from the current route", (location, destination) => {
     expect(getWorkbenchPrimaryDestination(location)).toBe(destination);
+  });
+});
+
+describe("getWorkbenchRailDestination", () => {
+  test.each<readonly [WorkbenchLocation, WorkbenchRailDestination]>([
+    [{ kind: "pages" }, "space"],
+    [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
+    [{ kind: "inbox", returnTo: { kind: "pages" } }, "home"],
+    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "scheduled"],
+    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "pages" } }, "space"],
+    [
+      {
+        kind: "settings",
+        path: "/settings/general",
+        returnTo: { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "pages" } },
+      },
+      "scheduled",
+    ],
+  ])("marks %s on the rail", (location, destination) => {
+    expect(getWorkbenchRailDestination(location)).toBe(destination);
   });
 });

@@ -24,7 +24,10 @@ import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
 } from "@/lib/workbench-shell-geometry";
-import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
+import {
+  getWorkbenchPrimaryDestination,
+  getWorkbenchRailDestination,
+} from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
 import { parseDatabaseId } from "../../../shared/database-identities";
@@ -2376,7 +2379,7 @@ export function WorkbenchRuntime({
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
-    showSidebarUnavailableProduct,
+    showUnavailableProduct,
     activateReviewTab,
     openSubagentsPanelTab,
     openAttachedThreadSession,
@@ -4520,13 +4523,10 @@ export function WorkbenchRuntime({
     onOpenStableWorktree: openStableWorktreeStatus,
     onCreateStableWorktree: createStableWorktree,
     onOpenCommandPalette: openSidebarCommandPalette,
-    onShowUnavailableProduct: showSidebarUnavailableProduct,
-    onOpenAutomations: openAutomations,
     onOpenInbox: openInbox,
     onOpenResourceTarget: openResourceTarget,
     onOpenResourceTargetInProject: openResourceTargetInProject,
     activeResourceTarget: pagesSceneNavigation.activeRoot,
-    automationsActive: Boolean(automationsPath),
     inboxActive: workbenchWindow.location.kind === "inbox",
     inboxCount: inboxSummaryQuery.data?.inboxCount ?? 0,
     projectPickerOpenTick,
@@ -4712,9 +4712,11 @@ export function WorkbenchRuntime({
                     />
                     <div className="shrink-0 pb-1">
                       <WorkbenchAppRail
-                        destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
+                        destination={getWorkbenchRailDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectPages}
+                        onScheduled={() => openAutomations()}
+                        onPlugins={() => showUnavailableProduct("Plugins")}
                         footer={
                           <WorkbenchRailAccountControls
                             onOpenSettings={openSettings}

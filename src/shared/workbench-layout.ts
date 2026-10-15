@@ -238,7 +238,11 @@ export type WorkbenchStableLocation = Exclude<
   { readonly kind: "settings" | "pending-worktree" }
 >;
 
-export type WorkbenchHomeLocation = Exclude<WorkbenchStableLocation, { readonly kind: "pages" }>;
+/** Home remembers its own routes; Space and the Scheduled rail destination are restored separately. */
+export type WorkbenchHomeLocation = Exclude<
+  WorkbenchStableLocation,
+  { readonly kind: "pages" | "automations" }
+>;
 
 export type WorkbenchLocationV8 =
   | WorkbenchStableLocation
@@ -250,6 +254,8 @@ export type WorkbenchLocationV8 =
   | Extract<WorkbenchLocationV7, { readonly kind: "pending-worktree" }>;
 
 export type WorkbenchPrimaryDestination = "home" | "space";
+/** Rail entries that can be current; Scheduled is a route inside Home's sidebar context. */
+export type WorkbenchRailDestination = WorkbenchPrimaryDestination | "scheduled";
 
 export interface WorkbenchLayoutSnapshotV8 {
   readonly version: 8;
@@ -363,7 +369,7 @@ export function createDefaultWorkbenchLayoutSnapshot(): WorkbenchLayoutSnapshot 
   };
 }
 
-/** The rail reflects the canonical route; Settings retains its originating destination. */
+/** Selects the contextual sidebar; Settings retains its originating destination. */
 export function getWorkbenchPrimaryDestination(
   location: WorkbenchLocation,
 ): WorkbenchPrimaryDestination {
@@ -371,12 +377,24 @@ export function getWorkbenchPrimaryDestination(
   return location.kind === "pages" ? "space" : "home";
 }
 
+/** The rail reflects the canonical route; Settings retains its originating destination. */
+export function getWorkbenchRailDestination(location: WorkbenchLocation): WorkbenchRailDestination {
+  if (location.kind === "settings") return getWorkbenchRailDestination(location.returnTo);
+  return location.kind === "automations" ? "scheduled" : getWorkbenchPrimaryDestination(location);
+}
+
 /** Resolves the stable Home route, including the actual Settings origin. */
 export function getWorkbenchHomeLocation(
   location: WorkbenchLocation,
 ): WorkbenchHomeLocation | null {
   if (location.kind === "settings") return getWorkbenchHomeLocation(location.returnTo);
-  if (location.kind === "pages" || location.kind === "pending-worktree") return null;
+  if (
+    location.kind === "pages" ||
+    location.kind === "automations" ||
+    location.kind === "pending-worktree"
+  ) {
+    return null;
+  }
   return location;
 }
 

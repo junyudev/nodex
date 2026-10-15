@@ -634,9 +634,9 @@ export function useWorkbenchSessionCommands({
     [setCommandContentSearchOpenRequest],
   );
 
-  const showSidebarUnavailableProduct = useCallback((label: string) => {
+  const showUnavailableProduct = useCallback((label: string) => {
     toast.info(`${label} is not available in Nodex yet.`, {
-      id: `sidebar-${label.toLowerCase()}-unavailable`,
+      id: `${label.toLowerCase()}-unavailable`,
     });
   }, []);
 
@@ -1462,7 +1462,7 @@ export function useWorkbenchSessionCommands({
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
-    showSidebarUnavailableProduct,
+    showUnavailableProduct,
     createManualTab,
     activateReviewTab,
     openSubagentsPanelTab,

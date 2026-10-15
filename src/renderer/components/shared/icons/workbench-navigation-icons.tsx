@@ -72,3 +72,41 @@ export function WorkbenchSpaceIcon({
     </svg>
   );
 }
+
+const SCHEDULED_HAND_PATH =
+  "M10 5.16895C10.3673 5.16895 10.665 5.46672 10.665 5.83398V9.82812C10.6649 10.1147 10.5513 10.3901 10.3486 10.5928L8.3877 12.5547C8.12804 12.814 7.70591 12.8141 7.44629 12.5547C7.18668 12.2951 7.18687 11.873 7.44629 11.6133L9.33496 9.72461V5.83398C9.33496 5.46685 9.63291 5.16916 10 5.16895Z";
+
+const SCHEDULED_RING_PATH =
+  "M10 1.83496C14.5094 1.83496 18.165 5.49059 18.165 10C18.165 14.5094 14.5094 18.165 10 18.165C5.49059 18.165 1.83496 14.5094 1.83496 10C1.83496 5.49059 5.49059 1.83496 10 1.83496ZM10 3.16504C6.22513 3.16504 3.16504 6.22513 3.16504 10C3.16504 13.7749 6.22513 16.835 10 16.835C13.7749 16.835 16.835 13.7749 16.835 10C16.835 6.22513 13.7749 3.16504 10 3.16504Z";
+
+const SCHEDULED_FILLED_PATH =
+  "M10.001 1.83496C14.5104 1.83498 18.166 5.49062 18.166 10C18.166 14.5094 14.5104 18.165 10.001 18.165C5.49157 18.165 1.83594 14.5094 1.83594 10C1.83595 5.49061 5.49158 1.83496 10.001 1.83496ZM10 5.16797C9.633 5.16814 9.33516 5.46602 9.33496 5.83301V9.72363L7.44629 11.6123C7.18665 11.8719 7.18677 12.294 7.44629 12.5537C7.70599 12.8134 8.128 12.8134 8.3877 12.5537L10.3486 10.5918C10.5513 10.389 10.665 10.1139 10.665 9.82715V5.83301C10.6648 5.46591 10.3671 5.16797 10 5.16797Z";
+
+export function WorkbenchScheduledIcon({
+  className,
+  filled = false,
+  ...props
+}: WorkbenchNavigationIconProps) {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 20 20"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      className={cn("size-5 shrink-0", className)}
+      {...props}
+    >
+      {filled ? (
+        <path d={SCHEDULED_FILLED_PATH} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+      ) : (
+        <>
+          <path d={SCHEDULED_HAND_PATH} fill="currentColor" />
+          <path d={SCHEDULED_RING_PATH} fill="currentColor" fillRule="evenodd" clipRule="evenodd" />
+        </>
+      )}
+    </svg>
+  );
+}
