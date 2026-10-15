@@ -1,0 +1,39 @@
+packages/agent-runtime/src/nodex/Bootstrap.ts
+  s_1ca65ffa5958ee::t_bfc19bcc6c86d5 1,21-25
+  s_1ca65ffa5958ee::t_828db03c8bb123 2-20,26-34
+src/main/platform/node/AgentRuntimeProcess.ts
+  s_1ca65ffa5958ee::t_f439a87546d05e 247
+  s_1ca65ffa5958ee::t_d5d3fcba13331e 3,242-246,264-266
+src/main/platform/node/AgentRuntimeProcess.node.test.ts
+  s_1ca65ffa5958ee::t_12b77990235de9 255-296
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_1ca65ffa5958ee::t_6fe002c1f9c3b8 10,25-35,39,103
+tests/fixtures/agent-runtime-stdio.mjs
+  s_1ca65ffa5958ee::t_e056fdfb9f19c2 16-20,23,60-68
+packages/agent-runtime/src/nodex/Daemon.test.ts
+  s_1ca65ffa5958ee::t_ffa48d982838e5 9,12-15,29,33,280-324
+  s_1ca65ffa5958ee::t_27cc483e224ae9 325
+packages/agent-runtime/src/nodex/contracts.ts
+  s_1ca65ffa5958ee::t_f439a87546d05e 20
+packages/agent-runtime/README.md
+  s_1ca65ffa5958ee::t_6c2118046306f9 8-10,51
+  s_1ca65ffa5958ee::t_685e716e40dce9 52-53
+docs/SECURITY.md
+  s_1ca65ffa5958ee::t_6c2118046306f9 197-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "50228a5dc90700ae8da6567823b06085f26c90e8",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
