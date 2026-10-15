@@ -1,0 +1,19 @@
+tests/e2e/agent-runtime-quiet-launch.spec.ts
+  s_1ca65ffa5958ee::t_41b23c516d00cb 1-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "562d42849f72270297b386555ac14e9ea72d76f5",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
