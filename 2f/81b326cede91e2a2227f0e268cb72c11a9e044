@@ -1,0 +1,31 @@
+src/main/agent-runtime/AgentRuntimeQuiescence.node.test.ts
+  s_1ca65ffa5958ee::t_89b604515e90de 1-68
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_20e2c141440753 326-329,360-368
+docs/RELIABILITY.md
+  s_1ca65ffa5958ee::t_20e2c141440753 403-407
+src/main/agent-runtime/AgentRuntimeQuiescence.ts
+  s_1ca65ffa5958ee::t_87c0be39e406b6 1-39,41-69
+  s_1ca65ffa5958ee::t_f280ae823f7b6e 40
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_1ca65ffa5958ee::t_e7d50dbc741b5e 162-166,423,485-486,548,552
+  s_1ca65ffa5958ee::t_175c38426a9668 74,549-550
+  s_1ca65ffa5958ee::t_1e33981a19ff5a 80-81,187-191,499-505
+  s_1ca65ffa5958ee::t_04483ac59b2904 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f81b326cede91e2a2227f0e268cb72c11a9e044",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
