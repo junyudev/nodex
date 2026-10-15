@@ -1,0 +1,65 @@
+packages/agent-runtime/src/mcp/NodexAppMcpServer.ts
+  s_1ca65ffa5958ee::t_b69b89b4cd7075 1-5
+  s_1ca65ffa5958ee::t_41f1988f0b51e7 6
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_6bde96d295f8d2 620,923,938,7553,7573,7594,8358
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_1ca65ffa5958ee::t_ebc58cb1feadc8 138,1168-1171,1174-1178,1192,1196,1202,7989,8149-8153
+packages/agent-runtime/src/provider/OpenCodeNativeExecutionPlugin.test.ts
+  s_1ca65ffa5958ee::t_77a3f089958157 55,150
+packages/agent-runtime/src/provider/AcpMcpBridgeLifecycle.test.ts
+  s_1ca65ffa5958ee::t_77a3f089958157 34,39,52,75,106,113,130,138
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts
+  s_1ca65ffa5958ee::t_d376959e1a3568 50,3404,3438,3500-3501,3503,3505,3507
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_78788ad7bb351c 6546-6556
+  s_1ca65ffa5958ee::t_319f517374860a 359-360,366,400,408-409,413,418,422-423,482,484,490,1616,1634,1657,6531,6569,6585,6593
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_1ca65ffa5958ee::t_691a49ec222beb 148,1227,4613
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_1ca65ffa5958ee::t_4d9949bfbb809c 67,92,204,211,258
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_77a3f089958157 758,1495,1501,2552
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_1ca65ffa5958ee::t_5edc95920bda20 109,664,674
+packages/agent-runtime/vendor/provider-acp/src/server/mcpOverAcpBridge.ts
+  s_1ca65ffa5958ee::t_6e50c518f40c15 12,206
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_1ca65ffa5958ee::t_27df0e5399ca53 13-18,1086-1090,1092-1095,1100,1102-1105,1107,1148,1157,1164-1165,1187,1190-1192,1195,1210-1214
+packages/agent-runtime/vendor/provider-core/src/server/mcpToolPresentation.ts
+  s_1ca65ffa5958ee::t_d2c5f9013a0307 2
+packages/agent-runtime/vendor/provider-opencode/src/server/NativeExecutionPlugin.ts
+  s_1ca65ffa5958ee::t_1c5fac92b580f3 8,15,34
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.test.ts
+  s_1ca65ffa5958ee::t_27e9478d191896 255,284,910
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.ts
+  s_1ca65ffa5958ee::t_dceb0a82056915 88,804,2314
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
+  s_1ca65ffa5958ee::t_db9e1040556510 102,444-445,451-454,460,772,2180-2181
+packages/agent-runtime/vendor/provider-opencode/src/testing.ts
+  s_1ca65ffa5958ee::t_3ed52ed69c5d0c 13
+packages/agent-runtime/vendor/shared/package.json
+  s_1ca65ffa5958ee::t_ead03f33afdd69 386-388
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.test.ts
+  s_1ca65ffa5958ee::t_6620d93c60dc2e 3
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.ts
+  s_1ca65ffa5958ee::t_74f7d52c2f9e37 1-16,357-366,385,390,395,398,401
+packages/agent-runtime/vendor/shared/src/toolOutput.ts
+  s_1ca65ffa5958ee::t_cee7520f29607d 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76e135bfda45e98187e03c59739f362e2d32aba5",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
