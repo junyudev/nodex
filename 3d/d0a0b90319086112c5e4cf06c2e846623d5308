@@ -1,0 +1,40 @@
+packages/agent-runtime/src/persistence/Migrations/075_AttachmentReferences.ts
+  s_1ca65ffa5958ee::t_3a0937443ea89c 1-31
+packages/agent-runtime/src/orchestration-v2/ProjectionMaintenance.ts
+  s_1ca65ffa5958ee::t_b90b7c2a0ff8c6 133
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_1ca65ffa5958ee::t_983f8f5b1b5808 91,180
+packages/agent-runtime/src/nodex/Runtime.test.ts
+  s_1ca65ffa5958ee::t_8243642e783015 92-101,112-216,226-227,230-234
+  s_1ca65ffa5958ee::t_a11d5acfb0ad1f 102-111
+  s_1ca65ffa5958ee::t_54d7ac53be610c 217-225,228-229
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_1ca65ffa5958ee::t_a11d5acfb0ad1f 59-61
+packages/agent-runtime/README.md
+  s_1ca65ffa5958ee::t_ab2cb865fdabff 60-62
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_1ca65ffa5958ee::t_93dece0ad3e246 7506-7507,7509-7528
+  s_1ca65ffa5958ee::t_483e7b2a09e7a8 2734-2749,3538-3550,3644-3651
+packages/agent-runtime/src/orchestration-v2/ResourceCleanupService.ts
+  s_1ca65ffa5958ee::t_783cb44accdf80 78
+  s_1ca65ffa5958ee::t_0a84df894205b1 4,12-59,63,67-72,76-77,79-90,96-101
+  s_1ca65ffa5958ee::t_a11d5acfb0ad1f 74,91-95
+packages/agent-runtime/src/nodex/Runtime.ts
+  s_1ca65ffa5958ee::t_a6ee0c71e95411 54,223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3dd0a0b90319086112c5e4cf06c2e846623d5308",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
