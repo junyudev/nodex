@@ -391,6 +391,23 @@ it.effect("recovery starts the process only when evidence cannot prove its store
   }).pipe(Effect.scoped),
 );
 
+it.effect("quitting during a read still records quiet; quitting during a write never does", () =>
+  Effect.gen(function* () {
+    for (const write of [false, true]) {
+      const f = yield* fixture;
+      const evidence: string[] = [];
+      const supervisor = yield* idleSupervisor(f, evidence);
+      yield* supervisor.get();
+      const entered = yield* Deferred.make<void>();
+      const hold = Deferred.succeed(entered, undefined).pipe(Effect.andThen(Effect.never));
+      yield* Effect.forkScoped(write ? supervisor.writing(hold) : supervisor.retained(hold));
+      yield* Deferred.await(entered);
+      yield* supervisor.close;
+      assert.deepEqual(evidence, write ? ["clear"] : ["clear", "record"]);
+    }
+  }).pipe(Effect.scoped),
+);
+
 it.effect("a stopped store for restore is not trusted as quiet afterwards", () =>
   Effect.gen(function* () {
     const f = yield* fixture;

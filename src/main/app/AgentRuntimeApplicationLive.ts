@@ -192,7 +192,7 @@ const supervisor = Layer.effectContext(
       // Product writers span Core admission through execution acknowledgement; hold the process.
       withWriter: (operation) =>
         admission.withWriter(
-          Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.retained(operation))),
+          Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.writing(operation))),
         ),
       runtimeExists: fs.exists(join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite")),
       subscribeExecutionChanges: executionChanges,

@@ -400,13 +400,14 @@ The process runs only while needed. It stops after three quiet minutes once it r
 active Run, pending question, live delegated or background task, delegated result waiting to
 wake a root, or execution handoff hold, and while no request, Host call, Session or voice
 observer, product write or Profile snapshot is using it. An idle stop is not a crash and the
-next Agent action starts the process again. After such a stop, and after quitting while quiet,
+next Agent action starts the process again. After such a stop, and after quitting while the
+process reports no work and no product write is in flight (reads and observers do not count),
 Main keeps durable evidence bound to the exact execution store files; a launch starts the
 process at once whenever that evidence is missing or no longer matches, including after a
 crash, restore or copy.
 
-Listing providers and models never starts the process by itself. While it is stopped, model
-pickers, launch defaults and provider checks see the catalog it last served, as long as the
-execution build and the provider settings and installation it described are unchanged;
-otherwise the listing starts the process. A running process always answers live, and an
-explicit refresh always reaches it.
+Listing providers and models starts the process only when nothing current is known. While it
+is stopped, model pickers, launch defaults and provider checks see the catalog it last served,
+as long as the execution build and the provider settings and installation it described are
+unchanged; otherwise the listing starts the process. A running process always answers live,
+and an explicit refresh always reaches it.
