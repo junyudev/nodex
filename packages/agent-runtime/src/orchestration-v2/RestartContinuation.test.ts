@@ -765,7 +765,7 @@ it.effect("shows a continuation as a T3 Code notice whose detail is the prompt",
     assert.deepEqual(resumed?.notification, {
       source: { kind: "system" },
       outcome: "updated",
-      summary: "T3 Code restarted and resumed this turn",
+      summary: "Nodex restarted and resumed this turn",
       detail: "Continue where you left off.",
     });
   }),

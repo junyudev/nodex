@@ -175,6 +175,12 @@ function makeLocalCommandHarness(input: {
   readonly writeFailure?: unknown;
   /** Loads the thread and starts the run, then fails every later state read. */
   readonly failReadsAfterRunning?: boolean;
+  /** The run continues one a restart cut before its native session existed. */
+  readonly restartContinuationOfRunId?: RunId;
+  /** Opens a session whose provider thread has no native ref yet. */
+  readonly freshNativeSession?: boolean;
+  /** Fails every portable history read. */
+  readonly historyReadFailure?: unknown;
 }) {
   const now = DateTime.makeUnsafe("2026-09-04T12:00:00Z");
   const threadId = ThreadId.make("thread-native-account-command");
@@ -204,6 +210,9 @@ function makeLocalCommandHarness(input: {
     completedAt: null,
     checkpointId: null,
     contextHandoffId: null,
+    ...(input.restartContinuationOfRunId === undefined
+      ? {}
+      : { restartContinuationOfRunId: input.restartContinuationOfRunId }),
   };
   const providerThread: OrchestrationV2ThreadProjection["providerThreads"][number] = {
     id: providerThreadId,
@@ -401,42 +410,47 @@ function makeLocalCommandHarness(input: {
   const open = vi.fn(() =>
     input.interruptOpen === true
       ? Effect.interrupt
-      : "historyReadFailureAfterFallback" in input
-        ? Effect.succeed(resumeFallbackSession as never)
-        : "ensureThreadFailure" in input
-          ? Effect.succeed({ driver: providerThread.driver, ensureThread } as never)
-          : "openFailure" in input
-            ? Effect.sync(() => {
-                if (input.interruptRunBeforeOpenFailure === true) interruptRun();
-              }).pipe(
-                Effect.andThen(
-                  Effect.fail(
-                    new ProviderSessionManager.ProviderSessionOpenError({
-                      instanceId: newInstanceId,
-                      providerSessionId,
-                      cause: input.openFailure,
-                    }),
+      : input.freshNativeSession === true
+        ? Effect.succeed({
+            driver: providerThread.driver,
+            ensureThread: () => Effect.succeed(providerThread),
+          } as never)
+        : "historyReadFailureAfterFallback" in input
+          ? Effect.succeed(resumeFallbackSession as never)
+          : "ensureThreadFailure" in input
+            ? Effect.succeed({ driver: providerThread.driver, ensureThread } as never)
+            : "openFailure" in input
+              ? Effect.sync(() => {
+                  if (input.interruptRunBeforeOpenFailure === true) interruptRun();
+                }).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new ProviderSessionManager.ProviderSessionOpenError({
+                        instanceId: newInstanceId,
+                        providerSessionId,
+                        cause: input.openFailure,
+                      }),
+                    ),
                   ),
-                ),
-              )
-            : input.failReadsAfterRunning === true
-              ? Effect.succeed({
-                  driver: providerThread.driver,
-                  providerSession: {
-                    id: providerSessionId,
+                )
+              : input.failReadsAfterRunning === true
+                ? Effect.succeed({
                     driver: providerThread.driver,
-                    providerInstanceId: newInstanceId,
-                    status: "ready",
-                    cwd: "/tmp/native-account-command",
-                    model: null,
-                    capabilities: CodexProviderCapabilitiesV2,
-                    createdAt: now,
-                    updatedAt: now,
-                    lastError: null,
-                  },
-                  ensureThread: () => Effect.succeed(providerThread),
-                } as never)
-              : Effect.die("A local command must not open a native session."),
+                    providerSession: {
+                      id: providerSessionId,
+                      driver: providerThread.driver,
+                      providerInstanceId: newInstanceId,
+                      status: "ready",
+                      cwd: "/tmp/native-account-command",
+                      model: null,
+                      capabilities: CodexProviderCapabilitiesV2,
+                      createdAt: now,
+                      updatedAt: now,
+                      lastError: null,
+                    },
+                    ensureThread: () => Effect.succeed(providerThread),
+                  } as never)
+                : Effect.die("A local command must not open a native session."),
   );
   const startRootRun = vi.fn<
     (input: RunExecutionService.RunExecutionServiceV2StartRootRunInput) => Effect.Effect<void>
@@ -524,7 +538,7 @@ function makeLocalCommandHarness(input: {
             }),
           hasNativeTurns: () => Effect.succeed(false),
           getHandoffHistory: () =>
-            input.historyReadFailureAfterFallback === undefined
+            (input.historyReadFailureAfterFallback ?? input.historyReadFailure) === undefined
               ? Effect.succeed({
                   sourceItemCount: 0,
                   sourceRunCount: 0,
@@ -537,7 +551,7 @@ function makeLocalCommandHarness(input: {
               : Effect.fail(
                   new ProjectionStore.ProjectionStoreReadError({
                     threadId,
-                    cause: input.historyReadFailureAfterFallback,
+                    cause: input.historyReadFailureAfterFallback ?? input.historyReadFailure,
                   }),
                 ),
         }),
@@ -754,6 +768,34 @@ effectIt.effect(
       expect(harness.writeIfRunCurrent).not.toHaveBeenCalled();
       expect(harness.projection().runs.at(-1)?.status).toBe("starting");
       expect(harness.events).toEqual([]);
+    }),
+);
+
+effectIt.effect.each([
+  ["continues a restarted turn", RunId.make("run-cut-by-restart"), "ProjectionStoreReadError"],
+  ["starts a first turn", undefined, undefined],
+] as const)(
+  "%s in a fresh native session only with the conversation's portable history",
+  ([, restartContinuationOfRunId, expectedCause]) =>
+    Effect.gen(function* () {
+      const harness = makeLocalCommandHarness({
+        text: "Continue where you left off.",
+        freshNativeSession: true,
+        ...(restartContinuationOfRunId === undefined ? {} : { restartContinuationOfRunId }),
+        historyReadFailure: new Error("history unavailable"),
+      });
+      const exit = yield* Effect.exit(harness.start);
+      if (expectedCause === undefined) {
+        // A first turn has no earlier conversation to carry.
+        expect(exit._tag).toBe("Failure");
+        expect(String(exit)).not.toContain("history unavailable");
+        return;
+      }
+      // A continuation never reaches the provider without its history: an unreadable
+      // history fails the attempt instead of sending a bare continuation prompt.
+      const error = yield* harness.start.pipe(Effect.flip);
+      expect((error.cause as { _tag?: string } | undefined)?._tag).toBe(expectedCause);
+      expect(harness.startRootRun).not.toHaveBeenCalled();
     }),
 );
 

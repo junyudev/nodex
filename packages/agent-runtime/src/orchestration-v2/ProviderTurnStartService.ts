@@ -766,12 +766,94 @@ export const layer: Layer.Layer<
             }),
           );
         }
+        // A fresh native session continues this conversation from bounded portable history
+        // of every earlier Run, so it never receives a continuation without its context.
+        const carryPortableHistory = Effect.fnUntraced(function* (
+          replacement: OrchestrationV2ProviderThread,
+        ) {
+          const transferId = yield* idAllocator.allocate.contextTransfer({
+            sourceThreadId: projection.thread.id,
+            targetThreadId: projection.thread.id,
+            type: "provider_resume_fallback",
+          });
+          const createdAt = yield* DateTime.now;
+          const preparedHistory = yield* projectionStore.getHandoffHistory({
+            threadId: input.threadId,
+            runOrdinalTo: run.ordinal - 1,
+            includeImported: true,
+            budget: handoffBudget({
+              tokenCap: contextHandoffService.historyBudget,
+              userText: message.text,
+              attachments: message.attachments,
+              providerThread: { ...replacement, contextUsage: null },
+              nativeContextEstimate: 0,
+              modelContextWindow: session.getModelContextWindow?.(
+                run.modelSelection,
+                resolvedRuntimePolicy.cwd,
+              ),
+            }),
+          });
+          const handoff = yield* contextHandoffService.prepareProviderHandoff({
+            threadId: projection.thread.id,
+            targetRunId: run.id,
+            transferId,
+            fromProviderThreadIds: [providerThread.id],
+            toProviderThreadId: providerThread.id,
+            fromProviderInstanceId: providerThread.providerInstanceId,
+            toProviderInstanceId: run.providerInstanceId,
+            coveredRunOrdinals: preparedHistory.coveredRunOrdinals,
+            strategy: "full_thread_summary",
+            items: [],
+            preparedHistory,
+            createdAt,
+          });
+          effectiveHandoffs = [handoff, ...effectiveHandoffs];
+          yield* eventSink.write({
+            events: [
+              {
+                id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                type: "context-handoff.updated",
+                threadId: projection.thread.id,
+                runId: run.id,
+                providerInstanceId: run.providerInstanceId,
+                occurredAt: createdAt,
+                payload: handoff,
+              },
+              {
+                id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
+                type: "context-transfer.updated",
+                threadId: projection.thread.id,
+                runId: run.id,
+                providerInstanceId: run.providerInstanceId,
+                occurredAt: createdAt,
+                payload: {
+                  id: transferId,
+                  type: "provider_handoff",
+                  sourceThreadId: projection.thread.id,
+                  targetThreadId: projection.thread.id,
+                  sourcePoint: { threadId: projection.thread.id },
+                  basePoint: null,
+                  sourceProviderInstanceId: providerThread.providerInstanceId,
+                  targetProviderInstanceId: run.providerInstanceId,
+                  targetRunId: run.id,
+                  status: "resolved_portable",
+                  resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
+                  createdBy: "system",
+                  error: null,
+                  createdAt,
+                  updatedAt: createdAt,
+                  consumedAt: null,
+                },
+              },
+            ],
+          });
+        });
         if (providerThread.nativeThreadRef === null) {
           // Hand the run's provider thread to the adapter so it adopts this
           // row's identity when attaching native state. An adapter that mints
           // its own row instead leaves two live rows per app thread, and
           // `activeProviderThreadId` then flaps between them on every update.
-          return yield* loadFromProvider(
+          const fresh = yield* loadFromProvider(
             session.ensureThread({
               threadId: projection.thread.id,
               title: projection.thread.title,
@@ -781,6 +863,11 @@ export const layer: Layer.Layer<
               existingProviderThread: providerThread,
             }),
           );
+          // A restart cut this conversation before its native session existed; resuming it
+          // natively is impossible, so the continuation carries the conversation itself.
+          if (fresh !== undefined && run.restartContinuationOfRunId !== undefined)
+            yield* carryPortableHistory(fresh);
+          return fresh;
         }
         const uncertainDelivery = projection.uncertainDelivery;
         const resumed = yield* Effect.result(
@@ -826,82 +913,7 @@ export const layer: Layer.Layer<
           }),
         );
         if (replacement === undefined) return undefined;
-        const transferId = yield* idAllocator.allocate.contextTransfer({
-          sourceThreadId: projection.thread.id,
-          targetThreadId: projection.thread.id,
-          type: "provider_resume_fallback",
-        });
-        const createdAt = yield* DateTime.now;
-        const preparedHistory = yield* projectionStore.getHandoffHistory({
-          threadId: input.threadId,
-          runOrdinalTo: run.ordinal - 1,
-          includeImported: true,
-          budget: handoffBudget({
-            tokenCap: contextHandoffService.historyBudget,
-            userText: message.text,
-            attachments: message.attachments,
-            providerThread: { ...replacement, contextUsage: null },
-            nativeContextEstimate: 0,
-            modelContextWindow: session.getModelContextWindow?.(
-              run.modelSelection,
-              resolvedRuntimePolicy.cwd,
-            ),
-          }),
-        });
-        const handoff = yield* contextHandoffService.prepareProviderHandoff({
-          threadId: projection.thread.id,
-          targetRunId: run.id,
-          transferId,
-          fromProviderThreadIds: [providerThread.id],
-          toProviderThreadId: providerThread.id,
-          fromProviderInstanceId: providerThread.providerInstanceId,
-          toProviderInstanceId: run.providerInstanceId,
-          coveredRunOrdinals: preparedHistory.coveredRunOrdinals,
-          strategy: "full_thread_summary",
-          items: [],
-          preparedHistory,
-          createdAt,
-        });
-        effectiveHandoffs = [handoff, ...effectiveHandoffs];
-        yield* eventSink.write({
-          events: [
-            {
-              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-              type: "context-handoff.updated",
-              threadId: projection.thread.id,
-              runId: run.id,
-              providerInstanceId: run.providerInstanceId,
-              occurredAt: createdAt,
-              payload: handoff,
-            },
-            {
-              id: yield* idAllocator.allocate.event({ threadId: projection.thread.id }),
-              type: "context-transfer.updated",
-              threadId: projection.thread.id,
-              runId: run.id,
-              providerInstanceId: run.providerInstanceId,
-              occurredAt: createdAt,
-              payload: {
-                id: transferId,
-                type: "provider_handoff",
-                sourceThreadId: projection.thread.id,
-                targetThreadId: projection.thread.id,
-                sourcePoint: { threadId: projection.thread.id },
-                basePoint: null,
-                sourceProviderInstanceId: providerThread.providerInstanceId,
-                targetProviderInstanceId: run.providerInstanceId,
-                targetRunId: run.id,
-                status: "resolved_portable",
-                resolution: { strategy: "portable_context", contextHandoffId: handoff.id },
-                createdBy: "system",
-                error: null,
-                createdAt,
-                updatedAt: createdAt,
-                consumedAt: null,
-              },
-            },
-          ],
-        });
+        yield* carryPortableHistory(replacement);
         return replacement;
       });
       // The last attempt already failed the run.
