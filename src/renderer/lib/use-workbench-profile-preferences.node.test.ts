@@ -9,6 +9,32 @@ import {
 } from "./use-workbench-profile-preferences";
 
 describe("Workbench profile preferences", () => {
+  test("uses the default sidebar width only when storage has no valid explicit width", () => {
+    expect(normalizeWorkbenchProfilePreferences(undefined).sidebar.width).toBe(288);
+    expect(normalizeWorkbenchProfilePreferences({ sidebar: {} }).sidebar.width).toBe(288);
+    expect(
+      normalizeWorkbenchProfilePreferences({ sidebar: { width: Number.NaN } }).sidebar.width,
+    ).toBe(288);
+    expect(normalizeWorkbenchProfilePreferences({ sidebar: { width: 300 } }).sidebar.width).toBe(
+      300,
+    );
+    expect(
+      normalizeLegacyWorkbenchProfilePreferences({ sidebar: { width: 300 } }).sidebar.width,
+    ).toBe(300);
+  });
+
+  test("fresh and malformed profile storage use the same default sidebar width", () => {
+    const storage = (raw: string | null) => ({
+      getItem: () => raw,
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    expect(loadWorkbenchProfilePreferencesFromStorage(storage(null)).sidebar.width).toBe(288);
+    expect(loadWorkbenchProfilePreferencesFromStorage(storage("malformed")).sidebar.width).toBe(
+      288,
+    );
+  });
+
   test("normalizes persisted preferences at the storage boundary", () => {
     const preferences = normalizeWorkbenchProfilePreferences({
       viewsByProject: {

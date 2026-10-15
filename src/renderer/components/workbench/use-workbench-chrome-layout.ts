@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type RefObject } from "react";
+import {
+  normalizeWorkbenchWindowZoom,
+  resolveWorkbenchHeaderSafeInsets,
+} from "../../../shared/workbench-window-chrome";
 import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  WORKBENCH_TITLEBAR_HEIGHT_PX,
   WORKBENCH_SURFACE_GUTTER_PX,
 } from "@/lib/workbench-shell-geometry";
 import { useMotionValue, useTransform, type MotionValue } from "motion/react";
@@ -26,8 +31,6 @@ import {
   useSyncedMotionValue,
 } from "@/lib/resize-observer-motion-values";
 
-const MAC_TRAFFIC_LIGHT_SAFE_HEADER_LEFT_PX = 82;
-const NON_MAC_SAFE_HEADER_LEFT_PX = 12;
 const LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX = 126;
 
 export type CodexShellWidthClass = "narrow" | "medium" | "wide";
@@ -64,7 +67,7 @@ function resolveShellWidthClass(width: number): CodexShellWidthClass {
 function readWindowZoom(root: HTMLElement | null): number {
   const rawZoom = root ? window.getComputedStyle(root).getPropertyValue("--codex-window-zoom") : "";
   const parsedZoom = Number.parseFloat(rawZoom);
-  return Number.isFinite(parsedZoom) && parsedZoom > 0 ? parsedZoom : 1;
+  return normalizeWorkbenchWindowZoom(parsedZoom);
 }
 
 function readRootFontSize(): number {
@@ -101,7 +104,12 @@ export function useWorkbenchChromeLayout({
     }
     const windowZoom = readWindowZoom(rootRef.current);
     return {
-      height: Math.max(0, window.innerHeight / windowZoom - WORKBENCH_SURFACE_GUTTER_PX),
+      height: Math.max(
+        0,
+        window.innerHeight / windowZoom -
+          WORKBENCH_TITLEBAR_HEIGHT_PX -
+          WORKBENCH_SURFACE_GUTTER_PX,
+      ),
       width: Math.max(
         0,
         window.innerWidth / windowZoom -
@@ -117,6 +125,7 @@ export function useWorkbenchChromeLayout({
     readFallbackSize: readShellBodyFallbackSize,
   });
   const rootFontSize = useMotionValue(readRootFontSize());
+  const [windowZoom, setWindowZoom] = useState(1);
   const rightPanelRequestedWidth = useMotionValue(
     persistedRightPanelWidth ?? RIGHT_PANEL_DEFAULT_WIDTH,
   );
@@ -133,13 +142,19 @@ export function useWorkbenchChromeLayout({
   }, [activeSessionId, bottomPanelRequestedHeight, persistedBottomPanelHeight]);
 
   useEffect(() => {
-    const measure = () => rootFontSize.set(readRootFontSize());
+    const measure = () => {
+      rootFontSize.set(readRootFontSize());
+      setWindowZoom(
+        readWindowZoom(rootRef.current) *
+          normalizeWorkbenchWindowZoom(window.api?.getWindowZoomFactor?.() ?? 1),
+      );
+    };
     measure();
     window.addEventListener("resize", measure);
     return () => {
       window.removeEventListener("resize", measure);
     };
-  }, [rootFontSize]);
+  }, [rootFontSize, rootRef]);
 
   const rightPanelFullWidthValue = useSyncedMotionValue(rightPanelFullWidth ? 1 : 0);
   const rightPanelOpenValue = useSyncedMotionValue(rightPanelOpen ? 1 : 0);
@@ -255,9 +270,12 @@ export function useWorkbenchChromeLayout({
   const shellWidthClassValue = useTransform(shellBodySize.width, resolveShellWidthClass);
   const shellWidthClass = useMotionValueState(shellWidthClassValue);
 
-  const safeHeaderLeftWidth = isMacPlatform
-    ? MAC_TRAFFIC_LIGHT_SAFE_HEADER_LEFT_PX
-    : NON_MAC_SAFE_HEADER_LEFT_PX;
+  const { left: safeHeaderLeftWidth, right: safeHeaderRightWidth } =
+    resolveWorkbenchHeaderSafeInsets({
+      isMacPlatform,
+      userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+      windowZoom,
+    });
   const collapsedHeaderLeftFallbackWidth =
     safeHeaderLeftWidth + LEFT_HEADER_COLLAPSED_RAIL_FALLBACK_WIDTH_PX;
   const effectiveHeaderLeftWidth = sidebarLogicalCollapsed
@@ -300,6 +318,7 @@ export function useWorkbenchChromeLayout({
     rightPanelRequestedWidth,
     rightPanelTargetWidth,
     safeHeaderLeftWidth,
+    safeHeaderRightWidth,
     shellBodySize,
     shellMainContentWidth,
     shellWidthClass,

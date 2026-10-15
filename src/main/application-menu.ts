@@ -9,6 +9,7 @@ import {
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../shared/workbench-commands";
+import type { WindowZoomCommand } from "./window-navigation-chrome";
 
 export const TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID = "view.toggleBottomPanel";
 export const INSTALL_CLI_MENU_ITEM_ID = "app.installCli";
@@ -110,6 +111,7 @@ export function buildWindowFileMenu(options: WindowFileMenuOptions): MenuItemCon
 export function buildWorkbenchViewMenu(
   commandKeymapState: CommandKeymapState,
   onExecuteCommand: (invocation: WorkbenchCommandInvocation) => void,
+  onZoom: (command: WindowZoomCommand) => void,
 ): MenuItemConstructorOptions {
   return {
     label: "View",
@@ -132,9 +134,24 @@ export function buildWorkbenchViewMenu(
       { role: "forceReload" },
       { role: "toggleDevTools" },
       { type: "separator" },
-      { role: "resetZoom" },
-      { role: "zoomIn" },
-      { role: "zoomOut" },
+      {
+        id: "view.resetZoom",
+        label: "Actual Size",
+        accelerator: "CommandOrControl+0",
+        click: () => onZoom("reset"),
+      },
+      {
+        id: "view.zoomIn",
+        label: "Zoom In",
+        accelerator: "CommandOrControl+Plus",
+        click: () => onZoom("in"),
+      },
+      {
+        id: "view.zoomOut",
+        label: "Zoom Out",
+        accelerator: "CommandOrControl+-",
+        click: () => onZoom("out"),
+      },
       { type: "separator" },
       { role: "togglefullscreen" },
     ],

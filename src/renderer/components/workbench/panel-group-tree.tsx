@@ -47,6 +47,7 @@ import {
   type PanelTabRect,
 } from "./panel-tab-dnd";
 import { PanelTabInsertionIndicator } from "./panel-tab-insertion-indicator";
+import { WorkbenchPaneTitlebar } from "./workbench-titlebar-context";
 
 const PANEL_GROUP_RATIO_ACK_EPSILON = 0.000_001;
 
@@ -172,6 +173,7 @@ export function PanelGroupTree({
         sessionId={sessionId}
         panelId={panelId}
         node={rootNode}
+        titlebar={panelId === "right"}
         activeLeafId={activeLeafId}
         activeDragId={activeDragId}
         previewIntent={previewIntent}
@@ -315,6 +317,7 @@ function PanelGroupNode(props: {
   sessionId: string;
   panelId: PanelId;
   node: WorkbenchPanelNode;
+  titlebar: boolean;
   activeLeafId: string;
   activeDragId: string | null;
   previewIntent: PanelTabDropIntent | null;
@@ -419,7 +422,12 @@ function PanelGroupSplit({
           isHorizontal ? "border-l" : "border-t",
         )}
       >
-        <PanelGroupNode {...props} node={branch.second} onResizeGroup={onResizeGroup} />
+        <PanelGroupNode
+          {...props}
+          node={branch.second}
+          titlebar={props.titlebar && isHorizontal}
+          onResizeGroup={onResizeGroup}
+        />
       </div>
     </div>
   );
@@ -429,6 +437,7 @@ function PanelGroupLeaf({
   sessionId,
   panelId,
   leaf,
+  titlebar,
   activeLeafId,
   activeDragId,
   previewIntent,
@@ -496,6 +505,7 @@ function PanelGroupLeaf({
     >
       {tabs.length > 0 && activeTabId ? (
         <AppShellTabs
+          titlebar={titlebar}
           tabs={tabs}
           activeTabId={activeTabId}
           panelId={`${panelId}:${leaf.id}`}
@@ -533,6 +543,7 @@ function PanelGroupLeaf({
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           <PanelGroupEmptyHeader
+            titlebar={titlebar}
             sessionId={sessionId}
             panelId={panelId}
             leafId={leaf.id}
@@ -672,6 +683,7 @@ function PanelGroupEmptyHeader({
   afterList,
   tabScrollEndPaddingPx,
   children,
+  titlebar,
 }: {
   sessionId: string;
   panelId: PanelId;
@@ -683,6 +695,7 @@ function PanelGroupEmptyHeader({
   afterList?: ReactNode;
   tabScrollEndPaddingPx?: number;
   children: ReactNode;
+  titlebar: boolean;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
   const tabRowPreview =
@@ -706,34 +719,41 @@ function PanelGroupEmptyHeader({
   }, [leafId, panelId, sessionId]);
 
   return (
-    <div className="isolate flex h-toolbar min-w-0 shrink-0 select-none items-center bg-token-main-surface-primary px-2 [contain:layout_paint]">
-      {beforeList ? (
-        <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
-          {beforeList}
-        </div>
-      ) : null}
+    <WorkbenchPaneTitlebar enabled={titlebar}>
       <div
-        ref={rowRef}
-        data-panel-tab-row={`${panelId}:${leafId}`}
-        className="relative isolate flex h-full min-w-0 flex-1 items-center [contain:layout_paint]"
-        style={{ scrollPaddingInlineEnd: tabScrollEndPaddingPx }}
+        className={cn(
+          "isolate flex h-toolbar min-w-0 shrink-0 select-none items-center px-2 [contain:layout_paint]",
+          titlebar ? "bg-transparent" : "bg-token-main-surface-primary",
+        )}
       >
-        {afterTabs ? (
-          <div className="no-drag sticky right-0 z-10 flex h-full shrink-0 items-center bg-token-main-surface-primary">
-            {afterTabs}
+        {beforeList ? (
+          <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+            {beforeList}
           </div>
         ) : null}
-        {tabRowPreview && activeDragId ? (
-          <PanelTabInsertionIndicator intent={tabRowPreview} />
-        ) : null}
-      </div>
-      {afterList ? (
-        <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
-          {afterList}
+        <div
+          ref={rowRef}
+          data-panel-tab-row={`${panelId}:${leafId}`}
+          className="relative isolate flex h-full min-w-0 flex-1 items-center [contain:layout_paint]"
+          style={{ scrollPaddingInlineEnd: tabScrollEndPaddingPx }}
+        >
+          {afterTabs ? (
+            <div className="no-drag sticky right-0 z-10 flex h-full shrink-0 items-center bg-token-main-surface-primary">
+              {afterTabs}
+            </div>
+          ) : null}
+          {tabRowPreview && activeDragId ? (
+            <PanelTabInsertionIndicator intent={tabRowPreview} />
+          ) : null}
         </div>
-      ) : null}
-      {children}
-    </div>
+        {afterList ? (
+          <div role="presentation" className="no-drag my-auto flex shrink-0 items-center">
+            {afterList}
+          </div>
+        ) : null}
+        {children}
+      </div>
+    </WorkbenchPaneTitlebar>
   );
 }
 

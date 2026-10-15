@@ -7,6 +7,7 @@ import {
   app,
   Menu,
   webContents,
+  nativeTheme,
   type WebContents,
   type MenuItemConstructorOptions,
   type MessageBoxOptions,
@@ -58,11 +59,13 @@ import { getLogger } from "../logging/logger";
 import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { AppUpdateRuntimeError } from "./AppUpdateRuntime";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
+import { syncWindowNavigationChrome, type WindowZoomCommand } from "../window-navigation-chrome";
 
 export interface ApplicationMenuNativePort {
+  readonly shouldUseDarkColors: () => boolean;
   readonly getFocusedWebContents: () => Pick<
     WebContents,
-    "id" | "isDestroyed" | "undo" | "redo"
+    "id" | "isDestroyed" | "undo" | "redo" | "getZoomLevel" | "setZoomLevel"
   > | null;
   readonly buildFromTemplate: (template: MenuItemConstructorOptions[]) => Menu;
   readonly homePath: string;
@@ -98,6 +101,7 @@ export class ApplicationMenuRuntime extends Context.Service<
 >()("nodex/main/host-runtime/ApplicationMenuRuntime") {}
 
 const electronNative = (): ApplicationMenuNativePort => ({
+  shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
   getFocusedWebContents: () => webContents.getFocusedWebContents(),
   buildFromTemplate: (template) => Menu.buildFromTemplate(template),
   homePath: app.getPath("home"),
@@ -153,6 +157,19 @@ export const live = (
         callbacks.fork(effect.pipe(reportFailure(operation), Effect.asVoid));
       };
       const targetWindow = () => options.windows.getLastFocused();
+      const zoomFocusedContents = (command: WindowZoomCommand): void => {
+        const window = targetWindow();
+        const focused = native.getFocusedWebContents() ?? window?.webContents;
+        if (!focused || focused.isDestroyed()) return;
+        focused.setZoomLevel(
+          command === "reset" ? 0 : focused.getZoomLevel() + (command === "in" ? 0.5 : -0.5),
+        );
+        if (focused.id !== window?.webContents.id) return;
+        // Chromium shares normal page zoom by origin, including other app windows.
+        for (const candidate of options.windows.all()) {
+          syncWindowNavigationChrome(candidate, options.platform, native.shouldUseDarkColors());
+        }
+      };
       let applicationMenu: Menu | null = null;
       let historyGeneration = 0;
       const historyByWindow = new Map<number, FocusedHistoryPublication>();
@@ -372,7 +389,7 @@ export const live = (
               },
             ],
           },
-          buildWorkbenchViewMenu(commandKeymap, sendWorkbenchCommand),
+          buildWorkbenchViewMenu(commandKeymap, sendWorkbenchCommand, zoomFocusedContents),
           { role: "windowMenu" },
         ];
         applicationMenu = native.buildFromTemplate(appTemplate);

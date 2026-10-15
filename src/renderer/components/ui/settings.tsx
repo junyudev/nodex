@@ -218,9 +218,7 @@ export function NodexSettingsPageSurface({
       className={cn("main-surface flex h-full min-h-0 w-full flex-col", className)}
       style={CODEX_SETTINGS_SHELL_STYLE}
     >
-      <div className="draggable flex items-center px-panel electron:h-toolbar extension:h-toolbar-sm">
-        {backSlot}
-      </div>
+      {backSlot ? <div className="flex items-center px-panel">{backSlot}</div> : null}
       <div className="flex-1 overflow-y-auto p-panel">
         <div
           className={cn(

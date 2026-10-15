@@ -6,6 +6,7 @@ import type {
   WorkbenchSceneSnapshotV4,
 } from "./workbench-scene";
 import type { LibraryPlacedResourceTarget, LibraryRouteTarget } from "./library-module";
+import { WORKBENCH_SIDEBAR_WIDTH_DEFAULT_PX } from "./workbench-window-chrome";
 
 export type WorkbenchLayoutView = "board" | "list" | "toggle-list" | "calendar";
 export type WorkbenchLayoutStageId = "db" | "pages" | "threads" | "files";
@@ -287,7 +288,7 @@ export function createDefaultWorkbenchLayoutSnapshotV3(): WorkbenchLayoutSnapsho
     stageNavDirection: "right",
     sidebar: {
       collapsed: false,
-      width: 300,
+      width: WORKBENCH_SIDEBAR_WIDTH_DEFAULT_PX,
       collapsibleSections: {},
     },
     dock: {

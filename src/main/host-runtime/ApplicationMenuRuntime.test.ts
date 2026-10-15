@@ -23,6 +23,8 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
     const sent: Array<{ channel: string; args: unknown[] }> = [];
     let newWindowCount = 0;
     let closeCount = 0;
+    let zoomLevel = 0;
+    const nativeButtonPositions: Array<{ x: number; y: number }> = [];
     let focused: ReturnType<ApplicationMenuNativePort["getFocusedWebContents"]> = null;
     let notifyFocus = () => {};
     const window = {
@@ -30,17 +32,26 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
         closeCount += 1;
       },
       isDestroyed: () => false,
+      setWindowButtonPosition: (position: { x: number; y: number }) =>
+        nativeButtonPositions.push(position),
       webContents: {
         id: 1,
         isDestroyed: () => false,
+        getZoomFactor: () => 1.2 ** zoomLevel,
+        getZoomLevel: () => zoomLevel,
+        setZoomLevel: (level: number) => {
+          zoomLevel = level;
+        },
         send: (channel: string, ...args: unknown[]) => sent.push({ channel, args }),
       },
     } as unknown as BrowserWindow;
     const windows = {
+      all: () => [window],
       getLastFocused: () => window,
       events: Stream.never,
     } as unknown as WindowRuntimeService;
     const native: ApplicationMenuNativePort = {
+      shouldUseDarkColors: () => false,
       getFocusedWebContents: () => focused,
       buildFromTemplate: (template) => {
         templates.push(template);
@@ -103,6 +114,41 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
     assert.strictEqual(newWindowCount, 1);
     assert.strictEqual(closeCount, 1);
 
+    const viewMenu = initialApplicationTemplate.find((item) => item.label === "View");
+    const viewItems = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const zoomCommand = (id: string) => {
+      const item = viewItems.find((candidate) => candidate.id === id);
+      if (typeof item?.click !== "function") throw new Error(`Expected ${id} menu command`);
+      item.click({} as never, {} as never, {} as never);
+    };
+    zoomCommand("view.zoomIn");
+    zoomCommand("view.zoomIn");
+    zoomCommand("view.zoomOut");
+    zoomCommand("view.resetZoom");
+    assert.strictEqual(zoomLevel, 0);
+    assert.deepEqual(nativeButtonPositions, [
+      { x: 16, y: 17 },
+      { x: 16, y: 19 },
+      { x: 16, y: 17 },
+      { x: 16, y: 15 },
+    ]);
+    let guestZoomLevel = 0;
+    focused = {
+      id: 99,
+      isDestroyed: () => false,
+      undo: () => {},
+      redo: () => {},
+      getZoomLevel: () => guestZoomLevel,
+      setZoomLevel: (level) => {
+        guestZoomLevel = level;
+      },
+    };
+    zoomCommand("view.zoomIn");
+    assert.strictEqual(guestZoomLevel, 0.5);
+    assert.strictEqual(zoomLevel, 0);
+    assert.strictEqual(nativeButtonPositions.length, 4);
+    focused = null;
+
     const navigateMenu = initialApplicationTemplate.find((item) => item.label === "Navigate");
     const back = (navigateMenu?.submenu as MenuItemConstructorOptions[]).find(
       (item) => item.label === "Back",
@@ -123,6 +169,8 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
       id: 99,
       isDestroyed: () => false,
       undo: () => {},
+      getZoomLevel: () => 0,
+      setZoomLevel: () => {},
       redo: () => {
         guestRedoCount += 1;
       },
@@ -170,7 +218,14 @@ it.effect("owns native menus and refreshes commands without replacing the runtim
     assert.strictEqual(redo.label, "Redo");
     assert.strictEqual(redo.enabled, true);
     yield* runtime.publishHistory(1, { generation: nextGeneration, sequence: 1, snapshot });
-    focused = { id: 99, isDestroyed: () => false, undo: () => {}, redo: () => {} };
+    focused = {
+      id: 99,
+      isDestroyed: () => false,
+      undo: () => {},
+      redo: () => {},
+      getZoomLevel: () => 0,
+      setZoomLevel: () => {},
+    };
     notifyFocus();
     assert.strictEqual(redo.label, "Redo");
     assert.strictEqual(redo.enabled, true);

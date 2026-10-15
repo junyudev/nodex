@@ -512,6 +512,16 @@ const pageCreateWorkflowMocks = vi.hoisted(() => ({
 
 export const requestPageCreateFromContextMock = pageCreateWorkflowMocks.requestFromContext;
 
+// Navigation tests have no layout engine; browser and native tests own titlebar geometry.
+vi.mock("../workbench-titlebar-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../workbench-titlebar-context")>();
+  return {
+    ...actual,
+    WorkbenchPaneTitlebar: ({ children }: Parameters<typeof actual.WorkbenchPaneTitlebar>[0]) =>
+      children,
+  };
+});
+
 vi.mock("@/lib/page-create-workflow", () => ({
   requestPageCreateFromContext: pageCreateWorkflowMocks.requestFromContext,
 }));
@@ -4899,6 +4909,21 @@ export async function moveSidebarPointer(clientX: number, clientY = 80): Promise
         clientY,
       }),
     );
+    await Promise.resolve();
+  });
+  await settleAsyncRender();
+}
+
+/** Enter or leave an app-rail destination through its public pointer boundary. */
+export async function hoverSidebarDestination(
+  screen: ReturnType<typeof renderWorkbench>,
+  destination: "Home" | "Space",
+  hovered = true,
+): Promise<void> {
+  const button = screen.getByRole("button", { name: destination });
+  await act(async () => {
+    if (hovered) fireEvent.pointerOver(button, { pointerType: "mouse" });
+    else fireEvent.pointerOut(button, { pointerType: "mouse", relatedTarget: document.body });
     await Promise.resolve();
   });
   await settleAsyncRender();

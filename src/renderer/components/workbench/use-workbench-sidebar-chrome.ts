@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { WORKBENCH_NAVIGATION_RAIL_WIDTH_PX } from "@/lib/workbench-shell-geometry";
+import {
+  WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
+  WORKBENCH_SURFACE_GUTTER_PX,
+  WORKBENCH_TITLEBAR_HEIGHT_PX,
+} from "@/lib/workbench-shell-geometry";
 import {
   CODEX_SIDEBAR_POINTER_DEFAULT,
   CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
@@ -9,6 +13,7 @@ import {
   shouldCollapseCodexSidebarResizeWidth,
   shouldClearCodexSidebarHoverSuppression,
   shouldResetCodexSidebarPointerOnWindowMouseOut,
+  type CodexSidebarPointerSnapshot,
 } from "@/lib/codex-sidebar-auto-reveal";
 import { useCodexSidebarMotionState } from "@/lib/codex-sidebar-motion";
 import { useDistinctState } from "@/lib/use-distinct-state";
@@ -43,6 +48,7 @@ export function useWorkbenchSidebarChrome({
   const [floatingSidebarResizing, setFloatingSidebarResizing] = useDistinctState(false);
   const [sidebarHoverSuppressed, setSidebarHoverSuppressed] = useDistinctState(false);
   const [sidebarTriggerHovered, setSidebarTriggerHovered] = useDistinctState(false);
+  const [sidebarNavigationHovered, setSidebarNavigationHovered] = useDistinctState(false);
   const [sidebarClickInFlight, setSidebarClickInFlight] = useState(false);
   const [floatingSidebarFocusActive, setFloatingSidebarFocusActive] = useDistinctState(false);
   const [floatingSidebarHoverSurfaceActive, setFloatingSidebarHoverSurfaceActive] =
@@ -57,6 +63,7 @@ export function useWorkbenchSidebarChrome({
     floatingSidebarHoverSurfaceActive: false,
     sidebarHoverSuppressed: false,
     sidebarTriggerHovered: false,
+    sidebarNavigationHovered: false,
   });
   const pendingSidebarPersistedOpenRef = useRef<boolean | null>(null);
 
@@ -123,7 +130,9 @@ export function useWorkbenchSidebarChrome({
         return;
       }
 
-      const nextWidth = clampCodexSidebarWidth(width);
+      const requestedWidth =
+        surface === "floating" && phase !== "reset" ? width + WORKBENCH_SURFACE_GUTTER_PX : width;
+      const nextWidth = clampCodexSidebarWidth(requestedWidth);
       motion.setTargetWidth(nextWidth);
       if (surface === "floating") {
         setFloatingSidebarVisible(true);
@@ -184,17 +193,21 @@ export function useWorkbenchSidebarChrome({
   }, [workbenchRootRef]);
 
   const recomputeFloatingSidebarVisibility = useCallback(
-    (pointerX: number | null) => {
+    (pointer: Pick<CodexSidebarPointerSnapshot, "x" | "y">) => {
       const inputs = sidebarVisibilityInputsRef.current;
+      const insideWorkspace =
+        pointer.y !== null &&
+        pointer.y >= WORKBENCH_TITLEBAR_HEIGHT_PX + WORKBENCH_SURFACE_GUTTER_PX &&
+        pointer.y <= window.innerHeight / getWindowZoom() - WORKBENCH_SURFACE_GUTTER_PX * 2;
       const sidebarPointerX =
-        pointerX === null || pointerX < WORKBENCH_NAVIGATION_RAIL_WIDTH_PX
+        !insideWorkspace || pointer.x === null || pointer.x < WORKBENCH_NAVIGATION_RAIL_WIDTH_PX
           ? null
-          : pointerX - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX;
+          : pointer.x - WORKBENCH_NAVIGATION_RAIL_WIDTH_PX;
       if (inputs.sidebarHoverSuppressed) {
         if (
           !shouldClearCodexSidebarHoverSuppression({
-            pointerX: sidebarPointerX,
             triggerHovered: inputs.sidebarTriggerHovered,
+            navigationHovered: inputs.sidebarNavigationHovered,
           })
         ) {
           setFloatingSidebarVisible(false);
@@ -211,13 +224,19 @@ export function useWorkbenchSidebarChrome({
           sidebarOpen: !inputs.sidebarCollapsed,
           sidebarAnimating: inputs.sidebarAnimating,
           hoverSuppressed: false,
+          navigationHovered: inputs.sidebarNavigationHovered,
           focusOverride: inputs.floatingSidebarFocusActive,
           hoverSurfaceActive: inputs.floatingSidebarHoverSurfaceActive,
           currentlyVisible: getFloatingSidebarVisible(),
         }),
       );
     },
-    [getFloatingSidebarVisible, setFloatingSidebarVisible, setSidebarHoverSuppressed],
+    [
+      getFloatingSidebarVisible,
+      getWindowZoom,
+      setFloatingSidebarVisible,
+      setSidebarHoverSuppressed,
+    ],
   );
 
   useEffect(() => {
@@ -232,7 +251,7 @@ export function useWorkbenchSidebarChrome({
         getWindowZoom(),
       );
       sidebarPointerRef.current = nextPointer;
-      recomputeFloatingSidebarVisibility(nextPointer.x);
+      recomputeFloatingSidebarVisibility(nextPointer);
     };
 
     const handleWindowMouseOut = (event: MouseEvent) => {
@@ -248,7 +267,7 @@ export function useWorkbenchSidebarChrome({
         return;
 
       sidebarPointerRef.current = CODEX_SIDEBAR_POINTER_DEFAULT;
-      recomputeFloatingSidebarVisibility(null);
+      recomputeFloatingSidebarVisibility(CODEX_SIDEBAR_POINTER_DEFAULT);
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -291,8 +310,9 @@ export function useWorkbenchSidebarChrome({
       floatingSidebarHoverSurfaceActive,
       sidebarHoverSuppressed,
       sidebarTriggerHovered,
+      sidebarNavigationHovered,
     };
-    recomputeFloatingSidebarVisibility(sidebarPointerRef.current.x);
+    recomputeFloatingSidebarVisibility(sidebarPointerRef.current);
   }, [
     floatingSidebarFocusActive,
     floatingSidebarHoverSurfaceActive,
@@ -300,6 +320,7 @@ export function useWorkbenchSidebarChrome({
     sidebarAnimating,
     sidebarHoverSuppressed,
     sidebarLogicalCollapsed,
+    sidebarNavigationHovered,
     sidebarTriggerHovered,
     sidebarWidth,
   ]);
@@ -319,6 +340,7 @@ export function useWorkbenchSidebarChrome({
     setSidebarClickInFlight,
     setSidebarHoverSuppressed,
     setSidebarTriggerHovered,
+    setSidebarNavigationHovered,
     showRealSidebarFromFloatingPanel,
     sidebarAnimating,
     sidebarClickInFlight,

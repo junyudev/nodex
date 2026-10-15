@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   createDefaultWorkbenchLayoutSnapshot,
+  createDefaultWorkbenchLayoutSnapshotV3,
   getWorkbenchActiveSessionId,
   getWorkbenchPrimaryDestination,
   type WorkbenchLocation,
@@ -12,6 +13,10 @@ function layoutWithLocation(
 ): WorkbenchLayoutSnapshot {
   return { ...createDefaultWorkbenchLayoutSnapshot(), location };
 }
+
+test("default layout sidebar geometry matches a fresh contextual sidebar", () => {
+  expect(createDefaultWorkbenchLayoutSnapshotV3().sidebar.width).toBe(288);
+});
 
 describe("getWorkbenchActiveSessionId", () => {
   test("derives the selected Session without consulting the renderer URL", () => {

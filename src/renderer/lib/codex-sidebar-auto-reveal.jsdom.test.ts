@@ -9,7 +9,6 @@ import {
   deriveCodexSidebarFloatingVisibility,
   getCodexSidebarFloatingOuterClassName,
   getCodexSidebarFloatingTransition,
-  isCodexSidebarEdgeEnterX,
   isCodexSidebarExpandedMounted,
   isCodexSidebarKeepOpenX,
   normalizeCodexSidebarPointer,
@@ -24,7 +23,7 @@ import {
 
 describe("Codex sidebar auto-reveal contract", () => {
   test("clamps width to the Codex default/min/max contract", () => {
-    expect(clampCodexSidebarWidth(Number.NaN)).toBe(300);
+    expect(clampCodexSidebarWidth(Number.NaN)).toBe(288);
     expect(clampCodexSidebarWidth(120)).toBe(240);
     expect(clampCodexSidebarWidth(239)).toBe(240);
     expect(clampCodexSidebarWidth(300)).toBe(300);
@@ -56,16 +55,10 @@ describe("Codex sidebar auto-reveal contract", () => {
         nodexStorageWidth: 340,
       }),
     ).toBe(340);
-    expect(resolveCodexSidebarWidth({})).toBe(300);
+    expect(resolveCodexSidebarWidth({})).toBe(288);
   });
 
-  test("uses Codex edge-enter and keep-open geometry boundaries", () => {
-    expect(isCodexSidebarEdgeEnterX(null)).toBe(false);
-    expect(isCodexSidebarEdgeEnterX(-1)).toBe(false);
-    expect(isCodexSidebarEdgeEnterX(0)).toBe(true);
-    expect(isCodexSidebarEdgeEnterX(12)).toBe(true);
-    expect(isCodexSidebarEdgeEnterX(13)).toBe(false);
-
+  test("keeps the peek open only within the contextual sidebar horizontal bounds", () => {
     expect(isCodexSidebarKeepOpenX(null, 300)).toBe(false);
     expect(isCodexSidebarKeepOpenX(-1, 300)).toBe(false);
     expect(isCodexSidebarKeepOpenX(0, 300)).toBe(true);
@@ -73,34 +66,28 @@ describe("Codex sidebar auto-reveal contract", () => {
     expect(isCodexSidebarKeepOpenX(301, 300)).toBe(false);
   });
 
-  test("keeps collapse suppression until the trigger is not hovered and pointer leaves the edge strip", () => {
+  test("keeps collapse suppression until both navigation and titlebar triggers are left", () => {
     expect(
       shouldClearCodexSidebarHoverSuppression({
-        pointerX: null,
         triggerHovered: false,
+        navigationHovered: true,
       }),
     ).toBe(false);
     expect(
       shouldClearCodexSidebarHoverSuppression({
-        pointerX: 40,
         triggerHovered: true,
+        navigationHovered: false,
       }),
     ).toBe(false);
     expect(
       shouldClearCodexSidebarHoverSuppression({
-        pointerX: 12,
         triggerHovered: false,
-      }),
-    ).toBe(false);
-    expect(
-      shouldClearCodexSidebarHoverSuppression({
-        pointerX: 13,
-        triggerHovered: false,
+        navigationHovered: false,
       }),
     ).toBe(true);
   });
 
-  test("derives floating visibility from open, animation, suppression, edge, keep-open, and focus state", () => {
+  test("derives floating visibility from navigation, open, animation, suppression, and focus", () => {
     expect(
       deriveCodexSidebarFloatingVisibility({
         pointerX: 8,
@@ -108,6 +95,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: true,
         sidebarAnimating: false,
         hoverSuppressed: false,
+        navigationHovered: true,
         focusOverride: false,
         currentlyVisible: false,
       }),
@@ -119,6 +107,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: true,
         hoverSuppressed: false,
+        navigationHovered: true,
         focusOverride: false,
         currentlyVisible: false,
       }),
@@ -130,6 +119,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: false,
         hoverSuppressed: true,
+        navigationHovered: true,
         focusOverride: true,
         currentlyVisible: false,
       }),
@@ -141,6 +131,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: false,
         hoverSuppressed: false,
+        navigationHovered: true,
         focusOverride: false,
         currentlyVisible: false,
       }),
@@ -152,6 +143,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: false,
         hoverSuppressed: false,
+        navigationHovered: false,
         focusOverride: false,
         currentlyVisible: true,
       }),
@@ -163,6 +155,7 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: false,
         hoverSuppressed: false,
+        navigationHovered: false,
         focusOverride: true,
         currentlyVisible: true,
       }),
@@ -177,9 +170,38 @@ describe("Codex sidebar auto-reveal contract", () => {
         sidebarOpen: false,
         sidebarAnimating: false,
         hoverSuppressed: false,
+        navigationHovered: false,
         focusOverride: false,
         hoverSurfaceActive: true,
         currentlyVisible: true,
+      }),
+    ).toBe(true);
+  });
+
+  test("content edges never open a hidden peek, while an open peek survives transfer from the rail", () => {
+    const base = {
+      leftPanelWidthPx: 300,
+      sidebarOpen: false,
+      sidebarAnimating: false,
+      hoverSuppressed: false,
+      navigationHovered: false,
+      focusOverride: false,
+    };
+    expect(
+      deriveCodexSidebarFloatingVisibility({ ...base, pointerX: 0, currentlyVisible: false }),
+    ).toBe(false);
+    expect(
+      deriveCodexSidebarFloatingVisibility({ ...base, pointerX: 12, currentlyVisible: false }),
+    ).toBe(false);
+    expect(
+      deriveCodexSidebarFloatingVisibility({ ...base, pointerX: 150, currentlyVisible: true }),
+    ).toBe(true);
+    expect(
+      deriveCodexSidebarFloatingVisibility({
+        ...base,
+        pointerX: null,
+        navigationHovered: true,
+        currentlyVisible: false,
       }),
     ).toBe(true);
   });

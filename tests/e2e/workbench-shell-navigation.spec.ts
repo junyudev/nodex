@@ -17,8 +17,6 @@ const PAGE_TITLE = "Sidebar Page to move";
 const DATABASE_TITLE = "Relocation Alpha DB";
 const rail = (page: Page) => page.getByRole("navigation", { name: "App navigation", exact: true });
 const tabs = (page: Page) => page.locator('[data-app-shell-tab-controller] [role="tab"]:visible');
-const openTabs = (page: Page) =>
-  page.getByRole("button", { name: "Open tabs", exact: true }).filter({ visible: true });
 const content = (page: Page) =>
   page
     .getByRole("navigation", { name: "Space", exact: true })
@@ -31,6 +29,41 @@ const readTabLabels = async (page: Page) =>
     elements.map((element) => element.getAttribute("aria-label")),
   );
 
+const readTabIdentities = async (page: Page) =>
+  tabs(page).evaluateAll((elements) =>
+    elements.map((element) => ({
+      id: element.closest("[data-app-shell-tab-controller]")?.getAttribute("data-tab-id"),
+      title: element.getAttribute("aria-label"),
+    })),
+  );
+
+const readNativeSafeGeometry = async (page: Page) =>
+  page.evaluate(() => {
+    const header = document.querySelector('[data-testid="workbench-global-header"]');
+    const pane = document.querySelector("[data-workbench-main-surface]");
+    if (!header || !pane) throw new Error("Missing native-safe Workbench surface");
+    const safeInset = Number.parseFloat(
+      getComputedStyle(header).getPropertyValue("--spacing-token-safe-header-left"),
+    );
+    const controls = Array.from(header.querySelectorAll('button, [role="tab"]'))
+      .filter((element) => getComputedStyle(element).visibility === "visible")
+      .map((element) => element.getBoundingClientRect())
+      .filter((bounds) => bounds.width > 0 && bounds.height > 0);
+    const firstControlLeft = Math.min(...controls.map((bounds) => bounds.left));
+    const firstTabLeft = Array.from(header.querySelectorAll('[role="tab"]'))
+      .filter((element) => getComputedStyle(element).visibility === "visible")
+      .map((element) => element.getBoundingClientRect())
+      .find((bounds) => bounds.width > 0)?.left;
+    return {
+      safeInset,
+      firstControlLeft,
+      firstTabLeft,
+      controlsClearNativeSafeInset: firstControlLeft >= safeInset,
+      tabsClearNativeSafeInset: firstTabLeft !== undefined && firstTabLeft >= safeInset,
+      surfaceTop: pane.getBoundingClientRect().top,
+    };
+  });
+
 const readGeometry = async (page: Page) =>
   page.evaluate(() => {
     const navigation = document.querySelector("[data-app-navigation-rail]");
@@ -38,7 +71,7 @@ const readGeometry = async (page: Page) =>
     const pill = Array.from(document.querySelectorAll("[data-app-shell-tab-surface]")).find(
       (element) => element.getBoundingClientRect().width > 0,
     );
-    const pane = pill?.closest(".main-surface");
+    const pane = document.querySelector("[data-workbench-main-surface]");
     const tabHitTarget = pill?.querySelector('[role="tab"]');
     if (!navigation || !header || !pill || !pane || !tabHitTarget)
       throw new Error("Missing Workbench geometry surface");
@@ -51,6 +84,10 @@ const readGeometry = async (page: Page) =>
         return { width: bounds.width, height: bounds.height };
       }),
       headerHeight: header.getBoundingClientRect().height,
+      surfaceTop: paneBounds.top,
+      tabHeaderTop: pill.closest("[data-workbench-pane-titlebar]")?.getBoundingClientRect().top,
+      tabHeaderInGlobalChrome: header.contains(pill),
+      contentOwnsGlobalChrome: pane.contains(header) || pane.contains(navigation),
       tabPillHeight: pill.getBoundingClientRect().height,
       tabHitHeight: tabHitTarget.getBoundingClientRect().height,
       paneInsets: {
@@ -137,7 +174,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await writeFile(path.join(artifacts, "runtime.log"), await readRuntimeLogs());
         },
       },
-      async ({ page: initialPage, harness, facts }) => {
+      async ({ page: initialPage, harness, facts, seed }) => {
         const relocation = requirePageRelocationScenarioFacts(facts);
         const rendererErrors: string[] = [];
         let page = initialPage;
@@ -155,6 +192,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expect(
             page.getByRole("tab", { name: "Project Home", exact: true }),
           ).toHaveAttribute("aria-selected", "true");
+          await expect(page.getByRole("tab", { name: "Project Home", exact: true })).toBeVisible();
           await expect(
             page.locator(`[data-board-uuid-v7="${relocation.sourcePageId}"]:visible`),
           ).toBeVisible();
@@ -177,6 +215,12 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             .getByRole("button", { name: "Open Relocation Alpha", exact: true })
             .click();
           await expectHomeProject();
+
+          const shellSession = await seed.createRelatedChat({
+            projectId: relocation.sourceProjectId,
+            initialPageIds: [],
+            noThreadFallbackTitle: "Shell tabs fixture",
+          });
 
           await selectAppearance(page, "Light");
           await expectHomeProject();
@@ -234,11 +278,167 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 { width: 36, height: 36 },
               ],
               headerHeight: 44,
+              surfaceTop: 44,
+              tabHeaderTop: 0,
+              tabHeaderInGlobalChrome: true,
+              contentOwnsGlobalChrome: false,
               tabPillHeight: 32,
               tabHitHeight: 32,
               paneInsets: { right: 4, bottom: 4 },
             },
             await readGeometry(page),
+          );
+          const nativeWindow = await harness.application.browserWindow(page);
+          const nativeChrome = await nativeWindow.evaluate((window) => ({
+            buttons: window.getWindowButtonPosition(),
+            zoom: window.webContents.getZoomFactor(),
+          }));
+          if (process.platform === "darwin") {
+            claim(
+              "Native traffic lights are vertically centered in the shared titlebar",
+              { buttons: { x: 16, y: 15 }, zoom: 1 },
+              nativeChrome,
+            );
+          }
+
+          claim(
+            "Window navigation follows the titlebar order and native safe inset",
+            [
+              { label: "Back", left: 88, width: 28, height: 28 },
+              { label: "Forward", left: 122, width: 28, height: 28 },
+              { label: "Hide sidebar", left: 156, width: 28, height: 28 },
+            ],
+            await page.getByTestId("workbench-window-navigation-chrome").evaluateAll((groups) => {
+              const group = groups.find(
+                (element) =>
+                  getComputedStyle(element).visibility === "visible" &&
+                  element.getBoundingClientRect().width > 0,
+              );
+              if (!group) throw new Error("Missing visible window navigation controls");
+              return Array.from(group.querySelectorAll("button")).map((button) => {
+                const bounds = button.getBoundingClientRect();
+                return {
+                  label: button.getAttribute("aria-label"),
+                  left: bounds.left,
+                  width: bounds.width,
+                  height: bounds.height,
+                };
+              });
+            }),
+          );
+          await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+          await page.mouse.move(900, 700);
+          await expect(
+            page.getByRole("button", { name: "Show sidebar", exact: true }),
+          ).toBeVisible();
+          if (process.platform === "darwin") {
+            const windowId = await nativeWindow.evaluate((window) => window.id);
+            const zoomCommand = async (id: "view.zoomIn" | "view.resetZoom") => {
+              await harness.application.evaluate(({ app, BrowserWindow }, ownedWindowId) => {
+                const target = BrowserWindow.fromId(ownedWindowId);
+                if (!target) throw new Error("The owned test window is unavailable");
+                app.focus({ steal: true });
+                target.focus();
+                target.webContents.focus();
+              }, windowId);
+              await expect
+                .poll(() =>
+                  harness.application.evaluate(({ BrowserWindow, webContents }, ownedWindowId) => {
+                    const target = BrowserWindow.fromId(ownedWindowId);
+                    return (
+                      target !== null &&
+                      webContents.getFocusedWebContents()?.id === target.webContents.id
+                    );
+                  }, windowId),
+                )
+                .toBe(true);
+              return harness.application.evaluate(
+                ({ BrowserWindow, Menu, webContents }, input) => {
+                  const target = BrowserWindow.fromId(input.windowId);
+                  if (!target) throw new Error("The owned test window is unavailable");
+                  const item = Menu.getApplicationMenu()?.getMenuItemById(input.id);
+                  if (!item) throw new Error(`Missing application menu action ${input.id}`);
+                  const before = target.webContents.getZoomFactor();
+                  item.click({ triggeredByAccelerator: false }, target, target.webContents);
+                  return {
+                    command: input.id,
+                    enabled: item.enabled,
+                    targetWindowId: target.id,
+                    targetContentsId: target.webContents.id,
+                    windowFocused: target.isFocused(),
+                    focusedWindowId: BrowserWindow.getFocusedWindow()?.id ?? null,
+                    focusedContentsId: webContents.getFocusedWebContents()?.id ?? null,
+                    before,
+                    after: target.webContents.getZoomFactor(),
+                  };
+                },
+                { windowId, id },
+              );
+            };
+            try {
+              const zoomDispatch = await zoomCommand("view.zoomIn");
+              await writeFile(
+                path.join(artifacts, "native-zoom-dispatch.json"),
+                `${JSON.stringify(zoomDispatch, null, 2)}\n`,
+              );
+              await expect
+                .poll(() => nativeWindow.evaluate((window) => window.webContents.getZoomFactor()))
+                .toBeGreaterThan(1);
+              const zoomedNative = await nativeWindow.evaluate((window) => ({
+                buttons: window.getWindowButtonPosition(),
+                zoom: window.webContents.getZoomFactor(),
+              }));
+              await expect
+                .poll(async () => {
+                  const geometry = await readNativeSafeGeometry(page);
+                  return Math.abs(geometry.safeInset - (82 / zoomedNative.zoom + 6)) < 0.01;
+                })
+                .toBe(true);
+              const zoomedGeometry = await readNativeSafeGeometry(page);
+              claim(
+                "The actual Zoom In menu keeps native buttons and content clear of each other",
+                {
+                  nativeButtonY: Math.round((44 * zoomedNative.zoom - 14) / 2),
+                  nativeReservationClear: true,
+                  firstControlClear: true,
+                  firstTabClear: true,
+                },
+                {
+                  nativeButtonY: zoomedNative.buttons?.y,
+                  nativeReservationClear: zoomedGeometry.safeInset * zoomedNative.zoom >= 82,
+                  firstControlClear: zoomedGeometry.firstControlLeft * zoomedNative.zoom >= 82,
+                  firstTabClear:
+                    zoomedGeometry.firstTabLeft !== undefined &&
+                    zoomedGeometry.firstTabLeft * zoomedNative.zoom >= 82,
+                },
+              );
+              await writeFile(
+                path.join(artifacts, "native-zoom-geometry.json"),
+                `${JSON.stringify({ native: zoomedNative, geometry: zoomedGeometry }, null, 2)}\n`,
+              );
+            } finally {
+              await zoomCommand("view.resetZoom");
+              await expect
+                .poll(() => nativeWindow.evaluate((window) => window.webContents.getZoomFactor()))
+                .toBe(1);
+              await expect
+                .poll(async () => (await readNativeSafeGeometry(page)).safeInset)
+                .toBe(88);
+            }
+          }
+          await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+          await expectHomeProject();
+          await nativeWindow.evaluate((window) => window.blur());
+          const recordingOpaque = await expect
+            .poll(async () => (await readPaint(page)).electronOpaque)
+            .toBe(true)
+            .then(
+              () => true,
+              () => false,
+            );
+          await writeFile(
+            path.join(artifacts, "recording-surface.json"),
+            `${JSON.stringify({ nativeWindowFocused: await nativeWindow.evaluate((window) => window.isFocused()), naturalOpaqueFallback: recordingOpaque, paint: await readPaint(page) }, null, 2)}\n`,
           );
           await page.screencast.start({
             path: path.join(artifacts, "review.webm"),
@@ -247,6 +447,111 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           });
           recording = page;
           await capture("home");
+
+          const sessionRow = page
+            .locator('[data-app-action-sidebar-thread-title="Shell tabs fixture"]:visible')
+            .first();
+          if (!(await sessionRow.isVisible())) {
+            const projectRow = page.getByRole("listitem", {
+              name: "Relocation Alpha",
+              exact: true,
+            });
+            const expand = projectRow.getByRole("button", { name: "Expand project", exact: true });
+            if (await expand.count()) {
+              await projectRow.hover();
+              await expand.click();
+            }
+          }
+          await expect(sessionRow).toBeVisible();
+          await sessionRow.click();
+          await expect(page.locator('[data-codex-composer="true"]:visible')).toBeVisible();
+          const showEmptyTabs = page.getByRole("button", { name: "New tab", exact: true });
+          if (await showEmptyTabs.isVisible()) await showEmptyTabs.click();
+          const emptyActions = page.locator('[data-thread-side-panel-new-tab-action-grid="true"]');
+          await emptyActions.getByRole("button", { name: /^Files/ }).click();
+          await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();
+          await page.getByRole("button", { name: "Open side panel tab", exact: true }).click();
+          await page.getByRole("menuitem", { name: "Canvas", exact: true }).click();
+          await expect(tabs(page)).toHaveCount(2);
+          const retainedTabs = await readTabIdentities(page);
+          expect(retainedTabs.every((tab) => tab.id)).toBe(true);
+          expect(retainedTabs.some((tab) => tab.title === "Files")).toBe(true);
+          await capture("session-split");
+          await page.getByRole("button", { name: "Hide tabs", exact: true }).click();
+          await page.mouse.move(900, 700);
+          const showTabs = page.getByRole("button", { name: "Show tabs", exact: true });
+          await expect(showTabs).toHaveAttribute("aria-description", "2 open tabs");
+          await expect(tabs(page)).toHaveCount(0);
+          await showTabs.hover();
+          const retainedMenu = page.getByRole("menu", { name: "Open tabs", exact: true });
+          await expect(retainedMenu).toBeVisible();
+          claim(
+            "Hidden Session content remains available through the hover chooser",
+            { count: "2 open tabs", badge: "2", titles: retainedTabs.map((tab) => tab.title) },
+            {
+              count: await showTabs.getAttribute("aria-description"),
+              badge: await showTabs.locator("svg + span").innerText(),
+              titles: await retainedMenu
+                .getByRole("menuitem")
+                .evaluateAll((elements) =>
+                  elements
+                    .filter((element) => !element.getAttribute("aria-label")?.startsWith("Open "))
+                    .map((element) => element.getAttribute("aria-label")),
+                ),
+            },
+          );
+          await capture("retained-tabs-hover");
+          await showTabs.click();
+          await expect(retainedMenu).toHaveCount(0);
+          await expect(page.getByRole("button", { name: "Hide tabs", exact: true })).toBeVisible();
+          await expect(tabs(page)).toHaveCount(2);
+          claim(
+            "Clicking the count restores the same content in split view",
+            retainedTabs,
+            await readTabIdentities(page),
+          );
+          await page.getByRole("button", { name: "Expand panel", exact: true }).click();
+          await expect(
+            page.getByRole("button", { name: "Enter split view", exact: true }),
+          ).toBeVisible();
+          await page.getByRole("button", { name: "Hide sidebar", exact: true }).click();
+          await page.mouse.move(900, 700);
+          await expect(
+            page.getByRole("button", { name: "Show sidebar", exact: true }),
+          ).toBeVisible();
+          const safeGeometry = await readNativeSafeGeometry(page);
+          claim(
+            "Full content and collapsed navigation preserve the native titlebar safe area",
+            { controlsClearNativeSafeInset: true, tabsClearNativeSafeInset: true, surfaceTop: 44 },
+            {
+              controlsClearNativeSafeInset: safeGeometry.controlsClearNativeSafeInset,
+              tabsClearNativeSafeInset: safeGeometry.tabsClearNativeSafeInset,
+              surfaceTop: safeGeometry.surfaceTop,
+            },
+          );
+          await writeFile(
+            path.join(artifacts, "native-safe-geometry.json"),
+            `${JSON.stringify({ nativeChrome, safeGeometry }, null, 2)}\n`,
+          );
+          await capture("session-full-native-safe");
+          await page.getByRole("button", { name: "Enter split view", exact: true }).click();
+          await expect(page.getByRole("button", { name: "Hide tabs", exact: true })).toBeVisible();
+          claim(
+            "Full view returns to split without replacing tab identities",
+            retainedTabs,
+            await readTabIdentities(page),
+          );
+          claim(
+            "The tabs workflow uses a real threadless Session",
+            { session: true, attachedThread: null },
+            { session: Boolean(shellSession.sessionId), attachedThread: shellSession.threadId },
+          );
+          await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
+          await page
+            .getByRole("navigation", { name: "Home", exact: true })
+            .getByRole("button", { name: "Open Relocation Alpha", exact: true })
+            .click();
+          await expectHomeProject();
 
           await rail(page).getByRole("button", { name: "Space", exact: true }).click();
           await expect(content(page)).toBeVisible();
@@ -260,7 +565,6 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await expect(
             page.getByRole("tab", { name: DATABASE_TITLE, exact: true }),
           ).toHaveAttribute("aria-selected", "true");
-          await expect(openTabs(page)).toHaveAttribute("aria-description", "2 open tabs");
           claim(
             "Space keeps two independently closable content tabs",
             { titles: [PAGE_TITLE, DATABASE_TITLE], closeButtons: 2 },
@@ -271,34 +575,10 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           );
           await capture("space-tabs");
 
-          await openTabs(page).hover();
-          const menu = page.getByRole("menu", { name: "Open tabs", exact: true });
-          await expect(menu).toBeVisible();
-          claim(
-            "Open tabs hover exposes both tabs and the exact count",
-            {
-              count: "2 open tabs",
-              badge: "2",
-              items: [PAGE_TITLE, DATABASE_TITLE],
-              selected: DATABASE_TITLE,
-            },
-            {
-              count: await openTabs(page).getAttribute("aria-description"),
-              badge: await openTabs(page).locator("svg + span").innerText(),
-              items: await menu
-                .getByRole("menuitem")
-                .evaluateAll((elements) =>
-                  elements.map((element) => element.getAttribute("aria-label")),
-                ),
-              selected: await menu.locator('[aria-current="true"]').getAttribute("aria-label"),
-            },
-          );
-          await capture("open-tabs");
-          await menu.getByRole("menuitem", { name: PAGE_TITLE, exact: true }).click();
-          await expect(menu).toHaveCount(0);
+          await page.getByRole("tab", { name: PAGE_TITLE, exact: true }).click();
           await expectSpacePage();
           claim(
-            "Selecting an Open tabs item activates its Page",
+            "Selecting a content tab activates its Page through the strip",
             "true",
             await page
               .getByRole("tab", { name: PAGE_TITLE, exact: true })
@@ -309,14 +589,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             .getByRole("button", { name: `Close ${DATABASE_TITLE} tab`, exact: true })
             .click();
           await expect(page.getByRole("tab", { name: DATABASE_TITLE, exact: true })).toHaveCount(0);
-          await expect(openTabs(page)).toHaveAttribute("aria-description", "1 open tab");
           claim(
-            "Closing a content tab updates the surviving tab and count",
-            { titles: [PAGE_TITLE], count: "1 open tab", badge: "1" },
+            "Closing a content tab preserves the selected Page",
+            { titles: [PAGE_TITLE] },
             {
               titles: await readTabLabels(page),
-              count: await openTabs(page).getAttribute("aria-description"),
-              badge: await openTabs(page).locator("svg + span").innerText(),
             },
           );
 
@@ -413,6 +690,8 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await page.screenshot({ path: path.join(artifacts, "reopened-home.png") });
           const showSidebar = page.getByRole("button", { name: "Show sidebar", exact: true });
           if (await showSidebar.isVisible()) await showSidebar.click();
+          await page.mouse.move(1200, 740);
+          await expect(page.getByTestId("app-shell-floating-left-panel")).toHaveCount(0);
           await expect(page.getByRole("navigation", { name: "Home", exact: true })).toBeVisible();
           await page
             .getByRole("navigation", { name: "Home", exact: true })
@@ -493,7 +772,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
     );
     await writeFile(
       path.join(artifacts, "README.md"),
-      `# Home and Space verification\n\nStatus: **${status}**\n\nA fresh public-operation Profile runs the Page relocation scenario. Home remembers the Project, Space owns two closable content tabs, Open tabs selects and counts them, and Settings returns to Space. The native Dark recording includes sidebar collapse and a narrow window. Light paint, a cold Electron reopen, and Home Inbox returning from Settings are checked separately. Exact expected and actual values are in result.json.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+      `# Home and Space verification\n\nStatus: **${status}**\n\nA fresh public-operation Profile runs the Page relocation scenario. Home remembers the Project, Space owns two closable content tabs selected through their strip, and Settings returns to Space. A real Session preserves its retained content while tabs are hidden, restored, and expanded. Global titlebar hierarchy and native window-button geometry are checked. The Dark renderer recording uses the natural opaque fallback after the owned window loses focus; it includes sidebar collapse and a narrow window. OS native Traffic Lights are verified through the owned BrowserWindow and are outside renderer capture. Light paint, a cold Electron reopen, and Home Inbox returning from Settings are checked separately. Exact expected and actual values are in result.json.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
     );
   }
 });

@@ -30,7 +30,6 @@ import {
 import {
   BOTTOM_PANEL_HIDDEN_ICON_PREFIX,
   EXPAND_PANEL_ICON_PREFIX,
-  PANEL_VISIBLE_ICON_PREFIX,
   RESTORE_PANEL_ICON_PREFIX,
   clickMenuItem,
   discardSideChatCalls,
@@ -53,6 +52,7 @@ import {
   mockInvokeImpl,
   setMockInvokeImpl,
   moveSidebarPointer,
+  hoverSidebarDestination,
   openBottomPanel,
   openPanelMenu,
   pointerActivate,
@@ -128,12 +128,11 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     expect(screen.queryAllByRole("tablist").length).toBe(0);
     const globalHeader = screen.container.querySelector('[data-testid="workbench-global-header"]');
-    const toggleButton = screen.getByRole("button", { name: "Toggle side panel" });
-    const toggleIconPath = toggleButton.querySelector("path")?.getAttribute("d") ?? "";
+    const toggleButton = screen.getByRole("button", { name: "Show tabs" });
     expect(globalHeader?.contains(toggleButton)).toBe(true);
     expect(toggleButton.getAttribute("aria-pressed")).toBe("false");
     expect(toggleButton.className.includes("no-drag")).toBe(true);
-    expect(toggleIconPath.startsWith(PANEL_VISIBLE_ICON_PREFIX)).toBe(true);
+    expect(toggleButton.getAttribute("aria-description")).toBe("1 open tab");
     expect(screen.queryByRole("button", { name: "Attach thread" })).toBe(null);
     expect(screen.queryByRole("button", { name: "Detach thread" })).toBe(null);
 
@@ -143,15 +142,15 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     await settleAsyncRender();
 
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "window-session-view:panel-patch" &&
-          call[1] === "session:alpha:database-view" &&
-          call[2] === "right" &&
-          JSON.stringify(call[3]) === JSON.stringify({ collapsed: false }),
-      ),
-    ).toBe(true);
+    expect(invokeCalls).toContainEqual([
+      "window-session-view:panel-patch",
+      "session:alpha:database-view",
+      "right",
+      expect.objectContaining({ collapsed: false }),
+    ]);
+    expect(screen.getByRole("button", { name: "Hide tabs" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
     expect(screen.queryAllByRole("tablist").length > 0).toBe(true);
   });
 
@@ -164,7 +163,7 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     const globalHeader = screen.container.querySelector('[data-testid="workbench-global-header"]');
     const bottomPanelToggle = screen.getByRole("button", { name: "Toggle bottom panel" });
-    const sidePanelToggle = screen.getByRole("button", { name: "Toggle side panel" });
+    const sidePanelToggle = screen.getByRole("button", { name: "Show tabs" });
     const toggleIconPath = bottomPanelToggle.querySelector("path")?.getAttribute("d") ?? "";
     expect(globalHeader?.contains(bottomPanelToggle)).toBe(true);
     expect(
@@ -728,7 +727,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("true");
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Toggle side panel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hide tabs" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -786,7 +785,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       const restoreButton = screen.getByRole("button", { name: "Restore panel width" });
 
       expect(leftSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
-      expect(leftSlot.getAttribute("style")?.includes("min-width: 208px")).toBe(true);
+      expect(leftSlot.getAttribute("style")?.includes("min-width: 224px")).toBe(true);
       expect(leftSlot.className.includes("no-drag")).toBe(true);
       expect(tabHeader.className.includes("draggable")).toBe(false);
       expect(within(leftSlot).getByRole("button", { name: "New chat" }) !== null).toBe(true);
@@ -823,6 +822,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       ).toBe(null);
 
       await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
+      await hoverSidebarDestination(screen, "Home");
       const floatingShell = screen.container.querySelector(
         '[data-testid="floating-project-session-sidebar-shell"]',
       ) as HTMLElement | null;
@@ -831,6 +831,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         true,
       );
 
+      await hoverSidebarDestination(screen, "Home", false);
       await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301);
       await act(async () => {
         await Promise.resolve();
@@ -1003,7 +1004,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(screen.queryByTestId("session-bottom-panel") !== null).toBe(true);
   });
 
-  test("full-width overlay state keeps the side-panel toggle clickable after pointerdown", async () => {
+  test("full-width overlay keeps the global split control clickable after pointerdown", async () => {
     const session = makeAttachedSession({
       id: "session:alpha:overlay-side-toggle",
       rightFullWidth: true,
@@ -1019,12 +1020,18 @@ describe("workbench session shell / layout-panel-actions", () => {
       .__lastConnectedThreadStageProps;
     expect(props?.rightPanelComposerOverlayEnabled).toBe(true);
 
-    await pointerActivate(screen.getByRole("button", { name: "Toggle side panel" }));
+    await pointerActivate(screen.getByRole("button", { name: "Enter split view" }));
     await settleAsyncRender();
 
     await waitFor(() => {
-      expect(screen.queryByTestId("session-right-panel")).toBe(null);
+      expect(
+        screen.getByTestId("session-right-panel").getAttribute("data-right-panel-width-mode"),
+      ).toBe("regular");
     });
+    expect(screen.getByRole("button", { name: "Hide tabs" })).toBeTruthy();
+    const splitProps = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
+      .__lastConnectedThreadStageProps;
+    expect(splitProps?.rightPanelComposerOverlayEnabled).toBe(false);
   });
 
   test("full-width overlay state keeps restore-panel-width clickable after pointerdown", async () => {
@@ -1286,7 +1293,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     const headerShellSlot = getHeaderShellSlot(screen, "right");
     if (!tabHeader) throw new Error("Expected right-panel tab header");
 
-    const sidePanelToggle = screen.getByRole("button", { name: "Toggle side panel" });
+    const sidePanelToggle = screen.getByRole("button", { name: "Hide tabs" });
     const expandButton = screen.getByRole("button", { name: "Expand panel" });
     const rightPanelHeaderSpacer = screen.container.querySelector(
       '[data-testid="right-panel-tab-bar-header-spacer"]',
@@ -1299,7 +1306,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(headerShellSlot?.contains(sidePanelToggle)).toBe(true);
     expect(
       visibleGlobalHeaderButtons.map((button) => button.getAttribute("aria-label")).join(","),
-    ).toBe("Toggle bottom panel,Toggle side panel");
+    ).toBe("Toggle bottom panel,Hide tabs");
     expect(rightPanel?.className.includes(APP_SHELL_RIGHT_PANEL_LAYER_CLASS)).toBe(true);
     expect(globalHeader?.className.includes(APP_SHELL_GLOBAL_HEADER_LAYER_CLASS)).toBe(true);
     expect(headerCenterSurface.getAttribute("aria-hidden")).toBe(null);
@@ -1439,7 +1446,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       await settleAsyncRender();
       await settleAsyncRender();
 
-      const toggleButton = screen.getByRole("button", { name: "Toggle side panel" });
+      const toggleButton = screen.getByRole("button", { name: "Hide tabs" });
       await act(async () => {
         fireEvent.click(toggleButton);
         await Promise.resolve();
@@ -1448,7 +1455,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       expect(screen.queryByTestId("session-right-panel")).toBe(null);
 
       await act(async () => {
-        fireEvent.click(toggleButton);
+        fireEvent.click(screen.getByRole("button", { name: "Show tabs" }));
         await Promise.resolve();
       });
       await settleAsyncRender();
@@ -1733,7 +1740,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(expandButton.getAttribute("aria-pressed")).toBe("false");
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Toggle side panel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hide tabs" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -1742,7 +1749,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(screen.queryByRole("separator", { name: "Resize right panel" })).toBe(null);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Toggle side panel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Show tabs" }));
       await Promise.resolve();
     });
     await settleAsyncRender();

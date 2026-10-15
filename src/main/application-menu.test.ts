@@ -19,6 +19,7 @@ function bottomPanelMenuItem(
   const menu = buildWorkbenchViewMenu(
     createCommandKeymapState(overrides, platform),
     onExecuteCommand,
+    () => undefined,
   );
   const submenu = menu.submenu as MenuItemConstructorOptions[];
   const item = submenu.find((candidate) => candidate.id === TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID);

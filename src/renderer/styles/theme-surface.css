@@ -27,7 +27,7 @@
 }
 
 .app-shell-main-content-viewport {
-  --app-shell-main-content-frame-top-offset: var(--height-toolbar);
+  --app-shell-main-content-frame-top-offset: 0px;
   --thread-content-top-inset: calc(var(--spacing) * 8);
   --thread-floating-content-top-inset: calc(var(--spacing) * 3);
   --thread-floating-content-bottom-inset: calc(var(--spacing) * 3);
@@ -45,8 +45,8 @@
 @container app-shell-main-content (width >= 96rem) {
   [data-app-shell-main-content-layout="thread-edge-scroll"] .app-shell-main-content-frame {
     --app-shell-main-content-frame-top-offset: 0px;
-    --thread-content-top-inset: calc(var(--height-toolbar) + var(--spacing) * 8);
-    --thread-floating-content-top-inset: calc(var(--height-toolbar) + var(--spacing) * 3);
+    --thread-content-top-inset: calc(var(--spacing) * 8);
+    --thread-floating-content-top-inset: calc(var(--spacing) * 3);
   }
 
   [data-app-shell-main-content-layout="thread-edge-scroll"]

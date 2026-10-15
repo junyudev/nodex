@@ -30,8 +30,12 @@ class FakeBrowserWindow extends EventEmitter {
   readonly #webContents = Object.assign(new EventEmitter(), {
     id: this.id + 100,
     setWindowOpenHandler: () => undefined,
+    isDestroyed: () => this.destroyed,
+    getZoomFactor: () => this.zoomFactor,
   }) as unknown as WebContents;
   showCount = 0;
+  zoomFactor = 1;
+  windowButtonPosition: { x: number; y: number } | null = null;
   constructor(private readonly loadFailure: Error | null = null) {
     super();
   }
@@ -56,6 +60,10 @@ class FakeBrowserWindow extends EventEmitter {
   }
   maximize(): void {}
   setFullScreen(): void {}
+  setWindowButtonPosition(position: { x: number; y: number }): void {
+    this.windowButtonPosition = position;
+  }
+  setTitleBarOverlay(): void {}
   show(): void {
     this.showCount += 1;
   }
@@ -143,6 +151,13 @@ describe("ApplicationWindowShellRuntime", () => {
         const shell = Context.get(context, ApplicationWindowShellRuntime);
         const opened = shell.openInitial("all");
         expect(opened).toHaveLength(3);
+        const primary = opened[0] as unknown as FakeBrowserWindow;
+        primary.zoomFactor = 1.5;
+        primary.webContents.emit("did-finish-load");
+        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 26 });
+        primary.zoomFactor = 1;
+        primary.webContents.emit("did-finish-load");
+        expect(primary.windowButtonPosition).toEqual({ x: 16, y: 15 });
 
         for (const lease of shell.claimPendingActivation()) {
           shell.completeActivation(lease.window.webContents.id);

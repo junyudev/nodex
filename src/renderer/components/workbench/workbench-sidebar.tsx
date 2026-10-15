@@ -1,5 +1,4 @@
 import { AnimatePresence, motion, type MotionValue, type Transition } from "motion/react";
-import type { ReactNode } from "react";
 import {
   ProjectSessionSidebar,
   type ProjectSessionSidebarProps,
@@ -7,6 +6,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkbenchSpaceSidebar } from "./workbench-space-sidebar";
 import type { SidebarPagesSectionProps } from "./sidebar-pages-section";
+import { WORKBENCH_SURFACE_GUTTER_PX } from "@/lib/workbench-shell-geometry";
 
 type WorkbenchSidebarPlacementProp =
   | "animatedWidth"
@@ -37,7 +37,7 @@ interface WorkbenchInlineSidebarPlacement {
 
 interface WorkbenchFloatingSidebarPlacement {
   readonly visible: boolean;
-  readonly header: ReactNode;
+  readonly destination?: "home" | "space";
   readonly outerClassName: string;
   readonly resizing: boolean;
   readonly reducedMotion: boolean;
@@ -61,12 +61,17 @@ interface WorkbenchSidebarProps {
 export function WorkbenchSidebar({ destination, body, inline, floating }: WorkbenchSidebarProps) {
   const renderSidebar = (
     placement: Pick<ProjectSessionSidebarProps, WorkbenchSidebarPlacementProp>,
-  ) =>
-    destination === "space" ? (
-      <WorkbenchSpaceSidebar body={body} {...placement} />
+    sidebarDestination = destination,
+  ) => {
+    const placedBody = placement.floating
+      ? { ...body, width: body.width - WORKBENCH_SURFACE_GUTTER_PX }
+      : body;
+    return sidebarDestination === "space" ? (
+      <WorkbenchSpaceSidebar body={placedBody} {...placement} />
     ) : (
-      <ProjectSessionSidebar {...body} {...placement} />
+      <ProjectSessionSidebar {...placedBody} {...placement} />
     );
+  };
 
   return (
     <>
@@ -85,18 +90,20 @@ export function WorkbenchSidebar({ destination, body, inline, floating }: Workbe
             data-sidebar-floating-focus-area="true"
             data-testid="floating-project-session-sidebar-shell"
             className={cn(floating.outerClassName, floating.resizing && "cursor-col-resize")}
-            style={{ width: body.width }}
+            style={{ width: body.width - WORKBENCH_SURFACE_GUTTER_PX }}
             initial={floating.reducedMotion ? false : { opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: floating.exitX }}
             transition={floating.transition}
           >
-            {renderSidebar({
-              floating: true,
-              header: floating.header,
-              onResizeActiveChange: floating.onResizeActiveChange,
-              onHoverSurfaceOpenChange: floating.onHoverSurfaceOpenChange,
-            })}
+            {renderSidebar(
+              {
+                floating: true,
+                onResizeActiveChange: floating.onResizeActiveChange,
+                onHoverSurfaceOpenChange: floating.onHoverSurfaceOpenChange,
+              },
+              floating.destination,
+            )}
           </motion.div>
         ) : null}
       </AnimatePresence>

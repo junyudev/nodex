@@ -48,6 +48,7 @@ declare global {
   interface Window {
     EXCALIDRAW_ASSET_PATH?: string | string[];
     api?: {
+      getWindowZoomFactor?: () => number;
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>;
       on: (event: string, callback: (...args: unknown[]) => void) => () => void;
       onAppUpdateStatus?: (callback: (status: AppUpdateStatus) => void) => () => void;

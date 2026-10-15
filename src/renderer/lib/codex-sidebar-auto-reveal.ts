@@ -1,15 +1,13 @@
 import { APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS } from "./app-shell-layers";
+import { WORKBENCH_SIDEBAR_WIDTH_DEFAULT_PX } from "../../shared/workbench-window-chrome";
 
-export const CODEX_SIDEBAR_WIDTH_DEFAULT_PX = 300;
+export const CODEX_SIDEBAR_WIDTH_DEFAULT_PX = WORKBENCH_SIDEBAR_WIDTH_DEFAULT_PX;
 export const CODEX_SIDEBAR_WIDTH_MIN_PX = 240;
 export const CODEX_SIDEBAR_WIDTH_MAX_PX = 520;
 export const CODEX_SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width";
 export const CODEX_SIDEBAR_COLLAPSE_THRESHOLD_RATIO = 0.5;
 export const CODEX_SIDEBAR_COLLAPSE_THRESHOLD_PX =
   CODEX_SIDEBAR_WIDTH_MIN_PX * CODEX_SIDEBAR_COLLAPSE_THRESHOLD_RATIO;
-
-export const CODEX_SIDEBAR_EDGE_ENTER_MIN_X_PX = 0;
-export const CODEX_SIDEBAR_EDGE_ENTER_MAX_X_PX = 12;
 
 export const CODEX_SIDEBAR_FLOATING_PANEL_TRANSITION = {
   type: "spring",
@@ -21,17 +19,14 @@ export const CODEX_SIDEBAR_FLOATING_PANEL_REDUCED_MOTION_TRANSITION = {
   duration: 0,
 } as const;
 
-export const CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS = `pointer-events-auto fixed bottom-1 left-13 ${APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS} min-h-0`;
+export const CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS = `pointer-events-auto fixed bottom-2 left-14 ${APP_SHELL_FLOATING_LEFT_PANEL_LAYER_CLASS} min-h-0`;
 
-export const CODEX_SIDEBAR_FLOATING_OUTER_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-0`;
+export const CODEX_SIDEBAR_FLOATING_OUTER_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-[calc(var(--height-toolbar)+var(--spacing))]`;
 
-export const CODEX_SIDEBAR_FLOATING_OUTER_APPLICATION_MENU_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-(--height-toolbar-sm)`;
+export const CODEX_SIDEBAR_FLOATING_OUTER_APPLICATION_MENU_CLASS = `${CODEX_SIDEBAR_FLOATING_OUTER_BASE_CLASS} top-[calc(var(--height-toolbar-sm)+var(--height-toolbar)+var(--spacing))]`;
 
 export const CODEX_SIDEBAR_FLOATING_ASIDE_CLASS =
   "flex h-full min-h-0 flex-col overflow-hidden rounded-lg bg-token-main-surface-primary shadow-[1px_0_0_0_var(--color-token-border-default),0_20px_25px_-5px_rgb(0_0_0/0.1),0_8px_10px_-6px_rgb(0_0_0/0.1)]";
-
-export const CODEX_SIDEBAR_FLOATING_HEADER_CLASS =
-  "app-header-tint flex h-toolbar shrink-0 items-center ps-(--spacing-token-safe-header-left) pe-2";
 
 export interface CodexSidebarPointerSnapshot {
   x: number | null;
@@ -71,14 +66,15 @@ export interface CodexSidebarFloatingVisibilityInput {
   sidebarOpen: boolean;
   sidebarAnimating: boolean;
   hoverSuppressed: boolean;
+  navigationHovered: boolean;
   focusOverride: boolean;
   hoverSurfaceActive?: boolean;
   currentlyVisible: boolean;
 }
 
 export interface CodexSidebarSuppressionInput {
-  pointerX: number | null;
   triggerHovered: boolean;
+  navigationHovered: boolean;
 }
 
 export interface CodexSidebarToggleInput {
@@ -117,12 +113,6 @@ export function resolveCodexSidebarWidth(input: {
   return CODEX_SIDEBAR_WIDTH_DEFAULT_PX;
 }
 
-export function isCodexSidebarEdgeEnterX(x: number | null): boolean {
-  return (
-    x !== null && x >= CODEX_SIDEBAR_EDGE_ENTER_MIN_X_PX && x <= CODEX_SIDEBAR_EDGE_ENTER_MAX_X_PX
-  );
-}
-
 export function isCodexSidebarKeepOpenX(x: number | null, leftPanelWidthPx: number): boolean {
   return x !== null && x >= 0 && x <= leftPanelWidthPx;
 }
@@ -130,9 +120,7 @@ export function isCodexSidebarKeepOpenX(x: number | null, leftPanelWidthPx: numb
 export function shouldClearCodexSidebarHoverSuppression(
   input: CodexSidebarSuppressionInput,
 ): boolean {
-  if (input.triggerHovered) return false;
-  if (input.pointerX === null) return false;
-  return !isCodexSidebarEdgeEnterX(input.pointerX);
+  return !input.triggerHovered && !input.navigationHovered;
 }
 
 export function resolveCodexSidebarToggleTargetProgress(nextOpen: boolean): 0 | 1 {
@@ -172,10 +160,11 @@ export function deriveCodexSidebarFloatingVisibility(
   if (input.hoverSuppressed) return false;
 
   const keepOpen = isCodexSidebarKeepOpenX(input.pointerX, input.leftPanelWidthPx);
-  const explicitKeepOpen = input.focusOverride || input.hoverSurfaceActive === true;
+  const explicitKeepOpen =
+    input.navigationHovered || input.focusOverride || input.hoverSurfaceActive === true;
   if (input.currentlyVisible) return keepOpen || explicitKeepOpen;
 
-  return isCodexSidebarEdgeEnterX(input.pointerX) || explicitKeepOpen;
+  return explicitKeepOpen;
 }
 
 export function normalizeCodexSidebarPointer(

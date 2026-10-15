@@ -10,9 +10,15 @@ export interface WorkbenchAppRailProps {
   destination: "home" | "space";
   onHome: () => void;
   onSpace: () => void;
+  onDestinationHover?: (destination: "home" | "space" | null) => void;
 }
 
-export function WorkbenchAppRail({ destination, onHome, onSpace }: WorkbenchAppRailProps) {
+export function WorkbenchAppRail({
+  destination,
+  onHome,
+  onSpace,
+  onDestinationHover,
+}: WorkbenchAppRailProps) {
   const destinations = [
     { id: "home", label: "Home", Icon: WorkbenchHomeIcon, onSelect: onHome },
     { id: "space", label: "Space", Icon: WorkbenchSpaceIcon, onSelect: onSpace },
@@ -22,7 +28,7 @@ export function WorkbenchAppRail({ destination, onHome, onSpace }: WorkbenchAppR
     <nav
       aria-label="App navigation"
       data-app-navigation-rail
-      className="flex w-13 shrink-0 flex-col items-center gap-2 bg-transparent p-2 select-none"
+      className="flex h-full min-h-0 w-13 shrink-0 flex-col items-center gap-2 bg-transparent p-2 select-none"
     >
       {destinations.map(({ id, label, Icon, onSelect }) => {
         const active = destination === id;
@@ -41,6 +47,8 @@ export function WorkbenchAppRail({ destination, onHome, onSpace }: WorkbenchAppR
                   : "text-token-text-secondary hover:text-token-foreground",
               )}
               onClick={onSelect}
+              onPointerEnter={() => onDestinationHover?.(id)}
+              onPointerLeave={() => onDestinationHover?.(null)}
             >
               <Icon filled={active} />
             </NodexButton>

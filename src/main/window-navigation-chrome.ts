@@ -1,15 +1,33 @@
-export const CODEX_TOOLBAR_HEIGHT_PX = 46;
-export const CODEX_TRAFFIC_LIGHT_CONTROL_SIZE_PX = 14;
-export const CODEX_TRAFFIC_LIGHT_X_PX = 16;
+import {
+  normalizeWorkbenchWindowZoom,
+  resolveWorkbenchMacWindowControlPosition,
+  type WorkbenchWindowControlPosition,
+} from "../shared/workbench-window-chrome";
+import type { BrowserWindow } from "electron";
+
+export type WindowZoomCommand = "reset" | "in" | "out";
+
+export function syncWindowNavigationChrome(
+  window: BrowserWindow,
+  platform: NodeJS.Platform,
+  isDark = false,
+): void {
+  if (platform !== "darwin" && platform !== "win32") return;
+  if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+  const zoom = window.webContents.getZoomFactor();
+  if (platform === "darwin") {
+    window.setWindowButtonPosition(resolveCodexTrafficLightPosition(zoom));
+    return;
+  }
+  if (platform === "win32") window.setTitleBarOverlay(resolveCodexTitleBarOverlay(zoom, isDark));
+}
+
 export const CODEX_WINDOWS_TITLEBAR_OVERLAY_HEIGHT_PX = 36;
 export const CODEX_TITLEBAR_OVERLAY_COLOR = "#00000000";
 export const CODEX_TITLEBAR_OVERLAY_DARK_SYMBOL_COLOR = "#ffffff";
 export const CODEX_TITLEBAR_OVERLAY_LIGHT_SYMBOL_COLOR = "#1f1f1f";
 
-export interface CodexTrafficLightPosition {
-  x: number;
-  y: number;
-}
+export type CodexTrafficLightPosition = WorkbenchWindowControlPosition;
 
 export interface CodexTitleBarOverlayOptions {
   color: string;
@@ -31,10 +49,7 @@ export type CodexTitleBarOptions =
     };
 
 export function resolveCodexTrafficLightPosition(windowZoom = 1): CodexTrafficLightPosition {
-  return {
-    x: CODEX_TRAFFIC_LIGHT_X_PX,
-    y: Math.round((CODEX_TOOLBAR_HEIGHT_PX * windowZoom - CODEX_TRAFFIC_LIGHT_CONTROL_SIZE_PX) / 2),
-  };
+  return resolveWorkbenchMacWindowControlPosition(windowZoom);
 }
 
 export function resolveCodexTitleBarOverlay(
@@ -46,7 +61,9 @@ export function resolveCodexTitleBarOverlay(
     symbolColor: isDark
       ? CODEX_TITLEBAR_OVERLAY_DARK_SYMBOL_COLOR
       : CODEX_TITLEBAR_OVERLAY_LIGHT_SYMBOL_COLOR,
-    height: Math.round(CODEX_WINDOWS_TITLEBAR_OVERLAY_HEIGHT_PX * windowZoom),
+    height: Math.round(
+      CODEX_WINDOWS_TITLEBAR_OVERLAY_HEIGHT_PX * normalizeWorkbenchWindowZoom(windowZoom),
+    ),
   };
 }
 

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import { installStatePreservingWebviewMoves } from "./state-preserving-webview-moves";
 import {
   EXECUTE_FOCUSED_HISTORY_CHANNEL,
@@ -162,6 +162,7 @@ const invokeIpc = <Channel extends keyof IpcApi>(
 };
 
 contextBridge.exposeInMainWorld("api", {
+  getWindowZoomFactor: () => webFrame.getZoomFactor(),
   invoke: invokeIpc,
 
   on: (event: string, callback: (...args: unknown[]) => void) => {

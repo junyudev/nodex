@@ -129,7 +129,8 @@ export function WorkbenchSidebarFrame({
       onPointerDown={handleResizePointerDown}
       data-testid="sidebar-resize-strip"
       className={cn(
-        "group absolute flex touch-none select-none z-20 -top-toolbar right-0 bottom-0 w-4 translate-x-2",
+        "group absolute flex touch-none select-none z-20 right-0 bottom-0 w-4 translate-x-2",
+        floating ? "top-0" : "-top-toolbar",
         resizeDisabled ? "pointer-events-none" : "cursor-col-resize active:cursor-col-resize",
       )}
     >
@@ -155,14 +156,21 @@ export function WorkbenchSidebarFrame({
       )}
       style={{
         width: floating ? width : (animatedWidth ?? width),
-        ...(!floating ? { paddingTop: "var(--height-toolbar)" } : {}),
       }}
       data-testid={floating ? "app-shell-floating-left-panel" : testId}
     >
       {header}
       <motion.div
-        className="max-w-full min-h-0 flex-1 overflow-hidden"
-        style={{ minWidth: width, width, opacity: floating ? undefined : contentOpacity }}
+        className={cn(
+          "max-w-full min-h-0 flex-1 overflow-hidden",
+          !floating && "bg-token-main-surface-primary/65",
+        )}
+        style={{
+          minWidth: width,
+          width,
+          opacity: floating ? undefined : contentOpacity,
+          clipPath: floating ? undefined : "inset(0 -12px 0 0 round 12px)",
+        }}
       >
         {children}
       </motion.div>

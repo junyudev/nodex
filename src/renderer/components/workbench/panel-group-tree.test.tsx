@@ -3,6 +3,7 @@ import { act } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { PanelGroupTree } from "./panel-group-tree";
 import {
+  insertWorkbenchPanelLeaf,
   makeWorkbenchPanelLayout,
   setWorkbenchPanelBranchRatio,
   splitWorkbenchPanelLeaf,
@@ -10,6 +11,7 @@ import {
 import type { AppShellTabItem } from "./app-shell-tabs";
 import type { WorkbenchPanelLayout } from "@/lib/types";
 import { render } from "@/test/dom";
+import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 
 function makeTab(id: string, title: string): AppShellTabItem {
   return {
@@ -23,6 +25,69 @@ function makeTab(id: string, title: string): AppShellTabItem {
 }
 
 describe("PanelGroupTree", () => {
+  test("places only the top edge of right-panel splits in the window titlebar", () => {
+    const upper = makeWorkbenchPanelLayout(["one", "two"], "one");
+    const stacked = splitWorkbenchPanelLeaf(upper, {
+      leafId: "main",
+      side: "down",
+      tabId: "two",
+      newLeafId: "leaf:lower",
+      newBranchId: "branch:stack",
+    });
+    const layout = insertWorkbenchPanelLeaf(stacked, {
+      leafId: "main",
+      side: "right",
+      newLeafId: "leaf:right",
+      newBranchId: "branch:top",
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const renderTree = (panelId: "right" | "bottom", maximizedLeafId: string | null = null) => (
+      <WorkbenchTitlebarProvider host={host}>
+        <div data-app-shell-focus-area={`${panelId}-panel`}>
+          <PanelGroupTree
+            sessionId="session-1"
+            panelId={panelId}
+            layout={{ ...layout, maximizedLeafId }}
+            tabItemsByLeafId={{
+              main: [makeTab("one", "One")],
+              "leaf:lower": [makeTab("two", "Two")],
+              "leaf:right": [],
+            }}
+            activeTabIdsByLeafId={{ main: "one", "leaf:lower": "two", "leaf:right": null }}
+            renderEmptyLeaf={() => <div>Empty pane</div>}
+            renderAfterTabs={(leafId) => <button type="button">New tab in {leafId}</button>}
+            onSelectTab={() => undefined}
+            onCloseTab={() => undefined}
+            onReorderTab={() => undefined}
+            onMoveTab={() => undefined}
+            onSplitGroup={() => undefined}
+            onActivateGroup={() => undefined}
+            onResizeGroup={() => undefined}
+          />
+        </div>
+      </WorkbenchTitlebarProvider>
+    );
+
+    try {
+      const view = render(renderTree("right"));
+      expect(host.contains(view.getByText("One", { exact: true }))).toBe(true);
+      expect(host.contains(view.getByText("Two", { exact: true }))).toBe(false);
+      expect(host.contains(view.getByText("New tab in leaf:right", { exact: true }))).toBe(true);
+
+      view.rerender(renderTree("right", "leaf:lower"));
+      expect(host.contains(view.getByText("Two", { exact: true }))).toBe(true);
+      expect(view.queryByText("One", { exact: true })).toBeNull();
+
+      view.rerender(renderTree("bottom"));
+      expect(host.querySelector("[data-workbench-pane-titlebar]")).toBeNull();
+      expect(view.getByText("One", { exact: true })).not.toBeNull();
+      expect(view.getByText("Two", { exact: true })).not.toBeNull();
+    } finally {
+      host.remove();
+    }
+  });
+
   test("keeps the committed split ratio visible until persisted layout catches up", async () => {
     const layout = splitWorkbenchPanelLeaf(makeWorkbenchPanelLayout(["one", "two"], "one"), {
       leafId: "main",

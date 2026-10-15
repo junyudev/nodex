@@ -7,18 +7,18 @@ import {
 } from "./window-navigation-chrome";
 
 describe("window navigation chrome", () => {
-  test("centers macOS traffic lights in the Codex toolbar", () => {
+  test("centers macOS traffic lights in the shared titlebar", () => {
     const position = resolveCodexTrafficLightPosition(1);
 
     expect(position.x).toBe(16);
-    expect(position.y).toBe(16);
+    expect(position.y).toBe(15);
   });
 
   test("uses zoom-aware macOS traffic-light positioning", () => {
     const position = resolveCodexTrafficLightPosition(1.25);
 
     expect(position.x).toBe(16);
-    expect(position.y).toBe(22);
+    expect(position.y).toBe(21);
   });
 
   test("uses a transparent Windows titlebar overlay with theme symbols", () => {

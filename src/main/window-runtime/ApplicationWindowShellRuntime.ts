@@ -23,7 +23,10 @@ import type { ElectronWindowBackdrop } from "../electron-window-backdrop";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { getLogger } from "../logging/logger";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
-import { resolveCodexTitleBarOptions } from "../window-navigation-chrome";
+import {
+  resolveCodexTitleBarOptions,
+  syncWindowNavigationChrome,
+} from "../window-navigation-chrome";
 import { isWindowSessionBoundsVisible } from "../window-session-state";
 import { WindowRuntime, type WindowRuntimeService } from "./WindowRuntime";
 
@@ -373,6 +376,9 @@ export const live = (
             });
             window.webContents.once("did-finish-load", () => {
               if (record.phase === "loading") record.phase = "bootstrapping";
+            });
+            window.webContents.on("did-finish-load", () => {
+              syncWindowNavigationChrome(window, options.platform, theme.shouldUseDarkColors);
             });
             window.webContents.on(
               "did-fail-load",

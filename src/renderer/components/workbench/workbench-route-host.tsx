@@ -28,10 +28,15 @@ function WorkbenchRouteMain({
 }) {
   return (
     <main
+      data-workbench-main-surface
+      data-contextual-sidebar-open={sidebarMounted}
       className={cn(
-        "main-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
-        sidebarMounted ? "rounded-s-2xl" : "!rounded-l-none",
+        "main-surface relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden !rounded-none",
+        sidebarMounted && "border-s-[0.5px] border-token-border",
       )}
+      style={{
+        clipPath: sidebarMounted ? "inset(0 0 0 -12px round 12px)" : "inset(0 round 12px)",
+      }}
     >
       {children}
     </main>

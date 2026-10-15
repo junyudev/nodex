@@ -24,6 +24,7 @@ import {
   installReducedMotionMatchMediaForTest,
   invokeCalls,
   moveSidebarPointer,
+  hoverSidebarDestination,
   openPanelMenu,
   pointerActivate,
   pointerDownAndSettle,
@@ -181,7 +182,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Toggle side panel" }));
+      fireEvent.click(screen.getByRole("button", { name: "Show tabs" }));
       await Promise.resolve();
     });
     await settleAsyncRender();
@@ -194,15 +195,15 @@ describe("workbench session shell / pages-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    expect(
-      invokeCalls.some(
-        (call) =>
-          call[0] === "window-session-view:panel-patch" &&
-          call[1] === "session:alpha:database-view" &&
-          call[2] === "right" &&
-          JSON.stringify(call[3]) === JSON.stringify({ collapsed: false }),
-      ),
-    ).toBe(true);
+    expect(invokeCalls).toContainEqual([
+      "window-session-view:panel-patch",
+      "session:alpha:database-view",
+      "right",
+      expect.objectContaining({ collapsed: false }),
+    ]);
+    expect(screen.getByRole("button", { name: "Hide tabs" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
     expect(screen.getByRole("tab", { name: "Browser" })).not.toBeNull();
     expect(screen.queryAllByRole("tablist").length > 0).toBe(true);
   });
@@ -2417,7 +2418,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    expect(sidebar.getAttribute("style")?.includes("width: 300px")).toBe(true);
+    expect(sidebar.style.width).toBe("288px");
   });
 
   test("collapsed sidebar renders Codex-parity left titlebar chrome on macOS", async () => {
@@ -2452,7 +2453,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         leftSlot.className.includes("ps-[max(var(--spacing-token-safe-header-left),0.5rem)]"),
       ).toBe(true);
       expect(leftSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
-      expect(leftSlot.getAttribute("style")?.includes("min-width: 208px")).toBe(true);
+      expect(leftSlot.style.minWidth).toBe("224px");
       expect(collapseButton.parentElement?.className.includes("fixed")).toBe(false);
       expect(collapseButton.hasAttribute("title")).toBe(false);
       expect(backButton.hasAttribute("disabled")).toBe(true);
@@ -2473,6 +2474,10 @@ describe("workbench session shell / pages-shell-navigation", () => {
       expect(screen.getByRole("button", { name: "Space" })).toBeTruthy();
 
       await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
+      expect(
+        screen.container.querySelector('[data-testid="app-shell-floating-left-panel"]'),
+      ).toBeNull();
+      await hoverSidebarDestination(screen, "Home");
 
       const floatingShell = screen.container.querySelector(
         '[data-testid="floating-project-session-sidebar-shell"]',
@@ -2483,15 +2488,16 @@ describe("workbench session shell / pages-shell-navigation", () => {
       const floatingHeader = floatingAside?.querySelector(".app-header-tint") as HTMLElement | null;
       expect(floatingShell !== null).toBe(true);
       expect(floatingShell?.getAttribute("data-sidebar-floating-focus-area")).toBe("true");
-      expect(floatingShell?.getAttribute("style")?.includes("width: 300px")).toBe(true);
+      expect(floatingShell?.style.width).toBe("296px");
       expect(floatingAside !== null).toBe(true);
-      expect(floatingHeader !== null).toBe(true);
+      expect(floatingHeader).toBeNull();
       expect(screen.getByTestId("sidebar-resize-strip").parentElement).toBe(floatingShell);
 
       const floatingFocusButton = Array.from(floatingShell?.querySelectorAll("button") ?? []).find(
         (button) => !button.disabled,
       ) as HTMLButtonElement | undefined;
       if (!floatingFocusButton) throw new Error("Expected a focusable floating sidebar button");
+      await hoverSidebarDestination(screen, "Home", false);
       await act(async () => {
         floatingFocusButton.focus();
         await Promise.resolve();
@@ -2538,6 +2544,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
     await settleAsyncRender();
     await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
+    await hoverSidebarDestination(screen, "Home");
+    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12);
+    await hoverSidebarDestination(screen, "Home", false);
 
     const expandStrip = screen.getByTestId("sidebar-resize-strip");
 
@@ -2552,7 +2561,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       '[data-testid="floating-project-session-sidebar-shell"]',
     ) as HTMLElement | null;
     expect(expandedFloatingShell !== null).toBe(true);
-    expect(expandedFloatingShell?.getAttribute("style")?.includes("width: 360px")).toBe(true);
+    expect(expandedFloatingShell?.style.width).toBe("356px");
 
     await act(async () => {
       fireEvent.pointerUp(window, { pointerId: 8, clientX: 360 });
@@ -2578,7 +2587,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     ) as HTMLElement | null;
     expect(capturedPointerId).toBe(9);
     expect(floatingShell !== null).toBe(true);
-    expect(floatingShell?.getAttribute("style")?.includes("width: 240px")).toBe(true);
+    expect(floatingShell?.style.width).toBe("236px");
     expect(screen.container.querySelector('[data-testid="project-session-sidebar"]')).toBe(null);
     expect(screen.queryAllByRole("button", { name: "Show sidebar" }).length > 0).toBe(true);
 
@@ -2591,11 +2600,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
     const persistedFloatingShell = screen.container.querySelector(
       '[data-testid="floating-project-session-sidebar-shell"]',
     ) as HTMLElement | null;
-    expect(persistedFloatingShell?.getAttribute("style")?.includes("width: 240px")).toBe(true);
+    expect(persistedFloatingShell?.style.width).toBe("236px");
     expect(screen.container.querySelector('[data-testid="project-session-sidebar"]')).toBe(null);
   });
 
-  test("collapsed Space reveals at the zoomed content edge and preserves keyboard focus", async () => {
+  test("collapsed Space reveals from its rail button and preserves keyboard focus", async () => {
     const screen = renderWorkbench({ sidebar: { collapsed: true, width: 300 } });
     await settleAsyncRender();
     await settleAsyncRender();
@@ -2609,9 +2618,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX * 2 - 1);
+    await moveSidebarPointer(WORKBENCH_NAVIGATION_RAIL_WIDTH_PX * 2 - 1, 160);
     expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
-    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12) * 2);
+    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 12) * 2, 160);
+    expect(screen.queryByRole("navigation", { name: "Space" })).toBeNull();
+    await hoverSidebarDestination(screen, "Space");
 
     const navigation = screen.getByRole("navigation", { name: "Space" });
     const search = within(navigation).getByRole("button", { name: "Search" });
@@ -2619,7 +2630,8 @@ describe("workbench session shell / pages-shell-navigation", () => {
       search.focus();
       await Promise.resolve();
     });
-    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301) * 2);
+    await hoverSidebarDestination(screen, "Space", false);
+    await moveSidebarPointer((WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + 301) * 2, 160);
     expect(screen.getByRole("navigation", { name: "Space" })).toBe(navigation);
 
     await act(async () => {
@@ -2841,12 +2853,12 @@ describe("workbench session shell / pages-shell-navigation", () => {
 
   test("window navigation restores right-panel collapsed state", async () => {
     const screen = renderWorkbench({
-      sessionsByProject: { alpha: [makeSession({ rightCollapsed: false })] },
+      sessionsByProject: { alpha: [makeSession({ rightCollapsed: false, rightFullWidth: false })] },
     });
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const toggleButton = screen.getByRole("button", { name: "Toggle side panel" });
+    const toggleButton = screen.getByRole("button", { name: "Hide tabs" });
     expect(screen.queryByTestId("session-right-panel") !== null).toBe(true);
     expect(toggleButton.getAttribute("aria-pressed")).toBe("true");
 
@@ -2856,7 +2868,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    expect(toggleButton.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "Show tabs" }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Back" }));
@@ -2866,6 +2880,8 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
 
     expect(screen.queryByTestId("session-right-panel") !== null).toBe(true);
-    expect(toggleButton.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Hide tabs" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 });

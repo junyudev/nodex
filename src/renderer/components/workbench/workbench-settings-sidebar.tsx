@@ -262,7 +262,6 @@ export function SettingsSidebar({
   });
   return (
     <aside className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex">
-      <div className="draggable h-toolbar w-full shrink-0" />
       <nav className="flex min-h-0 flex-1 flex-col select-none px-row-x" aria-label="Settings">
         <div className="flex min-h-0 flex-1 flex-col">
           <button

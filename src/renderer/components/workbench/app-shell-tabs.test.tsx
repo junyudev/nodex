@@ -1,19 +1,14 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { fireEvent, waitFor, within } from "@testing-library/react";
+import { fireEvent, within } from "@testing-library/react";
 import { act } from "react";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, type ComponentProps, type ReactNode } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import {
-  makeWorkbenchPanelLayout,
-  splitWorkbenchPanelLeaf,
-} from "../../../shared/workbench-panel-layout";
 import {
   AppShellTabs,
   shouldShowAppShellTabSeparator,
   type AppShellTabItem,
 } from "./app-shell-tabs";
-import { PanelGroupTree } from "./panel-group-tree";
-import { openNodexMenu, render, settleAsyncRender, textContent } from "@/test/dom";
+import { render, settleAsyncRender, textContent } from "@/test/dom";
 
 const motionPreference = vi.hoisted(() => ({ reduced: false }));
 
@@ -98,17 +93,6 @@ function renderAppShellTabs(props: {
       />
     </NodexTooltipProvider>,
   );
-}
-
-function getOpenTabsTrigger(
-  queries: Pick<ReturnType<typeof within>, "getByRole">,
-  count: number,
-): HTMLElement {
-  const trigger = queries.getByRole("button", { name: "Open tabs" });
-  expect(trigger.getAttribute("aria-description")).toBe(
-    `${count} open ${count === 1 ? "tab" : "tabs"}`,
-  );
-  return trigger;
 }
 
 async function hoverTabThroughTooltipDelay(element: HTMLElement): Promise<void> {
@@ -221,197 +205,6 @@ describe("AppShellTabs", () => {
     expect(view.getByRole("tabpanel").getAttribute("aria-label")).toBe("Beta project, Live title");
     expect(view.getByLabelText("Close Beta project, Live title tab") !== null).toBe(true);
     expect(panelRenderCount).toBe(1);
-  });
-
-  test("lists the current tabs and selects a tab through the owning callback", async () => {
-    const onSelect = vi.fn();
-    const view = renderAppShellTabs({ onSelect });
-    const trigger = getOpenTabsTrigger(view, 3);
-
-    await openNodexMenu(trigger);
-
-    const menu = await view.findByRole("menu", { name: "Open tabs" });
-    expect(
-      within(menu)
-        .getAllByRole("menuitem")
-        .map((item) => item.getAttribute("aria-label")),
-    ).toEqual(["One", "Two", "History"]);
-    expect(within(menu).getByRole("menuitem", { name: "One" }).getAttribute("aria-current")).toBe(
-      "true",
-    );
-
-    await act(async () => {
-      fireEvent.click(within(menu).getByRole("menuitem", { name: "Two" }));
-      await Promise.resolve();
-    });
-
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("two");
-    await waitFor(() => expect(view.queryByRole("menu", { name: "Open tabs" })).toBe(null));
-  });
-
-  test("opens the tab chooser on pointer hover", async () => {
-    const view = renderAppShellTabs({});
-    const trigger = getOpenTabsTrigger(view, 3);
-
-    await act(async () => {
-      fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-      fireEvent.mouseEnter(trigger);
-      await Promise.resolve();
-    });
-
-    expect(
-      within(await view.findByRole("menu", { name: "Open tabs" })).getAllByRole("menuitem").length,
-    ).toBe(3);
-  });
-
-  test("keeps open-tab menu titles and icons live without re-rendering panel content", async () => {
-    let title = "Original title";
-    const listeners = new Set<() => void>();
-    const onSelect = vi.fn();
-    let panelRenderCount = 0;
-    const view = renderAppShellTabs({
-      tabs: [
-        {
-          id: "live-menu-title",
-          title: "Fallback title",
-          titleSource: {
-            getSnapshot: () => title,
-            subscribe: (listener) => {
-              listeners.add(listener);
-              return () => {
-                listeners.delete(listener);
-              };
-            },
-          },
-          contextLabel: "Beta",
-          titleLabel: (resolvedTitle) => `Beta project, ${resolvedTitle}`,
-          iconElement: <span aria-label="Live Page icon">P</span>,
-          renderPanel: () => {
-            panelRenderCount += 1;
-            return <div>Stable panel</div>;
-          },
-        },
-      ],
-      activeTabId: "live-menu-title",
-      onSelect,
-    });
-
-    await openNodexMenu(getOpenTabsTrigger(view, 1));
-    const menu = await view.findByRole("menu", { name: "Open tabs" });
-    expect(within(menu).getByRole("menuitem", { name: "Beta project, Original title" })).not.toBe(
-      null,
-    );
-    expect(within(menu).getByLabelText("Live Page icon")).not.toBe(null);
-
-    await act(async () => {
-      title = "Renamed title";
-      listeners.forEach((listener) => listener());
-      await Promise.resolve();
-    });
-
-    const renamedItem = await within(menu).findByRole("menuitem", {
-      name: "Beta project, Renamed title",
-    });
-    expect(within(menu).queryByRole("menuitem", { name: "Beta project, Original title" })).toBe(
-      null,
-    );
-    expect(panelRenderCount).toBe(1);
-    await act(async () => {
-      fireEvent.click(renamedItem);
-      await Promise.resolve();
-    });
-    expect(onSelect).toHaveBeenCalledExactlyOnceWith("live-menu-title");
-    view.unmount();
-    expect(listeners.size).toBe(0);
-  });
-
-  test("removes closed tabs from the count and menu immediately", async () => {
-    function ClosingTabs() {
-      const [tabs, setTabs] = useState(makeTabs);
-      return (
-        <AppShellTabs
-          tabs={tabs}
-          activeTabId="one"
-          onSelect={() => undefined}
-          onCloseTab={(tabId) => setTabs((current) => current.filter((tab) => tab.id !== tabId))}
-        />
-      );
-    }
-    const view = render(<ClosingTabs />);
-    await clickCloseButton(view, "Close Two tab");
-
-    const trigger = getOpenTabsTrigger(view, 2);
-    await openNodexMenu(trigger);
-
-    const menu = await view.findByRole("menu", { name: "Open tabs" });
-    expect(within(menu).getAllByRole("menuitem").length).toBe(2);
-    expect(within(menu).queryByRole("menuitem", { name: "Two" })).toBe(null);
-  });
-
-  test("keeps the exact open-tab count accessible when the compact icon reaches 9+", async () => {
-    const tabs = Array.from({ length: 12 }, (_, index): AppShellTabItem => ({
-      id: `tab-${index}`,
-      title: `Tab ${index + 1}`,
-      renderPanel: () => <div>Panel {index + 1}</div>,
-    }));
-    const view = renderAppShellTabs({ tabs, activeTabId: "tab-0" });
-    const trigger = getOpenTabsTrigger(view, 12);
-    expect(trigger.textContent).toBe("9+");
-    await openNodexMenu(trigger);
-    expect(
-      within(await view.findByRole("menu", { name: "Open tabs" })).getAllByRole("menuitem").length,
-    ).toBe(12);
-  });
-
-  test("keeps open-tab menus scoped to their split leaf", async () => {
-    const tabs = makeTabs();
-    const onSelectTab = vi.fn();
-    const layout = splitWorkbenchPanelLeaf(
-      makeWorkbenchPanelLayout(["one", "two", "history"], "one"),
-      {
-        leafId: "main",
-        side: "right",
-        tabId: "two",
-        newLeafId: "leaf:right",
-        newBranchId: "branch:root",
-      },
-    );
-    const view = render(
-      <PanelGroupTree
-        sessionId="session-1"
-        panelId="right"
-        layout={layout}
-        tabItemsByLeafId={{ main: [tabs[0], tabs[2]], "leaf:right": [tabs[1]] }}
-        activeTabIdsByLeafId={{ main: "one", "leaf:right": "two" }}
-        renderEmptyLeaf={() => null}
-        onSelectTab={onSelectTab}
-        onCloseTab={() => undefined}
-        onReorderTab={() => undefined}
-        onMoveTab={() => undefined}
-        onSplitGroup={() => undefined}
-        onActivateGroup={() => undefined}
-        onResizeGroup={() => undefined}
-      />,
-    );
-    const leftLeaf = view.container.querySelector<HTMLElement>('[data-panel-group-leaf-id="main"]');
-    const rightLeaf = view.container.querySelector<HTMLElement>(
-      '[data-panel-group-leaf-id="leaf:right"]',
-    );
-    if (!leftLeaf || !rightLeaf) throw new Error("Expected both split leaves");
-    getOpenTabsTrigger(within(rightLeaf), 1);
-    await openNodexMenu(getOpenTabsTrigger(within(leftLeaf), 2));
-
-    const menu = await view.findByRole("menu", { name: "Open tabs" });
-    expect(
-      within(menu)
-        .getAllByRole("menuitem")
-        .map((item) => item.getAttribute("aria-label")),
-    ).toEqual(["One", "History"]);
-    await act(async () => {
-      fireEvent.click(within(menu).getByRole("menuitem", { name: "History" }));
-      await Promise.resolve();
-    });
-    expect(onSelectTab).toHaveBeenCalledExactlyOnceWith("main", "history");
   });
 
   test("suppresses tab tooltips while dragging", async () => {

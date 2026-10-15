@@ -19,6 +19,7 @@ import {
   createWorkbenchSceneSurface,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
+  patchWorkbenchScenePanel,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
   type WorkbenchSurfaceDescriptor,
@@ -122,6 +123,84 @@ function fixture(scene: WorkbenchSceneSnapshot) {
 }
 
 describe("shared Workbench Scene executor", () => {
+  test.each([false, true])(
+    "selects a retained tab and fullWidth=%s atomically after preview save succeeds",
+    async (fullWidth) => {
+      const scene = patchWorkbenchScenePanel(
+        seededScene({ kind: "session", sessionId: "session-a" }, [page("target")]),
+        "right",
+        { collapsed: true },
+      );
+      const subject = fixture(scene);
+      const groupId = scene.panels.right.layout.activeLeafId;
+      const slot = makeWorkbenchPanelSlotKey("session:session-a", "right", groupId);
+      const preview = makePreviewWorkspaceFileTab(
+        makeTestWorkbenchSession({ id: "session-a", projectId: "project-a" }),
+        "right",
+        {
+          path: "/workspace/draft.ts",
+          title: "Draft",
+          cwd: "/workspace",
+          workspaceRoot: "/workspace",
+          leafId: groupId,
+        },
+      );
+      subject.owner.dispatchEphemeral({
+        type: "update",
+        field: "previewTabsByPanel",
+        update: { [slot]: preview },
+      });
+      const requestedScene = () =>
+        patchWorkbenchScenePanel(
+          subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!,
+          "right",
+          { collapsed: false, size: { fullWidth } },
+        );
+      const before = subject.owner.read();
+      subject.lifecycle.prepareClose.mockResolvedValueOnce(false);
+      expect(
+        await subject.executor.execute(
+          subject.envelope({ kind: "activate_tab", tabId: "target" }),
+          () => true,
+          { preparedScene: requestedScene() },
+        ),
+      ).toMatchObject({ applied: false, error: "save_failed" });
+      expect(subject.owner.read()).toBe(before);
+      expect(subject.commit).not.toHaveBeenCalled();
+
+      const publications: Array<{
+        fullWidth: boolean;
+        collapsed: boolean;
+        selected: string | null;
+      }> = [];
+      const release = subject.owner.subscribe(() => {
+        const current = subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!;
+        publications.push({
+          fullWidth: current.panels.right.size.fullWidth === true,
+          collapsed: current.panels.right.collapsed,
+          selected:
+            current.panels.right.layout.root.type === "leaf"
+              ? current.panels.right.layout.root.activeTabId
+              : null,
+        });
+      });
+      try {
+        expect(
+          await subject.executor.execute(
+            subject.envelope({ kind: "activate_tab", tabId: "target" }),
+            () => true,
+            { preparedScene: requestedScene() },
+          ),
+        ).toMatchObject({ applied: true, persisted: true, error: null });
+        expect(publications).toEqual([{ fullWidth, collapsed: false, selected: "target" }]);
+        expect(subject.commit).toHaveBeenCalledOnce();
+        expect(subject.owner.read().ephemeralPanels.previewTabsByPanel).toEqual({});
+      } finally {
+        release();
+      }
+    },
+  );
+
   test("reactivates the existing runtime tab without duplicating its surface", async () => {
     const subject = fixture(seededScene({ kind: "session", sessionId: "session" }, []));
     const opened = await subject.execute({
