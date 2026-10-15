@@ -53,8 +53,11 @@ function resolveNavigation(
       activateTabId: `sidechat:${event.conversation.conversationId}`,
     };
   }
+  const sessionId = event.conversation.runtimeSessionId?.trim() ?? "";
+  const threadPath = `thread:${encodeURIComponent(event.conversation.conversationId)}`;
   return {
-    navigationPath: `thread:${event.conversation.conversationId}`,
+    navigationPath:
+      sessionId.length > 0 ? `session:${encodeURIComponent(sessionId)}/${threadPath}` : threadPath,
     activateTabId: null,
   };
 }

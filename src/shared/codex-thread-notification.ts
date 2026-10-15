@@ -18,6 +18,8 @@ export interface CodexNotificationConversationFacts {
   parentThreadId: string | null;
   source: unknown;
   sideConversationParentNavigationPath: string | null;
+  /** A Runtime-bound conversation opens through its product Session, not native Thread lookup. */
+  runtimeSessionId?: string | null;
 }
 
 export interface CodexTurnCompletedNotificationEvent {

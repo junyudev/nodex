@@ -110,9 +110,13 @@ import { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
 import type { WorkbenchCommandPort } from "@/lib/use-workbench-command-ingress";
 import {
   executeDesktopNotificationAction,
+  executeRuntimeDesktopNotificationAction,
   resolveDesktopNotificationParentThreadId,
+  resolveDesktopNotificationRuntimeSessionId,
   resolveDesktopNotificationSideChatThreadId,
 } from "@/lib/desktop-notification-action";
+import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { createUuidV7 } from "../../../shared/uuid-v7";
 import type { DesktopNotificationActionInvocation } from "../../../shared/types";
 import { makeBrowserSidebarTabKey } from "../../../shared/browser-sidebar";
 import {
@@ -2813,11 +2817,24 @@ export function WorkbenchRuntime({
     async (invocation: DesktopNotificationActionInvocation): Promise<void> => {
       const parentThreadId = resolveDesktopNotificationParentThreadId(invocation);
       if (!parentThreadId) return;
+      const runtimeSessionId = resolveDesktopNotificationRuntimeSessionId(invocation);
 
-      const opened = await openAttachedThreadSessionById(parentThreadId);
+      const opened = await openAttachedThreadSessionById(
+        parentThreadId,
+        runtimeSessionId ? { runtimeSessionId } : undefined,
+      );
       if (!opened) return;
       const presented = await waitForActiveThread(parentThreadId);
       if (!presented) return;
+      if (runtimeSessionId) {
+        await executeRuntimeDesktopNotificationAction(invocation, runtimeSessionId, (input) =>
+          agentRuntimeRuntime.message({
+            sessionId: input.sessionId,
+            message: { messageId: createUuidV7(), text: input.text },
+          }),
+        );
+        return;
+      }
 
       const sideChatThreadId = resolveDesktopNotificationSideChatThreadId(invocation);
       if (sideChatThreadId) {

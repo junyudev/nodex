@@ -266,4 +266,29 @@ describe("Codex thread notification handler", () => {
     });
     expect(runtime.dismissed).toContainEqual({ notificationId: runtime.shown[0]!.id });
   });
+
+  test("routes a Runtime conversation through its product Session", () => {
+    const runtime = setup();
+    runtime.source.eventListener?.({
+      type: "turn-completed",
+      hostId: "local",
+      conversation: conversation({
+        conversationId: "nodex:thread:root",
+        runtimeSessionId: "session:a/b",
+      }),
+      turnId: "run-1",
+      status: "completed",
+      lastAgentMessage: "Delegated result is ready",
+      heartbeatAssistantMessage: null,
+      automationNotificationDecision: null,
+      hasPendingContinuation: false,
+    });
+    expect(runtime.shown).toMatchObject([
+      {
+        conversationId: "nodex:thread:root",
+        navigationPath: "session:session%3Aa%2Fb/thread:nodex%3Athread%3Aroot",
+        activateTabId: null,
+      },
+    ]);
+  });
 });

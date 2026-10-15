@@ -110,6 +110,7 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
         parentThreadId: null,
         source: null,
         sideConversationParentNavigationPath: null,
+        runtimeSessionId: sessionId,
       };
       if (status && endedRun) {
         // Delegated work that will wake the root, or a queued follow-up, continues this turn.

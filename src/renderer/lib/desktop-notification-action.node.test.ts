@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { DesktopNotificationActionInvocation } from "../../shared/types";
 import {
   executeDesktopNotificationAction,
+  executeRuntimeDesktopNotificationAction,
   resolveDesktopNotificationParentThreadId,
+  resolveDesktopNotificationRuntimeSessionId,
   resolveDesktopNotificationSideChatThreadId,
   type DesktopNotificationActionManager,
 } from "./desktop-notification-action";
@@ -81,5 +83,36 @@ describe("desktop notification action boundary", () => {
       ),
     ).toBe("ignored");
     expect(manager.startTurn).not.toHaveBeenCalled();
+  });
+
+  it("opens Runtime conversations by Session and replies through the Session", async () => {
+    const invocation = makeInvocation({
+      conversationId: "nodex:thread:root",
+      navigationPath: "session:session%3Aa%2Fb/thread:nodex%3Athread%3Aroot",
+      activateTabId: null,
+      requestId: null,
+    });
+    expect(resolveDesktopNotificationRuntimeSessionId(invocation)).toBe("session:a/b");
+    expect(resolveDesktopNotificationParentThreadId(invocation)).toBe("nodex:thread:root");
+    expect(resolveDesktopNotificationRuntimeSessionId(makeInvocation())).toBe("session-1");
+    expect(
+      resolveDesktopNotificationRuntimeSessionId(makeInvocation({ navigationPath: "thread:a" })),
+    ).toBeNull();
+
+    const sendMessage = vi.fn(async () => undefined);
+    await expect(
+      executeRuntimeDesktopNotificationAction(invocation, "session:a/b", sendMessage),
+    ).resolves.toBe("opened");
+    await expect(
+      executeRuntimeDesktopNotificationAction(
+        { ...invocation, actionType: "reply", reply: "  Ship it  " },
+        "session:a/b",
+        sendMessage,
+      ),
+    ).resolves.toBe("replied");
+    expect(sendMessage).toHaveBeenCalledExactlyOnceWith({
+      sessionId: "session:a/b",
+      text: "Ship it",
+    });
   });
 });

@@ -43,7 +43,10 @@ import type { ConversationRuntime } from "./conversation-runtime";
 import type { ThreadStageActions, ConversationProviderPresentation } from "./thread-stage-types";
 import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
-import { setLocalConversationComposerIntent } from "./local-conversation-store";
+import {
+  setLocalConversationComposerIntent,
+  setLocalConversationThreadPresented,
+} from "./local-conversation-store";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
   agentRuntimeDelegatedTasks,
@@ -127,7 +130,10 @@ export function createAgentRuntimeConversationRuntime(
     markRead: async () => {
       if (target) await workspaceSessionCommands.markUnread(target.sessionId, { unread: false });
     },
-    setPresented: async () => {},
+    // Main's unread and notification policy reads the same presentation registry as native chats.
+    setPresented: async (id, surfaceId, presented) => {
+      if (matches(id)) await setLocalConversationThreadPresented(id, surfaceId, presented, "local");
+    },
   };
   if (owner && ports) {
     ports.set(kind, runtime);

@@ -30,6 +30,17 @@ export function resolveDesktopNotificationParentThreadId(
   return invocation.conversationId;
 }
 
+/** The product Session of a Runtime-bound conversation named by `session:<id>`, if any. */
+export function resolveDesktopNotificationRuntimeSessionId(
+  invocation: DesktopNotificationActionInvocation,
+): string | null {
+  const segment = (invocation.navigationPath ?? "")
+    .split("/")
+    .find((part) => part.startsWith("session:"));
+  const encoded = segment?.slice("session:".length).trim() ?? "";
+  return encoded.length > 0 ? decodeNavigationSegment(encoded) : null;
+}
+
 export function resolveDesktopNotificationSideChatThreadId(
   invocation: DesktopNotificationActionInvocation,
 ): string | null {
@@ -65,4 +76,21 @@ export async function executeDesktopNotificationAction(
   }
 
   return "ignored";
+}
+
+/**
+ * Actions on a Runtime-bound conversation. Opening already presented the Session; a reply is
+ * an ordinary follow-up through the Session's execution owner, never a native turn.
+ */
+export async function executeRuntimeDesktopNotificationAction(
+  invocation: DesktopNotificationActionInvocation,
+  sessionId: string,
+  sendMessage: (input: { readonly sessionId: string; readonly text: string }) => Promise<unknown>,
+): Promise<DesktopNotificationActionResult> {
+  if (invocation.actionType === "open") return "opened";
+  if (invocation.actionType !== "reply") return "ignored";
+  const reply = invocation.reply?.trim() ?? "";
+  if (reply.length === 0) return "ignored";
+  await sendMessage({ sessionId, text: reply });
+  return "replied";
 }

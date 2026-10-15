@@ -1193,8 +1193,11 @@ export function useWorkbenchSessionCommands({
   );
 
   const openAttachedThreadSessionById = useCallback(
-    async (threadId: string) => {
-      return await openAttachedThreadSessionResult(threadId);
+    async (
+      threadId: string,
+      context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
+    ) => {
+      return await openAttachedThreadSessionResult(threadId, context);
     },
     [openAttachedThreadSessionResult],
   );

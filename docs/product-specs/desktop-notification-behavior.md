@@ -270,5 +270,12 @@ title is the Session title, and its host is the local host.
   and is withdrawn when the root stops waiting.
 
 Either event marks the Session unread in Core unless a focused window presents
-its conversation or the Session is archived. Process restarts and missed
-observations reread activity without producing notifications.
+its conversation or the Session is archived. A Runtime conversation reports its
+presentation through the same registry as native chats, so a visible root is not
+marked unread; showing a delegated child does not present its root. Process
+restarts and missed observations reread activity without producing notifications.
+
+Its navigation path names the Session (`session:<id>/thread:<root>`), so opening
+the notification selects that Session directly rather than resolving a native
+Thread, and a reply is an ordinary follow-up through the Session's execution
+owner.
