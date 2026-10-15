@@ -46,6 +46,7 @@ src/renderer/components/workbench/database-view-surface.test.tsx
   s_5cd527886c6c64::t_4b3aa2aa73e181 134,1674,2246
 src/renderer/lib/agent-runtime-prompt.ts
   s_5cd527886c6c64::t_d1ebafd73dbbd5 1,4-5,10-17,19
+  s_5cd527886c6c64::t_139ee51845a625 2-3,6-9
 src/main/agent-runtime/AgentRuntimeProfileSnapshot.ts
   s_5cd527886c6c64::t_adecfc5b0e1085 36-38,67-70
   s_5cd527886c6c64::t_37b38ca31ff03e 6,30,33-35,39,42-45,61-62
@@ -359,6 +360,9 @@ src/renderer/features/local-conversation/view/local-conversation-thread-body.tes
 src/shared/agent-prompt.ts
   s_5cd527886c6c64::t_596740b6cf7f17 46
   s_5cd527886c6c64::t_2bab2a65aa5a0e 47-49,51,70
+  s_5cd527886c6c64::t_137b8803c14fa4 4,6-8,15-22,35-38,54
+  s_5cd527886c6c64::t_d98efc39dd5c04 5,24,30,55-57
+  s_5cd527886c6c64::t_541863b44eb5de 10-14,23,25-29,31-34,39,50,53,58,63-64,97
 src/main/core-client/editor-history-library-access-scenario.node.test.ts
   s_5cd527886c6c64::t_bff3e337a91174 11,83,93,95
 src/shared/codex-thread-notification.ts
@@ -459,6 +463,7 @@ src/renderer/lib/use-codex-automation-run-updates.test.tsx
   s_5cd527886c6c64::t_750538400ec2ff 24,42,44,53-54,121,185-186
 src/shared/agent-prompt.node.test.ts
   s_5cd527886c6c64::t_81c338dfbbcdbd 77-92
+  s_5cd527886c6c64::t_137b8803c14fa4 2,93-122
 src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
   s_5cd527886c6c64::t_f14705ff5c6df3 20,53-62,77,193-195,207-210,215,223-224,231-232,234,237-240,242-247,249-250,257-260,262-267,270-273,275-276
   s_5cd527886c6c64::t_5012f6fa27b61c 23-27,150-162,316,321,324,326
@@ -466,6 +471,7 @@ src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.t
   s_5cd527886c6c64::t_80de74c125501e 1-4,6-11,21-22,28-38,50-51,64-65,68-72,78,95-97,99,101,279,282-287,289-292,294-302,305-315,317-319,322-323,327-338,341
   s_5cd527886c6c64::t_f13842e6a4af12 12-13,19,63,73-76,225-230,235-236,252-256,277
   s_5cd527886c6c64::t_daa828e00fb486 14-18,79-94,163,165-167,169-177,179-186,190-192,196-198,200-204,206,211-214,216-218,220-222
+  s_5cd527886c6c64::t_faf1b027351880 5,39-49,52,66-67,98,100,102-149,164,168,178,187-189,199,205,219,233,241,248,251,261,268-269,274,278,280-281,288,293,303-304,320,325,339-340,349
 src/shared/nodex-agent-tools/v3-contracts.test.ts
   s_5cd527886c6c64::t_c874f0b2e20ddc 67,69
 src/main/app/ConversationApplicationLive.ts
@@ -755,6 +761,9 @@ src/main/app/MainApplicationLive.ts
   s_5cd527886c6c64::t_74fb7f79db533b 159,162,240-242
   s_5cd527886c6c64::t_6dc812a6b27ab1 73
   s_5cd527886c6c64::t_7cfad6368ee280 37,101,113
+  s_5cd527886c6c64::t_c52f267c20f17c 117-123
+  s_5cd527886c6c64::t_2457f86e07a54e 39-41,156
+  s_5cd527886c6c64::t_388bf21fcdf6b0 157-158,160-161,163-165
 src/main/codex-application/CodexTurnPresentation.ts
   s_5cd527886c6c64::t_6dc45a3ef9eb32 424,509-511,513-514,516,519-530,534-537
   s_5cd527886c6c64::t_41f199ca9c6723 47-53,72,116-123,233,301,397-402,409-418,421-423,616
@@ -1356,6 +1365,7 @@ src/main/agent-runtime/AgentRuntimeHostTools.ts
   s_5cd527886c6c64::t_a79d814a6ba74a 1-2,4-17
   s_5cd527886c6c64::t_858676a64cc7ef 18-19,21-24,26-37,39-52
   s_5cd527886c6c64::t_e684152388c704 53-59,61-65,67-82,84-109,111-113,115-116,119-121,123-130,132-164,166-171
+  s_5cd527886c6c64::t_a2d0cb6639e705 3,20,25,38,60,66,83,110,114,117-118,122,131,165,172
 crates/nodex-cli/src/meta_yaml.rs
   s_5cd527886c6c64::t_3d65bf6025e87f 664,697-699,712,721,1027,1040,1054,1068
 packages/agent-runtime/src/auth/SessionStore.ts
@@ -1688,6 +1698,7 @@ package.json
   s_5cd527886c6c64::t_e34d670e956a7d 191-193
 docs/FRONTEND.md
   s_5cd527886c6c64::t_0e50becb89eb76 303-305
+  s_5cd527886c6c64::t_8efcb7ff75544b 81,98
 src/main/codex-application/CodexSubagentDirectory.ts
   s_5cd527886c6c64::t_526278ffe2f94f 29-32,474-475,1492
 src/renderer/components/workbench/workbench-automation-list.ts
@@ -1723,6 +1734,7 @@ src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test
   s_5cd527886c6c64::t_f473ceceecb368 4,207,226
   s_5cd527886c6c64::t_02adaf0fad1b9a 2-3,12-13,22-24,77-83,85-87,208-223,225,236-244,257,282-287,367,402,451
   s_5cd527886c6c64::t_f15f4f3d74cb49 205-206,227-235,245-254,279-281,342,358,364,369
+  s_5cd527886c6c64::t_f43560ab1424d0 1,14-20,25-26,84,92,94-204,224,255-256,272,292-338,341,345,350,353,356,359,361,363,365-366,368,373,388,414
 src/renderer/lib/page-create-target-registry.node.test.ts
   s_5cd527886c6c64::t_a13e73e7b92836 9
   s_5cd527886c6c64::t_23e79be7e56329 19,76,78,86
@@ -3033,6 +3045,7 @@ scripts/agent-eval/cases.ts
 src/main/app/ApplicationOperationsLive.ts
   s_5cd527886c6c64::t_c9dfd1ef4d9c8a 2,4,12-14,70,78-80,83,85,119,129
   s_5cd527886c6c64::t_7cfad6368ee280 120
+  s_5cd527886c6c64::t_2457f86e07a54e 133
 docs/adr/0057-library-files-and-page-relations.md
   s_5cd527886c6c64::t_1ee5ced2d67064 15,26,30,32-37,39-43,60,67,73,85,87-90,92,96,98
 src/main/core-runtime/ProjectionAudienceRuntime.ts
@@ -3093,6 +3106,7 @@ src/renderer/components/workbench/database-list/database-list-property-cells.tsx
 docs/product-specs/agent-interface-behavior.md
   s_5cd527886c6c64::t_e1326751ed5a00 469-471,501,518
   s_5cd527886c6c64::t_4f3c92dc9ba62d 10-12,37-44,71-84,94-98,112,114,120-121,129-130,157-169,172,176,180,184,189,200,208-226,243-244,271,274,289-290,327-330,334,346-347,350,358,360,363-365,375,384,438,447-448,452,454-458,460-466,468
+  s_5cd527886c6c64::t_303b32cc193927 48-53,59,69-70,85-88,227-230,239-240,245-253,257-268,279,366-368
 src/main/app-tools/RuntimeSessionCommands.node.test.ts
   s_5cd527886c6c64::t_733dee0fcbfc45 3-6,9-16,20,22-33,36-59,61-79,82-100,103,106-131,134-155,157-158,162,165-278,280-289
 src/renderer/features/local-conversation/projection/thread-summary-panel-scheduled-automation-model.ts
@@ -3530,6 +3544,7 @@ vite.config.ts
   s_5cd527886c6c64::t_875a6dac495a22 346,381,399,417
 scripts/ci/verify-source-type-ownership.ts
   s_5cd527886c6c64::t_1ac0034aeb2dcd 81-83,85-90,120
+  s_5cd527886c6c64::t_2457f86e07a54e 84
 src/main/codex-application/CodexThreadCatalog.node.test.ts
   s_5cd527886c6c64::t_c6525427dbd45f 133,146
   s_5cd527886c6c64::t_2bb1443fc93cfd 391-421
@@ -3769,6 +3784,50 @@ src/main/app-tools/SessionPresentationAppTools.node.test.ts
   s_5cd527886c6c64::t_9f059f7fb4adc6 83-84,101-102,138-142,144-174,176-179,280-281
 src/renderer/components/shared/content-issues-control.tsx
   s_5cd527886c6c64::t_0a150f282e4d06 10,34,113,260,264-265
+src/renderer/features/local-conversation/agent-runtime-model-intent.node.test.ts
+  s_5cd527886c6c64::t_9251398ae8ca0b 1-37
+src/main/core-client/inbox-adapter.ts
+  s_5cd527886c6c64::t_c52f267c20f17c 64
+src/main/app-tools/InboxAppTools.node.test.ts
+  s_5cd527886c6c64::t_9a3ec18cc61d8c 113
+  s_5cd527886c6c64::t_a2d0cb6639e705 3,11,13,20,35,43,93,95-109
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_5cd527886c6c64::t_9a3ec18cc61d8c 15
+docs/product-specs/realtime-voice-behavior.md
+  s_5cd527886c6c64::t_303b32cc193927 3
+  s_5cd527886c6c64::t_8efcb7ff75544b 7-8,35-37
+src/main/app-tools/HostedAppToolCatalog.ts
+  s_5cd527886c6c64::t_4cb7e7bbd93a1b 1-28
+src/main/app-tools/InboxAppTools.ts
+  s_5cd527886c6c64::t_a2d0cb6639e705 2,10,19,23-29,31-51,53-61,64-74,76-78
+  s_5cd527886c6c64::t_9a3ec18cc61d8c 18
+docs/product-specs/composer-prediction-behavior.md
+  s_5cd527886c6c64::t_303b32cc193927 10-11,28,35-37
+  s_5cd527886c6c64::t_8efcb7ff75544b 14-20,26-27,34,47-48
+src/renderer/features/local-conversation/view/composer/use-composer-prediction.test.tsx
+  s_5cd527886c6c64::t_7095b38158c03b 9,49,56-58,66-76
+src/renderer/features/local-conversation/agent-runtime-model-intent.ts
+  s_5cd527886c6c64::t_ee5bf49f2a7f1f 1-72
+src/main/inbox-application/InboxRuntimeSelection.ts
+  s_5cd527886c6c64::t_e0f9384a058a9b 1-50
+src/renderer/lib/conversation-media/conversation-media-model.node.test.ts
+  s_5cd527886c6c64::t_573d5d90733b99 27-42
+src/shared/inbox.ts
+  s_5cd527886c6c64::t_c52f267c20f17c 37
+docs/RELIABILITY.md
+  s_5cd527886c6c64::t_303b32cc193927 397,405-407
+  s_5cd527886c6c64::t_8efcb7ff75544b 6,21,32,77,165,386,388-396,398-404,681
+docs/product-specs/inbox-behavior.md
+  s_5cd527886c6c64::t_8efcb7ff75544b 35-36,232-235,237-239,241,250-251
+  s_5cd527886c6c64::t_303b32cc193927 240
+src/main/inbox-application/InboxDispatcher.ts
+  s_5cd527886c6c64::t_c52f267c20f17c 73
+  s_5cd527886c6c64::t_e0f9384a058a9b 8,26,40-41,43-49,51-70,75
+src/renderer/features/local-conversation/agent-runtime-draft-owner.ts
+  s_5cd527886c6c64::t_874162fd2256b6 1-33
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_5cd527886c6c64::t_8efcb7ff75544b 12,36,40-43,45-50
+  s_5cd527886c6c64::t_303b32cc193927 44
 ---
 {
   "schema_version": "authorship/3.0.0",
