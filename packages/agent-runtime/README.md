@@ -37,7 +37,7 @@ and ten completed tasks; prompts, progress and result bodies are never read for 
 type-specific SQL queries and live channels before retaining events. Every subscription returns
 its explicit ownership token for scoped cancellation.
 
-The process registers the four provider drivers and execution MCP tools. OpenCode instances
+The process registers the four provider drivers and the task tools described below. OpenCode instances
 select their native 1.x or 2.x adapter from their executable. ACP's stdio bridge commands use
 a separate entry path without acquiring the engine or provider runtimes.
 The engine is the single production composition `layerProduction` in
@@ -46,7 +46,34 @@ hourly pruning of settled outbox receipts older than seven days (failed receipts
 provider retirements remain). `src/nodex/Runtime.ts` supplies only platform capabilities and
 explicit policy overrides, and parked workers start after startup recovery completes. Desktop
 launch, worktree setup, content operations, scheduled tasks, usage-limit auto-resume and native
-session import are not composed; scheduling tools report the capability as unavailable.
+session import are not composed.
+
+## Agent tools
+
+Every provider attaches one MCP server named `nodex_app` (`NODEX_APP_MCP_SERVER` in
+`src/mcp/NodexAppMcpServer.ts`). Claude reports its calls as `mcp__nodex_app__<tool>`, Codex as
+server `nodex_app` with the bare tool name, OpenCode as `nodex_app_<tool>` or
+`nodex_app-<thread>_<tool>`. The server carries two families. Host Session and content tools
+address product Sessions by sessionId. The Runtime's task tools address delegated children by
+taskId only; the Runtime conversation that backs a task never appears in tool inputs or results.
+
+| Tool                | Purpose                                                                            |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `list_agent_models` | Provider instances, models and options a task can run, and what it inherits        |
+| `delegate_task`     | Start a child task (`async` by default; `wait` blocks up to `timeoutMs`)           |
+| `task_status`       | Read status and result; reading a settled result acknowledges its wake             |
+| `task_wait`         | Wait for a task to settle within a bounded budget                                  |
+| `task_send`         | Follow up in a task's conversation; after it finished, the follow-up is a new task |
+| `task_read`         | Page a task's conversation, or the caller's own when `taskId` is omitted           |
+| `task_cancel`       | Stop a task like a user Stop, including the tasks it delegated                     |
+| `stop_workflow`     | Stop a Claude workflow the caller's own conversation started                       |
+
+Task tools resolve a taskId to its conversation through the indexed task owner, then reuse the
+conversation read, send and acknowledgement logic. Mutations keep stable command identities
+derived from `clientRequestId` or the native call, so retries replay durable receipts.
+`src/nodex/Instructions.ts` is the guidance every provider receives for these tools.
+
+## Host bridge
 
 The bootstrap frame's `hostTools` supplies the host's MCP tool descriptors and
 activates Turn admission; provider credentials never enter the process environment.

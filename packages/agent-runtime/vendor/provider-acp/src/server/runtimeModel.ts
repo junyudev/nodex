@@ -13,7 +13,7 @@ import {
 import {
   NODEX_APP_MCP_SERVER,
   NODEX_APP_MCP_SERVER_PATTERN,
-  T3_MCP_TOOL_NAMES,
+  NODEX_APP_TASK_TOOL_NAMES,
   isNodexAppMcpServer,
 } from "@t3tools/shared/nodexAppMcp";
 import type {
@@ -1146,7 +1146,7 @@ export function extractMcpToolCallIdentity(
   const metaServerId = typeof meta?.serverId === "string" ? meta.serverId.trim() : "";
   const metaToolName = typeof meta?.toolName === "string" ? meta.toolName.trim() : "";
   if (isNodexAppMcpServer(metaServerId) && metaToolName.length > 0) {
-    for (const knownTool of T3_MCP_TOOL_NAMES) {
+    for (const knownTool of NODEX_APP_TASK_TOOL_NAMES) {
       const boundary = metaToolName.length - knownTool.length - 1;
       if (
         metaToolName === knownTool ||
@@ -1191,7 +1191,7 @@ export function extractMcpToolCallIdentity(
       NODEX_APP_TITLE_SUFFIX_CALL.exec(trimmed) ??
       BARE_TOOL_TITLE_CALL.exec(trimmed);
     const candidateTool = match?.groups?.tool;
-    if (candidateTool !== undefined && T3_MCP_TOOL_NAMES.has(candidateTool)) {
+    if (candidateTool !== undefined && NODEX_APP_TASK_TOOL_NAMES.has(candidateTool)) {
       return { server: NODEX_APP_MCP_SERVER, tool: candidateTool };
     }
   }

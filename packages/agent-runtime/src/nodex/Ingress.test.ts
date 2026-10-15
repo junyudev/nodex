@@ -28,7 +28,7 @@ import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { HostBridge, make as makeBridge } from "./HostBridge.ts";
 import { make } from "./Ingress.ts";
-import { OrchestratorToolkit } from "../mcp/toolkits/orchestrator/tools.ts";
+import { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 
 const actor = {
   runtimeId: "runtime:test",
@@ -245,7 +245,7 @@ it.effect("keeps the ingress Run immutable while a request body is delayed", () 
       yield* Deferred.succeed(body, {
         method: "tools/call",
         id: 7,
-        params: { name: "orchestrator_capabilities" },
+        params: { name: "list_agent_models" },
       });
       yield* Fiber.join(pending);
       expect(observed).toBe(true);
@@ -411,7 +411,7 @@ it.effect(
       const seen: string[] = [];
       const toolkit = Toolkit.make(
         Tool.make("content_write", {
-          parameters: OrchestratorToolkit.tools.orchestrator_capabilities.parametersSchema,
+          parameters: TaskToolkit.tools.list_agent_models.parametersSchema,
           success: Schema.Struct({ runId: Schema.String }),
         }),
       );

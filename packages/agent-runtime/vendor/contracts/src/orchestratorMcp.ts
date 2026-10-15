@@ -100,7 +100,7 @@ export type OrchestratorMcpTargetOptions = typeof OrchestratorMcpTargetOptions.T
 export const OrchestratorMcpTarget = Schema.Struct({
   providerInstanceId: Schema.optional(
     ProviderInstanceId.annotate({
-      description: "Configured provider instance id from orchestrator_capabilities.",
+      description: "Configured provider instance id from list_agent_models.",
     }),
   ),
   driverKind: Schema.optional(
@@ -117,12 +117,12 @@ export const OrchestratorMcpTarget = Schema.Struct({
    * Model option selections for the child (for example reasoning effort).
    * Accepts the canonical `[{ id, value }]` array or the shorthand
    * `{ id: value }` record; valid ids come from the option descriptors
-   * advertised by orchestrator_capabilities. When omitted, options inherit
+   * advertised by list_agent_models. When omitted, options inherit
    * from the parent only when the child runs the parent's provider and model.
    */
   options: Schema.optional(
     OrchestratorMcpTargetOptions.annotate({
-      description: "Model option selections advertised by orchestrator_capabilities.",
+      description: "Model option selections advertised by list_agent_models.",
     }),
   ),
 });
@@ -167,10 +167,11 @@ export type OrchestratorMcpTerminalDelegatedTaskStatus =
 
 export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   parentRunId: Schema.optional(RunId).annotate({
-    description: "Run to attach this child task to. Defaults to the native call's exact source Run; required when only Session attribution is available.",
+    description:
+      "Run that owns this task. Defaults to the calling turn; required only when the call identifies just its conversation (see activeRunId from task_read).",
   }),
   task: OrchestratorMcpPrompt.annotate({
-    description: "Self-contained task for one delegated child agent/subagent.",
+    description: "Self-contained prompt for one delegated task.",
   }),
   target: Schema.optional(OrchestratorMcpTarget),
   title: Schema.optional(OrchestratorMcpTitle),
@@ -208,7 +209,7 @@ export const OrchestratorMcpDelegateTaskResult = Schema.Struct({
   resultContextTransferId: Schema.NullOr(ContextTransferId),
   waitTimedOut: Schema.Boolean.annotate({
     description:
-      "True only on that mode=wait call when timeoutMs elapsed. The timeout does not cancel the child. Later task_status reads return false and use status for liveness.",
+      "True only on the call whose wait budget elapsed. The timeout does not cancel the task.",
   }),
 });
 export type OrchestratorMcpDelegateTaskResult = typeof OrchestratorMcpDelegateTaskResult.Type;
@@ -487,31 +488,22 @@ export const OrchestratorMcpProviderCapability = Schema.Struct({
       options: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
     }),
   ),
-  canRunChildTask: Schema.Boolean,
-  canRunCrossProviderChildTask: Schema.Boolean,
+  /** Whether delegate_task can run a task on this instance now. */
+  available: Schema.Boolean,
   constraints: Schema.Array(Schema.String),
 });
 export type OrchestratorMcpProviderCapability = typeof OrchestratorMcpProviderCapability.Type;
 
 export const OrchestratorMcpCapabilitiesResult = Schema.Struct({
-  /** The calling thread, or null when the caller is not a T3 thread. */
-  parentThreadId: Schema.NullOr(ThreadId),
-  /** The calling thread's selection, or null when the caller is not a T3 thread. */
-  inheritedProviderInstanceId: Schema.NullOr(ProviderInstanceId),
-  inheritedModel: Schema.NullOr(Schema.String),
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode,
+  /** What a delegated task inherits when its target is omitted; null without a calling conversation. */
+  inherited: Schema.NullOr(
+    Schema.Struct({
+      providerInstanceId: ProviderInstanceId,
+      model: Schema.String,
+      interactionMode: ProviderInteractionMode,
+    }),
+  ),
   providers: Schema.Array(OrchestratorMcpProviderCapability),
-  features: Schema.Struct({
-    appOwnedSubagents: Schema.Boolean,
-    asyncPolling: Schema.Boolean,
-    cancellation: Schema.Boolean,
-    batchThreadCreation: Schema.Boolean,
-    threadManagement: Schema.Boolean,
-    incrementalThreadRead: Schema.Boolean,
-    scheduledTasks: Schema.Boolean,
-    maxBatchThreads: Schema.Number,
-  }),
 });
 export type OrchestratorMcpCapabilitiesResult = typeof OrchestratorMcpCapabilitiesResult.Type;
 

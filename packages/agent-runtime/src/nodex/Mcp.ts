@@ -1,15 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Types from "effect/Types";
-import { McpProtocol, McpServer, Toolkit } from "effect/ai";
+import { McpProtocol, McpServer } from "effect/ai";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import * as Invocation from "../mcp/McpInvocationContext.ts";
 import * as Sessions from "../mcp/McpSessionRegistry.ts";
 import * as Access from "../mcp/McpToolAccess.ts";
 import * as OrchestratorService from "../mcp/OrchestratorMcpService.ts";
-import * as ThreadMetadata from "../mcp/ThreadMetadataMcpService.ts";
-import * as Handlers from "../mcp/toolkits/orchestrator/handlers.ts";
-import { OrchestratorToolkit } from "../mcp/toolkits/orchestrator/tools.ts";
+import * as Handlers from "../mcp/toolkits/task/handlers.ts";
+import { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 import * as Ingress from "./Ingress.ts";
 
 type Authenticate = (
@@ -47,21 +46,7 @@ const makeAuthentication = Effect.gen(function* () {
 const layerAuthentication = HttpRouter.middleware<{
   provides: Invocation.McpInvocationContext;
 }>()(makeAuthentication).layer;
-const tools = OrchestratorToolkit.tools;
-export const executionToolkit = Toolkit.make(
-  tools.orchestrator_capabilities,
-  tools.delegate_task,
-  tools.task_status,
-  tools.task_cancel,
-  tools.t3_workflow_stop,
-  tools.t3_thread_list,
-  tools.t3_thread_read,
-  tools.t3_thread_update,
-  tools.t3_thread_send,
-  tools.t3_thread_wait,
-  tools.t3_thread_interrupt,
-);
-const registration = McpServer.toolkit(executionToolkit);
+const registration = McpServer.toolkit(TaskToolkit);
 // The scoped credential middleware installs the caller for each request, never at registration.
 const layerRegistration = registration as Layer.Layer<
   never,
@@ -69,11 +54,14 @@ const layerRegistration = registration as Layer.Layer<
   Exclude<Layer.Services<typeof registration>, Invocation.McpInvocationContext>
 >;
 
-/** Only execution operations run here; desktop and content tools belong to their host. */
-export const layer = layerRegistration.pipe(
+/** Task tools register beside the host's Session and content tools on one server. */
+export const layerToolkit = layerRegistration.pipe(
   Layer.provide(Access.HandlersLayer.layer(Handlers.layer)),
   Layer.provide(OrchestratorService.layer),
-  Layer.provide(ThreadMetadata.layer),
+);
+
+/** Only execution operations run here; desktop and content tools belong to their host. */
+export const layer = layerToolkit.pipe(
   Layer.provideMerge(
     McpServer.layerHttp({
       name: "Nodex",

@@ -1,5 +1,5 @@
 import type { ToolActivityIcon, ToolActivitySource } from "@t3tools/contracts";
-import { resolveT3McpToolDefinition } from "@t3tools/shared/nodexAppMcp";
+import { isNodexAppMcpServer } from "@t3tools/shared/nodexAppMcp";
 
 /** Native routing stamps stay at the transport boundary, outside tool transcripts. */
 export function publicMcpToolInput(input: Record<string, unknown>): Record<string, unknown>;
@@ -52,7 +52,8 @@ export function mcpToolPresentation(input: {
     typeof input.toolName === "string" ? /^mcp__(.+?)__(.+)$/i.exec(input.toolName) : null;
   const server = normalizeMcpText(input.serverName ?? qualified?.[1] ?? input.serverDisplayName);
   const tool = normalizeMcpText(qualified?.[2] ?? input.toolName);
-  if (server && tool && resolveT3McpToolDefinition(`${server}.${tool}`)) return {};
+  // The client presents application server tools from their name.
+  if (server && tool && isNodexAppMcpServer(server)) return {};
   const title =
     normalizeMcpText(input.title) ??
     (server && tool ? normalizeMcpText(tool.replace(/[_-]+/gu, " ")) : undefined);

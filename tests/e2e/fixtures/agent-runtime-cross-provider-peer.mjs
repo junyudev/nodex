@@ -134,7 +134,7 @@ async function answer(prompt, server, native) {
     return `${kind === "claude" ? "Claude" : "Codex"} child report`;
   }
   record({ event: "delegate.started", prompt });
-  await callTool(server, "orchestrator_capabilities", {}, native);
+  await callTool(server, "list_agent_models", {}, native);
   const input = {
     task: delegation.task, title: delegation.task, target: delegation.target, mode: delegation.mode ?? "wait", timeoutMs: 30_000,
     clientRequestId: `fixture:${nativeSessionId}:${prompt}`,

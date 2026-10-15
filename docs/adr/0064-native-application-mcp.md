@@ -13,7 +13,9 @@ window, and a shell's selected Project does not establish a trusted Agent Turn.
 ## Decision
 
 Expose application and content tools through the bundled `nodex_app` stdio MCP
-server. Its private local connection delegates to Main semantic services. The exact
+server. Agents running in the Agent Runtime reach the same tools, plus the Runtime's
+taskId-addressed delegation tools, through a Runtime-served MCP server registered under the
+same `nodex_app` name. Its private local connection delegates to Main semantic services. The exact
 backend connection generation and canonical tool observations establish invocation
 identity; tool arguments and renderer presentation coordinates cannot grant authority.
 Core validates Profile and Store identity, execution lifetime and transactional

@@ -259,7 +259,7 @@ export function selectHistory(input: {
     remaining -= cost;
   };
   // Prioritize the latest request and partial answer, then original constraints.
-  // Oversized items are omitted whole and remain available through thread_read.
+  // Oversized items are omitted whole and remain available through task_read.
   if (input.priorityItemIds === undefined) {
     tryAdd(messages.findLastIndex((message) => message.role === "user"));
     tryAdd(messages.findLastIndex((message) => message.role === "assistant"));
@@ -280,14 +280,15 @@ export function selectHistory(input: {
 }
 
 export function handoffCoverage(input: {
+  /** Source conversation; recovery text never exposes it to the Agent. */
   readonly threadId: string;
   readonly coveredRunOrdinals: OrchestrationV2ContextHandoff["coveredRunOrdinals"];
   readonly items?: ReadonlyArray<OrchestrationV2TurnItem>;
   readonly sourceItemRange?: { readonly first: string | null; readonly last: string | null };
 }): string {
   return [
-    `Provider context handoff. Thread: ${input.threadId}. Covered app runs: ${input.coveredRunOrdinals.from}-${input.coveredRunOrdinals.to}.`,
+    `Provider context handoff. Covered app runs: ${input.coveredRunOrdinals.from}-${input.coveredRunOrdinals.to}.`,
     `Source item range: ${input.sourceItemRange?.first ?? input.items?.at(0)?.id ?? "none"} through ${input.sourceItemRange?.last ?? input.items?.at(-1)?.id ?? "none"}.`,
-    `Recover omitted history using t3_thread_read({threadId:"${input.threadId}",view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. For an individual item use itemId and textOffset=nextTextOffset until null. Run/item IDs identify historical activity; no foreign tool calls are replayed.`,
+    `Recover omitted history using task_read({view:"activity",limit:20,maxCharsPerItem:4000}); paginate with afterPosition=nextPosition. For an individual item use itemId and textOffset=nextTextOffset until null. Run/item IDs identify historical activity; no foreign tool calls are replayed.`,
   ].join("\n");
 }

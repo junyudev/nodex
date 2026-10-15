@@ -1,16 +1,16 @@
-/** Guidance matches the execution tools attached by the host. */
+/** Guidance for the tools attached on the `nodex_app` MCP server. */
 export const ORCHESTRATION_INSTRUCTIONS = `
 
-## Nodex orchestration
+## Nodex tools
 
-The execution MCP server provides app-owned Threads, Runs and delegated tasks.
+The \`nodex_app\` MCP server connects you to Nodex. You have full access to the current Profile: every Project, Page, Session and piece of content, not only your own Project or Session.
 
-- Call \`orchestrator_capabilities\` to discover provider instances and model IDs. Native subagent tools may support only part of that catalog. Use \`delegate_task\` for cross-provider work, models unavailable to native tools, or explicitly app-owned children. A delegated child receives the supplied task prompt and its own admitted execution authority.
-- Retain each returned \`taskId\`. Prefer \`mode:'async'\` for long work; completion notifies the parent. \`mode:'wait'\` waits up to its timeout without cancelling the child. Use \`task_status\` when the result is needed during a turn and \`task_cancel\` to stop it. Keep polling bounded and do not duplicate active work.
-- For independent delegated review rounds, call \`delegate_task\` again with the original brief, findings, responses and unresolved objections. Each round gets its own taskId and distinct clientRequestId, stable across retries. Use \`t3_thread_send\` only for follow-ups that intentionally reuse a child's conversation.
-- Use the host's Session launch tool when the user requests separate or new conversations. Parallel child work belongs to \`delegate_task\`.
-- \`t3_thread_list\`, \`t3_thread_read\`, \`t3_thread_update\`, \`t3_thread_send\`, \`t3_thread_wait\` and \`t3_thread_interrupt\` manage the calling conversation and its child tree. Use the host's Session tools to work with another conversation. Thread reads are paginated; follow nextPosition and use itemId/textOffset for omitted detail. A thread wait reports status and does not acknowledge a delegated result.
-- Host tools operate on Nodex content within the admitted project and Turn. Use only tools present in the current catalog. Schedules, browser, device and desktop launch capabilities are supplied separately by the host.
+- Sessions are the user's conversations, addressed by sessionId. Use the Session tools (\`create_session\`, \`fork_session\`, \`read_session\`, \`send_message_to_session\`, \`wait_sessions\`, \`list_sessions\` and related tools) when the user asks for a separate conversation or refers to another Session.
+- Delegated tasks are child work that belongs to your turn, addressed only by taskId. Choose a provider and model with \`list_agent_models\`, then call \`delegate_task\` for cross-provider work or a model your native subagents cannot run. Keep each returned taskId.
+- Prefer \`mode:'async'\` and end your turn: Nodex wakes you with a new turn when a task settles, so do not poll. Read the result with \`task_status\`, or its conversation with \`task_read\`; reading a settled result acknowledges it. Use \`task_wait\` or \`mode:'wait'\` only when this turn needs the result now. A wait never cancels a task.
+- \`task_send\` continues a task's own conversation; after the task finished, the follow-up becomes a new task that wakes you. For an independent round, such as another review, call \`delegate_task\` again with the full context. \`task_cancel\` stops a task and everything it delegated.
+- Reuse a clientRequestId only to retry the same call; a retry never creates a second task or message.
+- \`task_read\` without taskId reads your own conversation, for example after a context handoff. \`stop_workflow\` stops a Claude workflow your conversation started.
 
-Tool names may include a harness MCP prefix such as \`mcp__t3_code__delegate_task\`. If tools are attached lazily, make one bounded direct attempt to \`orchestrator_capabilities\` before declaring delegation unavailable.
+Harnesses may prefix these names, as in \`mcp__nodex_app__delegate_task\`. If tools load lazily, call \`list_agent_models\` once before concluding that delegation is unavailable.
 `;

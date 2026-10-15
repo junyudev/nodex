@@ -132,9 +132,9 @@ it.layer(layerTest)("ContextHandoffService legacy import", (it) => {
             }),
         });
         yield* delivery.delivered;
-        assert.include(injectedContext, "1000 records omitted by the read budget");
-        assert.include(injectedContext, "1001 handoff records");
-        assert.include(injectedContext, "t3_thread_read");
+        // Omitted handoffs stay discoverable through the caller's own conversation.
+        assert.include(injectedContext, "omitted by the read budget: 1000");
+        assert.include(injectedContext, "task_read");
         assert.isAtMost(Buffer.byteLength(injectedContext), 2000);
         assert.isTrue(persisted.every((id) => id === handoff.id));
         assert.lengthOf(persisted, 2);

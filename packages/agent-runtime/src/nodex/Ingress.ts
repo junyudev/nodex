@@ -29,7 +29,7 @@ const decodeNativeExecution = Schema.decodeUnknownEffect(
     nativeCallId: Schema.String,
   }),
 );
-const discovery = new Set(["orchestrator_capabilities"]);
+const discovery = new Set(["list_agent_models"]);
 type NativeSession = { readonly providerSessionId: string; readonly nativeGeneration: number };
 const MAX_MCP_PROFILES = 4096;
 const sameNativeSession = (left: NativeSession | undefined, right: NativeSession | undefined) =>

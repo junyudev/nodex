@@ -604,8 +604,9 @@ describe("handoff delivery", () => {
       assert.equal(result.context, "");
       assert.isDefined(captured);
       assert.include(captured.context, "detailed coverage references omitted");
-      assert.include(captured.context, "t3_thread_read");
-      assert.include(captured.context, threadId);
+      assert.include(captured.context, "task_read");
+      // Agents recover their own history without a Runtime conversation identity.
+      assert.notInclude(captured.context, threadId);
       assert.isAtMost(historyCost(captured.messages, captured.context), 2_500);
       assert.isAbove(captured.messages.length, 0);
     }),

@@ -8,7 +8,7 @@ export * as Settings from "../serverSettings.ts";
 export * as Configuration from "../config.ts";
 export * as Sqlite from "../persistence/Sqlite.ts";
 export * as ProviderRegistry from "../provider/ProviderInstanceRegistry.ts";
-export { OrchestratorToolkit } from "../mcp/toolkits/orchestrator/tools.ts";
+export { TaskToolkit } from "../mcp/toolkits/task/tools.ts";
 export { CodexDriver } from "../provider/Drivers/CodexDriver.ts";
 export { ClaudeDriver } from "../provider/Drivers/ClaudeDriver.ts";
 

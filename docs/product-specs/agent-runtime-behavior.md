@@ -239,11 +239,15 @@ Workbench, sidebar, terminal, account, plugin and Automation commands use their 
 application owners with the same caller checks. Session messages, launches and forks
 use the canonical Runtime writer and stable command identities.
 
-Execution MCP controls can observe and change Sessions across Projects and task trees.
-Task status and cancellation resolve an indexed task identity to its actual parent;
-observation does not scan every Session. Ordinary Session creation goes through the
-Host's product binding transaction before execution. Background tools retain their
-captured execution identity while their native process remains live.
+Every provider attaches the application tools as one MCP server named `nodex_app`. Session
+tools address product Sessions by sessionId across Projects. The Runtime's task tools
+(`list_agent_models`, `delegate_task`, `task_status`, `task_wait`, `task_send`, `task_read`,
+`task_cancel` and `stop_workflow`) address delegated children by taskId only; no tool input or
+result carries a Runtime conversation identity. A task resolves through its indexed owner to its
+actual parent, so observation does not scan every Session. `task_read` without a taskId reads
+the caller's own conversation. Ordinary Session creation goes through the Host's product binding
+transaction before execution. Background tools retain their captured execution identity while
+their native process remains live.
 
 Delegation attaches to the native call's exact source Run, including a completed
 foreground Run that still has live native background work. A Session-only caller
