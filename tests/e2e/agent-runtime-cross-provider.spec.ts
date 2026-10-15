@@ -14,6 +14,7 @@ import type { IpcApi } from "../../src/shared/ipc-api";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { chooseComposerModel } from "./support/composer-model-picker";
+import { waitForDraftScene } from "./support/new-chat-draft";
 
 const invoke = <Channel extends keyof IpcApi>(
   page: Page,
@@ -173,7 +174,6 @@ test("delegates across Codex and Claude through the Session UI and restores chil
       await page
         .getByRole("button", { name: `Start new chat in ${project.name}`, exact: true })
         .click();
-      if (modelQuery) await chooseComposerModel(page, modelQuery);
       const receipt = await invoke(page, "project-sessions:ensure-default-draft", {
         operationId: createBoundedOperationId("session.ensure-default-draft"),
         payload: { candidateSessionId: randomUUID(), projectId: project.id },
@@ -181,7 +181,9 @@ test("delegates across Codex and Claude through the Session UI and restores chil
       if (!("value" in receipt)) throw new Error("Default draft admission failed");
       const draft = receipt.value;
       if (draft.executionRef) throw new Error("Default draft missing");
-      const composer = page.locator('[data-codex-composer="true"]').first();
+      const scene = await waitForDraftScene(page, draft.id);
+      if (modelQuery) await chooseComposerModel(page, modelQuery);
+      const composer = scene.locator('[data-codex-composer="true"]:visible');
       await composer.fill(prompt);
       await composer.press("Enter");
       await expect
