@@ -469,6 +469,54 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     } while (after !== undefined);
   });
 
+  /**
+   * A bound Session whose launch stopped before its root Thread existed. The binding is the
+   * durable intent, so the Thread is created from product metadata the first time it is used.
+   */
+  const ensureRootThread = Effect.fn("AgentRuntimeApplication.ensureRootThread")(function* (
+    connection: AgentRuntimeApplicationConnection,
+    binding: Binding,
+  ) {
+    const existing = yield* connection.request("thread.read", {
+      threadId: binding.runtime_thread_id,
+    });
+    if (existing) return existing;
+    const projectId = binding.project_id ?? null;
+    const scope = yield* projectScope(projectId, false);
+    const session = yield* host(
+      core.workspace.read({ kind: "session", session_id: binding.session_id }, undefined, projectId),
+    );
+    const title =
+      session.value.kind === "session" ? session.value.session.display_title.trim() : "";
+    const providers = yield* connection.request("providers.read", {});
+    const provider =
+      providers.find((entry) => entry.instanceId === "codex" && entry.enabled) ??
+      providers.find((entry) => entry.enabled);
+    const model =
+      provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
+    if (!provider || !model)
+      return yield* failure("thread", "No Agent model is available to open this conversation");
+    yield* upsertProject(connection, scope);
+    yield* dispatch(connection, {
+      type: "thread.create",
+      commandId: commandId("launch-thread", {
+        launchId: binding.launch_request_id,
+        sessionId: binding.session_id,
+      }),
+      threadId: binding.runtime_thread_id,
+      projectId: scope.id,
+      title: title || "New chat",
+      modelSelection: { instanceId: provider.instanceId, model },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: scope.workspaceRoot,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    return yield* connection.request("thread.read", { threadId: binding.runtime_thread_id });
+  });
+
   const load = Effect.fn("AgentRuntimeApplication.load")(function* (
     connection: AgentRuntimeApplicationConnection,
     target: AgentRuntimeSessionTarget,
@@ -477,6 +525,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const binding = yield* readBinding(connection, target.sessionId, requireActive);
     const threadId = target.threadId ?? binding.runtime_thread_id;
     if (!validId(threadId)) return yield* failure("thread", "Thread identity is invalid");
+    if (threadId === binding.runtime_thread_id) yield* ensureRootThread(connection, binding);
     const snapshot = yield* connection.request("thread.snapshot", { threadId });
     const thread = snapshot.projection.thread;
     if (
@@ -495,7 +544,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) {
     let binding = yield* readBinding(connection, target.sessionId, requireActive);
     const threadId = target.threadId ?? binding.runtime_thread_id;
-    let thread = yield* connection.request("thread.read", { threadId });
+    let thread =
+      threadId === binding.runtime_thread_id
+        ? yield* ensureRootThread(connection, binding)
+        : yield* connection.request("thread.read", { threadId });
     if (
       !thread ||
       thread.id !== threadId ||

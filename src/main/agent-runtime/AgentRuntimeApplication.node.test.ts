@@ -152,6 +152,7 @@ const setup = (
     mode: "auto",
     runtimeId: "engine",
     failMessage: false,
+    failThreadCreate: false,
     failCore: false,
     failCoreAcknowledgment: false,
     failBindingProof: false,
@@ -225,7 +226,12 @@ const setup = (
                   },
                 };
               if (input.kind === "session")
-                return { value: { kind: "session", session: { archived: state.archived } } };
+                return {
+                  value: {
+                    kind: "session",
+                    session: { archived: state.archived, display_title: "Task" },
+                  },
+                };
               if (input.kind === "agent_runtime_session_binding")
                 return {
                   value: {
@@ -324,6 +330,10 @@ const setup = (
         const command = input as AgentCommand;
         if (command.type === "thread.delete" && state.failEngineDelete)
           return yield* Effect.fail(new Error("Engine disconnected before deletion"));
+        if (command.type === "thread.create" && state.failThreadCreate) {
+          state.failThreadCreate = false;
+          return yield* Effect.fail(new Error("Process stopped after the Session was bound"));
+        }
         if (command.type === "message.dispatch" && state.failMessage) {
           state.failMessage = false;
           return yield* Effect.fail(new Error("Connection closed after Thread creation"));
@@ -745,6 +755,36 @@ it.effect("creates and binds an absent product Session before dispatch and reuse
     assert.equal(
       [...fixture.commands.values()].filter((command) => command.type === "message.dispatch")
         .length,
+      1,
+    );
+  }),
+);
+
+it.effect("a bound Session whose launch stopped before its Thread existed opens normally", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    fixture.state.failThreadCreate = true;
+    assert.equal((yield* owner.launch(launch).pipe(Effect.result))._tag, "Failure");
+    const bound = fixture.bindings.get(launch.sessionId)!;
+    assert.isFalse(fixture.snapshots.has(bound.runtime_thread_id));
+    const opened = yield* owner.read({ sessionId: launch.sessionId });
+    assert.equal(opened.threadId, bound.runtime_thread_id);
+    const created = [...fixture.commands.values()].find(
+      (command) => command.type === "thread.create",
+    );
+    assert.deepEqual(
+      created?.type === "thread.create" ? created.modelSelection : null,
+      { instanceId: "codex", model: "model-a" },
+    );
+    // A later send uses the same Thread; no second Session or Thread appears.
+    yield* owner.message({
+      sessionId: launch.sessionId,
+      message: { messageId: "message:resend", text: "Build it" },
+    });
+    assert.equal(fixture.bindings.size, 1);
+    assert.equal(
+      [...fixture.commands.values()].filter((command) => command.type === "thread.create").length,
       1,
     );
   }),
