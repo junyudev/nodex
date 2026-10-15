@@ -1298,42 +1298,6 @@ pub(super) fn apply(
                     root_thread_id,
                     actor_project_id.as_deref(),
                 ),
-                ProjectWorkspaceIntent::AdmitAgentRuntimeNativeSessionAuthority { session_id, identity } => {
-                    super::agent_runtime_native_session::admit(
-                        transaction, &library_id, &context, &store_epoch,
-                        &request.operation_id, &request_hash, session_id, identity,
-                    )
-                }
-                ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSessionAuthority { identity } => {
-                    super::agent_runtime_native_session::revoke(
-                        transaction, &library_id, &context, &store_epoch,
-                        &request.operation_id, &request_hash, identity,
-                    )
-                }
-                ProjectWorkspaceIntent::AdmitAgentRuntimeTurnAuthority {
-                    session_id, identity, native_source, parent,
-                } => super::agent_runtime_authority::admit(
-                    transaction, &library_id, &context, &store_epoch,
-                    &request.operation_id, &request_hash, session_id, identity,
-                    native_source, parent.as_ref(),
-                ),
-                ProjectWorkspaceIntent::RevokeAgentRuntimeTurnAuthority { identity } => {
-                    super::agent_runtime_authority::revoke(
-                        transaction, &library_id, &context, &store_epoch,
-                        &request.operation_id, &request_hash,
-                        &identity.runtime_id, None, Some(identity),
-                    )
-                }
-                ProjectWorkspaceIntent::RevokeAgentRuntimeNativeSourceAuthorities { runtime_id, lease_id, native_source } => {
-                    super::agent_runtime_authority::revoke_native_source(transaction, &library_id, &context,
-                        &store_epoch, &request.operation_id, &request_hash, runtime_id, lease_id, native_source)
-                }
-                ProjectWorkspaceIntent::RevokeAgentRuntimeAuthorities { runtime_id, lease_id } => {
-                    super::agent_runtime_authority::revoke(
-                        transaction, &library_id, &context, &store_epoch,
-                        &request.operation_id, &request_hash, runtime_id, lease_id.as_deref(), None,
-                    )
-                }
                 ProjectWorkspaceIntent::AcknowledgeAgentRuntimeExecutionCleanup { cleanup_id,runtime_id,runtime_thread_id } => super::agent_runtime_cleanup::acknowledge(transaction,&library_id,&context,&store_epoch,&request.operation_id,&request_hash,cleanup_id,runtime_id,runtime_thread_id),
                 ProjectWorkspaceIntent::UpsertBackgroundProcess {
                     process,

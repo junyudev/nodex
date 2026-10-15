@@ -52,7 +52,6 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. }
         | ProjectWorkspaceRead::InboxWindow { .. }
         | ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { .. }
-        | ProjectWorkspaceRead::AgentRuntimeAdmissionWindow { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow { .. } => {
             ReadBudgetPolicy::CollectionWindow
         }
@@ -69,8 +68,6 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::Session { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBinding { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution { .. }
-        | ProjectWorkspaceRead::AgentRuntimeTurnAuthority { .. }
-        | ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority { .. }
         | ProjectWorkspaceRead::AgentAuthority { .. }
         | ProjectWorkspaceRead::AgentSession { .. }
         | ProjectWorkspaceRead::CodexThreadSession { .. }

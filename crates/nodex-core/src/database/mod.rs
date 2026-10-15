@@ -1005,6 +1005,7 @@ mod tests {
                     actor_project_id: Some("project-1".to_owned()),
                     library_id: "library-1".to_owned(),
                     store_epoch: "epoch-1".to_owned(),
+                    runtime: None,
                 },
             },
             call_id: "call:database-agent".to_owned(),

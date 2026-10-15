@@ -83,6 +83,31 @@ function fixture(
   return { layer, requests };
 }
 
+it("local native chats admit history reads and refuse every execution method", () => {
+  for (const method of ["thread/read", "thread/turns/list", "thread/items/list", "model/list"])
+    assert.strictEqual(
+      codexRendererNativeRequestAdmission(method, { threadQueue: true }, "local"),
+      "allowed",
+    );
+  for (const method of [
+    "thread/resume",
+    "turn/interrupt",
+    "thread/settings/update",
+    "thread/compact/start",
+    "thread/revert",
+    "thread/queue/add",
+  ]) {
+    assert.strictEqual(
+      codexRendererNativeRequestAdmission(method, { threadQueue: true }, "local"),
+      "local-read-only",
+    );
+    assert.strictEqual(
+      codexRendererNativeRequestAdmission(method, { threadQueue: true }, "remote"),
+      "allowed",
+    );
+  }
+});
+
 it.effect(
   "raw renderer timeline requests remain denied while the admitted Thread reader preserves its page and scheduling",
   () => {

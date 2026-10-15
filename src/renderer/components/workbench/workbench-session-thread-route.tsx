@@ -606,13 +606,22 @@ function ConnectedRuntimeSessionThread(props: ConnectedSessionThreadProps) {
   );
 }
 
-function NativeHistorySessionThread(
-  props: ConnectedSessionThreadProps & {
-    readonly thread: NonNullable<WorkbenchSessionRenderProjection["thread"]>;
-  },
-) {
-  const { session, thread } = props;
-  const summary = useMemo<CodexThreadSummary>(
+type NativeHistorySessionThreadProps = ConnectedSessionThreadProps & {
+  readonly thread: NonNullable<WorkbenchSessionRenderProjection["thread"]>;
+};
+
+/** Imported native chats stay readable history; only Runtime-bound Sessions execute. */
+function NativeHistorySessionThread(props: NativeHistorySessionThreadProps) {
+  const backend = props.thread.backendBinding.kind;
+  return backend === "codex" ? (
+    <CodexHistorySessionThread {...props} />
+  ) : (
+    <AgentHistorySessionThread {...props} backend={backend} />
+  );
+}
+
+function useNativeHistorySummary({ session, thread }: NativeHistorySessionThreadProps) {
+  return useMemo<CodexThreadSummary>(
     () => ({
       ...thread,
       source: null,
@@ -621,9 +630,48 @@ function NativeHistorySessionThread(
     }),
     [thread, session.displayTitle],
   );
-  const backend = thread.backendBinding.kind;
-  if (backend === "codex") throw new Error("Expected a native history binding");
-  const history = useNativeConversationHistoryAdapter({ sessionId: session.id, summary, backend });
+}
+
+/** Local Codex history is read through bounded Thread pages; it is never resumed for execution. */
+function CodexHistorySessionThread(props: NativeHistorySessionThreadProps) {
+  const summary = useNativeHistorySummary(props);
+  return <NativeHistoryStage {...props} summary={summary} />;
+}
+
+function AgentHistorySessionThread(
+  props: NativeHistorySessionThreadProps & {
+    readonly backend: Exclude<
+      NativeHistorySessionThreadProps["thread"]["backendBinding"]["kind"],
+      "codex"
+    >;
+  },
+) {
+  const summary = useNativeHistorySummary(props);
+  const history = useNativeConversationHistoryAdapter({
+    sessionId: props.session.id,
+    summary,
+    backend: props.backend,
+  });
+  return (
+    <ConversationRuntimeContext value={history.runtime}>
+      <NativeHistoryStage
+        {...props}
+        summary={summary}
+        provider={history.provider}
+        onCopyConversationMarkdown={history.copyMarkdown}
+      />
+    </ConversationRuntimeContext>
+  );
+}
+
+function NativeHistoryStage(
+  props: NativeHistorySessionThreadProps & {
+    readonly summary: CodexThreadSummary;
+    readonly provider?: ConversationProviderPresentation;
+    readonly onCopyConversationMarkdown?: ThreadStageActions["onCopyConversationMarkdown"];
+  },
+) {
+  const { session, thread, summary } = props;
   const actions = composeNativeThreadStageActions(
     {
       onQueueingEnabledChange: props.onQueueingEnabledChange,
@@ -633,37 +681,40 @@ function NativeHistorySessionThread(
       onOpenThread: props.onOpenThread,
       onStartNewChatWithPrompt: props.onStartNewChatWithPrompt,
     },
-    { onCopyConversationMarkdown: history.copyMarkdown, onOpenSideChat: props.onOpenSideChat },
+    {
+      ...(props.onCopyConversationMarkdown
+        ? { onCopyConversationMarkdown: props.onCopyConversationMarkdown }
+        : {}),
+      onOpenSideChat: props.onOpenSideChat,
+    },
   );
   return (
-    <ConversationRuntimeContext value={history.runtime}>
-      <ConnectedThreadStage
-        provider={history.provider}
-        executionAvailable={false}
-        projectId={session.projectId}
-        sessionId={session.id}
-        threadPinned={session.pinned}
-        projectWorkspacePath={projectWorkspaceRootOrNull(props.project)}
-        isNewThreadTab={false}
-        newThreadTarget={null}
-        threadStartProgress={null}
-        activeThreadId={thread.threadId}
-        activeThreadSummary={summary}
-        availableModels={[]}
-        collaborationModes={[]}
-        selectedCollaborationMode="default"
-        selectedModel=""
-        selectedReasoningEffort="default"
-        reasoningEffortOptions={[]}
-        isQueueingEnabled={false}
-        composerEnterBehavior={props.composerEnterBehavior}
-        searchOpenTick={props.searchOpenTick}
-        routeActive={props.routeActive}
-        threadBodyVisible={props.threadBodyVisible}
-        presentation={props.presentation}
-        actions={actions}
-      />
-    </ConversationRuntimeContext>
+    <ConnectedThreadStage
+      {...(props.provider ? { provider: props.provider } : {})}
+      executionAvailable={false}
+      projectId={session.projectId}
+      sessionId={session.id}
+      threadPinned={session.pinned}
+      projectWorkspacePath={projectWorkspaceRootOrNull(props.project)}
+      isNewThreadTab={false}
+      newThreadTarget={null}
+      threadStartProgress={null}
+      activeThreadId={thread.threadId}
+      activeThreadSummary={summary}
+      availableModels={[]}
+      collaborationModes={[]}
+      selectedCollaborationMode="default"
+      selectedModel=""
+      selectedReasoningEffort="default"
+      reasoningEffortOptions={[]}
+      isQueueingEnabled={false}
+      composerEnterBehavior={props.composerEnterBehavior}
+      searchOpenTick={props.searchOpenTick}
+      routeActive={props.routeActive}
+      threadBodyVisible={props.threadBodyVisible}
+      presentation={props.presentation}
+      actions={actions}
+    />
   );
 }
 
@@ -733,13 +784,9 @@ function ConnectedRemoteSessionThread(
 
 function ConnectedSessionThread(props: ConnectedSessionThreadProps) {
   const thread = props.session.thread;
-  if (
-    thread?.backendBinding.kind === "codex" &&
-    thread.executionHostId !== "local" &&
-    !props.session.executionRef
-  )
-    return <ConnectedRemoteSessionThread {...props} thread={thread} />;
-  if (thread && !props.session.executionRef && thread.backendBinding.kind !== "codex") {
+  if (thread && !props.session.executionRef) {
+    if (thread.backendBinding.kind === "codex" && thread.executionHostId !== "local")
+      return <ConnectedRemoteSessionThread {...props} thread={thread} />;
     if (props.composerDock) return null;
     return <NativeHistorySessionThread {...props} thread={thread} />;
   }

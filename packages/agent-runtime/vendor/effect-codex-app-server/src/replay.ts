@@ -271,7 +271,14 @@ function normalizeThreadRequest(frame: unknown, ignoredConfigKeys: ReadonlySet<s
   ) {
     return frame;
   }
-  const { cwd: _cwd, model: _model, config, ...params } = record.params as Record<string, unknown>;
+  // Workspace, model, MCP endpoint and the host's thread source vary per run, not per recording.
+  const {
+    cwd: _cwd,
+    model: _model,
+    threadSource: _threadSource,
+    config,
+    ...params
+  } = record.params as Record<string, unknown>;
   if (typeof config !== "object" || config === null) return { ...record, params };
   const { mcp_servers: _mcpServers, ...owned } = config as Record<string, unknown>;
   for (const key of ignoredConfigKeys) delete owned[key];

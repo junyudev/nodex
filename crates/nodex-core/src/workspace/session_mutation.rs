@@ -87,7 +87,7 @@ pub(super) fn mutate_session(
             &authority,
             *archived,
         ),
-        ProjectSessionIntent::SetFallbackTitle { title } => set_fallback_title(
+        ProjectSessionIntent::SetFallbackTitle { title, replaces } => set_fallback_title(
             connection,
             library_id,
             context,
@@ -97,6 +97,7 @@ pub(super) fn mutate_session(
             session_id,
             &authority,
             title,
+            replaces.as_deref(),
         ),
         ProjectSessionIntent::LinkThread {
             thread_id,
@@ -164,15 +165,16 @@ fn set_fallback_title(
     session_id: &str,
     authority: &SessionAuthority,
     title: &str,
+    replaces: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let title = normalize_fallback_title(title)?;
     let now = sqlite_now(connection)?;
     let changed = connection.execute(
         "UPDATE project_sessions SET no_thread_fallback_title = ?1, updated_at = ?2 \
-         WHERE id = ?3",
-        params![title, now, session_id],
+         WHERE id = ?3 AND (?4 IS NULL OR no_thread_fallback_title = ?4)",
+        params![title, now, session_id, replaces.map(str::trim)],
     )?;
-    if changed != 1 {
+    if changed != 1 && replaces.is_none() {
         return Err(corrupt(
             "Project Session disappeared during fallback-title update",
         ));
@@ -188,7 +190,11 @@ fn set_fallback_title(
         session_id,
         authority,
         Vec::new(),
-        SessionInvalidationKind::SummaryAndDetail,
+        if changed == 1 {
+            SessionInvalidationKind::SummaryAndDetail
+        } else {
+            SessionInvalidationKind::None
+        },
         now,
     )
 }
@@ -354,10 +360,6 @@ fn set_session_archived(
     authority: &SessionAuthority,
     archived: bool,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    if archived {
-        super::agent_runtime_native_session::retire_session(connection, session_id)?;
-        connection.execute("UPDATE nodex_agent_runtime_turn_admissions SET active=0 WHERE session_id=?1 AND active=1",[session_id])?;
-    }
     let now = sqlite_now(connection)?;
     let changed = if archived {
         connection.execute(

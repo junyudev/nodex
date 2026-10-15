@@ -195,6 +195,7 @@ it.live("distinguishes a known remote refusal from an uncertain transport timeou
       .request("project.read", { projectId: "reject" })
       .pipe(Effect.flip);
     assert.strictEqual(rejected.reason, "rejected");
+    assert.strictEqual(rejected.engineTag, "OrchestratorDispatchError");
     assert.strictEqual(
       (yield* connection.request("runtime.identity", {})).runtimeId,
       "fixture-runtime",

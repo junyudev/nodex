@@ -94,6 +94,7 @@ it.effect(
                           providerInstanceId,
                           rootNodeId: NodeId.make("node:authority"),
                           status: "starting",
+                          requestedAt: now,
                         },
                       ],
                 providerThreads: [
@@ -170,6 +171,7 @@ it.effect(
           worktreePath: "/managed-worktree/packages/frontend",
           nativeGeneration: 9,
           status: "starting",
+          admittedAtMs: DateTime.toEpochMillis(now),
         });
         yield* Ref.update(shell, (current) => ({ ...current, worktreePath: null }));
         expect((yield* read({ threadId, runId }))?.cwd).toBe("/managed-worktree");

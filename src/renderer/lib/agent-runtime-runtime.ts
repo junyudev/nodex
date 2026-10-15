@@ -13,6 +13,7 @@ import type {
   AgentRuntimeCompactInput,
   AgentRuntimeRollbackInput,
   AgentRuntimeTaskStopInput,
+  AgentRuntimePreparationRetryInput,
   AgentRuntimeQueueInput,
   AgentRuntimeForkInput,
   AgentRuntimeHistoryInput,
@@ -140,6 +141,15 @@ const stopTask = defineRendererCommand({
   trace: { scopeKind: "session" },
 });
 
+const retryPreparation = defineRendererCommand({
+  key: "agent_runtime.session.retry_preparation",
+  channel: "agent-runtime:session:retry-preparation",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+
 const moveSession = defineRendererCommand({
   key: "agent_runtime.session.move",
   channel: "agent-runtime:session:move",
@@ -174,6 +184,9 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeOperations["thread.compact"]["output"]>;
   readonly rollback: (input: AgentRuntimeRollbackInput) => Promise<{ readonly rolledBack: true }>;
   readonly stopTask: (input: AgentRuntimeTaskStopInput) => Promise<{ readonly sequence: number }>;
+  readonly retryPreparation: (
+    input: AgentRuntimePreparationRetryInput,
+  ) => Promise<{ readonly retried: true }>;
   readonly moveSession: (
     input: AgentRuntimeSessionMoveInput,
   ) => Promise<{ readonly sessionId: string; readonly projectId: string | null }>;
@@ -219,6 +232,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   compact: (input) => invokePlainCommand(compact, input),
   rollback: (input) => invokePlainCommand(rollback, input),
   stopTask: (input) => invokePlainCommand(stopTask, input),
+  retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),

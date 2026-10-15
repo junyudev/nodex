@@ -16,6 +16,24 @@ requested Page Linked chats. The operation checks current
 Project lifecycle, resource existence and captured execution identity. Repeating the
 same stable command returns the original Session without launching duplicate work.
 
+Core admits the Session before any execution or workspace effect exists, so a Session
+Core refuses never gains a Thread or worktree, and invalid Agent configuration is refused
+before either. The binding names a deterministic root Thread that each later step creates
+idempotently. A checkout or projectless workspace is ready immediately. A new managed
+worktree is prepared after the first message is durable: its Run waits as preparing,
+shows worktree progress in the transcript and starts once the Thread records the new
+location. A failed preparation leaves the Run failed with Retry, which prepares the
+worktree again, and Work locally, which starts the Run in the source checkout. A
+preparation interrupted by an application restart fails with that reason; Retry then
+creates the worktree from the source checkout's current branch.
+
+A chat a person starts is titled once from its opening prompt, using the chat's own model
+at its lightest effort. The generated title replaces only the provisional title it was
+derived from, so a rename that lands first always wins; chats an Agent starts keep the
+title it chose. Forks follow the same order and retain their source Session's title as
+"Fork of …". A worktree fork that stopped before recording its new location completes
+that move when retried; a same-directory fork never claims its source's managed worktree.
+
 Page links and sidebar placement refer to Session identity. They do not own its Thread
 history, title, model selection, queue, Run status or delegated tasks. Delegated Threads
 remain within the bound root's lineage and do not implicitly create ordinary sidebar
@@ -59,8 +77,8 @@ frames retain their larger input budget. Continuation notifications use a shared
 accepted notifications and returns an explicit failure. Durable pending deliveries
 remain in SQL for restart recovery rather than spawning unbounded retry waiters.
 
-Connection closure revokes only its leases. Restart admits new leases while old calls
-remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
+Connection closure invalidates only its own calls. After a restart, new calls are proven
+against the new process while old calls remain invalid. Profile/Store identity, resource existence and lifecycle, transaction
 integrity and exact execution routing apply to every operation. Project membership,
 working directories and list filters organize content and execution.
 
@@ -312,8 +330,12 @@ path, then uses the desktop image reader. Metadata, cold history and closed queu
 never read image bytes. Editing a queued message resolves its own image paths and
 preserves the images when submitting the edited prompt.
 
-Session titles and placement come from Core Session overview. Runtime status and child
-metadata come from bounded engine readers. A task overview admits four active and ten
+Session titles, archive state and placement come from Core Session overview; Core is
+their only writer. The engine keeps placement and archive only as execution gates (the
+working Project, and no wakes for an archived chat). Main repairs both from Core after
+each change, whenever an operation touches the Session, and for every live root when the
+engine starts, so a missed update cannot leave an archived chat waking. Runtime status and
+child metadata come from bounded engine readers. A task overview admits four active and ten
 terminal tasks initially, with independent continuation cursors. It omits prompts,
 results, item bodies and native workflow payloads. Native task observations without an
 application-owned child Thread never acquire Thread navigation or command authority.
@@ -329,7 +351,7 @@ Run, a pending runtime request, and active provider-native background work. Desc
 archived and deleted Threads remain relevant while their execution is active; terminal
 foreground work does not hide a live native background task.
 Closing an idle Project detaches its native provider bindings through durable Runtime
-commands and revokes their tool credentials. The close waits for provider cleanup to
+commands, which ends their tool calls. The close waits for provider cleanup to
 finish and preserves Session and Thread history. An active execution blocks detaching;
 an empty Project does not start an execution process just to close it.
 

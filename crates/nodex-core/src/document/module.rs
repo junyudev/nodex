@@ -6403,6 +6403,7 @@ mod tests {
                 actor_project_id: Some(actor_project_id.to_owned()),
                 library_id: LIBRARY_ID.to_owned(),
                 store_epoch: STORE_EPOCH.to_owned(),
+                runtime: None,
             },
         }
     }

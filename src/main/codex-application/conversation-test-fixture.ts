@@ -34,11 +34,11 @@ const thread: Thread = {
   daybreakEnabled: null,
   turns: [],
 };
-export const conversationFixture = (id: string, turns: Turn[] = []) =>
+export const conversationFixture = (id: string, turns: Turn[] = [], hostId = "local") =>
   createCodexCanonicalHydratedConversationState(
     { ...thread, id, turns },
     {
-      hostId: "local",
+      hostId,
       model: "gpt-test",
       reasoningEffort: "high",
       cwd: "/workspace/project",

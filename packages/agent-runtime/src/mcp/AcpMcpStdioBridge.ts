@@ -316,10 +316,10 @@ export async function runAcpMcpCliFastPath(
   command: "acp-mcp-bridge" | "acp-mcp-call",
   args: ReadonlyArray<string>,
 ): Promise<void> {
-  const endpoint = process.env.T3_ACP_MCP_ENDPOINT;
-  const authorization = process.env.T3_ACP_MCP_AUTHORIZATION;
+  const endpoint = process.env.NODEX_ACP_MCP_ENDPOINT;
+  const authorization = process.env.NODEX_ACP_MCP_AUTHORIZATION;
   if (endpoint === undefined || authorization === undefined) {
-    process.stderr.write(`${command} requires T3_ACP_MCP_ENDPOINT and T3_ACP_MCP_AUTHORIZATION.\n`);
+    process.stderr.write(`${command} requires NODEX_ACP_MCP_ENDPOINT and NODEX_ACP_MCP_AUTHORIZATION.\n`);
     process.exitCode = 2;
     return;
   }

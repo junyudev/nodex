@@ -418,11 +418,8 @@ test("benchmarks native paginated history without running a model Turn", async (
       await page.getByText(binding.displayTitle, { exact: true }).first().click();
       const last = `Synthetic history ${String(corpus.turnCount - 1).padStart(4, "0")}`;
       await expect(page.getByText(last, { exact: true })).toBeVisible({ timeout: 60_000 });
-      await expect
-        .poll(async () => (await readTranscriptPortEvidence(page)).resumeStates, {
-          timeout: 60_000,
-        })
-        .toContain("resumed");
+      // Imported local history is read in bounded pages; it is never resumed for execution.
+      expect((await readTranscriptPortEvidence(page)).resumeStates).not.toContain("resumed");
       const before = await processEvidence(harness);
       lastProcessEvidence = before;
       const geometry = await page

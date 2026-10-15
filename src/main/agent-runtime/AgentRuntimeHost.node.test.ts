@@ -1,15 +1,17 @@
 import { assert, it } from "@effect/vitest";
-import type { components } from "@nodex/core-protocol";
 import type {
   AgentHostNativeSessionIdentity,
   AgentHostToolIdentity,
+  AgentHostTurnIdentity,
   AgentHostRequest,
   AgentRuntimeMethod,
   AgentRuntimeOperations,
 } from "@nodex/agent-runtime/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as PubSub from "effect/PubSub";
+import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -25,23 +27,32 @@ import {
   type AppToolCaller,
 } from "../app-tools/AppToolCaller";
 import { resolveAppToolCallingSession } from "../app-tools/AppToolCallingSession";
+import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { make } from "./AgentRuntimeHost";
 
-const actor = (incarnationId = "incarnation:one"): AgentHostNativeSessionIdentity => ({
-  source: "native-session",
+const frame = {
   runtimeId: "runtime",
   runtimeGeneration: "lease",
-  projectId: "former-project",
-  threadId: "thread",
-  runId: null,
-  attemptId: null,
+  projectId: "engine-project",
+  threadId: "thread:child",
   providerInstanceId: "acp",
   providerSessionId: "provider-session",
   providerThreadId: "provider-thread",
   nativeGeneration: 1,
   nativeThreadRef: { driver: "acpRegistry", nativeId: "native-session", strength: "strong" },
   cwd: "/worktree",
+} as const;
+const actor = (incarnationId = "incarnation:one"): AgentHostNativeSessionIdentity => ({
+  ...frame,
+  source: "native-session",
+  runId: null,
+  attemptId: null,
   incarnationId,
+});
+const turn = (runId = "run:one"): AgentHostTurnIdentity => ({
+  ...frame,
+  runId,
+  attemptId: `attempt:${runId}`,
 });
 const request = (identity: AgentHostToolIdentity = actor(), id = "request"): AgentHostRequest => ({
   type: "host.request",
@@ -51,17 +62,32 @@ const request = (identity: AgentHostToolIdentity = actor(), id = "request"): Age
   input: {},
   identity,
 });
-type Admission = components["schemas"]["ProjectWorkspaceAgentRuntimeNativeSessionIdentity"];
+const proofOf = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) => ({
+  ...identity,
+  rootThreadId: "thread:root",
+  admittedAtMs: identity.runId === null ? 2_000 : 1_000,
+  status: (identity.runId === null ? null : "running") as string | null,
+  userMessageId: "message",
+  archived: false,
+  nativeTurnId: null,
+  branch: null,
+  worktreePath: null,
+  hasNativeBackgroundWork: false,
+});
+
 const fixture = Effect.gen(function* () {
   const events = yield* PubSub.unbounded<AgentRuntimeProcessDelivery>();
   const ended = yield* Deferred.make<never>();
-  const retired = yield* Deferred.make<void>();
   const calls: AgentRuntimeMethod[] = [];
-  const coreCalls: ProjectWorkspaceApplyInput[] = [];
-  const records = new Map<string, { identity: Admission; active: boolean }>();
-  let current: AgentHostNativeSessionIdentity | null = actor();
+  const coreReads: ProjectWorkspaceRead[] = [];
+  const coreWrites: ProjectWorkspaceApplyInput[] = [];
+  const live = new Map<string, ReturnType<typeof proofOf>>();
+  const bind = (identity: AgentHostTurnIdentity | AgentHostNativeSessionIdentity) =>
+    live.set(identity.runId ?? identity.incarnationId, proofOf(identity));
+  bind(actor());
+  bind(turn());
   let caller: AppToolCaller | undefined;
-  let rootBound = true;
+  let bound = true;
   const connection: AgentRuntimeProcessConnection = {
     identity: {
       runtimeId: "runtime",
@@ -80,103 +106,40 @@ const fixture = Effect.gen(function* () {
     request: <M extends AgentRuntimeMethod>(method: M, input: AgentRuntimeOperations[M]["input"]) =>
       Effect.sync(() => {
         calls.push(method);
-        if (method === "execution.observe")
-          return {
-            subscriptionId: "lifecycle",
-            afterSequence: 0,
-            subscribed: true,
-          } as AgentRuntimeOperations[M]["output"];
-        if (method === "events.unobserve")
-          return { unsubscribed: true } as AgentRuntimeOperations[M]["output"];
-        if (method !== "native-session.authority")
-          throw new Error(`Unexpected runtime request ${method}`);
-        const coordinate = input as AgentRuntimeOperations["native-session.authority"]["input"];
-        return (
-          current && current.incarnationId === coordinate.incarnationId
-            ? {
-                ...current,
-                rootThreadId: "thread",
-                status: null,
-                archived: false,
-                nativeTurnId: null,
-                branch: null,
-                worktreePath: null,
-                hasNativeBackgroundWork: false,
-              }
-            : null
-        ) as AgentRuntimeOperations[M]["output"];
+        if (method === "native-session.authority")
+          return (live.get(
+            (input as AgentRuntimeOperations["native-session.authority"]["input"]).incarnationId,
+          ) ?? null) as AgentRuntimeOperations[M]["output"];
+        if (method === "thread.authority")
+          return (live.get((input as AgentRuntimeOperations["thread.authority"]["input"]).runId) ??
+            null) as AgentRuntimeOperations[M]["output"];
+        throw new Error(`Unexpected runtime request ${method}`);
       }),
   };
   const read = (input: ProjectWorkspaceRead) =>
     Effect.sync(() => {
-      if (input.kind === "agent_runtime_session_binding_by_execution")
-        return {
-          value: {
-            kind: "agent_runtime_session_binding",
-            binding: rootBound
-              ? {
-                  session_id: "session",
-                  project_id: "current-project",
-                  runtime_id: "runtime",
-                  runtime_thread_id: "thread",
-                  launch_request_id: "launch",
-                  bound_at: "2026-10-14T00:00:00Z",
-                }
-              : null,
-          },
-        };
-      if (input.kind !== "agent_runtime_native_session_authority")
+      coreReads.push(input);
+      if (input.kind !== "agent_runtime_session_binding_by_execution")
         throw new Error(`Unexpected Core read ${input.kind}`);
-      const record = records.get(input.identity.incarnation_id);
+      assert.equal(input.runtime_thread_id, "thread:root");
       return {
         value: {
-          kind: input.kind,
-          resolution: {
-            persisted: Boolean(record),
-            admitted_at_ms: record?.active ? 1 : null,
-            authority: record?.active
-              ? {
-                  thread_id: "runtime:thread",
-                  turn_id: `runtime-native-session:${record.identity.incarnation_id}`,
-                  root_thread_id: "runtime:thread",
-                  actor_project_id: "current-project",
-                  library_id: "library",
-                  store_epoch: "epoch",
-                }
-              : null,
-          },
+          kind: "agent_runtime_session_binding",
+          binding: bound
+            ? {
+                session_id: "session",
+                project_id: "current-project",
+                runtime_id: "runtime",
+                runtime_thread_id: "thread:root",
+                launch_request_id: "launch",
+                bound_at: "2026-10-14T00:00:00Z",
+              }
+            : null,
         },
       };
     });
-  const apply = (input: ProjectWorkspaceApplyInput) =>
-    Effect.gen(function* () {
-      coreCalls.push(input);
-      const intent = input.intent;
-      if (intent.kind === "admit_agent_runtime_native_session_authority") {
-        assert.equal(intent.session_id, "session");
-        if (records.get(intent.identity.incarnation_id)?.active === false)
-          return yield* Effect.fail(new Error("Retired incarnation"));
-        records.set(intent.identity.incarnation_id, { identity: intent.identity, active: true });
-      }
-      if (intent.kind === "revoke_agent_runtime_native_session_authority") {
-        const old = records.get(intent.identity.incarnation_id);
-        if (old) old.active = false;
-      }
-      if (intent.kind === "revoke_agent_runtime_native_source_authorities") {
-        for (const record of records.values()) {
-          if (
-            record.identity.provider_session_id === intent.native_source.provider_session_id &&
-            record.identity.native_generation === intent.native_source.native_generation &&
-            record.identity.lease_id === intent.lease_id
-          )
-            record.active = false;
-        }
-        yield* Deferred.succeed(retired, undefined);
-      }
-      if (intent.kind === "revoke_agent_runtime_authorities")
-        for (const record of records.values()) record.active = false;
-      return {};
-    });
+  const scope = yield* Scope.make();
+  yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
   const execute = yield* make(connection, {
     projectlessId: "projectless",
     providers: { acp: { driver: "acpRegistry", config: {} } },
@@ -185,7 +148,17 @@ const fixture = Effect.gen(function* () {
       return Effect.succeed({ content: [] });
     },
   }).pipe(
-    Effect.provideService(CoreModules, { workspace: { read, apply } } as never),
+    Scope.provide(scope),
+    Effect.provideService(CoreModules, {
+      workspace: {
+        read,
+        apply: (input: ProjectWorkspaceApplyInput) =>
+          Effect.sync(() => {
+            coreWrites.push(input);
+            return {};
+          }),
+      },
+    } as never),
     Effect.provideService(CoreAuthority, {
       identity: { profileId: "profile", libraryId: "library", storeEpoch: "epoch" },
     } as never),
@@ -194,21 +167,49 @@ const fixture = Effect.gen(function* () {
   return {
     execute,
     calls,
-    coreCalls,
-    records,
+    coreReads,
+    coreWrites,
+    live,
+    bind,
     caller: () => caller!,
     unbind: () => {
-      rootBound = false;
+      bound = false;
     },
-    replace: (value: AgentHostNativeSessionIdentity | null) => {
-      current = value;
-    },
-    events,
-    retired,
+    close: Scope.close(scope, Exit.void),
   };
 });
 
-it.effect("ACP Host calls admit the bound Session without reading or inventing a Run", () =>
+it.effect("a Run call carries engine coordinates, its bound Session, and the Run start time", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.execute(request(turn()));
+    const authority = yield* captureHostedAppToolAuthority(f.caller());
+    assert.deepEqual(authority, {
+      threadId: "thread:child",
+      turnId: "run:one",
+      rootThreadId: "thread:root",
+      actorProjectId: "current-project",
+      libraryId: "library",
+      storeEpoch: "epoch",
+      admittedAtMs: 1_000,
+      runtime: { sessionId: "session", runtimeId: "runtime", turnKind: "run" },
+    });
+    assert.deepEqual(toCoreAgentTurnProvenance("profile", authority!).authority.runtime, {
+      session_id: "session",
+      runtime_id: "runtime",
+      turn_kind: "run",
+    });
+    assert.deepEqual(f.coreWrites, []);
+    f.live.delete("run:one");
+    assert.isNull(yield* captureHostedAppToolAuthority(f.caller()));
+    yield* Effect.flip(f.execute(request(turn())));
+    f.live.set("run:cancelled", { ...proofOf(turn("run:cancelled")), status: "cancelled" });
+    yield* Effect.flip(f.execute(request(turn("run:cancelled"))));
+    assert.deepEqual(f.coreWrites, []);
+  }).pipe(Effect.scoped),
+);
+
+it.effect("ACP calls name the bound Session without reading or inventing a Run", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     yield* f.execute(request());
@@ -216,8 +217,8 @@ it.effect("ACP Host calls admit the bound Session without reading or inventing a
       sessionId: "session",
       projectId: "current-project",
       runtimeId: "runtime",
-      rootThreadId: "thread",
-      threadId: "thread",
+      rootThreadId: "thread:root",
+      threadId: "thread:child",
       runId: null,
       cwd: "/worktree",
     });
@@ -227,9 +228,12 @@ it.effect("ACP Host calls admit the bound Session without reading or inventing a
     assert.equal(calling?.sessionId, "session");
     assert.isNull(calling?.runId);
     assert.notInclude(f.calls, "thread.authority");
-    assert.notInclude(f.calls, "thread.snapshot");
-    assert.isNotNull(yield* captureHostedAppToolAuthority(f.caller()));
-    f.replace(actor("incarnation:next"));
+    const authority = yield* captureHostedAppToolAuthority(f.caller());
+    assert.equal(authority?.turnId, "incarnation:one");
+    assert.equal(authority?.admittedAtMs, 2_000);
+    assert.deepEqual(authority?.runtime?.turnKind, "native_connection");
+    f.live.delete("incarnation:one");
+    f.bind(actor("incarnation:next"));
     assert.isNull(yield* captureHostedAppToolAuthority(f.caller()));
     yield* Effect.flip(f.execute(request()));
     yield* f.execute(request(actor("incarnation:next")));
@@ -237,46 +241,25 @@ it.effect("ACP Host calls admit the bound Session without reading or inventing a
   }).pipe(Effect.scoped),
 );
 
-it.effect("an unbound engine native Session cannot acquire product content credentials", () =>
+it.effect("an unbound engine execution cannot acquire product content credentials", () =>
   Effect.gen(function* () {
     const f = yield* fixture;
     f.unbind();
     yield* Effect.flip(f.execute(request()));
-    assert.equal(
-      f.coreCalls.filter(
-        (input) => input.intent.kind === "admit_agent_runtime_native_session_authority",
-      ).length,
-      0,
-    );
-    assert.equal(f.records.size, 0);
+    yield* Effect.flip(f.execute(request(turn())));
+    assert.deepEqual(f.coreWrites, []);
   }).pipe(Effect.scoped),
 );
 
-it.effect(
-  "physical source retirement permanently fences Core capture even if an old proof reappears",
-  () =>
-    Effect.gen(function* () {
-      const f = yield* fixture;
-      yield* f.execute(request());
-      const old = f.caller();
-      yield* PubSub.publish(f.events, {
-        delivery: 1,
-        notification: {
-          type: "execution.native-session.closed",
-          runtimeId: "runtime",
-          runtimeGeneration: "lease",
-          providerSessionId: "provider-session",
-          nativeGeneration: 1,
-          incarnationId: "incarnation:one",
-        },
-      });
-      yield* Deferred.await(f.retired).pipe(Effect.timeout("2 seconds"));
-      assert.isNull(yield* captureHostedAppToolAuthority(old));
-      yield* Effect.flip(f.execute(request()));
-      f.replace(actor("incarnation:next"));
-      yield* f.execute(request(actor("incarnation:next")));
-      assert.isNotNull(yield* captureHostedAppToolAuthority(f.caller()));
-    }).pipe(Effect.scoped),
+it.effect("a closed Host scope fences captures taken before it closed", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    yield* f.execute(request(turn()));
+    const captured = f.caller();
+    yield* f.close;
+    assert.isNull(yield* captureHostedAppToolAuthority(captured));
+    yield* Effect.flip(f.execute(request(turn())));
+  }).pipe(Effect.scoped),
 );
 
 it.effect(
@@ -318,11 +301,5 @@ it.effect(
         }),
       );
       assert.notEqual(f.caller().callId, first);
-      assert.equal(
-        f.coreCalls.filter(
-          (input) => input.intent.kind === "admit_agent_runtime_native_session_authority",
-        ).length,
-        1,
-      );
     }).pipe(Effect.scoped),
 );

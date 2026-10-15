@@ -474,6 +474,7 @@ const supervisor = Layer.effectContext(
           Effect.tap(() =>
             Deferred.await(toolsReady).pipe(
               Effect.andThen(product.cleanupDeletedSessions),
+              Effect.andThen(product.reconcileLiveExecutions()),
               Effect.catchCause(() =>
                 Effect.logWarning("Agent execution cleanup will retry after the next connection"),
               ),

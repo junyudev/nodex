@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
@@ -90,6 +91,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
           readonly nativeGeneration: number;
           readonly scope: Scope.Scope;
           readonly incarnationId: string;
+          readonly openedAtMs: number;
         }
       >
     >
@@ -103,9 +105,10 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       const scope = yield* Scope.Scope;
       const key = `${identity.providerSessionId}:${identity.nativeGeneration}`;
       const incarnationId = yield* crypto.randomUUIDv4().pipe(Effect.orDie);
+      const openedAtMs = yield* Clock.currentTimeMillis;
       yield* Ref.update(nativeSessions, (current) => {
         const members = new Map(current.get(identity.credentialId));
-        members.set(key, { ...identity, scope, incarnationId });
+        members.set(key, { ...identity, scope, incarnationId, openedAtMs });
         return new Map(current).set(identity.credentialId, members);
       });
       yield* Effect.addFinalizer(() =>
@@ -447,6 +450,7 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
           runId: null,
           attemptId: null,
           incarnationId: native.incarnationId,
+          admittedAtMs: native.openedAtMs,
         };
       }),
     preparedTurn: (

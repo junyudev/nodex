@@ -233,7 +233,7 @@ pub(super) fn read_binding(
         .map_err(Into::into)
 }
 
-fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
+pub(super) fn require_host(context: &BoundModuleContext) -> Result<(), StoreError> {
     if matches!(
         context.adapter,
         AdapterKind::ElectronHost | AdapterKind::Test
@@ -371,6 +371,46 @@ mod tests {
             runtime_thread_id: format!("thread:{session_id}"),
             launch_request_id: format!("launch:{session_id}"),
         }
+    }
+
+    #[test]
+    fn generated_titles_replace_only_the_provisional_title() {
+        use nodex_core_contracts::workspace::ProjectSessionIntent;
+        let workspace = seeded_workspace();
+        apply(&workspace.module, "launch:a", create_intent("session:a"));
+        apply(&workspace.module, "launch:b", create_intent("session:b"));
+        let title = |session: &str| {
+            let ProjectWorkspaceReadValue::Session { session } = read(
+                &workspace.module,
+                ProjectWorkspaceRead::Session {
+                    session_id: session.into(),
+                },
+            ) else {
+                panic!("Session")
+            };
+            session.display_title
+        };
+        let generated = |session: &str| ProjectWorkspaceIntent::MutateSession {
+            session_id: session.into(),
+            intent: ProjectSessionIntent::SetFallbackTitle {
+                title: "Fix login".into(),
+                replaces: Some("Task".into()),
+            },
+        };
+        apply(&workspace.module, "title:a", generated("session:a"));
+        assert_eq!(title("session:a"), "Fix login");
+        apply(
+            &workspace.module,
+            "rename:b",
+            ProjectWorkspaceIntent::MutateSession {
+                session_id: "session:b".into(),
+                intent: ProjectSessionIntent::Rename {
+                    title: "Mine".into(),
+                },
+            },
+        );
+        apply(&workspace.module, "title:b", generated("session:b"));
+        assert_eq!(title("session:b"), "Mine");
     }
 
     #[test]

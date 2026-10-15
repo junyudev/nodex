@@ -11,6 +11,15 @@ export const toCoreAgentTurnProvenance = (profileId: string, context: NodexAgent
       actor_project_id: context.actorProjectId,
       library_id: context.libraryId,
       store_epoch: context.storeEpoch,
+      ...(context.runtime
+        ? {
+            runtime: {
+              session_id: context.runtime.sessionId,
+              runtime_id: context.runtime.runtimeId,
+              turn_kind: context.runtime.turnKind,
+            },
+          }
+        : {}),
     },
   }) as const;
 

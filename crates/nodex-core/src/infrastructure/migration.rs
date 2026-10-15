@@ -316,6 +316,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 181,
         apply: migrate_v180_to_v181,
     },
+    MigrationStep {
+        from_revision: 181,
+        to_revision: 182,
+        apply: migrate_v181_to_v182,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2322,6 +2327,23 @@ fn migrate_v176_to_v177(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"block_erasure":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// Agent Runtime authority is derived from the Session binding on every use; per-Run admission
+/// rows and their mirrored Turn authorities have no remaining reader.
+fn migrate_v181_to_v182(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v181_to_v182.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"derived_agent_runtime_authority":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -6729,6 +6751,66 @@ mod tests {
                 .expect("current reopen")
                 .migrated_from_version,
             None
+        );
+    }
+
+    #[test]
+    fn derived_runtime_authority_migration_keeps_native_turns_and_drops_runtime_mirrors() {
+        let directory = tempdir().expect("Profile");
+        let path = directory.path().join("nodex.db");
+        fs::write(&path, include_bytes!("../../tests/fixtures/store-v174.db"))
+            .expect("published predecessor");
+        let mut connection = open_writer(&path).expect("writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in resolve_migration_path(174, 181, MIGRATION_STEPS).expect("v181 path") {
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "prepare-derived-authority.db".into(),
+                        source_schema_fingerprint: published_format(step.from_revision)?
+                            .schema_fingerprint,
+                        target_schema_fingerprint: published_format(step.to_revision)?
+                            .schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+            }
+            validate_schema_identity(transaction, 181)
+        })
+        .expect("v181 Store");
+        let fingerprint = "0".repeat(64);
+        for thread_id in ["fixture-native", "runtime:mirrored"] {
+            connection
+                .execute(
+                    "INSERT INTO nodex_agent_turn_authorities(thread_id,turn_id,root_thread_id,library_id,\
+                       profile_id,store_epoch,authority_fingerprint,provenance_version,created_at) \
+                     VALUES (?1,'turn',?1,'library','profile','epoch',?2,2,'2026-10-15T00:00:00.000Z')",
+                    params![thread_id, fingerprint],
+                )
+                .expect("retained Turn authority");
+        }
+        let migrated = prepare_profile_store(&mut connection, directory.path())
+            .expect("derived authority upgrade");
+        assert_eq!(migrated.migrated_from_version, Some(181));
+        validate_schema_identity(&connection, CURRENT_STORE_REVISION).expect("current schema");
+        let retained = connection
+            .prepare("SELECT thread_id FROM nodex_agent_turn_authorities ORDER BY thread_id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(retained, vec!["fixture-native".to_owned()]);
+        assert!(
+            connection
+                .execute(
+                    "DELETE FROM nodex_agent_turn_authorities WHERE thread_id='fixture-native'",
+                    []
+                )
+                .is_err(),
+            "native Turn authorities stay immutable"
         );
     }
 

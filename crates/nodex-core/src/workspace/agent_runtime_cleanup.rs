@@ -1,6 +1,6 @@
 use super::{
     ProjectWorkspaceApplyOutcome,
-    agent_runtime_authority::require_host,
+    agent_runtime_binding::require_host,
     session_lifecycle::finish_lifecycle_mutation,
     session_mutation::{sqlite_now, validate_id},
 };
@@ -24,7 +24,6 @@ pub(super) fn enqueue(
     project_id: Option<&str>,
 ) -> Result<(), StoreError> {
     connection.execute("INSERT INTO nodex_agent_runtime_execution_cleanups(cleanup_id, library_id, session_id, project_id, runtime_id, runtime_thread_id, created_at) SELECT ?1, ?2, ?3, ?4, runtime_id, runtime_thread_id, datetime('now') FROM project_session_execution_bindings WHERE session_id = ?3", params![operation_id, library_id, session_id, project_id])?;
-    connection.execute("UPDATE nodex_agent_runtime_turn_admissions SET active = 0 WHERE session_id = ?1 AND active = 1", [session_id])?;
     Ok(())
 }
 

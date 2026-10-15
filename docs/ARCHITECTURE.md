@@ -232,7 +232,8 @@ Store formats and migration sequences are implementation/recovery contracts, not
 - BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, temporary media capture, logs, and platform integration.
 - Native Codex account/catalog and explicit remote-host lifecycles. Local conversation
   execution belongs to Agent Runtime, whose Providers own their native Session and
-  callback lifecycles; shared projections carry only
+  callback lifecycles; Main's native Turn commands and renderer native requests refuse a
+  local host, so a connected local native conversation is read-only history. Shared projections carry only
   transport-neutral conversation data. See [Agent Backend Behavior](product-specs/agent-backend-behavior.md)
   and [ADR 0065](adr/0065-native-claude-code-backend.md) / [ADR 0066](adr/0066-native-model-selection-and-opencode.md).
 - Native Agent homes own their account, configuration, and conversation persistence independently
@@ -957,10 +958,11 @@ Replacement, timeout, renderer loss, server resolution, and Scope close settle t
 at most once. Automatic user-input resolution is a policy over this state, not a second responder
 or timer registry.
 
-Application tools have full access to the current authenticated Profile. Main captures
-exact runtime and Run identities; Core validates their execution leases and transaction
-preconditions. Plan is an Agent planning mode. Parent completion does not revoke child
-or background execution; cancellation, native Scope exit and generation retirement do.
+Application tools have full access to the current authenticated Profile. Main re-proves
+each Agent Runtime call live with the engine; Core validates the named Session binding and
+transaction preconditions without persisting per-Run credentials. Plan is an Agent planning
+mode. Parent completion does not end child or background execution; cancellation, native
+Scope exit and process replacement do.
 
 Each authenticated execution host has ordinary conversation managers in Main and its windows.
 Their shared stream owns role selection, follow intent, canonical snapshots, patches and revision

@@ -527,6 +527,7 @@ fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
             actor_project_id: Some("project-1".into()),
             library_id: "library-1".into(),
             store_epoch: "epoch-1".into(),
+            runtime: None,
         },
     };
     let query = SqlQuery { scope: SqlScope::default(), sql: "SELECT pages.page_id, page_documents.nested_markdown FROM pages JOIN page_documents USING(page_id)".into(), parameters: BTreeMap::new() };

@@ -20,8 +20,6 @@ export const resolveAppToolCallingSession = (
     if (!caller.isActive()) return null;
     const hosted = readHostedAppToolSessionContext(caller);
     if (hosted) return { ...hosted, hostId: caller.hostId };
-    if (caller.threadId.startsWith("runtime:") || caller.turnId.startsWith("runtime-run:"))
-      return null;
     const thread = yield* workspace
       .getThread(caller.threadId)
       .pipe(Effect.catch(() => Effect.succeed(null)));

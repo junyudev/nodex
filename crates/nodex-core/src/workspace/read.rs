@@ -2,6 +2,7 @@ use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectSource, ProjectWorkspaceBootstrap, ProjectWorkspaceBootstrapStatus,
     ProjectWorkspaceExecutionContext, ProjectWorkspaceProject, ProjectWorkspaceRead,
     ProjectWorkspaceReadValue, ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceSessionSummary,
+    ProjectWorkspaceTurnAuthorityResolution,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -305,35 +306,6 @@ pub(super) fn read(
                 )?,
             })
         }
-        ProjectWorkspaceRead::AgentRuntimeNativeSessionAuthority { identity } => Ok(
-            ProjectWorkspaceReadValue::AgentRuntimeNativeSessionAuthority {
-                resolution: super::agent_runtime_native_session::read_authority(
-                    connection, context, library_id, &identity,
-                )?,
-            },
-        ),
-        ProjectWorkspaceRead::AgentRuntimeAdmissionWindow {
-            runtime_id,
-            lease_id,
-            window,
-        } => Ok(ProjectWorkspaceReadValue::AgentRuntimeAdmissionWindow {
-            admissions: super::agent_runtime_admission_window::read_window(
-                connection,
-                context,
-                library_id,
-                commit_head,
-                &runtime_id,
-                &lease_id,
-                &window,
-            )?,
-        }),
-        ProjectWorkspaceRead::AgentRuntimeTurnAuthority { identity } => {
-            Ok(ProjectWorkspaceReadValue::AgentRuntimeTurnAuthority {
-                resolution: super::agent_runtime_authority::read_authority(
-                    connection, context, library_id, &identity,
-                )?,
-            })
-        }
         ProjectWorkspaceRead::AgentRuntimeSessionBindingByExecution {
             runtime_id,
             runtime_thread_id,
@@ -366,6 +338,19 @@ pub(super) fn read(
         ProjectWorkspaceRead::AgentAuthority { provenance } => {
             super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
             let authority = &provenance.authority;
+            if let Some(runtime) = &authority.runtime {
+                let mut current = authority.clone();
+                current.actor_project_id = super::agent_runtime_authority::validate(
+                    connection, library_id, authority, runtime,
+                )?;
+                return Ok(ProjectWorkspaceReadValue::AgentAuthority {
+                    resolution: ProjectWorkspaceTurnAuthorityResolution {
+                        authority: Some(current),
+                        persisted: false,
+                        admitted_at_ms: None,
+                    },
+                });
+            }
             Ok(ProjectWorkspaceReadValue::AgentAuthority {
                 resolution: execution::resolve_turn_authority(
                     connection,

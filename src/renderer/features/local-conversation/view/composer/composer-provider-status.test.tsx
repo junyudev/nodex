@@ -16,7 +16,7 @@ describe("Composer provider status", () => {
       <ComposerProviderStatus
         status={{
           message: "Waiting for 2 background tasks · resumes automatically",
-          action: { label: "Stop", pendingLabel: "Stopping…", run },
+          actions: [{ label: "Stop", pendingLabel: "Stopping…", run }],
         }}
         onErrorMessage={onErrorMessage}
       />,

@@ -176,8 +176,12 @@ export function parseGeneratedThreadMetadataResponse(
   } catch {
     return null;
   }
+  return parseGeneratedThreadMetadata(parsed);
+}
 
-  const result = ThreadTitleResponseSchema.safeParse(parsed);
+/** Validates structured generation output that already arrived as JSON. */
+export function parseGeneratedThreadMetadata(value: unknown): CodexGeneratedThreadMetadata | null {
+  const result = ThreadTitleResponseSchema.safeParse(value);
   if (!result.success) {
     return null;
   }

@@ -23,7 +23,13 @@ const authority: NodexAgentTurnContext = {
 for (const backend of ["codex", "claude", "opencode", "acp"] as const) {
   it.effect(`${backend} Runtime callers require the original Host-issued object`, () =>
     Effect.gen(function* () {
-      const frozen = { ...authority, threadId: "runtime:thread", turnId: "runtime-run:run" };
+      const frozen: NodexAgentTurnContext = {
+        ...authority,
+        threadId: "child",
+        turnId: "run",
+        rootThreadId: "root",
+        runtime: { sessionId: "product-session", runtimeId: "engine", turnKind: "run" },
+      };
       let active = true;
       const sessionContext = {
         sessionId: "product-session",
@@ -44,13 +50,22 @@ for (const backend of ["codex", "claude", "opencode", "acp"] as const) {
         sessionContext,
       });
       sessionContext.sessionId = "mutated-product-session";
-      assert.equal(caller.threadId, "runtime:thread");
+      assert.equal(caller.threadId, "child");
       assert.equal(readHostedAppToolSessionContext(caller)?.sessionId, "product-session");
       assert.equal(readHostedAppToolSessionContext(caller)?.threadId, "child");
       assert.isTrue(Object.isFrozen(readHostedAppToolSessionContext(caller)));
       assert.isNull(readHostedAppToolSessionContext({ ...caller }));
-      const legacy = { capture: () => Effect.die("Runtime authority cannot use legacy admission") };
+      // A copied caller can reach only persisted native Turns, never a Runtime Session authority.
+      const legacyReads: string[] = [];
+      const legacy = {
+        capture: (threadId: string) =>
+          Effect.sync(() => {
+            legacyReads.push(threadId);
+            return null;
+          }),
+      };
       assert.deepEqual(yield* captureAppToolAuthority(caller, legacy), frozen);
+      assert.deepEqual(legacyReads, []);
       assert.isNull(yield* captureHostedAppToolAuthority({ ...caller }));
       assert.isNull(yield* captureAppToolAuthority({ ...caller }, legacy));
       active = false;

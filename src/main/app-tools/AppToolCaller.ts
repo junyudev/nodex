@@ -85,9 +85,6 @@ export const captureAppToolAuthority = (
   if (!caller.isActive()) return Effect.succeed(null);
   const issued = hostedClaims.get(caller);
   if (issued) return issued.capture;
-  // Core reserves these coordinates for Host-issued execution leases.
-  if (caller.threadId.startsWith("runtime:") || caller.turnId.startsWith("runtime-run:"))
-    return Effect.succeed(null);
   if (caller.backend && caller.backend !== "codex") return Effect.succeed(null);
   return codex
     .capture(caller.threadId, caller.turnId)

@@ -89,6 +89,28 @@ const connected = { status: "connected", retries: 0 } as const;
 const starting = { status: "starting", retries: 0 } as const;
 const connectionViews = new WeakMap<AgentRuntimeConnectionState, CodexConnectionState>();
 
+/**
+ * The latest Run failed while its workspace was being prepared: it records a preparation
+ * strategy and never started. Returns its id so the user can retry or work locally.
+ */
+export function failedWorkspacePreparation(
+  runs: readonly {
+    readonly id: string;
+    readonly ordinal: number;
+    readonly status: string;
+    readonly startedAt?: string | null;
+    readonly workspacePreparation?: unknown;
+  }[],
+): string | null {
+  const latest = runs.reduce<(typeof runs)[number] | null>(
+    (best, run) => (best === null || run.ordinal > best.ordinal ? run : best),
+    null,
+  );
+  return latest?.status === "failed" && latest.workspacePreparation && !latest.startedAt
+    ? latest.id
+    : null;
+}
+
 /** One supervised execution process serves every Runtime chat; an idle process starts on use. */
 export function projectAgentRuntimeConnection(
   state: AgentRuntimeConnectionState,
@@ -1048,6 +1070,18 @@ export function useAgentRuntimeConversationAdapter(input: {
       : null,
   );
   const backgroundMessage = agentRuntimeBackgroundStatus(activity);
+  const preparationFailure = target
+    ? failedWorkspacePreparation(state.conversation?.snapshot.projection.runs ?? [])
+    : null;
+  const retryPreparation = async (runId: string, workLocally: boolean) => {
+    if (!target) return;
+    await agentRuntimeRuntime.retryPreparation({
+      ...target,
+      requestId: createUuidV7(),
+      runId,
+      workLocally,
+    });
+  };
   const presentation: ConversationProviderPresentation = {
     resolveRuntimeAttachment: async (reference) => {
       if (!target) throw new Error("Open the conversation before reading its attachment");
@@ -1140,25 +1174,44 @@ export function useAgentRuntimeConversationAdapter(input: {
       state.error ??
       catalogState.error ??
       (provider?.status === "error" ? (provider.message ?? null) : null),
-    status: backgroundMessage
+    status: preparationFailure
       ? {
-          message: backgroundMessage,
-          ...(activity && activity.activeTaskCount > 0
-            ? {
-                action: {
-                  label: "Stop",
-                  pendingLabel: "Stopping…",
-                  run: () =>
-                    stopAgentRuntimeBackgroundTasks(
-                      activity.sessionId,
-                      activity.threadId,
-                      agentRuntimeRuntime,
-                    ),
-                },
-              }
-            : {}),
+          message: "The worktree could not be prepared.",
+          tone: "danger",
+          actions: [
+            {
+              label: "Retry",
+              pendingLabel: "Retrying…",
+              run: () => retryPreparation(preparationFailure, false),
+            },
+            {
+              label: "Work locally",
+              pendingLabel: "Starting…",
+              run: () => retryPreparation(preparationFailure, true),
+            },
+          ],
         }
-      : null,
+      : backgroundMessage
+        ? {
+            message: backgroundMessage,
+            ...(activity && activity.activeTaskCount > 0
+              ? {
+                  actions: [
+                    {
+                      label: "Stop",
+                      pendingLabel: "Stopping…",
+                      run: () =>
+                        stopAgentRuntimeBackgroundTasks(
+                          activity.sessionId,
+                          activity.threadId,
+                          agentRuntimeRuntime,
+                        ),
+                    },
+                  ],
+                }
+              : {}),
+          }
+        : null,
   };
   return {
     runtime,

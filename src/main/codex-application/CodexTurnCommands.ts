@@ -306,6 +306,21 @@ export const make: Effect.Effect<
       ? cause
       : new CodexTurnCommandError({ operation, threadId, cause });
 
+  /**
+   * Local conversations execute in the Agent Runtime. Main starts native Turns only for an
+   * explicit remote owner, so a stale local caller cannot revive a second execution writer.
+   */
+  const executionHost = Effect.fn("CodexTurnCommands.executionHost")(function* (threadId: string) {
+    const hostId = yield* hosts.resolve(threadId);
+    if (hostId === gateway.localHostId)
+      return yield* commandError(
+        "start",
+        threadId,
+        new Error("Local conversations run in the Agent Runtime"),
+      );
+    return hostId;
+  });
+
   const validateServerQueuedSubmission = Effect.fn("CodexTurnCommands.validateQueuedSubmission")(
     function* (threadId: string, value: unknown, connection: NativeTurnConnection) {
       const decoded = yield* Schema.decodeUnknownEffect(
@@ -918,7 +933,7 @@ export const make: Effect.Effect<
     input: CodexSteerTurnInput,
   ) {
     const threadId = input.threadId;
-    const hostId = yield* hosts.resolve(threadId);
+    const hostId = yield* executionHost(threadId);
     const manager = yield* managers.get(hostId);
     const connection = captureTurnConnection(manager);
     if (!manager.stream.getRole(threadId)) yield* resumeForStart(threadId);
@@ -1145,7 +1160,7 @@ export const make: Effect.Effect<
     threadId: string,
     fresh: NonNullable<CodexTurnStartOverrides["freshNativeThread"]>,
   ) {
-    const hostId = yield* hosts.resolve(threadId);
+    const hostId = yield* executionHost(threadId);
     if (hostId !== fresh.hostId)
       return yield* commandError(
         "start",
@@ -1184,7 +1199,7 @@ export const make: Effect.Effect<
       if (overrides?.freshNativeThread)
         yield* adoptFreshNativeThread(threadId, overrides.freshNativeThread);
       yield* resumeForStart(threadId);
-      const hostId = yield* hosts.resolve(threadId);
+      const hostId = yield* executionHost(threadId);
       const manager = yield* managers.get(hostId);
       const connection = captureTurnConnection(manager);
       const clientUserMessageId = overrides?.clientUserMessageId ?? createUuidV7();
@@ -1321,7 +1336,7 @@ export const make: Effect.Effect<
           "</codex_delegation>",
         ].join("\n");
         const id = createUuidV7();
-        const hostId = yield* hosts.resolve(threadId);
+        const hostId = yield* executionHost(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const captured = yield* preparation.prepareCaptured(threadId, id, prompt, { text: prompt });
@@ -1481,7 +1496,7 @@ export const make: Effect.Effect<
         yield* conversations.assertExecutionAvailable(threadId);
         const executionEpoch = yield* conversations.executionEpoch(threadId);
         const clientUserMessageId = preparationContext.clientUserMessageId ?? message.id;
-        const hostId = yield* hosts.resolve(threadId);
+        const hostId = yield* executionHost(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const serverQueuedSubmission =
@@ -1623,7 +1638,7 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         yield* conversations.assertExecutionAvailable(threadId);
         const executionEpoch = yield* conversations.executionEpoch(threadId);
-        const hostId = yield* hosts.resolve(threadId);
+        const hostId = yield* executionHost(threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const lock = yield* Semaphore.make(1);
@@ -1969,7 +1984,7 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         yield* conversations.assertExecutionAvailable(input.threadId);
         const executionEpoch = yield* conversations.executionEpoch(input.threadId);
-        const hostId = yield* hosts.resolve(input.threadId);
+        const hostId = yield* executionHost(input.threadId);
         const manager = yield* managers.get(hostId);
         const connection = captureTurnConnection(manager);
         const { prepared, presentationClaim } = yield* prepareSteer(input);

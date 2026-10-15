@@ -72,7 +72,11 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
       continue;
     }
     if (request.input.projectId === "reject") {
-      send({ id: request.id, success: false, error: { message: "Execution is busy" } });
+      send({
+        id: request.id,
+        success: false,
+        error: { message: "Execution is busy", tag: "OrchestratorDispatchError" },
+      });
       continue;
     }
     if (request.input.projectId.startsWith("blocked:")) {

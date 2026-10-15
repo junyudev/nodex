@@ -61,6 +61,7 @@ impl Fixture {
                         actor_project_id: actor_project_id.map(str::to_owned),
                         library_id: "library-1".into(),
                         store_epoch: "epoch-1".into(),
+                        runtime: None,
                     },
                 },
                 call_id: "call:description".into(),

@@ -110,6 +110,8 @@ export interface AgentStorageSnapshot {
 
 /** Captured execution identity and lifecycle metadata, without transcript bodies. */
 export type AgentThreadAuthority = AgentHostTurnIdentity & {
+  /** When the Run was requested; Host operation identities derived from it survive restarts. */
+  readonly admittedAtMs: number;
   readonly userMessageId: string;
   readonly rootThreadId: string;
   readonly status: OrchestrationV2Run["status"];
@@ -121,6 +123,8 @@ export type AgentThreadAuthority = AgentHostTurnIdentity & {
 };
 
 export type AgentNativeSessionAuthority = AgentHostNativeSessionIdentity & {
+  /** When this physical native connection opened. */
+  readonly admittedAtMs: number;
   readonly rootThreadId: string;
   readonly status: null;
   readonly archived: boolean;

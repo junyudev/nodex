@@ -2668,7 +2668,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
   );
 
-  it.effect("identifies sessions to Codex with the same client info as main", () =>
+  it.effect("identifies sessions and their Threads to Codex as Nodex Runtime work", () =>
     Effect.gen(function* () {
       const transcript = makeCodexReplayTranscript({
         scenario: "initialize-client-info",
@@ -2679,13 +2679,20 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         }).slice(0, 5),
       });
       const initializeParams: Array<unknown> = [];
+      const threadStarts: Array<{ readonly threadSource?: unknown }> = [];
       yield* makeCodexReplayHarness(
         transcript,
         () => Effect.void,
         (method, params) =>
           Effect.sync(() => {
             if (method === "initialize") initializeParams.push(params);
+            if (method === "thread/start") threadStarts.push(params as never);
           }),
+      );
+      // Main's native conversation catalog excludes Threads with this source.
+      assert.deepEqual(
+        threadStarts.map((params) => params.threadSource),
+        ["agent_runtime"],
       );
       // Codex uses clientInfo.name as the request originator. Replays ignore the
       // version, so pin the whole value here.

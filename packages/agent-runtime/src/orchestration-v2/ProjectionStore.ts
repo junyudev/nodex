@@ -360,6 +360,7 @@ export interface ProjectionHostToolAuthorityContext {
       | "rootNodeId"
       | "delegatedTaskId"
       | "status"
+      | "requestedAt"
     >
   >;
   readonly providerThreads: ReadonlyArray<ProjectionHostProviderThread>;
@@ -1954,6 +1955,7 @@ const decodeHostAuthorityRun = Schema.decodeUnknownEffect(
       rootNodeId: fields.rootNodeId,
       delegatedTaskId: fields.delegatedTaskId,
       status: fields.status,
+      requestedAt: fields.requestedAt,
     })),
   ),
 );
@@ -6003,7 +6005,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             'userMessageId', json_extract(payload_json, '$.userMessageId'),
             'providerThreadId', provider_thread_id,
             'providerInstanceId', json_extract(payload_json, '$.providerInstanceId'),
-            'rootNodeId', json_extract(payload_json, '$.rootNodeId')),
+            'rootNodeId', json_extract(payload_json, '$.rootNodeId'),
+            'requestedAt', requested_at),
             CASE WHEN json_extract(payload_json, '$.delegatedTaskId') IS NULL THEN '{}'
               ELSE json_object('delegatedTaskId', json_extract(payload_json, '$.delegatedTaskId')) END) AS payload_json
           FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}

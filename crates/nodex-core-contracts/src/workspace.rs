@@ -100,19 +100,6 @@ pub enum ProjectWorkspaceRead {
         runtime_id: String,
         window: CollectionWindowRequest,
     },
-    AgentRuntimeTurnAuthority {
-        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
-    },
-    /// An authenticated native connection with no causal Run evidence.
-    AgentRuntimeNativeSessionAuthority {
-        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
-    },
-    /// Active execution leases for bounded Host lifecycle reconciliation.
-    AgentRuntimeAdmissionWindow {
-        runtime_id: String,
-        lease_id: String,
-        window: CollectionWindowRequest,
-    },
     /// Authenticates current Turn credentials before creating a new execution root.
     AgentAuthority {
         provenance: crate::agent::AgentTurnProvenance,
@@ -260,15 +247,6 @@ pub enum ProjectWorkspaceReadValue {
     },
     AgentRuntimeExecutionCleanupWindow {
         cleanups: CollectionWindow<ProjectWorkspaceAgentRuntimeExecutionCleanup>,
-    },
-    AgentRuntimeTurnAuthority {
-        resolution: ProjectWorkspaceTurnAuthorityResolution,
-    },
-    AgentRuntimeNativeSessionAuthority {
-        resolution: ProjectWorkspaceTurnAuthorityResolution,
-    },
-    AgentRuntimeAdmissionWindow {
-        admissions: CollectionWindow<ProjectWorkspaceAgentRuntimeAdmission>,
     },
     AgentAuthority {
         resolution: ProjectWorkspaceTurnAuthorityResolution,
@@ -845,11 +823,33 @@ pub struct ProjectWorkspaceTurnAuthority {
     pub actor_project_id: Option<String>,
     pub library_id: String,
     pub store_epoch: String,
+    /// Present for Agent Runtime executions, whose engine coordinates are used verbatim.
+    /// Core validates them against the bound Session on every use and persists nothing per Run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<ProjectWorkspaceAgentRuntimeAuthority>,
+}
+
+/// The bound Session of one Agent Runtime execution. `thread_id` and `root_thread_id` are engine
+/// Thread ids; `turn_id` is the Run, or the native connection when the caller names no Run.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceAgentRuntimeAuthority {
+    pub session_id: String,
+    pub runtime_id: String,
+    pub turn_kind: ProjectWorkspaceAgentRuntimeTurnKind,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceAgentRuntimeTurnKind {
+    Run,
+    NativeConnection,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceTurnAuthorityResolution {
     pub authority: Option<ProjectWorkspaceTurnAuthority>,
+    /// Core holds a durable record of this Turn. Agent Runtime authorities are derived from their
+    /// Session binding and never persisted.
     pub persisted: bool,
     /// Stable admission timestamp; execution identity carries no content permissions.
     pub admitted_at_ms: Option<i64>,
@@ -1243,46 +1243,6 @@ pub struct ProjectWorkspaceAgentRuntimeExecutionCleanup {
     pub runtime_id: String,
     pub runtime_thread_id: String,
     pub created_at: String,
-}
-
-/// Persistent engine and execution identity plus one Host-authenticated credential lifetime.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceAgentRuntimeTurnIdentity {
-    pub runtime_id: String,
-    pub thread_id: String,
-    pub run_id: String,
-    pub lease_id: String,
-}
-
-/// Native source captured by the authenticated Host, independent of foreground completion.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceAgentRuntimeNativeSource {
-    pub provider_session_id: String,
-    pub native_generation: u32,
-}
-
-/// Exact native connection lifetime for calls that supply no causal Run metadata.
-/// Incarnations are unique within a runtime and can never be recycled after retirement.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceAgentRuntimeNativeSessionIdentity {
-    pub runtime_id: String,
-    pub thread_id: String,
-    pub lease_id: String,
-    pub provider_session_id: String,
-    pub native_generation: u32,
-    pub incarnation_id: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ProjectWorkspaceAgentRuntimeAdmission {
-    Run {
-        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
-        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
-    },
-    NativeSession {
-        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
-    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1695,37 +1655,6 @@ pub enum ProjectWorkspaceIntent {
         root_thread_id: String,
         actor_project_id: Option<String>,
     },
-    /// Host binds authenticated runtime execution identity to one Session.
-    /// Read the resolution after every apply: receipt replay never reactivates revoked authority.
-    AdmitAgentRuntimeTurnAuthority {
-        session_id: String,
-        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
-        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
-        parent: Option<ProjectWorkspaceAgentRuntimeTurnIdentity>,
-    },
-    RevokeAgentRuntimeTurnAuthority {
-        identity: ProjectWorkspaceAgentRuntimeTurnIdentity,
-    },
-    /// Host binds the exact native connection to its product Session, without inventing a Run.
-    AdmitAgentRuntimeNativeSessionAuthority {
-        session_id: String,
-        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
-    },
-    RevokeAgentRuntimeNativeSessionAuthority {
-        identity: ProjectWorkspaceAgentRuntimeNativeSessionIdentity,
-    },
-    /// Retires every captured Run and native-session actor for one physical native source.
-    RevokeAgentRuntimeNativeSourceAuthorities {
-        runtime_id: String,
-        lease_id: String,
-        native_source: ProjectWorkspaceAgentRuntimeNativeSource,
-    },
-    /// Revokes outstanding credentials when an engine connection is replaced or stopped.
-    RevokeAgentRuntimeAuthorities {
-        runtime_id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        lease_id: Option<String>,
-    },
     /// Host acknowledges execution settlement only for the exact durable cleanup identity.
     AcknowledgeAgentRuntimeExecutionCleanup {
         cleanup_id: String,
@@ -1833,6 +1762,10 @@ pub enum ProjectSessionIntent {
     },
     SetFallbackTitle {
         title: String,
+        /// Applies only while the current title is still this one, so a generated title never
+        /// replaces a rename that landed first.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replaces: Option<String>,
     },
     LinkThread {
         thread_id: String,
