@@ -403,3 +403,9 @@ next Agent action starts the process again. After such a stop, and after quittin
 Main keeps durable evidence bound to the exact execution store files; a launch starts the
 process at once whenever that evidence is missing or no longer matches, including after a
 crash, restore or copy.
+
+Listing providers and models never starts the process by itself. While it is stopped, model
+pickers, launch defaults and provider checks see the catalog it last served, as long as the
+execution build and the provider settings and installation it described are unchanged;
+otherwise the listing starts the process. A running process always answers live, and an
+explicit refresh always reaches it.

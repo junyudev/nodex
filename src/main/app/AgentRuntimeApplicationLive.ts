@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import type {
@@ -8,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
 import type * as Scope from "effect/Scope";
@@ -30,6 +32,7 @@ import {
   make as makeApplication,
 } from "../agent-runtime/AgentRuntimeApplication";
 import { make as makeHost } from "../agent-runtime/AgentRuntimeHost";
+import { make as makeProviderCatalog } from "../agent-runtime/AgentRuntimeProviderCatalog";
 import {
   make as makeHostTools,
   runtimeHostToolCatalog,
@@ -148,8 +151,35 @@ const supervisor = Layer.effectContext(
         ),
       ),
     );
+    const restoredHistories = yield* Effect.cached(
+      Effect.tryPromise(() => readAgentRuntimeNativeHistory(config.nodexHome)),
+    );
+    const providerCatalog = yield* makeProviderCatalog({
+      home: join(config.nodexHome, "agent-runtime"),
+      // Everything the engine reads to declare providers, except secrets and probe results.
+      identity: Effect.gen(function* () {
+        const engine = yield* fs.stat(agentRuntimeEntrypoint(config));
+        const snapshot = yield* settings.snapshot();
+        const declaration = {
+          engine: [String(engine.size), Option.getOrNull(engine.mtime)?.getTime() ?? null],
+          codex: [
+            platform.runtime.binaryPath,
+            platform.accountHome.effectiveHome,
+            codexCliAppServerArgs(config.environment),
+          ],
+          providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
+          histories: [...(yield* restoredHistories)],
+        };
+        return createHash("sha256").update(JSON.stringify(declaration)).digest("hex");
+      }),
+      running: Deferred.await(ready).pipe(
+        Effect.flatMap((runtime) => runtime.inspect),
+        Effect.map((identity) => identity !== null),
+      ),
+    });
     const product = yield* makeApplication({
       connect: Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.get())),
+      providerCatalog,
       projectless: {
         engineProjectId: `nodex:projectless:${core.identity.profileId}`,
         workspaceRoot: join(config.nodexHome, "tasks"),
@@ -215,9 +245,6 @@ const supervisor = Layer.effectContext(
     >();
     const drivers = new Map<string, string>();
     const readProviderAuth = yield* makeProviderAuthentication();
-    const restoredHistories = yield* Effect.cached(
-      Effect.tryPromise(() => readAgentRuntimeNativeHistory(config.nodexHome)),
-    );
     const readConfiguration = Effect.gen(function* () {
       const executable = yield* Effect.try({
         try: () =>

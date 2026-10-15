@@ -9,8 +9,10 @@ import type {
   AgentRuntimeOperations,
   AgentSnapshot,
 } from "@nodex/agent-runtime/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -26,6 +28,7 @@ import {
   type AgentRuntimeLaunch,
   type AgentRuntimeApplicationConnection,
 } from "./AgentRuntimeApplication";
+import { make as makeProviderCatalog } from "./AgentRuntimeProviderCatalog";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 const launch: AgentRuntimeLaunch = {
@@ -1270,6 +1273,37 @@ it.effect(
       assert.deepEqual(fixture.calls, []);
       assert.equal(fixture.cleanups.size, 0);
     }),
+);
+
+it.effect("listing models while execution is stopped never starts it; refresh always does", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const declared = { identity: "declared", running: false };
+    const providerCatalog = yield* makeProviderCatalog({
+      home: yield* fs.makeTempDirectoryScoped({ prefix: "nodex-catalog-" }),
+      identity: Effect.sync(() => declared.identity),
+      running: Effect.sync(() => declared.running),
+    });
+    const fixture = setup({ providerCatalog });
+    const owner = yield* fixture.owner;
+    const reads = () => fixture.calls.filter((call) => call.method === "providers.read").length;
+    // Nothing was kept yet, so the first listing reads live and keeps the result.
+    const live = yield* owner.catalog();
+    assert.equal(reads(), 1);
+    assert.deepEqual(yield* owner.catalog(), live);
+    assert.equal(reads(), 1);
+    yield* owner.catalog({ refresh: true });
+    assert.equal(reads(), 2);
+    declared.running = true;
+    yield* owner.catalog();
+    assert.equal(reads(), 3);
+    declared.running = false;
+    // Changed provider settings are listed live once, then kept again.
+    declared.identity = "changed";
+    yield* owner.catalog();
+    yield* owner.catalog();
+    assert.equal(reads(), 4);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
 it.effect(
