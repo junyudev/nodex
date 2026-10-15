@@ -163,6 +163,20 @@ export type AgentExecutionLocation = AgentWire<
   import("@t3tools/contracts").OrchestrationV2AppThread["executionLocation"]
 > & {};
 
+/** Live execution facts for one non-idle root Thread. */
+export interface AgentRootActivity {
+  readonly rootThreadId: string;
+  /** `waiting`: an information question awaits the user; `background`: no foreground Run. */
+  readonly status: "running" | "waiting" | "background";
+  readonly activeRunId: string | null;
+  readonly pendingRequestCount: number;
+  readonly activeTaskCount: number;
+  readonly resumesAutomatically: boolean;
+  readonly providerInstanceId: string;
+  readonly model: string;
+  readonly updatedAt: string;
+}
+
 export interface AgentRuntimeOperations {
   readonly "execution.handoff.pending": {
     readonly input: { readonly cursor?: string };
@@ -439,6 +453,23 @@ export interface AgentRuntimeOperations {
       readonly afterSequence: number;
     };
   };
+  /**
+   * Non-idle root Threads from SQL: an active Run, a pending information request, live delegated
+   * or native background work, or a delegated completion that will wake the root. Idle roots are
+   * absent. `rootThreadIds` point-reads those roots; otherwise pages follow `cursor`.
+   */
+  readonly "execution.activity": {
+    readonly input: {
+      readonly cursor?: string;
+      readonly limit?: number;
+      readonly rootThreadIds?: readonly string[];
+    };
+    readonly output: {
+      readonly snapshotSequence: number;
+      readonly items: readonly AgentRootActivity[];
+      readonly nextCursor: string | null;
+    };
+  };
   readonly "execution.observe": {
     readonly input: { readonly threadId?: string; readonly afterSequence?: number };
     readonly output: {
@@ -579,4 +610,6 @@ export type AgentRuntimeNotification =
       readonly runId?: string;
       readonly runStatus?: OrchestrationV2Run["status"];
     }
+  /** Execution observation: a committed event may have changed this root's activity. */
+  | { readonly type: "activity"; readonly rootThreadId: string; readonly sequence: number }
   | { readonly type: "event.error"; readonly subscriptionId: string; readonly message: string };
