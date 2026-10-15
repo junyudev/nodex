@@ -1,0 +1,54 @@
+packages/agent-runtime/src/persistence/Migrations/076_BoundedRecoveryIndexes.ts
+  s_1ca65ffa5958ee::t_a6b02ec6b290e5 1-28
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_1ca65ffa5958ee::t_00effc25e9080a 1012
+  s_1ca65ffa5958ee::t_2a5f88184b3cf3 4-5,7-9,39-46,99,107,886-900,902-904,906-909,918-920,923-925,928-930,933-934,938,952,957,959-974,977-982,985,995-1011,1013-1018
+  s_1ca65ffa5958ee::t_61536888b4dc90 901,905,910-917,921-922,926-927,931-932,935-937,939-951,953-956,958,975-976,983-984,986-994,1019
+packages/agent-runtime/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
+  s_1ca65ffa5958ee::t_a77603030a3ba3 1944-1949
+  s_1ca65ffa5958ee::t_fb2ddd7a7ff816 46,1888,1935,1943
+  s_1ca65ffa5958ee::t_00effc25e9080a 1833,1840-1887,1889-1934,1936-1942,1950
+  s_1ca65ffa5958ee::t_67c9da7434a418 1834-1839
+  s_1ca65ffa5958ee::t_79db58a0830d78 42-45,47-48,160,217-218,236,1951-1953
+packages/agent-runtime/src/orchestration-v2/ProjectionRecovery.test.ts
+  s_1ca65ffa5958ee::t_e691d1f96dac38 671-676
+  s_1ca65ffa5958ee::t_50e3a2de8faea4 29,31-35,247-274,648-670,677-683
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_1ca65ffa5958ee::t_90f2fa2d8a0946 226-227,248-249,251-252,254-261
+packages/agent-runtime/src/orchestration-v2/testkit/HistoryPressure.ts
+  s_1ca65ffa5958ee::t_fb2ddd7a7ff816 123-155,157-161
+  s_1ca65ffa5958ee::t_e691d1f96dac38 75-82,85-92
+  s_1ca65ffa5958ee::t_00effc25e9080a 3,93-122,156
+  s_1ca65ffa5958ee::t_3f66afe0394b95 1-2,4-58,83-84
+  s_1ca65ffa5958ee::t_120834506a5c5e 59-74
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_1ca65ffa5958ee::t_4918d380755ac2 92,182
+packages/agent-runtime/src/orchestration-v2/ProjectionRecoveryQueries.ts
+  s_1ca65ffa5958ee::t_a77603030a3ba3 1-145
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_1ca65ffa5958ee::t_562c812055ecde 386-387,406-407,4315,4353-4356,4367-4380,4426,5028,9344-9346,9382-9385
+  s_1ca65ffa5958ee::t_90eddeacee96bf 4250
+  s_1ca65ffa5958ee::t_448dafe72cd0d6 104-107,1194,1199-1204,4243-4244,4313
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_1ca65ffa5958ee::t_6ff7bbd16f9a92 108,7213
+  s_1ca65ffa5958ee::t_caeb85fc106489 1054-1075,1078-1081,1090-1091,1095-1105,1109-1111,1131-1133,1135,7109-7117,7155,7157-7159,7166-7171,10151,10154,10851-10871
+  s_1ca65ffa5958ee::t_bc7f0349c51435 10704-10709,10713,10718-10724,11606-11621,11623-11625,11627-11631,11633
+packages/agent-runtime/src/orchestration-v2/TurnStartReads.test.ts
+  s_1ca65ffa5958ee::t_a7b5f4e37fdf9d 270-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e90dd67279d9064a74a630b8f09cb2821be92934",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
