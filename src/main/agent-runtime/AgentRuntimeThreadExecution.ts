@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { MainConfig } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import type { ManagedWorktreeHandoffPreparation } from "../codex-application/ManagedWorktreeHandoff";
@@ -27,7 +26,6 @@ export const make = Effect.gen(function* () {
   const git = yield* CodexGitProbe;
   const hosts = yield* ExecutionHostRuntime;
   const fs = yield* FileSystem.FileSystem;
-  const config = yield* MainConfig;
   const error = (operation: string, threadId: string, cause: unknown) =>
     new AgentRuntimeThreadExecutionError({ operation, threadId, cause });
   const fail = (operation: string, threadId: string, message: string) =>
@@ -276,11 +274,11 @@ export const make = Effect.gen(function* () {
     reconcileRecovery: Effect.fn("AgentRuntimeThreadExecution.reconcileRecovery")(function* (
       operations: readonly { readonly threadId: string; readonly operationId: string }[],
     ) {
-      if (!(yield* fs.exists(path.join(config.nodexHome, "agent-runtime", "agent-runtime.sqlite"))))
-        return;
-      const connection = yield* supervisor
-        .get()
-        .pipe(Effect.mapError((cause) => error("recover", "", cause)));
+      // Evidence of a quiet stop proves the store holds no handoff to settle.
+      const connection = yield* supervisor.getUnlessQuiet.pipe(
+        Effect.mapError((cause) => error("recover", "", cause)),
+      );
+      if (!connection) return;
       const retained = new Set(
         operations.map((entry) => JSON.stringify([entry.threadId, entry.operationId])),
       );

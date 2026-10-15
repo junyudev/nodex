@@ -83,18 +83,16 @@ export const layer = Layer.effect(
               });
               return path === null
                 ? Effect.void
-                : fileSystem
-                    .remove(path, { force: true })
-                    .pipe(
-                      Effect.mapError(
-                        (cause) =>
-                          new ResourceCleanupError({
-                            operation: "attachment",
-                            attachmentId,
-                            cause,
-                          }),
-                      ),
-                    );
+                : fileSystem.remove(path, { force: true }).pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ResourceCleanupError({
+                          operation: "attachment",
+                          attachmentId,
+                          cause,
+                        }),
+                    ),
+                  );
             },
             { discard: true, concurrency: 4 },
           );

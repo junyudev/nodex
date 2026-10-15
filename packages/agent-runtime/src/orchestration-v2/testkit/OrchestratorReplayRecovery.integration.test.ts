@@ -72,7 +72,6 @@ const readClaudeSubagentResumeTranscript = Effect.fn("readClaudeSubagentResumeTr
   },
 );
 
-
 function splitAfterFirstIdle(materialized: MaterializedOrchestratorFixtureInput) {
   const splitIndex = materialized.steps.findIndex((step) => step.type === "await_thread_idle");
   if (splitIndex < 0) {
@@ -88,8 +87,6 @@ function splitAfterFirstIdle(materialized: MaterializedOrchestratorFixtureInput)
     phase2Commands: phase2Steps.flatMap((step) => (step.type === "dispatch" ? [step.command] : [])),
   };
 }
-
-
 
 describe("orchestrator replay recovery", () => {
   it.effect(

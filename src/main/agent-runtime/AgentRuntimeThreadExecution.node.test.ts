@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
-import { testLayer } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { CodexThreadExecution } from "../codex-application/CodexThreadExecution";
@@ -57,7 +56,8 @@ const harness = (
   options: {
     readonly savedLocation?: CodexThreadExecutionLocation;
     readonly gitRoot?: string;
-    readonly cold?: boolean;
+    /** Evidence proves the stopped store has nothing to resume. */
+    readonly quiet?: boolean;
     readonly invalidateAtWriter?: boolean;
     readonly pending?: ReadonlyArray<ReadonlyArray<Pending>>;
   } = {},
@@ -125,6 +125,10 @@ const harness = (
         ),
       );
     const connection = { request };
+    const connect = Effect.sync(() => {
+      state.connects++;
+      return connection;
+    });
     const application = {
       nativeThread: () =>
         Effect.sync(() =>
@@ -152,11 +156,8 @@ const harness = (
     const execution = yield* make.pipe(
       Effect.provideService(AgentRuntimeApplication, application),
       Effect.provideService(AgentRuntimeSupervisor, {
-        get: () =>
-          Effect.sync(() => {
-            state.connects++;
-            return connection;
-          }),
+        get: () => connect,
+        getUnlessQuiet: options.quiet ? Effect.succeed(null) : connect,
       } as unknown as AgentRuntimeSupervisor["Service"]),
       Effect.provideService(ProjectWorkspace, {
         getProjectSession: () => Effect.succeed({ projectId: "project" }),
@@ -179,12 +180,8 @@ const harness = (
       } as unknown as ExecutionHostRuntime["Service"]),
       Effect.provideService(
         FileSystem.FileSystem,
-        FileSystem.makeNoop({
-          exists: () => Effect.succeed(!options.cold),
-          realPath: (value) => Effect.succeed(value),
-        }),
+        FileSystem.makeNoop({ realPath: (value) => Effect.succeed(value) }),
       ),
-      Effect.provide(testLayer()),
     );
     return { execution, state, calls, messages };
   });
@@ -476,7 +473,7 @@ it.effect(
 );
 
 it.effect(
-  "reconciles paged orphan holds while preserving exact journal ownership and cold Profiles",
+  "reconciles paged orphan holds while preserving exact journal ownership and quiet Profiles",
   () =>
     Effect.gen(function* () {
       const f = yield* harness({
@@ -538,9 +535,9 @@ it.effect(
           { threadId: "thread", operationId: "terminal", action: "release" },
         ],
       );
-      const cold = yield* harness({ cold: true });
-      yield* cold.execution.reconcileRecovery([]);
-      assert.strictEqual(cold.state.connects, 0);
+      const quiet = yield* harness({ quiet: true });
+      yield* quiet.execution.reconcileRecovery([]);
+      assert.strictEqual(quiet.state.connects, 0);
     }),
 );
 

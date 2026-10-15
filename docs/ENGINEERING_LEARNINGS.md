@@ -299,6 +299,16 @@ real-app review for integrated visual evidence and focused renderer or Chromium
 tests for isolated behavior. Tests should protect behavior, not Tailwind
 strings or SVG paths.
 
+### A gate is evidence only after it has failed
+
+A performance or acceptance comparator proves nothing until a deliberate
+regression makes it fail. Compare like-for-like samples, derive any noise
+allowance from their spread, and cap it below the smallest regression that
+matters. Lazy processes and caches need a launched-app check as well: unit tests
+show each start path is conditional, but only the whole app shows who actually
+starts them, so record the caller at the start seam when an unexpected start
+appears.
+
 ### Trace reachability before trusting names
 
 A retained UI module, selector, fallback, test ID, or helper is not evidence

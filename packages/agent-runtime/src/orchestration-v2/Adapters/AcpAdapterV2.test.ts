@@ -86,7 +86,6 @@ import {
   registerMistralVibeAcpExtensions,
 } from "@t3tools/provider-acp-registry/testing";
 
-
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
 const layerTest = Layer.mergeAll(
@@ -3007,8 +3006,9 @@ describe("AcpAdapterV2", () => {
           ? replacementMcpServer.env
           : undefined;
       assert.equal(
-        replacementMcpEnvironment?.find((variable) => variable.name === "NODEX_ACP_MCP_AUTHORIZATION")
-          ?.value,
+        replacementMcpEnvironment?.find(
+          (variable) => variable.name === "NODEX_ACP_MCP_AUTHORIZATION",
+        )?.value,
         "Bearer rollback-target-token",
       );
       const snapshotAfterRollback = yield* runtime.readThreadSnapshot({
@@ -12672,7 +12672,6 @@ describe("acpPostSettleContinuationOfferEvidence", () => {
       }),
     );
   });
-
 });
 
 describe("acpPostSettleWakeShouldBuffer", () => {

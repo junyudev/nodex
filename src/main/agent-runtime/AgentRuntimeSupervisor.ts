@@ -49,6 +49,8 @@ export interface AgentRuntimeSupervisorOptions<Requirements> {
   readonly quiescence?: {
     readonly record: Effect.Effect<void, unknown, Requirements>;
     readonly clear: Effect.Effect<void, unknown, Requirements>;
+    /** False only while valid evidence proves the stopped store has nothing to resume. */
+    readonly startRequired: Effect.Effect<boolean, unknown, Requirements>;
   };
 }
 
@@ -67,6 +69,8 @@ const EXHAUSTED_MESSAGE =
 interface Usage {
   /** Requests, Host calls and retained observers currently using the process. */
   readonly busy: number;
+  /** Product writes in flight; reads and observers cannot leave the store with new work. */
+  readonly writes: number;
   /** Advances on every use so a quiet period restarts after any activity. */
   readonly epoch: number;
 }
@@ -96,24 +100,30 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   const connectionState = yield* SubscriptionRef.make<AgentRuntimeConnectionState>({
     status: "idle",
   });
-  const usage = yield* SubscriptionRef.make<Usage>({ busy: 0, epoch: 0 });
+  const usage = yield* SubscriptionRef.make<Usage>({ busy: 0, writes: 0, epoch: 0 });
   const publish = (next: AgentRuntimeConnectionState) => SubscriptionRef.set(connectionState, next);
   const provide = <A, E>(effect: Effect.Effect<A, E, Requirements>) =>
     effect.pipe(Effect.provide(dependencies));
 
-  const enter = SubscriptionRef.update(usage, (current) => ({
-    busy: current.busy + 1,
-    epoch: current.epoch + 1,
-  }));
-  const leave = SubscriptionRef.update(usage, (current) => ({
-    busy: current.busy - 1,
-    epoch: current.epoch + 1,
-  }));
+  const use = (write: number) => (delta: number) =>
+    SubscriptionRef.update(usage, (current) => ({
+      busy: current.busy + delta,
+      writes: current.writes + write * delta,
+      epoch: current.epoch + 1,
+    }));
+  const enter = use(0)(1);
+  const leave = use(0)(-1);
   const tracked = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.acquireUseRelease(
       enter,
       () => effect,
       () => leave,
+    );
+  const writing = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.acquireUseRelease(
+      use(1)(1),
+      () => effect,
+      () => use(1)(-1),
     );
   /** Keeps the current or next generation from idling out while the caller's Scope is open. */
   const retain = Effect.acquireRelease(enter, () => leave).pipe(Effect.asVoid);
@@ -319,10 +329,11 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
       Effect.gen(function* () {
         const current = yield* Ref.get(state);
         if (current.closed) return false;
-        // Quitting while quiet records that the next launch need not start execution.
+        // Quitting while quiet records that the next launch need not start execution. Reads
+        // and observers in flight, such as the request that started the process, add no work.
         const quiescent =
           current.current !== null &&
-          (yield* SubscriptionRef.get(usage)).busy === 0 &&
+          (yield* SubscriptionRef.get(usage)).writes === 0 &&
           (yield* isQuiescent(current.current.connection));
         yield* Ref.set(state, { ...current, closed: true, current: null });
         return quiescent;
@@ -335,6 +346,15 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     );
   yield* Effect.addFinalizer(() => close);
   const get = () => touch.pipe(Effect.andThen(acquire(false)));
+  const getUnlessQuiet = Effect.gen(function* () {
+    if ((yield* Ref.get(state)).current) return yield* get();
+    const required = options.quiescence
+      ? yield* provide(options.quiescence.startRequired).pipe(
+          Effect.catchCause(() => Effect.succeed(true)),
+        )
+      : true;
+    return required ? yield* get() : null;
+  });
   const withStopped = <A, E, R>(
     operation: Effect.Effect<A, E, R>,
     options: {
@@ -378,6 +398,11 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   });
   return {
     get,
+    /**
+     * The process when it runs or its stopped store may hold live or pending work; null when
+     * durable evidence proves there is nothing to resume, so recovery never starts it for nothing.
+     */
+    getUnlessQuiet,
     request,
     close,
     withStopped,
@@ -385,6 +410,8 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
     retain,
     /** Holds the process for the duration of `operation` without starting it. */
     retained: <A, E, R>(operation: Effect.Effect<A, E, R>) => tracked(operation),
+    /** Holds the process like `retained` for a product write that may leave new work. */
+    writing,
     inspect: Ref.get(state).pipe(
       Effect.map((current) => current.current?.connection.identity ?? null),
     ),

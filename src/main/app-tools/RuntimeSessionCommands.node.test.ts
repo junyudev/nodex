@@ -93,18 +93,15 @@ it.effect(
         sessionId: "session:root",
         threadId: "child",
       });
-      assert.deepEqual(
-        (call.agent as { authority: unknown }).authority,
-        {
-          thread_id: "child",
-          turn_id: "run",
-          root_thread_id: "root",
-          actor_project_id: "project",
-          library_id: "library",
-          store_epoch: "epoch",
-          runtime: { session_id: "session:root", runtime_id: "runtime", turn_kind: "run" },
-        },
-      );
+      assert.deepEqual((call.agent as { authority: unknown }).authority, {
+        thread_id: "child",
+        turn_id: "run",
+        root_thread_id: "root",
+        actor_project_id: "project",
+        library_id: "library",
+        store_epoch: "epoch",
+        runtime: { session_id: "session:root", runtime_id: "runtime", turn_kind: "run" },
+      });
       assert.notEqual((call.input as { sessionId: string }).sessionId, "session:root");
     }),
 );

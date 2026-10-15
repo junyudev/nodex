@@ -80,6 +80,13 @@ export interface AgentRuntimeApplicationOptions {
   readonly connect: Effect.Effect<AgentRuntimeApplicationConnection, unknown>;
   /** Lets product-only draft deletion leave an unused Profile runtime cold. */
   readonly runtimeExists?: Effect.Effect<boolean, unknown>;
+  /** Serves the last live provider catalog while execution is stopped. */
+  readonly providerCatalog?: {
+    readonly lastKnown: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
+    readonly record: (
+      providers: AgentRuntimeOperations["providers.read"]["output"],
+    ) => Effect.Effect<void>;
+  };
   /** Acquired before mutation admission; lifecycle delivery spans physical runtime generations. */
   readonly subscribeExecutionChanges?: Effect.Effect<
     Stream.Stream<void, unknown>,
@@ -1939,9 +1946,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     catalog: (input: AgentRuntimeOperations["providers.read"]["input"] = {}) =>
       owned(
         "catalog",
-        options.connect.pipe(
-          Effect.flatMap((connection) => connection.request("providers.read", input)),
-        ),
+        Effect.gen(function* () {
+          const known =
+            input.refresh || !options.providerCatalog
+              ? null
+              : yield* options.providerCatalog.lastKnown;
+          if (known) return known;
+          const connection = yield* options.connect;
+          const providers = yield* connection.request("providers.read", input);
+          if (options.providerCatalog) yield* options.providerCatalog.record(providers);
+          return providers;
+        }),
       ),
     history: (
       input: AgentRuntimeSessionTarget &
