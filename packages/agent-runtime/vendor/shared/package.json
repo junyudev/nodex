@@ -383,9 +383,9 @@
       "types": "./src/orchestrationV2Timeline.ts",
       "import": "./src/orchestrationV2Timeline.ts"
     },
-    "./t3McpToolPresentation": {
-      "types": "./src/t3McpToolPresentation.ts",
-      "import": "./src/t3McpToolPresentation.ts"
+    "./nodexAppMcp": {
+      "types": "./src/nodexAppMcp.ts",
+      "import": "./src/nodexAppMcp.ts"
     },
     "./Array": {
       "types": "./src/Array.ts",

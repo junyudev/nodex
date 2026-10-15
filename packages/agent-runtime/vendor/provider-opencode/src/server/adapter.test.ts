@@ -252,7 +252,7 @@ describe("OpenCodeAdapterV2", () => {
       let promptId = "";
       const harness = yield* makeOpenCodeRuntimeHarness("native-source", "root", {
         event: { subscribe: async () => ({ stream: events.stream }) },
-        mcp: { status: async () => ({ data: { "t3-code": { status: "connected" } } }) },
+        mcp: { status: async () => ({ data: { nodex_app: { status: "connected" } } }) },
         session: {
           create: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
           get: async () => ({ data: { id: "root", time: { created: 1, updated: 1 } } }),
@@ -281,7 +281,7 @@ describe("OpenCodeAdapterV2", () => {
       };
       const nativePart = (messageID: string, status: "pending" | "completed") => ({
         type: "message.part.updated", properties: { part: {
-          id: `part:${messageID}`, sessionID: "root", messageID, type: "tool", tool: "t3-code_page-write", callID: "reused-call",
+          id: `part:${messageID}`, sessionID: "root", messageID, type: "tool", tool: "nodex_app_page-write", callID: "reused-call",
           state: status === "pending" ? { status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, raw: "" } : {
             status, input: { pageId: "page-1", __nodexNativeExecution: { nativeThreadId: "root", nativeTurnId: messageID, nativeCallId: "reused-call" } }, output: "done", title: "Write", metadata: {}, time: { start: 1, end: 2 },
           },
@@ -907,7 +907,7 @@ describe("OpenCodeAdapterV2", () => {
       } });
       yield* push(status(root, "busy"));
       yield* push({ type: "message.part.updated", properties: { part: {
-        id: "background-native-call", sessionID: child, messageID: "child-assistant", type: "tool", tool: "t3-code_page-write", callID: "child-call",
+        id: "background-native-call", sessionID: child, messageID: "child-assistant", type: "tool", tool: "nodex_app_page-write", callID: "child-call",
         state: { status: "pending", input: {}, raw: "" },
       } } });
       assert.deepEqual(captured.map((source) => [source.identity.runId, source.nativeThreadId]), [[identity.runId, child]]);

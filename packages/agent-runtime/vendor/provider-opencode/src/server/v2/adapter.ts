@@ -99,6 +99,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { turnScopedSelectionTransition } from "@t3tools/provider-core/server/selectionTransition";
 import { OPENCODE_PROVIDER } from "../adapter.ts";
 import { openCodeToolTurnItem } from "../toolItems.ts";
+import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 const OpenCode2ProviderCapabilities = {
   sessions: {
@@ -440,21 +441,23 @@ interface PendingRequest {
 const rule = (action: string, effect: Rule["effect"]): Rule => ({ action, resource: "*", effect });
 
 /**
- * T3's MCP server is registered per directory, not per session, so each thread
- * gets its own `t3-code-<thread>` entry with its own credential. OpenCode names
+ * The application MCP server is registered per directory, not per session, so each
+ * thread gets its own `nodex_app-<thread>` entry with its own credential. OpenCode names
  * an MCP tool's permission `<server>_<tool>` (non-alphanumerics become `_`).
  * OpenCode skips every tool of a server whose name is over 64 characters (its
  * tool namespace limit), and its router rejects adding one over 100, so a
  * thread id that does not fit is replaced by a digest of it.
  */
-export const t3McpServerName = Effect.fn("t3McpServerName")(function* (threadId: string) {
-  const name = `t3-code-${threadId.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}`;
+export const nodexAppMcpServerName = Effect.fn("nodexAppMcpServerName")(function* (
+  threadId: string,
+) {
+  const name = `${NODEX_APP_MCP_SERVER}-${threadId.replaceAll(/[^a-zA-Z0-9_-]/g, "_")}`;
   if (name.length <= 64) return name;
   const crypto = yield* Crypto.Crypto;
   const digest = yield* crypto
     .digest("SHA-256", new TextEncoder().encode(threadId))
     .pipe(Effect.orDie);
-  return `t3-code-${Hex.encode(digest).slice(0, 16)}`;
+  return `${NODEX_APP_MCP_SERVER}-${Hex.encode(digest).slice(0, 16)}`;
 });
 
 const EXECUTION_PERMISSIONS: ReadonlyArray<Rule> = [rule("*", "allow")];
@@ -766,7 +769,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
   const crypto = yield* Crypto.Crypto;
   const driver = OPENCODE_PROVIDER;
   const mcpServerNameFor = (threadId: string) =>
-    t3McpServerName(threadId).pipe(Effect.provideService(Crypto.Crypto, crypto));
+    nodexAppMcpServerName(threadId).pipe(Effect.provideService(Crypto.Crypto, crypto));
 
   /**
    * Lends the instance's server to a session until its scope closes. A spawned
@@ -2174,7 +2177,8 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           if (
             identity !== undefined &&
             executionHost.captureNativeToolCall !== undefined &&
-            (event.data.name === "execute" || event.data.name.startsWith("t3-code-"))
+            (event.data.name === "execute" ||
+              event.data.name.startsWith(`${NODEX_APP_MCP_SERVER}-`))
           ) {
             const key = nativeCallKey(event.data);
             if (!nativeCalls.has(key)) {

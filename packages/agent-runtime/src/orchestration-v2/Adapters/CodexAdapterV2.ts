@@ -145,6 +145,7 @@ import {
 } from "@t3tools/provider-core/server/subagentProjection";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
 
 const CODEX_PROVIDER = ProviderDriverKind.make("codex");
 export const CODEX_DRIVER_KIND = CODEX_PROVIDER;
@@ -1223,7 +1224,7 @@ export function codexThreadRuntimeParams(input: {
         ? {}
         : {
             mcp_servers: {
-              "t3-code": {
+              [NODEX_APP_MCP_SERVER]: {
                 url: mcpSession.endpoint,
                 http_headers: {
                   Authorization: mcpSession.authorizationHeader,
@@ -4609,7 +4610,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             const context = resolved.context;
             if (
               payload.item.type === "mcpToolCall" &&
-              payload.item.server === "t3-code" &&
+              payload.item.server === NODEX_APP_MCP_SERVER &&
               context.hostExecutionIdentity !== undefined &&
               executionHost.captureNativeToolCall !== undefined
             ) {

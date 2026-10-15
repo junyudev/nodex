@@ -5,13 +5,14 @@ import { pathToFileURL } from "node:url";
 
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as OpenCodeRuntime from "./OpenCodeRuntime.ts";
+import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 /** Native tool context is attached after model input validation, never accepted from the model. */
 export const source = `export default {
   id: "nodex-native-execution",
   async setup({ tool }) {
     await tool.hook("execute.before", (event) => {
-      if (!event.tool.startsWith("t3-code-")) return;
+      if (!event.tool.startsWith(${JSON.stringify(`${NODEX_APP_MCP_SERVER}-`)})) return;
       event.input = {
         ...(event.input ?? {}),
         __nodexNativeExecution: {
@@ -30,7 +31,7 @@ export const sourceV1 = `export default async function () {
   const calls = new Map();
   const waiting = new Map();
   const keyOf = (sessionID, callID) => JSON.stringify([sessionID, callID]);
-  const owns = (tool) => tool.startsWith("t3-code_");
+  const owns = (tool) => tool.startsWith(${JSON.stringify(`${NODEX_APP_MCP_SERVER}_`)});
   return {
     event({ event }) {
       if (event.type !== "message.part.updated") return;

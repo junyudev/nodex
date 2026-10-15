@@ -356,14 +356,14 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
 });
 
 describe("ClaudeAdapterV2 MCP query overrides", () => {
-  const T3_MCP_SERVERS = {
-    "t3-code": {
+  const NODEX_APP_MCP_SERVERS = {
+    nodex_app: {
       type: "http",
       url: "http://127.0.0.1:43123/mcp",
       headers: {
         Authorization: "Bearer secret-claude-token",
       },
-      timeout: ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_TIMEOUT_MS,
+      timeout: ClaudeAdapterV2.CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS,
     },
   } as const;
 
@@ -397,7 +397,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     assert.deepEqual(overrides, { allowedTools: ["Read"] });
   });
 
-  it("pre-approves all t3-code tools when attaching an MCP session without an allowlist", () => {
+  it("pre-approves all nodex_app tools when attaching an MCP session without an allowlist", () => {
     const threadId = ThreadId.make("thread-claude-mcp-no-allowlist");
     const mcpSession = mcpSessionFor(threadId);
     const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
@@ -405,22 +405,22 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
     });
 
     assert.deepEqual(overrides, {
-      allowedTools: [ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_WILDCARD],
-      mcpServers: T3_MCP_SERVERS,
+      allowedTools: [ClaudeAdapterV2.CLAUDE_NODEX_APP_TOOL_WILDCARD],
+      mcpServers: NODEX_APP_MCP_SERVERS,
     });
   });
 
-  it("extends an explicit allowlist with the t3-code wildcard", () => {
+  it("extends an explicit allowlist with the nodex_app wildcard", () => {
     const threadId = ThreadId.make("thread-claude-mcp-with-allowlist");
     const mcpSession = mcpSessionFor(threadId);
     const overrides = ClaudeAdapterV2.claudeMcpQueryOverrides({
       mcpSession,
-      allowedTools: ["Read", "mcp__t3-code__*"],
+      allowedTools: ["Read", "mcp__nodex_app__*"],
     });
 
     assert.deepEqual(overrides, {
-      allowedTools: ["Read", "mcp__t3-code__*"],
-      mcpServers: T3_MCP_SERVERS,
+      allowedTools: ["Read", "mcp__nodex_app__*"],
+      mcpServers: NODEX_APP_MCP_SERVERS,
     });
   });
 
@@ -479,15 +479,15 @@ describe("ClaudeAdapterV2 native protocol logging", () => {
       allowedTools: ["Read"],
     });
     assert.deepEqual(overrides, {
-      allowedTools: ["Read", "mcp__t3-code__*"],
+      allowedTools: ["Read", "mcp__nodex_app__*"],
       mcpServers: {
-        "t3-code": {
+        nodex_app: {
           type: "http",
           url: "http://127.0.0.1:43123/mcp",
           headers: {
             Authorization: "Bearer secret-claude-token",
           },
-          timeout: ClaudeAdapterV2.CLAUDE_T3_MCP_TOOL_TIMEOUT_MS,
+          timeout: ClaudeAdapterV2.CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS,
         },
       },
     });
@@ -1613,7 +1613,7 @@ function makeFakeClaudeCli(answerSetServers = true) {
 }
 
 describe("ClaudeAdapterV2 MCP credential channel", () => {
-  const t3McpServer = {
+  const nodexAppMcpServer = {
     type: "http" as const,
     url: "http://127.0.0.1:43123/mcp",
     headers: { Authorization: "Bearer dummy-mcp-credential" },
@@ -1631,7 +1631,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
             resume: false,
             cwd: null,
             environment: { PATH: "/usr/bin" },
-            mcpServers: { "t3-code": t3McpServer },
+            mcpServers: { nodex_app: nodexAppMcpServer },
           }),
           pathToClaudeCodeExecutable: "/opt/claude/cli.js",
           spawnClaudeCodeProcess: cli.spawn,
@@ -1654,7 +1654,7 @@ describe("ClaudeAdapterV2 MCP credential channel", () => {
 
       assert.deepInclude(cli.controlRequests, {
         subtype: "mcp_set_servers",
-        servers: { "t3-code": t3McpServer },
+        servers: { nodex_app: nodexAppMcpServer },
       });
       const spawned = JSON.stringify(cli.spawns);
       assert.notInclude(spawned, "--mcp-config");
@@ -6528,7 +6528,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           session_id: WAKE_NATIVE_SESSION,
           transcript_path: "/tmp/transcript",
           cwd: "/workspace",
-          tool_name: "mcp__t3-code__read_page",
+          tool_name: "mcp__nodex_app__read_page",
           tool_use_id: id,
           tool_input: { pageId: "page-1" },
           ...(agentId === undefined ? {} : { agent_id: agentId }),
@@ -6543,6 +6543,17 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             updatedInput: { pageId: "page-1", __nodexExecutionCall: "call-root-first" },
           },
         });
+        // Only the application server's calls carry a captured execution identity.
+        const foreignCall = yield* Effect.promise(() =>
+          Promise.resolve(
+            hook!(
+              { ...hookInput("foreign-first"), tool_name: "mcp__other_server__read_page" },
+              "foreign-first",
+              { signal },
+            ),
+          ),
+        );
+        assert.deepEqual(foreignCall, {});
         yield* harness.offerAndWait(
           claudeSdkFrame({
             type: "assistant",
@@ -6555,7 +6566,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 {
                   type: "tool_use",
                   id: "root-first",
-                  name: "mcp__t3-code__read_page",
+                  name: "mcp__nodex_app__read_page",
                   input: { pageId: "page-1", __nodexExecutionCall: "call-root-first" },
                 },
               ],
@@ -6571,7 +6582,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               (event) =>
                 event.type === "turn_item.updated" &&
                 event.turnItem.type === "dynamic_tool" &&
-                event.turnItem.toolName === "mcp__t3-code__read_page",
+                event.turnItem.toolName === "mcp__nodex_app__read_page",
             ),
           "native MCP tool projection",
         );
@@ -6579,7 +6590,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           (event) =>
             event.type === "turn_item.updated" &&
             event.turnItem.type === "dynamic_tool" &&
-            event.turnItem.toolName === "mcp__t3-code__read_page",
+            event.turnItem.toolName === "mcp__nodex_app__read_page",
         );
         assert.isDefined(displayedCall);
         if (

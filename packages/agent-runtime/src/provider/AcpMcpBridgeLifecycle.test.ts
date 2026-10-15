@@ -31,12 +31,12 @@ describe("ACP native MCP lifetime", () => {
         );
       };
       const old = yield* makeAcpMcpOverAcpBridge({ ...options, fetchImplementation });
-      yield* old.connect({ serverId: "t3-code" });
+      yield* old.connect({ serverId: "nodex_app" });
       yield* old.message({ connectionId: "connection", method: "initialize" });
       yield* old.dispose;
       yield* old.dispose;
       for (const request of [
-        old.connect({ serverId: "t3-code" }),
+        old.connect({ serverId: "nodex_app" }),
         old.message({ connectionId: "connection", method: "tools/call" }),
         old.notification({ connectionId: "connection", method: "notifications/initialized" }),
         old.disconnect({ connectionId: "connection" }),
@@ -49,7 +49,7 @@ describe("ACP native MCP lifetime", () => {
         authorization: "Bearer replacement",
         fetchImplementation,
       });
-      yield* replacement.connect({ serverId: "t3-code" });
+      yield* replacement.connect({ serverId: "nodex_app" });
       expect(
         yield* replacement.message({ connectionId: "connection", method: "tools/list" }),
       ).toMatchObject({ tools: [] });
@@ -72,7 +72,7 @@ describe("ACP native MCP lifetime", () => {
             return new Promise<Response>(() => {});
           },
         });
-        yield* bridge.connect({ serverId: "t3-code" });
+        yield* bridge.connect({ serverId: "nodex_app" });
         const first = yield* bridge
           .message({ connectionId: "connection", method: "tools/call" })
           .pipe(Effect.forkChild);
@@ -103,14 +103,14 @@ describe("ACP native MCP lifetime", () => {
             Effect.andThen(Deferred.await(never)),
           ),
         });
-        const connecting = yield* bridge.connect({ serverId: "t3-code" }).pipe(Effect.forkChild);
+        const connecting = yield* bridge.connect({ serverId: "nodex_app" }).pipe(Effect.forkChild);
         yield* Deferred.await(allocating);
         yield* bridge.dispose;
         yield* Deferred.succeed(never, "late-connection");
         const exit = yield* Fiber.await(connecting);
         expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
         expect(
-          (yield* bridge.connect({ serverId: "t3-code" }).pipe(Effect.flip)).message,
+          (yield* bridge.connect({ serverId: "nodex_app" }).pipe(Effect.flip)).message,
         ).toContain("closed");
       }).pipe(Effect.scoped),
   );
@@ -127,7 +127,7 @@ describe("ACP native MCP lifetime", () => {
             return new Promise<Response>(() => {});
           },
         });
-        yield* bridge.connect({ serverId: "t3-code" });
+        yield* bridge.connect({ serverId: "nodex_app" });
         const request = yield* bridge
           .message({ connectionId: "connection", method: "tools/call" })
           .pipe(Effect.forkChild);
@@ -135,7 +135,7 @@ describe("ACP native MCP lifetime", () => {
         yield* Fiber.interrupt(request);
         expect(signal.aborted).toBe(true);
         yield* bridge.disconnect({ connectionId: "connection" });
-        expect(yield* bridge.connect({ serverId: "t3-code" })).toEqual({
+        expect(yield* bridge.connect({ serverId: "nodex_app" })).toEqual({
           connectionId: "connection",
         });
         yield* bridge.dispose;

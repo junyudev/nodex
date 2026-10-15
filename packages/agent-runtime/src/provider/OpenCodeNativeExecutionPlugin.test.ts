@@ -52,7 +52,7 @@ describe("OpenCode native execution bridge", () => {
         assert.isDefined(before);
         for (const sessionID of ["root", "background-child"]) {
           const event: NativeToolEvent = {
-            tool: "t3-code-thread_page-write",
+            tool: "nodex_app-thread_page-write",
             sessionID,
             messageID: `message:${sessionID}`,
             id: "reused-call",
@@ -147,7 +147,7 @@ describe("OpenCode native execution bridge", () => {
           ),
       );
       const hooks = yield* Effect.promise(module.default);
-      const input = { tool: "t3-code_page-write", sessionID: "root", callID: "reused-call" };
+      const input = { tool: "nodex_app_page-write", sessionID: "root", callID: "reused-call" };
       for (const messageID of ["message:A", "message:B"]) {
         const args: Record<string, unknown> = {
           text: "Hello",

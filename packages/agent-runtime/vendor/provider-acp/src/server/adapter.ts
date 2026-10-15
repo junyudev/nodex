@@ -106,6 +106,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 export const ACP_PROTOCOL = "acp.ndjson-jsonrpc" as const;
 
@@ -660,7 +661,7 @@ function acpMcpContext(
   return {
     servers: [
       {
-        name: "t3-code",
+        name: NODEX_APP_MCP_SERVER,
         command: self.command,
         args: [...selfInvocationArgs(self, ["acp-mcp-bridge"])],
         env: [
@@ -670,7 +671,7 @@ function acpMcpContext(
         ],
       },
     ],
-    acpServers: [{ type: "acp", name: "t3-code", serverId: "t3-code" }],
+    acpServers: [{ type: "acp", name: NODEX_APP_MCP_SERVER, serverId: NODEX_APP_MCP_SERVER }],
     endpoint: session.endpoint,
     authorization: session.authorizationHeader,
     processEnvironment: {

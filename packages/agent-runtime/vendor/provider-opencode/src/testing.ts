@@ -10,7 +10,7 @@ export {
   OPENCODE_PROVIDER,
   OPENCODE_SDK_PROTOCOL,
 } from "./server/adapter.ts";
-export { OPENCODE_2_STILL_STOPPING, t3McpServerName } from "./server/v2/adapter.ts";
+export { OPENCODE_2_STILL_STOPPING, nodexAppMcpServerName } from "./server/v2/adapter.ts";
 export {
   source as nativeExecutionPluginSource,
   sourceV1 as nativeExecutionPluginSourceV1,

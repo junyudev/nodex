@@ -85,6 +85,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import { openCodeToolTurnItem } from "./toolItems.ts";
+import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 export { openCodeToolProjectionKind } from "./toolItems.ts";
 
@@ -800,7 +801,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
         if (hasT3Mcp) {
           yield* OpenCodeRuntime.runOpenCodeSdk("mcp.add", () =>
             client.mcp.add({
-              name: "t3-code",
+              name: NODEX_APP_MCP_SERVER,
               config: {
                 type: "remote",
                 url: mcpSession.endpoint,
@@ -2310,7 +2311,7 @@ export const makeOpenCodeAdapterV2 = Effect.fn("makeOpenCodeAdapterV2")(function
           if (state === undefined || turn === null || turn === undefined || turn.finalized) return;
           if (
             part.type === "tool" &&
-            part.tool.startsWith("t3-code_") &&
+            part.tool.startsWith(`${NODEX_APP_MCP_SERVER}_`) &&
             (part.state.status === "pending" || part.state.status === "running") &&
             turn.hostExecutionIdentity !== undefined &&
             executionHost.captureNativeToolCall !== undefined

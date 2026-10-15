@@ -1,3 +1,19 @@
+/** The Runtime's application MCP server, registered under this name for every provider. */
+export const NODEX_APP_MCP_SERVER = "nodex_app";
+
+/**
+ * Providers respell server names (`nodex_app`, `nodex-app`, `nodexapp`), so
+ * loose matches use this pattern and stay gated on the known tool inventory.
+ */
+export const NODEX_APP_MCP_SERVER_PATTERN = "nodex[-_ ]?app";
+
+const NODEX_APP_MCP_SERVER_NAME = new RegExp(`^${NODEX_APP_MCP_SERVER_PATTERN}$`, "i");
+
+/** Whether a provider-reported MCP server name is the Runtime's application server. */
+export function isNodexAppMcpServer(server: string): boolean {
+  return NODEX_APP_MCP_SERVER_NAME.test(server.trim());
+}
+
 export type T3McpToolLogo = "t3-code";
 
 export interface T3McpToolPresentation {
@@ -81,8 +97,6 @@ function tool(
 ): T3McpToolDefinition {
   return { displayName, labels, icon, summaryAction };
 }
-
-const T3_MCP_SERVER_ALIASES = new Set(["t3-code", "t3_code", "t3code"]);
 
 // Cards, activity rows, summaries, and provider identity recovery share this inventory.
 const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
@@ -340,6 +354,16 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
  */
 export const T3_MCP_TOOL_NAMES: ReadonlySet<string> = new Set(Object.keys(T3_MCP_TOOLS));
 
+const NAMESPACED_TOOL = new RegExp(
+  `^(?<server>${NODEX_APP_MCP_SERVER_PATTERN})(?:[.:/]|\\s*·\\s*)(?<tool>.+)$`,
+  "i",
+);
+const PREFIXED_TOOL = new RegExp(
+  `^(?:mcp[-_]{1,2})?${NODEX_APP_MCP_SERVER_PATTERN}(?:__|[-_.:/ ])(?<tool>.+)$`,
+  "i",
+);
+const PER_THREAD_SERVER = new RegExp(`^${NODEX_APP_MCP_SERVER_PATTERN}-`, "i");
+
 function normalizeT3McpToolLabel(value: string): string {
   return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
 }
@@ -358,25 +382,23 @@ function resolveT3McpToolName(value: string): string | null {
     const { server, tool } = mcpMatch.groups;
     return server !== undefined &&
       tool !== undefined &&
-      T3_MCP_SERVER_ALIASES.has(server.toLowerCase())
+      isNodexAppMcpServer(server)
       ? tool
       : null;
   }
 
-  const namespaceMatch = /^(?<server>t3-code|t3_code|t3code)(?:[.:/]|\s*·\s*)(?<tool>.+)$/i.exec(
-    label,
-  );
+  const namespaceMatch = NAMESPACED_TOOL.exec(label);
   if (namespaceMatch?.groups) {
     return namespaceMatch.groups.tool ?? null;
   }
 
-  const prefixed = /^(?:mcp[-_]{1,2})?t3[-_ ]?code(?:__|[-_.:/ ])(?<tool>.+)$/i.exec(label);
+  const prefixed = PREFIXED_TOOL.exec(label);
   const candidate = prefixed?.groups?.tool ?? label;
   if (Object.hasOwn(T3_MCP_TOOLS, candidate)) return candidate;
-  // OpenCode 2 registers one server per thread, `t3-code-<thread>`, and joins
+  // OpenCode 2 registers one server per thread, `nodex_app-<thread>`, and joins
   // it to the tool with `_`. Thread ids can hold `_` too, so take the longest
   // known tool name that ends the label.
-  if (!/^t3-code-/i.test(label)) return null;
+  if (!PER_THREAD_SERVER.test(label)) return null;
   let longest: string | null = null;
   for (const tool of Object.keys(T3_MCP_TOOLS)) {
     if (label.endsWith(`_${tool}`) && tool.length > (longest?.length ?? 0)) longest = tool;

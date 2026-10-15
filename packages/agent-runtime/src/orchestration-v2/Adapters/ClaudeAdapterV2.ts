@@ -135,6 +135,7 @@ import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapsh
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import { T3_CODE_ORCHESTRATION_INSTRUCTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
+import { NODEX_APP_MCP_SERVER } from "../../mcp/NodexAppMcpServer.ts";
 import {
   mcpToolPresentation,
   normalizeMcpText,
@@ -1164,14 +1165,17 @@ export function makeClaudeQueryOptions(input: {
   return input.cwd === null ? withDirectories : { ...withDirectories, cwd: input.cwd };
 }
 
-export const CLAUDE_T3_MCP_TOOL_WILDCARD = "mcp__t3-code__*";
+/** Claude names MCP tools `mcp__<server>__<tool>`; native call capture keys on this prefix. */
+const CLAUDE_NODEX_APP_TOOL_PREFIX = `mcp__${NODEX_APP_MCP_SERVER}__`;
+export const CLAUDE_NODEX_APP_TOOL_WILDCARD = `${CLAUDE_NODEX_APP_TOOL_PREFIX}*`;
+const CLAUDE_NODEX_APP_TOOL_MATCHER = `${CLAUDE_NODEX_APP_TOOL_PREFIX}.*`;
 
 // Claude Code aborts an HTTP MCP call after 60 s ("The operation timed out.")
-// unless the server config sets `timeout`. T3's wait tools (t3_thread_wait,
-// delegate_task mode=wait) legitimately block for up to an hour
-// (MAX_WAIT_TIMEOUT_MS in OrchestratorMcpService), so the budget sits just
-// above that and the server's own wait timeout is what ends a long call.
-export const CLAUDE_T3_MCP_TOOL_TIMEOUT_MS = 65 * 60 * 1_000;
+// unless the server config sets `timeout`. Task waits (task_wait, delegate_task
+// mode=wait) legitimately block for up to an hour (MAX_WAIT_TIMEOUT_MS in
+// OrchestratorMcpService), so the budget sits just above that and the server's
+// own wait timeout is what ends a long call.
+export const CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS = 65 * 60 * 1_000;
 
 // The MCP credential travels over CLI stdin, never argv or environment.
 export function claudeMcpQueryOverrides(input: {
@@ -1185,17 +1189,17 @@ export function claudeMcpQueryOverrides(input: {
   if (session === undefined) {
     return input.allowedTools === undefined ? {} : { allowedTools: input.allowedTools };
   }
-  const mcpAllowedTools = [CLAUDE_T3_MCP_TOOL_WILDCARD];
+  const mcpAllowedTools = [CLAUDE_NODEX_APP_TOOL_WILDCARD];
   return {
     allowedTools: Array.from(new Set([...(input.allowedTools ?? []), ...mcpAllowedTools])),
     mcpServers: {
-      "t3-code": {
+      [NODEX_APP_MCP_SERVER]: {
         type: "http",
         url: session.endpoint,
         headers: {
           Authorization: session.authorizationHeader,
         },
-        timeout: CLAUDE_T3_MCP_TOOL_TIMEOUT_MS,
+        timeout: CLAUDE_NODEX_APP_TOOL_TIMEOUT_MS,
       },
     },
   };
@@ -7982,7 +7986,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 input.hook_event_name !== "PostToolUseFailure"
               )
                 return {};
-              if (!input.tool_name.startsWith("mcp__t3-code__")) return {};
+              if (!input.tool_name.startsWith(CLAUDE_NODEX_APP_TOOL_PREFIX)) return {};
               if (input.hook_event_name !== "PreToolUse") {
                 const token = nativeCallTokens.get(input.tool_use_id);
                 nativeCallTokens.delete(input.tool_use_id);
@@ -8142,9 +8146,11 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             ...(queryPolicy.allowDangerouslySkipPermissions === undefined ? {} : {}),
             canUseTool,
             hooks: {
-              PreToolUse: [{ matcher: "mcp__t3-code__.*", hooks: [nativeMcpCallHook] }],
-              PostToolUse: [{ matcher: "mcp__t3-code__.*", hooks: [nativeMcpCallHook] }],
-              PostToolUseFailure: [{ matcher: "mcp__t3-code__.*", hooks: [nativeMcpCallHook] }],
+              PreToolUse: [{ matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] }],
+              PostToolUse: [{ matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] }],
+              PostToolUseFailure: [
+                { matcher: CLAUDE_NODEX_APP_TOOL_MATCHER, hooks: [nativeMcpCallHook] },
+              ],
             },
             onUserDialog,
             supportedDialogKinds: ["resume_return"],

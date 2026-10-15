@@ -64,7 +64,7 @@ async function invokeClaudeHook(event, name, args, callId) {
       emit({ type: "control_request", request_id: requestId, request: {
         subtype: "hook_callback", callback_id: callbackId, tool_use_id: callId,
         input: { hook_event_name: event, session_id: nativeSessionId, cwd: process.cwd(),
-          tool_name: `mcp__t3-code__${name}`, tool_input: updated, tool_use_id: callId },
+          tool_name: `mcp__nodex_app__${name}`, tool_input: updated, tool_use_id: callId },
       } });
     });
     if (response.hookSpecificOutput?.permissionDecision === "deny") throw new Error(response.hookSpecificOutput.permissionDecisionReason);
@@ -89,7 +89,7 @@ async function callTool(server, name, args, native) {
     await fetch(server.url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", "mcp-session-id": profile, ...(server.headers ?? server.http_headers) }, body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) });
   }
   const callId = randomUUID();
-  const item = { type: "mcpToolCall", id: callId, server: "t3-code", tool: name, status: "inProgress",
+  const item = { type: "mcpToolCall", id: callId, server: "nodex_app", tool: name, status: "inProgress",
     arguments: args, appContext: null, mcpAppUi: null, pluginId: null, readOnlyHint: null,
     result: null, error: null, durationMs: null };
   if (kind === "codex") notify("item/started", { ...native, item, startedAtMs: Date.now() });
@@ -201,14 +201,14 @@ async function handleCodex(message) {
       const thread = { ...nativeThread(threadId, params.cwd), turns: [] };
       state.threads[threadId] = thread;
       persist();
-      servers.set(threadId, params.config?.mcp_servers?.["t3-code"]);
+      servers.set(threadId, params.config?.mcp_servers?.nodex_app);
       reply(threadResponse(thread, params.model)); return;
     }
     case "thread/resume": {
       state = load();
       const thread = state.threads[params.threadId];
       if (!thread) { emit({ id, error: { code: -32001, message: "Thread missing" } }); return; }
-      servers.set(thread.id, params.config?.mcp_servers?.["t3-code"]);
+      servers.set(thread.id, params.config?.mcp_servers?.nodex_app);
       reply(threadResponse(thread, params.model)); return;
     }
     case "thread/read": { state = load(); reply({ thread: state.threads[params.threadId] }); return; }
@@ -255,7 +255,7 @@ async function handleClaude(message) {
       : request.subtype === "get_usage" ? { session: {}, subscription_type: "pro", rate_limits_available: false, behaviors: null }
       : {};
     if (request.subtype === "initialize") claudeHooks = request.hooks ?? {};
-    if (request.subtype === "mcp_set_servers") claudeServer = request.servers?.["t3-code"];
+    if (request.subtype === "mcp_set_servers") claudeServer = request.servers?.nodex_app;
     emit({ type: "control_response", response: { subtype: "success", request_id: message.request_id, response } });
     if (request.subtype === "interrupt") claudeResult(null, true);
     return;

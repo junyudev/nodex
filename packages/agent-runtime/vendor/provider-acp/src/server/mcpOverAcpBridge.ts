@@ -9,6 +9,7 @@ import * as Stream from "effect/Stream";
 import type * as AcpSchema from "effect-acp/compat";
 
 import { responsePayloads } from "@t3tools/shared/mcpResponsePayloads";
+import { NODEX_APP_MCP_SERVER } from "@t3tools/shared/nodexAppMcp";
 
 const MAX_CONNECTIONS = 16;
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
@@ -202,7 +203,7 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
   return {
     connect: (request) =>
       admit(Effect.gen(function* () {
-        if (request.serverId !== "t3-code") {
+        if (request.serverId !== NODEX_APP_MCP_SERVER) {
           return yield* Effect.fail(
             new AcpMcpOverAcpError(`Unknown ACP MCP server "${request.serverId}".`),
           );

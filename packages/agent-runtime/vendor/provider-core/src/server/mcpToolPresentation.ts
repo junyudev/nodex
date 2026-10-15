@@ -1,5 +1,5 @@
 import type { ToolActivityIcon, ToolActivitySource } from "@t3tools/contracts";
-import { resolveT3McpToolDefinition } from "@t3tools/shared/t3McpToolPresentation";
+import { resolveT3McpToolDefinition } from "@t3tools/shared/nodexAppMcp";
 
 /** Native routing stamps stay at the transport boundary, outside tool transcripts. */
 export function publicMcpToolInput(input: Record<string, unknown>): Record<string, unknown>;
