@@ -1,0 +1,56 @@
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_1ca65ffa5958ee::t_bb051139e99664 609-624,633-642,647-674,684-689,692-717,787-789
+  s_1ca65ffa5958ee::t_dcd30157d4e57b 643-646
+packages/agent-runtime/src/nodex/contracts.ts
+  s_1ca65ffa5958ee::t_fae1de41045efe 21
+src/main/agent-backend/NativeSessionCatalog.node.test.ts
+  s_1ca65ffa5958ee::t_5f11867d883e15 150
+tests/e2e/codex-native-transcript-read-only-benchmark.spec.ts
+  s_1ca65ffa5958ee::t_e68b0984f3d34e 421-422
+src/main/codex-application/CodexTurnCommands.ts
+  s_1ca65ffa5958ee::t_5d8f8eb5108ffb 309-323,936,1163,1202,1339,1499,1641,1987
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_1ca65ffa5958ee::t_7762c031bc8191 175-188,192-193,1709-1726
+  s_1ca65ffa5958ee::t_9f855a3924beb1 195
+packages/agent-runtime/src/nodex/CodexThreadSource.ts
+  s_1ca65ffa5958ee::t_fae1de41045efe 1-5
+src/main/codex-application/CodexHistoryTimelineAdapter.node.test.ts
+  s_1ca65ffa5958ee::t_8fc5bc6d517815 86-110
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_1ca65ffa5958ee::t_fae1de41045efe 149,6344-6345,6350-6351,7205
+src/main/codex-application/conversation-test-fixture.ts
+  s_1ca65ffa5958ee::t_03874357148c34 37,41
+src/main/agent-backend/NativeSessionCatalog.ts
+  s_1ca65ffa5958ee::t_58c0b7700ba261 2,55-56,60,111,162
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_f0d3e6f54cb387 2671,2682,2689,2692-2695
+  s_1ca65ffa5958ee::t_27cf0863841e9b 2696
+docs/product-specs/native-conversation-connection-behavior.md
+  s_1ca65ffa5958ee::t_a269b5f636bf79 12-13,31-32
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_1ca65ffa5958ee::t_03874357148c34 11-14,89-92,2953-2954
+  s_1ca65ffa5958ee::t_7847e5377c2021 87-88,93,114,266,272,443,556,1110,1129,1296,1358,1474,1611,1843,2160,2184,2215,2249,2620,2722
+  s_1ca65ffa5958ee::t_583fea95767625 1384-1385
+  s_1ca65ffa5958ee::t_0df9fc974fcc91 171,562-564,1391-1402
+  s_1ca65ffa5958ee::t_6bec631cd94389 1403
+docs/ARCHITECTURE.md
+  s_1ca65ffa5958ee::t_8030665556af2c 235-236
+packages/agent-runtime/vendor/effect-codex-app-server/src/replay.ts
+  s_1ca65ffa5958ee::t_2f5c086fe5203e 274-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "97d3f460aefd7554030fd6bfd299ca1d4484df81",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
