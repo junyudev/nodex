@@ -1,0 +1,28 @@
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_1ca65ffa5958ee::t_c1c11ca6eb4771 52
+  s_1ca65ffa5958ee::t_1a5c1b4849b1bb 1-51,53-175
+src/main/agent-runtime/AgentRuntimeSessionNotifications.ts
+  s_1ca65ffa5958ee::t_2e7ae65ac1abe1 1-151
+docs/product-specs/desktop-notification-behavior.md
+  s_1ca65ffa5958ee::t_abb93a14896242 10,33-34,253-274
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_abb93a14896242 344-346
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_1ca65ffa5958ee::t_7dd4b9103e85fe 69-73,169-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dad54adb5c912cc81e884517bab01425c9d1c602",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
