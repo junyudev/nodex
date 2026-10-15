@@ -164,6 +164,8 @@ const setup = (
     failDeleteAcknowledgment: false,
     failCleanupAcknowledgment: false,
     failEngineDelete: false,
+    failEngineArchive: false,
+    generatedTitle: null as string | null,
     supersededTitle: false,
     supersededArchive: false,
     rollbackImmediate: true,
@@ -326,10 +328,18 @@ const setup = (
       calls.push({ method, input });
       order.push(method);
       if (method === "providers.read") return providers as AgentRuntimeOperations[M]["output"];
+      if (method === "text.generate-structured")
+        return (
+          state.generatedTitle === null
+            ? yield* Effect.fail(new Error("No title model"))
+            : { title: state.generatedTitle, description: "Login fix" }
+        ) as AgentRuntimeOperations[M]["output"];
       if (method === "command.dispatch") {
         const command = input as AgentCommand;
         if (command.type === "thread.delete" && state.failEngineDelete)
           return yield* Effect.fail(new Error("Engine disconnected before deletion"));
+        if (command.type === "thread.archive" && state.failEngineArchive)
+          return yield* Effect.fail(new Error("Engine stopped before archiving"));
         if (command.type === "thread.create" && state.failThreadCreate) {
           state.failThreadCreate = false;
           return yield* Effect.fail(new Error("Process stopped after the Session was bound"));
@@ -773,10 +783,10 @@ it.effect("a bound Session whose launch stopped before its Thread existed opens 
     const created = [...fixture.commands.values()].find(
       (command) => command.type === "thread.create",
     );
-    assert.deepEqual(
-      created?.type === "thread.create" ? created.modelSelection : null,
-      { instanceId: "codex", model: "model-a" },
-    );
+    assert.deepEqual(created?.type === "thread.create" ? created.modelSelection : null, {
+      instanceId: "codex",
+      model: "model-a",
+    });
     // A later send uses the same Thread; no second Session or Thread appears.
     yield* owner.message({
       sessionId: launch.sessionId,
@@ -1159,27 +1169,54 @@ it.effect(
     }),
 );
 
+it.effect("a person's first prompt is titled once, replacing only the provisional title", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.generatedTitle = "Fix login failure";
+    const owner = yield* fixture.owner;
+    yield* owner.launch({ ...launch, modelSelection: { instanceId: "codex", model: "model-b" } });
+    const titled = yield* Effect.gen(function* () {
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const write = fixture.applied.find(
+          (value) =>
+            value.intent.kind === "mutate_session" &&
+            value.intent.intent.kind === "set_fallback_title",
+        );
+        if (write) return write;
+        yield* Effect.yieldNow;
+      }
+      return null;
+    });
+    assert.deepEqual(titled?.intent, {
+      kind: "mutate_session",
+      session_id: "session:one",
+      intent: { kind: "set_fallback_title", title: "Fix login failure", replaces: "Task" },
+    });
+    const generation = fixture.calls.find((call) => call.method === "text.generate-structured");
+    assert.deepEqual((generation?.input as { modelSelection: unknown }).modelSelection, {
+      instanceId: "codex",
+      model: "model-b",
+      options: [{ id: "reasoningEffort", value: "low" }],
+    });
+  }),
+);
+
 it.effect(
-  "Session organization settles metadata after Core acceptance and ignores superseded receipts",
+  "Core alone owns titles while archive reaches the engine gate and is repaired after a failure",
   () =>
     Effect.gen(function* () {
       const fixture = setup();
       const owner = yield* fixture.owner;
       const opened = yield* owner.launch(launch);
-      const identity = {
+      const titleBefore = fixture.snapshots.get(opened.threadId)!.projection.thread.title;
+      const dispatched = fixture.commands.size;
+      yield* owner.renameSession({
         operationId: "rename",
         payload: { sessionId: opened.sessionId, input: { title: "Renamed" } },
-      };
-      yield* owner.renameSession(identity);
-      assert.equal(fixture.snapshots.get(opened.threadId)!.projection.thread.title, "Renamed");
-      assert.isBelow(
-        fixture.order.indexOf("core.rename"),
-        fixture.order.lastIndexOf("command.dispatch"),
-      );
-      fixture.state.supersededTitle = true;
-      const before = fixture.commands.size;
-      yield* owner.renameSession({ ...identity, operationId: "old-rename" });
-      assert.equal(fixture.commands.size, before);
+      });
+      assert.include(fixture.order, "core.rename");
+      assert.equal(fixture.commands.size, dispatched);
+      assert.equal(fixture.snapshots.get(opened.threadId)!.projection.thread.title, titleBefore);
       const archive = { operationId: "archive", payload: { sessionId: opened.sessionId } };
       yield* owner.archiveSession(archive);
       assert.isNotNull(fixture.snapshots.get(opened.threadId)!.projection.thread.archivedAt);
@@ -1189,6 +1226,28 @@ it.effect(
       const settled = fixture.commands.size;
       yield* owner.archiveSession({ ...archive, operationId: "old-archive" });
       assert.equal(fixture.commands.size, settled);
+      fixture.state.supersededArchive = false;
+      fixture.state.failEngineArchive = true;
+      const failed = yield* owner
+        .archiveSession({ ...archive, operationId: "archive-again" })
+        .pipe(Effect.result);
+      assert.equal(failed._tag, "Failure");
+      if (failed._tag === "Failure")
+        assert.equal(failed.failure.committedOperationId, "archive-again");
+      assert.isTrue(fixture.state.archived);
+      assert.isNull(fixture.snapshots.get(opened.threadId)!.projection.thread.archivedAt);
+      fixture.state.failEngineArchive = false;
+      // A background continuation keeps the root live; the next engine start closes the gap.
+      const live = fixture.snapshots.get(opened.threadId)!;
+      fixture.snapshots.set(opened.threadId, {
+        ...live,
+        projection: {
+          ...live.projection,
+          runs: [{ id: "background", threadId: opened.threadId, status: "waiting" }] as never,
+        },
+      });
+      yield* owner.reconcileLiveExecutions();
+      assert.isNotNull(fixture.snapshots.get(opened.threadId)!.projection.thread.archivedAt);
       assert.isFalse(
         fixture.calls.some(
           ({ method }) => method === "thread.snapshot" || method === "thread.history",
@@ -1705,50 +1764,48 @@ it.effect(
     }),
 );
 
-it.effect(
-  "a failed worktree preparation can be retried or started in the source checkout",
-  () =>
-    Effect.gen(function* () {
-      let attempts = 0;
-      const fixture = setup({
-        prepareWorkspace: () =>
-          Effect.suspend(() =>
-            (attempts += 1) === 1
-              ? Effect.fail(new Error("Branch feature is checked out elsewhere"))
-              : Effect.succeed({
-                  location: {
-                    cwd: "/worktrees/retried",
-                    workspaceRoots: ["/worktrees/retried"],
-                    managedWorktreePath: "/worktrees/retried",
-                    projectlessOutputDirectory: null,
-                    projectlessWorkspaceBrowserRoot: null,
-                  },
-                  retain: Effect.void,
-                  attach: () => Effect.void,
-                }),
-          ) as never,
-      });
-      const owner = yield* fixture.owner;
-      const result = yield* owner.launch({ ...launch, runInTarget: "newWorktree" });
-      const failed = (yield* awaitCommand(fixture, "prepared-run.fail")) as Extract<
-        AgentCommand,
-        { type: "prepared-run.fail" }
-      >;
-      assert.include(failed.failure.message, "checked out elsewhere");
-      const runId = failed.runId;
-      yield* owner.retryPreparation({
-        sessionId: result.sessionId,
-        requestId: "retry-one",
-        runId,
-        workLocally: false,
-      });
-      yield* awaitCommand(fixture, "prepared-run.release");
-      assert.equal(
-        fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
-        "/worktrees/retried",
-      );
-      assert.equal(attempts, 2);
-    }),
+it.effect("a failed worktree preparation can be retried or started in the source checkout", () =>
+  Effect.gen(function* () {
+    let attempts = 0;
+    const fixture = setup({
+      prepareWorkspace: () =>
+        Effect.suspend(() =>
+          (attempts += 1) === 1
+            ? Effect.fail(new Error("Branch feature is checked out elsewhere"))
+            : Effect.succeed({
+                location: {
+                  cwd: "/worktrees/retried",
+                  workspaceRoots: ["/worktrees/retried"],
+                  managedWorktreePath: "/worktrees/retried",
+                  projectlessOutputDirectory: null,
+                  projectlessWorkspaceBrowserRoot: null,
+                },
+                retain: Effect.void,
+                attach: () => Effect.void,
+              }),
+        ) as never,
+    });
+    const owner = yield* fixture.owner;
+    const result = yield* owner.launch({ ...launch, runInTarget: "newWorktree" });
+    const failed = (yield* awaitCommand(fixture, "prepared-run.fail")) as Extract<
+      AgentCommand,
+      { type: "prepared-run.fail" }
+    >;
+    assert.include(failed.failure.message, "checked out elsewhere");
+    const runId = failed.runId;
+    yield* owner.retryPreparation({
+      sessionId: result.sessionId,
+      requestId: "retry-one",
+      runId,
+      workLocally: false,
+    });
+    yield* awaitCommand(fixture, "prepared-run.release");
+    assert.equal(
+      fixture.snapshots.get(result.threadId)!.projection.thread.worktreePath,
+      "/worktrees/retried",
+    );
+    assert.equal(attempts, 2);
+  }),
 );
 
 it.effect("a preparation interrupted by a restart fails readably instead of waiting forever", () =>
@@ -1760,7 +1817,7 @@ it.effect("a preparation interrupted by a restart fails readably instead of wait
     const result = yield* owner.launch({ ...launch, runInTarget: "newWorktree" });
     // A fresh Main process has no live preparation for the waiting Run.
     const restarted = yield* fixture.owner;
-    yield* restarted.settleInterruptedPreparations();
+    yield* restarted.reconcileLiveExecutions();
     const failed = [...fixture.commands.values()].find(
       (command) => command.type === "prepared-run.fail",
     ) as Extract<AgentCommand, { type: "prepared-run.fail" }> | undefined;

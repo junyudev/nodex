@@ -8835,6 +8835,11 @@ export interface components {
         } | {
             /** @enum {string} */
             readonly kind: "set_fallback_title";
+            /**
+             * @description Applies only while the current title is still this one, so a generated title never
+             *     replaces a rename that landed first.
+             */
+            readonly replaces?: string | null;
             readonly title: string;
         } | {
             readonly execution_location?: null | components["schemas"]["ProjectWorkspaceThreadExecutionLocation"];

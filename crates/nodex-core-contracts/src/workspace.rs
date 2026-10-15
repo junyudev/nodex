@@ -1762,6 +1762,10 @@ pub enum ProjectSessionIntent {
     },
     SetFallbackTitle {
         title: String,
+        /// Applies only while the current title is still this one, so a generated title never
+        /// replaces a rename that landed first.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replaces: Option<String>,
     },
     LinkThread {
         thread_id: String,

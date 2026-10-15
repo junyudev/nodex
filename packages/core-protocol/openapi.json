@@ -36733,6 +36733,13 @@
                   "set_fallback_title"
                 ]
               },
+              "replaces": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Applies only while the current title is still this one, so a generated title never\nreplaces a rename that landed first."
+              },
               "title": {
                 "type": "string"
               }

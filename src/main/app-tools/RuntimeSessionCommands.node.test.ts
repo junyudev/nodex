@@ -94,7 +94,7 @@ it.effect(
         threadId: "child",
       });
       assert.deepEqual(
-        (call.agent as { authority: { thread_id: string; runtime: unknown } }).authority,
+        (call.agent as { authority: unknown }).authority,
         {
           thread_id: "child",
           turn_id: "run",

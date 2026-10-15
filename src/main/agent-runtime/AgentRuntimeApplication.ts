@@ -30,6 +30,7 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
+import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
 import type {
   ProjectSessionArchiveCommandInput,
@@ -379,8 +380,12 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     return binding;
   });
 
-  // Core owns mutable Session placement. Repair engine metadata without opening a transcript.
-  const reconcilePlacement = Effect.fn("AgentRuntimeApplication.reconcilePlacement")(function* (
+  /**
+   * Core owns Session placement and archive. The engine keeps them only as execution gates
+   * (working Project, and no wakes for archived chats); this repairs both from Core without
+   * opening a transcript, wherever a Session is touched and after every Core change.
+   */
+  const reconcileExecution = Effect.fn("AgentRuntimeApplication.reconcileExecution")(function* (
     connection: AgentRuntimeApplicationConnection,
     initial: Binding,
     fence = false,
@@ -398,17 +403,36 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       )
         return yield* failure("placement", "Session execution is unavailable");
       const projectId = binding.project_id ?? null;
-      if (thread.projectId !== engineProjectId(projectId)) {
+      const session = yield* host(
+        core.workspace.read(
+          { kind: "session", session_id: binding.session_id },
+          undefined,
+          projectId,
+        ),
+      );
+      if (session.value.kind !== "session")
+        return yield* failure("placement", "Session metadata is unavailable");
+      const archived = session.value.session.archived;
+      const moved = thread.projectId !== engineProjectId(projectId);
+      if (moved || (thread.archivedAt !== null) !== archived) {
         const repair = Effect.gen(function* () {
           yield* validateCaller();
-          const scope = yield* projectScope(projectId, false);
-          yield* upsertProject(connection, scope);
-          yield* dispatch(connection, {
-            type: "thread.metadata.update",
-            threadId: thread.id,
-            projectId: scope.id,
-            commandId: createOperationId("agent-runtime.placement"),
-          });
+          if (moved) {
+            const scope = yield* projectScope(projectId, false);
+            yield* upsertProject(connection, scope);
+            yield* dispatch(connection, {
+              type: "thread.metadata.update",
+              threadId: thread.id,
+              projectId: scope.id,
+              commandId: createOperationId("agent-runtime.placement"),
+            });
+          }
+          if ((thread.archivedAt !== null) !== archived)
+            yield* dispatch(connection, {
+              type: archived ? "thread.archive" : "thread.unarchive",
+              threadId: thread.id,
+              commandId: createOperationId("agent-runtime.archive"),
+            });
         });
         yield* fence && options.withWriter ? options.withWriter(repair) : repair;
       }
@@ -443,7 +467,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           }),
         );
         if (found.value.kind === "agent_runtime_session_binding" && found.value.binding)
-          yield* reconcilePlacement(connection, found.value.binding, fence);
+          yield* reconcileExecution(connection, found.value.binding, fence);
       }
       cursor = page.nextCursor ?? undefined;
     } while (cursor !== undefined);
@@ -460,7 +484,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       if (page.value.kind !== "agent_runtime_session_binding_window")
         return yield* failure("placement", "Session placement metadata is unavailable");
       for (const binding of page.value.bindings.items)
-        yield* reconcilePlacement(connection, binding, fence);
+        yield* reconcileExecution(connection, binding, fence);
       after = page.value.bindings.next_cursor ?? undefined;
     } while (after !== undefined);
   });
@@ -548,19 +572,24 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       threadId === binding.runtime_thread_id
         ? yield* ensureRootThread(connection, binding)
         : yield* connection.request("thread.read", { threadId });
+    const isRoot = threadId === binding.runtime_thread_id;
     if (
       !thread ||
       thread.id !== threadId ||
       thread.lineage.rootThreadId !== binding.runtime_thread_id ||
       thread.deletedAt !== null ||
-      (requireActive && thread.archivedAt !== null)
+      (requireActive && !isRoot && thread.archivedAt !== null)
     )
       return yield* failure("thread", "Thread does not belong to this Session");
-    if (requireActive && thread.projectId !== engineProjectId(binding.project_id ?? null)) {
-      yield* reconcilePlacement(connection, binding);
+    // Core has just confirmed the Session active; a stale engine gate is repaired, not obeyed.
+    const stale = (current: NonNullable<typeof thread>) =>
+      current.projectId !== engineProjectId(binding.project_id ?? null) ||
+      (isRoot && current.archivedAt !== null);
+    if (requireActive && stale(thread)) {
+      yield* reconcileExecution(connection, binding);
       binding = yield* readBinding(connection, target.sessionId, true);
       thread = yield* connection.request("thread.read", { threadId });
-      if (!thread || thread.projectId !== engineProjectId(binding.project_id ?? null))
+      if (!thread || stale(thread))
         return yield* failure(
           "placement",
           "Session placement changed while execution was being reconciled",
@@ -830,12 +859,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     // No Project lifecycle permit crosses an engine request that can await host admission.
     const existing = yield* connection.request("thread.read", { threadId });
     if (existing)
-      yield* reconcilePlacement(connection, yield* readBinding(connection, input.sessionId, true));
+      yield* reconcileExecution(connection, yield* readBinding(connection, input.sessionId, true));
     if (
       existing &&
       (existing.lineage.rootThreadId !== threadId ||
         existing.deletedAt !== null ||
-        existing.archivedAt !== null ||
         (!previousBinding && existing.activeRunId !== null))
     )
       return yield* failure("launch", "Launch metadata does not match this Session");
@@ -893,6 +921,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
     const message = yield* prepareMessage(connection, threadId, prepared.message);
     const command = messageCommand(threadId, message, undefined, provenance !== null);
+    const firstLaunch = !existing && !previousBinding;
     yield* dispatch(
       connection,
       deferWorktree
@@ -934,8 +963,62 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         );
       }
     }
+    // An Agent names the chats it starts; a person's opening prompt is titled once.
+    if (firstLaunch && !provenance)
+      yield* titleSession(connection, {
+        sessionId: input.sessionId,
+        projectId: current.binding.project_id ?? null,
+        provisionalTitle: input.title.trim(),
+        prompt: prepared.message.text,
+        cwd: sourceCwd,
+        modelSelection: prepared.message.modelSelection ?? input.modelSelection,
+      });
     return { sessionId: input.sessionId, projectId: current.binding.project_id ?? null, threadId };
   });
+
+  /** Core owns the title; a generated one replaces only the provisional title it came from. */
+  const titleSession = (
+    connection: AgentRuntimeApplicationConnection,
+    input: {
+      readonly sessionId: string;
+      readonly projectId: string | null;
+      readonly provisionalTitle: string;
+      readonly prompt: string;
+      readonly cwd: string;
+      readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
+    },
+  ) =>
+    generateSessionTitle(connection, input).pipe(
+      Effect.flatMap((title) =>
+        title === null || title === input.provisionalTitle
+          ? Effect.void
+          : host(
+              core.workspace.apply(
+                {
+                  operationId: createOperationId("agent-runtime.session-title"),
+                  intent: {
+                    kind: "mutate_session",
+                    session_id: input.sessionId,
+                    intent: {
+                      kind: "set_fallback_title",
+                      title,
+                      replaces: input.provisionalTitle,
+                    },
+                  },
+                },
+                undefined,
+                input.projectId,
+              ),
+            ),
+      ),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Automatic chat title generation failed").pipe(
+          Effect.annotateLogs({ sessionId: input.sessionId, cause: Cause.pretty(cause) }),
+        ),
+      ),
+      Effect.forkIn(ownerScope),
+      Effect.asVoid,
+    );
 
   /** Retries a failed workspace preparation, or starts the Run in the source checkout. */
   const retryPreparation = Effect.fn("AgentRuntimeApplication.retryPreparation")(function* (
@@ -985,40 +1068,56 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
    * A preparation interrupted by an application restart has no live owner. Its Run fails with a
    * readable reason so the user can retry instead of waiting on a preparation that never ends.
    */
-  const settleInterruptedPreparations = Effect.fn(
-    "AgentRuntimeApplication.settleInterruptedPreparations",
-  )(function* () {
-    const connection = yield* options.connect;
-    let cursor: string | undefined;
-    do {
-      const page = yield* connection.request("execution.activity", {
-        ...(cursor === undefined ? {} : { cursor }),
-      });
-      for (const root of page.items) {
-        if (!root.activeRunId) continue;
-        if (preparing.has(preparationKey(root.rootThreadId, root.activeRunId))) continue;
-        const authority = yield* connection.request("thread.authority", {
-          threadId: root.rootThreadId,
-          runId: root.activeRunId,
+  /**
+   * After the engine starts, brings every live root in line with Core: placement and archive
+   * changes made while it was unavailable, and worktree preparations a restart interrupted.
+   * Cost follows live work, never retained history.
+   */
+  const reconcileLiveExecutions = Effect.fn("AgentRuntimeApplication.reconcileLiveExecutions")(
+    function* () {
+      const connection = yield* options.connect;
+      let cursor: string | undefined;
+      do {
+        const page = yield* connection.request("execution.activity", {
+          ...(cursor === undefined ? {} : { cursor }),
         });
-        if (authority?.status !== "preparing") continue;
-        yield* dispatch(connection, {
-          type: "prepared-run.fail",
-          commandId: commandId("preparation-interrupted", {
+        for (const root of page.items) {
+          const found = yield* host(
+            core.workspace.read({
+              kind: "agent_runtime_session_binding_by_execution",
+              runtime_id: connection.identity.runtimeId,
+              runtime_thread_id: root.rootThreadId,
+            }),
+          );
+          if (found.value.kind === "agent_runtime_session_binding" && found.value.binding)
+            yield* host(reconcileExecution(connection, found.value.binding)).pipe(
+              Effect.ignoreCause,
+            );
+          if (!root.activeRunId) continue;
+          if (preparing.has(preparationKey(root.rootThreadId, root.activeRunId))) continue;
+          const authority = yield* connection.request("thread.authority", {
             threadId: root.rootThreadId,
             runId: root.activeRunId,
-            generation: connection.identity.runtimeGeneration,
-          }),
-          threadId: root.rootThreadId,
-          runId: root.activeRunId,
-          failure: preparationFailure(
-            "Worktree preparation was interrupted when Nodex restarted. Retry to create it again.",
-          ),
-        }).pipe(Effect.ignoreCause);
-      }
-      cursor = page.nextCursor ?? undefined;
-    } while (cursor !== undefined);
-  });
+          });
+          if (authority?.status !== "preparing") continue;
+          yield* dispatch(connection, {
+            type: "prepared-run.fail",
+            commandId: commandId("preparation-interrupted", {
+              threadId: root.rootThreadId,
+              runId: root.activeRunId,
+              generation: connection.identity.runtimeGeneration,
+            }),
+            threadId: root.rootThreadId,
+            runId: root.activeRunId,
+            failure: preparationFailure(
+              "Worktree preparation was interrupted when Nodex restarted. Retry to create it again.",
+            ),
+          }).pipe(Effect.ignoreCause);
+        }
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor !== undefined);
+    },
+  );
 
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput,
@@ -1492,35 +1591,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return { completed };
     },
   );
-  const renameSession = Effect.fn("AgentRuntimeApplication.renameSession")(function* (
-    command: ProjectSessionRenameCommandInput,
-  ) {
-    const result = yield* workspace.renameProjectSession(command);
-    const session = result.value;
-    if (
-      !session.executionRef ||
-      session.noThreadFallbackTitle !== command.payload.input.title.trim()
-    )
-      return result;
-    yield* afterCommit(
-      command.operationId,
-      "rename-session",
-      Effect.gen(function* () {
-        const connection = yield* options.connect;
-        const loaded = yield* host(targetInfo(connection, { sessionId: session.id }));
-        yield* dispatch(connection, {
-          type: "thread.metadata.update",
-          threadId: loaded.threadId,
-          commandId: commandId("rename-session", {
-            operationId: command.operationId,
-            threadId: loaded.threadId,
-          }),
-          title: session.noThreadFallbackTitle,
-        });
-      }),
-    );
-    return result;
-  });
   const archiveSession = Effect.fn("AgentRuntimeApplication.archiveSession")(function* (
     command: ProjectSessionArchiveCommandInput,
     archived: boolean,
@@ -1534,16 +1604,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       "archive-session",
       Effect.gen(function* () {
         const connection = yield* options.connect;
-        const loaded = yield* host(targetInfo(connection, { sessionId: result.value.id }));
-        if ((loaded.thread.archivedAt !== null) === archived) return;
-        yield* dispatch(connection, {
-          type: archived ? "thread.archive" : "thread.unarchive",
-          threadId: loaded.threadId,
-          commandId: commandId("archive-session", {
-            operationId: command.operationId,
-            threadId: loaded.threadId,
-          }),
-        });
+        yield* host(
+          reconcileExecution(connection, yield* readBinding(connection, result.value.id, false)),
+        );
       }),
     );
     return result;
@@ -1634,7 +1697,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
     renameSession: (command: ProjectSessionRenameCommandInput) =>
-      ownedWrite("rename-session", renameSession(command)),
+      ownedWrite("rename-session", workspace.renameProjectSession(command)),
     archiveSession: (command: ProjectSessionArchiveCommandInput) =>
       withSessionLifecycle(
         "archive-session",
@@ -1693,7 +1756,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               const connection = yield* options.connect;
               if (proof.value.binding.runtime_id !== connection.identity.runtimeId)
                 return yield* failure("placement", "Session belongs to another runtime");
-              yield* reconcilePlacement(connection, proof.value.binding);
+              yield* reconcileExecution(connection, proof.value.binding);
             }),
           );
           return { sessionId: input.sessionId, projectId: input.projectId };
@@ -1855,8 +1918,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     stop: (input: Parameters<typeof stop>[0]) => ownedWrite("stop", stop(input)),
     retryPreparation: (input: Parameters<typeof retryPreparation>[0]) =>
       ownedWrite("retry-preparation", retryPreparation(input)),
-    settleInterruptedPreparations: () =>
-      owned("settle-preparations", settleInterruptedPreparations()),
+    reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
     respond: (input: Parameters<typeof respond>[0]) => ownedWrite("respond", respond(input)),
     setModel: (input: Parameters<typeof setModel>[0]) => ownedWrite("model", setModel(input)),
     setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),
