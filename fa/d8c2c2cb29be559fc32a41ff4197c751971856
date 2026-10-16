@@ -1,0 +1,298 @@
+tests/e2e/electron-smoke.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 10,1119,1272,1493,1622,1746,1838,2189,2346,2426,2668,2760,2898,3031,3127,3224,3325,3594,3744,4079,4511,4828,4860,5287
+src/renderer/lib/query-keys.ts
+  s_bd811abbf24a41::t_bd14627bbb92cd 154-156
+tests/e2e/nfm-editor-history.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,49
+scripts/scenarios/scenarios/inbox-triage.ts
+  s_bd811abbf24a41::t_f935cceb521d9c 1,12,21-23,27,36-37,53,63-64,72,159-204,218-220,225,249-250,258-259
+src/shared/schemas/workbench-layout.test.ts
+  s_bd811abbf24a41::t_177844838a7954 373-374,380-381,406,408-410
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_bd811abbf24a41::t_3dec030636a263 112-119,125-127
+  s_bd811abbf24a41::t_9b9d4f0bd2c0e5 25
+packages/core-protocol/src/generated.ts
+  s_bd811abbf24a41::t_464817cb938cf9 1604,7295-7299,8400-8403,8408,9031-9037,9059-9060,9066,9121-9125,9149-9160,9186,9196,9613-9617,11587-11590
+  s_bd811abbf24a41::t_3195fe141f505d 9098
+src/renderer/features/inbox/use-inbox-move.ts
+  s_bd811abbf24a41::t_2023aeae442a08 5,17-18,67
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_bd811abbf24a41::t_dc4588a123837c 47-53
+  s_bd811abbf24a41::t_4446f943e03dd0 418-422,462-468
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bd811abbf24a41::t_ace40807fa9bb7 722-734,754-766,771-774,786-795
+  s_bd811abbf24a41::t_cb1f9ceae105e7 11-18,44-60,66,68-69,81,83,94-99,103-104,113-115,120-124,126-127,128-158,173,177,179,200-205,209,222,275,418,626-627,637-645,670,703-713,719,751,778-785,818
+  s_bd811abbf24a41::t_b91525488e9891 199,234,389,393,398,429,435
+  s_bd811abbf24a41::t_28eea1c38cd59b 125
+  s_bd811abbf24a41::t_1fe14acab6cfde 304,329,767-770
+  s_bd811abbf24a41::t_c8c6a6a9eabf70 962
+  s_bd811abbf24a41::t_b870b6d59db44d 33-34
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bd811abbf24a41::t_71d8b5bc94efad 258
+  s_bd811abbf24a41::t_056f81288c4ba1 6-9,66-73,75-78,87,95-102,107,121-127,129,268,604,614-615,622,689,708,712,714,716,719-720,722,978,1229-1259,1263-1274,1281-1283,1293-1295,1301-1413,1418,1479-1554,1556-1564,1566-1573,1575-1591,1598-1601,1606-1608,1615-1630,1632-1633
+  s_bd811abbf24a41::t_56abaaad91b4a8 1414-1417,1426-1477
+  s_bd811abbf24a41::t_06a7f828f204c5 717-718
+  s_bd811abbf24a41::t_d815ae6ca00188 1296-1300
+  s_bd811abbf24a41::t_ace40807fa9bb7 269-270,616-621,665-670,703-707,1260-1262,1275-1280,1284-1292,1419-1425,1478,1555,1565,1574,1592-1597,1602-1605,1609-1614,1631
+  s_bd811abbf24a41::t_b870b6d59db44d 1061-1067,1127-1133
+  s_bd811abbf24a41::t_5ae74be10845bc 734-736,743,757-762
+  s_bd811abbf24a41::t_28eea1c38cd59b 1228
+  s_bd811abbf24a41::t_c8c6a6a9eabf70 1015
+src/shared/ipc-api.ts
+  s_bd811abbf24a41::t_a77ba74a141604 1022-1026
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_bd811abbf24a41::t_6d275c5f7a2ae6 14-15,80,105,136-139,142-144
+src/main/core-client/inbox-triage-scenario.node.test.ts
+  s_bd811abbf24a41::t_0471b401e5eba0 37,40-41
+  s_bd811abbf24a41::t_ecc12687e76cb1 3,20,31-36,38-39,42-43
+  s_bd811abbf24a41::t_dc58e0da2cea76 44-45
+src/shared/workbench-scene.ts
+  s_bd811abbf24a41::t_ffa2be3d01f5de 49,95,109-113,178,519,528,724-748,754,1007-1013
+  s_bd811abbf24a41::t_4ae58c9bdbcfb5 1322-1323
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_bd811abbf24a41::t_b6d46fa81a0aac 110
+  s_bd811abbf24a41::t_7b6e28b1537c75 1020-1021,1296-1303
+tests/e2e/nfm-editor-lifecycle.spec.ts
+  s_bd811abbf24a41::t_eca072d19df153 2,16
+src/renderer/lib/workbench-presentation-lifecycle.test.tsx
+  s_bd811abbf24a41::t_23cee6f1691fa9 10,50-57,59-70,73,111
+  s_bd811abbf24a41::t_20cae75f3593a5 58
+docs/product-specs/inbox-behavior.md
+  s_bd811abbf24a41::t_d9a6cd62a3a8c8 60-61
+  s_bd811abbf24a41::t_dcda55fc3a97d2 5-7,11-13,16-32,35-40,71-73,75,77-81,114,116-117,122-130,138,200-203,220-221,223-224,278-279,288-294,296-297
+  s_bd811abbf24a41::t_1b80e6069a37e5 269-271
+crates/nodex-cli/tests/inbox.rs
+  s_bd811abbf24a41::t_e7c70e6fec9a68 8-10,71,132-142,144-156,158,160-179,181-182
+  s_bd811abbf24a41::t_06a7f828f204c5 180
+tests/e2e/page-related-chat-activity.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,31
+tests/e2e/nfm-code-block-actions.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,35
+src/renderer/lib/workbench-scene-navigator.node.test.ts
+  s_bd811abbf24a41::t_139a64bed65182 152
+crates/nodex-core-contracts/src/workspace.rs
+  s_bd811abbf24a41::t_70e778fe8d8c2b 7-10,160-164,166,170-171,302-304,1682-1684,1693-1696,1700
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_bd811abbf24a41::t_ae5e2d74f66142 215
+  s_bd811abbf24a41::t_22c479e894c7fe 22,27-31,126-146,207-214,216-218
+  s_bd811abbf24a41::t_9ad629af95404d 219
+tests/e2e/document-sync-recovery.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 8,54,300,373
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_bd811abbf24a41::t_bd14627bbb92cd 7,46-47
+  s_bd811abbf24a41::t_eca072d19df153 99
+  s_bd811abbf24a41::t_2023aeae442a08 104,119
+packages/core-protocol/openapi.json
+  s_bd811abbf24a41::t_464817cb938cf9 6660,6707-6709,30344,30364-30370,30384,35292,35301-35303,35309,35311-35325,35340-35342,35350,37531-37552,37620,37642,37644,37669-37671,37867-37883,37995-38033,38129,38159-38161,38199-38200,40087,40107-40113,40127,49462-49476
+  s_bd811abbf24a41::t_3195fe141f505d 37780,37795,37842-37843
+  s_bd811abbf24a41::t_c5efe3f9950aa5 49477-49479
+tests/e2e/content-interaction-history.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,35
+src/shared/schemas/inbox.ts
+  s_bd811abbf24a41::t_a77ba74a141604 13,17,53-61,64,73
+crates/nodex-core-contracts/src/inbox.rs
+  s_bd811abbf24a41::t_393f1d33e8085e 200,208
+  s_bd811abbf24a41::t_4299d1d1ec1f9d 219-232
+  s_bd811abbf24a41::t_3218f7b08b8df6 3-6
+  s_bd811abbf24a41::t_ff808e82e20633 276-277,280
+  s_bd811abbf24a41::t_5b62e67af5db3a 243
+  s_bd811abbf24a41::t_68c91d037fae3c 96-97
+  s_bd811abbf24a41::t_6ced8406498e86 15-34
+  s_bd811abbf24a41::t_b91525488e9891 128,132-133,135,150
+tests/e2e/nfm-editor-history-multiwindow.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,53,202
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_bd811abbf24a41::t_dc4588a123837c 2-8
+  s_bd811abbf24a41::t_4446f943e03dd0 399-403,426-430
+src/renderer/components/workbench/workbench-scene-panels.tsx
+  s_bd811abbf24a41::t_ff6d82a3e2e243 89
+crates/nodex-core/schema/current.sql
+  s_bd811abbf24a41::t_e9a1b38397a4ee 4400,4410
+  s_bd811abbf24a41::t_d143181a76a522 4449
+src/renderer/features/inbox/inbox-composer.tsx
+  s_bd811abbf24a41::t_60cddcfa655519 15,20,64
+src/renderer/features/inbox/inbox-route.tsx
+  s_bd811abbf24a41::t_60cddcfa655519 3-8,54-58,73-74,82-85,91-95,97-98,125,129,154,159-160,176-178,180-182,244,254-257,265-266,269,348-352,366,409-421,423-425,427-435,453,520,554,595-599
+  s_bd811abbf24a41::t_5c44636ab863a8 96,426
+src/shared/schemas/workbench-scene.ts
+  s_bd811abbf24a41::t_ffa2be3d01f5de 243-246,672-675,743-753,762-768,859-860,865
+  s_bd811abbf24a41::t_3f939857fdc66c 21
+  s_5cd527886c6c64::t_c5d8050ba82e61 240-242
+src/shared/nodex-app-tools/workbench.ts
+  s_bd811abbf24a41::t_a3933b70158ae4 72-74,432
+  s_bd811abbf24a41::t_0c9359666aeab6 70-71
+src/renderer/components/workbench/workbench-shell.project-agent-dock.test.tsx
+  s_bd811abbf24a41::t_42f0bfb5236b87 13,82,90-92,114,128,149,176,197,265
+src/renderer/components/workbench/database-view-surface.test.tsx
+  s_bd811abbf24a41::t_a87477e7570e61 51,54,770-775,777-785,794,798,809
+  s_bd811abbf24a41::t_20cae75f3593a5 776
+tests/e2e/structural-interaction-latency.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 3,373
+src/main/ipc/handlers/InboxIpc.ts
+  s_bd811abbf24a41::t_a77ba74a141604 77-78
+tests/e2e/nfm-send-to-chat.spec.ts
+  s_bd811abbf24a41::t_eca072d19df153 2,92,141,175
+CHANGELOG.md
+  s_bd811abbf24a41::t_fb375e223cf956 11,35
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_bd811abbf24a41::t_9d0a5726f8cc73 30,95
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_bd811abbf24a41::t_9b9d4f0bd2c0e5 47,76
+src/renderer/lib/workbench-panel-actions.ts
+  s_bd811abbf24a41::t_9b9d4f0bd2c0e5 147,152,156-158
+scripts/scenarios/contracts.ts
+  s_bd811abbf24a41::t_4446f943e03dd0 5,182-183,191
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_bd811abbf24a41::t_1ba1d6c4cddf19 61-62,81
+src/shared/inbox.ts
+  s_bd811abbf24a41::t_a77ba74a141604 18-36,124,137,148-158,160,167
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_bd811abbf24a41::t_81c54dba5dbe9a 107-108,113,122-123,127-131,139,142-166,201,216-217,233
+src/shared/ipc-endpoint-policy.ts
+  s_bd811abbf24a41::t_a77ba74a141604 211
+src/main/inbox-application/InboxApplication.ts
+  s_bd811abbf24a41::t_33381d9cd341d0 7,18,31,37,40,89-91,157-168,170,178,200,390
+crates/nodex-core/src/workspace/mutation.rs
+  s_bd811abbf24a41::t_a6ce126f30b528 319,332
+src/renderer/features/inbox/inbox-triage.tsx
+  s_bd811abbf24a41::t_60cddcfa655519 182,188-189,209,232
+src/renderer/lib/workbench-scene-tab-presentation.node.test.ts
+  s_bd811abbf24a41::t_07b15163b7cd60 1,4,20-23,27-28
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_bd811abbf24a41::t_42f0bfb5236b87 4773,4781-4782
+  s_bd811abbf24a41::t_f447bc30c268ce 22
+  s_bd811abbf24a41::t_a2433ba39cde7e 844,3271-3273,3276,3278-3285,3290
+  s_bd811abbf24a41::t_1193ac89c1a56e 3274-3275,3277,4772,4774-4780
+src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
+  s_bd811abbf24a41::t_cb25dcf50b9a87 284
+  s_bd811abbf24a41::t_7767008a51352a 22,197,247,262,266-268,297,349,355-356,365-366,374,390,392,395,425,433,473,497
+  s_bd811abbf24a41::t_502f05614f0399 301-325,327-328
+  s_bd811abbf24a41::t_b13de32136e215 47-55,265,357-364,496
+  s_bd811abbf24a41::t_7528088cb28b1d 326
+tests/e2e/nfm-equation-and-mermaid.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,32,175
+src/shared/workbench-scene.test.ts
+  s_bd811abbf24a41::t_eca072d19df153 217-219,223-225,853
+  s_bd811abbf24a41::t_da755f0220c7ee 220
+  s_bd811abbf24a41::t_dac81fb90b983e 78-82,84-94,152,154-156,211-212,214-216,221-222,226-228,230,610,656-657,686,717-721,725-726,732-733,854
+  s_bd811abbf24a41::t_6dfdc2f4794caf 25
+  s_bd811abbf24a41::t_ba1da6402320a6 83
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_bd811abbf24a41::t_fb375e223cf956 9-11,17-27,64-66,78-79
+  s_bd811abbf24a41::t_1b80e6069a37e5 51-53
+tests/e2e/board-dense.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,351,422
+tests/e2e/agent-cli-workflow.spec.ts
+  s_bd811abbf24a41::t_eca072d19df153 6,136
+crates/nodex-core/src/infrastructure/migration.rs
+  s_bd811abbf24a41::t_e9a1b38397a4ee 299-303,2328-2330,2332-2336
+  s_bd811abbf24a41::t_db0563145dfddd 2337-2341
+  s_bd811abbf24a41::t_83135e530531c7 324-328,2325-2327,2331
+crates/nodex-cli/src/inbox.rs
+  s_bd811abbf24a41::t_e7c70e6fec9a68 23,27-28,72-73
+tests/e2e/nfm-page-mention-entrypoints.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,112
+src/renderer/features/inbox/inbox-presentation.ts
+  s_bd811abbf24a41::t_b91525488e9891 26-28,31
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_bd811abbf24a41::t_773a967293f643 158
+  s_bd811abbf24a41::t_ebeecfd0a68693 3339-3342
+  s_bd811abbf24a41::t_42f0bfb5236b87 4032-4034,4355
+  s_bd811abbf24a41::t_5bb506e6e60f08 34,1942-1944,1950-1955,1964,1968,3439-3444,3446-3447,3449-3461,3463-3469,3474-3479,3815,3818-3820,4264-4267,4269
+  s_bd811abbf24a41::t_eca072d19df153 1945-1949,3470-3473
+  s_bd811abbf24a41::t_9b3406a1244a0a 36,1956,4618
+  s_bd811abbf24a41::t_4218a052f389b8 4751
+  s_bd811abbf24a41::t_094c400b7f2412 3387
+  s_bd811abbf24a41::t_c8640bfb23484f 4746,4750,4763-4766,4887
+  s_bd811abbf24a41::t_e9362bc0ed691f 3448
+  s_bd811abbf24a41::t_20cae75f3593a5 3462
+tests/e2e/local-recovery-removal.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,17,92
+crates/nodex-store-format/src/lib.rs
+  s_bd811abbf24a41::t_4398b873be84ce 181-182,204
+  s_bd811abbf24a41::t_d143181a76a522 201-202
+  s_bd811abbf24a41::t_330d64e0b256ab 203
+src/renderer/features/inbox/use-inbox.ts
+  s_bd811abbf24a41::t_bd14627bbb92cd 10,12,17,20,47,49-50,55-66,86-87,89,91
+src/renderer/lib/workbench-view-content.node.test.ts
+  s_bd811abbf24a41::t_136da21cf71423 17,20,81-86,88-96,105-106,148
+  s_bd811abbf24a41::t_20cae75f3593a5 87
+src/renderer/lib/inbox-runtime.ts
+  s_bd811abbf24a41::t_cf972604dc326a 9,58-60
+crates/nodex-core/src/workspace/inbox.rs
+  s_bd811abbf24a41::t_ace40807fa9bb7 1061
+  s_bd811abbf24a41::t_571c5971403736 3-7,55-56,80,97,107-161,169,173,445-474,583,608,611-617,622-623,649,776-777,967-973,1012-1013,1056,1098-1100,1269,1271-1272,1278-1284,1288-1291,1293,1831-1855,1857-1858,1862,1868-1872,1896-1900,1908-1910
+  s_bd811abbf24a41::t_06a7f828f204c5 588,590-597
+  s_bd811abbf24a41::t_41dcec209b0337 589,610,621,633,664
+  s_bd811abbf24a41::t_3cfa160eac356f 650
+src/main/core-client/inbox-adapter.ts
+  s_bd811abbf24a41::t_a77ba74a141604 4,9,27-28,59-64,144,159-164
+  s_bd811abbf24a41::t_088b1c52b83d3c 165
+scripts/scenarios/harness/project-board-ui.ts
+  s_bd811abbf24a41::t_8684a5aca3c14c 1-19
+crates/nodex-core/src/workspace/read.rs
+  s_bd811abbf24a41::t_a6ce126f30b528 60-62,65-82
+src/renderer/lib/workbench-scene-tab-presentation.ts
+  s_bd811abbf24a41::t_4ae58c9bdbcfb5 3,15-16
+tests/e2e/database-settings.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,32
+tests/e2e/database-surface-history.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,93
+docs/product-specs/workbench-shell.md
+  s_bd811abbf24a41::t_d9a6cd62a3a8c8 228
+  s_bd811abbf24a41::t_0865cdd05b3366 234
+  s_bd811abbf24a41::t_e03d3474748b5d 5,21,24,235
+docs/KEYBOARD_SHORTCUTS.md
+  s_bd811abbf24a41::t_ae5e2d74f66142 32
+src/main/core-client/inbox-workspace.node.test.ts
+  s_bd811abbf24a41::t_8c904167b46619 31,80-83,92
+src/main/inbox-application/inbox-suggestions.ts
+  s_bd811abbf24a41::t_34810260d43ed0 106,112-124,131,179-181,183,185,253-254,270-277,280,287
+  s_bd811abbf24a41::t_212a1b1e79d356 107-111
+scripts/scenarios/scenarios/board-dense-ui.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,29
+scripts/scenarios/scenarios/library-files-ui.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,18
+tests/e2e/database-context-menu-performance.spec.ts
+  s_bd811abbf24a41::t_2e30c6259bea6b 2,27
+tests/e2e/typography-settings.spec.ts
+  s_bd811abbf24a41::t_eca072d19df153 2,279,575,623
+docs/CLI.md
+  s_bd811abbf24a41::t_d9a6cd62a3a8c8 134-139
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_bd811abbf24a41::t_7113d20d04d24f 15
+crates/nodex-core/schema/migrations/v182_to_v183.sql
+  s_bd811abbf24a41::t_6b5586d5e711ed 1-11
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_bd811abbf24a41::t_86fccadfed4a62 236-240,783,864
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_bd811abbf24a41::t_20cae75f3593a5 137,142
+crates/nodex-core/src/library/navigation.rs
+  s_bd811abbf24a41::t_c8c6a6a9eabf70 3823,3859-3861
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_bd811abbf24a41::t_06a11f4c4c9e1d 626-629
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fad8c2c2cb29be559fc32a41ff4197c751971856",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
