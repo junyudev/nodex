@@ -1,0 +1,62 @@
+src/renderer/lib/use-workbench-session-commands.ts
+  s_cd7a7c963ae6b3::t_0dfbd2ef0efb00 617,619,1342
+src/renderer/components/shared/icons/workbench-navigation-icons.tsx
+  s_cd7a7c963ae6b3::t_0b4fd3fc8d77f3 75-112
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_cd7a7c963ae6b3::t_6b914f63b43e47 443,471-479
+src/shared/workbench-layout.ts
+  s_cd7a7c963ae6b3::t_62ce9a11fbe594 384-385
+  s_cd7a7c963ae6b3::t_72a653e7788a6d 241-245,391-397
+  s_cd7a7c963ae6b3::t_964bd8c3809019 257-258,372,380-383
+src/shared/workbench-layout.test.ts
+  s_cd7a7c963ae6b3::t_80f150537fa672 109-110
+  s_cd7a7c963ae6b3::t_964bd8c3809019 7,91-108
+  s_cd7a7c963ae6b3::t_13fd3f122f141d 9
+src/renderer/components/workbench/workbench-app-rail.browser.test.tsx
+  s_cd7a7c963ae6b3::t_0442544b6d11f2 5,8,11-12,15,27-31,39-45,59-76,79-80,86
+docs/product-specs/scheduled-route-behavior.md
+  s_cd7a7c963ae6b3::t_aea2d6760eb738 41-44
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_cd7a7c963ae6b3::t_d5613b8c94a608 27-30,4677,4680-4681
+  s_cd7a7c963ae6b3::t_0dfbd2ef0efb00 2370
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_cd7a7c963ae6b3::t_6b914f63b43e47 244,251
+  s_cd7a7c963ae6b3::t_1e5a3019ce661a 200
+  s_cd7a7c963ae6b3::t_b8f34867838afc 246,248-250
+src/shared/schemas/workbench-layout.test.ts
+  s_cd7a7c963ae6b3::t_8fa135c9a4c9ea 557,559-564,566,572,625-626,631-659
+  s_cd7a7c963ae6b3::t_f53e4e59e9b84a 660-661
+src/shared/schemas/workbench-layout.ts
+  s_cd7a7c963ae6b3::t_72a653e7788a6d 796-805
+src/renderer/components/workbench/workbench-app-rail.tsx
+  s_cd7a7c963ae6b3::t_c07fa4416365c1 2,5,11-15,22,25-26,31-77,85,93,102
+docs/product-specs/workbench-shell.md
+  s_cd7a7c963ae6b3::t_aea2d6760eb738 5,12,158,187
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_cd7a7c963ae6b3::t_d5c1d9c476ebe2 58
+src/renderer/lib/workbench-window-state.node.test.ts
+  s_cd7a7c963ae6b3::t_ca95d00df1953f 124
+  s_cd7a7c963ae6b3::t_045e2dfa2c2565 5,34-36,66,68,71,73-75,77-90
+  s_cd7a7c963ae6b3::t_8fa135c9a4c9ea 37-41,43-65,93-123
+src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx
+  s_cd7a7c963ae6b3::t_6b914f63b43e47 342,344
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_cd7a7c963ae6b3::t_49091ed41da34b 320-321
+  s_cd7a7c963ae6b3::t_160b8260c20f55 337-363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fea72607c24783d77b599e0f8c15f1c241913ad8",
+  "prompts": {},
+  "sessions": {
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
