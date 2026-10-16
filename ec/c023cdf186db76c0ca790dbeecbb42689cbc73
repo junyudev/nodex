@@ -1,0 +1,95 @@
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_bd811abbf24a41::t_2e6830812d365f 1-83
+src/main/core-client/inbox-adapter.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 138
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_bd811abbf24a41::t_ed1f1b119648e2 4,11,61-64,78
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bd811abbf24a41::t_b1e1b2427bd243 14-19,31
+  s_bd811abbf24a41::t_1ec439684961dc 117,346-349,351-355,356,360-391
+  s_bd811abbf24a41::t_42f39a1777f160 392-400
+src/shared/ipc-api.ts
+  s_bd811abbf24a41::t_6b542a59a856aa 1035
+src/renderer/features/inbox/inbox-triage.tsx
+  s_bd811abbf24a41::t_9820b295656a38 23,165-166,169,175-176,188,204-205,209,218-222,234-235,240,243-244,258-265,279,305,333,394,423-441
+src/renderer/features/inbox/inbox-route.tsx
+  s_bd811abbf24a41::t_9820b295656a38 373,382
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_bd811abbf24a41::t_deca24dfa9bafe 69-72
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_bd811abbf24a41::t_bfa1f45395054b 19
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bd811abbf24a41::t_d55e0fd567cabe 1801-1802
+  s_bd811abbf24a41::t_50ad17e8c14bb7 6-10,1635-1664,1666-1668,1670-1674,1677,1679-1791,1793-1800,1803-1885,1887-1894
+  s_bd811abbf24a41::t_538ae196eefa0d 1665,1669,1675-1676,1678,1792,1886
+src/shared/inbox.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 118-119,202-206
+  s_bd811abbf24a41::t_af7ed51591288c 207-208
+src/main/inbox-application/InboxApplication.test-support.ts
+  s_bd811abbf24a41::t_db508994bbd8d4 1-78
+src/main/inbox-application/inbox-editing.node.test.ts
+  s_bd811abbf24a41::t_355ff7b853989a 37
+  s_bd811abbf24a41::t_ed1f1b119648e2 1-26,29-36,38-66
+  s_bd811abbf24a41::t_deca24dfa9bafe 27-28
+crates/nodex-core-contracts/src/inbox.rs
+  s_bd811abbf24a41::t_d975c4a27f4d45 194-196,209-218
+  s_bd811abbf24a41::t_7861b2a77f8f08 219-220
+src/main/ipc/handlers/InboxIpc.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 81
+src/shared/ipc-endpoint-policy.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 605
+src/main/inbox-application/InboxApplication.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 10,26,98-102,221-286,475
+  s_bd811abbf24a41::t_a0988c35c12bd0 54,56,132-136,140
+  s_bd811abbf24a41::t_deca24dfa9bafe 137-139
+crates/nodex-core/src/workspace/read.rs
+  s_bd811abbf24a41::t_1ec439684961dc 97-110
+packages/core-protocol/openapi.json
+  s_bd811abbf24a41::t_e5240f31be5f5c 6656,6669-6672,30645-30663,35435-35461,37896-37922,40461-40479,49654-49668
+  s_bd811abbf24a41::t_050580790d1862 49669-49671
+crates/nodex-core-contracts/src/workspace.rs
+  s_bd811abbf24a41::t_d975c4a27f4d45 10,183-190,325-327,1756-1761
+crates/nodex-core/src/workspace/mutation.rs
+  s_bd811abbf24a41::t_1ec439684961dc 440-450
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_bd811abbf24a41::t_d975c4a27f4d45 81-82
+src/shared/schemas/inbox.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 11,37-41,80,84-86
+  s_bd811abbf24a41::t_897b5a377b33d2 87
+docs/product-specs/inbox-behavior.md
+  s_bd811abbf24a41::t_b73ac28c0d0d6b 66-83,172-175
+src/renderer/features/inbox/inbox-message.tsx
+  s_bd811abbf24a41::t_9820b295656a38 110,120-121,190-196,215
+packages/core-protocol/src/generated.ts
+  s_bd811abbf24a41::t_e5240f31be5f5c 1596-1600,7355-7358,8433-8438,9128-9139,9695-9698,11638-11641
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_bd811abbf24a41::t_9820b295656a38 15,29-30,103-106
+src/renderer/lib/inbox-runtime.ts
+  s_bd811abbf24a41::t_e7564c75ad2217 4,30,42,67
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_bd811abbf24a41::t_cbb945f8fb5dcd 147
+  s_bd811abbf24a41::t_bfa1f45395054b 8,42,58,69-72,84,87,89,118,121-146,148-180,188
+  s_bd811abbf24a41::t_fad03ff5805def 354,382
+crates/nodex-core/src/workspace/inbox.rs
+  s_bd811abbf24a41::t_1ec439684961dc 1553-1565,1566-1567,1572-1575,1577-1578,1583-1624,1881-1903,1905
+  s_bd811abbf24a41::t_b1e1b2427bd243 353-355
+  s_bd811abbf24a41::t_27b065122a489d 268,280,284-313,315,330-352,356-367
+  s_bd811abbf24a41::t_ab7b7965afcadc 1904,1906
+  s_bd811abbf24a41::t_19b21ce722488a 42-43,1568-1571,1576,1579-1582
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ecc023cdf186db76c0ca790dbeecbb42689cbc73",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
