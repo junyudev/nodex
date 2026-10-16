@@ -1,0 +1,30 @@
+tests/e2e/support/new-chat-draft.ts
+  s_bd811abbf24a41::t_3474987516aa77 24-30
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_bd811abbf24a41::t_3dadfa2a146992 26,209,211-214,331-332,538-539
+  s_bd811abbf24a41::t_e879b1eeebacb0 2,92-93,103-104,252-253,284-286,405-406,428-429,453-455,585-586,654,672-673
+  s_bd811abbf24a41::t_f7574ddbcec6be 27,160-161,208,210,328-329,523-524,548,719-720,774
+  s_bd811abbf24a41::t_155632090021cf 184-187
+  s_bd811abbf24a41::t_1a493fdfd913e7 341,546-547
+scripts/scenarios/runtime/scripted-model-server.ts
+  s_bd811abbf24a41::t_1590e4b991e104 520,522
+tests/e2e/support/agent-smoke-harness.ts
+  s_bd811abbf24a41::t_f7574ddbcec6be 243-248,251,257-267,271-274,478
+  s_bd811abbf24a41::t_3dadfa2a146992 468-474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22fd7ed3f4fe925ef4b898e3b712bfca003b9f96",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
