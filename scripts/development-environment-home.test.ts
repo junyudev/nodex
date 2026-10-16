@@ -11,6 +11,10 @@ import {
   resolveDevelopmentHomeRoot,
   updateDevelopmentAgentFiles,
 } from "./development-environment-home";
+import {
+  getClaudeAgentSettings,
+  updateClaudeAgentSettings,
+} from "../src/main/settings/application-settings-persistence";
 
 const roots: string[] = [];
 
@@ -159,6 +163,42 @@ describe("development environment home", () => {
     expect((await stat(installedConfig)).mode & 0o777).toBe(0o600);
     expect(await readFile(installedAuth, "utf8")).toContain("test");
     expect(await readFile(installedConfig, "utf8")).not.toContain("node_repl");
+  });
+
+  test("points the default Claude instance at a signed-in config directory", async () => {
+    const repositoryRoot = await createRepository();
+    const home = await openDevelopmentEnvironmentHome({ repositoryRoot });
+    const source = {
+      environment: {},
+      settingsPath: path.join(home.nodexHome, "config.toml"),
+    };
+    const claudeConfig = path.join(repositoryRoot, "claude-dev");
+    await expect(
+      updateDevelopmentAgentFiles(home, { claudeConfigDir: claudeConfig }),
+    ).rejects.toThrow(`CLAUDE_CONFIG_DIR=${claudeConfig} claude auth login`);
+    await mkdir(claudeConfig);
+    const other = {
+      id: "claude-work",
+      displayName: "Claude Work",
+      binaryPath: "claude",
+      configDirectory: "",
+      enabled: true,
+      customModels: [],
+      environment: [],
+    };
+    updateClaudeAgentSettings(
+      {
+        instances: [{ ...getClaudeAgentSettings(source).instances[0]!, enabled: false }, other],
+      },
+      source,
+    );
+
+    await updateDevelopmentAgentFiles(home, { claudeConfigDir: claudeConfig });
+
+    const { instances } = getClaudeAgentSettings(source);
+    expect(instances.map(({ id }) => id)).toEqual(["claude-default", "claude-work"]);
+    expect(instances[0]).toMatchObject({ configDirectory: claudeConfig, enabled: true });
+    expect(instances[1]).toEqual(other);
   });
 
   test("deletes only the owned home without runtime evidence", async () => {

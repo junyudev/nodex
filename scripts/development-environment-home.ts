@@ -14,10 +14,17 @@ import {
   readdir,
   rename,
   rm,
+  stat,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { readIsolatedRunLeaseOwner } from "../src/main/core-client/isolated-run-ownership";
+import {
+  getClaudeAgentSettings,
+  updateClaudeAgentSettings,
+} from "../src/main/settings/application-settings-persistence";
+import { defaultClaudeInstance } from "../src/shared/claude-agent-settings";
 import { copyIsolatedCodexConfig } from "./copy-isolated-codex-config";
 import { installPrivateFile, resolveRegularPrivateFileSource } from "./private-file";
 
@@ -384,9 +391,53 @@ export const markDevelopmentEnvironmentInitialized = async (
   return { ...home, manifest };
 };
 
+/**
+ * Claude keeps its login per config directory (in the system keychain on macOS), so the
+ * environment records only which directory its default Claude instance uses; no credential is
+ * copied. The app sets CLAUDE_CONFIG_DIR from it and leaves HOME, and so the keychain, intact.
+ */
+const useClaudeConfigDirectory = async (
+  home: DevelopmentEnvironmentHome,
+  requested: string,
+): Promise<void> => {
+  const directory = requested.startsWith("~/")
+    ? path.join(homedir(), requested.slice(2))
+    : requested;
+  if (!path.isAbsolute(directory))
+    throw new Error("--claude-config-dir must be an absolute path or start with ~/");
+  if (!(await stat(directory).catch(() => null))?.isDirectory())
+    throw new Error(
+      `--claude-config-dir ${directory} does not exist. Sign in to it once with: CLAUDE_CONFIG_DIR=${directory} claude auth login`,
+    );
+  const source = {
+    environment: process.env,
+    hostHomeDirectory: homedir(),
+    settingsPath: path.join(home.nodexHome, "config.toml"),
+  };
+  const { instances } = getClaudeAgentSettings(source);
+  const id = defaultClaudeInstance().id;
+  const configure = (instance: (typeof instances)[number]) => ({
+    ...instance,
+    configDirectory: directory,
+    enabled: true,
+  });
+  updateClaudeAgentSettings(
+    {
+      instances: instances.some((instance) => instance.id === id)
+        ? instances.map((instance) => (instance.id === id ? configure(instance) : instance))
+        : [configure(defaultClaudeInstance()), ...instances],
+    },
+    source,
+  );
+};
+
 export const updateDevelopmentAgentFiles = async (
   home: DevelopmentEnvironmentHome,
-  input: { readonly authJson?: string; readonly agentConfigToml?: string },
+  input: {
+    readonly authJson?: string;
+    readonly agentConfigToml?: string;
+    readonly claudeConfigDir?: string;
+  },
 ): Promise<void> => {
   await mkdir(home.codexHome, { recursive: true, mode: 0o700 });
   if (input.authJson) {
@@ -404,6 +455,7 @@ export const updateDevelopmentAgentFiles = async (
       await copyIsolatedCodexConfig(source, target);
     });
   }
+  if (input.claudeConfigDir) await useClaudeConfigDirectory(home, input.claudeConfigDir);
 };
 
 const runtimeEvidencePaths = (home: DevelopmentEnvironmentHome): readonly string[] => [

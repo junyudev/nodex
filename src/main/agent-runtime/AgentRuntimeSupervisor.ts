@@ -1,3 +1,4 @@
+import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -270,6 +271,10 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
           Effect.exit,
         );
       if (Exit.isFailure(acquired)) {
+        // The readable reason lives only here; callers see a generic start failure.
+        yield* Effect.logError("Agent execution process could not start").pipe(
+          Effect.annotateLogs({ recovering, cause: Cause.pretty(acquired.cause) }),
+        );
         yield* Deferred.fail(hostReady, new Error("Agent Runtime Host is unavailable"));
         yield* Scope.close(generationScope, acquired);
         yield* Ref.update(state, (latest) => ({ ...latest, unhealthy: true }));

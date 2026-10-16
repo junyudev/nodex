@@ -10,10 +10,11 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /**
  * The execution process has its own Node bundle, outside Electron Main's cold path. Code
  * splitting keeps the per-session ACP bridge from loading the engine: `entry.mjs` only selects
- * a mode, and each mode loads its own chunk graph.
+ * a mode, and each mode loads its own chunk graph. It lives beside `out/main`, never inside it,
+ * because the Main build empties `out/main` on every development start and hot rebuild.
  */
 export function buildAgentRuntime(root = repositoryRoot): void {
-  const output = join(root, "out/main/agent-runtime");
+  const output = join(root, "out/agent-runtime");
   rmSync(output, { recursive: true, force: true });
   execFileSync(
     "pnpm",
@@ -29,7 +30,7 @@ export function buildAgentRuntime(root = repositoryRoot): void {
       "--external:@anthropic-ai/claude-agent-sdk",
       "--external:@ff-labs/fff-node",
       '--banner:js=import { createRequire as nodexCreateRequire } from "node:module"; const require = nodexCreateRequire(import.meta.url);',
-      "--outdir=out/main/agent-runtime",
+      "--outdir=out/agent-runtime",
       "--out-extension:.js=.mjs",
       "--chunk-names=chunks/[name]-[hash]",
       "--metafile=.generated/agent-runtime-build.json",

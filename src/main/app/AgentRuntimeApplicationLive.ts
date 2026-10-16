@@ -467,9 +467,17 @@ const supervisor = Layer.effectContext(
               }),
             );
           }
+          const entryPath = agentRuntimeEntrypoint(config);
+          // A development build can lack the bundle; say so instead of a bare process exit.
+          if (!(yield* fs.exists(entryPath)))
+            return yield* Effect.fail(
+              new Error(
+                `Agent execution is not built: ${entryPath} is missing (vp run build:agent-runtime)`,
+              ),
+            );
           const connection = yield* acquireAgentRuntimeProcess({
             executable,
-            entryPath: agentRuntimeEntrypoint(config),
+            entryPath,
             configuration,
             environment,
             host,

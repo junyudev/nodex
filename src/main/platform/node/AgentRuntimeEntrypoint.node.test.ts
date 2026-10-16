@@ -8,7 +8,7 @@ it("keeps packaged execution outside ASAR and ignores every test executable over
       resourcesPath: "/resources",
       projectRootPath: "/repo",
     }),
-  ).toBe("/resources/app.asar.unpacked/out/main/agent-runtime/entry.mjs");
+  ).toBe("/resources/app.asar.unpacked/out/agent-runtime/entry.mjs");
   expect(
     agentRuntimeNodeExecutable({
       isPackaged: true,

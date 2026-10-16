@@ -71,6 +71,7 @@ vp run dev --home "$task_home" --build
 vp run dev --home "$HOME/repo/nodex/runs.local/perf-ephemeral" --delete
 vp run dev --home "$task_home" --auth-json /path/to/auth.json
 vp run dev --home "$task_home" --agent-config-toml /path/to/config.toml
+vp run dev --home "$task_home" --claude-config-dir ~/.claude-nodex-dev
 vp run dev --home "$task_home" --remote-debugging-port 9229
 vp run dev --home "$task_home" --cdp 9229
 vp run dev --home "$task_home" --enable runtime-metrics
@@ -115,6 +116,23 @@ clean up their own fresh temporary Profiles through the test harness.
 `0600`. `--agent-config-toml` passes the named file through the portable agent
 config sanitizer and also installs it with mode `0600`. Omitted flags preserve
 the environment's existing files.
+
+Without further setup, the environment's default Claude Code instance uses your
+existing Claude login and `~/.claude`, so its sessions, skills and settings are
+shared with your own Claude Code. To keep them apart, sign in once to a dedicated
+Claude config directory and pass it to each environment:
+
+```bash
+CLAUDE_CONFIG_DIR=~/.claude-nodex-dev claude auth login
+vp run dev --home "$task_home" --claude-config-dir ~/.claude-nodex-dev
+```
+
+`--claude-config-dir` records only that directory as the default Claude
+instance's config directory, enables the instance and keeps any other Claude
+instances. Claude keeps the login itself (in the macOS keychain), so no
+credential is copied; the app sets `CLAUDE_CONFIG_DIR` and never `HOME`, which
+would hide that keychain login. The setting persists in the environment until
+changed in Settings or by another `--claude-config-dir`.
 
 `--enable` is repeatable and applies a Nodex feature only to the current
 invocation. Unknown slugs fail and list the catalog. Agentation and TanStack
@@ -285,9 +303,9 @@ backup's timestamp. Native transcript bytes and historical workspace/file paths
 are preserved, so external repositories and files remain external dependencies.
 This command is development provisioning, not a historical full-Profile restore.
 
-The environment uses its own `${NODEX_HOME}/agent` directory. Add `--auth-json`
-or `--agent-config-toml` explicitly only when validation requires Agent
-authentication or configuration.
+The environment uses its own `${NODEX_HOME}/agent` directory. Add `--auth-json`,
+`--agent-config-toml` or `--claude-config-dir` explicitly only when validation
+requires Agent authentication or configuration.
 Remote observability is disabled for a `--from-profile` launch so user content
 remains local by default.
 
