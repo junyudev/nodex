@@ -373,10 +373,10 @@ const outputInventory = (root: string): FileDigest[] => {
     throw new Error("Prepared Electron output is empty; run the normal build first.");
   }
   const requiredExecutionOutputs = [
-    "out/main/agent-runtime/entry.mjs",
-    "out/main/agent-runtime/LICENSE.t3code",
-    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
-    "out/main/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
+    "out/agent-runtime/entry.mjs",
+    "out/agent-runtime/LICENSE.t3code",
+    "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
+    "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
   ];
   for (const required of requiredExecutionOutputs)
     if (!files.some((file) => file.path === required && file.size > 0))

@@ -8,7 +8,7 @@ export const agentRuntimeEntrypoint = (input: {
 }) =>
   join(
     input.isPackaged ? join(input.resourcesPath, "app.asar.unpacked") : input.projectRootPath,
-    "out/main/agent-runtime/entry.mjs",
+    "out/agent-runtime/entry.mjs",
   );
 
 /** Disposable scenarios may select their own Node; packaged execution always uses verified assets. */
