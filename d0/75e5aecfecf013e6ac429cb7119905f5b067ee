@@ -1,0 +1,192 @@
+packages/agent-runtime/src/observability/Metrics.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-219
+packages/agent-runtime/src/provider/codexModelCatalog.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-91
+packages/agent-runtime/src/provider/CodexThreadRevert.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-93
+packages/agent-runtime/src/persistence/Migrations/031_AuthAuthorizationScopes.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-80
+packages/agent-runtime/src/provider/Drivers/codexUsage.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-193
+packages/agent-runtime/src/vcs/VcsProcess.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-584
+packages/agent-runtime/src/secrets/SecretRequests.test.ts
+  s_1ca65ffa5958ee::t_ae2602546f1c1d 194
+  s_1ca65ffa5958ee::t_e3593e06962250 1-193,195-398
+packages/agent-runtime/src/provider/ProviderCredentialStore.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-55
+packages/agent-runtime/src/project/RepositoryIdentityResolver.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-417
+packages/agent-runtime/src/provider/claudeUsageLimits.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-180
+packages/agent-runtime/src/utils/subscribeBeforeSnapshot.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-84
+packages/agent-runtime/src/persistence/Migrations/029_ProjectionThreadDetailOrderingIndexes.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-74
+packages/agent-runtime/src/provider/Drivers/ClaudeHome.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-88
+packages/agent-runtime/src/persistence/Migrations/025_CleanupInvalidProjectionPendingApprovals.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-197
+packages/agent-runtime/src/provider/resetCreditCoordinator.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-105
+packages/agent-runtime/src/mcpApps/McpAppModelContext.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-68
+packages/agent-runtime/src/codexModelOptions.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-22
+packages/agent-runtime/src/persistence/Migrations/054_ProjectionThreadsAutoSettleDisabledAt.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-41
+packages/agent-runtime/src/provider/CodexChatGptSessionLock.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-75
+packages/agent-runtime/src/provider/ModelManifest.test.ts
+  s_1ca65ffa5958ee::t_8494199c29c9ce 9-11
+  s_1ca65ffa5958ee::t_e3593e06962250 1-8,12-113
+packages/agent-runtime/src/background/BackgroundPolicy.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-386
+packages/agent-runtime/src/mcp/McpInvocationContext.test.ts
+  s_1ca65ffa5958ee::t_3617ba67a7c43e 84
+  s_1ca65ffa5958ee::t_e3593e06962250 1-83,85-98
+packages/agent-runtime/src/provider/Drivers/CodexDriver.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-598
+packages/agent-runtime/src/persistence/Migrations/057_ScheduledTaskWebhooks.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-51
+packages/agent-runtime/src/persistence/initializeV2Database.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-198
+packages/agent-runtime/src/persistence/Migrations/051_ProjectionThreadMessageContext.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-39
+packages/agent-runtime/src/provider/ClaudeModelCatalog.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-256
+packages/agent-runtime/src/provider/Drivers/claudeUsage.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-74
+packages/agent-runtime/src/persistence/Migrations/016_CanonicalizeModelSelections.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-465
+packages/agent-runtime/src/mcpApps/McpAppRequests.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-283
+packages/agent-runtime/src/provider/ProviderAuthService.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-979
+packages/agent-runtime/src/persistence/Migrations/019_ProjectionSnapshotLookupIndexes.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-74
+packages/agent-runtime/src/orchestration-v2/RunExecutionService.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-3022,3024-3601
+  s_1ca65ffa5958ee::t_d53b0a41fcf108 3023
+packages/agent-runtime/src/persistence/Migrations/049_ProjectionThreadsActiveOrderKey.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-47
+packages/agent-runtime/src/persistence/Migrations/026_CanonicalizeModelSelectionOptions.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-451
+packages/agent-runtime/src/persistence/Errors.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-101
+packages/agent-runtime/src/provider/claudeResetCredits.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-259
+packages/agent-runtime/src/provider/Drivers/ClaudeSkills.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-741
+packages/agent-runtime/src/provider/codexLaunchArgs.test.ts
+  s_1ca65ffa5958ee::t_a67aa049ff18a9 12,14,19,21,27
+  s_1ca65ffa5958ee::t_e3593e06962250 1-11,13,15-18,20,22-26,28-59
+packages/agent-runtime/src/textGeneration/TextGeneration.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-180
+packages/agent-runtime/src/provider/Drivers/ClaudeSkillDispatch.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-82
+packages/agent-runtime/src/vcs/VcsDriverRegistry.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-196
+packages/agent-runtime/src/project/ProjectEnrichmentService.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-488
+packages/agent-runtime/src/provider/codexUsageLimits.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-316
+packages/agent-runtime/src/provider/CodexDeveloperInstructions.test.ts
+  s_1ca65ffa5958ee::t_3617ba67a7c43e 74
+  s_1ca65ffa5958ee::t_e3593e06962250 1-20,22-73,75
+  s_1ca65ffa5958ee::t_d7af5381755ff4 21
+packages/agent-runtime/src/persistence/Migrations/041_AuthSessionClientConnection.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-31
+packages/agent-runtime/src/provider/providerStatusCache.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-300
+packages/agent-runtime/src/attachmentStore.test.ts
+  s_1ca65ffa5958ee::t_fa88150c77befd 190-193
+  s_1ca65ffa5958ee::t_3617ba67a7c43e 163
+  s_1ca65ffa5958ee::t_3371eaa0b8efd5 188-189,194-195
+  s_1ca65ffa5958ee::t_e3593e06962250 1-162,164-187,196-252
+packages/agent-runtime/src/provider/EventNdjsonLogger.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-856
+packages/agent-runtime/src/persistence/Migrations/055_OrchestrationV2.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-15,17-26,30-46,48-138
+  s_1ca65ffa5958ee::t_ef6937b3f737ac 16,27-29,47
+packages/agent-runtime/src/persistence/Migrations/042_ProjectionThreadLinkedPullRequest.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-25
+packages/agent-runtime/src/provider/CodexManagedRuntime.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-119,121-154,156-223
+  s_1ca65ffa5958ee::t_a67aa049ff18a9 120,155
+packages/agent-runtime/src/persistence/Migrations/050_ProjectionThreadPullRequests.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-184
+packages/agent-runtime/src/processRunner.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-422
+packages/agent-runtime/vendor/effect-acp/src/agent.test.ts
+  s_1ca65ffa5958ee::t_ea122c5e55f617 1-336
+packages/agent-runtime/src/textGeneration/CodexTextGeneration.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-290,292-298,300-767
+  s_1ca65ffa5958ee::t_a67aa049ff18a9 291,299
+packages/agent-runtime/src/persistence/Migrations/040_ProjectionProjectFaviconPath.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-28
+packages/agent-runtime/src/workspace/WorkspacePaths.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-207
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-105,108-871
+  s_1ca65ffa5958ee::t_3617ba67a7c43e 106-107
+packages/agent-runtime/src/provider/CodexProvider.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-173
+packages/agent-runtime/src/auth/ServerSecretStore.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-267
+packages/agent-runtime/src/persistence/Migrations/024_BackfillProjectionThreadShellSummary.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-219
+packages/agent-runtime/src/persistence/Sqlite.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-93
+packages/agent-runtime/src/provider/Drivers/ClaudeExecutable.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-124
+packages/agent-runtime/src/serverSettings.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-1859
+packages/agent-runtime/src/provider/Drivers/CodexHomeLayout.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-343
+packages/agent-runtime/src/persistence/Migrations/047_ProjectionProjectIcon.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-28
+packages/agent-runtime/src/provider/CodexChatGptModels.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-74
+packages/agent-runtime/src/persistence/Migrations/035_ProjectionThreadTitleRegeneration.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-27
+packages/agent-runtime/src/persistence/Migrations/056_RemoveRedundantProjectionIndexes.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-44
+packages/agent-runtime/src/background/HostPowerMonitor.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-188
+packages/agent-runtime/src/persistence/Migrations/046_RepairAutomaticSettlementTimestamps.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-218
+packages/agent-runtime/src/persistence/reconcileV2PreviewMigration.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-29,34-39,41-123,125-150
+  s_1ca65ffa5958ee::t_266d9f7b304811 30-33,40,124
+packages/agent-runtime/src/imageMime.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-95
+packages/agent-runtime/src/claudeModelOptions.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-58
+packages/agent-runtime/src/serverActivation.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-23
+packages/agent-runtime/src/checkpointing/Diffs.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-56
+packages/agent-runtime/src/project/ProjectService.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-803
+packages/agent-runtime/src/project/ProjectFaviconResolver.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-537
+packages/agent-runtime/src/project/T3ProjectFileLoader.test.ts
+  s_1ca65ffa5958ee::t_e3593e06962250 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d075e5aecfecf013e6ac429cb7119905f5b067ee",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

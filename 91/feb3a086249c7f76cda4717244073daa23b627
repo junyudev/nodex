@@ -1,0 +1,34 @@
+packages/agent-runtime/src/provider/testUtils/providerRegistryMock.ts
+  s_1ca65ffa5958ee::t_cbd9a2ece84c4d 12
+packages/agent-runtime/src/provider/ProviderRegistry.checked.test.ts
+  s_1ca65ffa5958ee::t_0f704c514adc62 1-4,6-92,94-102
+  s_1ca65ffa5958ee::t_d96c70448fef08 5,93
+packages/agent-runtime/src/provider/ProviderRegistry.ts
+  s_1ca65ffa5958ee::t_dd10c4c3a2749d 1155-1156
+  s_1ca65ffa5958ee::t_cf7359aa941b5f 88-92,1138-1154,1157-1159,1162
+  s_1ca65ffa5958ee::t_a5673b29bb8e33 87
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_1ca65ffa5958ee::t_dd10c4c3a2749d 765-766
+packages/agent-runtime/src/nodex/Service.ts
+  s_1ca65ffa5958ee::t_dd10c4c3a2749d 591-593
+packages/agent-runtime/vendor/provider-core/src/server/managedProvider.ts
+  s_1ca65ffa5958ee::t_66fefaaea613b8 7,299,302,309
+packages/agent-runtime/vendor/provider-core/src/server/snapshot.ts
+  s_1ca65ffa5958ee::t_50bec004770d65 16-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91feb3a086249c7f76cda4717244073daa23b627",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

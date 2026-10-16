@@ -1,0 +1,176 @@
+packages/agent-runtime/src/orchestration-v2/ContextHandoffBudget.test.ts
+  s_1ca65ffa5958ee::t_a4ebe26adbe67e 608-609
+  s_1ca65ffa5958ee::t_8cf39f13bd0fb4 607
+docs/product-specs/agent-runtime-behavior.md
+  s_1ca65ffa5958ee::t_7a1d7d0f9de11d 300-308
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_1ca65ffa5958ee::t_5fc3791dc7694a 1-122
+packages/agent-runtime/README.md
+  s_1ca65ffa5958ee::t_27b5bf82cec5f0 62
+  s_1ca65ffa5958ee::t_558b4ec6a164ea 40,49-61,63-76
+docs/adr/0064-native-application-mcp.md
+  s_1ca65ffa5958ee::t_7a1d7d0f9de11d 16-18
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_1ca65ffa5958ee::t_b191f846497a76 137
+packages/agent-runtime/src/nodex/Ingress.ts
+  s_1ca65ffa5958ee::t_3c2a3a0f8e1b2e 32
+packages/agent-runtime/src/nodex/Instructions.ts
+  s_1ca65ffa5958ee::t_61e25646738a2b 1,4,6,8-13,15
+packages/agent-runtime/src/nodex/Mcp.test.ts
+  s_1ca65ffa5958ee::t_6f399ca8a062f4 2-4,6-38
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_1ca65ffa5958ee::t_01d988000c7993 430-440
+  s_1ca65ffa5958ee::t_c31a9ba597c543 13,896
+  s_1ca65ffa5958ee::t_6f399ca8a062f4 5,52,60-65,242,613,637-639,684,748,798,804,807,899-907,920,924,926
+  s_1ca65ffa5958ee::t_d832d9830709e3 15,58-59,74-75,80,84,88-92,407,411,416-429,441,443-455,457-469,471-502,504-576,578-594,596-612,614-636,640-683,685-710,712-728,730-737,739-747,749-764,766-770,772-797,799-803,805-806,808-835,838,840-847,849-861,863-895,897-898,908-915,917-919,921-923,928-956,958-964,966-972,974-980,982-983,985-986,988,991,994-1003,1005-1017,1019-1020,1022,1025-1026,1028
+packages/agent-runtime/src/nodex/Mcp.ts
+  s_1ca65ffa5958ee::t_3c2a3a0f8e1b2e 4,10-11,49,57-58,61-64
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_1ca65ffa5958ee::t_da030b9e726e1a 1224-1231,1255,1395-1417
+  s_1ca65ffa5958ee::t_9096efa64cab22 95-99,104-105,107-108,117-118,120-121,606,608,1665-1684
+  s_1ca65ffa5958ee::t_47469de518bf50 1418,1685
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_1ca65ffa5958ee::t_4af586a123513d 1-6,8-167,169-282
+  s_1ca65ffa5958ee::t_5fc3791dc7694a 7,168
+packages/agent-runtime/src/nodex/Ingress.test.ts
+  s_1ca65ffa5958ee::t_3e9ec24b38210f 31,248,414
+packages/agent-runtime/src/orchestration-v2/ContextHandoffService.test.ts
+  s_1ca65ffa5958ee::t_0b289a9664f20d 135-137
+packages/agent-runtime/src/orchestration-v2/ContextHandoffDelivery.ts
+  s_1ca65ffa5958ee::t_e7d71b371c0f0d 53,58,64
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_1ca65ffa5958ee::t_644475387375c0 103,120,125,170-171,174,212,491-492,498-505
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_1ca65ffa5958ee::t_3fc226e8512460 16,1149,1194
+packages/agent-runtime/vendor/provider-core/src/server/handoffBudget.ts
+  s_1ca65ffa5958ee::t_ea79b123e61cb7 262,283,290,292
+packages/agent-runtime/vendor/provider-core/src/server/mcpToolPresentation.ts
+  s_1ca65ffa5958ee::t_34c8dc185568ea 2,55-56
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.test.ts
+  s_1ca65ffa5958ee::t_844e7110385b49 3-14,16,18,22-24
+packages/agent-runtime/vendor/shared/src/nodexAppMcp.ts
+  s_1ca65ffa5958ee::t_4c188cd9bfd204 18-19,21-30,42,47-50,52-57,59-60,62-65,68,74-77
+packages/agent-runtime/vendor/shared/src/toolOutput.ts
+  s_1ca65ffa5958ee::t_3f7371891da66b 13,190
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_interrupt/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_1ca65ffa5958ee::t_bc8465d5410078 590,599
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_resume_after_restart/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/V1ImportBoundary.test.ts
+  s_1ca65ffa5958ee::t_c027b34999615e 83-84
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_f953be39fb6087 841,843-844,857,864,6499-6508,6510-6522,7353-7363,7365,7380-7391
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/simple/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_nested_background/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 8
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/message_steering/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6,15
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpRegistryAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_b2a6bd7a97f2b8 36,130
+packages/agent-runtime/src/sourceControl/SourceControlProviderRegistry.ts
+  s_1ca65ffa5958ee::t_1d4148c913d698 317-336
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/turn_interrupt/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/Adapters/OpenCode2AdapterV2.test.ts
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 192,3861
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_compaction/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/CommandPolicy.test.ts
+  s_1ca65ffa5958ee::t_ad2f9b003fd18e 480
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_simple/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 10
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_revert/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/nodex/Host.ts
+  s_1ca65ffa5958ee::t_bc8465d5410078 29
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/tool_call_read_only/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_ce419189a930aa 427,440,444,459,463-467,492,3271,3283
+packages/agent-runtime/src/mcp/McpSessionRegistry.ts
+  s_1ca65ffa5958ee::t_bc8465d5410078 100
+packages/agent-runtime/src/environment/ServerEnvironment.ts
+  s_1ca65ffa5958ee::t_bc8465d5410078 1
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorReplayFixtures.integration.test.ts
+  s_1ca65ffa5958ee::t_94311af050257c 102
+packages/agent-runtime/src/provider/CodexDeveloperInstructions.ts
+  s_1ca65ffa5958ee::t_e41b88d4aba620 162,172-173,177-180
+packages/agent-runtime/src/orchestration-v2/OpenCode2OrchestratorV2.integration.test.ts
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 99
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/todo_list/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/provider/builtInDrivers.ts
+  s_1ca65ffa5958ee::t_963f4f67794f5d 2-4,15,17,22,24
+packages/agent-runtime/package.json
+  s_1ca65ffa5958ee::t_ef6de6eb69e61e 13
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_tool_call/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_inbox/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/settingsSecrets.ts
+  s_1ca65ffa5958ee::t_963f4f67794f5d 22
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_switch/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 13,65
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/queued_turn/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_fork/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9,55
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/acp_elicitation/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/nodex/HostInstructions.test.ts
+  s_1ca65ffa5958ee::t_3946117a024c41 7,31,35-40,71,79,83
+  s_1ca65ffa5958ee::t_ef7e592cf2c1a7 66-67
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_background/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_skill/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/stop_background_work_after_failed_turn/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/multi_turn/registry_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 6
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_command/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_subagent/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 9
+packages/agent-runtime/src/orchestration-v2/testkit/fixtures/opencode2_question/opencode_transcript.ndjson
+  s_1ca65ffa5958ee::t_acd3e4f5c77a47 10
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_1ca65ffa5958ee::t_588b42237fc3af 506
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_1ca65ffa5958ee::t_0bedca6717418d 1151,1153
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorReplayRecovery.integration.test.ts
+  s_1ca65ffa5958ee::t_b0d6f0f8802669 74
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_1ca65ffa5958ee::t_9c89abb06a98f6 83-84,1640,6433-6434,6441
+packages/agent-runtime/vendor/provider-core/src/server/orchestrationInstructions.test.ts
+  s_1ca65ffa5958ee::t_ad8829557c680e 3,5,7-9,11-12,15-16,20,22,25,29,34,36,38-39,41-53
+packages/agent-runtime/vendor/provider-core/src/server/orchestrationInstructions.ts
+  s_1ca65ffa5958ee::t_00efffde0f24e6 3-8,10,12,14,19,22,24,28,31,33-34,41-42,44,50-53,57
+packages/agent-runtime/vendor/provider-core/src/server/runtimeInstructions.test.ts
+  s_1ca65ffa5958ee::t_383b42bd505215 5-8,31-32
+packages/agent-runtime/vendor/provider-core/src/server/runtimeInstructions.ts
+  s_1ca65ffa5958ee::t_536f6ed3880e7f 19
+packages/agent-runtime/vendor/provider-opencode/src/server/adapter.ts
+  s_1ca65ffa5958ee::t_e2558ff0b69d83 3128
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/adapter.ts
+  s_1ca65ffa5958ee::t_a46f8435549087 588-589,3285,3295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ce80614e7ee2b01fa59a7df0ee842133d3b3e397",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
