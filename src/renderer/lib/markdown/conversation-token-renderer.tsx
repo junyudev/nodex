@@ -328,7 +328,9 @@ function TokenNode({
       if (registration.kind === "null") return null;
       const owned = options.renderDirective?.(token, { registration, renderChildren: children });
       if (owned !== undefined) return owned;
-      return token.raw;
+      // An unknown directive reads as the literal text it would be without directive support:
+      // a paragraph on its own line, plain text inline.
+      return token.block ? primitive("p", options.components, token.raw) : token.raw;
     }
   }
 }
