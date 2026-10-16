@@ -1,0 +1,57 @@
+scripts/verify-renderer-bootstrap.ts
+  s_c2cd53290a9986::t_72803b9ae1dd3f 4,61
+config/electron-build-optimization.test.ts
+  s_c2cd53290a9986::t_d0edb754726415 6,97-99,112-145,147-164
+  s_c2cd53290a9986::t_faaa6da8b678a1 1-5,7-96,100-111
+  s_c2cd53290a9986::t_3e896c79f97920 165,167-200,203,213
+  s_c2cd53290a9986::t_301a3c35149807 146
+  s_c2cd53290a9986::t_0ddcf84dd64407 166,201-202,204-212
+.github/workflows/_macos-distribution.yml
+  s_c2cd53290a9986::t_f38a091af16d4a 170-180
+electron.vite.config.ts
+  s_c2cd53290a9986::t_0ddcf84dd64407 10-12,202-204
+  s_c2cd53290a9986::t_168d78207ae07c 4,127-139,141-156,160-162,166-175,179-190,192-201,205-207,211-221,223
+  s_c2cd53290a9986::t_82ae587e45cabc 163-165
+  s_c2cd53290a9986::t_b9f104dfa27c3c 9
+docs/development.md
+  s_c2cd53290a9986::t_f38a091af16d4a 354
+  s_c2cd53290a9986::t_6fa1f55774c103 350-353,359
+  s_c2cd53290a9986::t_ed4c267431177a 355-358
+config/node-build-optimization.ts
+  s_c2cd53290a9986::t_6fa1f55774c103 1-5
+scripts/prepared-electron-build.ts
+  s_c2cd53290a9986::t_6fa1f55774c103 22,547,564
+scripts/build-agent-runtime.ts
+  s_c2cd53290a9986::t_6fa1f55774c103 20,34,56-60,65
+  s_c2cd53290a9986::t_5285615a5737b8 7-10,61-64
+scripts/lib/renderer-bootstrap-imports.ts
+  s_c2cd53290a9986::t_d42278d25a849e 1-15
+config/node-build-optimization.test.ts
+  s_c2cd53290a9986::t_17d13c5603beb2 78
+  s_c2cd53290a9986::t_74e84fdb81ed40 1-68,72-77,79-84
+  s_c2cd53290a9986::t_5285615a5737b8 69-71
+scripts/dev-launcher.ts
+  s_c2cd53290a9986::t_6fa1f55774c103 247,249,331
+config/renderer-manual-chunks.ts
+  s_c2cd53290a9986::t_0ddcf84dd64407 51-59
+scripts/lib/renderer-bootstrap-imports.test.ts
+  s_c2cd53290a9986::t_d42278d25a849e 1-26
+scripts/dev-launcher.test.ts
+  s_c2cd53290a9986::t_6fa1f55774c103 117-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cef9732f8cf732aaaa2e05f6842f359891653591",
+  "prompts": {},
+  "sessions": {
+    "s_c2cd53290a9986": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14293-ad01-7d22-852b-e5bbc7450ace",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
